@@ -1,0 +1,110 @@
+{
+  "target_id": "spec-review",
+  "approval_score": 4,
+  "would_adopt": false,
+  "summary": "Архитектурное направление сильное, но спецификация не готова к реализации: она нарушает hard constraint одной Git-ревизии, позволяет менять selection-critical E2E metadata вне digest, не гарантирует immutable checkout и не может безопасно восстановиться после crash между backend side effect и записью state. Обещанные implementation-ready подспеки отсутствуют, а Python QC, watchdog, adapter contracts и test plan требуют новых архитектурных решений.",
+  "phase": "spec-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "revision-attestation",
+      "description": "Content snapshot и bookkeeping commit подменяют требование одной Git-ревизии.",
+      "required_change": "Attest clean commit SHA и хранить verification metadata вне attested commit."
+    },
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "e2e-integrity",
+      "description": "Исключённый e2e.json содержит selection-critical fields и позволяет сузить E2E set без invalidation.",
+      "required_change": "Включить каталог сценариев в revision и отделить от изменяемых результатов."
+    },
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "snapshot-isolation",
+      "description": "Reviewer и E2E не привязаны к immutable isolated checkout; untracked и concurrent changes не контролируются.",
+      "required_change": "Использовать clean committed candidate и отдельные isolated worktrees."
+    },
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "crash-recovery",
+      "description": "Нет fencing single writer, pending operation, backend receipt и output cursor.",
+      "required_change": "Добавить lock/fencing и recoverable in-flight operation protocol."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "local-qc",
+      "description": "Executor может ослабить Makefile или checker и получить общий exit 0.",
+      "required_change": "Ввести QC manifest, per-gate structured report и base-revision guard состава проверок."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "delivery",
+      "description": "Пять implementation-ready подспек не поставлены.",
+      "required_change": "Предоставить все шесть нормативных файлов с полноценными contracts и tests."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "fsm-watchdog",
+      "description": "Не определены cancellation, pause/resume transitions, retry/backoff, deadlines и watchdog signalling.",
+      "required_change": "Добавить полную transition/error/recovery matrix и executable watchdog contract."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "contract-completeness",
+      "description": "Ключевые interfaces, JSON schemas, Python algorithms и limits отсутствуют.",
+      "required_change": "Определить все referenced types, schemas, parser rules, thresholds, limits и error mappings."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "traceability",
+      "description": "D-038, D-051, D-053 и D-054 отсутствуют в нормативном теле; несколько rejected решений отсутствуют в соответствующем разделе.",
+      "required_change": "Провести автоматическую ledger-to-body сверку и устранить все пропуски и противоречия."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "test-plan",
+      "description": "Нет системного плана тестирования FSM, state recovery, knowledge/QC checkers и watchdog.",
+      "required_change": "Добавить unit, property, crash-point, conformance и full-workflow acceptance test matrix."
+    }
+  ],
+  "non_blocking_findings": [
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "knowledge-scalability",
+      "description": "Один неограниченный business.md станет merge и context bottleneck.",
+      "required_change": "Задать предел и стратегию sharding/generated index."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "yagni",
+      "description": "Custom snapshot digest сложнее и слабее прямой commit-based attestation.",
+      "required_change": "Предпочесть Git-native revision semantics."
+    }
+  ],
+  "assumptions": [
+    "Требование одной Git-ревизии считаю hard constraint и не заменяю его content equivalence.",
+    "Implementation-ready означает фактическое наличие master-spec и пяти отдельных подспек.",
+    "До явного запрета считаю возможными dirty worktree, untracked files и crash в любой точке side effect.",
+    "Внешний verification state допустим, поскольку Original Task не требует хранить его в attested commit."
+  ],
+  "round": 1,
+  "reviewer": "gpt56solxhigh",
+  "judge": {
+    "slug": "gpt56solxhigh",
+    "model": "gpt-5.6-sol",
+    "route": "codex-sdk",
+    "effort": "xhigh"
+  }
+}

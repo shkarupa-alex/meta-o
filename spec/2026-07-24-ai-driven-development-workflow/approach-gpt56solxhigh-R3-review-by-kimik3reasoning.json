@@ -1,0 +1,87 @@
+{
+  "target_id": "proposal-1",
+  "approval_score": 8,
+  "would_adopt": true,
+  "summary": "Ревизия добавила first-class подсистему контекстного бюджета оркестратора — rotation до compaction с порогами 55/65/75%, checksummed OrchestratorCheckpoint, протокол successor activation со сверкой digest/revision/generations/cursor, инвалидация полномочий сессии при неожиданной compaction и отказ от narrative summary как authority; это закрывает последний стратегический пробел прошлых версий (главный страх автора) и снимает мою находку о противоречии QC-политики (теперь 'review-candidate commit'). Блокирующих противоречий нет. Остаточное: ставка на capabilities выросла (обязательные compaction detection и successor creation при запрете компенсации — если Herdr/Omnigent не умеют детектить compaction CLI-агента, методология не запускается нигде; нужен capability spike шагом 0 с точкой решения о деградации); знание-lint по-прежнему содержит фазово-зависимые правила без механизма; не определены каденс checkpoint (рекомендую на каждый переход), актор successor при неожиданной compaction без watchdog и ряд редакционных пунктов. Принимать как основу; довести перечисленное до начала реализации.",
+  "phase": "approach-review",
+  "confidence": "high",
+  "non_blocking_findings": [
+    {
+      "id": "",
+      "severity": "major",
+      "area": "backend-capabilities",
+      "description": "Список обязательных capabilities вырос (compaction/context-reset detection, createOrchestratorSuccessor или гарантированная pause-before-compaction, atomic checkpoint, ordered replayable events, structured run state): если оба backend не покрывают их, preflight блокирует всё, а 'не писать новый runtime' запрещает компенсацию — экзистенциальная ставка на непроверенные возможности Herdr/Omnigent",
+      "required_change": "Capability spike шагом 0 внедрения + документированная точка решения о деградации (poll-режим с явным статусом DEGRADED_DELIVERY; rotation-only-when-detectable)"
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "knowledge-lint",
+      "description": "Правила §11.6 'spec retirement' и 'чистота docs/todo.md' фазово-зависимы, но линтер stateless и исполняется в ./tools/qc на каждом review-candidate: либо false-fail до sync, либо мёртвое правило",
+      "required_change": "Определить механизм: удаление tracked-спеки первым коммитом executor, машинный маркер завершения todo-записи или конвенция расположения спек"
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "context-budget",
+      "description": "Каденс OrchestratorCheckpoint не указан: если checkpoint создаётся только на порогах 55/65%, неожиданная compaction ниже порога оставляет run без восстановления (FAILED_BACKEND), хотя run state содержит почти всё содержимое checkpoint",
+      "required_change": "Писать checkpoint на каждый переход состояния (снимок run state + checksum)"
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "context-budget",
+      "description": "§5.8: untrusted-сессия 'не принимает решений, не отправляет turns' и при этом 'создаёт fresh successor' — противоречие полномочий; при отключённом watchdog актор воскрешения не определён",
+      "required_change": "Явно назначить создателя successor: watchdog, backend или пользовательский resume как единственный легитимный путь без watchdog"
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "context-budget",
+      "description": "Rotation при долгом outstanding turn: 'дождаться или reconcile' неопределённо — долгий turn executor может протолкнуть бюджет за 75% в hard pause посреди turn",
+      "required_change": "Определить политику: deadline rotation vs принудительный reconcile с наследованием outstandingTurn successor'ом"
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "qc-pipeline",
+      "description": "verification-lint.mjs объявлен отдельным инструментом, но не включён в последовательность §14.2 (verification schema при этом проверяется knowledge-lint — дублирование или пробел)",
+      "required_change": "Включить в pipeline или слить с knowledge-lint"
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "completion",
+      "description": "Актор metadata-only коммита verification-state не назван; 'единственная роль, меняющая tracked files' буквально нарушается",
+      "required_change": "Назначить оркестратора создателем guarded metadata commit; внести исключение в границу ролей"
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "failure-semantics",
+      "description": "BACKEND_STATE_LOST терминален: checkpoint хранится в backend и гибнет вместе с ним; диск-зеркало не предусмотрено",
+      "required_change": "Зеркалировать checkpoint в gitignored файл на диске (по модели state file proposal-3) как резерв без нового runtime"
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "lifecycle",
+      "description": "Solution scan без исполняющей роли и маппинга эскалации; гейт untracked files конфликтует с untracked-спекой в репозитории; DecisionRequest самоклассифицируется исполнителем; adoption одной feature неподъёмен для крупного brownfield",
+      "required_change": "Эфемерная сессия scan + маппинг на PAUSED_EXTERNAL; whitelist локатора спеки; обязательное второе мнение reviewer при сомнении; staged adoption по source_root"
+    }
+  ],
+  "assumptions": [
+    "Тексты этого раунда — новые версии; оценивал их, а не накопленные впечатления",
+    "При расхождении текста задания и исходников приоритет — тексту задания",
+    "Checkpoint в backend вместо диска — осознанный компромисс, не дефект; диск предложен как усиление, не как замена"
+  ],
+  "round": 3,
+  "reviewer": "kimik3reasoning",
+  "judge": {
+    "slug": "kimik3reasoning",
+    "model": "moonshotai/kimi-k3",
+    "route": "opencode-sdk",
+    "effort": "reasoning",
+    "providerID": "openrouter"
+  }
+}

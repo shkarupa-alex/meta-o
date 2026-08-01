@@ -1,0 +1,28 @@
+{
+  "target_id": "proposal-3",
+  "approval_score": 1,
+  "would_adopt": false,
+  "summary": "The submission is the single token 'PONG' — a non-response. It contains no master-spec, no subspecs, no lifecycle, no knowledge layer, no skills/tools/orchestration contracts, no QC design, and no mandatory critique section. There is nothing to stress-test and nothing to adopt; it satisfies none of the task's deliverables.",
+  "phase": "approach-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "completeness",
+      "description": "No content whatsoever; every required deliverable (master-spec, subspecs, lifecycle, knowledge layer, tooling, QC, critique) is absent.",
+      "required_change": "Produce an actual proposal addressing the task before it can be reviewed."
+    }
+  ],
+  "assumptions": [
+    "'PONG' is a placeholder/heartbeat, not an intentional abstention with hidden content."
+  ],
+  "round": 1,
+  "reviewer": "fable51mxhigh",
+  "judge": {
+    "slug": "fable51mxhigh",
+    "model": "claude-fable-5[1m]",
+    "route": "claude-agent-sdk",
+    "effort": "xhigh"
+  }
+}

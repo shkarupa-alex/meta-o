@@ -1,0 +1,75 @@
+{
+  "target_id": "proposal-2",
+  "approval_score": 7,
+  "would_adopt": false,
+  "summary": "Ревизия хирургически закрыла две из четырёх моих блокирующих находок, причём лучше моих собственных предложений: spec_digest с пересчётом на границах фаз и ESCALATED(SPEC_MUTATED); правило L4 (неявная ссылка при одном §A-* модуля, явная при ≥2) снова под линтером; плюс честная модель идемпотентности (key + state-guarded resend, закрыто окно running) и ModelSet ровно из 4 ролей с валидируемыми vendor-инвариантами. Остаются две блокирующие находки: canComplete() без worktreeClean, tester пишет verification-state.json без коммит-пункта, а переход в DONE выполняет миграцию decision-log→§A, final knowledge-sync и retire spec уже после вычисления критерия — post-attestation коммиты с изменениями §B/§A без единого review и без guard; и code_globs=['src/**/*.py'] исключает tests из purpose/health при hard constraint 'каждая сущность'. Плюс неизменённые: carve-out doc-only без актора в FSM и anchor-check --gate done, ищущий §*-TODO-* в code_globs вместо docs. Два прицельных исправления (sync-before-attestation + code_globs += tests) делают предложение принимаемым.",
+  "phase": "approach-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "major",
+      "area": "completion-order",
+      "description": "canComplete() без worktreeClean; запись verification-state.json tester'ом без определённого коммит-пункта; переход в DONE выполняет миграцию decision-log→§A, final knowledge-sync и retire spec ПОСЛЕ критерия — tracked-коммиты с изменениями §B/§A без review и без guard; итоговое состояние репозитория не аттестовано",
+      "required_change": "Завершать knowledge sync ДО финальной аттестации; post-attestation разрешить только guarded metadata-only commit; добавить worktreeClean в canComplete()"
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "purpose-coverage",
+      "description": "code_globs=['src/**/*.py'] исключает tests/ из purpose-lint и health-метрик при hard constraint 'purpose для каждого модуля, класса, функции и метода'",
+      "required_change": "Включить tests/** в code_globs с path_overrides"
+    }
+  ],
+  "non_blocking_findings": [
+    {
+      "id": "",
+      "severity": "major",
+      "area": "invalidation-model",
+      "description": "Carve-out 'doc-only не инвалидирует E2E' не подключён к FSM: у 'дешёвого re-review diff знаний' нет актора, контракта и строки в таблице переходов",
+      "required_change": "Модель применимости аттестации (SHA + pathset) и контракт лёгкого knowledge re-review с исполнителем и гейтом"
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "anchor-check",
+      "description": "--gate done запрещает §*-TODO-* в code_globs, но TODO-якоря создаются в docs (doc_globs): гейт проверяет не ту область и фактически не работает",
+      "required_change": "Проверять doc_globs (и src при желании), не code_globs"
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "idempotency",
+      "description": "Adapter dedup-ledger при nativeIdempotency=false не имеет указанной персистентности: после reboot оркестратора ledger теряется, защита от дубликата ослабевает",
+      "required_change": "Персистить ledger в state.json рядом с outstandingTurn"
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "failure-semantics",
+      "description": "Missing-tools есть в HealthReport, но отсутствует в Phase/EscalationKind — эскалация без состояния",
+      "required_change": "Добавить PAUSED_MISSING_TOOLS или маппинг на ESCALATED с протоколом"
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "role-boundaries",
+      "description": "Tester пишет tests/repro/** — граница ролей и glob-классификация не определены; .meta-o/ не объявлен gitignored; handoff без формата и лимита",
+      "required_change": "Постоянные тесты — только через findings к implementer; объявить .meta-o gitignored; формат handoff"
+    }
+  ],
+  "assumptions": [
+    "Правило L4 с неявной ссылкой через членство принял как удовлетворяющее букве 'линтер проверяет необходимую ссылку', поскольку линтер проверяет и карту модуль→§A, и обязательность явной ссылки при неоднозначности",
+    "orchestrator_model вне 4-ролевого набора — корректное прочтение 'модели всех четырёх ролей'",
+    "Персчёт spec_digest на границах фаз считал достаточной детекцией мутации; непрерывный мониторинг не требовал"
+  ],
+  "round": 3,
+  "reviewer": "kimik3reasoning",
+  "judge": {
+    "slug": "kimik3reasoning",
+    "model": "moonshotai/kimi-k3",
+    "route": "opencode-sdk",
+    "effort": "reasoning",
+    "providerID": "openrouter"
+  }
+}

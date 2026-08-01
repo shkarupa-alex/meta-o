@@ -1,0 +1,111 @@
+{
+  "target_id": "spec-review",
+  "approval_score": 8,
+  "would_adopt": true,
+  "summary": "R2 is the strongest iteration and the core correctness machinery held up under active attempts to break it: exact-commit identity with snapshot + source-materialization digests (LFS/submodules), lease locking whose takeover requires provable process death (defeating split-brain and PID reuse), write-ahead EffectIntent with APPLIED/NOT_APPLIED/UNKNOWN and no blind resend, fresh-worktree gate proof, crash-safe finalization, a typed failure taxonomy, and — decisively — an executable conformance suite (§30) plus per-subspec contracts (§36) that make the covered areas mechanically decomposable. It also fixes the two substantive R1 defects: the candidate branch now persists for user push/PR with the primary checkout untouched, and verification state is mirrored into a portable annotated Git tag. It falls short of a perfect score because of gaps at the margins, not correctness breaks: (1) the orchestrator process model is unspecified, so who emits the 5s heartbeat and enforces the §14 stall deadlines during long unattended worker turns is undefined and sits in tension with the no-daemon rule and the optional watchdog; (2) the task-required QC/pre-commit/pre-push placement comparison is absent and its adopted ledger entry D-036 appears nowhere in the body, violating the spec's own acceptance criterion; (3) the task-required deterministic/local-model/hybrid watchdog comparison is still not delivered; (4) the most error-prone components (import-graph gate, AST purpose checker, generated-source materialization) remain project-owned prose with no conformance cases; and (5) several referenced types were dropped and remain undefined. All are additive fixes, so the architecture is adoptable pending them.",
+  "phase": "spec-review",
+  "confidence": "medium",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "major",
+      "area": "orchestrator-liveness",
+      "description": "§6.2 mandates a 5s heartbeat on a 30s lease and §14 defines stall/turn/QC/E2E deadlines, but the spec never states whether the orchestrator is a resident process or a transient per-turn helper, nor who emits heartbeats or enforces deadlines during a 30-minute worker turn. With the watchdog optional and D-011 forbidding a daemon, either automatic stall detection cannot occur unattended (undercutting D-014) or a resident heartbeat process is required (tension with D-011). Takeover correctness is preserved by the PID-death requirement, but the enforcement agent is an unresolved design decision.",
+      "required_change": "Specify the orchestrator process model: define who maintains the heartbeat and enforces deadlines (e.g., a lease longer than the max worker turn for transient orchestrators, or a narrowly-scoped heartbeat supervisor exempted from D-011), and state explicitly that without the watchdog, stall deadlines are enforced only at next orchestrator activation."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "traceability/task-conformance",
+      "description": "D-036 (pre-commit optional/fast) is marked adopted but appears in no normative section, and the task-required comparison of check placement across QC/pre-commit/pre-push is entirely absent. This violates §37 ('all adopted decisions traceable into normative sections') and a direct task requirement.",
+      "required_change": "Add a normative QC/pre-commit/pre-push (and CI-dup) placement section with a trade-off comparison, satisfying D-036 and the task."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "watchdog/task-conformance",
+      "description": "The task explicitly required comparing deterministic script vs. local model vs. hybrid for the watchdog; §28/D-016 assert the chosen deterministic + closed-enum-classifier design without that comparison.",
+      "required_change": "Add the three-way comparison (deterministic / local model / hybrid) with costs and consequences, then state the choice."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "qc-checker-verification",
+      "description": "The import-graph gate (SCC/cycle/boundary/fan ratchet), AST purpose/anchor checks, and sourceMaterializationDigest of 'declared generated source inputs' (§7.3) are specified only as contracts, and §30's conformance suite contains no cases for their correctness. The most error-prone, weak-model-hostile components are the least specified and untested.",
+      "required_change": "Provide concrete algorithms (or a versioned reference implementation invoked from the Makefile) and add conformance cases for graph-gate, purpose-coverage, and materialization-digest behavior; define the generated-source-input declaration and digest scheme."
+    }
+  ],
+  "non_blocking_findings": [
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "contract-completeness",
+      "description": "ModelRef, PauseState, DecisionRecord, DecisionOption, Evidence, FindingSetRef, E2EScenarioResult (several present in R1) and the adapter types (AdapterCapabilities, SpawnRequest, DeliveryResult, SessionStatus, SessionOutput, EffectStatus, ExpectedState, WaitResult, StopResult, EffectContext) are referenced but undefined in the master, and resultDigest/evidenceDigest computation is unspecified. §37 claims no TBD outside Open Questions.",
+      "required_change": "Define (or explicitly scope to a named subspec) all referenced types and the result/evidence digest computations."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "review-semantics",
+      "description": "§19's 'executor does not begin fixes until the second reviewer result or terminal timeout' is ambiguous: completion requires both reviewers PASS, so a reviewer timeout must mean replace-and-retry, not proceed-without, but the wording reads as the latter.",
+      "required_change": "State that a reviewer terminal timeout triggers session replacement and re-review, never completion with a single review."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "e2e-selection",
+      "description": "§20/PLAN-04 forbid an empty selected set with no requirement that a project define any always_required scenario, so a refactor touching no linked/tagged code in such a project can never complete.",
+      "required_change": "Require at least one always_required scenario, or add a reviewer-approved 'no applicable E2E' justification path."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "scope/rationale",
+      "description": "D-081/§6.1 serialize mutating runs per project-key, but project-key is per-machine realpath, so the 'prevents divergent knowledge/QC state on diverging branches' rationale is not achieved across teammates; it also newly forbids two independent features on one checkout, which the task never required.",
+      "required_change": "Correct the rationale to same-machine work-tree safety and consider allowing concurrent runs with disjoint changed-path manifests."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "security",
+      "description": "§25/SEC-03 require redacting credential-like fields from evidence and receipts but specify no detection heuristic; temporary evidence is the real exposure.",
+      "required_change": "Define the secret-detection/redaction mechanism for evidence storage."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "model-set-invariant",
+      "description": "The cross-vendor invariant relies on free-form vendor/family strings with no authoritative taxonomy, so it is unenforceable and mislabeling silently defeats independence (unchanged across rounds).",
+      "required_change": "Define an authoritative vendor/family taxonomy and how ModelRef fields are assigned and validated."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "liveness/cost",
+      "description": "Unbounded review<->E2E cycles (D-071) now also require QC + smoke per candidate, raising per-iteration cost with no convergence guarantee; accepted by the user but a real cost/liveness risk for unattended runs.",
+      "required_change": "Add a diminishing-returns user notification after K cycles of only minor/taste findings, without auto-completing."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "backend-viability",
+      "description": "The completion-critical capability bar (§24) may exclude both named backends; now explicitly release-blocking (D-090) and acknowledged (§35), so honestly handled, but the practical risk of temporarily having no usable backend remains.",
+      "required_change": "Schedule an early capability spike against real Herdr/Omnigent versions and define a reference/shim backend that provably passes the suite."
+    }
+  ],
+  "assumptions": [
+    "This review targets the master spec only; the six subspecs and per-project QC checkers are out of scope because they are not present in the artifact.",
+    "The named council models and their R1/R2 verdicts are treated as provenance, not independently verifiable claims.",
+    "I read the spec and original task in full and did not need the reference docs, since every finding is grounded in internal consistency or the quoted task constraints.",
+    "would_adopt is set true because the core architecture survived stress-testing and the blocking findings are additive completions/clarifications rather than redesigns.",
+    "I assumed the orchestrator is intended to be a transient per-turn helper (not a resident daemon), which is why the heartbeat/deadline-enforcement locus is flagged as unspecified rather than contradictory."
+  ],
+  "round": 3,
+  "reviewer": "fable51mxhigh",
+  "judge": {
+    "slug": "fable51mxhigh",
+    "model": "claude-fable-5[1m]",
+    "route": "claude-agent-sdk",
+    "effort": "xhigh"
+  }
+}

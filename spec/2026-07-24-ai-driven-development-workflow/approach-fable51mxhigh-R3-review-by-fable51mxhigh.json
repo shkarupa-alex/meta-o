@@ -1,0 +1,52 @@
+{
+  "target_id": "proposal-2",
+  "approval_score": 6,
+  "would_adopt": true,
+  "summary": "A strong, well-reasoned spec that improved on the periphery this round — it fixed the model set to exactly four working roles with validated vendor invariants (orchestrator model explicitly outside the set), it now mechanically enforces the symbol up-link via an elegant L4 inheritance rule, it added the clearest idempotency reasoning in the field (idempotencyKey plus a state-guarded resend predicate that names and closes the running-but-turnSeq-unincremented race), and it added a spec_digest integrity check that escalates SPEC_MUTATED at phase boundaries. But it left its central defect intact for a third round: canComplete() requires every VerificationRecord to have git_rev==head_rev and status==pass, while records auto-stale when git_rev!=HEAD and the tester writes the record during E2E — so committing the record mutates HEAD and self-stales it, making DONE unreachable as literally specified. It also performs the final decision-log→§A migration and spec retirement as unreviewed DONE side-effects, contradicting its own doc-only-requires-re-review rule, and its committed reviewer lens split routes correctness/security review primarily to the same-family reviewer. Its orchestrator-compaction handling (budget + escalate-at-boundary + disk state) is reasonable but, unlike proposal-1, cannot detect a silent early compaction. Adoptable, but the completion criterion must be repaired first — the fix (adopt proposal-1's parent-revision metadata commit) is small.",
+  "phase": "approach-review",
+  "confidence": "medium",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "major",
+      "area": "stopping-criteria",
+      "description": "The completion criterion is self-contradictory and possibly unreachable: canComplete() requires VerificationRecord git_rev==head_rev ∧ status==pass, but records auto-stale on git_rev!=HEAD and are written+committed during E2E, so persisting the record advances HEAD and staled it. The doc-only-doesn't-invalidate-E2E claim also cannot reach DONE without re-running E2E on the doc-inclusive head. Persisted three rounds despite being flagged each time.",
+      "required_change": "Adopt proposal-1's guarded metadata-only verification commit recording the parent executable revision, and define canComplete() over that parent (or a code-tree hash) rather than a HEAD the verification write itself mutates."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "knowledge-review",
+      "description": "Final decision-log→§A migration and tracked-spec retirement run as terminal DONE effects after canComplete() is checked, so the final committed tree is never reviewed or E2E'd — and this contradicts proposal-2's own rule that doc-only commits require a cheap knowledge re-review.",
+      "required_change": "Move the §A migration and spec retirement into execution (as proposal-1 does) so the attested revision is the final knowledge state, or run a mandatory re-review of the finalization diff before declaring DONE."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "review",
+      "description": "The committed reviewer lens split assigns correctness/security to the same-family reviewer and business/architecture to the cross-vendor one, reducing independent cross-vendor coverage of the bug classes most likely to be model-family-correlated.",
+      "required_change": "Keep both reviewers on the full unified rubric with lens as advisory emphasis only."
+    }
+  ],
+  "non_blocking_findings": [
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "orchestrator-context",
+      "description": "Budget + escalate-at-boundary + disk-persisted state is reasonable, but there is no detection of an unexpected silent compaction, so a degraded orchestrator could keep making decisions unnoticed (which proposal-1's contextEpoch catches)."
+    }
+  ],
+  "assumptions": [
+    "verification-state.json is a tracked file under docs/knowledge/, so writing it is a tracked change subject to the completion invariant.",
+    "The four-role model set and orchestrator-model separation now fully satisfy the 'модели четырёх ролей' constraint.",
+    "The L4 up-link inheritance rule (implicit when a module maps to exactly one §A) is an acceptable mechanical reading of 'linter checks the necessary reference'."
+  ],
+  "round": 3,
+  "reviewer": "fable51mxhigh",
+  "judge": {
+    "slug": "fable51mxhigh",
+    "model": "claude-fable-5[1m]",
+    "route": "claude-agent-sdk",
+    "effort": "xhigh"
+  }
+}

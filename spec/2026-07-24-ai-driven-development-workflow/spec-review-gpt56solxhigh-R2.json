@@ -1,0 +1,103 @@
+{
+  "target_id": "spec-review",
+  "approval_score": 6,
+  "would_adopt": false,
+  "summary": "Переработанная версия исправляет главные архитектурные ошибки: attestation теперь относится к одному полному commit SHA, все tracked-файлы входят в revision, gates работают в fresh detached worktrees, verification plan связан с commit, а backend side effects имеют bounded crash journal. Однако документ остаётся сильным master-design, а не implementation-ready поставкой: отсутствуют сами пять подспек, внешний receipt не сохраняет требуемый per-scenario и командно переносимый verification state, lifecycle branch/finding/cancellation неполон, а QC, knowledge, watchdog и adapter contracts всё ещё требуют новых архитектурных решений от исполнителя.",
+  "phase": "spec-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Delivery and decomposition",
+      "description": "Вместо пяти implementation-ready подспек дан только перечень того, что они в будущем обязаны определить.",
+      "required_change": "Предоставить все шесть нормативных файлов со schemas, commands, algorithms, failure states и executable acceptance cases."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Verification state",
+      "description": "Receipt теряет индивидуальные scenario status/date/business mappings и недоступен другим участникам команды через обычный Git workflow.",
+      "required_change": "Хранить per-scenario records и определить переносимый export, не изменяющий attested commit, например annotated tag или namespaced Git ref."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Git lifecycle",
+      "description": "Требование сохранить repository HEAD на R некорректно для multi-worktree Git, а retention рабочей branch/ref после удаления executor worktree не определён.",
+      "required_change": "Заменить HEAD-инвариант точным branch/ref contract и определить retention, cleanup, GC protection и handoff commit SHA."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Review recovery",
+      "description": "Finding удаляется после заявленного fix до reviewer verification; fresh reviewer после сбоя теряет исходное доказательство.",
+      "required_change": "Ввести lifecycle open, fix_proposed, reviewer_verified, closed и удалять finding только после verification или окончательного adjudication."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "FSM and recovery",
+      "description": "Нет полных переходов для cancellation, SPEC_MUTATED, stopped-run cleanup, infrastructure-blocked E2E, failed stop и resume каждого PAUSED state.",
+      "required_change": "Добавить исчерпывающую transition table с entry guards, side effects, resume conditions и terminal cleanup."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Local QC",
+      "description": "Project-owned Makefile и checker могут быть ослаблены до ложного PASS; состав обязательных gates и baseline algorithms не имеет machine-readable контракта.",
+      "required_change": "Определить QC manifest/result schema, обязательные gate IDs, base-revision comparison и concrete Python reference algorithms."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Knowledge layer",
+      "description": "Отсутствуют schemas и algorithms для KnowledgeImpactPlan, anchors, native purpose parsing, generated exceptions и adoption manifest.",
+      "required_change": "Зафиксировать grammar, schemas, Python AST semantics и executable conformance fixtures."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Orchestration contracts",
+      "description": "Эфемерные роли не представлены в Role/SessionRef, многие adapter types не определены, а stall deadline, locking и cursor ordering остаются расплывчатыми.",
+      "required_change": "Завершить type contracts, role union, lock/fencing algorithm, deadline configuration и replay semantics."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Watchdog",
+      "description": "Watchdog описан как набор свойств, но отсутствуют требуемое сравнение deterministic/local/hybrid, config schema, timing, sanitization и executable service contracts.",
+      "required_change": "Выпустить полноценную watchdog подспеку с state machine, config, launchd/systemd units и fake-clock tests."
+    }
+  ],
+  "non_blocking_findings": [
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "Traceability",
+      "description": "Несколько adopted/rejected решений присутствуют только в ledger или dissent, но не в соответствующих нормативных разделах.",
+      "required_change": "Синхронизировать D-024, D-029, D-034, D-038, D-044, D-048, D-051, D-053 и D-054 с body и Rejected/Deferred."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "Security",
+      "description": "Не определены URL-fetch policy, cross-vendor data policy, E2E production guards и integrity model receipt.",
+      "required_change": "Добавить security boundaries и negative acceptance tests."
+    }
+  ],
+  "assumptions": [
+    "Оценивался только приведённый документ; отдельные подспеки считаются отсутствующими, поскольку их содержимое не предоставлено.",
+    "External receipt должен удовлетворять исходному требованию долговечного командного verification state, а не быть только локальным recovery marker.",
+    "Backend capability suite ещё не доказала пригодность актуальных Herdr и Omnigent.",
+    "Advisory locking поддерживается только на локальной файловой системе, как заявлено в assumptions."
+  ],
+  "round": 2,
+  "reviewer": "gpt56solxhigh",
+  "judge": {
+    "slug": "gpt56solxhigh",
+    "model": "gpt-5.6-sol",
+    "route": "codex-sdk",
+    "effort": "xhigh"
+  }
+}

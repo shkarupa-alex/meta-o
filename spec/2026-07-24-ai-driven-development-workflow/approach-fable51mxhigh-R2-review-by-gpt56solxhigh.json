@@ -1,0 +1,88 @@
+{
+  "target_id": "proposal-2",
+  "approval_score": 3,
+  "would_adopt": false,
+  "summary": "Предложение стало формальнее, но сохранило прямые нарушения hard constraints: symbol parent-link отключён, spec digest отсутствует, same-family не моделируется, набор содержит пять ролей, а turnSeq выдаётся за идемпотентность. Финальный knowledge sync и tester-owned tracked verification state меняют SHA после review/E2E, поэтому заявленный canComplete недостижим.",
+  "phase": "approach-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "completion-order",
+      "description": "Final knowledge sync, decision migration, spec retirement и verification update выполняются после проверенного SHA.",
+      "required_change": "Завершить все tracked изменения до финального QC/review/E2E; attestation хранить вне tree."
+    },
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "purpose-tracing",
+      "description": "symbol_requires_link_one_level_up=false прямо нарушает обязательную трассировку и lint ссылки.",
+      "required_change": "Ввести стабильный module-purpose anchor и обязательную явную symbol→module ссылку."
+    },
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "spec-integrity",
+      "description": "RunState не содержит digest и immutable snapshot спеки.",
+      "required_change": "Добавить mutation gate и content-addressed snapshot."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "model-contract",
+      "description": "ModelRef не содержит family, а persistent ModelSet включает пять ролей.",
+      "required_change": "Механически проверять family и хранить четыре требуемые рабочие model selections."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "delivery",
+      "description": "Ack.acceptedAtTurnSeq и status polling не дают idempotent send между acceptance и terminal event.",
+      "required_change": "Потребовать backend idempotency key/receipt либо признать backend неподдерживаемым."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "review-and-ownership",
+      "description": "Reviewer lenses ослабляют два полных независимых review, а tester изменяет tracked tests и verification state.",
+      "required_change": "Каждый reviewer проверяет полный rubric; tracked files меняет только executor до final gates."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "brownfield",
+      "description": "Global purpose-lint несовместим с заявленным локальным bootstrap без массовой ретродокументации.",
+      "required_change": "Определить полноценную adoption feature или изменить hard all-symbol policy."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "finding-lifecycle",
+      "description": "wontfix_documented не ограничен доказанными taste/non-defect findings.",
+      "required_change": "Запретить завершение с подтверждённым defect или engineering risk."
+    }
+  ],
+  "non_blocking_findings": [
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "watchdog",
+      "description": "Wake command template и raw classifier tail создают injection и secret-leak surface.",
+      "required_change": "Использовать типизированный backend operation и обязательную sanitization policy."
+    }
+  ],
+  "assumptions": [
+    "Orchestrator не входит в четыре модели, которые пользователь обязан выбирать как рабочий набор.",
+    "Doc-only revision не может наследовать E2E attestation при требовании exact same Git revision.",
+    "Reviewer focus не заменяет полное применение единого rubric."
+  ],
+  "round": 2,
+  "reviewer": "gpt56solxhigh",
+  "judge": {
+    "slug": "gpt56solxhigh",
+    "model": "gpt-5.6-sol",
+    "route": "codex-sdk",
+    "effort": "xhigh"
+  }
+}

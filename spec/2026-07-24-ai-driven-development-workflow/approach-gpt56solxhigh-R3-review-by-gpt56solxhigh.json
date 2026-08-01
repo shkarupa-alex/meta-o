@@ -1,0 +1,73 @@
+{
+  "target_id": "proposal-1",
+  "approval_score": 6,
+  "would_adopt": false,
+  "summary": "Наиболее сильная и близкая к принятию версия: хорошо спроектированы knowledge chain, explicit §M tracing, QC, findings, adjudication и context-budget policy. Однако metadata commit нарушает exact-revision invariant, удаляемая спека не сохраняется как immutable blob, а orchestrator rotation не имеет durable outbox и fencing. Кроме того, заявленные backend capabilities пока не доказаны для обоих backend.",
+  "phase": "approach-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "revision-attestation",
+      "description": "Metadata-only verification commit создаёт новую HEAD revision после review и E2E; собственный SHA нельзя записать в содержимое этого же commit.",
+      "required_change": "Завершать все tracked изменения до candidate R, а verification attestation хранить вне commit tree, например в Git note, signed tag или backend durable store."
+    },
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "backend-feasibility",
+      "description": "Методология требует replayable events, native idempotency, atomic checkpoints, successor creation и compaction detection без доказательства поддержки Herdr и Omnigent.",
+      "required_change": "Добавить executable capability suite и отклонять backend при отсутствии любой обязательной capability; не эмулировать её собственным control layer."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "orchestrator-fencing",
+      "description": "При rotation старая и новая orchestrator sessions могут одновременно выполнять mutating actions.",
+      "required_change": "Ввести атомарный leadership lease и fencing token во все send, reconcile, checkpoint и transition operations."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "durable-delivery",
+      "description": "Checkpoint хранит receipt, но не полный pending envelope или payload reference, поэтому exact replay после crash невозможен.",
+      "required_change": "Хранить durable PendingTurn с envelopeRef, digest, idempotency key, receipt и terminal event."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "spec-recovery",
+      "description": "После удаления tracked spec новые role sessions не смогут получить её байты по locator.",
+      "required_change": "На preflight сохранять immutable content-addressed spec blob и передавать всем ролям blobRef."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "state-machine",
+      "description": "Pause states не содержат suspendedFrom, а contextEpoch ошибочно моделируется как глобальный run field.",
+      "required_change": "Хранить resume target и per-session contextEpoch; unexpected compaction должен обрабатываться внешним fenced recovery actor."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "git-isolation",
+      "description": "Blanket-запрет untracked files конфликтует с допустимой local spec и не защищает от внешнего изменения HEAD.",
+      "required_change": "Использовать dedicated per-run worktree, allowlist spec path и compare-and-swap expected HEAD."
+    }
+  ],
+  "assumptions": [
+    "Требование одной Git-ревизии относится ко всем tracked files, а не только executable code.",
+    "External local spec может находиться внутри repository worktree.",
+    "Backend adapter не вправе эмулировать delivery/session guarantees собственным runtime.",
+    "Ссылка на уровень вверх должна быть явной и машинно распознаваемой."
+  ],
+  "round": 3,
+  "reviewer": "gpt56solxhigh",
+  "judge": {
+    "slug": "gpt56solxhigh",
+    "model": "gpt-5.6-sol",
+    "route": "codex-sdk",
+    "effort": "xhigh"
+  }
+}

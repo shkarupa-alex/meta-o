@@ -1,0 +1,95 @@
+{
+  "target_id": "proposal-3",
+  "approval_score": 4,
+  "would_adopt": false,
+  "summary": "Предложение содержит удачные идеи stateless recovery, glossary, scenario path и smoke preflight, но его основной механизм expectation/poll/nudge является запрещённым компенсирующим control layer и не даёт настоящей идемпотентности. Spec integrity, same-family enforcement, explicit symbol parent-links, brownfield admission и final revision sequencing остаются нерешёнными.",
+  "phase": "approach-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "runtime-boundary",
+      "description": "Proposal сознательно переносит delivery correctness с backend на собственные expectation, polling, retry и resurrection.",
+      "required_change": "Оставить delivery/resume backend; adapter только отображает capabilities и отклоняет несовместимый backend."
+    },
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "idempotency",
+      "description": "Natural-language no-op-safe nudge не предотвращает повторные side effects.",
+      "required_change": "Использовать backend-enforced idempotency key или не повторять неопределённую доставку."
+    },
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "completion-revision",
+      "description": "Knowledge sync, spec retirement и verification update происходят после подтверждения review/E2E.",
+      "required_change": "Сделать все tracked изменения до candidate SHA; verification attestation вынести из tree."
+    },
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "purpose-tracing",
+      "description": "Containment заменяет обязательную явную symbol→module ссылку, а waiver расширяет допустимые исключения.",
+      "required_change": "Ввести explicit module anchor/link и оставить исключения только для объективно generated/synthetic source."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "state-recovery",
+      "description": "feature-state.json не содержит spec digest, durable outbox, session generations, full findings и event cursor.",
+      "required_change": "Либо дополнить state до полного recovery envelope, либо передать эту ответственность backend."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "model-independence",
+      "description": "Same-family reviewer не проверяется, а default set содержит пять моделей.",
+      "required_change": "Добавить effective vendor/family и четыре обязательные рабочие roles."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "brownfield",
+      "description": "Full purpose-lint несовместим с bootstrap только затронутых областей.",
+      "required_change": "Добавить строгую adoption feature либо пересмотреть all-symbol hard constraint."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "verification-debt",
+      "description": "E2E flake разрешено переносить в docs/todo.md, оставляя обязательный gate недостоверным.",
+      "required_change": "Исправлять flakiness текущего verification contour до COMPLETE."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "qc-reproducibility",
+      "description": "Авторитетные user-installed QC scripts не пинятся и не принадлежат repository; механическая связанность специфицирована неполно.",
+      "required_change": "Коммитить нормативные QC entrypoints в проект и формализовать coupling/boundary metrics."
+    }
+  ],
+  "non_blocking_findings": [
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "review-comments",
+      "description": "Обязательный комментарий в коде на каждое отклонённое замечание создаст review-history bloat.",
+      "required_change": "Добавлять rationale только для устойчивого и неочевидного tradeoff."
+    }
+  ],
+  "assumptions": [
+    "Gitignored state machine всё равно считается собственным control layer, если она обеспечивает delivery/recovery вместо backend.",
+    "External untracked spec может находиться внутри repository worktree.",
+    "Flaky обязательный E2E является defect текущей области, а не старым внешним долгом."
+  ],
+  "round": 2,
+  "reviewer": "gpt56solxhigh",
+  "judge": {
+    "slug": "gpt56solxhigh",
+    "model": "gpt-5.6-sol",
+    "route": "codex-sdk",
+    "effort": "xhigh"
+  }
+}

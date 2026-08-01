@@ -1,0 +1,51 @@
+{
+  "target_id": "proposal-1",
+  "approval_score": 8,
+  "would_adopt": true,
+  "summary": "The most complete and internally consistent spec across all three rounds. It closed its one remaining major gap comprehensively: §5 makes the orchestrator context budget first-class with rotation-before-compaction, a checksummed structured successor checkpoint, conservative self-accounting when telemetry is absent, and contextEpoch-based detection that invalidates a silently compacted session — a materially stronger answer to the author's top fear than any prior version. It retains the field's most rigorous turn-delivery/resume protocol, the clean guarded metadata-only verification-state commit that dissolves the SHA recursion, the four-role model set, linter-enforced symbol up-links, a fresh cross-model adjudicator, missing-tools escalation, and knowledge that is reviewed because it is integrated during execution (only the behavior-neutral verification-state metadata escapes review). I tried hard to break its core mechanics and found no logical contradiction. Two residual issues remain: it makes compaction-detection and successor-creation mandatory backend capabilities that may not exist on Herdr/Omnigent (a real deployability bet, though mitigated by proactive rotation on self-accounting and consistent with its refuse-to-fake philosophy), and it still lacks an explicit global bound on the REVIEW/E2E alternation that proposal-2 has.",
+  "phase": "approach-review",
+  "confidence": "medium",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "major",
+      "area": "backend-capability",
+      "description": "§10/§21 make compaction/context-reset detection and orchestrator-successor creation MANDATORY backend capabilities; if neither Herdr nor Omnigent provides them, preflight rejects the backend and the methodology is undeployable on the named targets.",
+      "required_change": "Verify these capabilities empirically on Herdr/Omnigent, or make them tiered: rotate purely on conservative self-accounting well below any plausible auto-compaction threshold and treat any detectable contextEpoch change as fatal, degrading gracefully when the backend cannot signal compaction."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "anti-loop",
+      "description": "No explicit global bound on REVIEW/E2E alternation; churn is bounded only per-finding via adjudication, taste-non-blocking, and durable rationale, with no human-visible backstop when new blockers recur each round.",
+      "required_change": "Add an explicit global cycle budget that escalates to the human on exceed, as proposal-2 does (cycle_budget.max)."
+    }
+  ],
+  "non_blocking_findings": [
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "efficiency",
+      "description": "No doc-only commit carve-out means a pure knowledge/§A change re-triggers full QC/review/E2E; correct and fully-reviewed but potentially wasteful. Bounded in practice because knowledge is synced with code during execution."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "reliability",
+      "description": "Idempotency is handled via the resume protocol distinguishing accepted-but-incomplete turns; adopting proposal-2's explicit idempotencyKey + state-guarded resend predicate would make the running-but-turnSeq-not-yet-incremented window handling clearer."
+    }
+  ],
+  "assumptions": [
+    "The conservative bytes/2 self-accounting lets the orchestrator rotate proactively without backend telemetry, so mandatory compaction detection is primarily a safety net for abnormal early auto-compaction.",
+    "The tracked feature-spec is deleted during execution with its content retained out-of-band (pinned by sha256), so reviewers/testers still receive the immutable spec after tree deletion.",
+    "The post-COMPLETE metadata-only verification commit is behavior-neutral and acceptably unreviewed because the guard proves it touches only verification-state.json."
+  ],
+  "round": 3,
+  "reviewer": "fable51mxhigh",
+  "judge": {
+    "slug": "fable51mxhigh",
+    "model": "claude-fable-5[1m]",
+    "route": "claude-agent-sdk",
+    "effort": "xhigh"
+  }
+}

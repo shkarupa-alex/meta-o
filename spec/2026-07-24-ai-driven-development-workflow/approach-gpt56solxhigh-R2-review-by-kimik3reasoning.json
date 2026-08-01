@@ -1,0 +1,87 @@
+{
+  "target_id": "proposal-1",
+  "approval_score": 8,
+  "would_adopt": true,
+  "summary": "Четвёртая проверка подтверждает: текст неизменен, вердикт стабилен. Самое механически цельное предложение консилиума: digest-фиксация спеки, RevisionAttestation на одном SHA, guarded metadata-only commit против SHA-рекурсии, полный протокол доставки (TurnEnvelope, ordered events, gap-reconcile, idempotent resume), binding adjudicator, wontfix с durable rationale, missing-tools protocol, standalone review-loop, capability preflight, план внедрения с failure injection. Блокирующих противоречий нет; остаточное — редакционные пробелы (актор metadata-коммита, исполнитель solution-scan, whitelist untracked-спеки, restart после FAILED_BACKEND, staged adoption) и два содержательных пункта: фазовая зависимость knowledge-lint без механизма и ставка на непроверенные capabilities Herdr/Omnigent при запрете компенсации — нужен capability spike шагом 0 с точкой решения о деградации. Принимать как основу; влить stateless state file и smoke pre-flight из proposal-3 и лёгкую TODO-проекцию из proposal-2/3.",
+  "phase": "approach-review",
+  "confidence": "high",
+  "non_blocking_findings": [
+    {
+      "id": "",
+      "severity": "major",
+      "area": "backend-capabilities",
+      "description": "Обязательные capabilities (replayable ordered events, structured run state, safe reconcile) — требовательный контракт: если оба backend не пройдут preflight, методология не запускается, а 'не писать новый runtime' запрещает компенсацию; ставка на непроверенные факты",
+      "required_change": "Capability spike как шаг 0 внедрения + документированная точка решения о деградированном режиме (poll с явным статусом DEGRADED_DELIVERY) при частичном покрытии"
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "knowledge-lint",
+      "description": "'Отсутствие закрытой tracked feature-spec' и 'отсутствие завершённых записей в docs/todo.md' фазово-зависимы, но линтер stateless и запускается в ./tools/qc после каждого коммита: либо false-fail в середине run, либо мёртвое правило",
+      "required_change": "Определить механизм: удаление tracked-спеки первым коммитом executor, машинный маркер завершения todo-записи или конвенция расположения спек"
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "qc-pipeline",
+      "description": "§4.6 требует полный ./tools/qc после каждого commit, но decision ledger фиксирует 'full QC для каждого review candidate revision'; verification-lint.mjs объявлен отдельным инструментом, но не включён в последовательность §13.2",
+      "required_change": "Унифицировать формулировки и включить verification-lint в pipeline (или явно слить с knowledge-lint)"
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "completion",
+      "description": "Актор metadata-only коммита verification-state не назван: executor завершил работу, orchestrator 'не пишет код', а 'единственная роль, меняющая tracked files' буквально нарушается",
+      "required_change": "Явно назначить оркестратора создателем guarded metadata commit и внести исключение в границу ролей"
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "lifecycle",
+      "description": "Solution scan без исполняющей роли и без маппинга business_escalation на состояние автомата",
+      "required_change": "Назначить эфемерную сессию или executor; маппить эскалацию на PAUSED_EXTERNAL"
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "preflight",
+      "description": "Гейт 'неигнорируемые untracked files' конфликтует с untracked-спекой внутри репозитория",
+      "required_change": "Whitelist локатора спеки"
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "failure-semantics",
+      "description": "BACKEND_STATE_LOST → FAILED_BACKEND без restart-семантики: новый run на той же ветке ломает baseRevision и preflight",
+      "required_change": "Определить restart-from-branch: переякорение base, reuse ветки, перенос openFindings"
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "decision-protocol",
+      "description": "DecisionRequest.specImpact/reversible заполняет сам executor; оркестратор, не читающий код, не может проверить самоклассификацию — обход пользовательской эскалации",
+      "required_change": "Обязательное независимое мнение reviewer при любом сомнении; выборочная adjudication классификации"
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "adoption",
+      "description": "100% purpose одной adoption-feature неподъёмно для крупного brownfield",
+      "required_change": "Staged adoption волнами по source_root с тем же финальным критерием"
+    }
+  ],
+  "assumptions": [
+    "Тексты раунда идентичны версиям предыдущих раундов по всем контрольным точкам; оценивал как те же документы",
+    "При расхождении текста задания и исходников приоритет — тексту задания",
+    "Runtime state в backend/disk вместо репозиторного ledger — осознанный компромисс, не дефект"
+  ],
+  "round": 2,
+  "reviewer": "kimik3reasoning",
+  "judge": {
+    "slug": "kimik3reasoning",
+    "model": "moonshotai/kimi-k3",
+    "route": "opencode-sdk",
+    "effort": "reasoning",
+    "providerID": "openrouter"
+  }
+}

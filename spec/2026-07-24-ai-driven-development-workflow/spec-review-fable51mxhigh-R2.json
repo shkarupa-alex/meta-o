@@ -1,0 +1,111 @@
+{
+  "target_id": "spec-review",
+  "approval_score": 7,
+  "would_adopt": false,
+  "summary": "A strong R1 revision that closes most first-pass defects: exact-commit-SHA identity with plan-digest trailers, write-ahead EffectIntent crash journaling with no blind resend, fresh-detached-worktree-per-gate with pre/post revision proof, owner.lock single-writer takeover, an external idempotent completion receipt, and per-subspec contracts in the decomposition plan. The core identity and crash-safety mechanisms held up under stress. It falls just short of 'couldn't break it' because: (1) the mechanism that delivers the candidate commit R back to the user's repository (HEAD/branch/ref preservation after worktree deletion) is unspecified; (2) verification state was moved to a per-machine, uncommitted, cleanup-surviving-but-unshared external receipt, and tracked e2e.json now carries no status at all, which conflicts with the task's shared-knowledge intent for a team; (3) the task-required QC/pre-commit/pre-push placement comparison is absent from the body even though its ledger entry D-036 is marked adopted, violating the spec's own acceptance criterion; (4) the task-required deterministic/local-model/hybrid watchdog comparison is still not delivered; and (5) the completion-critical capability bar may exceed what Herdr/Omnigent actually provide, risking zero viable backends. All findings are fixable without redesign.",
+  "phase": "spec-review",
+  "confidence": "medium",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "major",
+      "area": "completion/git-delivery",
+      "description": "The executor builds R on branch meta-o/<run-id> in a dedicated worktree; §17 step 7 deletes temporary worktrees while asserting repository HEAD must remain R with no bookkeeping commit. How the user's main checkout reaches R, whether the meta-o/<run-id> ref is preserved for later user push/PR, and whether R stays referenced (not GC-eligible) after worktree removal are all undefined.",
+      "required_change": "Specify completion delivery: preserve meta-o/<run-id> as a durable branch ref, define whether the user's branch/HEAD is fast-forwarded/checked out to R, and how the user obtains R for the separate push/PR step (D-053)."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "verification-state/knowledge-layer",
+      "description": "The task lists persistent E2E verification state (scenario, business link, date, verified revision, status) under the shared knowledge layer for a team on different machines. R1 removed dynamic status from tracked e2e.json and placed results only in a per-machine external receipt under ~/.meta-o that is uncommitted, unshared, lost on project move, with portability merely deferred (Open Q #6). The committed e2e.json carries no status, so the repo has no shared record of what is verified.",
+      "required_change": "Provide a shareable, committed verification-state mechanism (e.g., promote the deferred export-to-tag/notes/PR into an opt-in shared artifact, or a whitelisted bookkeeping file excluded from the attestation digest) so the team's shared knowledge layer retains E2E verification state."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "traceability/task-conformance",
+      "description": "D-036 (pre-commit fast and optional) is marked adopted but appears nowhere in the body; the task-required comparison of check placement across QC/pre-commit/pre-push is absent entirely. This violates acceptance criterion §28 ('all adopted decisions present in normative sections') and a direct task requirement.",
+      "required_change": "Restore a normative QC/pre-commit/pre-push (and CI-dup) placement section with trade-off comparison, satisfying D-036 and the task."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "backend-viability",
+      "description": "§18 makes crash-correlatable effect lookup, idempotent-send-or-proof-of-non-delivery, and stable replayable output cursor completion-critical, with unsupported blocking the backend. Typical CLI-session backends, including the two named (Herdr/Omnigent), may not satisfy these natively, risking that no backend qualifies and the methodology is unrunnable until one is extended.",
+      "required_change": "Add an early mandatory capability spike against real Herdr/Omnigent versions and define a reference/shim backend that provably passes the suite, so at least one supported target exists independent of third-party maturity."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "watchdog/task-conformance",
+      "description": "The task explicitly required comparing deterministic script vs. local model vs. hybrid for the watchdog; §20/D-016 assert the chosen deterministic+closed-enum design without the comparative analysis.",
+      "required_change": "Add the three-way comparison (deterministic / local-model / hybrid) with costs and consequences, then state the choice."
+    }
+  ],
+  "non_blocking_findings": [
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "fsm-completeness",
+      "description": "SPEC_MUTATED (§4) has no corresponding Phase or defined target state; PAUSED_MISSING_TOOLS/MODEL_UNAVAILABLE/QUOTA/EXTERNAL/TECHNICAL_DISPUTE/ORCHESTRATOR_BUDGET have no entry/exit/resume rows in §10.1/§10.5; the §18 stall deadline has no value or config location.",
+      "required_change": "Add entry/exit/resumeCondition rows for every pause/stop state, map SPEC_MUTATED to a concrete state, and specify the stall deadline value and where it is configured."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "e2e-selection",
+      "description": "§16.2 forbids an empty selected set and treats 'no applicable executable scenario' as blocked (never PASS), so a legitimate change with no business-linked or always_required scenario can never complete.",
+      "required_change": "Define an explicit rule for changes with no applicable E2E scenario (mandatory smoke scenario or a reviewer-approved, justified exemption)."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "contract-completeness",
+      "description": "AdapterCapabilities, SpawnRequest, DeliveryResult, SessionStatus, SessionOutput, EffectStatus, ExpectedState, WaitResult, DecisionOption, Evidence are referenced but undefined; RevisionResult.resultDigest computation is unspecified; idempotencyKey derivation is described only operationally.",
+      "required_change": "Provide at least stub schemas for referenced types in the master (or explicitly scope them to a named subspec), and define resultDigest and idempotencyKey computation."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "weak-model-executability",
+      "description": "The import-graph gate (SCC/cycle/boundary/fan ratchet) and all-symbol AST purpose checker remain project-owned prose (§13/§14.1, D-039); a weak model cannot implement them without guessing, and per-project reimplementation invites divergence in the methodology's core mechanical guarantee.",
+      "required_change": "Have 40-local-qc-python.md ship a canonical, versioned reference implementation invoked from the Makefile (without forking), rather than only a contract."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "model-set-invariant",
+      "description": "vendor/family in ModelRef are free-form strings with no authoritative taxonomy, so the cross-vendor independence invariant is unenforceable and silent mislabeling defeats it.",
+      "required_change": "Define an authoritative vendor/family taxonomy and how ModelRef fields are assigned and validated."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "liveness/cost",
+      "description": "Every fix yields a new commit + new plan + full gate cycle with a fresh worktree and environment rebuild, and post-E2E reviewer re-runs can re-invalidate E2E; with unbounded cycles (D-071) there is no convergence guarantee and per-iteration cost is high.",
+      "required_change": "Add a diminishing-returns user notification after K cycles of only minor/taste findings, without auto-completing."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "traceability",
+      "description": "D-034 and D-044 (both rejected) are not explicitly listed in §22; D-053 (push/PR only on explicit user request) is only obliquely reflected in the intro rather than stated normatively.",
+      "required_change": "List all rejected decisions in §22 and state D-053 as a normative rule."
+    }
+  ],
+  "assumptions": [
+    "This review targets the master spec only; the six implementation subspecs and per-project QC code are out of scope because they are not present in the artifact.",
+    "The named council models and their R1 verdicts are treated as provenance, not independently verifiable claims.",
+    "I read the spec and original task in full and did not need the reference docs, since every finding is grounded in internal consistency or the quoted task constraints.",
+    "would_adopt is set false to signal the listed blocking findings must be resolved first; the underlying architecture is close to adoptable and the gaps are addressable without redesign.",
+    "The verification-state finding assumes the task's placement of E2E verification state under the shared knowledge layer implies it should be shareable across the team, not merely persisted on one machine."
+  ],
+  "round": 2,
+  "reviewer": "fable51mxhigh",
+  "judge": {
+    "slug": "fable51mxhigh",
+    "model": "claude-fable-5[1m]",
+    "route": "claude-agent-sdk",
+    "effort": "xhigh"
+  }
+}

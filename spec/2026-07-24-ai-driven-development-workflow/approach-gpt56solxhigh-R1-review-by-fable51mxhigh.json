@@ -1,0 +1,57 @@
+{
+  "target_id": "proposal-1",
+  "approval_score": 7,
+  "would_adopt": true,
+  "summary": "A highly decomposition-ready master-spec + subspecs that faithfully honours the hard constraints, makes firm decisions (decision ledger, literal QC command sequence, brownfield ratchet, four-role model set matching the task), and uniquely solves the verification-state SHA recursion with a guarded metadata-only commit. It is internally consistent on its completion criterion (all attestations on one SHA). Its real weaknesses are omissions rather than contradictions: it barely addresses the orchestrator's own context budget and compaction avoidance (the author's single most emphasized concern), it lacks a global bound on the REVIEW↔E2E alternation (risking the livelock the author explicitly fears, given no-defer-minor + full re-review on any change), and its 'any tracked change invalidates all gates' rule is in latent conflict with its own verification-state metadata commit. Strong enough to adopt as the spine, but needs the orchestration-longevity and anti-loop layers added.",
+  "phase": "approach-review",
+  "confidence": "medium",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "major",
+      "area": "orchestration",
+      "description": "The orchestrator's own context budget, pre-compaction escalation, and 'never compact the orchestrator' invariant are essentially unspecified, despite this being the author's foremost requirement for a thin, long-lived controller.",
+      "required_change": "Add an explicit orchestrator context budget to run state, relay-by-reference of findings, and escalate-before-danger-line semantics; specify how the orchestrator avoids its own compaction over a multi-day goal."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "stopping-criteria",
+      "description": "No global bound on the alternating REVIEW/E2E cycle. With 'all confirmed defects incl. minor must be fixed' and full re-review by both reviewers + re-E2E on any code change, a stream of new minor findings can livelock.",
+      "required_change": "Introduce a global cycle budget with escalation-on-exceed, distinct from the per-finding two-rebuttal cap."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "consistency",
+      "description": "onRevisionChanged invalidates on 'any tracked change', but the verification-state metadata commit is a tracked change; the 'only this file' guard is the intended exemption but the invalidation invariant never states the code-vs-doc carve-out.",
+      "required_change": "State the invalidation rule as code-path-scoped (doc/state-only commits do not invalidate) so the metadata commit is formally exempt."
+    }
+  ],
+  "non_blocking_findings": [
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "knowledge-layer",
+      "description": "Introduces a §M module anchor not present in the source memory-layers model (which has module→§A directly). Defensible as more grep-first, but adds a fourth anchor type to drift-check."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "tooling",
+      "description": "How the generic knowledge-lint identifies 'the active tracked feature-spec' it must assert is removed after sync is unspecified; it needs the spec path threaded from run state."
+    }
+  ],
+  "assumptions": [
+    "The four-role model set (executor, two reviewers, tester) is taken as literal compliance with the task's 'четырёх ролей'; the orchestrator's model is chosen separately when the user launches it.",
+    "'local' feature-specs are placed outside the worktree, so the preflight untracked-file block does not conflict with them."
+  ],
+  "round": 1,
+  "reviewer": "fable51mxhigh",
+  "judge": {
+    "slug": "fable51mxhigh",
+    "model": "claude-fable-5[1m]",
+    "route": "claude-agent-sdk",
+    "effort": "xhigh"
+  }
+}

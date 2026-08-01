@@ -1,0 +1,80 @@
+{
+  "target_id": "proposal-2",
+  "approval_score": 4,
+  "would_adopt": false,
+  "summary": "Содержит ценные идеи о reconciliation, semantic review и watchdog, но остаётся концептуальным эссе, а не implementation-ready master-spec. В нём нет spec digest, immediate-parent module tracing, проверяемой model family, устойчивой delivery semantics и законченных Git contracts; TODO projection, doc-only invalidation и несколько других ключевых решений одновременно приняты и оставлены открытыми.",
+  "phase": "approach-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "revision-invariant",
+      "description": "Doc-only commit объявлен не инвалидирующим E2E, хотя DONE требует e2e_clean_rev равным новому HEAD.",
+      "required_change": "Убрать carry-forward между SHA либо заменить tracked verification state внешней attestation."
+    },
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "spec-integrity",
+      "description": "RunState не содержит digest или snapshot immutable feature-spec.",
+      "required_change": "Добавить byte-level digest, mutation gate и content-addressed snapshot."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "knowledge-traceability",
+      "description": "Symbol может ссылаться напрямую на architecture, а стабильный module anchor не определён.",
+      "required_change": "Ввести §M-* и обязательную ссылку каждого symbol на §M-* своего модуля."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "delivery-idempotency",
+      "description": "turnSeq не предотвращает duplicate send между принятием команды и завершением turn.",
+      "required_change": "Использовать client commandId, backend dedupe/ack и reconcile без слепого повторения."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "model-contract",
+      "description": "ModelRef не содержит family, а дополнительный adjudicator и implementer subagents размывают заданный набор ролей.",
+      "required_change": "Вернуть четыре рабочие model selections, effective family verification и разрешение споров через существующих reviewers."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "design-completeness",
+      "description": "TODO projection, business acknowledgement, reviewer lenses, large-feature decomposition и doc-only E2E semantics оставлены открытыми.",
+      "required_change": "Принять нормативные решения и удалить core TBD из master-spec."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "qc-reproducibility",
+      "description": "Авторитетный meta-o qc зависит от непиннутого skill/tool bundle, а contract-sweep не имеет формальной claim grammar.",
+      "required_change": "Сделать project-owned QC implementation и ограничить contract-sweep механически проверяемыми claims."
+    }
+  ],
+  "non_blocking_findings": [
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "watchdog-security",
+      "description": "Shell wake_command_template создаёт injection surface.",
+      "required_change": "Заменить его типизированным backend operation."
+    }
+  ],
+  "assumptions": [
+    "Все перечисленные в разделе открытых вопросов решения считаются реально неутверждёнными.",
+    "Оба независимых reviewer должны проверять полный единый rubric, а не непересекающиеся lenses."
+  ],
+  "round": 1,
+  "reviewer": "gpt56solxhigh",
+  "judge": {
+    "slug": "gpt56solxhigh",
+    "model": "gpt-5.6-sol",
+    "route": "codex-sdk",
+    "effort": "xhigh"
+  }
+}

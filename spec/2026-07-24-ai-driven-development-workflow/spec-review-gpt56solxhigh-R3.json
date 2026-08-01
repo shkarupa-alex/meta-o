@@ -1,0 +1,118 @@
+{
+  "target_id": "spec-review",
+  "approval_score": 7,
+  "would_adopt": false,
+  "summary": "R2 существенно укрепляет exact-revision и crash-safety ядро: candidate ref больше не смешан с пользовательским HEAD, каждый candidate проходит QC/smoke в fresh checkout, plan canonicalized, LFS/submodules включены в materialization proof, worker envelopes и failure taxonomy конкретны, а receipt зеркалируется annotated tag. Однако as-is спецификацию принимать нельзя: project-wide active-run lock прямо противоречит hard constraint об отсутствии interuser claims и при этом не работает между clones/машинами; отсутствуют сами пять implementation-ready подспек; cleanup удаляет canonical verification plan, оставляя непроверяемый digest; receipt не хранит явный per-scenario verification state; findings/cancellation имеют незакрытые terminal semantics; concrete Python QC, skills и watchdog всё ещё требуют нового design work.",
+  "phase": "spec-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "Concurrency and hard constraints",
+      "description": "D-081 вводит один project-wide mutating run и project ownership locks вопреки исходному требованию использовать обычный Git/PR без claims и блокировок. Механизм локален по absolute path и всё равно не предотвращает параллельные runs на других компьютерах.",
+      "required_change": "Удалить project-wide active-run serialization; оставить single-writer fencing внутри одного run, разрешить отдельные feature branches и требовать integration re-attestation после Git conflict/rebase."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Required delivery",
+      "description": "Документ только перечисляет пять будущих implementation-ready подспек; сами нормативные файлы, требуемые исходной задачей, не предоставлены.",
+      "required_change": "Предоставить 00-master-workflow.md и пять отдельных подспек с полными schemas, algorithms, commands, failure states и acceptance cases."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Verification durability",
+      "description": "После cleanup удаляется canonical verification plan, тогда как commit и receipt сохраняют только planDigest. Receipt также не содержит явных записей scenario/business-links/status/verifiedAt, несмотря на исходный контракт и заявление §32 о сохранении scenario outcomes.",
+      "required_change": "Включить canonical VerificationPlan и массив per-scenario verification records в receipt и annotated tag."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Findings lifecycle",
+      "description": "FindingRecord имеет состояние resolved, но не определяет, кто подтверждает исправление и какой guard разрешает удаление; executor implementation может преждевременно закрыть finding.",
+      "required_change": "Определить reviewer/adjudicator-verified transition с resolutionCandidate, resolvedBy и resolution evidence; удалять запись только после этого transition."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Cancellation and liveness",
+      "description": "Неподтверждённый backend stop оставляет run и project ownership заблокированными навсегда, если backend больше не восстановится.",
+      "required_change": "Добавить явно санкционируемый terminal ABANDONED_WITH_ORPHANS с durable session tombstone и освобождением mutation ownership."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Local QC and knowledge",
+      "description": "Конкретная Python implementation отсутствует; Makefile/checker может быть ослаблен до false PASS, а KnowledgeImpactPlan, anchor grammar, purpose parser и adoption manifest не имеют контрактов.",
+      "required_change": "Выпустить 10-knowledge-layer.md и 40-local-qc-python.md с schemas, algorithms, fixtures, QC manifest и reference project-owned checker."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Orchestration and skills",
+      "description": "Эфемерные роли не представлены в state/envelopes, многие используемые типы не определены, а concrete skill inventory, installer/update commands и backend request/result contracts отсутствуют.",
+      "required_change": "Завершить 20-orchestration-and-skills.md: определить все types, роли, skill names/I/O, state transitions, adapter envelopes и installation protocol."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Watchdog",
+      "description": "§28 остаётся списком свойств, а не полностью спроектированной опцией; отсутствуют требуемое сравнение deterministic/local/hybrid, config schema, polling/wake semantics, sanitization и service acceptance tests.",
+      "required_change": "Предоставить полноценную 50-watchdog.md с трёхсторонним сравнением, deterministic state machine, config, launchd/systemd contracts и fake-clock tests."
+    }
+  ],
+  "non_blocking_findings": [
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "Traceability",
+      "description": "D-009, D-024, D-036, D-038, D-051, D-053, D-054 и D-071 недостаточно представлены в normative body; D-034, D-044 и D-048 отсутствуют в Rejected.",
+      "required_change": "Синхронизировать body, Rejected/Deferred и ledger перед финальной публикацией."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "Locking contract",
+      "description": "Не заданы порядок двух locks, heartbeat write protocol, clock-jump/PID-reuse handling и crash reconciliation active-run marker.",
+      "required_change": "Либо упростить до OS advisory run lock, либо полностью определить lease algorithm и negative tests."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "Git contracts",
+      "description": "Plan требует Unicode paths, хотя Git допускает non-UTF-8 names; changed-path и materialization digest serializations определены неполно.",
+      "required_change": "Установить UTF-8 repository invariant либо определить reversible byte encoding и точные digest preimages."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "Audit semantics",
+      "description": "Result/evidence/environment digests остаются после удаления соответствующих bytes и не могут быть независимо перепроверены.",
+      "required_change": "Либо сохранять compact canonical preimages, либо называть эти поля provenance records, а не проверяемым доказательством."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "Test coverage",
+      "description": "Conformance suite хорошо покрывает core crash windows, но не knowledge/QC/watchdog/findings/cancellation/full-FSM paths.",
+      "required_change": "Расширить executable cases на каждый нормативный subsystem и pause/terminal transition."
+    }
+  ],
+  "assumptions": [
+    "Оценивался только предоставленный master document; перечисленные, но не предоставленные подспеки считаются отсутствующими.",
+    "Project-key и active-run state локальны конкретному absolute path и не синхронизируются между компьютерами.",
+    "Canonical verification plan удаляется вместе с run directory и не хранится в annotated tag сверх показанного receipt schema.",
+    "Ни один backend capability-suite result не был предоставлен как доказательство operational feasibility.",
+    "Annotated tag не считается автоматически опубликованным при обычном branch push."
+  ],
+  "round": 3,
+  "reviewer": "gpt56solxhigh",
+  "judge": {
+    "slug": "gpt56solxhigh",
+    "model": "gpt-5.6-sol",
+    "route": "codex-sdk",
+    "effort": "xhigh"
+  }
+}

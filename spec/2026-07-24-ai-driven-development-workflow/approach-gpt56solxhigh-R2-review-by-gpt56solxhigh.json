@@ -1,0 +1,89 @@
+{
+  "target_id": "proposal-1",
+  "approval_score": 6,
+  "would_adopt": false,
+  "summary": "Предложение существенно улучшило delivery/state contracts, finding lifecycle, missing-tools protocol и immediate-parent knowledge tracing и остаётся лучшей основой. Однако metadata-only commit по-прежнему не решает SHA recursion, immutable spec не snapshot-ится, durable outbox и resume phase отсутствуют, а обязательные backend capabilities не подтверждены и, вероятно, недоступны как минимум некоторым Herdr/CLI combinations.",
+  "phase": "approach-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "revision-attestation",
+      "description": "Metadata-only commit создаёт новый HEAD после аттестации и сам должен инвалидировать QC, review и E2E.",
+      "required_change": "Хранить verification attestation вне commit tree либо явно отказаться от exact-SHA требования."
+    },
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "backend-feasibility",
+      "description": "Replayable ordered events, idempotent delivery и durable structured run state не сопоставлены с фактическими возможностями обоих backend.",
+      "required_change": "Предоставить executable capability matrix; неподдерживаемый backend не компенсировать собственным runtime."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "durable-delivery",
+      "description": "FeatureRun хранит receipt, но не полный pending TurnEnvelope или payloadRef, поэтому после crash нельзя повторить идентичную доставку.",
+      "required_change": "Добавить durable outbox/inbox и terminal-event state."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "spec-recovery",
+      "description": "Locator и digest не восстанавливают исчезнувшую или удалённую feature-spec.",
+      "required_change": "Создавать backend-native immutable content-addressed snapshot."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "pause-resume",
+      "description": "Pause states не сохраняют исходную lifecycle phase.",
+      "required_change": "Добавить suspendedFrom/resumeTarget и переходы восстановления для каждой phase."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "git-isolation",
+      "description": "Preflight блокирует разрешённую untracked spec и полагается на чистоту пользовательского worktree.",
+      "required_change": "Создавать dedicated executor worktree и использовать expected-HEAD CAS."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "brownfield-and-coupling",
+      "description": "Не определены unknown-purpose admission semantics и достаточная механическая модель связанности.",
+      "required_change": "Добавить blocking UNKNOWN_PURPOSE flow, formal coupling metrics, module resolution и baseline schema."
+    }
+  ],
+  "non_blocking_findings": [
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "solution-scan",
+      "description": "Dependency decision всё ещё не фиксирует version/provenance и проверенное compatibility evidence.",
+      "required_change": "Расширить SolutionScanResult и durable architecture decision."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "model-identity",
+      "description": "Vendor/family берутся из конфигурации, а не из effective backend model.",
+      "required_change": "Сверять configured и effective model identity."
+    }
+  ],
+  "assumptions": [
+    "Verification state может храниться вне tracked tree.",
+    "Explicit parent link означает распознаваемую ссылку, а не AST containment.",
+    "Automatic watchdog wake не является пользовательским resume.",
+    "Скрытые backend capabilities не предполагаются без acceptance evidence."
+  ],
+  "round": 2,
+  "reviewer": "gpt56solxhigh",
+  "judge": {
+    "slug": "gpt56solxhigh",
+    "model": "gpt-5.6-sol",
+    "route": "codex-sdk",
+    "effort": "xhigh"
+  }
+}

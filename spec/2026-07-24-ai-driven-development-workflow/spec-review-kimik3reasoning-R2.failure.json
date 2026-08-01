@@ -1,0 +1,14 @@
+{
+  "target_id": "spec-review",
+  "error_type": "provider_error",
+  "attempts": 1,
+  "last_error": "provider error: fetch failed",
+  "session_ref": "spec-reviewer:kimik3reasoning",
+  "judge": {
+    "slug": "kimik3reasoning",
+    "model": "moonshotai/kimi-k3",
+    "route": "opencode-sdk",
+    "effort": "reasoning",
+    "providerID": "openrouter"
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "target_id": "proposal-1",
+  "approval_score": 6,
+  "would_adopt": false,
+  "summary": "Наиболее сильная и близкая к исходным ограничениям основа: хорошо разделяет временное и устойчивое состояние, предлагает конкретный Python QC, строгую трассировку и exact-revision gates. Однако metadata-only commit нарушает финальный SHA-инвариант, spec digest не обеспечивает восстановимый snapshot, backend capabilities не подтверждены, а state/idempotency, E2E isolation и brownfield semantic adoption недостаточно определены.",
+  "phase": "approach-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "revision-attestation",
+      "description": "Metadata-only verification commit меняет HEAD после аттестации и противоречит правилу завершения на одном Git SHA.",
+      "required_change": "Хранить attestation вне commit tree, например Git note/signed tag или backend-native durable record, либо явно изменить исходный SHA-инвариант."
+    },
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "backend-feasibility",
+      "description": "Required replay cursor, acknowledgement и authoritative lifecycle events не сопоставлены с реальными Herdr/Omnigent capabilities.",
+      "required_change": "Добавить executable capability suite и нормативную compatibility matrix для каждого backend/CLI pair."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "spec-recovery",
+      "description": "Locator и digest не позволяют восстановить точные bytes исчезнувшей local/URL спеки.",
+      "required_change": "Создавать immutable content-addressed spec snapshot в backend-native storage."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "state-machine",
+      "description": "Отсутствуют полная transition table, stateVersion в RunState, resume target и end-to-end idempotency contract.",
+      "required_change": "Определить versioned RunEnvelope, CAS transitions, command IDs, acknowledgement states и recovery transitions."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "git-worktrees",
+      "description": "Preflight конфликтует с допустимой untracked spec и не защищает от внешнего движения branch или мутаций reviewer/tester.",
+      "required_change": "Использовать выделенные worktrees, HEAD CAS и pre/post tree-integrity checks."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "quality-model",
+      "description": "Fan-out не покрывает требование о связанности, а baseline/entity semantics и module resolution недостаточно формальны.",
+      "required_change": "Специфицировать coupling metrics, import resolution, entity fingerprints, baseline ratchet и self-tests анализаторов."
+    }
+  ],
+  "non_blocking_findings": [
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "solution-scan",
+      "description": "Candidate record не фиксирует version, provenance, license verdict и compatibility evidence.",
+      "required_change": "Расширить structured result и decision record."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "model-identity",
+      "description": "Vendor/family проверяются по конфигурационным строкам.",
+      "required_change": "Записывать effective model identity, подтверждённую backend."
+    }
+  ],
+  "assumptions": [
+    "Verification state не обязан находиться в tracked JSON-файле.",
+    "Публично документированные возможности backend считаются верхней границей гарантий до прохождения acceptance suite.",
+    "Неизвестный purpose в brownfield не разрешено заменять правдоподобной догадкой."
+  ],
+  "round": 1,
+  "reviewer": "gpt56solxhigh",
+  "judge": {
+    "slug": "gpt56solxhigh",
+    "model": "gpt-5.6-sol",
+    "route": "codex-sdk",
+    "effort": "xhigh"
+  }
+}
