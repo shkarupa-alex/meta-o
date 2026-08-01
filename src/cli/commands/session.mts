@@ -229,6 +229,68 @@ function failUncertain(pending: PendingOperation, error: unknown): never {
   });
 }
 
+/** §M-CLI-SESSION — Backend statuses that prove a session will do nothing further. */
+const TERMINAL_STATUS = new Set(["complete", "failed", "stopped"]);
+
+/**
+ * §M-CLI-SESSION — Refuse a replacement that would leave the old worker running.
+ *
+ * `--replace` used to be a plain bypass of the "this role already has a
+ * session" guard, which is the one thing it must not be: the old agent keeps
+ * running, state records only the new handle, and the backend ends up with two
+ * workers for one role — the second of which nobody can address or stop. A
+ * fresh generation is legitimate only once the previous one is provably over,
+ * so the status comes from the backend and `session stop` is the way to make it
+ * true.
+ */
+async function assertReplaceable(
+  context: SessionContext,
+  role: Role,
+  existing: SessionRef,
+  replace: boolean,
+): Promise<void> {
+  if (!replace) {
+    fail(
+      "session_exists",
+      `role ${role} already has session ${existing.sessionId}; stop it, then pass --replace`,
+      { session: existing },
+    );
+  }
+  let status: string;
+  try {
+    status = await context.adapter.status(existing);
+  } catch (error) {
+    status = `unreadable: ${redact((error as Error).message)}`;
+  }
+  if (!TERMINAL_STATUS.has(status)) {
+    fail(
+      "previous_session_live",
+      `role ${role} still holds session ${existing.sessionId} in state ${status}; ` +
+        "run `meta-o session stop` before starting a fresh generation",
+      { session: existing, status },
+    );
+  }
+}
+
+/**
+ * §M-CLI-SESSION — Record the pane a spawn just created, mid-operation.
+ *
+ * The write-ahead record is written before the whole spawn, but a spawn is two
+ * backend calls and the pane id only exists after the first. Folding it into
+ * the probe as soon as it is known is what lets `reconcile` later distinguish
+ * "nothing was created" from "a pane exists and an agent may be starting in it".
+ */
+async function recordPane(
+  context: SessionContext,
+  pending: PendingOperation,
+  paneId: string,
+): Promise<PendingOperation> {
+  const probe = { ...(JSON.parse(pending.probe ?? "{}") as Record<string, unknown>), paneId };
+  const updated: PendingOperation = { ...pending, probe: JSON.stringify(probe) };
+  await mutate(context.projectKey, context.runId, (state) => withPendingOperation(state, updated));
+  return updated;
+}
+
 /**
  * §M-CLI-SESSION — Start a worker session for a role.
  *
@@ -242,20 +304,14 @@ export async function commandSpawn(args: ParsedArgs): Promise<void> {
   assertNoPendingOperation(context.state);
 
   const existing = sessionFor(context.state, role);
-  if (existing && !boolFlag(args, "replace")) {
-    fail(
-      "session_exists",
-      `role ${role} already has session ${existing.sessionId}; pass --replace to start a fresh generation`,
-      { session: existing },
-    );
-  }
+  if (existing) await assertReplaceable(context, role, existing, boolFlag(args, "replace"));
 
   const operationId = randomUUID();
   const model = modelFor(context.state, role);
   const cwd = optionalFlag(args, "worker-cwd") ?? context.repoDir;
   const request = { operationId, role, model, prompt: "", cwd };
 
-  const pending = await prepare(context, {
+  let pending = await prepare(context, {
     operationId,
     kind: "spawn",
     requestDigest: digestOf({ kind: "spawn", role, model, cwd }),
@@ -264,7 +320,9 @@ export async function commandSpawn(args: ParsedArgs): Promise<void> {
 
   let session: SessionRef;
   try {
-    session = await context.adapter.spawn(request);
+    session = await context.adapter.spawn(request, async (paneId) => {
+      pending = await recordPane(context, pending, paneId);
+    });
   } catch (error) {
     await markUncertain(context, pending);
     failUncertain(pending, error);
@@ -300,8 +358,16 @@ export async function commandSend(args: ParsedArgs): Promise<void> {
   const session = sessionFor(context.state, role);
   if (!session) fail("no_session", `role ${role} has no session; run \`meta-o session spawn\` first`);
 
-  const message = await readStdin();
-  if (message.trim() === "") fail("empty_message", "refusing to deliver an empty prompt");
+  const raw = await readStdin();
+  if (raw.trim() === "") fail("empty_message", "refusing to deliver an empty prompt");
+
+  // Outbound, not just inbound: a prompt is the channel that actually leaves
+  // this machine for a model provider, so redacting only what comes back would
+  // protect the logs and leak the secret. Masking rather than refusing keeps a
+  // false positive from wedging a run — the prompt still arrives, minus the
+  // thing that must not travel.
+  const message = redact(raw);
+  const redacted = message !== raw;
 
   const operationId = randomUUID();
   const pending = await prepare(context, {
@@ -340,7 +406,7 @@ export async function commandSend(args: ParsedArgs): Promise<void> {
   const status = await context.adapter.status(session);
   await mutate(context.projectKey, context.runId, (state) => clearPendingOperation(state));
 
-  emit({ runId: context.runId, role, delivery, status });
+  emit({ runId: context.runId, role, delivery, status, redacted });
   if (delivery.status === "rejected") process.exitCode = 1;
 }
 

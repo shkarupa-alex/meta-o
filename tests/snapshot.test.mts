@@ -15,11 +15,16 @@ import { createTempRepo, sampleRegistry, seedProjectContract, type TempRepo } fr
 import type { E2ERegistry } from "../dist/core/types.mjs";
 
 /** §M-TEST-SNAPSHOT — Write a registry with one scenario carrying a `last_run`. */
-function registryWithLastRun(digest: string, runId: string, specSha: string): string {
+function registryWithLastRun(
+  digest: string,
+  runId: string,
+  specSha: string,
+  provenanceCommit = "0".repeat(40),
+): string {
   const registry = JSON.parse(sampleRegistry()) as E2ERegistry;
   registry.scenarios[0]!.last_run = {
     snapshot_digest: digest,
-    provenance_commit: "0".repeat(40),
+    provenance_commit: provenanceCommit,
     run_id: runId,
     spec_sha256: specSha,
     verified_at: "2026-07-24T18:20:00Z",
@@ -107,13 +112,41 @@ test("reformatting the registry without changing its content keeps the digest", 
   }
 });
 
+test("a receipt that names another commit is refused", () => {
+  const { repo, commit } = seeded();
+  try {
+    const attested = computeSnapshotDigest(repo.dir, commit);
+    // Everything else is right; only the provenance is copied from elsewhere,
+    // which is what a receipt carried forward from a previous feature looks like.
+    repo.write(
+      "docs/architecture/e2e.json",
+      registryWithLastRun(attested.digest, "run-1", "a".repeat(64), "f".repeat(40)),
+    );
+    const metadata = repo.commit("record verification");
+
+    const report = verifyMetadataCommit({
+      repoDir: repo.dir,
+      attestedCommit: commit,
+      metadataCommit: metadata,
+      expectedRunId: "run-1",
+      expectedSpecSha256: "a".repeat(64),
+      expectedScenarioStatus: new Map([["E2E-SMOKE-01", "passed"]]),
+    });
+
+    assert.equal(report.ok, false);
+    assert.ok(report.violations.some((problem) => problem.includes("records provenance")));
+  } finally {
+    repo.dispose();
+  }
+});
+
 test("a metadata commit writing only last_run passes the guard", () => {
   const { repo, commit } = seeded();
   try {
     const attested = computeSnapshotDigest(repo.dir, commit);
     repo.write(
       "docs/architecture/e2e.json",
-      registryWithLastRun(attested.digest, "run-1", "a".repeat(64)),
+      registryWithLastRun(attested.digest, "run-1", "a".repeat(64), attested.provenanceCommit),
     );
     const metadata = repo.commit("record verification");
 

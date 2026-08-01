@@ -13,6 +13,7 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+/** §M-QC-TESTS — Repository root, resolved from this script rather than the caller. */
 const ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], {
   cwd: fileURLToPath(new URL(".", import.meta.url)),
   encoding: "utf8",

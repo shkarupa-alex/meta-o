@@ -166,7 +166,25 @@ export function seedProjectContract(repo: TempRepo): void {
   repo.write("docs/architecture/e2e.md", "# E2E\n\n## e2e-smoke-01\n\n## e2e-checkout-01\n");
   repo.write("docs/architecture/e2e.json", sampleRegistry());
   repo.write("docs/knowledge/business.md", sampleBusinessKnowledge());
+  repo.write("docs/knowledge/architecture/app.md", sampleArchitectureKnowledge());
   repo.write("docs/knowledge/glossary.md", "# Glossary\n");
+}
+
+/**
+ * §M-TEST-HELPERS — Minimal architecture layer, so the chain has a middle link.
+ *
+ * Without it the fixture's own `§M-APP` would have no `§A` to cite, and every
+ * test would be exercising a knowledge layer that the real gate rejects.
+ */
+export function sampleArchitectureKnowledge(): string {
+  return [
+    "# Architecture",
+    "",
+    "## §A-APP-01 — The application starts from one entry point",
+    "",
+    "Implements §B-CORE-01.",
+    "",
+  ].join("\n");
 }
 
 /** §M-TEST-HELPERS — Unique identifier for fixtures that need one. */

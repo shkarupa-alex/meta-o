@@ -16,6 +16,40 @@ const DEFECT_SEVERITIES = new Set(["blocker", "major", "minor"]);
 /** §M-FINDINGS — Classifications that must be fixed before a pass. */
 const BLOCKING_CLASSIFICATIONS = new Set(["defect", "engineering_risk"]);
 
+/**
+ * §M-FINDINGS — The closed vocabularies a finding is written in.
+ *
+ * Checked explicitly rather than left to the type declaration, because every
+ * finding entering this module came from a model through JSON, where the type
+ * is advisory. An unrecognised classification would otherwise be waved through
+ * by `validateFinding` and then silently dropped by `blockingFindings`, which
+ * turns a typo into a blocker that does not block.
+ */
+const SEVERITIES: ReadonlySet<string> = new Set(["blocker", "major", "minor", "suggestion"]);
+
+/** §M-FINDINGS — How serious a finding claims to be. */
+const CLASSIFICATIONS: ReadonlySet<string> = new Set(["defect", "engineering_risk", "taste"]);
+
+/** §M-FINDINGS — Kinds of artefact a reviewer may point at as evidence. */
+const EVIDENCE_KINDS: ReadonlySet<string> = new Set(["file", "symbol", "command", "scenario"]);
+
+/** §M-FINDINGS — Authorities a finding may rest on. */
+const BASIS_TYPES: ReadonlySet<string> = new Set([
+  "spec",
+  "business",
+  "architecture",
+  "engineering",
+]);
+
+/** §M-FINDINGS — The two review slots a result may claim to come from. */
+const REVIEWERS: ReadonlySet<string> = new Set(["reviewerPrimary", "reviewerCrossVendor"]);
+
+/** §M-FINDINGS — The two verdicts a review may reach. */
+const VERDICTS: ReadonlySet<string> = new Set(["passed", "changes_requested"]);
+
+/** §M-FINDINGS — The two judgements a reviewer may pass on the selection plan. */
+const PLAN_VERDICTS: ReadonlySet<string> = new Set(["complete", "incomplete"]);
+
 /** §M-FINDINGS — Validation outcome carrying every problem found. */
 export interface FindingValidation {
   ok: boolean;
@@ -34,16 +68,34 @@ export function validateFinding(finding: Finding): FindingValidation {
   if (!finding.id) errors.push("finding.id is required");
   if (!finding.impact) errors.push(`${finding.id}: impact is required`);
 
+  if (!SEVERITIES.has(finding.severity)) {
+    errors.push(
+      `${finding.id}: severity ${JSON.stringify(finding.severity)} is not one of ` +
+        [...SEVERITIES].join("|"),
+    );
+  }
+  if (!CLASSIFICATIONS.has(finding.classification)) {
+    errors.push(
+      `${finding.id}: classification ${JSON.stringify(finding.classification)} is not one of ` +
+        [...CLASSIFICATIONS].join("|"),
+    );
+  }
+
   if (!Array.isArray(finding.evidence) || finding.evidence.length === 0) {
     errors.push(`${finding.id}: at least one piece of evidence is required`);
   } else {
     for (const item of finding.evidence) {
       if (!item.reference) errors.push(`${finding.id}: evidence needs a reference`);
+      if (!EVIDENCE_KINDS.has(item.kind)) {
+        errors.push(`${finding.id}: evidence kind ${JSON.stringify(item.kind)} is not recognised`);
+      }
     }
   }
 
   if (!finding.basis || !finding.basis.type || !finding.basis.reference) {
     errors.push(`${finding.id}: basis type and reference are required`);
+  } else if (!BASIS_TYPES.has(finding.basis.type)) {
+    errors.push(`${finding.id}: basis type ${JSON.stringify(finding.basis.type)} is not recognised`);
   }
 
   if (!finding.recommendedFix || !finding.recommendedFix.approach) {
@@ -79,8 +131,27 @@ export function blockingFindings(findings: Finding[]): Finding[] {
  */
 export function validateReviewResult(result: ReviewResult): FindingValidation {
   const errors: string[] = [];
+  if (!Array.isArray(result.findings)) {
+    return { ok: false, errors: [`${result.reviewer}: findings must be an array`] };
+  }
   for (const finding of result.findings) {
     errors.push(...validateFinding(finding).errors);
+  }
+
+  if (!REVIEWERS.has(result.reviewer)) {
+    errors.push(`reviewer ${JSON.stringify(result.reviewer)} is not one of ${[...REVIEWERS].join("|")}`);
+  }
+  if (!VERDICTS.has(result.verdict)) {
+    errors.push(
+      `${result.reviewer}: verdict ${JSON.stringify(result.verdict)} is not one of ` +
+        [...VERDICTS].join("|"),
+    );
+  }
+  if (!PLAN_VERDICTS.has(result.selectionPlanVerdict)) {
+    errors.push(
+      `${result.reviewer}: selectionPlanVerdict ${JSON.stringify(result.selectionPlanVerdict)} ` +
+        `is not one of ${[...PLAN_VERDICTS].join("|")}`,
+    );
   }
 
   const blocking = blockingFindings(result.findings);
@@ -118,12 +189,42 @@ export function isStaleResult(
   );
 }
 
-/** §M-FINDINGS — Roles permitted to move a finding to `resolved`. */
-const CLOSING_ROLES: ReadonlySet<Role> = new Set<Role>([
-  "reviewerPrimary",
-  "reviewerCrossVendor",
-  "technicalAdjudicator",
+/**
+ * §M-FINDINGS — Roles that may never close a finding, whoever raised it.
+ *
+ * The executor is the point of the rule: it is the party the finding is about,
+ * and self-attestation by the author of the code proves nothing. The
+ * orchestrator and the reuse researcher are listed because neither ever
+ * re-examines an implementation, so a close from them would be a rubber stamp.
+ */
+const NON_CLOSING_ROLES: ReadonlySet<Role> = new Set<Role>([
+  "executor",
+  "orchestrator",
+  "reuseResearcher",
 ]);
+
+/**
+ * §M-FINDINGS — Whether a role may close a finding raised by another role.
+ *
+ * Only two parties can: the role that raised it — a fresh generation of the
+ * same reviewer or E2E tester still counts, since authority belongs to the role
+ * and not to a session that may have died — and the technical adjudicator,
+ * whose whole purpose is settling a finding its raiser and the executor cannot.
+ * Without this check reviewer A can close reviewer B's blocker, which collapses
+ * two independent reviews into one.
+ */
+function mayClose(resolver: Role, raisedBy: Role, findingId: string, verb: string): void {
+  if (NON_CLOSING_ROLES.has(resolver)) {
+    throw new FindingTransitionError(findingId, `role ${resolver} may not ${verb} findings`);
+  }
+  if (resolver !== "technicalAdjudicator" && resolver !== raisedBy) {
+    throw new FindingTransitionError(
+      findingId,
+      `${verb} refused: raised by ${raisedBy}, attempted by ${resolver}; ` +
+        "only the raising role or the technical adjudicator may close it",
+    );
+  }
+}
 
 /** §M-FINDINGS — Raised when a role attempts a transition it does not own. */
 export class FindingTransitionError extends Error {
@@ -165,12 +266,7 @@ export function proposeFix(
  * technical adjudicator.
  */
 export function resolveFinding(record: FindingRecord, resolvedBy: SessionRef): FindingRecord {
-  if (!CLOSING_ROLES.has(resolvedBy.role)) {
-    throw new FindingTransitionError(
-      record.finding.id,
-      `role ${resolvedBy.role} may not resolve findings`,
-    );
-  }
+  mayClose(resolvedBy.role, record.raisedBy.role, record.finding.id, "resolve");
   if (record.status === "open") {
     throw new FindingTransitionError(
       record.finding.id,
@@ -190,12 +286,7 @@ export function dismissTaste(record: FindingRecord, dismissedBy: SessionRef): Fi
   if (record.finding.classification !== "taste") {
     throw new FindingTransitionError(record.finding.id, "only taste may be dismissed");
   }
-  if (!CLOSING_ROLES.has(dismissedBy.role)) {
-    throw new FindingTransitionError(
-      record.finding.id,
-      `role ${dismissedBy.role} may not dismiss findings`,
-    );
-  }
+  mayClose(dismissedBy.role, record.raisedBy.role, record.finding.id, "dismiss");
   return { ...record, status: "taste_dismissed", resolvedBy: dismissedBy };
 }
 

@@ -69,19 +69,18 @@ test("references are collected from arbitrary text", () => {
 
 test("duplicate anchors are reported with both locations", () => {
   const index = buildAnchorIndex([
-    { path: "a.md", text: "## §B-DUP-01 — first\n" },
-    { path: "b.md", text: "## §B-DUP-01 — second\n" },
+    { path: "docs/knowledge/business.md", text: "## §B-DUP-01 — first\n\n## §B-DUP-01 — second\n" },
   ]);
   const validation = validateChain(index);
   assert.equal(validation.ok, false);
   assert.ok(validation.errors.some((error) => error.includes("duplicate anchor §B-DUP-01")));
-  assert.ok(validation.errors.some((error) => error.includes("a.md:1")));
+  assert.ok(validation.errors.some((error) => error.includes("docs/knowledge/business.md:1")));
 });
 
 test("an architecture anchor that cites no business anchor fails", () => {
   const index = buildAnchorIndex([
-    { path: "business.md", text: sampleBusinessKnowledge() },
-    { path: "architecture.md", text: "## §A-ORPHAN-01 — floating\n\nNo citation here.\n" },
+    { path: "docs/knowledge/business.md", text: sampleBusinessKnowledge() },
+    { path: "docs/knowledge/architecture/main.md", text: "## §A-ORPHAN-01 — floating\n\nNo citation here.\n" },
   ]);
   const validation = validateChain(index);
   assert.equal(validation.ok, false);
@@ -90,7 +89,7 @@ test("an architecture anchor that cites no business anchor fails", () => {
 
 test("a dangling reference is reported", () => {
   const index = buildAnchorIndex([
-    { path: "architecture.md", text: "## §A-BOOT-01 — boot\n\nImplements §B-ABSENT-99.\n" },
+    { path: "docs/knowledge/architecture/main.md", text: "## §A-BOOT-01 — boot\n\nImplements §B-ABSENT-99.\n" },
   ]);
   const validation = validateChain(index);
   assert.ok(validation.errors.some((error) => error.includes("unknown §B-ABSENT-99")));
@@ -98,8 +97,8 @@ test("a dangling reference is reported", () => {
 
 test("a valid chain from business to architecture to module passes", () => {
   const index = buildAnchorIndex([
-    { path: "business.md", text: sampleBusinessKnowledge() },
-    { path: "architecture.md", text: ARCHITECTURE },
+    { path: "docs/knowledge/business.md", text: sampleBusinessKnowledge() },
+    { path: "docs/knowledge/architecture/main.md", text: ARCHITECTURE },
   ]);
   const validation = validateChain(index, [
     { anchor: "§M-BOOT", path: "src/boot.py", references: ["§A-BOOT-01"] },
@@ -110,8 +109,8 @@ test("a valid chain from business to architecture to module passes", () => {
 
 test("a module citing business directly instead of its nearest level fails", () => {
   const index = buildAnchorIndex([
-    { path: "business.md", text: sampleBusinessKnowledge() },
-    { path: "architecture.md", text: ARCHITECTURE },
+    { path: "docs/knowledge/business.md", text: sampleBusinessKnowledge() },
+    { path: "docs/knowledge/architecture/main.md", text: ARCHITECTURE },
   ]);
   const validation = validateChain(index, [
     { anchor: "§M-SKIP", path: "src/skip.py", references: ["§B-CORE-01"] },
@@ -121,8 +120,48 @@ test("a module citing business directly instead of its nearest level fails", () 
 });
 
 test("business anchors are exposed for E2E link checking", () => {
-  const index = buildAnchorIndex([{ path: "business.md", text: sampleBusinessKnowledge() }]);
+  const index = buildAnchorIndex([{ path: "docs/knowledge/business.md", text: sampleBusinessKnowledge() }]);
   assert.deepEqual([...businessAnchors(index)].sort(), ["§B-CHECKOUT-01", "§B-CORE-01"]);
+});
+
+test("a business anchor defined outside the business document is refused", () => {
+  const index = buildAnchorIndex([
+    { path: "docs/knowledge/business.md", text: sampleBusinessKnowledge() },
+    {
+      path: "docs/knowledge/architecture/main.md",
+      text: `${ARCHITECTURE}\n## §B-SNEAKY-02 — smuggled business truth\n\nDefined in the wrong file.\n`,
+    },
+  ]);
+  const validation = validateChain(index);
+  assert.equal(validation.ok, false);
+  assert.ok(validation.errors.some((error) => error.includes("§B-SNEAKY-02 is defined outside")));
+  assert.equal(businessAnchors(index).has("§B-SNEAKY-02"), false);
+});
+
+test("a malformed anchor is a failure, not a silent non-match", () => {
+  const index = buildAnchorIndex([
+    {
+      path: "docs/knowledge/business.md",
+      text: "## §B-CORE-01 — truth\n\nSee §b-lower-01 and §B-BAD_ANCHOR.\n",
+    },
+  ]);
+  const validation = validateChain(index);
+  assert.equal(validation.ok, false);
+  assert.ok(validation.errors.some((error) => error.includes("malformed anchor §b-lower-01")));
+  assert.ok(validation.errors.some((error) => error.includes("malformed anchor §B-BAD_ANCHOR")));
+});
+
+test("the same module anchor declared twice is refused", () => {
+  const index = buildAnchorIndex([
+    { path: "docs/knowledge/business.md", text: sampleBusinessKnowledge() },
+    { path: "docs/knowledge/architecture/main.md", text: ARCHITECTURE },
+  ]);
+  const validation = validateChain(index, [
+    { anchor: "§M-BOOT", path: "src/a.py", references: ["§A-BOOT-01"] },
+    { anchor: "§M-BOOT", path: "src/b.py", references: ["§A-BOOT-01"] },
+  ]);
+  assert.equal(validation.ok, false);
+  assert.ok(validation.errors.some((error) => error.includes("duplicate module anchor §M-BOOT")));
 });
 
 test("credentials are removed from text before it leaves the machine", () => {

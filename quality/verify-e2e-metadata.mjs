@@ -14,8 +14,10 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+/** §M-QC-E2E-GUARD — The one tracked file a metadata commit is allowed to touch. */
 const REGISTRY = "docs/architecture/e2e.json";
 
+/** §M-QC-E2E-GUARD — Repository root, resolved from this script rather than the caller. */
 const ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], {
   cwd: fileURLToPath(new URL(".", import.meta.url)),
   encoding: "utf8",
@@ -38,6 +40,26 @@ function projection(registry) {
   };
 }
 
+/**
+ * §M-QC-E2E-GUARD — Serialise with sorted keys, so equality means equal content.
+ *
+ * Written out rather than leaning on a `JSON.stringify` replacer: passing
+ * `Object.keys` as the replacer looks like "compare by keys" and in fact
+ * returns `[]` for the root object, so both sides serialise to `"[]"` and the
+ * comparison can never fail. A guard that cannot fail is worse than no guard,
+ * because it is reported as passing.
+ */
+function canonical(value) {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entries = Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`);
+    return `{${entries.join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
 const problems = [];
 
 const changed = git(["diff", "--name-only", "HEAD~1", "HEAD"]);
@@ -52,12 +74,8 @@ if (changed === undefined) {
   if (previous === undefined) {
     problems.push(`cannot read ${REGISTRY} at HEAD~1`);
   } else {
-    const before = JSON.stringify(projection(JSON.parse(previous)), Object.keys, 0);
-    const after = JSON.stringify(
-      projection(JSON.parse(readFileSync(`${ROOT}/${REGISTRY}`, "utf8"))),
-      Object.keys,
-      0,
-    );
+    const before = canonical(projection(JSON.parse(previous)));
+    const after = canonical(projection(JSON.parse(readFileSync(`${ROOT}/${REGISTRY}`, "utf8"))));
     if (before !== after) {
       problems.push("the metadata commit changed catalog fields, not only scenarios[*].last_run");
     }

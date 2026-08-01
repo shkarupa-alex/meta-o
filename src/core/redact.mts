@@ -62,6 +62,11 @@ export function redact(text: string): string {
   return out;
 }
 
+/** §M-REDACT — Whether redaction would change this text, i.e. whether it carries a secret. */
+export function containsSecret(text: string): boolean {
+  return redact(text) !== text;
+}
+
 /**
  * §M-REDACT — Redact every string inside a structure, preserving its shape.
  *

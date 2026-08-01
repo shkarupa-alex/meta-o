@@ -204,6 +204,18 @@ export function verifyMetadataCommit(input: MetadataGuardInput): MetadataGuardRe
     if (lastRun.spec_sha256 !== input.expectedSpecSha256) {
       violations.push(`scenario ${scenarioId} records a different spec digest`);
     }
+    // The receipt has to identify *which* commit was exercised and *when*.
+    // Without these two, a `last_run` block can be copied forward from an
+    // earlier feature and still satisfy every other check here.
+    if (lastRun.provenance_commit !== attested.provenanceCommit) {
+      violations.push(
+        `scenario ${scenarioId} records provenance ${lastRun.provenance_commit}, ` +
+          `expected the attested commit ${attested.provenanceCommit}`,
+      );
+    }
+    if (!Number.isFinite(Date.parse(lastRun.verified_at))) {
+      violations.push(`scenario ${scenarioId} records an unparseable verified_at`);
+    }
   }
 
   return {

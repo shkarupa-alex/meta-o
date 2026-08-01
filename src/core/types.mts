@@ -135,12 +135,19 @@ export interface SnapshotRef {
   computedAt: string;
 }
 
-/** §M-CORE-TYPES — Outcome of one gate bound to the content it attests. */
+/**
+ * §M-CORE-TYPES — Outcome of one gate bound to the content it attests.
+ *
+ * `selectionPlanVerdict` is carried on reviewer results so that "this reviewer
+ * also judged the E2E selection complete" survives in state instead of only in
+ * the transcript of the session that said it.
+ */
 export interface RevisionResult {
   commitOid: string;
   snapshotDigest: string;
   planDigest?: string;
   status: "passed" | "failed" | "invalidated";
+  selectionPlanVerdict?: "complete" | "incomplete";
   completedAt: string;
   evidenceRef?: string;
 }
@@ -301,9 +308,17 @@ export interface ActiveLoop {
   changedSinceOtherGate: boolean;
 }
 
-/** §M-CORE-TYPES — Gate attestations collected for the current candidate. */
+/**
+ * §M-CORE-TYPES — Gate attestations collected for the current candidate.
+ *
+ * `smoke` is a precondition, not one of the four completion attestations: it
+ * proves the candidate builds, boots and answers a health check, which is what
+ * makes spending two reviewers and a full E2E set on it worthwhile. Completion
+ * is still proven by qc, both reviews and E2E alone.
+ */
 export interface Confirmations {
   qc?: RevisionResult;
+  smoke?: RevisionResult;
   reviewerPrimary?: RevisionResult;
   reviewerCrossVendor?: RevisionResult;
   e2e?: RevisionResult;
@@ -344,6 +359,19 @@ export interface RunState {
   pendingOperation?: PendingOperation;
   activeLoop?: ActiveLoop;
   confirmations: Confirmations;
+  /**
+   * Per-scenario outcome of the last executed selected E2E set. Kept because
+   * the completion metadata commit writes exactly these statuses into
+   * `e2e.json`, and the guard that checks it must compare against what was
+   * actually observed rather than assume everything passed.
+   */
+  e2eScenarioStatus?: E2EScenarioResult[];
+  /**
+   * Proof that the metadata commit was inspected and stayed inside its
+   * permitted field. Recorded so that `COMPLETE` can require it, instead of
+   * leaving the last step of the lifecycle as advice in a prompt.
+   */
+  metadataVerified?: { snapshotDigest: string; metadataCommit: string; verifiedAt: string };
   openFindings?: Partial<
     Record<"reviewerPrimary" | "reviewerCrossVendor" | "e2e", FindingRecord[]>
   >;

@@ -9,7 +9,8 @@
  * state, not recalled.
  */
 
-import type { Confirmations, Phase, RevisionResult, RunState } from "./types.mjs";
+import { openBlockingRecords } from "./findings.mjs";
+import type { ActiveLoop, Confirmations, Phase, RevisionResult, RunState } from "./types.mjs";
 
 /** §M-FSM — Normal forward order of the lifecycle. */
 export const HAPPY_PATH: Phase[] = [
@@ -121,10 +122,29 @@ export function assertTransition(from: Phase, to: Phase): void {
   if (!allowedTransitions(from).includes(to)) throw new IllegalTransitionError(from, to);
 }
 
-/** §M-FSM — Whether one gate result attests the current candidate. */
-export function attests(result: RevisionResult | undefined, snapshotDigest: string): boolean {
-  return result?.status === "passed" && result.snapshotDigest === snapshotDigest;
+/**
+ * §M-FSM — Whether one gate result attests the current candidate.
+ *
+ * Content identity alone is not enough for the three gates that are also bound
+ * to a selection plan. A reviewer judged *this plan* complete and the E2E run
+ * executed *this plan's* scenarios; swapping the plan afterwards leaves results
+ * that look valid and describe a scenario set nobody ran. Passing `planDigest`
+ * therefore makes the attestation two-dimensional, and a result recorded before
+ * any plan existed can never satisfy it.
+ */
+export function attests(
+  result: RevisionResult | undefined,
+  snapshotDigest: string,
+  planDigest?: string,
+): boolean {
+  if (result?.status !== "passed") return false;
+  if (result.snapshotDigest !== snapshotDigest) return false;
+  if (planDigest !== undefined && result.planDigest !== planDigest) return false;
+  return true;
 }
+
+/** §M-FSM — Gates whose meaning depends on the E2E selection plan. */
+export const PLAN_BOUND_GATES = ["reviewerPrimary", "reviewerCrossVendor", "e2e"] as const;
 
 /**
  * §M-FSM — Drop every attestation that no longer describes the candidate.
@@ -146,6 +166,43 @@ export function invalidateStaleConfirmations(
       value.snapshotDigest === snapshotDigest ? value : { ...value, status: "invalidated" };
   }
   return next;
+}
+
+/**
+ * §M-FSM — Drop the attestations a new selection plan invalidates.
+ *
+ * Only the three plan-bound gates are touched: `make qc` says nothing about
+ * which scenarios were chosen, so re-running it after a plan change would be
+ * pure cost. Reviews and E2E are re-run because they attested a plan that no
+ * longer exists.
+ */
+export function invalidatePlanBoundConfirmations(
+  confirmations: Confirmations,
+  planDigest: string,
+): Confirmations {
+  const next: Confirmations = { ...confirmations };
+  for (const gate of PLAN_BOUND_GATES) {
+    const value = next[gate];
+    if (value && value.planDigest !== planDigest) next[gate] = { ...value, status: "invalidated" };
+  }
+  return next;
+}
+
+/**
+ * §M-FSM — Which stabilization loop a phase puts the run into.
+ *
+ * Derived from the phase rather than set by hand at each call site, because the
+ * loop guard below is only worth anything if `activeLoop` is written every time
+ * the run enters a loop — and a rule a caller has to remember is one that gets
+ * forgotten in the recovery path first.
+ */
+export function loopForPhase(phase: Phase, previous?: ActiveLoop): ActiveLoop | undefined {
+  if (phase === "FINALIZE_METADATA" || isTerminal(phase)) return undefined;
+  const kind =
+    phase === "REVIEW_STABILIZATION" ? "review" : phase === "E2E_STABILIZATION" ? "e2e" : undefined;
+  if (!kind) return previous;
+  if (previous?.kind === kind) return { ...previous, iteration: previous.iteration + 1 };
+  return { kind, iteration: 1, changedSinceOtherGate: false };
 }
 
 /** §M-FSM — The next thing the orchestrator should cause to happen. */
@@ -245,8 +302,8 @@ function routeReviews(
   if (!crossOk) missing.push("reviewerCrossVendor");
 
   const openFindings =
-    (state.openFindings?.reviewerPrimary?.length ?? 0) +
-    (state.openFindings?.reviewerCrossVendor?.length ?? 0);
+    openBlockingRecords(state.openFindings?.reviewerPrimary ?? []).length +
+    openBlockingRecords(state.openFindings?.reviewerCrossVendor ?? []).length;
 
   return {
     action: openFindings > 0 ? "fix_review_findings" : "run_reviews",
@@ -293,10 +350,12 @@ export function routeNext(state: RunState): Routing {
     };
   }
 
+  const plan = state.e2ePlan.planDigest;
   const qcOk = attests(state.confirmations.qc, snapshot);
-  const primaryOk = attests(state.confirmations.reviewerPrimary, snapshot);
-  const crossOk = attests(state.confirmations.reviewerCrossVendor, snapshot);
-  const e2eOk = attests(state.confirmations.e2e, snapshot);
+  const smokeOk = attests(state.confirmations.smoke, snapshot);
+  const primaryOk = attests(state.confirmations.reviewerPrimary, snapshot, plan);
+  const crossOk = attests(state.confirmations.reviewerCrossVendor, snapshot, plan);
+  const e2eOk = attests(state.confirmations.e2e, snapshot, plan);
 
   if (!qcOk) {
     return {
@@ -314,6 +373,15 @@ export function routeNext(state: RunState): Routing {
       reason:
         "the E2E loop is active; reviews are not re-run until the selected scenarios are green",
       missingGates: ["e2e"],
+    };
+  }
+
+  if (!smokeOk) {
+    return {
+      action: "run_smoke",
+      phase: "SMOKE_PREFLIGHT",
+      reason: "the short build/boot/health smoke has not passed on the current snapshot",
+      missingGates: ["smoke"],
     };
   }
 
@@ -345,11 +413,12 @@ export function routeNext(state: RunState): Routing {
  */
 export function completionProven(state: RunState): boolean {
   const snapshot = state.candidateSnapshot?.digest;
-  if (!snapshot) return false;
+  const plan = state.e2ePlan?.planDigest;
+  if (!snapshot || !plan) return false;
   return (
     attests(state.confirmations.qc, snapshot) &&
-    attests(state.confirmations.reviewerPrimary, snapshot) &&
-    attests(state.confirmations.reviewerCrossVendor, snapshot) &&
-    attests(state.confirmations.e2e, snapshot)
+    attests(state.confirmations.reviewerPrimary, snapshot, plan) &&
+    attests(state.confirmations.reviewerCrossVendor, snapshot, plan) &&
+    attests(state.confirmations.e2e, snapshot, plan)
   );
 }

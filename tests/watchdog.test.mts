@@ -95,6 +95,7 @@ interface Harness {
   logs: WatchdogLogEntry[];
   wakes: string[];
   spawns: string[];
+  surfaced: string[];
   states: Map<string, RunState>;
 }
 
@@ -109,6 +110,7 @@ function harness(options: {
   const logs: WatchdogLogEntry[] = [];
   const wakes: string[] = [];
   const spawns: string[] = [];
+  const surfaced: string[] = [];
   const states = new Map(options.states);
 
   const watchdog = new Watchdog({
@@ -125,13 +127,16 @@ function harness(options: {
     wakeOrchestrator: async (state) => {
       wakes.push(`${state.projectKey}/${state.runId}@${state.stateVersion}`);
     },
+    surfaceUncertainty: async (state, operation) => {
+      surfaced.push(`${state.runId}:${operation?.kind ?? "capability"}`);
+    },
     spawnOrchestrator: async (state) => {
       spawns.push(`${state.projectKey}/${state.runId}@gen${state.orchestratorGeneration}`);
     },
     log: (entry) => logs.push(entry),
   });
 
-  return { watchdog, clock, logs, wakes, spawns, states };
+  return { watchdog, clock, logs, wakes, spawns, surfaced, states };
 }
 
 test("a productive loop is never treated as a stall", () => {
@@ -351,13 +356,22 @@ test("the classifier only claims what the text proves", () => {
   assert.equal(classifyTail("the model said something unusual"), "unknown");
 });
 
-test("only machine-readable reset times are parsed", () => {
-  assert.equal(parseResetTime("quota resets at 3pm"), undefined);
-  assert.equal(parseResetTime("retry-after: 120"), 120_000);
+test("only machine-readable reset times are parsed, always as an instant", () => {
+  const now = Date.parse("2026-07-24T18:00:00Z");
+  assert.equal(parseResetTime("quota resets at 3pm", now), undefined);
+
+  // retry-after is a duration in every protocol that carries it; read as an
+  // epoch it would land in 1970 and reopen the window immediately.
+  assert.equal(parseResetTime("retry-after: 120", now), now + 120_000);
+
   assert.equal(
-    parseResetTime("limit resets 2026-07-24T18:20:00Z"),
+    parseResetTime("limit resets 2026-07-24T18:20:00Z", now),
     Date.parse("2026-07-24T18:20:00Z"),
   );
+
+  // A timestamp with no reset keyword is some other timestamp — very often the
+  // pause's own enteredAt, which is guaranteed to be in the past.
+  assert.equal(parseResetTime("paused at 2026-07-24T17:00:00Z because of a 500", now), undefined);
 });
 
 test("tails are redacted and bounded before any classifier sees them", () => {
@@ -365,4 +379,118 @@ test("tails are redacted and bounded before any classifier sees them", () => {
   const sanitized = sanitizeTail(tail);
   assert.ok(Buffer.byteLength(sanitized, "utf8") <= 8 * 1024);
   assert.ok(!sanitized.includes("sk-abcdefghijklmnopqrstuvwxyz"));
+});
+
+test("a pause the watchdog cannot release is left to whoever can", () => {
+  for (const phase of [
+    "PAUSED_EXTERNAL",
+    "PAUSED_MISSING_TOOLS",
+    "PAUSED_MODEL_UNAVAILABLE",
+    "PAUSED_TECHNICAL_DISPUTE",
+    "PAUSED_ORCHESTRATOR_BUDGET",
+  ] as const) {
+    const decision = decideAction(
+      makeObservation({
+        state: makeRun({ phase }),
+        orchestratorStatus: "waiting",
+        idleForMs: DEFAULT_STALL_DEADLINE_MS * 4,
+      }),
+      makeMemory(),
+      { stallDeadlineMs: DEFAULT_STALL_DEADLINE_MS, nowMs: 1_000_000 },
+    );
+    assert.equal(decision.action, "noop", `${phase} must not be resumed by the watchdog`);
+  }
+});
+
+test("an unprovable effect is surfaced once, then backed off", () => {
+  const state = makeRun({
+    pendingOperation: {
+      operationId: "op-1",
+      kind: "send",
+      requestDigest: "d",
+      state: "uncertain",
+    },
+  });
+  const it = harness({
+    states: [["key-1/run-1", state]],
+    reconcile: () => ({ operationId: "op-1", effect: "unknown" }),
+  });
+
+  return (async () => {
+    const first = await it.watchdog.tick();
+    assert.equal(first.decisions[0]!.action, "surface_uncertainty");
+    assert.deepEqual(it.surfaced, ["run-1:send"]);
+    // The generic wake would tell it to "continue from the routing table",
+    // which is the one thing it must not do with an unprovable effect.
+    assert.deepEqual(it.wakes, []);
+
+    const second = await it.watchdog.tick();
+    assert.equal(second.decisions[0]!.action, "backoff");
+    assert.deepEqual(it.surfaced, ["run-1:send"], "surfacing repeats no faster than the backoff");
+  })();
+});
+
+test("a backend that cannot be observed backs one run off, not the whole loop", async () => {
+  const states: Array<[string, RunState]> = [
+    ["key-1/run-1", makeRun({ runId: "run-1" })],
+    ["key-1/run-2", makeRun({ runId: "run-2", stateVersion: 9 })],
+  ];
+  const it = harness({
+    states,
+    status: (state) => {
+      if (state.runId === "run-1") throw new Error("ECONNREFUSED talking to the backend");
+      return "running";
+    },
+  });
+
+  const report = await it.watchdog.tick();
+  assert.equal(report.observations, 2, "the second run is still observed");
+  assert.equal(report.decisions[0]!.action, "backoff");
+  assert.equal(report.decisions[1]!.action, "noop");
+  assert.ok(it.logs.some((entry) => entry.outcome === "failed" && entry.runId === "run-1"));
+});
+
+test("an operation's own deadline beats the global stall constant", () => {
+  const nowMs = 1_000_000;
+  const pending: PendingOperation = {
+    operationId: "op-2",
+    kind: "wait",
+    requestDigest: "d",
+    state: "prepared",
+    deadlineAt: new Date(nowMs + 3_600_000).toISOString(),
+  };
+  const decision = decideAction(
+    makeObservation({
+      state: makeRun({ pendingOperation: pending }),
+      orchestratorStatus: "waiting",
+      idleForMs: DEFAULT_STALL_DEADLINE_MS * 3,
+    }),
+    makeMemory(),
+    { stallDeadlineMs: DEFAULT_STALL_DEADLINE_MS, nowMs },
+  );
+  assert.equal(decision.action, "noop");
+  assert.match(decision.reason, /own deadline/);
+});
+
+test("a quota tail is not woken into the closed window", () => {
+  const decision = decideAction(
+    makeObservation({
+      orchestratorStatus: "waiting",
+      idleForMs: DEFAULT_STALL_DEADLINE_MS * 2,
+      tail: "quota",
+    }),
+    makeMemory(),
+    { stallDeadlineMs: DEFAULT_STALL_DEADLINE_MS, nowMs: 1_000_000 },
+  );
+  assert.equal(decision.action, "backoff");
+});
+
+test("a capability regression is surfaced instead of driven around", () => {
+  const decision = decideAction(makeObservation(), makeMemory(), {
+    stallDeadlineMs: DEFAULT_STALL_DEADLINE_MS,
+    nowMs: 1_000_000,
+    capabilityRegression: ["wait is unsupported"],
+  });
+  assert.equal(decision.action, "surface_uncertainty");
+  assert.match(decision.reason, /capability regression/);
 });

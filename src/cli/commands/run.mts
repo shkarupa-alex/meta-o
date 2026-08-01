@@ -20,24 +20,37 @@ import {
   withWriterLock,
   writeHandoff,
 } from "../../core/state-store.mjs";
-import { assertTransition, invalidateStaleConfirmations, routeNext, completionProven } from "../../core/fsm.mjs";
+import {
+  assertTransition,
+  completionProven,
+  invalidatePlanBoundConfirmations,
+  invalidateStaleConfirmations,
+  loopForPhase,
+  routeNext,
+} from "../../core/fsm.mjs";
 import { computeSnapshotDigest } from "../../core/snapshot.mjs";
 import { resolveCommit } from "../../core/git.mjs";
 import { fetchSpec, materializeSpecBlob, assertSpecUnchanged } from "../../core/spec-input.mjs";
 import { validateModelSet } from "../../core/model-set.mjs";
+import { readGlobalConfig } from "../../core/config.mjs";
 import { validatePlan } from "../../core/e2e-registry.mjs";
 import {
+  dismissTaste,
+  isStaleResult,
   openBlockingRecords,
   proposeFix,
   pruneClosedRecords,
   resolveFinding,
   validateFinding,
+  validateReviewResult,
 } from "../../core/findings.mjs";
+import { HerdrAdapter } from "../../adapters/herdr.mjs";
 import { isoTimestamp } from "../../core/clock.mjs";
 import { readExternalBytes } from "../../core/safe-fs.mjs";
 import { join } from "node:path";
 import type {
   E2ERegistry,
+  E2EResult,
   E2ESelectionPlan,
   Finding,
   FindingRecord,
@@ -45,6 +58,7 @@ import type {
   ModelSet,
   PendingOperation,
   Phase,
+  ReviewResult,
   RevisionResult,
   RunState,
   SessionRef,
@@ -113,15 +127,21 @@ export async function commandStart(args: ParsedArgs): Promise<void> {
   const declaredSha = optionalFlag(args, "spec-sha256");
 
   const settings = readSettings(projectKey);
-  let modelSet: ModelSet | undefined = settings?.modelSet;
-  const backend = (optionalFlag(args, "backend") ?? settings?.backend ?? "herdr") as
-    | "herdr"
-    | "omnigent";
+  const globalConfig = readGlobalConfig();
+  // Project settings win; the machine-wide default only spares the user from
+  // re-entering the same four models for every new repository. Either way the
+  // run starts in AWAITING_MODEL_SET and is confirmed before anything is spent.
+  const modelSet: ModelSet | undefined = settings?.modelSet ?? globalConfig?.defaultModelSet;
+  const backend = (optionalFlag(args, "backend") ??
+    settings?.backend ??
+    globalConfig?.defaultBackend ??
+    "herdr") as "herdr" | "omnigent";
 
   if (!modelSet) {
     fail(
       "no_model_set",
-      "this project has no confirmed ModelSet; run `meta-o project set-settings` first",
+      "this project has no confirmed ModelSet, and ~/.meta-o/config.json declares no " +
+        "defaultModelSet; run `meta-o project set-settings` first",
     );
   }
   const validation = validateModelSet(modelSet);
@@ -157,7 +177,10 @@ export async function commandStart(args: ParsedArgs): Promise<void> {
     decisions: [],
     confirmations: {},
     reuseScanEnabled: boolFlag(args, "reuse-scan"),
-    handoffEnabled: boolFlag(args, "handoff") || settings?.handoffDefault === true,
+    handoffEnabled:
+      boolFlag(args, "handoff") ||
+      settings?.handoffDefault === true ||
+      (settings === undefined && globalConfig?.handoffDefault === true),
     updatedAt: isoTimestamp(),
   };
 
@@ -200,6 +223,32 @@ export function commandRoute(args: ParsedArgs): void {
   });
 }
 
+/**
+ * §M-CLI-RUN — Refuse `COMPLETE` unless every completion precondition is proven.
+ *
+ * The four attestations are the headline rule, but the metadata commit is the
+ * one tracked change permitted *after* they are collected, so the run has to
+ * show that it was inspected. Leaving that step to the orchestrator's prompt
+ * would make it the only completion invariant not enforced by code, which is
+ * exactly the one that would eventually be skipped under recovery.
+ */
+function assertCompletable(state: RunState): void {
+  if (!completionProven(state)) {
+    fail(
+      "completion_not_proven",
+      "COMPLETE requires QC, both reviews and the selected E2E set to attest one snapshot and one plan",
+    );
+  }
+  const digest = state.candidateSnapshot?.digest;
+  if (state.metadataVerified?.snapshotDigest !== digest) {
+    fail(
+      "metadata_not_verified",
+      "COMPLETE requires a passing `meta-o snapshot verify-metadata` for the attested snapshot",
+      { attestedSnapshot: digest, metadataVerified: state.metadataVerified ?? null },
+    );
+  }
+}
+
 /** §M-CLI-RUN — Move a run to another phase, refusing undefined transitions. */
 export async function commandTransition(args: ParsedArgs): Promise<void> {
   const { projectKey } = identityOf(args);
@@ -210,13 +259,11 @@ export async function commandTransition(args: ParsedArgs): Promise<void> {
 
   const next = await mutate(projectKey, runId, (state) => {
     assertTransition(state.phase, phase);
-    if (phase === "COMPLETE" && !completionProven(state)) {
-      fail(
-        "completion_not_proven",
-        "COMPLETE requires QC, both reviews and the selected E2E set to attest one snapshot",
-      );
-    }
+    if (phase === "COMPLETE") assertCompletable(state);
     const updated: RunState = { ...state, phase };
+    const loop = loopForPhase(phase, state.activeLoop);
+    if (loop) updated.activeLoop = loop;
+    else delete updated.activeLoop;
     if (phase.startsWith("PAUSED_") || phase.startsWith("STOPPED_") || phase === "FAILED_BACKEND") {
       updated.paused = {
         reason: reason ?? phase,
@@ -304,8 +351,18 @@ export async function commandSetPlan(args: ParsedArgs): Promise<void> {
   const validation = validatePlan(plan, registry);
   if (!validation.ok) fail("invalid_plan", validation.errors.join("; "));
 
-  const next = await mutate(projectKey, runId, (state) => ({ ...state, e2ePlan: plan }));
-  emit({ runId, planDigest: plan.planDigest, selected: plan.selectedScenarioIds, routing: routeNext(next) });
+  const next = await mutate(projectKey, runId, (state) => ({
+    ...state,
+    e2ePlan: plan,
+    confirmations: invalidatePlanBoundConfirmations(state.confirmations, plan.planDigest),
+  }));
+  emit({
+    runId,
+    planDigest: plan.planDigest,
+    selected: plan.selectedScenarioIds,
+    confirmations: next.confirmations,
+    routing: routeNext(next),
+  });
 }
 
 /**
@@ -321,8 +378,11 @@ export async function commandRecordGate(args: ParsedArgs): Promise<void> {
   const gate = requireFlag(args, "gate") as keyof RunState["confirmations"];
   const status = requireFlag(args, "status") as RevisionResult["status"];
 
-  if (!["qc", "reviewerPrimary", "reviewerCrossVendor", "e2e"].includes(gate)) {
-    fail("invalid_gate", `--gate must be qc|reviewerPrimary|reviewerCrossVendor|e2e, got ${gate}`);
+  if (!["qc", "smoke", "reviewerPrimary", "reviewerCrossVendor", "e2e"].includes(gate)) {
+    fail(
+      "invalid_gate",
+      `--gate must be qc|smoke|reviewerPrimary|reviewerCrossVendor|e2e, got ${gate}`,
+    );
   }
   if (!["passed", "failed", "invalidated"].includes(status)) {
     fail("invalid_status", `--status must be passed|failed|invalidated, got ${status}`);
@@ -339,7 +399,7 @@ export async function commandRecordGate(args: ParsedArgs): Promise<void> {
         `result attests snapshot ${digest} but the candidate is ${snapshot.digest}`,
       );
     }
-    if (gate !== "qc" && !state.e2ePlan) {
+    if (gate !== "qc" && gate !== "smoke" && !state.e2ePlan) {
       fail("no_plan", "reviews and E2E require a stored selection plan");
     }
 
@@ -355,6 +415,156 @@ export async function commandRecordGate(args: ParsedArgs): Promise<void> {
   });
 
   emit({ runId, gate, confirmations: next.confirmations, routing: routeNext(next) });
+}
+
+/**
+ * §M-CLI-RUN — Record a whole review — verdict, findings and plan judgement — at once.
+ *
+ * `record-gate` will take a bare `passed` for a reviewer slot, which is fine for
+ * a replay or a repair but leaves three checks to the caller's discipline: that
+ * the verdict is a real verdict, that a pass carries no open defects, and that
+ * the result describes the current snapshot *and* plan. Doing all of it in one
+ * command means a reviewer's word only enters state together with the evidence
+ * that makes it meaningful.
+ */
+export async function commandRecordReview(args: ParsedArgs): Promise<void> {
+  const { projectKey } = identityOf(args);
+  const runId = requireFlag(args, "run-id");
+  const result = await readStdinJson<ReviewResult>();
+
+  const validation = validateReviewResult(result);
+  if (!validation.ok) fail("invalid_review_result", validation.errors.join("; "));
+
+  const next = await mutate(projectKey, runId, (state) => {
+    const snapshot = state.candidateSnapshot;
+    if (!snapshot) fail("no_candidate", "record a candidate with `run set-candidate` first");
+    if (!state.e2ePlan) fail("no_plan", "a review attests a selection plan; store one first");
+    if (isStaleResult(result, { snapshotDigest: snapshot.digest, planDigest: state.e2ePlan.planDigest })) {
+      fail(
+        "stale_review_result",
+        `review attests ${result.snapshotDigest}/${result.planDigest}, ` +
+          `the candidate is ${snapshot.digest}/${state.e2ePlan.planDigest}`,
+      );
+    }
+
+    const records: FindingRecord[] = result.findings.map((finding) => ({
+      finding,
+      raisedBy: state.sessions[result.reviewer] ?? {
+        backend: "herdr",
+        sessionId: `unrecorded-${result.reviewer}`,
+        role: result.reviewer,
+        generation: state.sessionGeneration[result.reviewer] ?? 1,
+      },
+      status: "open",
+    }));
+
+    const gate: RevisionResult = {
+      commitOid: result.commitOid,
+      snapshotDigest: result.snapshotDigest,
+      planDigest: result.planDigest,
+      status: result.verdict === "passed" ? "passed" : "failed",
+      selectionPlanVerdict: result.selectionPlanVerdict,
+      completedAt: result.completedAt || isoTimestamp(),
+    };
+
+    return {
+      ...state,
+      openFindings: { ...state.openFindings, [result.reviewer]: records },
+      confirmations: { ...state.confirmations, [result.reviewer]: gate },
+    };
+  });
+
+  emit({
+    runId,
+    reviewer: result.reviewer,
+    verdict: result.verdict,
+    open: next.openFindings?.[result.reviewer]?.length ?? 0,
+    blocking: openBlockingRecords(next.openFindings?.[result.reviewer] ?? []).length,
+    routing: routeNext(next),
+  });
+}
+
+/**
+ * §M-CLI-RUN — Record the outcome of the selected E2E set.
+ *
+ * Stores the per-scenario statuses as well as the gate, because the completion
+ * metadata commit writes exactly those statuses into the catalog and the guard
+ * that checks it must have something real to compare against. A failed or
+ * blocked scenario is kept, not swallowed: `last_run` is meant to show the last
+ * thing that actually happened.
+ */
+export async function commandRecordE2e(args: ParsedArgs): Promise<void> {
+  const { projectKey } = identityOf(args);
+  const runId = requireFlag(args, "run-id");
+  const result = await readStdinJson<E2EResult>();
+
+  const next = await mutate(projectKey, runId, (state) => {
+    const snapshot = state.candidateSnapshot;
+    if (!snapshot) fail("no_candidate", "record a candidate with `run set-candidate` first");
+    if (!state.e2ePlan) fail("no_plan", "an E2E result attests a selection plan; store one first");
+
+    const errors = e2eResultErrors(result, snapshot.digest, state.e2ePlan);
+    if (errors.length > 0) fail("invalid_e2e_result", errors.join("; "));
+
+    const failures = result.scenarios.filter((scenario) => scenario.status !== "passed");
+    const gate: RevisionResult = {
+      commitOid: result.commitOid,
+      snapshotDigest: result.snapshotDigest,
+      planDigest: result.planDigest,
+      status: failures.length === 0 ? "passed" : "failed",
+      completedAt: result.completedAt || isoTimestamp(),
+    };
+
+    return {
+      ...state,
+      e2eScenarioStatus: result.scenarios.map((scenario) => ({ ...scenario })),
+      confirmations: { ...state.confirmations, e2e: gate },
+    };
+  });
+
+  emit({
+    runId,
+    status: next.confirmations.e2e?.status,
+    failures: (next.e2eScenarioStatus ?? []).filter((s) => s.status !== "passed"),
+    routing: routeNext(next),
+  });
+}
+
+/** §M-CLI-RUN — Everything that makes an E2E result unusable as an attestation. */
+function e2eResultErrors(
+  result: E2EResult,
+  snapshotDigest: string,
+  plan: E2ESelectionPlan,
+): string[] {
+  const errors: string[] = [];
+  if (!result.commitOid) errors.push("commitOid is required");
+  if (!result.completedAt) errors.push("completedAt is required");
+  if (result.snapshotDigest !== snapshotDigest) {
+    errors.push(`result attests snapshot ${result.snapshotDigest}, candidate is ${snapshotDigest}`);
+  }
+  if (result.planDigest !== plan.planDigest) {
+    errors.push(`result attests plan ${result.planDigest}, run holds ${plan.planDigest}`);
+  }
+  if (!Array.isArray(result.scenarios) || result.scenarios.length === 0) {
+    errors.push("at least one executed scenario is required");
+    return errors;
+  }
+
+  const executed = new Set<string>();
+  for (const scenario of result.scenarios) {
+    if (!["passed", "failed", "blocked"].includes(scenario.status)) {
+      errors.push(`${scenario.scenarioId}: status ${JSON.stringify(scenario.status)} is not recognised`);
+    }
+    if (!scenario.evidence) errors.push(`${scenario.scenarioId}: evidence is required`);
+    executed.add(scenario.scenarioId);
+  }
+  for (const id of plan.selectedScenarioIds) {
+    if (!executed.has(id)) errors.push(`selected scenario ${id} was not executed`);
+  }
+  for (const id of executed) {
+    if (!plan.selectedScenarioIds.includes(id)) errors.push(`scenario ${id} is not in the plan`);
+  }
+  return errors;
 }
 
 /**
@@ -417,12 +627,30 @@ export async function commandProposeFix(args: ParsedArgs): Promise<void> {
 }
 
 /**
- * §M-CLI-RUN — Close a finding on a reviewer's or adjudicator's authority.
+ * §M-CLI-RUN — The session a `--by-role` claim resolves to.
  *
- * The role is taken from the recorded session rather than from a flag, so the
- * executor cannot claim to be a reviewer in order to close its own finding.
+ * `--by-role` is a claim, not an identity: nothing in a CLI invocation proves
+ * which model is behind it. What makes the rule enforceable anyway is the check
+ * in `resolveFinding`, which compares the claimed role against the role that
+ * raised the finding — so the executor claiming to be a reviewer still cannot
+ * close a finding the reviewer raised about the executor's own work.
  */
-export async function commandResolveFinding(args: ParsedArgs): Promise<void> {
+function claimedSession(state: RunState, role: SessionRef["role"]): SessionRef {
+  return (
+    state.sessions[role] ?? {
+      backend: "herdr",
+      sessionId: `unrecorded-${role}`,
+      role,
+      generation: state.sessionGeneration[role] ?? 1,
+    }
+  );
+}
+
+/** §M-CLI-RUN — Apply one closing transition to a single finding record. */
+async function closeFinding(
+  args: ParsedArgs,
+  apply: (record: FindingRecord, by: SessionRef) => FindingRecord,
+): Promise<void> {
   const { projectKey } = identityOf(args);
   const runId = requireFlag(args, "run-id");
   const slot = requireFlag(args, "reviewer") as FindingSlot;
@@ -431,19 +659,45 @@ export async function commandResolveFinding(args: ParsedArgs): Promise<void> {
 
   const next = await mutate(projectKey, runId, (state) => {
     const records = state.openFindings?.[slot] ?? [];
-    const resolver: SessionRef = state.sessions[byRole] ?? {
-      backend: "herdr",
-      sessionId: `unrecorded-${byRole}`,
-      role: byRole,
-      generation: state.sessionGeneration[byRole] ?? 1,
-    };
+    if (!records.some((record) => record.finding.id === findingId)) {
+      fail("unknown_finding", `${slot} holds no open finding ${findingId}`);
+    }
+    const by = claimedSession(state, byRole);
     const updated = records.map((record) =>
-      record.finding.id === findingId ? resolveFinding(record, resolver) : record,
+      record.finding.id === findingId ? apply(record, by) : record,
     );
     return { ...state, openFindings: { ...state.openFindings, [slot]: pruneClosedRecords(updated) } };
   });
 
-  emit({ runId, findingId, remaining: next.openFindings?.[slot]?.length ?? 0 });
+  emit({
+    runId,
+    findingId,
+    remaining: next.openFindings?.[slot]?.length ?? 0,
+    blocking: openBlockingRecords(next.openFindings?.[slot] ?? []).length,
+    routing: routeNext(next),
+  });
+}
+
+/**
+ * §M-CLI-RUN — Close a finding on the authority of its raiser or an adjudicator.
+ *
+ * Reviewer A may not close reviewer B's finding, and the executor may close
+ * nobody's: both are the same rule, that the party who decides a problem is
+ * gone must be a party able to see whether it is.
+ */
+export async function commandResolveFinding(args: ParsedArgs): Promise<void> {
+  await closeFinding(args, (record, by) => resolveFinding(record, by));
+}
+
+/**
+ * §M-CLI-RUN — Drop a taste suggestion the executor declined to act on.
+ *
+ * Without this verb a declined suggestion has no exit: it is not a defect, so
+ * no fix is coming, and `resolve-finding` refuses a record with no proposed
+ * fix. The run would sit in the review loop forever over a matter of style.
+ */
+export async function commandDismissTaste(args: ParsedArgs): Promise<void> {
+  await closeFinding(args, (record, by) => dismissTaste(record, by));
 }
 
 /** §M-CLI-RUN — Store the executor's temporary knowledge impact plan. */
@@ -453,6 +707,27 @@ export async function commandKnowledgePlan(args: ParsedArgs): Promise<void> {
   const plan = await readStdinJson<KnowledgeImpactPlan>();
   const next = await mutate(projectKey, runId, (state) => ({ ...state, knowledgeImpactPlan: plan }));
   emit({ runId, knowledgeImpactPlan: next.knowledgeImpactPlan });
+}
+
+/**
+ * §M-CLI-RUN — Refuse to forget an in-flight operation whose effect is unproven.
+ *
+ * `prepared` means the backend may or may not have seen the request and
+ * `uncertain` means it demonstrably could not be classified; forgetting either
+ * turns the next attempt into a blind resend, which is the one thing the
+ * write-ahead protocol exists to prevent. `session reconcile` is the only exit,
+ * and when it cannot decide, the run pauses instead of guessing.
+ */
+function assertClearable(pending: PendingOperation | undefined): void {
+  if (!pending) return;
+  const proven = pending.state === "observed" || (pending.state === "acknowledged" && pending.backendReceipt);
+  if (proven) return;
+  fail(
+    "effect_unproven",
+    `operation ${pending.operationId} is ${pending.state}; its effect is not proven, ` +
+      "so it may only be cleared through `meta-o session reconcile`",
+    { pendingOperation: pending },
+  );
 }
 
 /**
@@ -468,6 +743,7 @@ export async function commandPending(args: ParsedArgs): Promise<void> {
 
   if (boolFlag(args, "clear")) {
     const next = await mutate(projectKey, runId, (state) => {
+      assertClearable(state.pendingOperation);
       const updated = { ...state };
       delete updated.pendingOperation;
       return updated;
@@ -494,34 +770,70 @@ export async function commandSetSession(args: ParsedArgs): Promise<void> {
   emit({ runId, sessions: next.sessions });
 }
 
+/** §M-CLI-RUN — Backend statuses that prove an orchestrator will issue nothing further. */
+const TERMINAL_ORCHESTRATOR_STATUS = new Set(["complete", "failed", "stopped", "absent"]);
+
+/**
+ * §M-CLI-RUN — Ask the backend what became of the orchestrator being replaced.
+ *
+ * Observed, never declared. A caller-supplied status is worth nothing here: the
+ * party most likely to supply it is a fresh orchestrator that has no way of
+ * knowing, and the cost of being wrong is two live generations driving the same
+ * workers. A backend that cannot answer yields `unknown`, which is refused.
+ */
+async function observePreviousOrchestrator(state: RunState): Promise<string> {
+  const session = state.orchestratorSession;
+  if (!session) return "absent";
+  try {
+    return await new HerdrAdapter({ binary: process.env["META_O_HERDR_BIN"] }).status(session);
+  } catch (error) {
+    return `unreadable: ${(error as Error).message}`;
+  }
+}
+
 /**
  * §M-CLI-RUN — Take over a run with a fresh orchestrator generation.
  *
- * Requires explicit proof that the previous orchestrator is terminal or failed;
- * without that, two generations could drive the same run and issue conflicting
+ * Requires proof that the previous orchestrator is terminal or absent; without
+ * that, two generations could drive the same run and issue conflicting
  * instructions to the same workers.
  */
 export async function commandTakeover(args: ParsedArgs): Promise<void> {
   const { projectKey } = identityOf(args);
   const runId = requireFlag(args, "run-id");
-  const proof = requireFlag(args, "previous-status");
-  if (!["complete", "failed", "stopped", "absent"].includes(proof)) {
+  const observed = await observePreviousOrchestrator(loadState(projectKey, runId));
+
+  if (!TERMINAL_ORCHESTRATOR_STATUS.has(observed)) {
     fail(
       "takeover_unproven",
-      `previous orchestrator status ${proof} does not prove it is terminal; takeover refused`,
+      `the backend reports the previous orchestrator as ${observed}; ` +
+        "takeover requires it to be complete, failed, stopped or absent",
+      { observedStatus: observed },
     );
   }
+
   const next = await mutate(projectKey, runId, (state) => ({
     ...state,
     orchestratorGeneration: state.orchestratorGeneration + 1,
   }));
-  emit({ runId, orchestratorGeneration: next.orchestratorGeneration, routing: routeNext(next) });
+  emit({
+    runId,
+    previousStatus: observed,
+    orchestratorGeneration: next.orchestratorGeneration,
+    routing: routeNext(next),
+  });
 }
 
 /** §M-CLI-RUN — Write the optional executor handoff, refusing to truncate it. */
 export async function commandHandoff(args: ParsedArgs): Promise<void> {
   const { projectKey } = identityOf(args);
   const runId = requireFlag(args, "run-id");
+  if (loadState(projectKey, runId).handoffEnabled !== true) {
+    fail(
+      "handoff_not_enabled",
+      "this run did not start with handoff consent; start it with --handoff or set handoffDefault",
+    );
+  }
   const content = await readStdin();
   try {
     writeHandoff(projectKey, runId, content);

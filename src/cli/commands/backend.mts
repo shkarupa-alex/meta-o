@@ -9,14 +9,13 @@
 
 import { randomUUID } from "node:crypto";
 import {
-  appendFileSync,
   closeSync,
   constants as fsConstants,
+  lstatSync,
   mkdirSync,
   openSync,
   renameSync,
   rmSync,
-  statSync,
   writeSync,
 } from "node:fs";
 import { dirname } from "node:path";
@@ -28,14 +27,27 @@ import {
   runSmokeSuite,
   type SuiteContext,
 } from "../../adapters/capability-suite.mjs";
-import { Watchdog, type WatchdogLogEntry } from "../../watchdog/watchdog.mjs";
-import { parseResetTime } from "../../watchdog/classifier.mjs";
+import { Watchdog, type RunMemory, type WatchdogLogEntry } from "../../watchdog/watchdog.mjs";
+import { classifyWithFallback, parseResetTime, type LocalClassifier } from "../../watchdog/classifier.mjs";
 import { listRuns, readState } from "../../core/state-store.mjs";
-import { readSecureJson } from "../../core/safe-fs.mjs";
-import { watchdogConfigPath, watchdogLockPath, watchdogLogPath } from "../../core/paths.mjs";
+import { readSecureJson, writeSecureJson } from "../../core/safe-fs.mjs";
+import type { JsonValue } from "../../core/canonical-json.mjs";
+import {
+  projectMetadataPath,
+  watchdogConfigPath,
+  watchdogLockPath,
+  watchdogLogPath,
+  watchdogMemoryPath,
+} from "../../core/paths.mjs";
 import { resolveProjectIdentity } from "../../core/project-key.mjs";
 import { isoTimestamp } from "../../core/clock.mjs";
-import type { ModelRef, RunState, SessionStatus, WatchdogConfig } from "../../core/types.mjs";
+import type {
+  ModelRef,
+  RunState,
+  SessionStatus,
+  TailClassification,
+  WatchdogConfig,
+} from "../../core/types.mjs";
 import { boolFlag, emit, fail, optionalFlag, type ParsedArgs } from "../args.mjs";
 
 /** §M-CLI-BACKEND — Maximum watchdog log size before rotation. */
@@ -45,6 +57,26 @@ const LOG_ROTATE_BYTES = 4 * 1024 * 1024;
 export const WAKE_PROMPT =
   "Read the orchestrate-feature-herdr skill, this run's state.json and the backend session " +
   "status, then continue the run from whatever the routing table prescribes.";
+
+/**
+ * §M-CLI-BACKEND — What an orchestrator is told when an effect cannot be proven.
+ *
+ * Deliberately different from the wake prompt. "Continue from the routing
+ * table" is wrong advice here: the run has an in-flight operation whose effect
+ * is unknown, and the only correct next move is to reconcile it and, failing
+ * that, pause. A generic wake would invite exactly the blind retry the protocol
+ * forbids.
+ */
+export const UNCERTAINTY_PROMPT =
+  "A backend operation on this run cannot be proven applied or not applied. Do not resend " +
+  "anything. Run `meta-o session reconcile --run-id <id>`; if it still answers unknown, leave " +
+  "the run in PAUSED_BACKEND_UNCERTAIN and tell the user what evidence is missing.";
+
+/** §M-CLI-BACKEND — What an orchestrator is told when the backend lost a capability. */
+export const CAPABILITY_REGRESSION_PROMPT =
+  "The backend no longer supports a capability this workflow depends on. Do not start new " +
+  "sessions. Run `meta-o adapter capabilities`, report the blocking reasons to the user, and " +
+  "move the run to FAILED_BACKEND if they cannot be resolved.";
 
 /** §M-CLI-BACKEND — Build the adapter for the configured backend. */
 function adapterFor(args: ParsedArgs): HerdrAdapter {
@@ -84,11 +116,21 @@ export async function commandCapabilitySuite(args: ParsedArgs): Promise<void> {
     family: optionalFlag(args, "family") ?? "unknown",
     model: optionalFlag(args, "model") ?? "default",
   };
+  // The spec asks the full suite to prove *the chosen routes*, plural: a
+  // backend can host one CLI perfectly and fail to launch another, and finding
+  // that out when the cross-vendor reviewer is spawned costs a whole run.
+  const additionalModels: ModelRef[] = (optionalFlag(args, "also-routes") ?? "")
+    .split(",")
+    .map((route) => route.trim())
+    .filter((route) => route !== "" && route !== model.route)
+    .map((route) => ({ ...model, route: route as ModelRef["route"] }));
+
   const context: SuiteContext = {
     adapter,
     backend: "herdr",
     cwd: optionalFlag(args, "cwd") ?? process.cwd(),
     model,
+    ...(additionalModels.length > 0 ? { additionalModels } : {}),
   };
 
   const report = boolFlag(args, "full")
@@ -100,9 +142,41 @@ export async function commandCapabilitySuite(args: ParsedArgs): Promise<void> {
   if (report.blocked) process.exitCode = 1;
 }
 
-/** §M-CLI-BACKEND — Load the watchdog configuration, or report that it is absent. */
+/**
+ * §M-CLI-BACKEND — Load the watchdog configuration, or report that it is absent.
+ *
+ * Validated rather than trusted: the file is hand-edited, and an unreadable one
+ * used to surface as `project_keys is not iterable` from deep inside the loop.
+ * A configuration problem must read as a configuration problem.
+ */
 function loadWatchdogConfig(): WatchdogConfig | undefined {
-  return readSecureJson<WatchdogConfig>(watchdogConfigPath());
+  let raw: unknown;
+  try {
+    raw = readSecureJson<unknown>(watchdogConfigPath());
+  } catch (error) {
+    fail("invalid_watchdog_config", `${watchdogConfigPath()}: ${(error as Error).message}`);
+  }
+  if (raw === undefined) return undefined;
+
+  const config = raw as Partial<WatchdogConfig>;
+  const problems: string[] = [];
+  if (typeof config.enabled !== "boolean") problems.push("enabled must be a boolean");
+  if (!Array.isArray(config.project_keys)) problems.push("project_keys must be an array of keys");
+  else if (config.project_keys.some((key) => typeof key !== "string")) {
+    problems.push("every entry of project_keys must be a string");
+  }
+  for (const numeric of ["poll_interval_seconds", "max_backoff_seconds"] as const) {
+    const value = config[numeric];
+    if (value !== undefined && (typeof value !== "number" || !Number.isFinite(value) || value <= 0)) {
+      problems.push(`${numeric} must be a positive number of seconds`);
+    }
+  }
+  if (config.classifier_mode !== undefined && !["deterministic", "hybrid"].includes(config.classifier_mode)) {
+    problems.push("classifier_mode must be deterministic or hybrid");
+  }
+  if (problems.length > 0) fail("invalid_watchdog_config", problems.join("; "));
+
+  return config as WatchdogConfig;
 }
 
 /** §M-CLI-BACKEND — Show whether the watchdog is enabled and what it watches. */
@@ -126,11 +200,20 @@ function appendLog(entry: WatchdogLogEntry): void {
   const path = watchdogLogPath();
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   try {
-    if (statSync(path).size > LOG_ROTATE_BYTES) renameSync(path, `${path}.1`);
+    if (lstatSync(path).size > LOG_ROTATE_BYTES) renameSync(path, `${path}.1`);
   } catch {
     /* the log does not exist yet */
   }
-  appendFileSync(path, `${JSON.stringify(entry)}\n`, { mode: 0o600 });
+  // `O_NOFOLLOW` rather than a plain append: this file lives in the same
+  // directory as run state and is written by a long-lived background process,
+  // so a symlink planted at the path would otherwise redirect every line the
+  // watchdog writes for as long as it runs.
+  const fd = openSync(
+    path,
+    fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_APPEND | fsConstants.O_NOFOLLOW,
+    0o600,
+  );
+  writeFileSyncFd(fd, `${JSON.stringify(entry)}\n`);
 }
 
 /**
@@ -165,27 +248,73 @@ export async function commandWatchdogRun(args: ParsedArgs): Promise<void> {
     }
   };
 
+  const hybrid = config.classifier_mode === "hybrid";
   const watchdog = new Watchdog({
     config,
     listRuns,
     readState,
     orchestratorStatus,
     reconcile: async (_state, operation) => adapter.reconcile(operation),
+    readSession: async (state, cursor) => {
+      if (!state.orchestratorSession) return undefined;
+      try {
+        return await adapter.read(state.orchestratorSession, cursor);
+      } catch {
+        return undefined;
+      }
+    },
+    classifyTail: async (tail) => classifyWithFallback(tail, hybrid ? localClassifier() : undefined),
     wakeOrchestrator: async (state) => {
       if (!state.orchestratorSession) return;
       await adapter.send(state.orchestratorSession, randomUUID(), WAKE_PROMPT);
+    },
+    surfaceUncertainty: async (state, operation) => {
+      const message = operation
+        ? `${UNCERTAINTY_PROMPT}\n\nPending operation: ${operation.kind} ${operation.operationId} (${operation.state}).`
+        : CAPABILITY_REGRESSION_PROMPT;
+      if (state.orchestratorSession) {
+        await adapter.send(state.orchestratorSession, randomUUID(), message);
+        return;
+      }
+      // Nobody is listening, so the only remaining channel is the durable log a
+      // human reads. Staying silent here is what turned an uncertain operation
+      // on a dead orchestrator into a run stuck forever with no trace of why.
+      appendLog({
+        timestamp: isoTimestamp(),
+        projectKey: state.projectKey,
+        runId: state.runId,
+        phase: state.phase,
+        observedStatus: "absent",
+        action: "surface_uncertainty",
+        reason: `${message} (no orchestrator session to tell; user action required)`,
+        outcome: "failed",
+      });
     },
     spawnOrchestrator: async (state) => {
       const session = await adapter.spawn({
         operationId: randomUUID(),
         role: "orchestrator",
         model: state.modelSet.executor,
-        prompt: WAKE_PROMPT,
-        cwd: process.cwd(),
+        prompt: "",
+        cwd: projectDirectoryOf(state),
       });
       await adapter.send(session, randomUUID(), WAKE_PROMPT);
     },
-    quotaResumeAtMs: (state) => parseResetTime(state.paused?.reason ?? ""),
+    capabilityRegression: async () => (await adapter.capabilityReport()).blockingReasons,
+    reloadConfig: loadWatchdogConfig,
+    quotaResumeAtMs: (state, nowMs) => parseResetTime(state.paused?.reason ?? "", nowMs),
+    loadMemory: (key) => readWatchdogMemory()[key],
+    saveMemory: (key, memory) => {
+      const all = readWatchdogMemory();
+      all[key] = memory;
+      writeWatchdogMemory(all);
+    },
+    forgetMemory: (key) => {
+      const all = readWatchdogMemory();
+      if (!(key in all)) return;
+      delete all[key];
+      writeWatchdogMemory(all);
+    },
     log: appendLog,
   });
 
@@ -199,6 +328,58 @@ export async function commandWatchdogRun(args: ParsedArgs): Promise<void> {
   } finally {
     instanceLock.release();
   }
+}
+
+/**
+ * §M-CLI-BACKEND — The repository a recovered orchestrator must be started in.
+ *
+ * Taken from the project's own recorded canonical path, never from the
+ * watchdog's working directory: run as a service, that directory belongs to
+ * launchd or systemd, and every project's replacement orchestrator would open
+ * outside the repository it is meant to be driving.
+ */
+function projectDirectoryOf(state: RunState): string {
+  const metadata = readSecureJson<{ canonicalPath?: string }>(projectMetadataPath(state.projectKey));
+  if (!metadata?.canonicalPath) {
+    throw new Error(`project ${state.projectKey} has no recorded canonical path`);
+  }
+  return metadata.canonicalPath;
+}
+
+/** §M-CLI-BACKEND — Durable per-run watchdog bookkeeping, keyed by project/run. */
+function readWatchdogMemory(): Record<string, RunMemory> {
+  try {
+    return readSecureJson<Record<string, RunMemory>>(watchdogMemoryPath()) ?? {};
+  } catch {
+    // Corrupt bookkeeping is not worth failing over: the worst case is one
+    // duplicate wake, whereas refusing to start loses unattended recovery
+    // entirely.
+    return {};
+  }
+}
+
+/** §M-CLI-BACKEND — Persist watchdog bookkeeping so a restart does not re-act. */
+function writeWatchdogMemory(all: Record<string, RunMemory>): void {
+  writeSecureJson(watchdogMemoryPath(), all as unknown as JsonValue);
+}
+
+/**
+ * §M-CLI-BACKEND — Local classifier hook for hybrid mode.
+ *
+ * Hybrid mode is configuration, not code: a deployment that wants a local model
+ * points `META_O_LOCAL_CLASSIFIER` at an executable that reads a sanitized tail
+ * on stdin and prints one of the four labels. Absent that, hybrid degrades to
+ * deterministic, which is the same answer the classifier would give anyway when
+ * it abstains.
+ */
+function localClassifier(): LocalClassifier | undefined {
+  const binary = process.env["META_O_LOCAL_CLASSIFIER"];
+  if (!binary) return undefined;
+  return async (sanitizedTail: string): Promise<TailClassification> => {
+    const { execFileSync } = await import("node:child_process");
+    const out = execFileSync(binary, [], { input: sanitizedTail, encoding: "utf8", timeout: 20_000 });
+    return out.trim() as TailClassification;
+  };
 }
 
 /**
@@ -227,7 +408,16 @@ function acquireSingleInstanceLock(): { release(): void } | undefined {
       };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      const holder = readSecureJson<{ pid?: number }>(path);
+      // A lock file is created before its pid is written, so a crash inside
+      // that window leaves an empty or half-written one. Treating an unreadable
+      // holder as dead is what keeps that momentary crash from disabling
+      // unattended recovery permanently.
+      let holder: { pid?: number } | undefined;
+      try {
+        holder = readSecureJson<{ pid?: number }>(path);
+      } catch {
+        holder = undefined;
+      }
       if (holder?.pid === undefined || !processAlive(holder.pid)) {
         rmSync(path, { force: true });
         continue;

@@ -21,6 +21,46 @@ export const SCENARIO_REF = /^[^#\s]+\.md#[a-z0-9][a-z0-9-]*$/;
 /** §M-E2E-REGISTRY — Allowed verification outcomes of one scenario. */
 const SCENARIO_STATUS = new Set(["passed", "failed", "blocked"]);
 
+/**
+ * §M-E2E-REGISTRY — The complete field list of a scenario and of its `last_run`.
+ *
+ * The catalog is a catalog plus a compact receipt, and the schema is closed so
+ * that it stays one. An open schema is how screenshots, raw logs and model
+ * reasoning end up in a tracked file that every future diff has to carry — and
+ * how a scenario acquires fields no reviewer ever agreed to attest.
+ */
+const SCENARIO_FIELDS = new Set([
+  "scenario_id",
+  "scenario_ref",
+  "business_links",
+  "always_required",
+  "tags",
+  "last_run",
+]);
+
+/** §M-E2E-REGISTRY — The complete field list of one `last_run` receipt. */
+const LAST_RUN_FIELDS = new Set([
+  "snapshot_digest",
+  "provenance_commit",
+  "run_id",
+  "spec_sha256",
+  "verified_at",
+  "status",
+  "environment",
+]);
+
+/** §M-E2E-REGISTRY — Report any field the closed schema does not declare. */
+function rejectUnknownFields(
+  record: Record<string, unknown>,
+  allowed: ReadonlySet<string>,
+  where: string,
+  errors: string[],
+): void {
+  for (const key of Object.keys(record)) {
+    if (!allowed.has(key)) errors.push(`${where}: unknown field ${JSON.stringify(key)}`);
+  }
+}
+
 /** §M-E2E-REGISTRY — Validation outcome with every problem found, not just the first. */
 export interface ValidationOutcome {
   ok: boolean;
@@ -40,19 +80,12 @@ function validateLastRun(scenario: Record<string, unknown>, id: string, errors: 
     errors.push(`${id}: last_run must be an object`);
     return;
   }
-  for (const field of [
-    "snapshot_digest",
-    "provenance_commit",
-    "run_id",
-    "spec_sha256",
-    "verified_at",
-    "status",
-    "environment",
-  ]) {
+  for (const field of LAST_RUN_FIELDS) {
     if (typeof lastRun[field] !== "string" || lastRun[field] === "") {
       errors.push(`${id}: last_run.${field} must be a non-empty string`);
     }
   }
+  rejectUnknownFields(lastRun, LAST_RUN_FIELDS, `${id}: last_run`, errors);
   const status = lastRun["status"];
   if (typeof status === "string" && !SCENARIO_STATUS.has(status)) {
     errors.push(`${id}: last_run.status must be passed|failed|blocked, got ${status}`);
@@ -122,12 +155,14 @@ export function validateRegistry(value: unknown): ValidationOutcome {
     }
 
     validateLastRun(raw, id, errors);
+    rejectUnknownFields(raw, SCENARIO_FIELDS, id, errors);
   });
 
   if (alwaysRequired === 0) {
     errors.push("at least one scenario must have always_required: true");
   }
 
+  rejectUnknownFields(value, new Set(["schema_version", "scenarios"]), "registry", errors);
   return { ok: errors.length === 0, errors };
 }
 

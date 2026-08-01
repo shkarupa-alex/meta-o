@@ -24,9 +24,11 @@ import {
 import { detectWeakening, evaluateQc, validateManifest, validateResult } from "../../core/qc.mjs";
 import { validateReviewResult, isStaleResult } from "../../core/findings.mjs";
 import { buildAnchorIndex, businessAnchors, validateChain } from "../../core/knowledge.mjs";
+import { collectModuleAnchors } from "../../core/module-anchors.mjs";
 import { createGateWorktree } from "../../core/worktree.mjs";
 import { assertCleanWorktree } from "../../core/git.mjs";
-import { readState } from "../../core/state-store.mjs";
+import { commitState, readState, withWriterLock } from "../../core/state-store.mjs";
+import { isoTimestamp } from "../../core/clock.mjs";
 import { qcResultPath } from "../../core/paths.mjs";
 import { fetchSpec } from "../../core/spec-input.mjs";
 import type {
@@ -82,7 +84,7 @@ export function commandSnapshotDigest(args: ParsedArgs): void {
  * alternative is a run that edits content it has already claimed to have
  * verified.
  */
-export function commandVerifyMetadata(args: ParsedArgs): void {
+export async function commandVerifyMetadata(args: ParsedArgs): Promise<void> {
   const { repoDir, projectKey } = repoOf(args);
   const runId = requireFlag(args, "run-id");
   const state = readState(projectKey, runId);
@@ -91,21 +93,42 @@ export function commandVerifyMetadata(args: ParsedArgs): void {
   const attested = optionalFlag(args, "attested") ?? state.candidateSnapshot?.provenanceCommit;
   if (!attested) fail("no_candidate", "the run has no attested candidate commit");
 
-  const results = (state.e2ePlan?.selectedScenarioIds ?? []).map((scenarioId) => ({
-    scenarioId,
-    status: "passed" as const,
-  }));
-  const expected = new Map(results.map((item) => [item.scenarioId, item.status]));
+  const observed = state.e2eScenarioStatus;
+  if (!observed || observed.length === 0) {
+    fail(
+      "no_e2e_result",
+      "no executed E2E result is recorded for this run; record one with `meta-o run record-e2e` " +
+        "before verifying the metadata commit",
+    );
+  }
+  const expected = new Map(observed.map((item) => [item.scenarioId, item.status]));
 
+  const metadataCommit = optionalFlag(args, "metadata") ?? "HEAD";
   const report = verifyMetadataCommit({
     repoDir,
     attestedCommit: attested,
-    metadataCommit: optionalFlag(args, "metadata") ?? "HEAD",
+    metadataCommit,
     expectedRunId: runId,
     expectedSpecSha256: state.spec.sha256,
     expectedScenarioStatus: expected,
   });
-  emit(report);
+
+  if (report.ok && state.candidateSnapshot) {
+    await withWriterLock(projectKey, runId, () => {
+      const current = readState(projectKey, runId);
+      if (!current?.candidateSnapshot) fail("unknown_run", `run ${runId} disappeared`);
+      return commitState({
+        ...current,
+        metadataVerified: {
+          snapshotDigest: current.candidateSnapshot.digest,
+          metadataCommit,
+          verifiedAt: isoTimestamp(),
+        },
+      });
+    });
+  }
+
+  emit({ ...report, expectedScenarioStatus: Object.fromEntries(expected) });
   if (!report.ok) process.exitCode = 1;
 }
 
@@ -304,11 +327,13 @@ export function commandKnowledgeValidate(args: ParsedArgs): void {
   }
 
   const index = buildAnchorIndex(files);
-  const validation = validateChain(index);
+  const moduleAnchors = collectModuleAnchors(repoDir);
+  const validation = validateChain(index, moduleAnchors);
   emit({
     ...validation,
     documents: files.map((file) => file.path),
     anchors: index.sections.length,
+    moduleAnchors: moduleAnchors.length,
     duplicates: index.duplicates,
   });
   if (!validation.ok) process.exitCode = 1;

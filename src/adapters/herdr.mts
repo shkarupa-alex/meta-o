@@ -359,8 +359,15 @@ export class HerdrAdapter implements SessionAdapter {
    * operation would make a crash between them unclassifiable — exactly the
    * ambiguity the no-blind-resend rule must avoid. The orchestrator follows a
    * spawn with a `send` carrying `SpawnRequest.prompt`.
+   *
+   * `onPaneCreated` exists because a spawn is itself two backend calls. The
+   * pane id is unknowable until the first returns, so a probe written before
+   * the whole operation cannot name it, and `reconcile` is then unable to prove
+   * anything about a spawn that failed — which strands the run in
+   * `PAUSED_BACKEND_UNCERTAIN`. Recording the pane the moment it exists closes
+   * that gap.
    */
-  async spawn(request: SpawnRequest): Promise<SessionRef> {
+  async spawn(request: SpawnRequest, onPaneCreated?: (paneId: string) => Promise<void>): Promise<SessionRef> {
     const agentName = agentNameFor(this.prefix, request.role, request.operationId);
 
     const existing = await this.agentInfo(agentName);
@@ -380,6 +387,7 @@ export class HerdrAdapter implements SessionAdapter {
     const pane = split["pane"] as { pane_id?: string } | undefined;
     const paneId = pane?.pane_id;
     if (!paneId) throw new Error("herdr pane split did not return a pane id");
+    if (onPaneCreated) await onPaneCreated(paneId);
 
     await this.call(
       [
@@ -587,9 +595,18 @@ export class HerdrAdapter implements SessionAdapter {
 
     if (operation.kind === "spawn") {
       if (info) return { operationId: operation.operationId, effect: "applied" };
-      if (probe.paneId && !(await this.paneExists(probe.paneId))) {
+      if (!probe.paneId) {
+        // No agent, and the probe never recorded a pane — so `pane split` never
+        // returned, and nothing this operation would have created exists. A
+        // retry cannot duplicate a worker that was never started.
         return { operationId: operation.operationId, effect: "not_applied" };
       }
+      if (!(await this.paneExists(probe.paneId))) {
+        return { operationId: operation.operationId, effect: "not_applied" };
+      }
+      // The pane exists but carries no agent: `agent start` may still be racing
+      // to register, and answering `not_applied` here is how a duplicate worker
+      // gets created.
       return { operationId: operation.operationId, effect: "unknown" };
     }
 

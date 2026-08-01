@@ -78,16 +78,29 @@ export function classifyTail(tail: string): TailClassification {
 }
 
 /**
- * §M-CLASSIFIER — Extract a provably stated quota reset time.
+ * §M-CLASSIFIER — Extract a provably stated quota reset time, as an epoch.
  *
  * Only unambiguous machine formats are accepted. "Resets at 3:00" is not
  * parsed, because its timezone and date are guesses, and a guessed wake time is
  * exactly the class of probabilistic action the watchdog must not take.
+ *
+ * Every branch returns the same thing: the wall-clock instant the window
+ * reopens. `retry-after` is a *duration* in the protocols that carry it, so it
+ * is added to `nowMs`; returning the raw seconds would produce an instant in
+ * 1970, which compares as "already reopened" and resumes the run straight back
+ * into the closed window.
+ *
+ * The absolute forms must be introduced by a reset or retry keyword. Any
+ * timestamp anywhere in the text would otherwise do — including the pause's own
+ * `enteredAt`, which is the one timestamp guaranteed to be in the past.
  */
-export function parseResetTime(tail: string): number | undefined {
+export function parseResetTime(tail: string, nowMs: number = Date.now()): number | undefined {
   const text = sanitizeTail(tail);
 
-  const iso = /\b(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2}))/.exec(text);
+  const iso =
+    /\b(?:reset|retry|resumes?|available|try again)[a-z-]*\b[^\n]{0,40}?\b(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2}))/i.exec(
+      text,
+    );
   if (iso) {
     const value = Date.parse(iso[1]!.replace(" ", "T"));
     if (Number.isFinite(value)) return value;
@@ -100,8 +113,8 @@ export function parseResetTime(tail: string): number | undefined {
     if (Number.isFinite(value)) return value;
   }
 
-  const retryAfter = /\bretry-after["' :=]+(\d{1,6})\b/i.exec(text);
-  if (retryAfter) return Number(retryAfter[1]) * 1000;
+  const retryAfter = /\bretry[-_ ]?after["' :=]+(\d{1,6})\b/i.exec(text);
+  if (retryAfter) return nowMs + Number(retryAfter[1]) * 1000;
 
   return undefined;
 }

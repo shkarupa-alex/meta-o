@@ -11,12 +11,15 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createTempHome, createTempRepo, seedProjectContract, type TempRepo } from "./helpers.mts";
 import type { E2ESelectionPlan } from "../dist/core/types.mjs";
+
+/** §M-TEST-CLI — The scripted backend stand-in, for the one test that needs a session. */
+const FAKE_HERDR = fileURLToPath(new URL("./fixtures/fake-herdr.mjs", import.meta.url));
 
 /** §M-TEST-CLI — Path to the compiled CLI under test. */
 const CLI = fileURLToPath(new URL("../dist/cli/meta-o.mjs", import.meta.url));
@@ -34,6 +37,7 @@ interface CliContext {
   cwd: string;
   home: string;
   stdin?: string;
+  env?: Record<string, string>;
 }
 
 /**
@@ -49,7 +53,7 @@ function cli(args: string[], options: CliContext): CliResult {
       cwd: options.cwd,
       encoding: "utf8",
       input: options.stdin ?? "",
-      env: { ...process.env, META_O_HOME: options.home },
+      env: { ...process.env, META_O_HOME: options.home, ...options.env },
     });
     return { code: 0, stdout, stderr: "", json: parseJson(stdout) };
   } catch (error) {
@@ -110,21 +114,76 @@ function seededRepo(): TempRepo {
   const repo = createTempRepo();
   seedProjectContract(repo);
   repo.write("spec/feature.md", "# Feature\n\nAdd a checkout confirmation step.\n");
-  repo.write("src/app.py", '"""§M-APP — entry point."""\n');
+  repo.write("src/app.py", '"""§M-APP — entry point. Implements §A-APP-01."""\n');
   repo.commit("seed project");
   return repo;
 }
 
+/**
+ * §M-TEST-CLI — Write the completion metadata commit's `last_run` receipts.
+ *
+ * Kept faithful to what the executor really writes, because the guard the test
+ * then runs is only meaningful against a realistic commit: a fixture that
+ * skipped a field would prove the guard tolerant rather than correct.
+ */
+function writeLastRun(
+  repo: TempRepo,
+  input: {
+    runId: string;
+    snapshotDigest: string;
+    provenanceCommit: string;
+    specSha256: string;
+    statuses: Array<{ scenarioId: string; status: string }>;
+  },
+): void {
+  const registry = JSON.parse(readFileSync(join(repo.dir, "docs/architecture/e2e.json"), "utf8")) as {
+    scenarios: Array<Record<string, unknown>>;
+  };
+  const byId = new Map(input.statuses.map((item) => [item.scenarioId, item.status]));
+  for (const scenario of registry.scenarios) {
+    const status = byId.get(scenario["scenario_id"] as string);
+    if (!status) continue;
+    scenario["last_run"] = {
+      snapshot_digest: input.snapshotDigest,
+      provenance_commit: input.provenanceCommit,
+      run_id: input.runId,
+      spec_sha256: input.specSha256,
+      verified_at: "2026-07-24T12:30:00Z",
+      status,
+      environment: "local",
+    };
+  }
+  repo.write("docs/architecture/e2e.json", `${JSON.stringify(registry, null, 2)}\n`);
+}
+
 /** §M-TEST-CLI — Bring a project to the point where a run exists. */
-function startRun(context: CliContext): string {
+function startRun(context: CliContext, extra: string[] = []): string {
   ok(cli(["project", "init"], context), "project init");
   ok(cli(["project", "set-settings"], { ...context, stdin: SETTINGS }), "project set-settings");
   const started = ok(
-    cli(["run", "start", "--spec-kind", "tracked", "--spec-locator", "spec/feature.md"], context),
+    cli(
+      ["run", "start", "--spec-kind", "tracked", "--spec-locator", "spec/feature.md", ...extra],
+      context,
+    ),
     "run start",
   );
   return started.json["runId"] as string;
 }
+
+test("a handoff is refused unless the run started with consent", () => {
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    const refused = cli(["run", "handoff", "--run-id", runId], { ...context, stdin: "note" });
+    assert.equal(refused.code, 1);
+    assert.equal(errorCode(refused), "handoff_not_enabled");
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
 
 test("a run walks from start to COMPLETE only with four attestations on one snapshot", () => {
   const repo = seededRepo();
@@ -138,6 +197,7 @@ test("a run walks from start to COMPLETE only with four attestations on one snap
 
     const runId = startRun(context);
     const shown = ok(cli(["run", "show", "--run-id", runId], context), "run show");
+    const specSha256 = (shown.json["spec"] as { sha256: string }).sha256;
     assert.match(shown.json["specBlob"] as string, /\/input\/spec-[0-9a-f]{64}\.md$/);
     assert.equal(
       action(ok(cli(["run", "route", "--run-id", runId], context), "route")),
@@ -154,7 +214,7 @@ test("a run walks from start to COMPLETE only with four attestations on one snap
 
     const candidate = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
     const snapshotDigest = candidate.json["snapshotDigest"] as string;
-    const commitOid = candidate.json["provenanceCommit"] as string;
+    const candidateCommit = candidate.json["provenanceCommit"] as string;
     assert.equal(action(candidate), "await_selection_plan");
 
     const plan = ok(
@@ -162,7 +222,7 @@ test("a run walks from start to COMPLETE only with four attestations on one snap
         ...context,
         stdin: JSON.stringify({
           schemaVersion: 1,
-          commitOid,
+          commitOid: candidateCommit,
           selectedScenarioIds: ["E2E-CHECKOUT-01", "E2E-SMOKE-01"],
           selectionRationale: "checkout is impacted; the canary always runs",
           impactedBusinessLinks: ["§B-CHECKOUT-01"],
@@ -194,60 +254,65 @@ test("a run walks from start to COMPLETE only with four attestations on one snap
       cli(["run", "record-gate", "--run-id", runId, "--gate", "qc", "--status", "passed"], context),
       "record qc",
     );
-    assert.equal(action(afterQc), "run_reviews");
+    assert.equal(action(afterQc), "run_smoke", "the smoke gate stands before the reviewers");
 
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "SMOKE_PREFLIGHT"], context), "→ SMOKE");
+    const afterSmoke = ok(
+      cli(["run", "record-gate", "--run-id", runId, "--gate", "smoke", "--status", "passed"], context),
+      "record smoke",
+    );
+    assert.equal(action(afterSmoke), "run_reviews");
+
     ok(
       cli(["run", "transition", "--run-id", runId, "--phase", "REVIEW_STABILIZATION"], context),
       "→ REVIEW",
     );
 
+    const review = (reviewer: string): string =>
+      JSON.stringify({
+        reviewer,
+        commitOid: candidateCommit,
+        snapshotDigest,
+        planDigest: plan.planDigest,
+        selectionPlanVerdict: "complete",
+        verdict: "passed",
+        findings: [],
+        completedAt: "2026-07-24T12:00:00Z",
+      });
+
     const afterPrimary = ok(
-      cli(
-        ["run", "record-gate", "--run-id", runId, "--gate", "reviewerPrimary", "--status", "passed"],
-        context,
-      ),
+      cli(["run", "record-review", "--run-id", runId], { ...context, stdin: review("reviewerPrimary") }),
       "record reviewerPrimary",
     );
     assert.equal(action(afterPrimary), "run_reviews", "one review is not two");
 
     const afterCross = ok(
-      cli(
-        [
-          "run",
-          "record-gate",
-          "--run-id",
-          runId,
-          "--gate",
-          "reviewerCrossVendor",
-          "--status",
-          "passed",
-        ],
-        context,
-      ),
+      cli(["run", "record-review", "--run-id", runId], {
+        ...context,
+        stdin: review("reviewerCrossVendor"),
+      }),
       "record reviewerCrossVendor",
     );
     assert.equal(action(afterCross), "run_selected_e2e");
 
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "E2E_STABILIZATION"], context), "→ E2E");
-    const e2e = ok(
-      cli(["e2e", "result", "--run-id", runId], {
+    const scenarios = [
+      { scenarioId: "E2E-SMOKE-01", status: "passed", evidence: "boot ok" },
+      { scenarioId: "E2E-CHECKOUT-01", status: "passed", evidence: "checkout ok" },
+    ];
+    const afterE2e = ok(
+      cli(["run", "record-e2e", "--run-id", runId], {
         ...context,
         stdin: JSON.stringify({
-          planDigest: plan.planDigest,
+          commitOid: candidateCommit,
           snapshotDigest,
-          scenarios: [
-            { scenarioId: "E2E-SMOKE-01", status: "passed", evidence: "boot ok" },
-            { scenarioId: "E2E-CHECKOUT-01", status: "passed", evidence: "checkout ok" },
-          ],
+          planDigest: plan.planDigest,
+          selectedScenarioIds: plan.selectedScenarioIds,
+          selectionRationale: plan.selectionRationale,
+          scenarios,
+          completedAt: "2026-07-24T12:30:00Z",
         }),
       }),
-      "e2e result",
-    );
-    assert.equal(e2e.json["pass"], true);
-
-    const afterE2e = ok(
-      cli(["run", "record-gate", "--run-id", runId, "--gate", "e2e", "--status", "passed"], context),
       "record e2e",
     );
     assert.equal(action(afterE2e), "finalize_metadata");
@@ -259,6 +324,22 @@ test("a run walks from start to COMPLETE only with four attestations on one snap
       cli(["run", "transition", "--run-id", runId, "--phase", "FINALIZE_METADATA"], context),
       "→ FINALIZE",
     );
+
+    // COMPLETE is refused until the metadata commit has actually been inspected.
+    const withoutMetadata = cli(["run", "transition", "--run-id", runId, "--phase", "COMPLETE"], context);
+    assert.equal(withoutMetadata.code, 1);
+    assert.equal(errorCode(withoutMetadata), "metadata_not_verified");
+
+    writeLastRun(repo, {
+      runId,
+      snapshotDigest,
+      provenanceCommit: candidateCommit,
+      specSha256,
+      statuses: scenarios,
+    });
+    repo.commit("record last_run for the verified scenarios");
+    ok(cli(["snapshot", "verify-metadata", "--run-id", runId], context), "verify-metadata");
+
     const completed = ok(
       cli(["run", "transition", "--run-id", runId, "--phase", "COMPLETE"], context),
       "→ COMPLETE",
@@ -330,7 +411,7 @@ test("a gate result for a superseded snapshot is refused", () => {
     const staleDigest = ok(cli(["run", "set-candidate", "--run-id", runId], context), "candidate 1")
       .json["snapshotDigest"] as string;
 
-    repo.write("src/app.py", '"""§M-APP — entry point, revised."""\n');
+    repo.write("src/app.py", '"""§M-APP — entry point, revised. Implements §A-APP-01."""\n');
     repo.commit("second candidate");
     const second = ok(cli(["run", "set-candidate", "--run-id", runId], context), "candidate 2");
     assert.notEqual(second.json["snapshotDigest"], staleDigest);
@@ -372,7 +453,7 @@ test("changing the candidate invalidates attestations of the previous one", () =
       "record qc",
     );
 
-    repo.write("src/app.py", '"""§M-APP — changed again."""\n');
+    repo.write("src/app.py", '"""§M-APP — changed again. Implements §A-APP-01."""\n');
     repo.commit("third candidate");
     const updated = ok(cli(["run", "set-candidate", "--run-id", runId], context), "candidate 2");
 
@@ -392,17 +473,23 @@ test("a takeover is refused unless the previous orchestrator is provably termina
   try {
     const runId = startRun(context);
 
-    const refused = cli(
-      ["run", "takeover", "--run-id", runId, "--previous-status", "running"],
-      context,
-    );
+    // A live orchestrator is refused, and the proof comes from the backend
+    // rather than from a flag the caller supplies about itself.
+    const fakeState = join(home.dir, "fake-herdr.json");
+    const live: CliContext = {
+      ...context,
+      env: { META_O_HERDR_BIN: FAKE_HERDR, FAKE_HERDR_STATE: fakeState },
+    };
+    ok(cli(["session", "spawn", "--run-id", runId, "--role", "orchestrator"], live), "spawn");
+
+    const refused = cli(["run", "takeover", "--run-id", runId], live);
     assert.equal(refused.code, 1);
     assert.equal(errorCode(refused), "takeover_unproven");
 
-    const allowed = ok(
-      cli(["run", "takeover", "--run-id", runId, "--previous-status", "failed"], context),
-      "takeover",
-    );
+    ok(cli(["session", "stop", "--run-id", runId, "--role", "orchestrator"], live), "stop");
+
+    const allowed = ok(cli(["run", "takeover", "--run-id", runId], live), "takeover");
+    assert.equal(allowed.json["previousStatus"], "absent");
     assert.equal(allowed.json["orchestratorGeneration"], 2);
   } finally {
     home.dispose();
@@ -416,7 +503,7 @@ test("a handoff larger than the cap is refused rather than truncated", () => {
   const context: CliContext = { cwd: repo.dir, home: home.dir };
 
   try {
-    const runId = startRun(context);
+    const runId = startRun(context, ["--handoff"]);
     ok(cli(["run", "handoff", "--run-id", runId], { ...context, stdin: "short note" }), "handoff");
     const oversized = cli(["run", "handoff", "--run-id", runId], {
       ...context,

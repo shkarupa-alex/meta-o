@@ -111,6 +111,7 @@ test("two reviews of different snapshots never produce a joint pass", () => {
   const state = runAtGates("digest-2", "commit-2");
   state.confirmations = {
     qc: passed("digest-2", "commit-2"),
+    smoke: passed("digest-2", "commit-2"),
     reviewerPrimary: passed("digest-2", "commit-2"),
     reviewerCrossVendor: passed("digest-1", "commit-1"),
     e2e: passed("digest-2", "commit-2"),
@@ -123,6 +124,7 @@ test("one snapshot with four attestations completes", () => {
   const state = runAtGates("digest-2", "commit-2");
   state.confirmations = {
     qc: passed("digest-2", "commit-2"),
+    smoke: passed("digest-2", "commit-2"),
     reviewerPrimary: passed("digest-2", "commit-2"),
     reviewerCrossVendor: passed("digest-2", "commit-2"),
     e2e: passed("digest-2", "commit-2"),
@@ -152,9 +154,57 @@ test("once E2E is green on the new snapshot the review loop resumes", () => {
   state.activeLoop = { kind: "e2e", iteration: 2, changedSinceOtherGate: true };
   state.confirmations = {
     qc: passed("digest-3", "commit-3"),
+    smoke: passed("digest-3", "commit-3"),
     reviewerPrimary: passed("digest-2", "commit-2"),
     reviewerCrossVendor: passed("digest-2", "commit-2"),
     e2e: passed("digest-3", "commit-3"),
+  };
+  assert.equal(routeNext(state).action, "run_reviews");
+});
+
+test("the smoke gate stands between QC and the reviewers", () => {
+  const state = runAtGates("digest-s", "commit-s");
+  state.confirmations = { qc: passed("digest-s", "commit-s") };
+  const routing = routeNext(state);
+  assert.equal(routing.action, "run_smoke");
+  assert.equal(routing.phase, "SMOKE_PREFLIGHT");
+});
+
+test("a review that attested a superseded plan does not count", () => {
+  const state = runAtGates("digest-p", "commit-p");
+  state.confirmations = {
+    qc: passed("digest-p", "commit-p"),
+    smoke: passed("digest-p", "commit-p"),
+    reviewerPrimary: passed("digest-p", "commit-p"),
+    reviewerCrossVendor: passed("digest-p", "commit-p"),
+    e2e: passed("digest-p", "commit-p"),
+  };
+  assert.equal(completionProven(state), true);
+
+  state.e2ePlan!.planDigest = "a-different-plan";
+  assert.equal(completionProven(state), false);
+  assert.equal(routeNext(state).action, "run_reviews");
+});
+
+test("declined taste does not hold the review loop open", () => {
+  const state = runAtGates("digest-t", "commit-t");
+  state.confirmations = {
+    qc: passed("digest-t", "commit-t"),
+    smoke: passed("digest-t", "commit-t"),
+  };
+  const taste: Finding = {
+    id: "F-T",
+    severity: "suggestion",
+    classification: "taste",
+    evidence: [{ kind: "file", reference: "src/app.py:3", detail: "naming" }],
+    basis: { type: "engineering", reference: "style" },
+    impact: "readability",
+    recommendedFix: { approach: "rename", rationale: "clearer" },
+  };
+  state.openFindings = {
+    reviewerPrimary: [
+      { finding: taste, raisedBy: { backend: "herdr", sessionId: "s", role: "reviewerPrimary", generation: 1 }, status: "open" },
+    ],
   };
   assert.equal(routeNext(state).action, "run_reviews");
 });
@@ -172,7 +222,10 @@ test("a candidate without a selection plan cannot reach the reviewers", () => {
 
 test("open review findings route to a batched fix rather than another review", () => {
   const state = runAtGates("digest-6", "commit-6");
-  state.confirmations = { qc: passed("digest-6", "commit-6") };
+  state.confirmations = {
+    qc: passed("digest-6", "commit-6"),
+    smoke: passed("digest-6", "commit-6"),
+  };
   state.openFindings = {
     reviewerPrimary: [
       { finding: defect("F-1"), raisedBy: { backend: "herdr", sessionId: "s", role: "reviewerPrimary", generation: 1 }, status: "open" },

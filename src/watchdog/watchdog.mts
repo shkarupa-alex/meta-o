@@ -16,12 +16,13 @@
  */
 
 import { type Clock, systemClock, isoTimestamp } from "../core/clock.mjs";
-import { isTerminal } from "../core/fsm.mjs";
+import { isPaused, isTerminal } from "../core/fsm.mjs";
 import type {
   PendingOperation,
   ReconcileResult,
   RunState,
   SessionStatus,
+  TailClassification,
   WatchdogAction,
   WatchdogConfig,
 } from "../core/types.mjs";
@@ -62,6 +63,10 @@ export interface WatchdogObservation {
   reconcile?: ReconcileResult;
   progressed: boolean;
   idleForMs: number;
+  /** How the orchestrator's own output tail reads, when it could be read. */
+  tail?: TailClassification;
+  /** Whether the session produced new output since the previous tick. */
+  outputAdvanced?: boolean;
 }
 
 /** §M-WATCHDOG — A chosen action with the evidence behind it. */
@@ -70,13 +75,31 @@ export interface WatchdogDecision {
   reason: string;
 }
 
-/** §M-WATCHDOG — Per-run memory that makes actions idempotent across ticks. */
+/**
+ * §M-WATCHDOG — Per-run memory that makes actions idempotent across ticks.
+ *
+ * Persisted through `loadMemory`/`saveMemory` rather than held only in RAM.
+ * "One wake per completion event" and "exactly one new generation" are
+ * acceptance criteria, and a criterion that holds only while a process survives
+ * is one that fails on the first restart — which, for a component whose whole
+ * job is unattended overnight recovery, is the normal case rather than the
+ * exception.
+ */
 export interface RunMemory {
   lastStateVersion: number;
   lastProgressAtMs: number;
   backoffMs: number;
   wakeSentForStateVersion?: number;
   spawnedForGeneration?: number;
+  surfacedForStateVersion?: number;
+  lastCursor?: string;
+}
+
+/** §M-WATCHDOG — What a read of the orchestrator's own session produced. */
+export interface SessionReading {
+  cursor?: string;
+  text: string;
+  terminal: boolean;
 }
 
 /** §M-WATCHDOG — Everything the watchdog needs from the outside world. */
@@ -91,7 +114,20 @@ export interface WatchdogDeps {
   wakeOrchestrator(state: RunState): Promise<void>;
   spawnOrchestrator(state: RunState): Promise<void>;
   log(entry: WatchdogLogEntry): void;
-  quotaResumeAtMs?(state: RunState): number | undefined;
+  quotaResumeAtMs?(state: RunState, nowMs: number): number | undefined;
+  /** Read the orchestrator session's new output, for cursor progress and tail reading. */
+  readSession?(state: RunState, cursor?: string): Promise<SessionReading | undefined>;
+  /** Classify a tail; supplied so hybrid mode can add a local model behind the same contract. */
+  classifyTail?(tail: string): Promise<TailClassification>;
+  /** Tell the orchestrator, in its own words, that an effect could not be proven. */
+  surfaceUncertainty?(state: RunState, operation: PendingOperation | undefined): Promise<void>;
+  /** Blocking capability reasons, if the backend regressed since installation. */
+  capabilityRegression?(): Promise<string[]>;
+  /** Re-read configuration, so disabling the watchdog does not require killing it. */
+  reloadConfig?(): WatchdogConfig | undefined;
+  loadMemory?(key: string): RunMemory | undefined;
+  saveMemory?(key: string, memory: RunMemory): void;
+  forgetMemory?(key: string): void;
 }
 
 /** §M-WATCHDOG — Result of one full pass over all configured projects. */
@@ -112,7 +148,12 @@ export interface TickReport {
 export function decideAction(
   observation: WatchdogObservation,
   memory: RunMemory,
-  options: { stallDeadlineMs: number; quotaResumeAtMs?: number; nowMs: number },
+  options: {
+    stallDeadlineMs: number;
+    quotaResumeAtMs?: number;
+    nowMs: number;
+    capabilityRegression?: string[];
+  },
 ): WatchdogDecision {
   const { state } = observation;
 
@@ -120,19 +161,28 @@ export function decideAction(
     return { action: "noop", reason: `run is terminal (${state.phase})` };
   }
 
+  if (options.capabilityRegression?.length) {
+    if (memory.surfacedForStateVersion === state.stateVersion) {
+      return { action: "backoff", reason: "the capability regression is already surfaced" };
+    }
+    return {
+      action: "surface_uncertainty",
+      reason: `backend capability regression: ${options.capabilityRegression.join("; ")}`,
+    };
+  }
+
   if (observation.progressed) {
     return { action: "noop", reason: "state version advanced since the previous tick" };
   }
 
   if (observation.reconcile?.effect === "unknown") {
+    if (memory.surfacedForStateVersion === state.stateVersion) {
+      return { action: "backoff", reason: "the unprovable effect is already surfaced" };
+    }
     return {
       action: "surface_uncertainty",
       reason: `pending ${state.pendingOperation?.kind ?? "operation"} cannot be proven applied or not applied`,
     };
-  }
-
-  if (state.phase === "PAUSED_BACKEND_UNCERTAIN") {
-    return { action: "noop", reason: "uncertainty is already surfaced to the user" };
   }
 
   if (state.phase === "PAUSED_QUOTA") {
@@ -143,6 +193,23 @@ export function decideAction(
     if (resumeAt === undefined) {
       return { action: "backoff", reason: "quota reset time was not provably parsed" };
     }
+  } else if (isPaused(state.phase)) {
+    // The pause table gives the watchdog exactly one pause it may release. Every
+    // other one is waiting on a person or an adjudicator, and waking the
+    // orchestrator would either burn tokens re-discovering the same block or,
+    // for PAUSED_ORCHESTRATOR_BUDGET, wake the very session that ran out of
+    // context instead of leaving room for a fresh generation.
+    return {
+      action: "noop",
+      reason: `${state.phase} is released by a user or adjudicator, not by the watchdog`,
+    };
+  }
+
+  if (observation.tail === "quota" || observation.tail === "external") {
+    return {
+      action: "backoff",
+      reason: `the orchestrator's last output reads as ${observation.tail}; waking it now would fail again`,
+    };
   }
 
   switch (observation.orchestratorStatus) {
@@ -151,11 +218,27 @@ export function decideAction(
       return { action: "noop", reason: "orchestrator session is working" };
 
     case "waiting": {
-      if (observation.idleForMs < options.stallDeadlineMs) {
+      // A pending operation carries the deadline of the thing actually being
+      // waited for. Preferring it to the global constant is the difference
+      // between "this backend call is overdue" and "fifteen minutes have passed
+      // on the wall clock", which are not the same question and give opposite
+      // answers for both a two-hour E2E run and a thirty-second send.
+      const deadlineAt = Date.parse(state.pendingOperation?.deadlineAt ?? "");
+      if (Number.isFinite(deadlineAt)) {
+        if (options.nowMs < deadlineAt) {
+          return {
+            action: "noop",
+            reason: `pending ${state.pendingOperation?.kind} has not reached its own deadline`,
+          };
+        }
+      } else if (observation.idleForMs < options.stallDeadlineMs) {
         return {
           action: "noop",
           reason: `orchestrator settled ${Math.round(observation.idleForMs / 1000)}s ago, within the stall deadline`,
         };
+      }
+      if (observation.outputAdvanced) {
+        return { action: "noop", reason: "the session produced new output since the previous tick" };
       }
       if (memory.wakeSentForStateVersion === state.stateVersion) {
         return {
@@ -242,8 +325,11 @@ export class Watchdog {
    * it exists to cover.
    */
   private memoryFor(key: string, state: RunState): RunMemory {
-    const existing = this.memory.get(key);
-    if (existing) return existing;
+    const existing = this.memory.get(key) ?? this.deps.loadMemory?.(key);
+    if (existing) {
+      this.memory.set(key, existing);
+      return existing;
+    }
     const updatedAtMs = Date.parse(state.updatedAt);
     const created: RunMemory = {
       lastStateVersion: state.stateVersion,
@@ -269,10 +355,25 @@ export class Watchdog {
   ): Promise<WatchdogObservation> {
     const progressed = state.stateVersion !== memory.lastStateVersion;
     const orchestratorStatus = await this.deps.orchestratorStatus(state);
+
     let reconcile: ReconcileResult | undefined;
     if (state.pendingOperation) {
       reconcile = await this.deps.reconcile(state, state.pendingOperation);
     }
+
+    let tail: TailClassification | undefined;
+    let outputAdvanced: boolean | undefined;
+    const reading = this.deps.readSession
+      ? await this.deps.readSession(state, memory.lastCursor)
+      : undefined;
+    if (reading) {
+      outputAdvanced = reading.cursor !== undefined && reading.cursor !== memory.lastCursor;
+      if (reading.cursor !== undefined) memory.lastCursor = reading.cursor;
+      if (reading.text.trim() !== "" && this.deps.classifyTail) {
+        tail = await this.deps.classifyTail(reading.text);
+      }
+    }
+
     const updatedAtMs = Date.parse(state.updatedAt);
     const referenceMs = Number.isFinite(updatedAtMs) ? updatedAtMs : memory.lastProgressAtMs;
     return {
@@ -281,6 +382,8 @@ export class Watchdog {
       state,
       orchestratorStatus,
       ...(reconcile ? { reconcile } : {}),
+      ...(tail ? { tail } : {}),
+      ...(outputAdvanced === undefined ? {} : { outputAdvanced }),
       progressed,
       idleForMs: Math.max(0, this.clock.now() - Math.max(referenceMs, memory.lastProgressAtMs)),
     };
@@ -320,7 +423,10 @@ export class Watchdog {
           return "performed";
 
         case "surface_uncertainty":
-          await this.deps.wakeOrchestrator(fresh);
+          if (!this.deps.surfaceUncertainty) return "skipped";
+          await this.deps.surfaceUncertainty(fresh, fresh.pendingOperation);
+          memory.surfacedForStateVersion = fresh.stateVersion;
+          memory.backoffMs = Math.min(Math.max(memory.backoffMs, this.pollMs()) * 2, this.maxBackoffMs());
           return "performed";
 
         default:
@@ -343,7 +449,23 @@ export class Watchdog {
     let observations = 0;
     let shortestDelay = this.maxBackoffMs();
 
-    for (const projectKey of this.deps.config.project_keys) {
+    const reloaded = this.deps.reloadConfig?.();
+    if (reloaded) this.deps.config = reloaded;
+    if (!this.deps.config.enabled) {
+      this.stopped = true;
+      return { observations: 0, decisions: [], nextDelayMs: this.pollMs() };
+    }
+
+    let capabilityRegression: string[] = [];
+    try {
+      capabilityRegression = (await this.deps.capabilityRegression?.()) ?? [];
+    } catch {
+      // A capability probe that itself fails is a backend problem, not a reason
+      // to stop watching: the runs below still need their status observed.
+      capabilityRegression = [];
+    }
+
+    for (const projectKey of this.deps.config.project_keys ?? []) {
       let runIds: string[];
       try {
         runIds = this.deps.listRuns(projectKey);
@@ -374,28 +496,59 @@ export class Watchdog {
         const memory = this.memoryFor(key, state);
         if (isTerminal(state.phase)) {
           this.memory.delete(key);
+          this.deps.forgetMemory?.(key);
           continue;
         }
 
         observations += 1;
-        const observation = await this.observe(projectKey, runId, memory, state);
+        let observation: WatchdogObservation;
+        try {
+          observation = await this.observe(projectKey, runId, memory, state);
+        } catch (error) {
+          // Observation talks to a backend this component does not own. A
+          // refused connection or a broken adapter is precisely the situation
+          // the run needs a watchdog for, so it becomes a backoff for this run
+          // rather than an exception that takes the whole loop — and every
+          // other project — down with it.
+          memory.backoffMs = Math.min(
+            Math.max(memory.backoffMs, this.pollMs()) * 2,
+            this.maxBackoffMs(),
+          );
+          this.deps.saveMemory?.(key, memory);
+          this.deps.log({
+            timestamp: isoTimestamp(this.clock),
+            projectKey,
+            runId,
+            phase: state.phase,
+            observedStatus: "unobservable",
+            action: "backoff",
+            reason: `observation failed: ${(error as Error).message}`,
+            outcome: "failed",
+          });
+          decisions.push({ projectKey, runId, action: "backoff", reason: "observation failed" });
+          shortestDelay = Math.min(shortestDelay, memory.backoffMs);
+          continue;
+        }
 
-        if (observation.progressed) {
+        if (observation.progressed || observation.outputAdvanced) {
           memory.lastStateVersion = state.stateVersion;
           memory.lastProgressAtMs = this.clock.now();
           memory.backoffMs = this.pollMs();
           delete memory.wakeSentForStateVersion;
+          delete memory.surfacedForStateVersion;
         }
 
         const decision = decideAction(observation, memory, {
           stallDeadlineMs: this.stallDeadlineMs,
           ...(this.deps.quotaResumeAtMs
-            ? { quotaResumeAtMs: this.deps.quotaResumeAtMs(state) }
+            ? { quotaResumeAtMs: this.deps.quotaResumeAtMs(state, this.clock.now()) }
             : {}),
           nowMs: this.clock.now(),
+          ...(capabilityRegression.length > 0 ? { capabilityRegression } : {}),
         });
 
         const outcome = await this.perform(observation, decision, memory);
+        this.deps.saveMemory?.(key, memory);
         decisions.push({ projectKey, runId, ...decision });
 
         this.deps.log({

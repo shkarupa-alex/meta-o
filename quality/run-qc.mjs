@@ -106,6 +106,24 @@ function main() {
   const before = gitStatus();
   const results = [];
 
+  // Clean, not merely unchanged — but only when this run is producing an
+  // attestation. An uncommitted edit that happens to fix a lint error makes
+  // every gate pass while the digest in the result comes from HEAD, so the
+  // attestation would describe content that was never the thing tested. A
+  // developer running `make qc` by hand attests nothing, and failing them for a
+  // dirty tree would just teach everyone to bypass the gate.
+  const attesting = Boolean(process.env["META_O_QC_RESULT"]);
+  if (before.trim() !== "" && attesting) {
+    process.stderr.write(`the worktree is dirty; qc cannot attest content that is not committed:\n${before}`);
+    results.push({
+      id: "clean-worktree",
+      status: "failed",
+      command: "git status --porcelain --untracked-files=all",
+      tool_version: "git",
+      duration_ms: 0,
+    });
+  }
+
   for (const gate of manifest.gates) {
     if (gate.policy === "not_applicable") {
       process.stdout.write(`== ${gate.id}: not applicable (${gate.rationale ?? ""})\n`);

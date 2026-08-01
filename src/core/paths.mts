@@ -100,3 +100,14 @@ export function watchdogLogPath(): string {
 export function watchdogLockPath(): string {
   return join(metaOHome(), "watchdog.lock");
 }
+
+/**
+ * §M-PATHS — Durable watchdog bookkeeping: which wake and which spawn already happened.
+ *
+ * Owned by the watchdog, deliberately outside any run directory. It records
+ * only what the watchdog itself did, so losing it costs at most one duplicate
+ * wake, and a run never depends on it to complete.
+ */
+export function watchdogMemoryPath(): string {
+  return join(metaOHome(), "watchdog-memory.json");
+}

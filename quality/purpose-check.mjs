@@ -22,15 +22,41 @@ const ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], {
   encoding: "utf8",
 }).trim();
 
+/** §M-QC-PURPOSE — Grammar of the module anchor a file must declare. */
 const MODULE_ANCHOR = /§M-[A-Z0-9-]+/;
+
+/** §M-QC-PURPOSE — Grammar of the architecture anchor a module should cite. */
 const ARCHITECTURE_ANCHOR = /§A-[A-Z0-9-]+/;
+
+/** §M-QC-PURPOSE — Grammar of a business anchor, cited only to detect a skipped level. */
 const BUSINESS_ANCHOR = /§B-[A-Z0-9-]+/;
 
-/** §M-QC-PURPOSE — Declarations that must carry their own documentation comment. */
-const EXPORTED = new RegExp(
-  "^export\\s+(?:declare\\s+)?(?:async\\s+)?(?:abstract\\s+)?" +
-    "(class|function|const|interface|type|enum)\\s+([A-Za-z_$][\\w$]*)",
+/**
+ * §M-QC-PURPOSE — Declarations that must carry their own documentation comment.
+ *
+ * Top-level, exported or not. A non-exported helper is still a symbol someone
+ * has to understand before changing it, and the old export-only rule meant the
+ * functions carrying the trickiest local reasoning — the private ones — were
+ * the only ones allowed to say nothing about why they exist.
+ */
+const DECLARATION = new RegExp(
+  "^(?:export\\s+)?(?:default\\s+)?(?:declare\\s+)?(?:async\\s+)?(?:abstract\\s+)?" +
+    "(class|function|const|let|interface|type|enum)\\s+([A-Za-z_$][\\w$]*)",
 );
+
+/**
+ * §M-QC-PURPOSE — Whether a binding is a decision or a working variable.
+ *
+ * Functions, classes and types always carry reasoning worth stating. Bindings
+ * do not: an exported one or a named constant encodes a choice someone made and
+ * must justify, while `const problems = []` in a script's main flow is
+ * scaffolding. Demanding a comment there produces comments that restate the
+ * name, and those are what make readers stop trusting the comments that matter.
+ */
+function requiresPurpose(line, kind, name) {
+  if (kind !== "const" && kind !== "let") return true;
+  return line.startsWith("export") || /^[A-Z][A-Z0-9_]*$/.test(name);
+}
 
 /** §M-QC-PURPOSE — Members of an exported class, which callers also depend on. */
 const MEMBER =
@@ -58,12 +84,30 @@ function violation(found, file, line, rule, message) {
  * that documentation stays valid when a declaration grows attributes.
  */
 function documentedAbove(lines, index) {
+  return commentAbove(lines, index) !== undefined;
+}
+
+/**
+ * §M-QC-PURPOSE — The documentation comment attached to a declaration, if any.
+ *
+ * Returns the whole block so the caller can ask what it says, not merely
+ * whether it exists — the `symbol → §M` link is a property of the text.
+ */
+function commentAbove(lines, index) {
+  let end = -1;
   for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
     const text = lines[cursor].trim();
     if (text === "" || text.startsWith("@")) continue;
-    return text.endsWith("*/");
+    if (!text.endsWith("*/")) return undefined;
+    end = cursor;
+    break;
   }
-  return false;
+  if (end < 0) return undefined;
+
+  for (let cursor = end; cursor >= 0; cursor -= 1) {
+    if (lines[cursor].trim().startsWith("/*")) return lines.slice(cursor, end + 1).join("\n");
+  }
+  return undefined;
 }
 
 /** §M-QC-PURPOSE — Check one file's module docstring, exports and class members. */
@@ -96,19 +140,15 @@ function checkFile(file, found) {
     );
   }
 
+  const moduleAnchor = MODULE_ANCHOR.exec(header)?.[0];
+
   let inClass = false;
   lines.forEach((line, index) => {
-    const exported = EXPORTED.exec(line);
-    if (exported) {
-      inClass = exported[1] === "class";
-      if (!documentedAbove(lines, index)) {
-        violation(
-          found,
-          file,
-          index + 1,
-          "symbol-purpose",
-          `exported ${exported[1]} ${exported[2]} has no documentation comment`,
-        );
+    const declaration = DECLARATION.exec(line);
+    if (declaration) {
+      inClass = declaration[1] === "class";
+      if (requiresPurpose(line, declaration[1], declaration[2])) {
+        checkSymbol(found, file, lines, index, `${declaration[1]} ${declaration[2]}`, moduleAnchor);
       }
       return;
     }
@@ -117,10 +157,33 @@ function checkFile(file, found) {
 
     const member = MEMBER.exec(line);
     if (!member || line.trim().startsWith("//") || line.trim().startsWith("*")) return;
-    if (!documentedAbove(lines, index)) {
-      violation(found, file, index + 1, "member-purpose", `${member[1]} has no documentation comment`);
-    }
+    checkSymbol(found, file, lines, index, member[1], moduleAnchor);
   });
+}
+
+/**
+ * §M-QC-PURPOSE — Require a symbol to be documented and linked to its module.
+ *
+ * Presence alone leaves the chain broken at its last link: a docstring that
+ * names no `§M-*` documents a symbol in isolation, and the whole point of
+ * `§B → §A → §M → symbol` is that someone standing at the symbol can walk back
+ * up to the business reason it exists.
+ */
+function checkSymbol(found, file, lines, index, what, moduleAnchor) {
+  const comment = commentAbove(lines, index);
+  if (comment === undefined) {
+    violation(found, file, index + 1, "symbol-purpose", `${what} has no documentation comment`);
+    return;
+  }
+  if (moduleAnchor && !comment.includes(moduleAnchor)) {
+    violation(
+      found,
+      file,
+      index + 1,
+      "symbol-anchor",
+      `${what} is documented but cites no ${moduleAnchor}, so nothing links it to the chain`,
+    );
+  }
 }
 
 const found = [];

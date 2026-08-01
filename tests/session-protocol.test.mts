@@ -321,12 +321,40 @@ test("a delivery that did land reconciles to applied, never to a resend", () => 
   }
 });
 
-test("an unprovable effect pauses the run instead of guessing", () => {
+test("a spawn that never created anything reconciles to not_applied", () => {
   const it = fixture();
   try {
     const failed = cli(["session", "spawn", "--run-id", it.runId, "--role", "executor"], {
       ...it.context,
       env: { FAKE_HERDR_FAIL: "pane split" },
+    });
+    assert.equal(failed.code, 1);
+    assert.equal(errorCode(failed), "backend_call_failed");
+
+    // The pane split never returned, so the probe holds no pane and no agent
+    // exists: nothing was created, and a retry cannot duplicate a worker.
+    const reconciled = ok(cli(["session", "reconcile", "--run-id", it.runId], it.context), "reconcile");
+    assert.equal(reconciled.json["effect"], "not_applied");
+
+    const retried = ok(
+      cli(["session", "spawn", "--run-id", it.runId, "--role", "executor"], it.context),
+      "the retry is legitimate once not_applied is proven",
+    );
+    assert.equal((retried.json["session"] as { role: string }).role, "executor");
+  } finally {
+    it.dispose();
+  }
+});
+
+test("an unprovable effect pauses the run instead of guessing", () => {
+  const it = fixture();
+  try {
+    // The pane is created and `agent start` then fails: a pane now exists with
+    // no agent in it, which is genuinely ambiguous — the agent may be racing to
+    // register — so the run must pause rather than risk a second worker.
+    const failed = cli(["session", "spawn", "--run-id", it.runId, "--role", "executor"], {
+      ...it.context,
+      env: { FAKE_HERDR_FAIL: "agent start" },
     });
     assert.equal(failed.code, 1);
     assert.equal(errorCode(failed), "backend_call_failed");

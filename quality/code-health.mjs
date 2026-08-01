@@ -24,6 +24,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+/** §M-QC-CODE-HEALTH — Repository root, resolved from this script rather than the caller. */
 const ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], {
   cwd: fileURLToPath(new URL(".", import.meta.url)),
   encoding: "utf8",
@@ -71,6 +72,7 @@ function blockLength(lines, start) {
   return lines.length - start;
 }
 
+/** §M-QC-CODE-HEALTH — Lines that open a declaration whose size this gate measures. */
 const DECLARATION = /^\s{0,2}(?:export\s+)?(?:async\s+)?(?:function|class|const\s+\w+\s*=\s*(?:async\s*)?\()/;
 
 const problems = [];
