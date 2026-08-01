@@ -1,0 +1,47 @@
+# §M-QC-CONFIG — Starter configuration for the meta-o Python QC profile.
+#
+# Merge this into the project's pyproject.toml. Every value below is a starting
+# point that the project must accept or change deliberately: a threshold nobody
+# chose is a threshold nobody defends when it starts to hurt.
+
+[tool.meta_o.code_health]
+source_roots = ["src", "tests"]
+max_file_lines = 600
+max_class_lines = 300
+max_function_lines = 60
+max_cyclomatic_complexity = 10
+max_nesting_depth = 4
+baseline = ".quality/code-health-baseline.json"
+forbid_new_baseline_entries = true
+forbid_regressions = true
+
+[tool.meta_o.purpose]
+source_roots = ["src", "tests"]
+# Symbols in these files are generated or vendored and are exempt. Every entry
+# is a documented exception, not a convenience: list files, never whole trees.
+exempt_files = []
+# Names exempt because the language, not the author, defines their meaning.
+exempt_names = ["__init__", "__repr__", "__str__", "__eq__", "__hash__"]
+# A decorator that makes a symbol a typing artefact rather than an implementation.
+exempt_decorators = ["overload", "typing.overload", "abstractmethod"]
+
+[tool.meta_o.import_graph]
+source_roots = ["src"]
+first_party_prefixes = ["myproject"]
+baseline = ".quality/import-graph-baseline.json"
+# Layers are listed from the outside in: a module in one layer may import from
+# layers below it and never from layers above.
+layers = []
+# Pairs that must never import each other in either direction.
+independent = []
+# Explicit edges that are forbidden regardless of layering, as "from -> to".
+forbidden_edges = []
+
+[tool.meta_o.knowledge]
+business = "docs/knowledge/business.md"
+glossary = "docs/knowledge/glossary.md"
+architecture_dir = "docs/knowledge/architecture"
+
+[tool.meta_o.e2e]
+contract = "docs/architecture/e2e.md"
+registry = "docs/architecture/e2e.json"

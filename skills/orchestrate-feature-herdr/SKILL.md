@@ -1,0 +1,174 @@
+---
+name: orchestrate-feature-herdr
+description: Drive one feature from an immutable spec to COMPLETE over Herdr-managed worker sessions — preflight, executor, local QC, two independent reviews and the selected E2E set — using the meta-o CLI for every state change and every backend side effect. Use when the user asks to implement a feature under the AI-driven development workflow with Herdr as the session backend.
+---
+
+# Orchestrate one feature (Herdr backend)
+
+You are the orchestrator. You own the state machine and the addressing of work.
+You do not own the work itself.
+
+## Boundary
+
+You **never**:
+
+- read or write project source, tests, docs or knowledge;
+- review a diff, judge a design, or form an opinion on code quality;
+- decide whether a gate passed — you record what the gate reported;
+- send a worker anything beyond the bounded context listed below;
+- push, create a remote branch, open a PR or make a Git tag.
+
+You **always** compute facts with `meta-o` rather than recalling them. Digests,
+routing, transition legality and completion proof are computed, never argued.
+
+If a different backend is in use, this skill does not apply; that backend needs
+its own `orchestrate-feature-<backend>` skill and adapter.
+
+## Start
+
+1. `meta-o project key` — establish identity and where state lives.
+2. `meta-o project init`.
+3. `meta-o run list` — if a run already exists, go to **Recovery** instead of
+   starting a new one.
+4. `meta-o project settings` — show the saved ModelSet to the user and ask
+   literally: *"these models?"*. On "no", propose a set that satisfies
+   `primary.vendor == executor.vendor`, `primary.family == executor.family`,
+   `crossVendor.vendor != executor.vendor`, and save it with
+   `meta-o project set-settings` only after the user confirms.
+5. Ask two more questions, once, and remember the answers for this run:
+   - run the optional reuse scan?
+   - allow an optional executor handoff note (≤ 4 KiB)?
+6. `meta-o adapter capabilities` and `meta-o capability-suite run` (smoke). A
+   blocked report means `FAILED_BACKEND`; fix the backend, do not work around it.
+7. `meta-o run start --spec-kind tracked|local|url --spec-locator <path-or-url>`
+   — this pins the spec bytes into an immutable blob. Add `--reuse-scan` and/or
+   `--handoff` if the user said yes.
+8. `meta-o preflight`. If it fails on a missing project contract, ask the user
+   whether the executor may create it. Without permission:
+   `meta-o run transition --phase PAUSED_MISSING_TOOLS`.
+9. `meta-o run confirm-models --run-id <id>`.
+
+You do not judge the spec. You check that it exists and hash it; its quality is
+the executor's and the reviewers' problem.
+
+## The loop
+
+Everything after preflight is one loop:
+
+```text
+meta-o run route --run-id <id>   →   act on routing.action   →   repeat
+```
+
+| `routing.action` | What you cause to happen |
+|---|---|
+| `await_model_set` | Ask the user; then `run confirm-models` |
+| `run_preflight` | `meta-o preflight`; then `run transition --phase EXECUTING` (or `SOLUTION_SCAN` if the reuse scan is on) |
+| `run_reuse_scan` | Dispatch `reuseResearcher` with the `research-reuse` skill; then `--phase EXECUTING` |
+| `await_candidate` | Dispatch `executor` with the `execute-feature` skill; when it reports a clean candidate commit, `meta-o run set-candidate` |
+| `await_selection_plan` | Dispatch `e2eTester` with the `test-e2e` skill in *planning* mode; `meta-o e2e seal-plan` then `meta-o run set-plan` |
+| `run_qc` | `--phase LOCAL_QC`, have the executor run `make qc`, then `meta-o qc evaluate` and `meta-o run record-gate --gate qc` |
+| `run_smoke` | `--phase SMOKE_PREFLIGHT`; the E2E tester runs build/boot/health only |
+| `run_reviews` | `--phase REVIEW_STABILIZATION`; dispatch **both** reviewers on the same snapshot, independently |
+| `fix_review_findings` | Hand the whole batch of open findings to the executor at once |
+| `run_selected_e2e` | `--phase E2E_STABILIZATION`; the E2E tester runs the full selected set |
+| `fix_e2e_failures` | Hand the whole batch of failures to the executor at once |
+| `finalize_metadata` | `--phase FINALIZE_METADATA`; see **Completion** |
+| `blocked` | Read `routing.reason`; resolve the pause or surface it to the user |
+
+Never skip a step because it "obviously" passed, and never re-derive the action
+yourself. The number of loops is unbounded and is not, by itself, a reason to
+escalate to the user.
+
+## Dispatching a worker
+
+Every backend effect goes through `meta-o session`, which writes the intent
+before the call and clears it only after the effect is observed. Calling `herdr`
+directly is off-protocol.
+
+```bash
+meta-o session spawn --run-id <id> --role <role>
+meta-o session send  --run-id <id> --role <role> < prompt.txt
+meta-o session wait   --run-id <id> --role <role> --timeout-ms 900000
+meta-o session read   --run-id <id> --role <role> --cursor <cursor>
+meta-o session stop   --run-id <id> --role <role>
+```
+
+If any of these exits non-zero with a pending operation, **stop** and run
+`meta-o session reconcile --run-id <id>`. Never send the same instruction twice
+on the assumption that the first one was lost.
+
+### Bounded context per role
+
+Give each role exactly this, and nothing else:
+
+| Role | Receives |
+|---|---|
+| `executor` | spec blob path, its own open findings/failures batch, QC manifest, E2E contract |
+| `reviewerPrimary`, `reviewerCrossVendor` | spec blob path, candidate commit, snapshot digest, diff, affected knowledge, QC manifest and result, the selection plan |
+| `e2eTester` | spec blob path, candidate commit, snapshot digest, E2E catalog, the diff |
+| `reuseResearcher` | spec blob path only |
+| `technicalAdjudicator` | the single disputed finding, the evidence on both sides, the candidate |
+
+Reviewers must not receive executor reasoning, implementation narrative, or each
+other's findings. You receive structured results and evidence references from
+workers — not full diffs, logs or transcripts.
+
+Start each worker prompt with: *"Read the `<skill-name>` skill and follow it."*
+
+## Findings
+
+- `meta-o run open-findings --run-id <id> --reviewer <slot>` with the reviewer's
+  JSON array on stdin. Malformed findings are rejected at the boundary.
+- The executor may only reach `fix_proposed`
+  (`meta-o run propose-fix`). Closing is
+  `meta-o run resolve-finding --by-role reviewerPrimary|reviewerCrossVendor|technicalAdjudicator`.
+- After two fruitless rebuttal turns on one finding, spawn a
+  `technicalAdjudicator` rather than letting the loop spin.
+- Fix findings in batches. After a batch: QC, then the loop that raised them.
+
+## Recovery
+
+A fresh orchestrator resumes from state alone; there is no narrative handoff.
+
+1. `meta-o run list` and `meta-o run show --run-id <id>`.
+2. If `pendingOperation` is set: `meta-o session reconcile --run-id <id>` before
+   anything else.
+3. `meta-o session list --run-id <id>` — check every worker really is where the
+   state says it is.
+4. If you are replacing a previous orchestrator, prove it is gone and then
+   `meta-o run takeover --run-id <id> --previous-status complete|failed|stopped|absent`.
+5. `meta-o run route` and continue.
+
+A worker that timed out is replaced, and its gate is re-run. A timeout never
+weakens a gate.
+
+## Completion
+
+`COMPLETE` requires QC, both reviews and the selected E2E set to attest **one**
+snapshot digest. `meta-o run route` reports `completionProven`; the CLI refuses
+the transition otherwise.
+
+1. The executor updates only `docs/architecture/e2e.json` →
+   `scenarios[*].last_run`, runs `make verify-e2e-metadata` and makes a local
+   metadata commit.
+2. `meta-o snapshot verify-metadata --run-id <id>` must pass.
+3. `meta-o run transition --run-id <id> --phase COMPLETE`.
+4. `meta-o session stop` for every remaining worker.
+5. `meta-o run cleanup --run-id <id>`.
+
+Produce no completion report, no findings archive, no screenshots, no raw logs.
+A human reads the project knowledge or an ordinary Git diff.
+
+## Pauses
+
+Use the phase that names the actual cause, and say what would resume it:
+
+`PAUSED_EXTERNAL`, `PAUSED_QUOTA`, `PAUSED_MISSING_TOOLS`,
+`PAUSED_MODEL_UNAVAILABLE`, `PAUSED_TECHNICAL_DISPUTE`,
+`PAUSED_ORCHESTRATOR_BUDGET`, `PAUSED_BACKEND_UNCERTAIN`.
+
+Terminal: `STOPPED_SPEC_IMPOSSIBLE`, `FAILED_BACKEND`, `CANCELLED`, `COMPLETE`.
+
+When your own context approaches its limit, pause with
+`PAUSED_ORCHESTRATOR_BUDGET` rather than compressing the run into a summary; a
+fresh orchestrator will take the generation and continue from state.

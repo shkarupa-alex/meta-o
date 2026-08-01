@@ -1,0 +1,215 @@
+/**
+ * §M-SNAPSHOT — Content identity of a candidate, and the guard protecting it.
+ *
+ * Implements §A-SNAPSHOT-ATTESTATION. Four independent gates must be able to
+ * agree that they examined *the same content*, across rebases, squashes and
+ * separate checkouts. A commit SHA cannot express that; this digest can.
+ *
+ * Normative algorithm — any conforming implementation must produce the same
+ * value:
+ *
+ * ```text
+ * for each tracked entry of the commit, sorted ascending by UTF-8 path bytes:
+ *     identity = git blob OID
+ *     if path == "docs/architecture/e2e.json":
+ *         identity = "projection:" + sha256hex(canonicalJson(registry without
+ *                                              scenarios[*].last_run))
+ *     line = mode + " " + identity + " " + path + "\n"
+ * snapshot_digest = sha256hex(concatenation of all lines)
+ * ```
+ *
+ * The single field-level exclusion is what stops the registry from being
+ * self-referential: writing a verification result must not change the digest
+ * that result attests. Every selection-critical catalog field stays inside.
+ */
+
+import { canonicalize, type JsonValue } from "./canonical-json.mjs";
+import { sha256Hex } from "./hash.mjs";
+import { listTree, readBlob, resolveCommit, changedPaths } from "./git.mjs";
+import type { E2ERegistry, E2EScenarioEntry } from "./types.mjs";
+
+/** §M-SNAPSHOT — Repository-relative path of the machine-readable E2E registry. */
+export const E2E_REGISTRY_PATH = "docs/architecture/e2e.json";
+
+/**
+ * §M-SNAPSHOT — Strip volatile verification results from a registry.
+ *
+ * Returns a plain JSON value rather than a typed registry because its only
+ * purpose is to be canonicalised and hashed.
+ */
+export function registryProjection(registry: E2ERegistry): JsonValue {
+  const scenarios = registry.scenarios.map((scenario) => {
+    const copy: Record<string, JsonValue> = {};
+    for (const [key, value] of Object.entries(scenario)) {
+      if (key === "last_run") continue;
+      copy[key] = value as JsonValue;
+    }
+    return copy as JsonValue;
+  });
+  return { schema_version: registry.schema_version, scenarios } as unknown as JsonValue;
+}
+
+/** §M-SNAPSHOT — Digest of the registry projection, used in place of its blob OID. */
+export function registryProjectionIdentity(registryBytes: Buffer): string {
+  let parsed: E2ERegistry;
+  try {
+    parsed = JSON.parse(registryBytes.toString("utf8")) as E2ERegistry;
+  } catch (error) {
+    throw new Error(`${E2E_REGISTRY_PATH} is not valid JSON: ${(error as Error).message}`);
+  }
+  return `projection:${sha256Hex(canonicalize(registryProjection(parsed)))}`;
+}
+
+/** §M-SNAPSHOT — Compare two paths by their UTF-8 bytes, not UTF-16 code units. */
+function comparePathBytes(a: string, b: string): number {
+  return Buffer.compare(Buffer.from(a, "utf8"), Buffer.from(b, "utf8"));
+}
+
+/** §M-SNAPSHOT — A digest together with the commit it was computed from. */
+export interface SnapshotComputation {
+  digest: string;
+  provenanceCommit: string;
+  entryCount: number;
+}
+
+/**
+ * §M-SNAPSHOT — Compute the snapshot digest of a commit.
+ *
+ * Reads the registry blob from Git rather than from the working tree, so the
+ * digest describes the commit even when the caller's checkout has drifted.
+ */
+export function computeSnapshotDigest(repoDir: string, revision: string): SnapshotComputation {
+  const commit = resolveCommit(revision, repoDir);
+  const entries = listTree(commit, repoDir).sort((a, b) => comparePathBytes(a.path, b.path));
+  const lines: string[] = [];
+  for (const entry of entries) {
+    const identity =
+      entry.path === E2E_REGISTRY_PATH && entry.type === "blob"
+        ? registryProjectionIdentity(readBlob(entry.oid, repoDir))
+        : entry.oid;
+    lines.push(`${entry.mode} ${identity} ${entry.path}\n`);
+  }
+  return {
+    digest: sha256Hex(lines.join("")),
+    provenanceCommit: commit,
+    entryCount: entries.length,
+  };
+}
+
+/** §M-SNAPSHOT — Outcome of checking a metadata-only commit. */
+export interface MetadataGuardResult {
+  ok: boolean;
+  violations: string[];
+  attestedDigest: string;
+  metadataDigest: string;
+}
+
+/** §M-SNAPSHOT — Everything the guard needs to judge a metadata commit. */
+export interface MetadataGuardInput {
+  repoDir: string;
+  attestedCommit: string;
+  metadataCommit: string;
+  expectedRunId: string;
+  expectedSpecSha256: string;
+  expectedScenarioStatus: Map<string, "passed" | "failed" | "blocked">;
+}
+
+/** §M-SNAPSHOT — Read and parse the registry as it exists in one commit. */
+function readRegistryAt(repoDir: string, commit: string): E2ERegistry | undefined {
+  const entry = listTree(commit, repoDir).find((item) => item.path === E2E_REGISTRY_PATH);
+  if (!entry) return undefined;
+  return JSON.parse(readBlob(entry.oid, repoDir).toString("utf8")) as E2ERegistry;
+}
+
+/** §M-SNAPSHOT — Catalog fields that must survive a metadata commit unchanged. */
+function catalogOf(scenario: E2EScenarioEntry): string {
+  return canonicalize({
+    scenario_id: scenario.scenario_id,
+    scenario_ref: scenario.scenario_ref,
+    business_links: [...scenario.business_links],
+    always_required: scenario.always_required,
+    tags: [...scenario.tags],
+  } as unknown as JsonValue);
+}
+
+/**
+ * §M-SNAPSHOT — Prove that a completion metadata commit changed nothing but `last_run`.
+ *
+ * Runs after the four gates have already passed, at the one moment when the
+ * executor is allowed to touch a tracked file without re-attesting. Every check
+ * here exists because the alternative is a run that claims verification of
+ * content it quietly edited afterwards.
+ */
+export function verifyMetadataCommit(input: MetadataGuardInput): MetadataGuardResult {
+  const violations: string[] = [];
+  const attested = computeSnapshotDigest(input.repoDir, input.attestedCommit);
+  const metadata = computeSnapshotDigest(input.repoDir, input.metadataCommit);
+
+  const touched = changedPaths(input.attestedCommit, input.metadataCommit, input.repoDir);
+  for (const path of touched) {
+    if (path !== E2E_REGISTRY_PATH) violations.push(`metadata commit changed ${path}`);
+  }
+
+  if (attested.digest !== metadata.digest) {
+    violations.push(
+      `projection digest changed: attested ${attested.digest}, metadata ${metadata.digest}`,
+    );
+  }
+
+  const before = readRegistryAt(input.repoDir, input.attestedCommit);
+  const after = readRegistryAt(input.repoDir, input.metadataCommit);
+  if (!after) {
+    violations.push(`${E2E_REGISTRY_PATH} is missing from the metadata commit`);
+    return {
+      ok: false,
+      violations,
+      attestedDigest: attested.digest,
+      metadataDigest: metadata.digest,
+    };
+  }
+
+  const beforeCatalog = new Map((before?.scenarios ?? []).map((s) => [s.scenario_id, catalogOf(s)]));
+  const afterCatalog = new Map(after.scenarios.map((s) => [s.scenario_id, catalogOf(s)]));
+  for (const [id, catalog] of afterCatalog) {
+    const previous = beforeCatalog.get(id);
+    if (previous === undefined) violations.push(`metadata commit added scenario ${id}`);
+    else if (previous !== catalog) violations.push(`metadata commit changed catalog of ${id}`);
+  }
+  for (const id of beforeCatalog.keys()) {
+    if (!afterCatalog.has(id)) violations.push(`metadata commit removed scenario ${id}`);
+  }
+
+  for (const [scenarioId, status] of input.expectedScenarioStatus) {
+    const scenario = after.scenarios.find((item) => item.scenario_id === scenarioId);
+    if (!scenario) {
+      violations.push(`verified scenario ${scenarioId} is absent from the registry`);
+      continue;
+    }
+    const lastRun = scenario.last_run;
+    if (!lastRun) {
+      violations.push(`scenario ${scenarioId} has no last_run after verification`);
+      continue;
+    }
+    if (lastRun.status !== status) {
+      violations.push(
+        `scenario ${scenarioId} recorded status ${lastRun.status}, expected ${status}`,
+      );
+    }
+    if (lastRun.snapshot_digest !== attested.digest) {
+      violations.push(`scenario ${scenarioId} records a different snapshot digest`);
+    }
+    if (lastRun.run_id !== input.expectedRunId) {
+      violations.push(`scenario ${scenarioId} records run ${lastRun.run_id}`);
+    }
+    if (lastRun.spec_sha256 !== input.expectedSpecSha256) {
+      violations.push(`scenario ${scenarioId} records a different spec digest`);
+    }
+  }
+
+  return {
+    ok: violations.length === 0,
+    violations,
+    attestedDigest: attested.digest,
+    metadataDigest: metadata.digest,
+  };
+}

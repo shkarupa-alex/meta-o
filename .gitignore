@@ -1,1 +1,5 @@
+# Build output and dependencies are reproducible from the sources; the install
+# scripts copy dist/ but never expect it to be committed.
+node_modules/
+dist/
 .DS_Store
