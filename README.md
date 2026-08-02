@@ -258,8 +258,8 @@ its own E2E contract in [`docs/architecture/e2e.md`](docs/architecture/e2e.md).
 - **`reboot-recovery` is graded `degraded`, not proven.** Restarting the backend
   server cannot be automated from inside a session it manages. Run the full
   suite again after a manual restart.
-- **§20's descriptor-relative requirement is not met.** The spec asks that state
-  files be created and replaced relative to an already-verified directory
+- **The master spec's descriptor-relative requirement is not met.** §5 asks that
+  state files be created and replaced relative to an already-verified directory
   descriptor. Node exposes neither `openat` nor `mkdirat`, and this
   implementation is dependency-free by choice, so `src/core/safe-fs.mts`
   verifies each component with `lstat` and then opens the leaf with
@@ -269,7 +269,9 @@ its own E2E contract in [`docs/architecture/e2e.md`](docs/architecture/e2e.md).
   a real gap, not a different way of satisfying the rule: on a host where
   another process can already write inside your state tree, the guarantee is
   the permission bits, not the code. Closing it properly needs a native helper
-  or `node:fs` growing the `*at` family.
+  or `node:fs` growing the `*at` family. The gap is recorded as an approved
+  deviation in the master spec's §17, so the spec and the code agree about it
+  rather than the code quietly falling short.
 - **The Python profile ships its own import-graph checker, not Import Linter.**
   §40 names Import Linter; `templates/python/quality/import_graph.py` implements
   the same contracts (layers, independence, forbidden edges, cycles, a fan-in

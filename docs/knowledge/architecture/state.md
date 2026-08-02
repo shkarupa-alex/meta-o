@@ -23,9 +23,10 @@ thing to want.
 
 Every path component is verified with `lstat` before use: a symlink, a foreign
 owner or group/other permissions block the run (`src/core/safe-fs.mts`). The
-master spec's orchestration chapter asks for more than this — creation and
+master spec's runtime-state chapter asks for more than this — creation and
 replacement relative to a verified directory descriptor — and that part is
-**unmet**, not satisfied differently:
+**unmet**, not satisfied differently, and is carried in the spec's own
+rejected-and-deferred chapter as an approved deviation:
 Node exposes neither `openat` nor `mkdirat`, so the check and the open are two
 operations with a window between them. Symlink substitution is closed;
 a process that can already write inside `~/.meta-o` is excluded by the `0700`

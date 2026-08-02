@@ -470,7 +470,10 @@ function backendDeps(adapter: HerdrAdapter, config: WatchdogConfig): WatchdogDep
       }
     },
     classifyTail: async (tail) => classifyWithFallback(tail, hybrid ? localClassifier() : undefined),
-    // Deliberately not write-ahead recorded, unlike the spawn below. A wake is
+    // Deliberately not write-ahead recorded, unlike the spawn below. The spec
+    // scopes that duty to the orchestrator and gives the watchdog its own
+    // closed action set, whose rule for a live session is backend-native wake
+    // and whose criterion is one wake per completion event. A wake is also
     // decided precisely when a pending operation may still be open — the
     // `waiting` branch reads that operation's own deadline to decide the run is
     // overdue — and one pending operation at a time is what makes reconcile

@@ -56,13 +56,18 @@ most once per `stateVersion` and spawns at most once per
 `orchestratorGeneration`, so a wedged run produces a bounded number of attempts
 rather than a loop.
 
-Two of those actions send a prompt without a `PendingOperation`, and that is a
-deliberate exception rather than an oversight. A wake is decided exactly when an
-operation may still be in flight, and an uncertainty prompt exactly when one is
-`uncertain`; recording a second operation would break the one-at-a-time rule
-that makes reconciliation decidable at all. What makes the exception safe is
-that both payloads say "read your own state and continue", so a duplicate costs
-nothing — unlike an instruction. Their dedupe is `watchdog-memory.json`, written
+Two of those actions send a prompt without a `PendingOperation`, and that is the
+spec's own scoping rather than an exception to it. The write-ahead duty is
+written for the *orchestrator*, in the chapter that also caps its state at one
+in-flight record; the watchdog's chapter gives it a separate closed action set
+whose delivery rule is backend-native wake and whose acceptance test is one wake
+per completion event — a dedupe obligation, not a write-ahead one. A second
+record could not exist in any case: a wake is decided exactly when an operation
+may still be in flight, and an uncertainty prompt exactly when one is
+`uncertain`, so recording another would break the one-at-a-time rule that makes
+reconciliation decidable at all. What keeps that safe is that both payloads say
+"read your own state and continue", so a duplicate costs nothing — unlike an
+instruction. The dedupe is `watchdog-memory.json`, written
 before the call, taken back only on an observable refusal, and — because it is
 the whole guard — distinguishing "unreadable" from "no record": a lost file is
 read as *notifications may already have gone out*, not as none have. That

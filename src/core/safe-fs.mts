@@ -8,12 +8,13 @@
  * ownership and permission checks across a dozen call sites, where they would
  * silently rot.
  *
- * §20's descriptor-relative requirement is **not met** by this module, and
- * calling that a deviation understated it. The spec asks for creation and
- * replacement relative to an already verified directory descriptor; Node
- * exposes neither `openat` nor `mkdirat`, and adding a native dependency to a
- * dependency-free tool is a worse trade than saying this plainly. So each
- * component is verified with `lstat` and the leaf is opened with `O_NOFOLLOW`.
+ * The master spec's descriptor-relative requirement — §5, the chapter §20
+ * derives its state contract from — is **not met** by this module. It asks for
+ * creation and replacement relative to an already verified directory
+ * descriptor; Node exposes neither `openat` nor `mkdirat`, and adding a native
+ * dependency to a dependency-free tool is a worse trade than saying this
+ * plainly. So each component is verified with `lstat` and the leaf is opened
+ * with `O_NOFOLLOW`. The spec's §17 carries this as an approved deviation.
  *
  * What that buys: symlink substitution is closed, including a symlink planted
  * at a parent directory. What it does not buy: the check and the open are two
