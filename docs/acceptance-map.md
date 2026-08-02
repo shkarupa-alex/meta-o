@@ -20,6 +20,9 @@ the Python starter profile's own fixtures.
 | An E2E fix does not restart review before the E2E loop stabilises | `an E2E fix does not pull the run back into a review round`, `once E2E is green on the new snapshot the review loop resumes` |
 | The final snapshot carries four attestations: QC, Reviewer A, Reviewer B, E2E | `one snapshot with four attestations completes`, `a run walks from start to COMPLETE only with four attestations on one snapshot` |
 | After `COMPLETE` no external run artefacts remain and project settings do | `cleanup removes the run directory but keeps project settings` |
+| Cleanup stops the run's remaining worker sessions before deleting anything | `cleanup removes the run directory but keeps project settings` (the stop outcomes are reported in its output) |
+| `PAUSED_MODEL_UNAVAILABLE` exits on resume **or** a newly confirmed ModelSet | `a run paused on an unavailable model can be given a new ModelSet` |
+| A failed E2E scenario reaches the executor as a finding | `a run walks from start to COMPLETE only with four attestations on one snapshot` (the router's `fix_e2e_failures` action is reachable only because `record-e2e` derives them) |
 
 ## §10 — Knowledge layer
 
@@ -43,17 +46,21 @@ the Python starter profile's own fixtures.
 | Two parallel feature branches do not block each other | `two runs of one project take their locks independently` |
 | A fresh orchestrator recovers a run without a narrative handoff | `a fresh orchestrator recovers a run from state.json alone` |
 | A backend capability regression stops preflight | `a backend capability regression stops preflight` |
+| The suite exercises concurrent completions | `two turns issued together are each proved to have landed in their own session`, `a backend that hands one session's turn to another fails the concurrency check`, `a turn that leaves no trace at all is reported, not counted as concurrency` |
+| The suite exercises reboot recovery | **Not automated**, and reported as such: restarting the backend server from inside a session it hosts cannot be done safely, so the check is `degraded` with instructions rather than a silent pass. |
 
 ## §30 — Review and E2E
 
 | Acceptance item | Proven by |
 |---|---|
 | A reviewer timeout does not let a run pass on one review | `one snapshot with four attestations completes` (both reviewer slots are required), `QC is demanded before any review of a new candidate` |
-| Reviewers get identical digest and plan, and not each other's findings | Mechanically: `a review that attested a superseded plan does not count`. The isolation of findings is a dispatch rule the orchestrator skill states and the CLI never violates — nothing writes one reviewer's findings into the other's context. |
+| Reviewers get identical digest and plan, and not each other's findings | `a review that attested a superseded plan does not count` for the shared digest and plan; `a reviewer's bounded view withholds the other reviewer's findings by name` and `the bounded view is reachable from the CLI and rejects a role it does not know` for the isolation. Partly a rule rather than a wall: run state is a readable file, so `run show --as-role` removes the accident, not the possibility. |
 | A finding cannot be closed by the executor | `the executor may propose a fix but never close a finding` |
 | An empty plan is impossible because of `always_required` | `an empty selection is impossible because always_required must be included` |
 | A catalog change after review invalidates the snapshot | `changing a catalog field of the registry does change the digest`, `changing content invalidates every attestation that described the old one`; `a metadata commit that edits the catalog is rejected` |
 | Writing only `last_run` does not change the projection digest | `writing only last_run leaves the digest unchanged`, `a metadata commit writing only last_run passes the guard` |
+| The E2E tester works in a fresh detached worktree | `an E2E result is refused unless a worktree receipt proves it ran isolated` |
+| A plan covers the impact it declares | `a plan that ignores the impact it declared is rejected`, `an impacted tag pulls in every scenario carrying it` |
 | E2E failures stay visible until the next run | `closed findings are pruned and only blocking ones hold up completion`, `an E2E result that skips a selected scenario does not pass` |
 | One final digest has PASS from QC, A, B and E2E | `one snapshot with four attestations completes` |
 
@@ -86,7 +93,7 @@ starter profile in `templates/python/tests/test_quality_gates.py`.
 | An unknown operation is never resent | `an unprovable effect is surfaced once, then backed off` |
 | A productive unlimited review loop is not a stall | `a productive loop is never treated as a stall` |
 | Two project keys are served independently | `two project keys are observed independently`, `a backend that cannot be observed backs one run off, not the whole loop` |
-| A disabled watchdog affects nothing | `a disabled watchdog performs no ticks at all` |
+| A disabled watchdog affects nothing | `a disabled watchdog performs no ticks at all`, `a project that switched the watchdog off is skipped, and says so` |
 
 ## Bypasses
 
@@ -113,3 +120,9 @@ now has a test that fails if the hole reopens. They live in
 | A reviewer gate is set to `passed` by `record-gate`, with no review behind it | `a reviewer gate cannot be passed without the review that produced it` |
 | A secret quoted in a finding is written verbatim into durable state | `a secret in a finding never reaches durable state` |
 | `--attested` lets the metadata guard verify one tree and record the verdict against another | `the metadata guard may not be pointed at a commit other than the candidate` |
+| A backend that hands one session's completion to another passes the concurrency check | `a backend that hands one session's turn to another fails the concurrency check` |
+| A selection plan declares an impact and then ignores it | `a plan that ignores the impact it declared is rejected` |
+| An E2E result is accepted with no proof the suite ran outside the developer's checkout | `an E2E result is refused unless a worktree receipt proves it ran isolated` |
+| A reviewer reads the other reviewer's findings out of `run show` | `a reviewer's bounded view withholds the other reviewer's findings by name` |
+| A run pinned to a model the user has lost can only be cancelled | `a run paused on an unavailable model can be given a new ModelSet` |
+| A project that switched the watchdog off is watched anyway | `a project that switched the watchdog off is skipped, and says so` |

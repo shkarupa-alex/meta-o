@@ -59,9 +59,11 @@ meta-o preflight                       # is the project contract there and valid
 meta-o snapshot digest                 # what is this tree's content identity?
 meta-o run route --run-id <id>         # what should happen next, and why?
 meta-o run show  --run-id <id>         # the whole recoverable state
+meta-o run show  --run-id <id> --as-role reviewerPrimary  # only what that role may see
 meta-o session list --run-id <id>      # which workers exist, and any in-flight effect
 meta-o qc weakening --run-id <id>      # did anything about "passing" get easier?
 meta-o worktree run --run-id <id> --label qc make qc   # run a gate on the candidate alone
+meta-o worktree run --run-id <id> --label e2e ./run-e2e  # …and leave the receipt record-e2e needs
 meta-o help                            # the real command surface
 ```
 
