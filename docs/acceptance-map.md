@@ -55,7 +55,7 @@ in `templates/python/tests/test_quality_gates.py`, which `make e2e` and
 | A crash at any point of a backend side effect creates no duplicate action | The nine tests whose names contain `reconcile` (`tests/session-protocol.test.mts`, `tests/cli-lifecycle.test.mts`), plus `spawn does not create a second agent for the same operation` |
 | Two parallel feature branches do not block each other | `two runs of one project take their locks independently` |
 | A fresh orchestrator recovers a run without a narrative handoff | `a fresh orchestrator recovers a run from state.json alone` |
-| A backend capability regression stops preflight | `a backend capability regression stops preflight` |
+| A backend capability regression stops preflight | `a backend capability regression stops preflight` — including a backend that still answers but has lost `pane split`, `agent read` or `pane close` |
 | An orchestrator can register the session that owns the run | `an orchestrator can register itself the way the skill tells it to` |
 | Only the herdr adapter ships, and a project cannot be configured onto one that does not exist | Refused at `project set-settings`, and by every session command (`unsupported_backend`). **Scope gap, disclosed:** §20's minimal skill set names an Omnigent adapter skill; this repository implements Herdr only, as the first backend. |
 | The suite exercises concurrent completions | `two turns issued together are each proved to have landed in their own session`, `a backend that hands one session's turn to another fails the concurrency check`, `a turn that leaves no trace at all is reported, not counted as concurrency` |
@@ -197,3 +197,11 @@ now has a test that fails if the hole reopens. They live in
 | §00 preflight step 2 — ownership, mode and symlinks under `~/.meta-o` — is not performed by `preflight` | `preflight performs the state-tree step §00 gives it` |
 | §20's URL-spec limits (HTTPS, ≤3 redirects, ≤10 MiB decompressed) are implemented and proven by nothing | `a spec URL that is not https is refused before any socket is opened`, `a spec URL is followed for three redirects and no further`, `a compressed spec is bounded by its decompressed size, not its transfer size` |
 | The watchdog log promises it records no model text and quotes adapter errors verbatim | *not mechanical* — `redactDeep` is applied to every entry on the one code path that writes the log; `a secret in a finding never reaches durable state` proves the redaction itself |
+| §20's smoke could only see a regression the adapter's own source caused | `a backend capability regression stops preflight` (the three lost-verb cases) |
+| `agent wait` disappearing from the backend reads as a successful wait | `a backend that no longer has \`agent wait\` says so instead of polling` |
+| §00 preflight step 4 — show the ModelSet and ask "these?" — is unfalsifiable | `the ModelSet leaves AWAITING_MODEL_SET only on a decision the user took` |
+| `run start --backend <unimplemented>` reports that backend and uses herdr | `a backend nothing implements is refused at start, not printed and dropped` |
+| §20's `runs/<id>/findings/` is named in the layout and never created | `§20's findings directory is a view of the open records, not an archive` |
+| `meta-o e2e result` pre-flights a payload `run record-e2e` then refuses | `an E2E result must state the set it ran, and it must be the sealed one` (the dry-run parity cases) |
+| §00 preflight steps 4, 5 and 7's *asking* is prompt-level | *not mechanical* — step 4 is now evidenced by a recorded user decision, and step 5's answers are `--reuse-scan`/`--handoff` flags whose consent is enforced downstream (`a handoff is refused unless the run started with consent`, `a solution scan the user did not ask for is refused`); the questions themselves live in the orchestrator skill, because a CLI cannot ask them |
+| §20 forbids a daemon and §50 specifies one | *not mechanical* — a contradiction between two specs, not a defect in either implementation; `README.md`'s **Known limits** records which reading meta-o took and how to opt out of it |

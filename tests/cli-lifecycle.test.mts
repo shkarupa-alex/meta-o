@@ -21,6 +21,7 @@ import {
   FAKE_HERDR,
   action,
   cli,
+  confirmModels,
   dispatch,
   errorCode,
   ok,
@@ -75,7 +76,7 @@ test("a run walks from start to COMPLETE only with four attestations on one snap
     ok(cli(["e2e", "validate"], context), "e2e validate");
     ok(cli(["knowledge", "validate"], context), "knowledge validate");
 
-    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    confirmModels(context, runId);
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
 
     // Retirement is part of the candidate window, and the CLI says so.
@@ -256,7 +257,7 @@ test("an E2E result that skips a selected scenario does not pass", () => {
 
   try {
     const runId = startRun(context);
-    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    confirmModels(context, runId);
     retireSpec(repo);
     const candidate = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
     const plan = ok(
@@ -302,7 +303,7 @@ test("a gate result for a superseded snapshot is refused", () => {
 
   try {
     const runId = startRun(context);
-    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    confirmModels(context, runId);
     retireSpec(repo);
     const staleDigest = ok(cli(["run", "set-candidate", "--run-id", runId], context), "candidate 1")
       .json["snapshotDigest"] as string;
@@ -342,7 +343,7 @@ test("changing the candidate invalidates attestations of the previous one", () =
 
   try {
     const runId = startRun(context);
-    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    confirmModels(context, runId);
     retireSpec(repo);
     ok(cli(["run", "set-candidate", "--run-id", runId], context), "candidate 1");
     ok(
@@ -537,6 +538,27 @@ test("a backend capability regression stops preflight", () => {
     assert.equal(checks.find((check) => check.id === "backend-smoke")?.status, "invalid");
     assert.equal(checks.find((check) => check.id === "capability-regression")?.status, "invalid");
 
+    // The socket answering is the easy case. This is the one the acceptance
+    // test is actually about: a backend still reachable, still answering
+    // `agent list`, that has lost one verb in an upgrade. While the smoke run
+    // only re-read a capability matrix the adapter hardcodes, every one of
+    // these preflighted `ok: true` and the run died hours later.
+    for (const [verb, id] of [
+      ["pane split", "spawn"],
+      ["agent read", "status-read"],
+      ["pane close", "stop"],
+    ] as Array<[string, string]>) {
+      const lost = cli(["preflight"], {
+        ...context,
+        env: { ...context.env, FAKE_HERDR_FAIL: verb, FAKE_HERDR_FAIL_CODE: "unknown_command" },
+      });
+      assert.equal(lost.code, 1, `preflight blocks a backend that lost \`${verb}\``);
+      const blocked = lost.json["checks"] as Array<{ id: string; status: string; detail: string }>;
+      const smoke = blocked.find((check) => check.id === "backend-smoke");
+      assert.equal(smoke?.status, "invalid", `backend-smoke is invalid without \`${verb}\``);
+      assert.match(smoke?.detail ?? "", new RegExp(id));
+    }
+
     // The project itself is fine, and --no-backend says so without pretending
     // the backend is.
     ok(cli(["preflight", "--no-backend"], { ...context, env: {} }), "preflight --no-backend");
@@ -587,7 +609,7 @@ test("a candidate may not touch source outside the adopted closure", () => {
     repo.commit("certify the adopted closure");
 
     const runId = startRun(context);
-    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    confirmModels(context, runId);
     retireSpec(repo);
 
     // Inside the closure: ordinary work.

@@ -374,6 +374,14 @@ export interface RunState {
   orchestratorGeneration: number;
   spec: FeatureSpecRef;
   specBlob: string;
+  /**
+   * Backend this run's sessions live in — part of run identity, since a session
+   * ref means nothing without it. Recorded because `run start` resolved the
+   * backend from flag, project settings and machine defaults, printed it, and
+   * then dropped it: a run started `--backend omnigent` reported omnigent and
+   * spawned herdr agents.
+   */
+  backend?: Backend;
   baseRevision: string;
   candidateSnapshot?: SnapshotRef;
   modelSet: ModelSet;
@@ -387,6 +395,12 @@ export interface RunState {
    */
   orchestratorSession?: SessionRef;
   decisions: DecisionRecord[];
+  /**
+   * Id of the decision in which the user answered §00 step 4's "these?" about
+   * the ModelSet. Stored so a fresh orchestrator can see the question was asked
+   * and by whom it was answered, rather than inferring it from the phase.
+   */
+  modelSetConfirmedBy?: string;
   knowledgeImpactPlan?: KnowledgeImpactPlan;
   e2ePlan?: E2ESelectionPlan;
   /**

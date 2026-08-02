@@ -577,3 +577,50 @@ test("secrets in pane output are redacted before the orchestrator sees them", as
   assert.ok(!output.text.includes("sk-abcdefghijklmnopqrstuvwx"));
   assert.ok(output.text.includes("[redacted]"));
 });
+
+test("a backend that no longer has `agent wait` says so instead of polling", async () => {
+  // The adapter swallowed every HerdrCommandError from `agent wait` and fell
+  // back to `status()`, so a CLI that had dropped the subcommand entirely
+  // returned a perfectly ordinary WaitResult — and the capability suite graded
+  // `wait` supported on a backend that no longer had it. A wait that ran and
+  // did not settle is still an answer; a verb that is gone is not.
+  const agents = new Map([["a", agentInfo({ pane_id: "w1:p2", name: "a" })]]);
+  const session: SessionRef = {
+    backend: "herdr",
+    sessionId: encodeSessionId("a", "w1:p2", true),
+    role: "executor",
+    generation: 1,
+  };
+  const clock = new FakeClock(Date.parse("2026-07-24T12:00:00Z"));
+  const deadlineAt = new Date(clock.now() + 60_000).toISOString();
+
+  const timedOut = fakeHerdr({ agents });
+  const patient = new HerdrAdapter({
+    clock,
+    exec: async (args, timeout) =>
+      args[1] === "wait"
+        ? serverError("agent_wait_timeout", "the agent did not settle in time")
+        : timedOut.exec(args, timeout),
+  });
+  assert.equal(
+    (await patient.wait(session, { terminal: false, deadlineAt })).status,
+    "waiting",
+    "a wait that ran and timed out is answered from status",
+  );
+
+  for (const lost of [
+    { code: 2, stdout: "", stderr: "unknown command: wait" } as HerdrExecResult,
+    serverError("herdr_error", "agent: unrecognized subcommand 'wait'"),
+  ]) {
+    const gone = fakeHerdr({ agents });
+    const adapter = new HerdrAdapter({
+      clock,
+      exec: async (args, timeout) => (args[1] === "wait" ? lost : gone.exec(args, timeout)),
+    });
+    await assert.rejects(
+      () => adapter.wait(session, { terminal: false, deadlineAt }),
+      /wait/,
+      "a lost verb reaches the capability suite as a failure",
+    );
+  }
+});

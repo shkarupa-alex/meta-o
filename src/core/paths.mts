@@ -106,6 +106,27 @@ export function gateReceiptPath(projectKey: string, runId: string, label: string
   return join(gateReceiptsDir(projectKey, runId), `${label}.json`);
 }
 
+/**
+ * §M-PATHS — Where the run's open findings are readable one file at a time.
+ *
+ * §20's external layout names this directory. It is a projection of
+ * `state.json`, which stays authoritative: §00 forbids a findings archive and
+ * §30 says a closed record is deleted, so a second durable copy would be the
+ * ledger both refuse. What it buys is a human being able to read one objection
+ * without parsing the whole run state, which is what the layout is for.
+ */
+export function findingsDir(projectKey: string, runId: string): string {
+  return join(runDir(projectKey, runId), "findings");
+}
+
+/** §M-PATHS — File holding one open finding, refusing an id that is not a safe name. */
+export function findingPath(projectKey: string, runId: string, findingId: string): string {
+  if (!/^[a-z0-9][a-z0-9._-]*$/i.test(findingId) || findingId.includes("..")) {
+    throw new Error(`finding id ${findingId} is not a safe file name`);
+  }
+  return join(findingsDir(projectKey, runId), `${findingId}.json`);
+}
+
 /** §M-PATHS — Rotating watchdog log; never contains model text or transcripts. */
 export function watchdogLogPath(): string {
   return join(metaOHome(), "watchdog.log");

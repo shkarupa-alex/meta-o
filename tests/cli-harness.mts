@@ -191,6 +191,35 @@ export function dispatch(context: CliContext, runId: string, role: string): void
   );
 }
 
+/**
+ * §M-TEST-HARNESS — Answer §00 step 4's "these?" the way a user would, then confirm.
+ *
+ * `run confirm-models` points at a recorded user decision, so every fixture that
+ * leaves `AWAITING_MODEL_SET` has to record one. Kept here rather than repeated
+ * per test: the interesting cases are the ones that record the *wrong* decision,
+ * and those spell it out inline.
+ */
+export function confirmModels(context: CliContext, runId: string): void {
+  ok(
+    cli(["run", "record-decision", "--run-id", runId], {
+      ...context,
+      stdin: JSON.stringify({
+        id: "D-MODELS",
+        question: "run with the stored ModelSet?",
+        answer: "yes",
+        rationale: "the four models are the ones this project has been using",
+        category: "tooling",
+        decidedBy: "user",
+      }),
+    }),
+    "record-decision D-MODELS",
+  );
+  ok(
+    cli(["run", "confirm-models", "--run-id", runId, "--decision-id", "D-MODELS"], context),
+    "confirm-models",
+  );
+}
+
 /** §M-TEST-HARNESS — Dispatch the three workers whose results a run records. */
 export function dispatchWorkers(context: CliContext, runId: string): void {
   for (const role of ["reviewerPrimary", "reviewerCrossVendor", "e2eTester"]) {

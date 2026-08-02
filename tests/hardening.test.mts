@@ -13,12 +13,20 @@
 
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { mkdirSync, readFileSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 
 import { createTempHome } from "./helpers.mts";
 import {
   cli,
+  confirmModels,
   dispatch,
   dispatchWorkers,
   errorCode,
@@ -289,7 +297,7 @@ test("a spec that was renamed rather than retired still blocks the candidate", (
   const context: CliContext = { cwd: repo.dir, home: home.dir };
   try {
     const runId = startRun(context);
-    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    confirmModels(context, runId);
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
 
     repo.git(["mv", "spec/feature.md", "docs/archived-feature.md"]);
@@ -355,7 +363,7 @@ test("a tracked spec introduced as a local path is still retired", () => {
     assert.equal(spec.locator, "spec/feature.md");
     assert.equal(spec.disposition, "delete_after_sync");
 
-    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    confirmModels(context, runId);
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
     const refused = cli(["run", "set-candidate", "--run-id", runId], context);
     assert.equal(refused.code, 1);
@@ -380,7 +388,7 @@ test("a reviewer gate cannot be passed without the review that produced it", () 
     assert.equal(errorCode(refused), "evidence_required");
 
     // A failure still goes through the plain command: it takes nothing away.
-    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    confirmModels(context, runId);
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
     retireSpec(repo);
     ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
@@ -746,7 +754,7 @@ test("a run that tagged or pushed its own work cannot set a candidate", () => {
   const context: CliContext = { cwd: repo.dir, home: home.dir };
   try {
     const runId = startRun(context);
-    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    confirmModels(context, runId);
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
     retireSpec(repo);
     repo.git(["tag", "v1.0.0"]);
@@ -772,7 +780,7 @@ test("the metadata guard may not be pointed at a commit other than the candidate
   const context: CliContext = { cwd: repo.dir, home: home.dir };
   try {
     const runId = startRun(context);
-    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    confirmModels(context, runId);
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
     retireSpec(repo);
     ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
@@ -806,7 +814,7 @@ test("a run paused on an unavailable model can be given a new ModelSet", () => {
   });
   try {
     const runId = startRun(context);
-    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    confirmModels(context, runId);
     ok(
       cli(
         ["run", "transition", "--run-id", runId, "--phase", "PAUSED_MODEL_UNAVAILABLE",
@@ -865,7 +873,7 @@ test("an E2E result is refused unless a worktree receipt proves it ran isolated"
   try {
     const runId = startRun(context);
     dispatchWorkers(context, runId);
-    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    confirmModels(context, runId);
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
     retireSpec(repo);
     const candidate = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
@@ -1018,7 +1026,7 @@ test("a second review may not erase the blocker the first one raised", () => {
   try {
     const runId = startRun(context);
     dispatchWorkers(context, runId);
-    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    confirmModels(context, runId);
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
     retireSpec(repo);
     const candidate = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
@@ -1117,7 +1125,7 @@ test("a QC pass is recomputed from the result, not taken on the caller's word", 
   const context: CliContext = { cwd: repo.dir, home: home.dir };
   try {
     const runId = startRun(context);
-    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    confirmModels(context, runId);
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
     retireSpec(repo);
     ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
@@ -1173,7 +1181,7 @@ test("an amend that preserves the tree does not invalidate a single gate", () =>
   const context: CliContext = { cwd: repo.dir, home: home.dir };
   try {
     const runId = startRun(context);
-    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    confirmModels(context, runId);
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
     retireSpec(repo);
     const first = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
@@ -1225,7 +1233,7 @@ test("a gate command may carry its own flags after a bare --", () => {
   const context: CliContext = { cwd: repo.dir, home: home.dir };
   try {
     const runId = startRun(context);
-    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    confirmModels(context, runId);
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
     retireSpec(repo);
     ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
@@ -1309,7 +1317,7 @@ test("the production contract must be committed, and must be about production", 
   try {
     const runId = startRun(context);
     dispatchWorkers(context, runId);
-    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    confirmModels(context, runId);
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
     retireSpec(repo);
 
@@ -1438,7 +1446,7 @@ test("a scenario the E2E gate itself flagged can be fixed and re-run green", () 
   try {
     const runId = startRun(context);
     dispatchWorkers(context, runId);
-    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    confirmModels(context, runId);
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
     retireSpec(repo);
 
@@ -1651,7 +1659,7 @@ test("a derived E2E finding is retired by the gate, not closed by hand", () => {
   try {
     const runId = startRun(context);
     dispatchWorkers(context, runId);
-    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    confirmModels(context, runId);
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
     retireSpec(repo);
     const candidate = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
@@ -1736,7 +1744,7 @@ test("a gate whose own receipt records a failure cannot be recorded as passed", 
   const context: CliContext = { cwd: repo.dir, home: home.dir };
   try {
     const runId = startRun(context);
-    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    confirmModels(context, runId);
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
     retireSpec(repo);
     ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
@@ -1778,7 +1786,7 @@ test("a green E2E run leaves a blocker raised against the E2E work standing", ()
   try {
     const runId = startRun(context);
     dispatchWorkers(context, runId);
-    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    confirmModels(context, runId);
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
     retireSpec(repo);
     const candidate = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
@@ -1868,7 +1876,7 @@ test("production needs a written contract, not only the user's consent", () => {
   try {
     const runId = startRun(context);
     dispatchWorkers(context, runId);
-    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    confirmModels(context, runId);
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
     retireSpec(repo);
     const candidate = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
@@ -2094,7 +2102,7 @@ test("a result may only be attributed to a worker this run dispatched", () => {
   const context: CliContext = { cwd: repo.dir, home: home.dir };
   try {
     const runId = startRun(context);
-    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    confirmModels(context, runId);
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
     retireSpec(repo);
     const candidate = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
@@ -2188,7 +2196,7 @@ test("the heavy E2E loop does not open before both reviews have passed", () => {
   try {
     const runId = startRun(context);
     dispatchWorkers(context, runId);
-    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    confirmModels(context, runId);
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
     retireSpec(repo);
     const candidate = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
@@ -2276,7 +2284,7 @@ test("an E2E result must state the set it ran, and it must be the sealed one", (
   try {
     const runId = startRun(context);
     dispatchWorkers(context, runId);
-    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    confirmModels(context, runId);
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
     retireSpec(repo);
     const candidate = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
@@ -2453,6 +2461,219 @@ test("preflight performs the state-tree step §00 gives it", () => {
         (check) => check.id === "state-tree",
       )!.detail,
       /refusing to follow symlink in state tree/,
+    );
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("a backend nothing implements is refused at start, not printed and dropped", () => {
+  // `run start` resolved the backend from flag, settings and machine defaults,
+  // emitted it, and never stored or checked it. `--backend omnigent` answered
+  // `"backend": "omnigent"` and then ran every session on herdr — the exact
+  // outcome the shared check exists to prevent, reached through the one command
+  // that creates runs.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const refused = cli(
+      [
+        "run",
+        "start",
+        "--spec-kind",
+        "tracked",
+        "--spec-locator",
+        "spec/feature.md",
+        "--backend",
+        "omnigent",
+      ],
+      context,
+    );
+    assert.equal(errorCode(refused), "unsupported_backend");
+    assert.match(refused.stderr, /orchestrate-feature-omnigent/);
+
+    // What the run does use is written down, so a later reader is not left
+    // inferring it from which adapter happened to be the default.
+    const runId = startRun(context);
+    const state = ok(cli(["run", "show", "--run-id", runId], context), "run show").json;
+    assert.equal(state["backend"], "herdr");
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("the ModelSet leaves AWAITING_MODEL_SET only on a decision the user took", () => {
+  // §00 step 4 makes the orchestrator show the stored ModelSet and ask "these?".
+  // `run confirm-models` took no evidence at all, so nothing distinguished a
+  // user who answered from an orchestrator that skipped the question — in the
+  // phase that exists for precisely that question, immediately before four
+  // external models start costing money.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+
+    const unasked = cli(["run", "confirm-models", "--run-id", runId, "--decision-id", "D-NONE"], context);
+    assert.equal(errorCode(unasked), "unknown_decision");
+    assert.match(unasked.stderr, /record-decision/);
+
+    ok(
+      cli(["run", "record-decision", "--run-id", runId], {
+        ...context,
+        stdin: JSON.stringify({
+          id: "D-SELF",
+          question: "run with the stored ModelSet?",
+          answer: "yes",
+          rationale: "it is what settings.json already says",
+          category: "tooling",
+          decidedBy: "orchestrator",
+        }),
+      }),
+      "an orchestrator may record its own reasoning",
+    );
+    const selfApproved = cli(
+      ["run", "confirm-models", "--run-id", runId, "--decision-id", "D-SELF"],
+      context,
+    );
+    assert.equal(errorCode(selfApproved), "not_a_user_decision");
+
+    // Still in the phase it started in: a refused confirmation is not a
+    // half-confirmation.
+    assert.equal(
+      ok(cli(["run", "show", "--run-id", runId], context), "run show").json["phase"],
+      "AWAITING_MODEL_SET",
+    );
+
+    confirmModels(context, runId);
+    const confirmed = ok(cli(["run", "show", "--run-id", runId], context), "run show").json;
+    assert.equal(confirmed["phase"], "PREFLIGHT");
+    assert.equal(confirmed["modelSetConfirmedBy"], "D-MODELS");
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("§20's findings directory is a view of the open records, not an archive", () => {
+  // §20's external layout names `runs/<id>/findings/` and nothing created it.
+  // It cannot be a second source of truth — §00 forbids a findings archive and
+  // §30 deletes a closed record — so it is a projection of `state.json`,
+  // rewritten on every commit, and a record that closes loses its file.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    dispatch(context, runId, "reviewerPrimary");
+    const projectKey = ok(cli(["project", "key"], context), "project key").json[
+      "projectKey"
+    ] as string;
+    const dir = join(home.dir, "projects", projectKey, "runs", runId, "findings");
+    assert.deepEqual(readdirSync(dir), [], "the directory exists before anything is raised");
+
+    ok(
+      cli(["run", "open-findings", "--run-id", runId, "--reviewer", "reviewerPrimary"], {
+        ...context,
+        stdin: blocker("F-1"),
+      }),
+      "open-findings",
+    );
+    assert.deepEqual(readdirSync(dir), ["F-1.json"]);
+    const projected = JSON.parse(readFileSync(join(dir, "F-1.json"), "utf8")) as {
+      role: string;
+      status: string;
+      finding: { id: string };
+    };
+    assert.equal(projected.role, "reviewerPrimary");
+    assert.equal(projected.status, "open");
+    assert.equal(projected.finding.id, "F-1");
+
+    ok(
+      cli(
+        [
+          "run",
+          "propose-fix",
+          "--run-id",
+          runId,
+          "--reviewer",
+          "reviewerPrimary",
+          "--finding-id",
+          "F-1",
+          "--candidate-commit",
+          "abc123",
+        ],
+        {
+          ...context,
+          stdin: JSON.stringify([
+            { kind: "file", reference: "src/app.py:1", detail: "the token is checked now" },
+          ]),
+        },
+      ),
+      "propose-fix",
+    );
+    assert.equal(
+      (JSON.parse(readFileSync(join(dir, "F-1.json"), "utf8")) as { status: string }).status,
+      "fix_proposed",
+      "the view follows the record rather than lagging behind it",
+    );
+
+    ok(
+      cli(
+        [
+          "run",
+          "resolve-finding",
+          "--run-id",
+          runId,
+          "--reviewer",
+          "reviewerPrimary",
+          "--finding-id",
+          "F-1",
+          "--by-role",
+          "reviewerPrimary",
+        ],
+        context,
+      ),
+      "resolve-finding",
+    );
+    assert.deepEqual(readdirSync(dir), [], "a closed record is deleted, not archived");
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("a solution scan the user did not ask for is refused", () => {
+  // §00 step 5 asks the user whether to run the optional reuse scan, and the
+  // answer is the `--reuse-scan` flag. The phase has to be unreachable without
+  // it, or the question is decoration: the routing table would go on reporting
+  // "the user enabled the optional reuse scan" over a run whose recorded
+  // consent said the opposite.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const unasked = startRun(context);
+    confirmModels(context, unasked);
+    const refused = cli(
+      ["run", "transition", "--run-id", unasked, "--phase", "SOLUTION_SCAN"],
+      context,
+    );
+    assert.equal(errorCode(refused), "reuse_scan_not_enabled");
+    assert.match(refused.stderr, /--reuse-scan/);
+    ok(
+      cli(["run", "transition", "--run-id", unasked, "--phase", "EXECUTING"], context),
+      "the phase is optional, so skipping it is the ordinary path",
+    );
+
+    const asked = startRun(context, ["--reuse-scan"]);
+    confirmModels(context, asked);
+    ok(
+      cli(["run", "transition", "--run-id", asked, "--phase", "SOLUTION_SCAN"], context),
+      "consent recorded at start is what opens the phase",
     );
   } finally {
     home.dispose();

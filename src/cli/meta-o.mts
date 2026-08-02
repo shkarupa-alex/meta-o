@@ -156,9 +156,9 @@ const COMMANDS: Record<string, { flags: string[]; run: Command; help: string }> 
     help: "move a run to another phase",
   },
   "run confirm-models": {
-    flags: ["run-id"],
+    flags: ["run-id", "decision-id"],
     run: commandConfirmModels,
-    help: "record the user's ModelSet confirmation",
+    help: "leave AWAITING_MODEL_SET, naming the user decision that confirmed the ModelSet",
   },
   "run set-model-set": {
     flags: ["run-id"],

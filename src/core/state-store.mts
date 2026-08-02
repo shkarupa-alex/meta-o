@@ -10,6 +10,7 @@
 
 import { closeSync, constants as fsConstants, openSync, rmSync, writeSync } from "node:fs";
 import { hostname } from "node:os";
+import { join } from "node:path";
 import { existsSync, readdirSync } from "node:fs";
 import type { JsonValue } from "./canonical-json.mjs";
 import { type Clock, isoTimestamp, systemClock } from "./clock.mjs";
@@ -22,6 +23,8 @@ import {
   verifySecureDir,
 } from "./safe-fs.mjs";
 import {
+  findingPath,
+  findingsDir,
   handoffPath,
   inputDir,
   gateReceiptsDir,
@@ -191,6 +194,7 @@ export function ensureRunDirectories(projectKey: string, runId: string): string 
   const dir = ensureSecureDir(runDir(projectKey, runId));
   ensureSecureDir(inputDir(projectKey, runId));
   ensureSecureDir(gateReceiptsDir(projectKey, runId));
+  ensureSecureDir(findingsDir(projectKey, runId));
   return dir;
 }
 
@@ -249,7 +253,48 @@ export function commitState(next: RunState, clock: Clock = systemClock): RunStat
   };
   ensureRunDirectories(next.projectKey, next.runId);
   writeSecureJson(path, written as unknown as JsonValue);
+  projectFindings(written);
   return written;
+}
+
+/**
+ * §M-STATE-STORE — Rewrite `findings/` to match the findings this state holds open.
+ *
+ * §20's layout names the directory; §00 forbids a findings archive and §30 says
+ * a closed record is deleted. Both hold only if this is a projection and not a
+ * second source of truth — so it is rewritten from `state.json` on every commit,
+ * under the same writer lock, and a record that stopped being open loses its
+ * file in the same breath.
+ *
+ * Failure here is not failure of the commit. The state is already durable and
+ * authoritative by the time this runs; refusing an otherwise valid transition
+ * because a convenience view could not be written would be the tail wagging the
+ * dog.
+ */
+function projectFindings(state: RunState): void {
+  const dir = findingsDir(state.projectKey, state.runId);
+  const open = new Map<string, JsonValue>();
+  for (const [role, records] of Object.entries(state.openFindings ?? {})) {
+    for (const record of records ?? []) {
+      open.set(record.finding.id, { role, ...record } as unknown as JsonValue);
+    }
+  }
+  try {
+    for (const name of readdirSync(dir)) {
+      if (name.endsWith(".json") && !open.has(name.slice(0, -5))) rmSync(join(dir, name));
+    }
+  } catch {
+    /* the authoritative record is state.json, which is already written */
+  }
+  for (const [id, record] of open) {
+    // Per finding, so one id that is not a usable file name — `findingPath`
+    // refuses those — costs its own file and not everyone else's.
+    try {
+      writeSecureJson(findingPath(state.projectKey, state.runId, id), record);
+    } catch {
+      /* same reason: this view is a convenience, state.json is the record */
+    }
+  }
 }
 
 /** §M-STATE-STORE — Handle returned by a successful lock acquisition. */

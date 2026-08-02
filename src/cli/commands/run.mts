@@ -7,17 +7,11 @@
  * code rather than by a prompt remembering to enforce them.
  */
 
-import { randomUUID } from "node:crypto";
 import {
   cleanupRun,
-  commitState,
-  ensureProject,
-  ensureRunDirectories,
   listRuns,
   readHandoff,
-  readSettings,
   readState,
-  withWriterLock,
   writeHandoff,
 } from "../../core/state-store.mjs";
 import {
@@ -30,15 +24,12 @@ import {
   routeNext,
 } from "../../core/fsm.mjs";
 import { computeSnapshotDigest } from "../../core/snapshot.mjs";
-import { git, resolveCommit } from "../../core/git.mjs";
-import { fetchSpec, materializeSpecBlob, assertSpecUnchanged } from "../../core/spec-input.mjs";
-import { validateModelSet } from "../../core/model-set.mjs";
-import { readGlobalConfig } from "../../core/config.mjs";
 import { validatePlan } from "../../core/e2e-registry.mjs";
 import { HerdrAdapter } from "../../adapters/herdr.mjs";
 import { isoTimestamp } from "../../core/clock.mjs";
 import { readExternalBytes } from "../../core/safe-fs.mjs";
-import { isAbsolute, join, relative as relativePath, resolve } from "node:path";
+import { join } from "node:path";
+import { validateModelSet } from "../../core/model-set.mjs";
 import type {
   E2ERegistry,
   E2ESelectionPlan,
@@ -63,119 +54,13 @@ import { redact } from "../../core/redact.mjs";
 import { identityOf, loadState, mutate } from "./run-context.mjs";
 import { roleView } from "../../core/role-view.mjs";
 export { commandSetSession, commandTakeover } from "./ownership.mjs";
+export { commandStart } from "./run-start.mjs";
 import { WORKER_ROLES } from "../../core/types.mjs";
 import { assertCandidateAdmissible, assertUnpublished } from "./candidate-guards.mjs";
 
 /** §M-CLI-RUN — Redact an optional free-text flag before it reaches durable state. */
 function redactText(value: string | undefined): string | undefined {
   return value === undefined ? undefined : redact(value);
-}
-
-/**
- * §M-CLI-RUN — Resolve what a spec reference really is, not what it was called.
- *
- * `--spec-kind local` pointing at a file git tracks is a tracked spec. Taking
- * the caller's word for it set `disposition: "external"`, which turns off
- * retirement entirely — so the same document could ship in the completed tree
- * simply by being introduced with an absolute path. Kind is a fact about the
- * repository, and this is where it gets established.
- */
-function normalizeSpecReference(
-  repoDir: string,
-  kind: string,
-  locator: string,
-): ["tracked" | "local" | "url", string] {
-  if (kind !== "local") return [kind as "tracked" | "url", locator];
-  const absolute = isAbsolute(locator) ? locator : resolve(repoDir, locator);
-  const relative = relativePath(repoDir, absolute);
-  if (relative.startsWith("..") || isAbsolute(relative)) return ["local", locator];
-  try {
-    git(["ls-files", "--error-unmatch", "--", relative], repoDir);
-  } catch {
-    return ["local", locator];
-  }
-  return ["tracked", relative];
-}
-
-/**
- * §M-CLI-RUN — Start a run by pinning its spec and creating recoverable state.
- *
- * The spec blob is materialised before anything else: from this point the run
- * has an acceptance oracle that survives deletion of the tracked spec, which is
- * what makes retirement safe later in the same feature.
- */
-export async function commandStart(args: ParsedArgs): Promise<void> {
-  const { projectKey, canonicalPath, repoDir } = identityOf(args);
-  ensureProject(projectKey, canonicalPath);
-
-  const kind = requireFlag(args, "spec-kind");
-  if (kind !== "tracked" && kind !== "local" && kind !== "url") {
-    fail("invalid_spec_kind", `--spec-kind must be tracked|local|url, got ${kind}`);
-  }
-  const declaredSha = optionalFlag(args, "spec-sha256");
-  const [specKind, locator] = normalizeSpecReference(repoDir, kind, requireFlag(args, "spec-locator"));
-
-  const settings = readSettings(projectKey);
-  const globalConfig = readGlobalConfig();
-  // Project settings win; the machine-wide default only spares the user from
-  // re-entering the same four models for every new repository. Either way the
-  // run starts in AWAITING_MODEL_SET and is confirmed before anything is spent.
-  const modelSet: ModelSet | undefined = settings?.modelSet ?? globalConfig?.defaultModelSet;
-  const backend = (optionalFlag(args, "backend") ??
-    settings?.backend ??
-    globalConfig?.defaultBackend ??
-    "herdr") as "herdr" | "omnigent";
-
-  if (!modelSet) {
-    fail(
-      "no_model_set",
-      "this project has no confirmed ModelSet, and ~/.meta-o/config.json declares no " +
-        "defaultModelSet; run `meta-o project set-settings` for this project, or " +
-        "`meta-o config set-defaults` for every project on this machine",
-    );
-  }
-  const validation = validateModelSet(modelSet);
-  if (!validation.ok) fail("invalid_model_set", validation.errors.join("; "));
-
-  const specRef = {
-    kind: specKind,
-    locator,
-    sha256: declaredSha ?? "",
-    disposition: specKind === "tracked" ? "delete_after_sync" : "external",
-  } as RunState["spec"];
-
-  const fetched = await fetchSpec(specRef, repoDir);
-  assertSpecUnchanged(declaredSha, fetched.sha256);
-
-  const runId = randomUUID();
-  ensureRunDirectories(projectKey, runId);
-  const blobPath = materializeSpecBlob(projectKey, runId, fetched.bytes, fetched.sha256);
-
-  const state: RunState = {
-    schemaVersion: 1,
-    runId,
-    projectKey,
-    phase: "AWAITING_MODEL_SET",
-    stateVersion: 0,
-    orchestratorGeneration: 1,
-    spec: { ...specRef, sha256: fetched.sha256, locator: fetched.sanitizedLocator },
-    specBlob: blobPath,
-    baseRevision: resolveCommit("HEAD", repoDir),
-    modelSet,
-    sessions: {},
-    sessionGeneration: {},
-    decisions: [],
-    confirmations: {},
-    reuseScanEnabled: boolFlag(args, "reuse-scan"),
-    handoffEnabled:
-      boolFlag(args, "handoff") ||
-      settings?.handoffDefault === true ||
-      (settings === undefined && globalConfig?.handoffDefault === true),
-    updatedAt: isoTimestamp(),
-  };
-
-  const written = await withWriterLock(projectKey, runId, () => commitState(state));
-  emit({ runId, projectKey, backend, phase: written.phase, specSha256: fetched.sha256, specBlob: blobPath });
 }
 
 /** §M-CLI-RUN — List the runs a project currently has state for. */
@@ -358,15 +243,45 @@ export async function commandTransition(args: ParsedArgs): Promise<void> {
  * Confirmation is a user act, so it is a separate command rather than an
  * implicit consequence of starting; automatic recovery reuses the confirmed set
  * without asking again.
+ *
+ * It points at a recorded decision rather than being a bare transition. §00 step
+ * 4 makes the orchestrator show the stored ModelSet and ask "these?", and the
+ * command took no evidence at all — nothing distinguished a user who answered
+ * from an orchestrator that skipped the question, which is the whole content of
+ * the phase named `AWAITING_MODEL_SET`. This is the last gate before four
+ * external models start costing money, so it is held to the same standard as
+ * the production-E2E approval: a decision this run recorded, taken by the user.
  */
 export async function commandConfirmModels(args: ParsedArgs): Promise<void> {
   const { projectKey } = identityOf(args);
   const runId = requireFlag(args, "run-id");
+  const decisionId = requireFlag(args, "decision-id");
   const next = await mutate(projectKey, runId, (state) => {
     assertTransition(state.phase, "PREFLIGHT");
-    return { ...state, phase: "PREFLIGHT" };
+    const decision = state.decisions.find((item) => item.id === decisionId);
+    if (!decision) {
+      fail(
+        "unknown_decision",
+        `this run records no decision ${decisionId}; show the ModelSet, ask the user, and ` +
+          "record the answer with `meta-o run record-decision` before confirming",
+      );
+    }
+    if (decision.decidedBy !== "user") {
+      fail(
+        "not_a_user_decision",
+        `decision ${decisionId} was taken by ${decision.decidedBy}; the ModelSet is confirmed by ` +
+          "the user, and an orchestrator confirming its own choice is not a confirmation",
+        { decidedBy: decision.decidedBy },
+      );
+    }
+    return { ...state, phase: "PREFLIGHT", modelSetConfirmedBy: decisionId };
   });
-  emit({ runId, phase: next.phase, modelSet: next.modelSet });
+  emit({
+    runId,
+    phase: next.phase,
+    modelSet: next.modelSet,
+    modelSetConfirmedBy: next.modelSetConfirmedBy,
+  });
 }
 
 /**

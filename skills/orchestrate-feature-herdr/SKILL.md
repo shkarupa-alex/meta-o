@@ -46,7 +46,20 @@ its own `orchestrate-feature-<backend>` skill and adapter.
 8. `meta-o preflight`. If it fails on a missing project contract, ask the user
    whether the executor may create it. Without permission:
    `meta-o run transition --phase PAUSED_MISSING_TOOLS`.
-9. `meta-o run confirm-models --run-id <id>`.
+9. Record the user's answer to step 4 and confirm with it. The confirmation
+   names a decision the user took, so a run cannot leave `AWAITING_MODEL_SET` on
+   your own say-so:
+
+   ```bash
+   printf '%s' '{"id":"D-MODELS","question":"run with the stored ModelSet?",
+     "answer":"yes","rationale":"<what the user said>","category":"tooling",
+     "decidedBy":"user"}' | meta-o run record-decision --run-id <id>
+   meta-o run confirm-models --run-id <id> --decision-id D-MODELS
+   ```
+
+   If the user chose a different set at step 4, say so in `answer` and
+   `rationale` — the record is what a fresh orchestrator reads instead of asking
+   again.
 10. Register yourself, so the watchdog can tell a live orchestrator from a dead
     one:
 
@@ -72,7 +85,7 @@ meta-o run route --run-id <id>   →   act on routing.action   →   repeat
 
 | `routing.action` | What you cause to happen |
 |---|---|
-| `await_model_set` | Ask the user; then `run confirm-models` |
+| `await_model_set` | Ask the user; `run record-decision`, then `run confirm-models --decision-id` |
 | `run_preflight` | `meta-o preflight`; then `run transition --phase EXECUTING` (or `SOLUTION_SCAN` if the reuse scan is on) |
 | `run_reuse_scan` | Dispatch `reuseResearcher` with the `research-reuse` skill; then `--phase EXECUTING` |
 | `await_candidate` | Dispatch `executor` with the `execute-feature` skill; when it reports a clean candidate commit, `meta-o run set-candidate` |

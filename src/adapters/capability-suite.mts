@@ -106,21 +106,77 @@ async function reportedChecks(context: SuiteContext, clock: Clock): Promise<Suit
 }
 
 /**
- * §M-CAPABILITY-SUITE — Fast, non-mutating checks safe to run at preflight.
+ * §M-CAPABILITY-SUITE — The short smoke §20 puts on every preflight.
  *
- * Spawning agents at every preflight would cost real money and real panes, so
- * the smoke run proves only that the socket answers and records what the backend
- * says it can do. What it cannot do is re-prove behaviour: the full suite's
- * probes are the expensive part, and `unexercised` names them rather than
- * letting their silence read as agreement.
+ * It spawns one throwaway agent, observes it and stops it. That is three of the
+ * backend's verbs — `spawn`, `status`/`read`, `stop` — and they are exactly the
+ * completion-critical set: a run that cannot start a worker, cannot see what it
+ * did, or cannot end it has no way to finish.
+ *
+ * It used to spawn nothing and merely re-read the backend's self-report, on the
+ * reasoning that probing at every preflight costs panes and money. The report is
+ * a constant in the adapter's source, so the comparison against the baseline
+ * could only ever fail if that source changed: a backend that had genuinely lost
+ * `pane close` still preflighted `ok`. §20 requires a capability regression to
+ * stop preflight, and nothing short of using the verb can notice one.
+ *
+ * No prompt is sent, so the probe costs a pane for a few seconds and zero
+ * tokens. Everything a prompt would be needed to prove — acknowledgement,
+ * resume, concurrency, routes — is still the full suite's job, and `unexercised`
+ * names those rather than letting their silence read as agreement.
  */
 export async function runSmokeSuite(context: SuiteContext): Promise<SuiteReport> {
   const clock = context.clock ?? systemClock;
+  const { adapter } = context;
   const checks: SuiteCheck[] = [];
+  let probeSession: SessionRef | undefined;
+
+  checks.push(
+    await runCheck("spawn", true, clock, async () => {
+      probeSession = await adapter.spawn({
+        operationId: randomUUID(),
+        role: "executor",
+        model: context.model,
+        prompt: "",
+        cwd: context.cwd,
+      });
+      return { grade: "supported", detail: `spawned session ${probeSession.sessionId}` };
+    }),
+  );
+
+  checks.push(
+    await runCheck("status-read", true, clock, async () => {
+      if (!probeSession) throw new Error("no session was spawned");
+      const status = await adapter.status(probeSession);
+      const output = await adapter.read(probeSession);
+      return {
+        grade: "supported",
+        detail: `status=${status}, read ${output.text.length} chars at cursor ${output.cursor}`,
+      };
+    }),
+  );
+
+  // Last, and outside the `finally` a cleanup would use, because stopping the
+  // probe *is* one of the checks. A backend that cannot close a pane must be
+  // graded on that, not have it swallowed by best-effort teardown.
+  checks.push(
+    await runCheck("stop", true, clock, async () => {
+      if (!probeSession) throw new Error("no session was spawned");
+      const outcome = await adapter.stop(probeSession);
+      // Stricter than the full suite's sweep, which stops sessions that may
+      // already have ended on their own. This one was created seconds ago and
+      // observed alive, so `unknown` cannot mean "it was probably gone anyway";
+      // it means the backend could not close a pane it owns, and the run would
+      // leak a worker per gate.
+      return outcome === "stopped" || outcome === "already_terminal"
+        ? { grade: "supported", detail: `stop reported ${outcome}` }
+        : { grade: "unsupported", detail: `stop reported ${outcome} for a pane it had just opened` };
+    }),
+  );
 
   checks.push(
     await runCheck("capabilities", true, clock, async () => {
-      const capabilities = await context.adapter.capabilities();
+      const capabilities = await adapter.capabilities();
       const missing = (["statusRead", "stop"] as const).filter((key) => !capabilities[key]);
       return missing.length === 0
         ? { grade: "supported", detail: "backend reports every completion-critical capability" }
@@ -145,8 +201,8 @@ export async function runSmokeSuite(context: SuiteContext): Promise<SuiteReport>
 /**
  * §M-CAPABILITY-SUITE — Baseline checks a report did not re-exercise.
  *
- * A smoke run says nothing about whether spawning still works; reporting "no
- * capability is worse than the baseline" on that silence is the failure this
+ * The smoke run proves the completion-critical verbs and nothing else; reporting
+ * "no capability is worse than the baseline" over the rest is the failure this
  * names. The caller decides what to do with it — preflight prints it, so the
  * answer stops sounding like a verification it was not.
  */

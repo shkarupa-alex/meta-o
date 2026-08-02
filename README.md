@@ -132,6 +132,13 @@ create them. See the `adopt-project` skill.
   silent run with the opposite meaning.
 - Attribute a review verdict, an E2E result or a finding to a worker the run
   never dispatched.
+- Leave `AWAITING_MODEL_SET` without a recorded decision, taken by the user,
+  answering the question about the ModelSet.
+- Start a run on a backend nothing implements. `--backend omnigent` is an error,
+  not a run that reports omnigent and quietly uses herdr.
+- Preflight a backend that has lost a verb since the last full suite. The smoke
+  run drives one throwaway agent through spawn, observe and stop rather than
+  re-reading a self-report.
 - Start the heavy E2E set before both reviewers have passed on the candidate.
 - Accept an E2E result that will not say which scenarios it ran, or that names a
   set other than the sealed plan's.
@@ -152,6 +159,7 @@ Everything a run knows lives outside the repository:
   projects/<readable-path>--<sha256[0:12]>/
     project.json  settings.json
     runs/<run-id>/state.json  input/spec-<sha256>.md  gate-receipts/<label>.json
+                  findings/<finding-id>.json
                   optional-handoff.md   # only if the user enabled it at start
 ```
 
@@ -161,8 +169,10 @@ with `meta-o config set-defaults` (JSON on stdin) or by hand; a project's own
 `settings.json` always wins, and a run seeded from either still starts in
 `AWAITING_MODEL_SET` and still has to be confirmed.
 
-Findings are *in* `state.json`, not in a directory of their own: they are
-working memory for one run, and a closed one is pruned rather than archived —
+Findings live in `state.json`; `findings/` is a projection of the open ones,
+rewritten on every commit so a person can read one objection without parsing the
+whole run state. It is deliberately not an archive — a record that closes loses
+its file in the same write, because findings are working memory for one run and
 the methodology refuses to grow a project-wide ledger of past objections.
 
 Mode `0700`/`0600`, every path component checked against symlink and ownership
@@ -253,6 +263,12 @@ its own E2E contract in [`docs/architecture/e2e.md`](docs/architecture/e2e.md).
   profile has to run offline with no dependency the project did not choose. A
   project that would rather have the real thing can declare it in
   `.quality/qc-manifest.json` and delete the checker.
+- **§20 forbids a daemon and §50 specifies one.** The watchdog is the §50
+  component: a user service, off by default, off per project, with its own
+  config, log and lock under `~/.meta-o`. It owns no session state and makes no
+  decision the closed table in `src/watchdog/decide.mts` does not make, which is
+  the narrowest reading that satisfies both. If you want §20's boundary read
+  strictly, do not enable it — nothing else depends on it.
 - **meta-o's own `code-health` gate measures structure from indentation,** not
   from a parsed syntax tree, so its thresholds are looser than the AST-based
   ones the Python template ships.

@@ -92,6 +92,16 @@ function herdrCapabilityReport(reachable: boolean, detail: string): CapabilityRe
 }
 
 /**
+ * §M-HERDR — How a CLI says it does not have the subcommand at all.
+ *
+ * Herdr exits 2 for a syntax error, which covers a verb it never had; a verb it
+ * used to have and dropped tends to arrive as prose instead. Both mean the same
+ * thing to the capability suite — the backend can no longer do this — and both
+ * have to be told apart from the verb running and reporting a real outcome.
+ */
+const UNKNOWN_VERB = /unknown (sub)?command|unrecognized (sub)?command|no such (sub)?command|not supported/i;
+
+/**
  * §M-HERDR — Error codes that prove a prompt was refused before it was acted on.
  *
  * A closed set, because the default has to be `unknown`. Exit status 1 covers a
@@ -556,6 +566,12 @@ export class HerdrAdapter implements SessionAdapter {
         await this.call(["agent", "wait", agentName, "--timeout", String(budget)], budget + 15_000);
       } catch (error) {
         if (!(error instanceof HerdrCommandError)) throw error;
+        // A wait that ran and did not settle is an answer: `status()` below says
+        // where the agent got to, which is what the caller asked for. A CLI that
+        // does not know the verb is not an answer at all, and swallowing that
+        // case turned a lost `agent wait` into a silent poll — the capability
+        // suite then graded `wait` supported on a backend that no longer had it.
+        if (error.code === "cli_syntax_error" || UNKNOWN_VERB.test(error.message)) throw error;
       }
       return { status: await this.status(session) };
     }

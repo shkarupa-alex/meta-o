@@ -35,10 +35,11 @@ function repoOf(args: ParsedArgs): { repoDir: string } {
  * §M-CLI-PREFLIGHT — Say what the capability comparison actually covered.
  *
  * Naming the unexercised checks matters more than the verdict. The smoke run
- * re-reads the backend's self-report; it does not re-spawn an agent, so the
- * behavioural checks the full suite proved are last-proven facts, not
- * re-verified ones, and a detail line that omitted the difference read as a
- * verification it was not.
+ * drives one throwaway agent through spawn, observe and stop; everything a
+ * prompt would be needed to prove — acknowledgement, resume, concurrency,
+ * routes — is a last-proven fact from the full suite rather than a re-verified
+ * one, and a detail line that omitted the difference read as a verification it
+ * was not.
  */
 function capabilityDetail(
   baseline: CapabilityBaseline | undefined,
@@ -107,8 +108,11 @@ function stateTreeCheck(repoDir: string): PreflightCheck {
 /**
  * §M-CLI-PREFLIGHT — Ask the backend what it can still do, and compare that to the record.
  *
- * The cheap smoke variant, because preflight runs before every feature and must
- * not cost panes or money. Two things can go wrong and they are reported apart:
+ * The smoke variant: one throwaway agent, no prompt, so a preflight before every
+ * feature costs a pane for a few seconds and no tokens. It has to actually use
+ * the verbs — a comparison against a self-report the adapter hardcodes can only
+ * fail when the adapter's own source changes, which is not what §20 means by a
+ * capability regression. Two things can go wrong and they are reported apart:
  * the backend cannot answer at all, and the backend answers *worse than it used
  * to*. The second is the one worth the machinery — a silently degraded backend
  * produces a run that fails four hours later for reasons nobody connects to an
