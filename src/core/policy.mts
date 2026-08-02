@@ -31,6 +31,36 @@ export interface MetaOPolicy {
 /** §M-POLICY — Table prefix this parser is responsible for. */
 const PREFIX = "tool.meta_o.";
 
+/**
+ * §M-POLICY — Split a dotted TOML key path on its unquoted dots.
+ *
+ * `[tool.meta_o.purpose]`, `[tool.meta_o]` with `purpose.exempt_files = []`, and
+ * a bare `tool.meta_o.purpose.exempt_files = []` are the same configuration to
+ * `tomllib`, which is what the gates actually read. A parser that recognised
+ * only the first form would report no weakening for a policy rewritten in the
+ * second — which is worse than not checking, because it answers.
+ */
+function splitPath(text: string): string[] {
+  const parts: string[] = [];
+  let quote: string | undefined;
+  let start = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]!;
+    if (quote) {
+      if (char === "\\") index += 1;
+      else if (char === quote) quote = undefined;
+      continue;
+    }
+    if (char === '"' || char === "'") quote = char;
+    else if (char === ".") {
+      parts.push(text.slice(start, index));
+      start = index + 1;
+    }
+  }
+  parts.push(text.slice(start));
+  return parts.map((part) => part.trim().replace(/^"(.*)"$/s, "$1").replace(/^'(.*)'$/s, "$1"));
+}
+
 /** §M-POLICY — Strip a trailing comment, respecting quoted strings. */
 function stripComment(line: string): string {
   let quote: string | undefined;
@@ -117,50 +147,60 @@ function unbalanced(text: string): boolean {
  * §M-POLICY — Read the `[tool.meta_o.*]` tables out of a pyproject.toml.
  *
  * A deliberately small subset of TOML — tables, scalars and flat arrays — is
- * all these gates configure. Anything else *inside a captured table* is
- * reported as an error rather than skipped: a key this parser cannot read is a
- * key whose weakening it cannot detect, and silently ignoring it would make the
- * gate claim more than it checked. Tables outside the prefix are not our
- * business and are skipped without comment.
+ * all these gates configure. Anything else *inside the prefix* is reported as
+ * an error rather than skipped: a key this parser cannot read is a key whose
+ * weakening it cannot detect, and silently ignoring it would make the gate
+ * claim more than it checked. Keys outside the prefix are not our business and
+ * are skipped without comment.
+ *
+ * Every key is resolved to its full dotted path before the prefix is applied,
+ * so the header and the key may carry the prefix between them in any
+ * proportion, exactly as `tomllib` reads it.
  */
 export function parseMetaOPolicy(text: string): MetaOPolicy {
   const tables = new Map<string, Record<string, TomlValue>>();
   const errors: string[] = [];
   const lines = text.split("\n");
-  let current: string | undefined;
+  let current: string[] = [];
 
   for (let index = 0; index < lines.length; index += 1) {
     let line = stripComment(lines[index]!).trim();
     if (line === "") continue;
 
     if (line.startsWith("[[")) {
-      const name = line.slice(2, line.indexOf("]]"));
-      if (name.startsWith(PREFIX)) errors.push(`[[${name}]]: arrays of tables are not supported`);
-      current = undefined;
+      const name = splitPath(line.slice(2, line.indexOf("]]"))).join(".");
+      if (`${name}.`.startsWith(PREFIX)) {
+        errors.push(`[[${name}]]: arrays of tables are not supported`);
+      }
+      current = [];
       continue;
     }
     if (line.startsWith("[")) {
-      const name = line.slice(1, line.indexOf("]")).trim();
-      current = name.startsWith(PREFIX) ? name : undefined;
-      if (current && !tables.has(current)) tables.set(current, {});
+      current = splitPath(line.slice(1, line.indexOf("]")));
+      const name = current.join(".");
+      if (name.startsWith(PREFIX) && !tables.has(name)) tables.set(name, {});
       continue;
     }
-    if (!current) continue;
 
     while (unbalanced(line) && index + 1 < lines.length) {
       index += 1;
       line = `${line} ${stripComment(lines[index]!).trim()}`;
     }
     const equals = line.indexOf("=");
+    const path = equals < 0 ? [...current] : [...current, ...splitPath(line.slice(0, equals))];
+    if (!path.join(".").startsWith(PREFIX)) continue;
+
     if (equals < 0) {
-      errors.push(`[${current}]: cannot read line ${index + 1}: ${line}`);
+      errors.push(`[${current.join(".")}]: cannot read line ${index + 1}: ${line}`);
       continue;
     }
-    const key = line.slice(0, equals).trim().replace(/^["']|["']$/g, "");
+    const table = path.slice(0, -1).join(".");
+    const key = path[path.length - 1]!;
+    if (!tables.has(table)) tables.set(table, {});
     try {
-      tables.get(current)![key] = parseValue(line.slice(equals + 1));
+      tables.get(table)![key] = parseValue(line.slice(equals + 1));
     } catch (error) {
-      errors.push(`[${current}] ${key}: ${(error as Error).message}`);
+      errors.push(`[${table}] ${key}: ${(error as Error).message}`);
     }
   }
 
@@ -305,6 +345,7 @@ export function detectPolicyWeakening(before: MetaOPolicy, after: MetaOPolicy): 
  */
 export function flattenBaseline(value: JsonValue, prefix = ""): Map<string, number> {
   const entries = new Map<string, number>();
+  /** §M-POLICY — Descend into objects and arrays, keying every number by its full path. */
   const walk = (node: JsonValue, path: string): void => {
     if (typeof node === "number") {
       entries.set(path, node);

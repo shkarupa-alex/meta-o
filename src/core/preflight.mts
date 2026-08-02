@@ -396,6 +396,7 @@ export function runPreflight(input: PreflightInput): PreflightReport {
   const checks: PreflightCheck[] = [];
   const missingContract: string[] = [];
 
+  /** §M-PREFLIGHT — Record one check and remember it if a blocking one did not pass. */
   const note: Note = (check) => {
     checks.push(check);
     if (check.blocking && check.status !== "ok") missingContract.push(check.id);

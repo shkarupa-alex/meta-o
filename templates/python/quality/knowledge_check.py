@@ -25,8 +25,22 @@ BUSINESS = re.compile(r"§B-[A-Z0-9-]+")
 ARCHITECTURE = re.compile(r"§A-[A-Z0-9-]+")
 MODULE = re.compile(r"§M-[A-Z0-9-]+")
 ANY_ANCHOR = re.compile(r"§[BAM]-[A-Z0-9-]+")
-HEADING = re.compile(r"^#{1,6}\s+(§[BAM]-[A-Z0-9-]+)")
+HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
 FENCE = re.compile(r"^\s*(```|~~~)")
+
+# Deliberately greedy where the grammar is strict. `§B-BAD_ANCHOR` matches the
+# anchor pattern only as far as `§B-BAD`, so a checker built from the grammar
+# alone silently registers a *different* anchor than the author wrote, and
+# `§a-lower-01` registers nothing at all. Both are typos a knowledge layer must
+# fail on rather than quietly reinterpret.
+ANCHOR_TOKEN = re.compile(r"§[^\s`\"'(),;:.\]/]+")
+WELL_FORMED = re.compile(r"^§[BAM](?:-(?:\*|[A-Z0-9]+(?:-[A-Z0-9]+)*))?$")
+
+# Path segments that mark a document as parked rather than current. A feature
+# spec filed under `docs/knowledge/archive/` instead of being retired recreates
+# the problem retirement exists to remove: a second, stale source of truth whose
+# anchors are all perfectly well formed.
+ARCHIVE_SEGMENT = re.compile(r"(^|/)(archive|archives|archived|old|legacy-specs|specs?)(/|$)", re.I)
 
 DEFAULTS = {
     "business": "docs/knowledge/business.md",
@@ -43,15 +57,23 @@ class Section:
     anchor: str
     path: str
     line: int
+    heading_level: int = 0
     references: set[str] = field(default_factory=set)
 
 
-def parse_document(path: Path, relative: str) -> list[Section]:
+def parse_document(path: Path, relative: str, report: Report) -> list[Section]:
     """§M-QC-KNOWLEDGE — Extract anchored sections from one Markdown document.
 
     Only headings define anchors. A mention in prose is a reference, and a
     mention inside a fenced block is an example — treating either as a
-    definition would let a tutorial silently satisfy the uniqueness check.
+    definition would let a tutorial silently satisfy the uniqueness check, and
+    would fail a tutorial that shows `§b-wrong` as the counter-example it is
+    teaching about.
+
+    A section ends at the next heading that defines an anchor, or at the next
+    heading of the same or a higher level. Without the first rule a parent
+    absorbs its children's citations and `## §A-ONE` citing nothing passes on a
+    `### §A-TWO` that cites a §B.
     """
     sections: list[Section] = []
     current: Section | None = None
@@ -64,10 +86,21 @@ def parse_document(path: Path, relative: str) -> list[Section]:
         if fenced:
             continue
 
+        for token in ANCHOR_TOKEN.findall(text):
+            if not WELL_FORMED.match(token):
+                report.add(relative, number, "malformed-anchor", f"malformed anchor {token}")
+
         heading = HEADING.match(text)
         if heading:
-            current = Section(anchor=heading.group(1), path=relative, line=number)
-            sections.append(current)
+            level = len(heading.group(1))
+            found = ANY_ANCHOR.search(heading.group(2))
+            if found:
+                current = Section(
+                    anchor=found.group(0), path=relative, line=number, heading_level=level
+                )
+                sections.append(current)
+            elif current is not None and level <= current.heading_level:
+                current = None
             continue
         if current is not None:
             current.references.update(ANY_ANCHOR.findall(text))
@@ -132,8 +165,30 @@ def main() -> int:
     report = Report("knowledge")
 
     sections: list[Section] = []
+    business_document = str(config["business"])
     for path, relative in collect_documents(root, config):
-        sections.extend(parse_document(path, relative))
+        sections.extend(parse_document(path, relative, report))
+        if ARCHIVE_SEGMENT.search(relative):
+            report.add(
+                relative,
+                1,
+                "feature-archive",
+                "a feature archive inside the knowledge search roots; retire the spec by "
+                "distributing its durable requirements into §B/§A/§M and deleting it",
+            )
+
+    # Business truth lives in exactly one document. Without this rule an
+    # architecture note quietly becomes a business anchor, every other checker
+    # still passes, and "a human can read the whole business truth in one file"
+    # stops being true without anything saying so.
+    for section in sections:
+        if section.anchor.startswith("§B-") and section.path != business_document:
+            report.add(
+                section.path,
+                section.line,
+                "business-outside-document",
+                f"{section.anchor} is defined outside {business_document}",
+            )
 
     if not sections:
         report.add(

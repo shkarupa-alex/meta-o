@@ -287,6 +287,7 @@ async function surfaceUncertainty(
  */
 function backendDeps(adapter: HerdrAdapter, config: WatchdogConfig): WatchdogDeps {
   const hybrid = config.classifier_mode === "hybrid";
+  /** §M-CLI-BACKEND — Report the orchestrator session's state, or that it never existed. */
   const orchestratorStatus = async (state: RunState): Promise<SessionStatus | "absent"> => {
     if (!state.orchestratorSession) return "absent";
     try {
@@ -369,6 +370,7 @@ export async function commandWatchdogRun(args: ParsedArgs): Promise<void> {
   const maxTicks = Number(optionalFlag(args, "max-ticks") ?? (boolFlag(args, "once") ? 1 : Infinity));
   const watchdog = new Watchdog(backendDeps(adapter, config));
 
+  /** §M-CLI-BACKEND — Stop the loop cleanly, so a tick in flight finishes before exit. */
   const handleSignal = (): void => watchdog.stop();
   process.on("SIGINT", handleSignal);
   process.on("SIGTERM", handleSignal);

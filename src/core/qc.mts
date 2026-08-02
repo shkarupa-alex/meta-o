@@ -86,13 +86,22 @@ export function validateResult(value: unknown): QcValidation {
     errors.push("gates must be an array");
     return { ok: false, errors };
   }
+  const reported = new Set<string>();
   gates.forEach((raw, index) => {
     if (!isRecord(raw)) {
       errors.push(`gates[${index}] must be an object`);
       return;
     }
-    if (typeof raw["id"] !== "string" || raw["id"] === "") {
+    const id = raw["id"];
+    if (typeof id !== "string" || id === "") {
       errors.push(`gates[${index}].id must be a non-empty string`);
+    } else if (reported.has(id)) {
+      // Two entries for one gate mean the file states two outcomes for it, and
+      // whichever one wins is an artefact of ordering. Reading it as "the last
+      // one" turns a recorded failure into a pass.
+      errors.push(`gate ${id} is reported more than once`);
+    } else {
+      reported.add(id);
     }
     const status = raw["status"];
     if (status !== "passed" && status !== "failed" && status !== "not_applicable") {
@@ -142,7 +151,13 @@ export function evaluateQc(
   }
 
   const byId = new Map<string, QcResultGate>();
-  for (const gate of result.gates) byId.set(gate.id, gate);
+  for (const gate of result.gates) {
+    if (byId.has(gate.id)) {
+      reasons.push(`gate ${gate.id} is reported more than once, so its outcome is ambiguous`);
+      continue;
+    }
+    byId.set(gate.id, gate);
+  }
 
   const skipped: string[] = [];
   for (const declared of manifest.gates) {

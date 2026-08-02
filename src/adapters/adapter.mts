@@ -44,6 +44,7 @@ export function entry(grade: CapabilityGrade, detail: string): CapabilityMatrixE
 export function capabilitiesFromMatrix(
   matrix: Record<keyof AdapterCapabilities, CapabilityMatrixEntry>,
 ): AdapterCapabilities {
+  /** §M-ADAPTER — Only a full `supported` grade counts as the capability being present. */
   const value = (key: keyof AdapterCapabilities): boolean => matrix[key].grade === "supported";
   return {
     deliveryReceipt: value("deliveryReceipt"),

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * §M-QC-PURPOSE — Prove every TypeScript module and export says why it exists.
+ * §M-QC-PURPOSE — Prove every TypeScript module and symbol says why it exists.
  *
  * Implements §A-CAUSAL-KNOWLEDGE for this project's own sources. A module whose
  * reason for existing lives only in someone's head is a module that gets
@@ -10,11 +10,18 @@
  * Checks presence and linkage, never wording. Whether a purpose is any good is
  * a judgement for reviewers; a checker that graded prose would produce prose
  * written for the checker.
+ *
+ * Symbols are found through the TypeScript parser rather than by matching
+ * column-0 text. The line-anchored version could only see top-level
+ * declarations, which exempted exactly the functions carrying the trickiest
+ * local reasoning — the nested helpers — and made every fixture inside a
+ * template literal look like real code.
  */
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 /** §M-QC-PURPOSE — Repository root. */
 const ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], {
@@ -30,37 +37,6 @@ const ARCHITECTURE_ANCHOR = /§A-[A-Z0-9-]+/;
 
 /** §M-QC-PURPOSE — Grammar of a business anchor, cited only to detect a skipped level. */
 const BUSINESS_ANCHOR = /§B-[A-Z0-9-]+/;
-
-/**
- * §M-QC-PURPOSE — Declarations that must carry their own documentation comment.
- *
- * Top-level, exported or not. A non-exported helper is still a symbol someone
- * has to understand before changing it, and the old export-only rule meant the
- * functions carrying the trickiest local reasoning — the private ones — were
- * the only ones allowed to say nothing about why they exist.
- */
-const DECLARATION = new RegExp(
-  "^(?:export\\s+)?(?:default\\s+)?(?:declare\\s+)?(?:async\\s+)?(?:abstract\\s+)?" +
-    "(class|function|const|let|interface|type|enum)\\s+([A-Za-z_$][\\w$]*)",
-);
-
-/**
- * §M-QC-PURPOSE — Whether a binding is a decision or a working variable.
- *
- * Functions, classes and types always carry reasoning worth stating. Bindings
- * do not: an exported one or a named constant encodes a choice someone made and
- * must justify, while `const problems = []` in a script's main flow is
- * scaffolding. Demanding a comment there produces comments that restate the
- * name, and those are what make readers stop trusting the comments that matter.
- */
-function requiresPurpose(line, kind, name) {
-  if (kind !== "const" && kind !== "let") return true;
-  return line.startsWith("export") || /^[A-Z][A-Z0-9_]*$/.test(name);
-}
-
-/** §M-QC-PURPOSE — Members of an exported class, which callers also depend on. */
-const MEMBER =
-  /^ {2}(?:public |private |protected )?(?:readonly |static |async |override )*([A-Za-z_$][\w$]*)\s*(?:\(|<|:)/;
 
 /** §M-QC-PURPOSE — Every tracked source file the gate is responsible for. */
 function sourceFiles() {
@@ -78,45 +54,116 @@ function violation(found, file, line, rule, message) {
 }
 
 /**
- * §M-QC-PURPOSE — Whether the lines immediately above a declaration document it.
- *
- * Walks back over decorators and blank lines to the nearest block comment, so
- * that documentation stays valid when a declaration grows attributes.
- */
-function documentedAbove(lines, index) {
-  return commentAbove(lines, index) !== undefined;
-}
-
-/**
- * §M-QC-PURPOSE — The documentation comment attached to a declaration, if any.
+ * §M-QC-PURPOSE — The documentation comment attached to a node, if any.
  *
  * Returns the whole block so the caller can ask what it says, not merely
  * whether it exists — the `symbol → §M` link is a property of the text.
  */
-function commentAbove(lines, index) {
-  let end = -1;
-  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
-    const text = lines[cursor].trim();
-    if (text === "" || text.startsWith("@")) continue;
-    if (!text.endsWith("*/")) return undefined;
-    end = cursor;
-    break;
-  }
-  if (end < 0) return undefined;
-
-  for (let cursor = end; cursor >= 0; cursor -= 1) {
-    if (lines[cursor].trim().startsWith("/*")) return lines.slice(cursor, end + 1).join("\n");
-  }
-  return undefined;
+function commentOf(text, node) {
+  const ranges = ts.getLeadingCommentRanges(text, node.getFullStart()) ?? [];
+  const blocks = ranges.filter((range) => range.kind === ts.SyntaxKind.MultiLineCommentTrivia);
+  const last = blocks[blocks.length - 1];
+  return last ? text.slice(last.pos, last.end) : undefined;
 }
 
-/** §M-QC-PURPOSE — Check one file's module docstring, exports and class members. */
+/**
+ * §M-QC-PURPOSE — Whether a variable binding is a decision or a working variable.
+ *
+ * Functions, classes and types always carry reasoning worth stating. Bindings
+ * do not: an exported one, a named constant, or one holding a function encodes
+ * a choice someone made and must justify, while `const problems = []` in a
+ * script's main flow is scaffolding. Demanding a comment there produces
+ * comments that restate the name, and those are what make readers stop trusting
+ * the comments that matter.
+ */
+function bindingRequiresPurpose(declaration, exported) {
+  if (exported) return true;
+  const name = declaration.name;
+  if (ts.isIdentifier(name) && /^[A-Z][A-Z0-9_]*$/.test(name.text)) return true;
+  const initializer = declaration.initializer;
+  return Boolean(
+    initializer &&
+      (ts.isArrowFunction(initializer) ||
+        ts.isFunctionExpression(initializer) ||
+        ts.isClassExpression(initializer)),
+  );
+}
+
+/** §M-QC-PURPOSE — Whether a node carries the `export` modifier. */
+function isExported(node) {
+  return (ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Export) !== 0;
+}
+
+/** §M-QC-PURPOSE — Name a declaration the way a reader would refer to it. */
+function describe(node) {
+  const name = node.name && ts.isIdentifier(node.name) ? node.name.text : "«anonymous»";
+  if (ts.isFunctionDeclaration(node)) return `function ${name}`;
+  if (ts.isClassDeclaration(node)) return `class ${name}`;
+  if (ts.isInterfaceDeclaration(node)) return `interface ${name}`;
+  if (ts.isTypeAliasDeclaration(node)) return `type ${name}`;
+  if (ts.isEnumDeclaration(node)) return `enum ${name}`;
+  if (ts.isVariableDeclaration(node)) return `binding ${name}`;
+  return `member ${name}`;
+}
+
+/**
+ * §M-QC-PURPOSE — Every declaration in one file that owes the reader a reason.
+ *
+ * Class members count because callers depend on them; nested functions count
+ * because someone has to understand them before changing them. Anonymous
+ * callbacks do not: they are an expression's shape, not a named thing anyone
+ * navigates to.
+ */
+function declarationsOf(source) {
+  const nodes = [];
+  /** §M-QC-PURPOSE — Recurse into every child, so nesting depth never grants an exemption. */
+  const visit = (node) => {
+    if (
+      ts.isFunctionDeclaration(node) ||
+      ts.isClassDeclaration(node) ||
+      ts.isInterfaceDeclaration(node) ||
+      ts.isTypeAliasDeclaration(node) ||
+      ts.isEnumDeclaration(node)
+    ) {
+      if (node.name) nodes.push({ node, documented: node });
+    } else if (ts.isVariableStatement(node)) {
+      const exported = isExported(node);
+      for (const declaration of node.declarationList.declarations) {
+        if (ts.isIdentifier(declaration.name) && bindingRequiresPurpose(declaration, exported)) {
+          nodes.push({ node: declaration, documented: node });
+        }
+      }
+    } else if (
+      (ts.isMethodDeclaration(node) ||
+        ts.isGetAccessorDeclaration(node) ||
+        ts.isSetAccessorDeclaration(node) ||
+        ts.isPropertyDeclaration(node)) &&
+      node.parent &&
+      (ts.isClassDeclaration(node.parent) || ts.isClassExpression(node.parent)) &&
+      ts.isIdentifier(node.name)
+    ) {
+      nodes.push({ node, documented: node });
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(source, visit);
+  return nodes;
+}
+
+/** §M-QC-PURPOSE — Check one file's module comment and every symbol it declares. */
 function checkFile(file, found) {
   const text = readFileSync(`${ROOT}/${file}`, "utf8");
-  const lines = text.split("\n");
+  const source = ts.createSourceFile(file, text, ts.ScriptTarget.ESNext, true);
+  /** §M-QC-PURPOSE — Turn a source offset into the 1-based line an editor jumps to. */
+  const lineOf = (position) => source.getLineAndCharacterOfPosition(position).line + 1;
 
-  const header = text.slice(0, text.indexOf("*/") + 2);
-  if (!text.trimStart().startsWith("/**") && !text.trimStart().startsWith("#!")) {
+  const headerRanges = ts.getLeadingCommentRanges(text, text.startsWith("#!") ? text.indexOf("\n") : 0);
+  const headerRange = (headerRanges ?? []).find(
+    (range) => range.kind === ts.SyntaxKind.MultiLineCommentTrivia,
+  );
+  const header = headerRange ? text.slice(headerRange.pos, headerRange.end) : "";
+
+  if (header === "") {
     violation(found, file, 1, "module-purpose", "the file opens with no documentation comment");
   } else if (!MODULE_ANCHOR.test(header)) {
     violation(
@@ -141,51 +188,27 @@ function checkFile(file, found) {
   }
 
   const moduleAnchor = MODULE_ANCHOR.exec(header)?.[0];
-
-  let inClass = false;
-  lines.forEach((line, index) => {
-    const declaration = DECLARATION.exec(line);
-    if (declaration) {
-      inClass = declaration[1] === "class";
-      if (requiresPurpose(line, declaration[1], declaration[2])) {
-        checkSymbol(found, file, lines, index, `${declaration[1]} ${declaration[2]}`, moduleAnchor);
-      }
-      return;
+  for (const { node, documented } of declarationsOf(source)) {
+    const comment = commentOf(text, documented);
+    const what = describe(node);
+    const line = lineOf(node.getStart(source));
+    if (comment === undefined) {
+      violation(found, file, line, "symbol-purpose", `${what} has no documentation comment`);
+      continue;
     }
-    if (line === "}") inClass = false;
-    if (!inClass) return;
-
-    const member = MEMBER.exec(line);
-    if (!member || line.trim().startsWith("//") || line.trim().startsWith("*")) return;
-    checkSymbol(found, file, lines, index, member[1], moduleAnchor);
-  });
-}
-
-/**
- * §M-QC-PURPOSE — Require a symbol to be documented and linked to its module.
- *
- * Presence alone leaves the chain broken at its last link: a docstring that
- * names no `§M-*` documents a symbol in isolation, and the whole point of
- * `§B → §A → §M → symbol` is that someone standing at the symbol can walk back
- * up to the business reason it exists.
- */
-function checkSymbol(found, file, lines, index, what, moduleAnchor) {
-  const comment = commentAbove(lines, index);
-  if (comment === undefined) {
-    violation(found, file, index + 1, "symbol-purpose", `${what} has no documentation comment`);
-    return;
-  }
-  if (moduleAnchor && !comment.includes(moduleAnchor)) {
-    violation(
-      found,
-      file,
-      index + 1,
-      "symbol-anchor",
-      `${what} is documented but cites no ${moduleAnchor}, so nothing links it to the chain`,
-    );
+    if (moduleAnchor && !comment.includes(moduleAnchor)) {
+      violation(
+        found,
+        file,
+        line,
+        "symbol-anchor",
+        `${what} is documented but cites no ${moduleAnchor}, so nothing links it to the chain`,
+      );
+    }
   }
 }
 
+/** §M-QC-PURPOSE — Violations found across every tracked source file. */
 const found = [];
 for (const file of sourceFiles()) checkFile(file, found);
 

@@ -7,6 +7,7 @@
  * with the catalog, did the metadata commit stay inside its permitted field.
  */
 
+import type { Dirent } from "node:fs";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
@@ -360,19 +361,27 @@ const BASELINE_FILES = [
 function policyWeakenings(
   repoDir: string,
   baseRevision: string,
-): { weakenings: PolicyWeakening[]; notes: string[] } {
+): { weakenings: PolicyWeakening[]; notes: string[]; blindSpots: string[] } {
   const weakenings: PolicyWeakening[] = [];
   const notes: string[] = [];
+  const blindSpots: string[] = [];
 
   const beforeToml = readAt(repoDir, baseRevision, "pyproject.toml");
   const afterToml = readNow(repoDir, "pyproject.toml");
-  if (beforeToml === undefined || afterToml === undefined) {
-    notes.push(`pyproject.toml is absent at ${beforeToml === undefined ? baseRevision : "HEAD"}`);
-  } else {
+  if (beforeToml !== undefined && afterToml === undefined) {
+    weakenings.push({
+      source: "pyproject.toml",
+      key: "*",
+      kind: "section_removed",
+      detail: "pyproject.toml was deleted, so every gate falls back to its built-in defaults",
+    });
+  } else if (beforeToml === undefined && afterToml !== undefined) {
+    notes.push(`pyproject.toml did not exist at ${baseRevision}; there is no policy to compare`);
+  } else if (beforeToml !== undefined && afterToml !== undefined) {
     const before = parseMetaOPolicy(beforeToml);
     const after = parseMetaOPolicy(afterToml);
     for (const error of [...before.errors, ...after.errors]) {
-      notes.push(`pyproject.toml could not be fully read: ${error}`);
+      blindSpots.push(`pyproject.toml could not be fully read: ${error}`);
     }
     weakenings.push(...detectPolicyWeakening(before, after));
   }
@@ -380,19 +389,32 @@ function policyWeakenings(
   for (const relative of BASELINE_FILES) {
     const before = readAt(repoDir, baseRevision, relative);
     const after = readNow(repoDir, relative);
-    if (after === undefined) continue;
+    if (before === undefined && after === undefined) continue;
     if (before === undefined) {
       notes.push(`${relative} did not exist at ${baseRevision}; the first baseline is not a weakening`);
+      continue;
+    }
+    if (after === undefined) {
+      // Deleting a baseline is not the same as having none. The ratchet lets a
+      // project record the debt it starts with exactly once; removing the file
+      // restores that exception, so the next `--write-baseline` may freeze
+      // whatever the code has grown into.
+      weakenings.push({
+        source: relative,
+        key: "*",
+        kind: "changed",
+        detail: `${relative} was deleted, which makes the next freeze a first baseline again`,
+      });
       continue;
     }
     try {
       weakenings.push(...detectBaselineWeakening(relative, JSON.parse(before), JSON.parse(after)));
     } catch (error) {
-      notes.push(`${relative} could not be compared: ${(error as Error).message}`);
+      blindSpots.push(`${relative} could not be compared: ${(error as Error).message}`);
     }
   }
 
-  return { weakenings, notes };
+  return { weakenings, notes, blindSpots };
 }
 
 /**
@@ -413,6 +435,7 @@ export function commandQcWeakening(args: ParsedArgs): void {
 
   const policy = policyWeakenings(repoDir, baseRevision);
   const notes = [...policy.notes];
+  const blindSpots = [...policy.blindSpots];
   const weakenings: (QcWeakening | PolicyWeakening)[] = [...policy.weakenings];
 
   const baseManifest = readAt(repoDir, baseRevision, ".quality/qc-manifest.json");
@@ -423,8 +446,13 @@ export function commandQcWeakening(args: ParsedArgs): void {
     weakenings.push(...detectWeakening(JSON.parse(baseManifest) as QcManifest, current));
   }
 
-  emit({ baseRevision, weakenings, notes, requiresUserDecision: weakenings.length > 0 });
-  if (weakenings.length > 0) process.exitCode = 1;
+  // A blind spot decides like a weakening. A key this parser cannot read is a
+  // key whose relaxation it cannot see, so answering "no weakening" would be a
+  // claim about ground it never covered — and `max_nesting_depth = 0x40` is a
+  // perfectly ordinary way to arrive there by accident.
+  const requiresUserDecision = weakenings.length > 0 || blindSpots.length > 0;
+  emit({ baseRevision, weakenings, notes, blindSpots, requiresUserDecision });
+  if (requiresUserDecision) process.exitCode = 1;
 }
 
 /**
@@ -506,11 +534,8 @@ export function commandKnowledgeValidate(args: ParsedArgs): void {
     .filter((entry) => entry !== "");
   const files: Array<{ path: string; text: string }> = [];
   const candidates = ["docs/knowledge/business.md", "docs/knowledge/glossary.md"];
-  const architectureDir = join(repoDir, "docs/knowledge/architecture");
-  if (existsSync(architectureDir)) {
-    for (const entry of readFileSyncDir(architectureDir)) {
-      candidates.push(`docs/knowledge/architecture/${entry}`);
-    }
+  for (const relative of markdownUnder(repoDir, "docs/knowledge")) {
+    if (!candidates.includes(relative)) candidates.push(relative);
   }
   for (const relative of candidates) {
     const path = join(repoDir, relative);
@@ -532,17 +557,29 @@ export function commandKnowledgeValidate(args: ParsedArgs): void {
 }
 
 /**
- * §M-CLI-GATES — List Markdown files in a directory, tolerating its absence.
+ * §M-CLI-GATES — Every Markdown file under a directory, tolerating its absence.
  *
- * An unreadable architecture directory must not abort validation of the
- * business layer, which is the part a human is most likely to be reading.
+ * Recursive on purpose. A non-recursive listing of `architecture/` made the
+ * feature-archive rule unreachable — a retired spec parked in
+ * `docs/knowledge/archive/` was never read, so the check that exists to find
+ * exactly that could never fire. An unreadable subdirectory must still not abort
+ * validation of the business layer, which is the part a human is most likely to
+ * be reading.
  */
-function readFileSyncDir(path: string): string[] {
+function markdownUnder(repoDir: string, relative: string): string[] {
+  let entries: Dirent[];
   try {
-    return readdirSync(path).filter((name: string) => name.endsWith(".md"));
+    entries = readdirSync(join(repoDir, relative), { withFileTypes: true });
   } catch {
     return [];
   }
+  const found: string[] = [];
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    const child = `${relative}/${entry.name}`;
+    if (entry.isDirectory()) found.push(...markdownUnder(repoDir, child));
+    else if (entry.isFile() && entry.name.endsWith(".md")) found.push(child);
+  }
+  return found;
 }
 
 /** §M-CLI-GATES — Create a fresh detached worktree for a gate. */

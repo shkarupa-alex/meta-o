@@ -112,9 +112,14 @@ export function parseDocumentFully(
   const sections: AnchorSection[] = [];
   headings.forEach((heading, position) => {
     if (!heading.anchor) return;
+    // A section ends at the next heading of the same or a higher level — or at
+    // any nested heading that defines an anchor of its own. Without the second
+    // rule a parent absorbs its children's text, so `## §A-ONE` citing nothing
+    // passes on a `### §A-TWO` that cites a §B: the citation belongs to the
+    // child, and the parent's missing link disappears into it.
     let end = lines.length;
     for (let next = position + 1; next < headings.length; next += 1) {
-      if (headings[next]!.level <= heading.level) {
+      if (headings[next]!.level <= heading.level || headings[next]!.anchor !== undefined) {
         end = headings[next]!.index;
         break;
       }

@@ -383,6 +383,81 @@ class KnowledgeCheckerTests(unittest.TestCase):
         self.assertIn("duplicate-anchor", result.stdout)
         self.assertIn("src/boot_again.py", result.stdout)
 
+    def test_a_business_anchor_defined_outside_the_business_document_is_refused(self) -> None:
+        """§M-QC-TESTS — The whole business truth must be readable in one file."""
+        write(
+            self.project.root,
+            "docs/knowledge/architecture/boot.md",
+            """
+            # Boot
+
+            ## §A-BOOT-01 — One supervised entry point
+
+            Implements §B-CORE-01 so startup ordering stays checkable.
+
+            ## §B-SNEAK-01 — A business truth filed under architecture
+
+            Nobody reading business.md will ever see this.
+            """,
+        )
+        result = run_checker(self.project.root, "knowledge_check.py")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("business-outside-document", result.stdout)
+
+    def test_a_malformed_anchor_is_refused_not_reinterpreted(self) -> None:
+        """§M-QC-TESTS — `§A-BAD_ONE` must fail, not silently register `§A-BAD`."""
+        write(
+            self.project.root,
+            "docs/knowledge/architecture/boot.md",
+            """
+            # Boot
+
+            ## §A-BOOT_01 — One supervised entry point
+
+            Implements §B-CORE-01 so startup ordering stays checkable.
+            """,
+        )
+        result = run_checker(self.project.root, "knowledge_check.py")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("malformed-anchor", result.stdout)
+
+    def test_a_parent_section_does_not_borrow_its_child_s_business_link(self) -> None:
+        """§M-QC-TESTS — A citation under `### §A-TWO` belongs to §A-TWO alone."""
+        write(
+            self.project.root,
+            "docs/knowledge/architecture/boot.md",
+            """
+            # Boot
+
+            ## §A-BOOT-01 — A parent decision that cites no business truth
+
+            ### §A-BOOT-02 — A child decision
+
+            Implements §B-CORE-01 so startup ordering stays checkable.
+            """,
+        )
+        result = run_checker(self.project.root, "knowledge_check.py")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("missing-business-link", result.stdout)
+        self.assertIn("§A-BOOT-01", result.stdout)
+
+    def test_a_parked_feature_archive_is_refused(self) -> None:
+        """§M-QC-TESTS — A retired spec filed under archive/ is a second source of truth."""
+        write(
+            self.project.root,
+            "docs/knowledge/architecture/archive/feature-42.md",
+            """
+            # Feature 42
+
+            ## §A-OLD-42 — A decision nobody has retired
+
+            Implements §B-CORE-01, allegedly.
+            """,
+        )
+        result = run_checker(self.project.root, "knowledge_check.py")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("feature-archive", result.stdout)
+
 
 class ImportGraphTests(unittest.TestCase):
     """§M-QC-TESTS — The import gate sees relative and literal dynamic imports."""
@@ -535,6 +610,64 @@ class ImportGraphTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("unknown-boundary", result.stdout)
         self.assertFalse((self.project.root / ".quality" / "import-graph-baseline.json").exists())
+
+    def test_freezing_the_baseline_does_not_forgive_a_coupling_regression(self) -> None:
+        """§M-QC-TESTS — Re-freezing grown coupling is the escape the ratchet exists to close."""
+        for name in ("alpha", "beta", "gamma"):
+            write(
+                self.project.root,
+                f"src/{name}.py",
+                f'''
+                """§M-{name.upper()} — A leaf module. Implements §A-BOOT-01."""
+
+
+                def use() -> int:
+                    """§M-{name.upper()} — Do nothing in particular."""
+                    return 0
+                ''',
+            )
+        write(
+            self.project.root,
+            "src/hub.py",
+            '''
+            """§M-HUB — Depends on one leaf. Implements §A-BOOT-01."""
+
+            from . import alpha
+
+
+            def use() -> int:
+                """§M-HUB — Touch the leaf."""
+                return alpha.use()
+            ''',
+        )
+        frozen = run_checker(self.project.root, "import_graph.py", "--write-baseline")
+        self.assertEqual(frozen.returncode, 0, frozen.stdout + frozen.stderr)
+
+        write(
+            self.project.root,
+            "src/hub.py",
+            '''
+            """§M-HUB — Depends on three leaves now. Implements §A-BOOT-01."""
+
+            from . import alpha, beta, gamma
+
+
+            def use() -> int:
+                """§M-HUB — Touch every leaf."""
+                return alpha.use() + beta.use() + gamma.use()
+            ''',
+        )
+        grown = run_checker(self.project.root, "import_graph.py")
+        self.assertEqual(grown.returncode, 1)
+        self.assertIn("fan-out grew", grown.stdout)
+
+        refrozen = run_checker(self.project.root, "import_graph.py", "--write-baseline")
+        self.assertEqual(refrozen.returncode, 1, refrozen.stdout + refrozen.stderr)
+        self.assertIn("fan-out grew", refrozen.stdout)
+        baseline = json.loads(
+            (self.project.root / ".quality" / "import-graph-baseline.json").read_text("utf-8")
+        )
+        self.assertEqual(baseline["fan_out"]["hub"], 1)
 
 
 class CodeHealthTests(unittest.TestCase):

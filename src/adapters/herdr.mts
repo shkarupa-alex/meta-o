@@ -191,6 +191,7 @@ export class HerdrAdapter implements SessionAdapter {
       detail = `socket API unreachable: ${(error as Error).message}`;
     }
 
+    /** §M-HERDR — Grade a capability that only exists when the backend answered at all. */
     const live = (supported: string): CapabilityGradeDetail =>
       reachable ? entry("supported", supported) : entry("unsupported", detail);
 

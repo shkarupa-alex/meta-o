@@ -369,6 +369,13 @@ def main() -> int:
     baseline = read_json(baseline_path, default={}) or {}
     known_cycles = {tuple(cycle) for cycle in baseline.get("cycles", [])}
 
+    # The ratchet runs before the freeze branch, not after it: a coupling
+    # regression is the single most likely reason someone reaches for
+    # --write-baseline, so it has to be in the report the freeze consults.
+    forbid = bool(config["forbid_regressions"])
+    check_ratchet(report, fan_in, baseline.get("fan_in", {}), "fan-in", forbid)
+    check_ratchet(report, fan_out, baseline.get("fan_out", {}), "fan-out", forbid)
+
     if "--write-baseline" in sys.argv:
         return write_baseline(baseline_path, baseline, components, fan_in, fan_out, config, report)
 
@@ -382,10 +389,6 @@ def main() -> int:
             "new-cycle",
             f"new import cycle of {len(component)} modules: {' → '.join(component)}",
         )
-
-    forbid = bool(config["forbid_regressions"])
-    check_ratchet(report, fan_in, baseline.get("fan_in", {}), "fan-in", forbid)
-    check_ratchet(report, fan_out, baseline.get("fan_out", {}), "fan-out", forbid)
 
     return report.finish()
 
@@ -405,11 +408,13 @@ def write_baseline(
     starts with; after that, freezing may only record improvement. Otherwise the
     documented way past a failing structural gate is to re-freeze it.
 
-    The baseline forgives cycles and coupling and nothing else, so any violation
-    already in the report — a forbidden edge, a layering breach, an unresolved
-    first-party import, a self-import — has no frozen form to take. Writing the
-    file anyway would exit 0 while printing none of them, which is how an
-    adoption comes to believe a structural contract holds that never did.
+    Any violation already in the report — a forbidden edge, a layering breach,
+    an unresolved first-party import, a self-import, a coupling number that grew
+    past what was frozen — blocks the freeze. The first two kinds have no frozen
+    form to take at all; the last has one, and re-freezing it is precisely the
+    escape this ratchet exists to close. Writing the file anyway would exit 0
+    while printing none of them, which is how a project comes to believe a
+    structural contract holds that never did.
     """
     if report.violations:
         sys.stderr.write(
