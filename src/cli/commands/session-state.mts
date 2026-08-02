@@ -61,6 +61,37 @@ export function sessionFor(state: RunState, role: Role): SessionRef | undefined 
   return role === "orchestrator" ? state.orchestratorSession : state.sessions[role];
 }
 
+/**
+ * §M-CLI-SESSION-STATE — The session a result must name, or nothing at all.
+ *
+ * Authority by dispatch. `resolve-finding` has required this since the audit
+ * that found the fabricated `unrecorded-<role>` stand-in, and the three
+ * commands that *record* a result kept the stand-in — so closing one finding
+ * was held to a standard that setting a whole completion attestation was not.
+ * A `record-review` against a run with an empty `sessions` map produced two of
+ * the four attestations out of nothing.
+ *
+ * This is dispatch, not authentication: a model that can reach this CLI and
+ * impersonate a reviewer the orchestrator did dispatch is not something a local
+ * tool can exclude, and `docs/knowledge/` says so. What it does exclude is a
+ * result attributed to a worker that never existed.
+ *
+ * Record the result before stopping the worker that produced it — `session
+ * stop` forgets the handle, and an attestation cannot name a session that is
+ * gone.
+ */
+export function dispatchedSession(state: RunState, role: Role, what: string): SessionRef {
+  const session = sessionFor(state, role);
+  if (!session) {
+    fail(
+      "no_such_session",
+      `this run has no ${role} session, so ${what} cannot be attributed to one; dispatch it ` +
+        `with \`meta-o session spawn --role ${role}\` before recording its result`,
+    );
+  }
+  return session;
+}
+
 /** §M-CLI-SESSION-STATE — Store a session handle in the slot its role belongs to. */
 export function withSession(state: RunState, session: SessionRef): RunState {
   if (session.role === "orchestrator") return { ...state, orchestratorSession: session };

@@ -26,9 +26,9 @@ import type {
   ReviewResult,
   RevisionResult,
   RunState,
-  SessionRef,
 } from "../../core/types.mjs";
 import { git } from "../../core/git.mjs";
+import { dispatchedSession } from "./session-state.mjs";
 import {
   assertE2eIsolated,
   assertGateIsolated,
@@ -185,14 +185,10 @@ export async function commandRecordReview(args: ParsedArgs): Promise<void> {
       result.findings,
       result.reviewer,
     );
+    const raisedBy = dispatchedSession(state, result.reviewer, `a ${result.reviewer} verdict`);
     const records: FindingRecord[] = result.findings.map((finding) => ({
       finding,
-      raisedBy: state.sessions[result.reviewer] ?? {
-        backend: "herdr",
-        sessionId: `unrecorded-${result.reviewer}`,
-        role: result.reviewer,
-        generation: state.sessionGeneration[result.reviewer] ?? 1,
-      },
+      raisedBy,
       status: "open",
     }));
 
@@ -447,12 +443,7 @@ function e2eFailureFindings(
   result: E2EResult,
   failures: readonly E2EScenarioResult[],
 ): FindingRecord[] {
-  const raisedBy: SessionRef = state.sessions["e2eTester"] ?? {
-    backend: "herdr",
-    sessionId: "unrecorded-e2eTester",
-    role: "e2eTester",
-    generation: state.sessionGeneration["e2eTester"] ?? 1,
-  };
+  const raisedBy = dispatchedSession(state, "e2eTester", "an E2E result");
   return failures.map((scenario) => ({
     finding: {
       id: `E2E-${scenario.scenarioId}`,
@@ -509,6 +500,25 @@ function e2eResultErrors(
   }
   for (const id of executed) {
     if (!plan.selectedScenarioIds.includes(id)) errors.push(`scenario ${id} is not in the plan`);
+  }
+
+  // §30 lists the selection and its rationale among the fields a result carries,
+  // and the skill tells the tester "the selection you actually ran is what the
+  // plan-bound gates are checked against" — while nothing read either field. A
+  // tester obeying the instruction gained nothing and one ignoring it lost
+  // nothing. Held against the sealed plan rather than merely required, because
+  // a copy that may disagree with the plan is worse than no copy at all.
+  const claimed = [...new Set(result.selectedScenarioIds ?? [])].sort();
+  const planned = [...plan.selectedScenarioIds].sort();
+  if (claimed.length === 0) {
+    errors.push("selectedScenarioIds is required: state which set this run actually executed");
+  } else if (claimed.join(",") !== planned.join(",")) {
+    errors.push(
+      `result claims to have run ${claimed.join(", ")}; the sealed plan selects ${planned.join(", ")}`,
+    );
+  }
+  if (!result.selectionRationale?.trim()) {
+    errors.push("selectionRationale is required: say why this set is the right one for this change");
   }
   return errors;
 }

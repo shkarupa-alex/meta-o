@@ -554,6 +554,52 @@ class KnowledgeCheckerTests(unittest.TestCase):
         self.assertIn("missing-business-link", result.stdout)
         self.assertIn("§A-BOOT-01", result.stdout)
 
+    def test_planned_intent_may_not_be_written_as_durable_knowledge(self) -> None:
+        """§M-QC-TESTS — §10 forbids a durable `§B-TODO`/`§A-TODO` anchor.
+
+        Planned intent is not current truth, and the knowledge layer is the one
+        place that must only say what is true. The rule was stated in prose and
+        checked nowhere, so a document describing what somebody meant to build
+        passed the gate. Debt belongs in `docs/todo.md`.
+        """
+        write(
+            self.project.root,
+            "docs/knowledge/business.md",
+            """
+            # Business truth
+
+            ## §B-CORE-01 — The product must start
+
+            Nothing else matters if it does not boot.
+
+            ## §B-TODO-LOYALTY — Loyalty points, once somebody builds them
+
+            Not built.
+            """,
+        )
+        result = run_checker(self.project.root, "knowledge_check.py")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("planned-anchor", result.stdout)
+
+        # A real anchor whose name merely starts with the same letters is fine.
+        write(
+            self.project.root,
+            "docs/knowledge/business.md",
+            """
+            # Business truth
+
+            ## §B-CORE-01 — The product must start
+
+            Nothing else matters if it does not boot.
+
+            ## §B-TODOS-01 — The to-do list is the product
+
+            It exists.
+            """,
+        )
+        result = run_checker(self.project.root, "knowledge_check.py")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_a_parked_feature_archive_is_refused(self) -> None:
         """§M-QC-TESTS — A retired spec filed under archive/ is a second source of truth."""
         write(
@@ -913,6 +959,77 @@ class ImportGraphTests(unittest.TestCase):
         )
         result = run_checker(self.project.root, "import_graph.py")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_the_three_declared_structural_contracts_are_enforced(self) -> None:
+        """§M-QC-TESTS — §40 step 7's layers, independence and forbidden edges.
+
+        `independent` was the one that mattered: declared as a list of pairs it
+        was rejected outright by the config shape check, and declared as a flat
+        list of names it was silently discarded — so the only reachable form of
+        a §40 structural contract reported `ok` over a live violation. None of
+        the three had a test.
+        """
+        write(
+            self.project.root,
+            "src/alpha.py",
+            '''
+            """§M-ALPHA — Imports the module it must not. Implements §A-BOOT-01."""
+
+            import beta
+
+
+            def use() -> object:
+                """§M-ALPHA — Touch the other module."""
+                return beta
+            ''',
+        )
+        write(
+            self.project.root,
+            "src/beta.py",
+            '''
+            """§M-BETA — A leaf. Implements §A-BOOT-01."""
+
+
+            def use() -> int:
+                """§M-BETA — Do nothing in particular."""
+                return 0
+            ''',
+        )
+
+        def with_contract(line: str) -> subprocess.CompletedProcess[str]:
+            """§M-QC-TESTS — Run the gate with one extra contract declared."""
+            write(
+                self.project.root,
+                "pyproject.toml",
+                f"""
+                [tool.meta_o.import_graph]
+                source_roots = ["src"]
+                first_party_prefixes = ["alpha", "beta", "boot"]
+                {line}
+                """,
+            )
+            return run_checker(self.project.root, "import_graph.py")
+
+        for line, kind in (
+            ('independent = ["alpha <-> beta"]', "independence"),
+            ('forbidden_edges = ["alpha -> beta"]', "forbidden-edge"),
+            ('layers = ["beta", "alpha"]', "layer-violation"),
+        ):
+            with self.subTest(contract=line):
+                result = with_contract(line)
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn(kind, result.stdout)
+
+        # And a contract this cannot parse stops the gate rather than vanishing.
+        for line in ('independent = ["alpha"]', 'forbidden_edges = ["oops-no-arrow"]'):
+            with self.subTest(malformed=line):
+                result = with_contract(line)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("must be", result.stdout + result.stderr)
+
+        # The same tree with no contract declared is clean, so the failures
+        # above are the contracts talking and not some unrelated violation.
+        self.assertEqual(with_contract("").returncode, 0)
 
     def test_an_unknown_first_party_boundary_is_blocked(self) -> None:
         """§M-QC-TESTS — A module matching no declared prefix has no boundary to be inside."""

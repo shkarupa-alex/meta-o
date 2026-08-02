@@ -242,11 +242,31 @@ def layer_of(module: str, layers: list[str]) -> int | None:
     return None
 
 
+def _split_contract(section_key: str, entry: str, separator: str) -> tuple[str, str]:
+    """§M-QC-IMPORT-GRAPH — Read one two-sided contract entry, or stop the gate.
+
+    A malformed entry is never skipped. `independent` used to be declared as a
+    list of pairs, which `load_config` rejects outright as a non-string list,
+    while the only shape it accepted — a flat list of module names — was
+    silently discarded here: a declared structural contract that reported `ok`
+    over a live violation. Both sides are strings now, and anything this cannot
+    parse fails the gate instead of disappearing.
+    """
+    left, _, right = entry.partition(separator)
+    if not left.strip() or not right.strip():
+        raise SystemExit(
+            f"[tool.meta_o.import_graph] {section_key} entry {entry!r} must be "
+            f'"<module> {separator} <module>"'
+        )
+    return left.strip(), right.strip()
+
+
 def check_contracts(graph: dict[str, set[str]], config: dict, report: Report) -> None:
     """§M-QC-IMPORT-GRAPH — Enforce layering, independence and forbidden edges."""
     layers = [str(item) for item in config["layers"]]
-    forbidden = {tuple(str(item).split("->")) for item in config["forbidden_edges"]}
-    forbidden = {(left.strip(), right.strip()) for left, right in forbidden if right}
+    forbidden = {
+        _split_contract("forbidden_edges", str(item), "->") for item in config["forbidden_edges"]
+    }
 
     for source, targets in sorted(graph.items()):
         for target in sorted(targets):
@@ -264,10 +284,8 @@ def check_contracts(graph: dict[str, set[str]], config: dict, report: Report) ->
                         "which sits above it",
                     )
 
-    for pair in config["independent"]:
-        if not isinstance(pair, (list, tuple)) or len(pair) != 2:
-            continue
-        left, right = str(pair[0]), str(pair[1])
+    for entry in config["independent"]:
+        left, right = _split_contract("independent", str(entry), "<->")
         for source, targets in graph.items():
             in_left = layer_of(source, [left]) is not None
             in_right = layer_of(source, [right]) is not None

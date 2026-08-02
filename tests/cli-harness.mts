@@ -168,6 +168,36 @@ export function writeLastRun(
   repo.write("docs/architecture/e2e.json", `${JSON.stringify(registry, null, 2)}\n`);
 }
 
+/**
+ * §M-TEST-HARNESS — Dispatch a worker, the way the orchestrator skill does.
+ *
+ * Needed by every test that records a review, a finding or an E2E result: those
+ * commands attribute the result to the session that produced it and refuse when
+ * the run never dispatched one. Against the scripted backend this is one call,
+ * which is the point — a fixture that could not dispatch is a fixture proving
+ * something the protocol does not allow.
+ */
+export function dispatch(context: CliContext, runId: string, role: string): void {
+  ok(
+    cli(["session", "spawn", "--run-id", runId, "--role", role], {
+      ...context,
+      env: {
+        META_O_HERDR_BIN: FAKE_HERDR,
+        FAKE_HERDR_STATE: join(context.home, "fake-herdr.json"),
+        ...context.env,
+      },
+    }),
+    `session spawn --role ${role}`,
+  );
+}
+
+/** §M-TEST-HARNESS — Dispatch the three workers whose results a run records. */
+export function dispatchWorkers(context: CliContext, runId: string): void {
+  for (const role of ["reviewerPrimary", "reviewerCrossVendor", "e2eTester"]) {
+    dispatch(context, runId, role);
+  }
+}
+
 /** §M-TEST-HARNESS — Bring a project to the point where a run exists. */
 export function startRun(context: CliContext, extra: string[] = []): string {
   ok(cli(["project", "init"], context), "project init");

@@ -1,10 +1,14 @@
 # Acceptance map
 
-Every acceptance item the spec set lists, and where it is proven. Five items are
-deliberately marked *not mechanical*: three are judgements about meaning, and two
-are gates that are their own proof — in each case claiming a test would be the
-exact dishonesty this workflow exists to prevent, a green gate standing in for a
-reading nobody did.
+Every acceptance item the spec set lists, and where it is proven. Seven items are
+deliberately marked *not mechanical*: three are judgements about meaning, and four
+are rules whose only honest proof is the gate itself or a test elsewhere — in each
+case claiming a test of their own would be the exact dishonesty this workflow
+exists to prevent, a green gate standing in for a reading nobody did.
+
+Reboot recovery is a third kind and is labelled separately: it is **not
+automated**, because restarting the backend from inside a session it hosts cannot
+be done safely, so the capability suite grades it `degraded` with instructions.
 
 Test names below are written as prose. For the TypeScript suite that is
 verbatim what `node quality/run-tests.mjs` prints. For the Python starter
@@ -183,3 +187,13 @@ now has a test that fails if the hole reopens. They live in
 | `~/.meta-o/config.json` is named by an error message and creatable only by hand | `the machine-wide defaults the error message names can be written` |
 | meta-o's own `make qc` misses a mutation of a file that was already dirty | *not mechanical* — `a gate that rewrites an already-dirty file is invalid` (Python) proves the rule; `quality/run-qc.mjs` now computes the same listing-plus-bytes fingerprint, and a test would have to run meta-o's whole gate set twice to observe it |
 | `quality/lint.mjs` reports success over a set of files it never discovered | *not mechanical* — the gate proves itself: it fails when any declared root yields no files, so an empty discovery is a red gate rather than a green one, and no separate test can assert that without disabling the check it is asserting |
+| §40's `independent` contract is declared, unusable in one form and silently ignored in the other | `the three declared structural contracts are enforced` (Python) |
+| A module placed directly under `src/` is outside the cycle, layer and size gates | *not mechanical* — `quality/import-graph.mjs` and `quality/code-health.mjs` now list paths instead of globbing, and `a gate that discovered nothing fails` (Python) proves the rule; both gates resolve their root from their own location, so a test would have to relocate the repository to observe it |
+| A JS gate reports `ok` having discovered nothing to judge | `the knowledge gate fails when it discovers nothing to judge`; the same floor is in `purpose-check`, `code-health`, `import-graph` and `format-check`, each of which fails its own root |
+| §10's ban on durable `§B-TODO`/`§A-TODO` is stated in prose and checked nowhere | `planned intent may not be written as durable knowledge`; `planned intent may not be written as durable knowledge` (Python) |
+| A review verdict or an E2E result is attributed to a worker the run never dispatched | `a result may only be attributed to a worker this run dispatched` |
+| Heavy E2E is prescribed before either reviewer has passed | `the heavy E2E loop does not open before both reviews have passed` |
+| §30's `selectedScenarioIds` and `selectionRationale` are demanded by the skill and read by nobody | `an E2E result must state the set it ran, and it must be the sealed one` |
+| §00 preflight step 2 — ownership, mode and symlinks under `~/.meta-o` — is not performed by `preflight` | `preflight performs the state-tree step §00 gives it` |
+| §20's URL-spec limits (HTTPS, ≤3 redirects, ≤10 MiB decompressed) are implemented and proven by nothing | `a spec URL that is not https is refused before any socket is opened`, `a spec URL is followed for three redirects and no further`, `a compressed spec is bounded by its decompressed size, not its transfer size` |
+| The watchdog log promises it records no model text and quotes adapter errors verbatim | *not mechanical* — `redactDeep` is applied to every entry on the one code path that writes the log; `a secret in a finding never reaches durable state` proves the redaction itself |

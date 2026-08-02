@@ -252,7 +252,9 @@ function checkE2eContract(repoDir: string, note: Note): E2ERegistry | undefined 
     detail: existsSync(e2eDocPath)
       ? "docs/architecture/e2e.md is present"
       : "docs/architecture/e2e.md is absent",
-    remedy: "allow the executor to write the environment, fixtures, execution and cleanup contract",
+    remedy:
+      "allow the executor to write the environment, fixtures, execution, cleanup and " +
+      "failure-interpretation contract",
   });
 
   const registryPath = join(repoDir, "docs/architecture/e2e.json");

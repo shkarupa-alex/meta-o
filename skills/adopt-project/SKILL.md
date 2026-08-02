@@ -20,7 +20,7 @@ Do this only after the user has agreed to it.
 | `docs/knowledge/business.md` | `§B-*` — why this product exists, in business terms |
 | `docs/knowledge/glossary.md` | The words this project uses and what they mean |
 | `docs/knowledge/architecture/*.md` | `§A-*` — decisions, each citing a `§B-*` |
-| `docs/architecture/e2e.md` | Environment, fixtures, execution, cleanup, scenario anchors |
+| `docs/architecture/e2e.md` | Environment, fixtures, execution, cleanup, failure interpretation, scenario anchors |
 | `docs/architecture/e2e.json` | Machine-readable scenario catalog |
 | `docs/todo.md` | Debt found *outside* a feature's scope: area, risk, shape of the future feature |
 | `.quality/adoption-manifest.json` | Which dependency-closed roots adoption has certified so far |

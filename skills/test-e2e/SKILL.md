@@ -27,6 +27,13 @@ Read the immutable spec blob, the candidate diff, `docs/architecture/e2e.md` and
 `meta-o e2e baseline-selection` gives you the mechanical part as a starting
 point. It is a starting point, not an answer.
 
+Tell it what this change touches, or it can only return the `always_required`
+canaries and will look like a much smaller selection than the truth:
+
+```bash
+meta-o e2e baseline-selection --business-links §B-CHECKOUT-01 --tags checkout
+```
+
 Emit the draft and seal it:
 
 ```bash

@@ -38,17 +38,34 @@ const ARCHITECTURE_ANCHOR = /§A-[A-Z0-9-]+/;
 /** §M-QC-PURPOSE — Grammar of a business anchor, cited only to detect a skipped level. */
 const BUSINESS_ANCHOR = /§B-[A-Z0-9-]+/;
 
-/** §M-QC-PURPOSE — Every tracked source file the gate is responsible for. */
+/** §M-QC-PURPOSE — Directory trees this gate is responsible for. */
+const ROOTS = ["src", "tests", "quality"];
+
+/**
+ * §M-QC-PURPOSE — Every tracked source file the gate is responsible for.
+ *
+ * Plain path arguments, no globs: git's `**` requires at least one
+ * intermediate directory, so `tests/**` + `/*.mts` matched none of the files
+ * sitting directly in `tests/` and the gate ran blind over its own test suite.
+ *
+ * An empty root fails the gate. §40 makes an unexpected skip a FAIL and the
+ * Python profile enforces the same floor with `assert_discovered`; without it
+ * a mistyped path here would report `ok` over nothing at all.
+ */
 function sourceFiles() {
-  // `*` and not `**/`: git's `**/` requires at least one intermediate
-  // directory, so `tests/**/*.mts` matched none of the thirteen files sitting
-  // directly in `tests/` and the gate ran blind over its own test suite.
-  return execFileSync("git", ["ls-files", "src/**", "tests/**", "quality/*.mjs"], {
-    cwd: ROOT,
-    encoding: "utf8",
-  })
+  const files = execFileSync("git", ["ls-files", "--", ...ROOTS], { cwd: ROOT, encoding: "utf8" })
     .split("\n")
     .filter(Boolean);
+
+  const empty = ROOTS.filter((root) => !files.some((file) => file.startsWith(`${root}/`)));
+  if (empty.length > 0) {
+    process.stderr.write(
+      `purpose discovered no sources under ${empty.join(", ")}; a gate that judged nothing is ` +
+        "a skip, not a pass\n",
+    );
+    process.exit(1);
+  }
+  return files;
 }
 
 /** §M-QC-PURPOSE — One violation, rendered so an editor can jump to it. */

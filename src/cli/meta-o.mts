@@ -10,6 +10,7 @@
  */
 
 import { parseArgs, fail, UsageError, type ParsedArgs } from "./args.mjs";
+import { commandPreflight } from "./commands/preflight-cli.mjs";
 import {
   commandConfigSetDefaults,
   commandConfigShow,
@@ -53,7 +54,6 @@ import {
   commandE2eResult,
   commandE2eValidate,
   commandKnowledgeValidate,
-  commandPreflight,
   commandQcEvaluate,
   commandReviewValidate,
   commandSealPlan,

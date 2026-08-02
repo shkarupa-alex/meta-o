@@ -39,14 +39,37 @@ const LIMITS = {
   classLines: 500,
 };
 
-/** §M-QC-CODE-HEALTH — Tracked sources this gate applies to. */
+/** §M-QC-CODE-HEALTH — Directory trees this gate is responsible for. */
+const ROOTS = ["src", "quality"];
+
+/**
+ * §M-QC-CODE-HEALTH — Tracked sources this gate applies to.
+ *
+ * Plain path arguments and an extension filter, no globs. Git's `**` requires
+ * at least one intermediate directory, so the old `src/**` + `/*.mts` pattern
+ * matched nothing sitting directly under `src/` — a file placed there would
+ * have been silently exempt from every limit below. Two other gates in this
+ * directory already document the identical bug as found and fixed; this one
+ * still had it.
+ *
+ * §40 makes an unexpected skip a FAIL, so a root that yields nothing fails the
+ * gate rather than passing it: a gate that judged nothing is the largest
+ * possible skip.
+ */
 function sources() {
-  return execFileSync("git", ["ls-files", "src/**/*.mts", "quality/*.mjs"], {
-    cwd: ROOT,
-    encoding: "utf8",
-  })
+  const files = execFileSync("git", ["ls-files", "--", ...ROOTS], { cwd: ROOT, encoding: "utf8" })
     .split("\n")
-    .filter(Boolean);
+    .filter((file) => file.endsWith(".mts") || file.endsWith(".mjs"));
+
+  const empty = ROOTS.filter((root) => !files.some((file) => file.startsWith(`${root}/`)));
+  if (empty.length > 0) {
+    process.stderr.write(
+      `code-health discovered no sources under ${empty.join(", ")}; a gate that judged nothing ` +
+        "is a skip, not a pass\n",
+    );
+    process.exit(1);
+  }
+  return files;
 }
 
 /** §M-QC-CODE-HEALTH — Indentation level of a line, in two-space steps. */

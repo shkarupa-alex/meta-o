@@ -32,11 +32,30 @@ const ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], {
  */
 const LAYERS = ["src/cli", "src/watchdog", "src/adapters", "src/core"];
 
-/** §M-QC-IMPORT-GRAPH — Tracked TypeScript sources. */
+/**
+ * §M-QC-IMPORT-GRAPH — Tracked TypeScript sources.
+ *
+ * A plain path argument and an extension filter, no glob. Git's `**` requires
+ * at least one intermediate directory, so `src/**` + `/*.mts` matched nothing
+ * sitting directly under `src/`: a module placed there would have been outside
+ * the cycle and layer checks entirely, which is the one place a boundary
+ * violation is most likely to be written.
+ *
+ * An empty result fails the gate, because §40 makes an unexpected skip a FAIL
+ * and a gate that judged nothing is the largest possible skip.
+ */
 function sources() {
-  return execFileSync("git", ["ls-files", "src/**/*.mts"], { cwd: ROOT, encoding: "utf8" })
+  const files = execFileSync("git", ["ls-files", "--", "src"], { cwd: ROOT, encoding: "utf8" })
     .split("\n")
-    .filter(Boolean);
+    .filter((file) => file.endsWith(".mts"));
+  if (files.length === 0) {
+    process.stderr.write(
+      "import-graph discovered no sources under src; a gate that judged nothing is a skip, " +
+        "not a pass\n",
+    );
+    process.exit(1);
+  }
+  return files;
 }
 
 /** §M-QC-IMPORT-GRAPH — Resolve a relative `.mjs` specifier back to its `.mts` source. */

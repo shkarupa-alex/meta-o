@@ -130,6 +130,14 @@ create them. See the `adopt-project` skill.
   candidate.
 - Accept a flag it does not know. A misspelled `--no-backend` is an error, not a
   silent run with the opposite meaning.
+- Attribute a review verdict, an E2E result or a finding to a worker the run
+  never dispatched.
+- Start the heavy E2E set before both reviewers have passed on the candidate.
+- Accept an E2E result that will not say which scenarios it ran, or that names a
+  set other than the sealed plan's.
+- Write planned intent into the knowledge layer as a durable `§B-TODO`/`§A-TODO`
+  anchor. Debt goes in `docs/todo.md`.
+- Report a gate as passing when it discovered nothing to judge.
 - Let a superseded orchestrator keep writing after it lost a takeover.
 - Write a credential into `state.json` because a reviewer quoted one.
 - Push, open a PR or tag anything you did not ask for.
@@ -220,9 +228,10 @@ make qc              # the same gate this project asks of others
 The suite builds real Git repositories, real state trees with real permission
 bits, and a scripted stand-in that speaks the backend's actual protocol.
 [`docs/acceptance-map.md`](docs/acceptance-map.md) lists every acceptance item
-in §00–§50 against the test that proves it — including the five marked *not
-mechanical*, three of them judgements about meaning and two of them gates that
-are their own proof, rather than being given a test that would only look like one.
+in §00–§50 against the test that proves it — including the seven marked *not
+mechanical*, three of them judgements about meaning and four of them rules whose
+only honest proof is the gate itself, rather than a test that would only look
+like one.
 
 Its own knowledge lives in [`docs/knowledge/`](docs/knowledge/business.md) and
 its own E2E contract in [`docs/architecture/e2e.md`](docs/architecture/e2e.md).

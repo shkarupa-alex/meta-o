@@ -22,6 +22,7 @@ import {
 } from "../../core/state-store.mjs";
 import {
   assertTransition,
+  attests,
   completionProven,
   invalidatePlanBoundConfirmations,
   invalidateStaleConfirmations,
@@ -267,6 +268,42 @@ function assertCompletable(state: RunState): void {
   }
 }
 
+/**
+ * §M-CLI-RUN — Refuse to open the E2E loop before both reviews have passed.
+ *
+ * §30: "Heavy E2E начинается после PASS обоих reviewers." The router honoured
+ * the second half of that rule — an E2E fix does not drag the run back into a
+ * review round — by arming on `activeLoop.kind === "e2e"` alone, and nothing
+ * checked how the loop came to be armed. A transition straight from
+ * `REVIEW_STABILIZATION` with zero reviews recorded therefore prescribed the
+ * full selected set against a candidate no reviewer had read. It could not
+ * produce a false green, because completion still needs four attestations on
+ * one digest; what it could do is spend a heavy suite twice.
+ *
+ * Re-entry from `LOCAL_QC` is the E2E fix's return leg and is allowed on the
+ * strength of the loop already being open — the reviews that opened it are
+ * `invalidated` by then precisely because the fix changed the content.
+ */
+function assertE2eLoopMayOpen(state: RunState): void {
+  if (state.activeLoop?.kind === "e2e") return;
+  const digest = state.candidateSnapshot?.digest;
+  const plan = state.e2ePlan?.planDigest;
+  if (!digest || !plan) {
+    fail("no_candidate", "the E2E loop needs a candidate and a sealed selection plan");
+  }
+  const missing = (["reviewerPrimary", "reviewerCrossVendor"] as const).filter(
+    (gate) => !attests(state.confirmations[gate], digest!, plan),
+  );
+  if (missing.length > 0) {
+    fail(
+      "reviews_not_passed",
+      `heavy E2E starts after both reviewers pass; ${missing.join(" and ")} ` +
+        "have not passed on this snapshot and plan",
+      { missingGates: missing },
+    );
+  }
+}
+
 /** §M-CLI-RUN — Move a run to another phase, refusing undefined transitions. */
 export async function commandTransition(args: ParsedArgs): Promise<void> {
   const { projectKey, repoDir } = identityOf(args);
@@ -288,6 +325,7 @@ export async function commandTransition(args: ParsedArgs): Promise<void> {
           "transition straight to EXECUTING",
       );
     }
+    if (phase === "E2E_STABILIZATION") assertE2eLoopMayOpen(state);
     if (phase === "COMPLETE") {
       assertCompletable(state);
       // Re-checked here and not only at `set-candidate`: the metadata commit

@@ -15,16 +15,6 @@ import { readRepoJson } from "../repo-json.mjs";
 import { resolveProjectIdentity } from "../../core/project-key.mjs";
 import { computeSnapshotDigest, verifyMetadataCommit } from "../../core/snapshot.mjs";
 import { resolveCommit } from "../../core/git.mjs";
-import { runPreflight, type PreflightCheck } from "../../core/preflight.mjs";
-import { HerdrAdapter } from "../../adapters/herdr.mjs";
-import {
-  detectCapabilityRegression,
-  runSmokeSuite,
-  unexercised,
-  type CapabilityBaseline,
-  type SuiteReport,
-} from "../../adapters/capability-suite.mjs";
-import { readCapabilityBaseline } from "./backend.mjs";
 import {
   baselineSelection,
   computePlanDigest,
@@ -57,7 +47,6 @@ import type {
   ReviewResult,
 } from "../../core/types.mjs";
 import {
-  boolFlag,
   emit,
   fail,
   optionalFlag,
@@ -70,142 +59,6 @@ import {
 function repoOf(args: ParsedArgs): { repoDir: string; projectKey: string } {
   const identity = resolveProjectIdentity(optionalFlag(args, "cwd") ?? process.cwd());
   return { repoDir: identity.canonicalPath, projectKey: identity.projectKey };
-}
-
-/**
- * §M-CLI-GATES — Say what the capability comparison actually covered.
- *
- * Naming the unexercised checks matters more than the verdict. The smoke run
- * re-reads the backend's self-report; it does not re-spawn an agent, so the
- * behavioural checks the full suite proved are last-proven facts, not
- * re-verified ones, and a detail line that omitted the difference read as a
- * verification it was not.
- */
-function capabilityDetail(
-  baseline: CapabilityBaseline | undefined,
-  regressions: string[],
-  skipped: string[],
-): string {
-  if (regressions.length > 0) return regressions.join("; ");
-  if (!baseline) return "no capability baseline is recorded; run `meta-o capability-suite run --full`";
-  const compared = `no reported capability is worse than the baseline of ${baseline.recordedAt}`;
-  return skipped.length === 0
-    ? compared
-    : `${compared}; not re-exercised at preflight: ${skipped.join(", ")}`;
-}
-
-/**
- * §M-CLI-GATES — Ask the backend what it can still do, and compare that to the record.
- *
- * The cheap smoke variant, because preflight runs before every feature and must
- * not cost panes or money. Two things can go wrong and they are reported apart:
- * the backend cannot answer at all, and the backend answers *worse than it used
- * to*. The second is the one worth the machinery — a silently degraded backend
- * produces a run that fails four hours later for reasons nobody connects to an
- * upgrade that happened last week.
- */
-async function backendChecks(repoDir: string): Promise<PreflightCheck[]> {
-  const adapter = new HerdrAdapter({ binary: process.env["META_O_HERDR_BIN"] });
-  let report: SuiteReport;
-  try {
-    report = await runSmokeSuite({ adapter, backend: "herdr", cwd: repoDir, model: PROBE_MODEL });
-  } catch (error) {
-    return [
-      {
-        id: "backend-smoke",
-        status: "invalid",
-        blocking: true,
-        detail: `the backend could not be probed: ${(error as Error).message}`,
-        remedy: "install or start the backend, or pass --no-backend to check the project alone",
-      },
-    ];
-  }
-
-  let baseline: CapabilityBaseline | undefined;
-  try {
-    baseline = readCapabilityBaseline();
-  } catch (error) {
-    return [
-      {
-        id: "capability-regression",
-        status: "invalid",
-        blocking: true,
-        detail: (error as Error).message,
-        remedy: "re-record the baseline with `meta-o capability-suite run --full`",
-      },
-    ];
-  }
-
-  const regressions = detectCapabilityRegression(baseline, report);
-  const skipped = unexercised(baseline, report);
-  return [
-    {
-      id: "backend-smoke",
-      status: report.blocked ? "invalid" : "ok",
-      blocking: true,
-      detail: report.blocked
-        ? report.blockingReasons.join("; ")
-        : `backend answers and reports every completion-critical capability`,
-      remedy: "run `meta-o capability-suite run --full` and resolve what it reports",
-    },
-    {
-      id: "capability-regression",
-      status: regressions.length === 0 ? "ok" : "invalid",
-      blocking: true,
-      // Says what it compared, not merely that it found nothing. The smoke run
-      // re-reads the backend's self-report; it does not re-spawn an agent, so
-      // the behavioural checks the full suite proved are named as last-proven
-      // rather than silently counted as still true.
-      detail: capabilityDetail(baseline, regressions, skipped),
-      remedy:
-        "this backend lost a capability the workflow depends on; fix or downgrade it, then " +
-        "re-record the baseline with `meta-o capability-suite run --full`",
-    },
-  ];
-}
-
-/** §M-CLI-GATES — The identity a capability probe presents; it never does real work. */
-const PROBE_MODEL = {
-  route: "claude",
-  vendor: "probe",
-  family: "probe",
-  model: "default",
-} as const;
-
-/**
- * §M-CLI-GATES — Run every mechanical project contract check.
- *
- * Includes the backend, because a project contract the backend cannot execute
- * is not a contract this workflow can honour. `--no-backend` checks the
- * repository alone, which is what adoption needs before a backend exists.
- */
-export async function commandPreflight(args: ParsedArgs): Promise<void> {
-  const { repoDir } = repoOf(args);
-  const report = runPreflight({
-    repoDir,
-    // `boolFlag`, not `optionalFlag`: a bare `--allow-dirty` parses as `true`
-    // rather than a string, so testing for `undefined` read it as absent and
-    // silently kept preflight strict. Failing safe is not the same as working.
-    requireCleanWorktree: !boolFlag(args, "allow-dirty"),
-  });
-
-  const checks = [...report.checks];
-  const missingContract = [...report.missingContract];
-  if (!boolFlag(args, "no-backend")) {
-    for (const check of await backendChecks(repoDir)) {
-      checks.push(check);
-      if (check.blocking && check.status !== "ok") missingContract.push(check.id);
-    }
-  }
-
-  const ok = checks.every((check) => !check.blocking || check.status === "ok");
-  emit({
-    ok,
-    checks,
-    missingContract,
-    recommendedPhase: ok ? "EXECUTING" : "PAUSED_MISSING_TOOLS",
-  });
-  if (!ok) process.exitCode = 1;
 }
 
 /** §M-CLI-GATES — Resolve a revision to its commit OID, or nothing if it names none. */
@@ -481,15 +334,30 @@ export function commandKnowledgeValidate(args: ParsedArgs): void {
   const index = buildAnchorIndex(files);
   const moduleAnchors = collectModuleAnchors(repoDir, roots);
   const validation = validateChain(index, moduleAnchors);
+
+  // §40 makes an unexpected skip a FAIL, and this gate had the largest possible
+  // one: pointed at a repository with no knowledge documents, or at `--roots`
+  // naming a directory that does not exist, it reported `ok: true` over zero
+  // documents and zero anchors. The Python profile fails closed here
+  // (`assert_discovered`); this did not.
+  const discovery = [
+    ...(files.length === 0 ? ["no knowledge documents under docs/knowledge"] : []),
+    ...(moduleAnchors.length === 0
+      ? [`no module anchors under ${roots.length > 0 ? roots.join(", ") : "the tree"}`]
+      : []),
+  ].map((detail) => `${detail}; a gate that judged nothing is a skip, not a pass`);
+
   emit({
     ...validation,
+    ok: validation.ok && discovery.length === 0,
+    errors: [...validation.errors, ...discovery],
     roots: roots.length > 0 ? roots : ["<whole tree>"],
     documents: files.map((file) => file.path),
     anchors: index.sections.length,
     moduleAnchors: moduleAnchors.length,
     duplicates: index.duplicates,
   });
-  if (!validation.ok) process.exitCode = 1;
+  if (!validation.ok || discovery.length > 0) process.exitCode = 1;
 }
 
 /**

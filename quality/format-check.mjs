@@ -24,13 +24,27 @@ const ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], {
 /** §M-QC-FORMAT — Files whose format is defined by something other than us. */
 const TAB_INDENTED = new Set(["Makefile", "templates/python/Makefile"]);
 
-/** §M-QC-FORMAT — Text files tracked by Git, excluding the imported spec corpus. */
+/**
+ * §M-QC-FORMAT — Text files tracked by Git, excluding the imported spec corpus.
+ *
+ * An empty result fails the gate. §40 makes an unexpected skip a FAIL, and
+ * this gate is the one most likely to discover nothing by accident: it filters
+ * on an extension list, so a repository laid out differently — or a filter
+ * edited wrongly — would report `ok` over zero files.
+ */
 function trackedTextFiles() {
-  return execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8" })
+  const files = execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8" })
     .split("\n")
     .filter(Boolean)
     .filter((file) => !file.startsWith("spec/"))
     .filter((file) => /\.(mts|mjs|json|md|py|sh|toml|yml|yaml)$|^Makefile$|Makefile$/.test(file));
+  if (files.length === 0) {
+    process.stderr.write(
+      "format-check discovered no text files; a gate that judged nothing is a skip, not a pass\n",
+    );
+    process.exit(1);
+  }
+  return files;
 }
 
 const problems = [];

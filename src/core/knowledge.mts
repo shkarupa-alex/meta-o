@@ -257,6 +257,22 @@ export function validateChain(
     }
   }
 
+  // §10: "До реализации нельзя писать durable §B-TODO/§A-TODO" — planned
+  // intent is not current truth. The rule was stated in the executor's skill
+  // and nowhere else, so a knowledge layer describing what someone means to
+  // build passed the gate that exists to say what is true. Caught here rather
+  // than in the lint gate because the objection is to the *anchor*: an
+  // unfinished-work marker in code is ordinary debt, which the lint gate
+  // already refuses and `docs/todo.md` already has a home for.
+  for (const section of index.sections) {
+    if (/^§[BA]-TODO(-|$)/.test(section.anchor)) {
+      errors.push(
+        `${section.path}:${section.line}: ${section.anchor} is planned intent, not current ` +
+          "truth; record it in docs/todo.md and write the anchor when the thing exists",
+      );
+    }
+  }
+
   for (const anchor of index.duplicates) {
     const where = index
       .byAnchor.get(anchor)!

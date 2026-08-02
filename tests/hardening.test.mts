@@ -13,11 +13,21 @@
 
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { createTempHome } from "./helpers.mts";
-import { cli, errorCode, ok, retireSpec, seededRepo, startRun, type CliContext } from "./cli-harness.mts";
+import {
+  cli,
+  dispatch,
+  dispatchWorkers,
+  errorCode,
+  ok,
+  retireSpec,
+  seededRepo,
+  startRun,
+  type CliContext,
+} from "./cli-harness.mts";
 import { detectPolicyWeakening, parseMetaOPolicy } from "../dist/core/policy.mjs";
 import { evaluateQc, validateResult } from "../dist/core/qc.mjs";
 import { allowedTransitions, completionProven } from "../dist/core/fsm.mjs";
@@ -391,6 +401,7 @@ test("a secret in a finding never reaches durable state", () => {
   const context: CliContext = { cwd: repo.dir, home: home.dir };
   try {
     const runId = startRun(context);
+    dispatchWorkers(context, runId);
     ok(
       cli(["run", "open-findings", "--run-id", runId, "--reviewer", "reviewerPrimary"], {
         ...context,
@@ -452,6 +463,7 @@ test("an open blocker cannot be erased by rewriting the findings slot", () => {
   const context: CliContext = { cwd: repo.dir, home: home.dir };
   try {
     const runId = startRun(context);
+    dispatchWorkers(context, runId);
     ok(
       cli(["run", "open-findings", "--run-id", runId, "--reviewer", "reviewerPrimary"], {
         ...context,
@@ -486,6 +498,7 @@ test("an adjudicator can rule a finding real but not blocking", () => {
   const context: CliContext = { cwd: repo.dir, home: home.dir };
   try {
     const runId = startRun(context);
+    dispatchWorkers(context, runId);
     ok(
       cli(["run", "open-findings", "--run-id", runId, "--reviewer", "reviewerPrimary"], {
         ...context,
@@ -548,11 +561,15 @@ test("a finding cannot be closed on the authority of a session that was never di
   // `--by-role` is a claim. It used to be compared only against the raising
   // role, so the executor had merely to claim the raiser's own role — the
   // check the code comment said made this safe was the check being evaded.
+  // What is checkable is dispatch, so only `reviewerPrimary` is spawned here:
+  // the close is then attempted on the authority of the reviewer this run
+  // never opened a session for.
   const repo = seededRepo();
   const home = createTempHome();
   const context: CliContext = { cwd: repo.dir, home: home.dir };
   try {
     const runId = startRun(context);
+    dispatch(context, runId, "reviewerPrimary");
     ok(
       cli(["run", "open-findings", "--run-id", runId, "--reviewer", "reviewerPrimary"], {
         ...context,
@@ -595,7 +612,7 @@ test("a finding cannot be closed on the authority of a session that was never di
         "--finding-id",
         "F-1",
         "--by-role",
-        "reviewerPrimary",
+        "reviewerCrossVendor",
       ],
       context,
     );
@@ -613,6 +630,7 @@ test("a proposed fix must say what it changed", () => {
   const context: CliContext = { cwd: repo.dir, home: home.dir };
   try {
     const runId = startRun(context);
+    dispatchWorkers(context, runId);
     ok(
       cli(["run", "open-findings", "--run-id", runId, "--reviewer", "reviewerPrimary"], {
         ...context,
@@ -846,6 +864,7 @@ test("an E2E result is refused unless a worktree receipt proves it ran isolated"
   const context: CliContext = { cwd: repo.dir, home: home.dir };
   try {
     const runId = startRun(context);
+    dispatchWorkers(context, runId);
     ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
     retireSpec(repo);
@@ -998,6 +1017,7 @@ test("a second review may not erase the blocker the first one raised", () => {
   const context: CliContext = { cwd: repo.dir, home: home.dir };
   try {
     const runId = startRun(context);
+    dispatchWorkers(context, runId);
     ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
     retireSpec(repo);
@@ -1288,6 +1308,7 @@ test("the production contract must be committed, and must be about production", 
   const context: CliContext = { cwd: repo.dir, home: home.dir };
   try {
     const runId = startRun(context);
+    dispatchWorkers(context, runId);
     ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
     retireSpec(repo);
@@ -1416,6 +1437,7 @@ test("a scenario the E2E gate itself flagged can be fixed and re-run green", () 
   const context: CliContext = { cwd: repo.dir, home: home.dir };
   try {
     const runId = startRun(context);
+    dispatchWorkers(context, runId);
     ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
     retireSpec(repo);
@@ -1628,6 +1650,7 @@ test("a derived E2E finding is retired by the gate, not closed by hand", () => {
   const context: CliContext = { cwd: repo.dir, home: home.dir };
   try {
     const runId = startRun(context);
+    dispatchWorkers(context, runId);
     ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
     retireSpec(repo);
@@ -1754,6 +1777,7 @@ test("a green E2E run leaves a blocker raised against the E2E work standing", ()
   const context: CliContext = { cwd: repo.dir, home: home.dir };
   try {
     const runId = startRun(context);
+    dispatchWorkers(context, runId);
     ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
     retireSpec(repo);
@@ -1843,6 +1867,7 @@ test("production needs a written contract, not only the user's consent", () => {
   const context: CliContext = { cwd: repo.dir, home: home.dir };
   try {
     const runId = startRun(context);
+    dispatchWorkers(context, runId);
     ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
     retireSpec(repo);
@@ -2054,5 +2079,356 @@ test("the machine-wide defaults the error message names can be written", () => {
     assert.deepEqual(shown["defaultModelSet"], modelSet);
   } finally {
     home.dispose();
+  }
+});
+
+test("a result may only be attributed to a worker this run dispatched", () => {
+  // Authority by dispatch, applied where it decides the most. `resolve-finding`
+  // has required a real session since the audit that found the fabricated
+  // `unrecorded-<role>` stand-in; the commands that *record* a result kept it,
+  // so closing one finding was held to a standard that setting two of the four
+  // completion attestations was not. A `record-review` against a run with an
+  // empty `sessions` map produced them out of nothing.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
+    retireSpec(repo);
+    const candidate = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
+    const commitOid = candidate.json["provenanceCommit"] as string;
+    const snapshotDigest = candidate.json["snapshotDigest"] as string;
+    const plan = ok(
+      cli(["e2e", "seal-plan"], {
+        ...context,
+        stdin: JSON.stringify({
+          schemaVersion: 1,
+          commitOid,
+          selectedScenarioIds: ["E2E-SMOKE-01"],
+          selectionRationale: "the canary always runs",
+          impactedBusinessLinks: [],
+          impactedTags: [],
+        }),
+      }),
+      "seal-plan",
+    ).json as unknown as { planDigest: string };
+    ok(
+      cli(["run", "set-plan", "--run-id", runId], { ...context, stdin: JSON.stringify(plan) }),
+      "set-plan",
+    );
+
+    const undispatched = cli(["run", "record-review", "--run-id", runId], {
+      ...context,
+      stdin: JSON.stringify({
+        reviewer: "reviewerPrimary",
+        commitOid,
+        snapshotDigest,
+        planDigest: plan.planDigest,
+        selectionPlanVerdict: "complete",
+        verdict: "passed",
+        findings: [],
+        completedAt: "2026-07-24T12:00:00Z",
+      }),
+    });
+    assert.equal(errorCode(undispatched), "no_such_session");
+    assert.match(undispatched.stderr, /session spawn --role reviewerPrimary/);
+
+    const noFindings = cli(["run", "open-findings", "--run-id", runId, "--reviewer", "e2e"], {
+      ...context,
+      stdin: blocker("X-1"),
+    });
+    assert.equal(errorCode(noFindings), "no_such_session");
+
+    // Dispatched, the same payload is accepted and names the real session.
+    dispatch(context, runId, "reviewerPrimary");
+    ok(
+      cli(["run", "record-review", "--run-id", runId], {
+        ...context,
+        stdin: JSON.stringify({
+          reviewer: "reviewerPrimary",
+          commitOid,
+          snapshotDigest,
+          planDigest: plan.planDigest,
+          selectionPlanVerdict: "complete",
+          verdict: "changes_requested",
+          findings: JSON.parse(blocker("R-1")),
+          completedAt: "2026-07-24T12:00:00Z",
+        }),
+      }),
+      "record a dispatched reviewer's verdict",
+    );
+    const records = (
+      (ok(cli(["run", "show", "--run-id", runId], context), "run show").json[
+        "openFindings"
+      ] as Record<string, Array<{ raisedBy: { sessionId: string } }>>)["reviewerPrimary"] ?? []
+    ).map((record) => record.raisedBy.sessionId);
+    assert.equal(records.length, 1);
+    assert.ok(
+      !records[0]?.startsWith("unrecorded-"),
+      `the finding must name a real session, got ${records[0]}`,
+    );
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("the heavy E2E loop does not open before both reviews have passed", () => {
+  // §30: "Heavy E2E начинается после PASS обоих reviewers." The router honoured
+  // the second half of the rule — an E2E fix does not drag the run back into a
+  // review round — by arming on `activeLoop.kind === "e2e"` alone, and nothing
+  // checked how the loop came to be armed. Transitioning into it with zero
+  // reviews recorded prescribed the full selected set against a candidate no
+  // reviewer had read.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    dispatchWorkers(context, runId);
+    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
+    retireSpec(repo);
+    const candidate = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
+    const commitOid = candidate.json["provenanceCommit"] as string;
+    const snapshotDigest = candidate.json["snapshotDigest"] as string;
+    const plan = ok(
+      cli(["e2e", "seal-plan"], {
+        ...context,
+        stdin: JSON.stringify({
+          schemaVersion: 1,
+          commitOid,
+          selectedScenarioIds: ["E2E-SMOKE-01"],
+          selectionRationale: "the canary always runs",
+          impactedBusinessLinks: [],
+          impactedTags: [],
+        }),
+      }),
+      "seal-plan",
+    ).json as unknown as { planDigest: string; selectedScenarioIds: string[] };
+    ok(
+      cli(["run", "set-plan", "--run-id", runId], { ...context, stdin: JSON.stringify(plan) }),
+      "set-plan",
+    );
+
+    ok(cli(["run", "transition", "--run-id", runId, "--phase", "LOCAL_QC"], context), "→ LOCAL_QC");
+    const early = cli(["run", "transition", "--run-id", runId, "--phase", "E2E_STABILIZATION"], context);
+    assert.equal(errorCode(early), "reviews_not_passed");
+    assert.deepEqual((early.json["error"] as { missingGates?: string[] }).missingGates, [
+      "reviewerPrimary",
+      "reviewerCrossVendor",
+    ]);
+
+    /** §M-TEST-HARDENING — A passing review of the sealed candidate and plan. */
+    const review = (reviewer: string): string =>
+      JSON.stringify({
+        reviewer,
+        commitOid,
+        snapshotDigest,
+        planDigest: plan.planDigest,
+        selectionPlanVerdict: "complete",
+        verdict: "passed",
+        findings: [],
+        completedAt: "2026-07-24T12:00:00Z",
+      });
+    ok(
+      cli(["run", "record-review", "--run-id", runId], { ...context, stdin: review("reviewerPrimary") }),
+      "first review",
+    );
+    const stillOne = cli(["run", "transition", "--run-id", runId, "--phase", "E2E_STABILIZATION"], context);
+    assert.equal(errorCode(stillOne), "reviews_not_passed", "one review is not two here either");
+
+    ok(
+      cli(["run", "record-review", "--run-id", runId], {
+        ...context,
+        stdin: review("reviewerCrossVendor"),
+      }),
+      "second review",
+    );
+    ok(
+      cli(["run", "transition", "--run-id", runId, "--phase", "E2E_STABILIZATION"], context),
+      "both reviews passed, so the loop may open",
+    );
+
+    // And the return leg of an E2E fix still works: the reviews it invalidated
+    // are exactly the ones this guard would otherwise demand again.
+    ok(cli(["run", "transition", "--run-id", runId, "--phase", "LOCAL_QC"], context), "→ LOCAL_QC");
+    ok(
+      cli(["run", "transition", "--run-id", runId, "--phase", "E2E_STABILIZATION"], context),
+      "the E2E loop is already open, so the fix returns to it",
+    );
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("an E2E result must state the set it ran, and it must be the sealed one", () => {
+  // §30 lists the selection and its rationale among the result's fields, and
+  // `test-e2e` tells the tester "the selection you actually ran is what the
+  // plan-bound gates are checked against" — while nothing read either field. A
+  // tester obeying the instruction gained nothing; one ignoring it lost nothing.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    dispatchWorkers(context, runId);
+    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
+    retireSpec(repo);
+    const candidate = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
+    const commitOid = candidate.json["provenanceCommit"] as string;
+    const snapshotDigest = candidate.json["snapshotDigest"] as string;
+    const plan = ok(
+      cli(["e2e", "seal-plan"], {
+        ...context,
+        stdin: JSON.stringify({
+          schemaVersion: 1,
+          commitOid,
+          selectedScenarioIds: ["E2E-CHECKOUT-01", "E2E-SMOKE-01"],
+          selectionRationale: "checkout is impacted; the canary always runs",
+          impactedBusinessLinks: ["§B-CHECKOUT-01"],
+          impactedTags: ["checkout"],
+        }),
+      }),
+      "seal-plan",
+    ).json as unknown as { planDigest: string; selectedScenarioIds: string[] };
+    ok(
+      cli(["run", "set-plan", "--run-id", runId], { ...context, stdin: JSON.stringify(plan) }),
+      "set-plan",
+    );
+    ok(cli(["worktree", "run", "--run-id", runId, "--label", "e2e", "true"], context), "isolated run");
+
+    /** §M-TEST-HARDENING — An otherwise valid result with the selection fields overridden. */
+    const record = (overrides: Record<string, unknown>) =>
+      cli(["run", "record-e2e", "--run-id", runId], {
+        ...context,
+        stdin: JSON.stringify({
+          commitOid,
+          snapshotDigest,
+          planDigest: plan.planDigest,
+          selectedScenarioIds: plan.selectedScenarioIds,
+          selectionRationale: "checkout is impacted; the canary always runs",
+          scenarios: [
+            { scenarioId: "E2E-CHECKOUT-01", status: "passed", evidence: "checkout ok" },
+            { scenarioId: "E2E-SMOKE-01", status: "passed", evidence: "boot ok" },
+          ],
+          environment: "local",
+          completedAt: "2026-07-24T12:30:00Z",
+          ...overrides,
+        }),
+      });
+
+    const silent = record({ selectedScenarioIds: [] });
+    assert.equal(errorCode(silent), "invalid_e2e_result");
+    assert.match(silent.stderr, /selectedScenarioIds is required/);
+
+    // A result that ran the scenarios but claims a different set is the case
+    // the plan-bound digest cannot catch on its own.
+    const disagrees = record({ selectedScenarioIds: ["E2E-SMOKE-01"] });
+    assert.equal(errorCode(disagrees), "invalid_e2e_result");
+    assert.match(disagrees.stderr, /the sealed plan selects/);
+
+    const unexplained = record({ selectionRationale: "   " });
+    assert.equal(errorCode(unexplained), "invalid_e2e_result");
+    assert.match(unexplained.stderr, /selectionRationale is required/);
+
+    ok(record({}), "the shape the skill documents is the shape the command accepts");
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("the knowledge gate fails when it discovers nothing to judge", () => {
+  // §40 makes an unexpected skip a FAIL, and this gate had the largest possible
+  // one: pointed at `--roots` naming a directory that does not exist it reported
+  // `ok: true` over zero anchors. The Python profile fails closed here.
+  const repo = seededRepo();
+  try {
+    ok(cli(["knowledge", "validate"], { cwd: repo.dir, home: repo.dir }), "the seeded tree is valid");
+
+    const blind = cli(["knowledge", "validate", "--roots", "nosuchdir"], {
+      cwd: repo.dir,
+      home: repo.dir,
+    });
+    assert.equal(blind.code, 1);
+    assert.match(blind.stdout, /a gate that judged nothing is a skip, not a pass/);
+  } finally {
+    repo.dispose();
+  }
+});
+
+test("planned intent may not be written as durable knowledge", () => {
+  // §10: "До реализации нельзя писать durable §B-TODO/§A-TODO." The rule was
+  // stated in the executor's skill and nowhere else, so a knowledge layer
+  // describing what somebody means to build passed the gate whose whole job is
+  // to say what is true. Debt goes in `docs/todo.md`, which §00 already requires.
+  const repo = seededRepo();
+  try {
+    const business = readFileSync(join(repo.dir, "docs/knowledge/business.md"), "utf8");
+    repo.write(
+      "docs/knowledge/business.md",
+      `${business}\n## §B-TODO-LOYALTY — Loyalty points, once somebody builds them\n\nNot built.\n`,
+    );
+    const planned = cli(["knowledge", "validate"], { cwd: repo.dir, home: repo.dir });
+    assert.equal(planned.code, 1);
+    assert.match(planned.stdout, /§B-TODO-LOYALTY is planned intent, not current truth/);
+
+    // A real anchor whose name merely begins with the same letters is fine.
+    repo.write(
+      "docs/knowledge/business.md",
+      `${business}\n## §B-TODOS-01 — The to-do list is the product\n\nIt exists.\n`,
+    );
+    ok(
+      cli(["knowledge", "validate"], { cwd: repo.dir, home: repo.dir }),
+      "the forbidden prefix is matched as a prefix, not as a substring",
+    );
+  } finally {
+    repo.dispose();
+  }
+});
+
+test("preflight performs the state-tree step §00 gives it", () => {
+  // §00 preflight step 2 — "проверить ownership, mode и отсутствие symlinks в
+  // project state" — was the one step the command named after it did not do.
+  // The guarantee held anyway, because every state-touching command re-checks
+  // before it reads; what was wrong is that `preflight` reported `ok: true`
+  // over a project directory replaced by a symlink, which is the moment the
+  // user is supposed to be told.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    ok(cli(["project", "init"], context), "project init");
+    const projectKey = ok(cli(["project", "key"], context), "project key").json[
+      "projectKey"
+    ] as string;
+
+    const honest = ok(cli(["preflight", "--no-backend"], context), "preflight");
+    const checks = honest.json["checks"] as Array<{ id: string; status: string }>;
+    assert.equal(checks.find((check) => check.id === "state-tree")?.status, "ok");
+
+    const real = join(home.dir, "elsewhere");
+    const planted = join(home.dir, "projects", projectKey);
+    renameSync(planted, real);
+    symlinkSync(real, planted);
+
+    const diverted = cli(["preflight", "--no-backend"], context);
+    assert.equal(diverted.code, 1);
+    assert.equal(diverted.json["ok"], false);
+    assert.deepEqual(diverted.json["missingContract"], ["state-tree"]);
+    assert.match(
+      (diverted.json["checks"] as Array<{ id: string; detail: string }>).find(
+        (check) => check.id === "state-tree",
+      )!.detail,
+      /refusing to follow symlink in state tree/,
+    );
+  } finally {
+    home.dispose();
+    repo.dispose();
   }
 });

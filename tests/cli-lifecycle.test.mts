@@ -21,6 +21,7 @@ import {
   FAKE_HERDR,
   action,
   cli,
+  dispatch,
   errorCode,
   ok,
   retireSpec,
@@ -161,6 +162,12 @@ test("a run walks from start to COMPLETE only with four attestations on one snap
         findings: [],
         completedAt: "2026-07-24T12:00:00Z",
       });
+
+    // The orchestrator dispatches a worker before recording what it found; a
+    // result attributed to a session the run never opened is refused.
+    for (const role of ["reviewerPrimary", "reviewerCrossVendor", "e2eTester"]) {
+      dispatch(context, runId, role);
+    }
 
     const afterPrimary = ok(
       cli(["run", "record-review", "--run-id", runId], { ...context, stdin: review("reviewerPrimary") }),

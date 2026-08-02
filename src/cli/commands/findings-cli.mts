@@ -22,6 +22,7 @@ import { routeNext } from "../../core/fsm.mjs";
 import { redactDeep } from "../../core/redact.mjs";
 import { findingSlot, identityOf, mutate, type FindingSlot } from "./run-context.mjs";
 import { emit, fail, readStdinJson, requireFlag, type ParsedArgs } from "../args.mjs";
+import { dispatchedSession } from "./session-state.mjs";
 import type { Evidence, Finding, FindingRecord, RunState, SessionRef } from "../../core/types.mjs";
 
 /**
@@ -70,13 +71,7 @@ export async function commandOpenFindings(args: ParsedArgs): Promise<void> {
 
   const next = await mutate(projectKey, runId, (state) => {
     const role = slot === "e2e" ? "e2eTester" : slot;
-    const session = state.sessions[role];
-    const raisedBy: SessionRef = session ?? {
-      backend: "herdr",
-      sessionId: `unrecorded-${slot}`,
-      role,
-      generation: state.sessionGeneration[role] ?? 1,
-    };
+    const raisedBy = dispatchedSession(state, role, `a finding from ${role}`);
     // This command records what a review found; it is not a way to un-find it.
     // Writing the slot wholesale let anyone who could reach the CLI hand in an
     // empty array and erase a reviewer's blocker — after which four gates that

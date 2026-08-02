@@ -34,7 +34,9 @@ baseline = ".quality/import-graph-baseline.json"
 # Layers are listed from the outside in: a module in one layer may import from
 # layers below it and never from layers above.
 layers = []
-# Pairs that must never import each other in either direction.
+# Pairs that must never import each other in either direction, as "a <-> b".
+# Written as strings, like `forbidden_edges`, so that a malformed entry is a
+# failed gate rather than a contract that quietly checks nothing.
 independent = []
 # Explicit edges that are forbidden regardless of layering, as "from -> to".
 forbidden_edges = []

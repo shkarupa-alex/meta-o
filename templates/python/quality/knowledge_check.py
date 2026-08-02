@@ -244,6 +244,20 @@ def main() -> int:
 
     defined = set(seen)
 
+    # §10: planned intent is not current truth, so a durable `§B-TODO`/`§A-TODO`
+    # anchor is refused. Debt belongs in `docs/todo.md`, which the workflow
+    # already requires; a knowledge document describing what someone means to
+    # build is the one thing the knowledge layer must never say.
+    for section in sections:
+        if re.match(r"^§[BA]-TODO(-|$)", section.anchor):
+            report.add(
+                section.path,
+                section.line,
+                "planned-anchor",
+                f"{section.anchor} is planned intent, not current truth; "
+                "record it in docs/todo.md and write the anchor when the thing exists",
+            )
+
     for section in sections:
         for reference in sorted(section.references):
             if reference not in defined:
