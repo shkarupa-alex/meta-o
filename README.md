@@ -145,6 +145,10 @@ Everything a run knows lives outside the repository:
     runs/<run-id>/state.json  input/spec-<sha256>.md  gate-receipts/<label>.json
 ```
 
+Findings are *in* `state.json`, not in a directory of their own: they are
+working memory for one run, and a closed one is pruned rather than archived —
+the methodology refuses to grow a project-wide ledger of past objections.
+
 Mode `0700`/`0600`, every path component checked against symlink and ownership
 substitution. `state.json` holds current state only — no transcript, no task
 graph — because a fresh orchestrator has to be able to resume from it, and a
@@ -180,6 +184,17 @@ That writes `~/.meta-o/watchdog.json`, which you can also hand-edit:
 `transient`, `quota`, `external` or `unknown` — four labels and nothing else.
 It never chooses the action; the action set is closed and the decision is a
 table (`src/watchdog/decide.mts`).
+
+Hybrid needs somewhere to send the tail:
+
+```bash
+export META_O_LOCAL_CLASSIFIER=/usr/local/bin/classify-tail
+```
+
+That executable reads a sanitised tail (≤8 KiB, secrets already masked) on
+stdin and prints one of the four labels. Without it hybrid degrades to
+deterministic, and `meta-o watchdog status` says so rather than reporting a
+mode that is not running.
 
 The loop itself is `meta-o-watchdog`, run as a user service. Unit files ship
 unloaded in `share/meta-o/service/` — a launchd agent and a systemd user unit,

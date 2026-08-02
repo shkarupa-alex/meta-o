@@ -649,6 +649,124 @@ class ImportGraphTests(unittest.TestCase):
         closed = run_checker(self.project.root, "import_graph.py")
         self.assertEqual(closed.returncode, 0, closed.stdout + closed.stderr)
 
+    def test_a_closure_check_that_cannot_run_says_so(self) -> None:
+        """§M-QC-TESTS — Every way this check could decline to run was a silent pass.
+
+        A manifest of the wrong shape, a `fully_adopted` that is not a boolean,
+        a root that matches no file — each returned `ok` about a boundary
+        nobody had checked, which is precisely what the gate exists to prevent.
+        """
+        write(
+            self.project.root,
+            "src/adopted.py",
+            '''
+            """§M-ADOPTED2 — Certified code. Implements §A-BOOT-01."""
+
+            import stray
+
+
+            def use() -> object:
+                """§M-ADOPTED2 — Reach outside the certified boundary."""
+                return stray
+            ''',
+        )
+        write(
+            self.project.root,
+            "src/stray.py",
+            '''
+            """§M-STRAY2 — Uncertified code. Implements §A-BOOT-01."""
+            ''',
+        )
+        write(
+            self.project.root,
+            "pyproject.toml",
+            """
+            [tool.meta_o.import_graph]
+            source_roots = ["src"]
+            first_party_prefixes = ["adopted", "boot", "stray"]
+            """,
+        )
+
+        for manifest, expected in [
+            ({"schema_version": 1, "adopted_roots": "src/adopted.py"}, "invalid-manifest"),
+            ([{"adopted_roots": ["src"]}], "invalid-manifest"),
+            (
+                {"schema_version": 1, "adopted_roots": ["src/adopted.py"], "fully_adopted": "no"},
+                "invalid-manifest",
+            ),
+            ({"schema_version": 1, "adopted_roots": ["src/nowhere.py"]}, "unmatched-root"),
+            # `./src/adopted.py` names the adopted file and used to match nothing.
+            ({"schema_version": 1, "adopted_roots": ["./src/adopted.py"]}, "closure-broken"),
+        ]:
+            with self.subTest(manifest=manifest):
+                write(
+                    self.project.root,
+                    ".quality/adoption-manifest.json",
+                    json.dumps(manifest, indent=2) + "\n",
+                )
+                result = run_checker(self.project.root, "import_graph.py")
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertIn(expected, result.stdout)
+
+    def test_an_adopted_module_may_not_reach_an_uncertified_package_body(self) -> None:
+        """§M-QC-TESTS — `import a.b` executes `a/__init__.py`, so `a` is a dependency too.
+
+        Certifying `src/pkg/sub.py` and not `src/pkg/__init__.py` looked closed
+        while every import of the submodule ran uncertified code first.
+        """
+        write(
+            self.project.root,
+            "src/adopted.py",
+            '''
+            """§M-ADOPTED3 — Certified code. Implements §A-BOOT-01."""
+
+            import stray.sub
+
+
+            def use() -> object:
+                """§M-ADOPTED3 — Reach the certified submodule."""
+                return stray.sub
+            ''',
+        )
+        write(
+            self.project.root,
+            "src/stray/__init__.py",
+            '''
+            """§M-STRAYPKG — Uncertified package body. Implements §A-BOOT-01."""
+            ''',
+        )
+        write(
+            self.project.root,
+            "src/stray/sub.py",
+            '''
+            """§M-STRAYSUB — Certified submodule. Implements §A-BOOT-01."""
+            ''',
+        )
+        write(
+            self.project.root,
+            "pyproject.toml",
+            """
+            [tool.meta_o.import_graph]
+            source_roots = ["src"]
+            first_party_prefixes = ["adopted", "boot", "stray"]
+            """,
+        )
+        write(
+            self.project.root,
+            ".quality/adoption-manifest.json",
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "adopted_roots": ["src/adopted.py", "src/stray/sub.py"],
+                },
+                indent=2,
+            )
+            + "\n",
+        )
+        result = run_checker(self.project.root, "import_graph.py")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("reaches stray", result.stdout)
+
     def test_a_relative_import_cycle_is_found(self) -> None:
         """§M-QC-TESTS — `from . import x` forms a real edge, so it can form a real cycle."""
         write(
@@ -1084,6 +1202,26 @@ class E2ECheckerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("src/build/module.py", result.stdout)
         self.assertNotIn("src/dist/artifact.py", result.stdout)
+
+    def test_a_malformed_config_stops_the_gate_instead_of_shrinking_it(self) -> None:
+        """§M-QC-TESTS — `load_config` promised this and delivered half of it.
+
+        `skip_dirs = "venv"` is a string, and a string iterates character-wise:
+        discovery quietly started skipping directories named `v`, `e` and `n`,
+        and the gate reported `ok` about files it had never opened. A misspelled
+        key was merged in and ignored for the same reason — nothing checked that
+        the key existed.
+        """
+        for table, expected in [
+            ('[tool.meta_o.discovery]\npackage_dirs = "build"', "must be a list"),
+            ("[tool.meta_o.discovery]\nskip_dirs = [1, 2]", "must be a string"),
+            ('[tool.meta_o.purpose]\nsource_root = ["src"]', "has no key 'source_root'"),
+        ]:
+            with self.subTest(table=table):
+                write(self.project.root, "pyproject.toml", table + "\n")
+                result = run_checker(self.project.root, "purpose_check.py")
+                self.assertEqual(result.returncode, 1)
+                self.assertIn(expected, result.stdout + result.stderr)
 
     def test_a_project_may_say_which_directories_are_output_trees(self) -> None:
         """§M-QC-TESTS — The `__init__.py` heuristic cannot see every real package.

@@ -20,7 +20,7 @@ import {
 } from "../../core/findings.mjs";
 import { routeNext } from "../../core/fsm.mjs";
 import { redactDeep } from "../../core/redact.mjs";
-import { identityOf, mutate, type FindingSlot } from "./run-context.mjs";
+import { findingSlot, identityOf, mutate, type FindingSlot } from "./run-context.mjs";
 import { emit, fail, optionalFlag, readStdinJson, requireFlag, type ParsedArgs } from "../args.mjs";
 import type { Evidence, Finding, FindingRecord, RunState, SessionRef } from "../../core/types.mjs";
 
@@ -62,7 +62,7 @@ export function carryOpenBlockers(
 export async function commandOpenFindings(args: ParsedArgs): Promise<void> {
   const { projectKey } = identityOf(args);
   const runId = requireFlag(args, "run-id");
-  const slot = requireFlag(args, "reviewer") as FindingSlot;
+  const slot = findingSlot(requireFlag(args, "reviewer"));
   const findings = redactDeep(await readStdinJson<Finding[]>());
 
   const errors = findings.flatMap((finding) => validateFinding(finding).errors);
@@ -88,16 +88,32 @@ export async function commandOpenFindings(args: ParsedArgs): Promise<void> {
     // of that gate can decide they are gone.
     const existing = state.openFindings?.[slot] ?? [];
     const toolOwned = existing.filter((record) => record.derived);
-    const reserved = new Set(toolOwned.map((record) => record.finding.id));
-    const collisions = findings.filter((finding) => reserved.has(finding.id));
+    // The whole `E2E-*` namespace on the `e2e` slot, not only the ids that are
+    // derived *right now*. Reserving only the live ones let an author squat a
+    // predictable id — they are `E2E-<scenarioId>` — before the gate produced
+    // it, and the slot then held two records under one id: every verb that
+    // addresses a finding by id closed both, so resolving the squatter's taste
+    // note took the real blocker with it.
+    /** §M-CLI-FINDINGS — Whether this id belongs to the E2E gate rather than a person. */
+    const reserved = (id: string): boolean =>
+      (slot === "e2e" && id.startsWith(DERIVED_ID_PREFIX)) ||
+      toolOwned.some((record) => record.finding.id === id);
+    const collisions = findings.filter((finding) => reserved(finding.id));
     if (collisions.length > 0) {
       fail(
         "finding_id_reserved",
-        `${collisions.map((finding) => finding.id).join(", ")} names a finding the E2E gate ` +
-          "derived from a scenario status; raise yours under an id of your own so the next " +
-          "run cannot overwrite it",
-        { reserved: [...reserved] },
+        `${collisions.map((finding) => finding.id).join(", ")}: the E2E gate derives its own ` +
+          `findings under \`${DERIVED_ID_PREFIX}*\` on this slot; raise yours under an id of ` +
+          "your own so neither can overwrite the other",
       );
+    }
+    // Two open records under one id make every id-addressed verb ambiguous,
+    // whoever raised them.
+    const duplicates = findings.filter((finding) =>
+      existing.some((record) => record.finding.id === finding.id && record.derived),
+    );
+    if (duplicates.length > 0) {
+      fail("duplicate_finding_id", `${duplicates.map((f) => f.id).join(", ")} is already open in ${slot}`);
     }
     const carried = carryOpenBlockers(
       existing.filter((record) => !record.derived),
@@ -135,7 +151,7 @@ export async function commandOpenFindings(args: ParsedArgs): Promise<void> {
 export async function commandProposeFix(args: ParsedArgs): Promise<void> {
   const { projectKey } = identityOf(args);
   const runId = requireFlag(args, "run-id");
-  const slot = requireFlag(args, "reviewer") as FindingSlot;
+  const slot = findingSlot(requireFlag(args, "reviewer"));
   const findingId = requireFlag(args, "finding-id");
   const candidate = requireFlag(args, "candidate-commit");
   const evidence = redactDeep(await readStdinJson<Evidence[]>());
@@ -145,9 +161,9 @@ export async function commandProposeFix(args: ParsedArgs): Promise<void> {
 
   const next = await mutate(projectKey, runId, (state) => {
     const records = state.openFindings?.[slot] ?? [];
-    if (!records.some((record) => record.finding.id === findingId)) {
-      fail("unknown_finding", `${slot} holds no open finding ${findingId}`);
-    }
+    const target = records.find((record) => record.finding.id === findingId);
+    if (!target) fail("unknown_finding", `${slot} holds no open finding ${findingId}`);
+    assertNotDerived(target, findingId);
     const updated = records.map((record) =>
       record.finding.id === findingId ? proposeFix(record, candidate, evidence) : record,
     );
@@ -185,6 +201,27 @@ function claimedSession(state: RunState, role: SessionRef["role"], findingId: st
   return session;
 }
 
+/**
+ * §M-CLI-FINDINGS — Refuse to close by hand what only a gate can decide.
+ *
+ * A record `record-e2e` derived from a scenario status is a projection of that
+ * gate, and the code said so while doing the opposite: `propose-fix` plus
+ * `resolve-finding` removed the projection of a scenario that was still red,
+ * and the router then stopped prescribing `fix_e2e_failures` for it. Re-running
+ * the gate is the only thing that can retire one.
+ */
+function assertNotDerived(record: FindingRecord, findingId: string): void {
+  if (!record.derived) return;
+  fail(
+    "derived_finding",
+    `${findingId} was derived from a scenario status by the E2E gate, so it is retired by ` +
+      "re-running that gate against a candidate where the scenario passes, not by closing it",
+  );
+}
+
+/** §M-CLI-FINDINGS — The id prefix `record-e2e` gives the findings it derives. */
+export const DERIVED_ID_PREFIX = "E2E-";
+
 /** §M-CLI-FINDINGS — Apply one closing transition to a single finding record. */
 async function closeFinding(
   args: ParsedArgs,
@@ -192,15 +229,15 @@ async function closeFinding(
 ): Promise<void> {
   const { projectKey } = identityOf(args);
   const runId = requireFlag(args, "run-id");
-  const slot = requireFlag(args, "reviewer") as FindingSlot;
+  const slot = findingSlot(requireFlag(args, "reviewer"));
   const findingId = requireFlag(args, "finding-id");
   const byRole = requireFlag(args, "by-role") as SessionRef["role"];
 
   const next = await mutate(projectKey, runId, (state) => {
     const records = state.openFindings?.[slot] ?? [];
-    if (!records.some((record) => record.finding.id === findingId)) {
-      fail("unknown_finding", `${slot} holds no open finding ${findingId}`);
-    }
+    const target = records.find((record) => record.finding.id === findingId);
+    if (!target) fail("unknown_finding", `${slot} holds no open finding ${findingId}`);
+    assertNotDerived(target, findingId);
     const by = claimedSession(state, byRole, findingId);
     const updated = records.map((record) =>
       record.finding.id === findingId ? apply(record, by) : record,
@@ -250,15 +287,15 @@ export async function commandDismissTaste(args: ParsedArgs): Promise<void> {
 export async function commandReclassifyFinding(args: ParsedArgs): Promise<void> {
   const { projectKey } = identityOf(args);
   const runId = requireFlag(args, "run-id");
-  const slot = requireFlag(args, "reviewer") as FindingSlot;
+  const slot = findingSlot(requireFlag(args, "reviewer"));
   const findingId = requireFlag(args, "finding-id");
   const rationale = requireFlag(args, "rationale");
 
   const next = await mutate(projectKey, runId, (state) => {
     const records = state.openFindings?.[slot] ?? [];
-    if (!records.some((record) => record.finding.id === findingId)) {
-      fail("unknown_finding", `${slot} holds no open finding ${findingId}`);
-    }
+    const target = records.find((record) => record.finding.id === findingId);
+    if (!target) fail("unknown_finding", `${slot} holds no open finding ${findingId}`);
+    assertNotDerived(target, findingId);
     const by = claimedSession(state, "technicalAdjudicator", findingId);
     const updated = records.map((record) => {
       if (record.finding.id !== findingId) return record;

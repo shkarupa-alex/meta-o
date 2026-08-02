@@ -85,10 +85,16 @@ function loadWatchdogConfig(): WatchdogConfig | undefined {
 
   const config = raw as Partial<WatchdogConfig>;
   const problems: string[] = [];
+  // Written by `watchdog enable` and never read: a file from a future version
+  // with a field this build does not understand was run as if it were current,
+  // which is the one thing a schema version exists to stop.
+  if (config.schema_version !== 1) {
+    problems.push(`schema_version must be 1, not ${JSON.stringify(config.schema_version)}`);
+  }
   if (typeof config.enabled !== "boolean") problems.push("enabled must be a boolean");
   if (!Array.isArray(config.project_keys)) problems.push("project_keys must be an array of keys");
-  else if (config.project_keys.some((key) => typeof key !== "string")) {
-    problems.push("every entry of project_keys must be a string");
+  else if (config.project_keys.some((key) => typeof key !== "string" || key === "")) {
+    problems.push("every entry of project_keys must be a non-empty string");
   }
   for (const numeric of ["poll_interval_seconds", "max_backoff_seconds"] as const) {
     const value = config[numeric];
@@ -122,9 +128,13 @@ export function commandWatchdogEnable(args: ParsedArgs): void {
     optionalFlag(args, "cwd") ?? process.cwd(),
   ).projectKey;
 
+  if (projectKey === "") fail("invalid_watchdog_config", "--project-key may not be empty");
   const keys = new Set(existing?.project_keys ?? []);
   keys.add(projectKey);
+  // Spread, so a key a later version added — or a human added by hand — is not
+  // dropped by the act of enabling one more project.
   const config: WatchdogConfig = {
+    ...existing,
     schema_version: 1,
     enabled: true,
     project_keys: [...keys].sort(),
@@ -199,7 +209,25 @@ export function commandWatchdogStatus(): void {
     emit({ enabled: false, configured: false, note: "no ~/.meta-o/watchdog.json; watchdog is off" });
     return;
   }
-  emit({ configured: true, ...config, logPath: watchdogLogPath() });
+  // Say plainly when hybrid is configured and cannot happen. It degrades to
+  // deterministic silently, so `watchdog status` reporting `classifier_mode:
+  // hybrid` was describing something that was not running.
+  const classifierBinary = process.env[LOCAL_CLASSIFIER_ENV];
+  const hybridInactive = config.classifier_mode === "hybrid" && !classifierBinary;
+  emit({
+    configured: true,
+    ...config,
+    logPath: watchdogLogPath(),
+    localClassifier: classifierBinary ?? null,
+    ...(hybridInactive
+      ? {
+          note:
+            `classifier_mode is hybrid but ${LOCAL_CLASSIFIER_ENV} names no executable, so ` +
+            "classification is deterministic; point it at a local model or set the mode to " +
+            "deterministic so the config says what is happening",
+        }
+      : {}),
+  });
 }
 
 /**
@@ -460,6 +488,9 @@ function writeWatchdogMemory(all: Record<string, RunMemory>): void {
   writeSecureJson(watchdogMemoryPath(), all as unknown as JsonValue);
 }
 
+/** §M-CLI-WATCHDOG — Environment variable naming the local classifier executable. */
+export const LOCAL_CLASSIFIER_ENV = "META_O_LOCAL_CLASSIFIER";
+
 /**
  * §M-CLI-WATCHDOG — Local classifier hook for hybrid mode.
  *
@@ -470,7 +501,7 @@ function writeWatchdogMemory(all: Record<string, RunMemory>): void {
  * it abstains.
  */
 function localClassifier(): LocalClassifier | undefined {
-  const binary = process.env["META_O_LOCAL_CLASSIFIER"];
+  const binary = process.env[LOCAL_CLASSIFIER_ENV];
   if (!binary) return undefined;
   return async (sanitizedTail: string): Promise<TailClassification> => {
     const { execFileSync } = await import("node:child_process");

@@ -565,9 +565,17 @@ export async function commandWorktreeRun(args: ParsedArgs): Promise<void> {
     environment["META_O_SNAPSHOT_DIGEST"] = state.candidateSnapshot.digest;
   }
   if (runId) environment["META_O_QC_RESULT"] = qcResultPath(projectKey, runId);
+  // A detached worktree is a clean checkout, which means it has none of the
+  // untracked build inputs a gate needs — no `node_modules`, no `.venv`, no
+  // `dist`. Every project hits this the first time it runs a gate the way §00
+  // requires, and the answer is not to track build output: it is to let the
+  // gate find the checkout it was launched from. What a project does with that
+  // is its own business; meta-o's own Makefile borrows a compiler from it.
+  environment["META_O_ORIGIN_REPO"] = repoDir;
 
   const label = optionalFlag(args, "label") ?? "gate";
   try {
+    const startedAt = isoTimestamp();
     const outcome = await withGateWorktree(repoDir, revision, label, (worktree) => {
       const child = spawnSync(command[0]!, command.slice(1), {
         cwd: worktree.path,
@@ -578,7 +586,7 @@ export async function commandWorktreeRun(args: ParsedArgs): Promise<void> {
       return child.status ?? 1;
     });
     const receipt = runId
-      ? writeGateReceipt(projectKey, runId, label, outcome, command, repoDir)
+      ? writeGateReceipt(projectKey, runId, label, { ...outcome, startedAt }, command, repoDir)
       : undefined;
     emit({
       command,
@@ -608,7 +616,7 @@ function writeGateReceipt(
   projectKey: string,
   runId: string,
   label: string,
-  outcome: { commitOid: string; result: number },
+  outcome: { commitOid: string; result: number; startedAt: string },
   command: string[],
   repoDir: string,
 ): string {
@@ -627,6 +635,10 @@ function writeGateReceipt(
         snapshotDigest: computeSnapshotDigest(repoDir, outcome.commitOid).digest,
         exitStatus: outcome.result,
         command,
+        // Both ends of the run, because a gate's other evidence has to be shown
+        // to come from *this* run: a QC result file left by an earlier, failing
+        // run of the same label is otherwise still there to be believed.
+        startedAt: outcome.startedAt,
         completedAt: isoTimestamp(),
       },
       null,

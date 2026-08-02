@@ -16,6 +16,25 @@ import { fail, optionalFlag, type ParsedArgs } from "../args.mjs";
 /** §M-CLI-RUN-CONTEXT — Reviewer slots that can hold open findings. */
 export type FindingSlot = "reviewerPrimary" | "reviewerCrossVendor" | "e2e";
 
+/** §M-CLI-RUN-CONTEXT — The three slots, as values, for validating a `--reviewer`. */
+export const FINDING_SLOTS: readonly FindingSlot[] = ["reviewerPrimary", "reviewerCrossVendor", "e2e"];
+
+/**
+ * §M-CLI-RUN-CONTEXT — Read `--reviewer` as a slot, refusing anything else.
+ *
+ * `FindingSlot` is a compile-time union, and the CLI reached it with a bare
+ * cast: `--reviewer e2eTester`, a plausible typo for `e2e`, was accepted and
+ * stored a blocker under a key the completion check does not read. The command
+ * printed `blocking: 1` and the run stayed completable.
+ */
+export function findingSlot(raw: string): FindingSlot {
+  if ((FINDING_SLOTS as readonly string[]).includes(raw)) return raw as FindingSlot;
+  fail(
+    "invalid_reviewer",
+    `reviewer ${JSON.stringify(raw)} is not one of ${FINDING_SLOTS.join("|")}`,
+  );
+}
+
 /** §M-CLI-RUN-CONTEXT — Resolve the project identity for a command. */
 export function identityOf(args: ParsedArgs): { canonicalPath: string; projectKey: string; repoDir: string } {
   const cwd = optionalFlag(args, "cwd") ?? process.cwd();

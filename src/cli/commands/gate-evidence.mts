@@ -8,7 +8,7 @@
  * only an isolated run could have produced.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { readRepoJson } from "../repo-json.mjs";
 import { evaluateQc, validateManifest, validateResult } from "../../core/qc.mjs";
 import { gateReceiptPath, qcResultPath } from "../../core/paths.mjs";
@@ -34,6 +34,19 @@ export const E2E_RECEIPT_LABEL = "e2e";
  * recordable through the plain path: it takes nothing away.
  */
 export function assertQcProven(repoDir: string, projectKey: string, runId: string, digest: string): void {
+  // Tie the result file to the run that just happened. It survives between
+  // runs of the same label, so a `make qc` that wrote a passing result and then
+  // exited non-zero could be laundered by re-running the label with `true`: the
+  // new receipt exits 0, the stale result is still on disk, and the gate reads
+  // as passed. A result older than the run that is citing it is not evidence
+  // about that run.
+  const receiptPath = gateReceiptPath(projectKey, runId, "qc");
+  let receipt: { startedAt?: string } | undefined;
+  try {
+    receipt = JSON.parse(readFileSync(receiptPath, "utf8")) as { startedAt?: string };
+  } catch {
+    /* `assertGateIsolated` has already refused a run with no receipt */
+  }
   const manifest = readRepoJson<QcManifest>(repoDir, ".quality/qc-manifest.json");
   const manifestErrors = validateManifest(manifest);
   if (!manifestErrors.ok) fail("invalid_manifest", manifestErrors.errors.join("; "));
@@ -48,6 +61,22 @@ export function assertQcProven(repoDir: string, projectKey: string, runId: strin
     }
     const resultErrors = validateResult(result);
     if (!resultErrors.ok) fail("invalid_qc_result", resultErrors.errors.join("; "));
+  }
+
+  const startedAt = receipt?.startedAt ? Date.parse(receipt.startedAt) : undefined;
+  if (result && startedAt !== undefined && Number.isFinite(startedAt)) {
+    const written = statSync(resultFile).mtimeMs;
+    // One second of slack: the receipt's timestamp is second-resolution ISO
+    // and the file's mtime is not, so an honest run can round the wrong way.
+    if (written + 1000 < startedAt) {
+      fail(
+        "qc_not_proven",
+        `the QC result at ${resultFile} was written before this run of the gate started ` +
+          `(${receipt?.startedAt}); it describes an earlier run, so re-run \`make qc\` in the ` +
+          "gate worktree",
+        { resultFile, expectedReceipt: receiptPath },
+      );
+    }
   }
 
   const evaluation = evaluateQc(manifest, result, digest);

@@ -20,7 +20,7 @@ After=default.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/meta-o-watchdog
+ExecStart=__WATCHDOG_BIN__
 Restart=on-failure
 RestartSec=30
 

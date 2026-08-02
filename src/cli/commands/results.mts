@@ -58,7 +58,7 @@ import {
 } from "./gate-evidence.mjs";
 import { redactDeep } from "../../core/redact.mjs";
 import { carryOpenBlockers } from "./findings-cli.mjs";
-import { identityOf, loadState, mutate, type FindingSlot } from "./run-context.mjs";
+import { findingSlot, identityOf, loadState, mutate, type FindingSlot } from "./run-context.mjs";
 import {
   boolFlag,
   emit,
@@ -307,15 +307,20 @@ export async function commandRecordE2e(args: ParsedArgs): Promise<void> {
     // impossible. What a person raised against the E2E work itself — a
     // scenario that passes only by luck, an environment that leaks — is not a
     // projection of anything, and leaves only by being restated or closed.
+    // Authored records are kept exactly as they are, which is the whole rule:
+    // this command writes the gate's own projection of the scenario statuses
+    // and nothing else, so a blocker somebody raised against the E2E work
+    // survives a green run and goes on blocking completion. Running it through
+    // `carryOpenBlockers` was too strong in the other direction — with nothing
+    // to restate them, the tester could not record a *red* result either.
     const derived = e2eFailureFindings(state, result, failures);
     const authored = (state.openFindings?.e2e ?? []).filter((record) => !record.derived);
-    const carried = carryOpenBlockers(authored, [], "e2e");
 
     return {
       ...state,
       e2eScenarioStatus: result.scenarios.map((scenario) => ({ ...scenario })),
       e2eEnvironment: result.environment,
-      openFindings: { ...state.openFindings, e2e: [...carried, ...derived] },
+      openFindings: { ...state.openFindings, e2e: [...authored, ...derived] },
       confirmations: { ...state.confirmations, e2e: gate },
     };
   });
@@ -364,42 +369,90 @@ function assertProductionContract(repoDir: string, candidateCommit: string): voi
 /**
  * §M-CLI-RESULTS — The document's headings that are about production.
  *
- * Written as a small Markdown reader rather than one regular expression, for
- * three reasons each of which was a real wrong answer. A heading inside a
+ * Written as a small Markdown reader rather than one regular expression,
+ * because every shortcut here was a real wrong answer. A heading inside a
  * fenced block is an example, and an example of a contract is not a contract.
- * A setext heading (`Running against production` underlined with `===`) is a
- * heading, and refusing it told a project with a perfectly good contract that
- * it had none. CommonMark allows up to three leading spaces on an ATX heading.
+ * A commented-out contract is not one either. A setext heading (`Running
+ * against production` underlined with `===`) is a heading, and refusing it told
+ * a project with a perfectly good contract that it had none.
+ *
+ * The fence rules are CommonMark's, not an approximation of them, because the
+ * approximation leaked: a closing fence must be at least as long as its opener
+ * and carry no info string, so ```` ```` ```` around a ```` ``` ```` example no
+ * longer ends at the inner line; and both fences and headings allow the same
+ * up-to-three spaces of indentation, so a tab-indented code block no longer
+ * opens a fence that never closes and hides the rest of the document.
  *
  * `\b` rather than a substring, because `### Reproduction of a failed
  * scenario` contains the letters and says nothing about production.
  */
-function productionHeadings(text: string): string[] {
+export function productionHeadings(text: string): string[] {
   const lines = text.split("\n");
   const headings: string[] = [];
-  let fence: string | undefined;
-  for (const [index, line] of lines.entries()) {
-    const marker = /^\s{0,3}(```+|~~~+)/.exec(line);
-    if (marker) {
-      if (fence === undefined) fence = marker[1]![0];
-      else if (marker[1]!.startsWith(fence)) fence = undefined;
+  let fence: { marker: string; length: number } | undefined;
+  let comment = false;
+  // Front matter is metadata, not prose: without this its closing `---` turned
+  // the last metadata line into a setext heading.
+  let index = frontMatterEnd(lines);
+
+  for (; index < lines.length; index += 1) {
+    const line = lines[index]!;
+
+    if (comment) {
+      if (line.includes("-->")) comment = false;
       continue;
     }
-    if (fence !== undefined) continue;
+    if (fence !== undefined) {
+      const closing = /^ {0,3}(`{3,}|~{3,})\s*$/.exec(line);
+      if (closing && closing[1]![0] === fence.marker && closing[1]!.length >= fence.length) {
+        fence = undefined;
+      }
+      continue;
+    }
+
+    const opening = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (opening) {
+      fence = { marker: opening[1]![0]!, length: opening[1]!.length };
+      continue;
+    }
+    if (/^ {0,3}<!--/.test(line)) {
+      if (!line.includes("-->")) comment = true;
+      continue;
+    }
+    // Four spaces or a tab is an indented code block, and its contents are as
+    // much an example as a fenced one's.
+    if (/^(?: {4}|\t)/.test(line)) continue;
 
     const atx = /^ {0,3}#{1,6}\s+(.*)$/.exec(line);
     if (atx) {
       headings.push(atx[1]!);
       continue;
     }
-    // A setext underline turns the *previous* line into a heading, and only if
-    // that line was ordinary text.
-    const underlined = /^ {0,3}(=+|-{2,})\s*$/.test(line) ? lines[index - 1] : undefined;
-    if (underlined !== undefined && underlined.trim() !== "" && !/^ {0,3}#/.test(underlined)) {
-      headings.push(underlined);
+    // A setext underline turns the *previous* line into a heading, but only if
+    // that line was an ordinary unindented paragraph.
+    if (/^ {0,3}(=+|-+)\s*$/.test(line)) {
+      const previous = lines[index - 1];
+      if (
+        previous !== undefined &&
+        previous.trim() !== "" &&
+        !/^ {0,3}#/.test(previous) &&
+        !/^(?: {4}|\t)/.test(previous) &&
+        !/^ {0,3}>/.test(previous)
+      ) {
+        headings.push(previous);
+      }
     }
   }
   return headings.filter((heading) => /\bproduction\b/i.test(heading));
+}
+
+/** §M-CLI-RESULTS — Index of the first line after YAML front matter, or 0. */
+function frontMatterEnd(lines: readonly string[]): number {
+  if (lines[0]?.trim() !== "---") return 0;
+  for (let index = 1; index < lines.length; index += 1) {
+    if (/^(---|\.\.\.)\s*$/.test(lines[index]!)) return index + 1;
+  }
+  return 0;
 }
 
 /**

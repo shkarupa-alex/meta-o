@@ -25,7 +25,19 @@ import {
   withPendingOperation,
   withWriterLock,
 } from "../../core/state-store.mjs";
-import { requireSupportedBackend } from "./backend.mjs";
+import { readCapabilityBaseline, requireSupportedBackend } from "./backend.mjs";
+import {
+  digestOf,
+  modelFor,
+  roleOf,
+  roleOfPendingSpawn,
+  roleOfSession,
+  sessionFor,
+  withSession,
+  withoutSession,
+} from "./session-state.mjs";
+import { BackendUnavailableError, COMPLETION_CRITICAL } from "../../adapters/adapter.mjs";
+import { REPORTED_PREFIX } from "../../adapters/capability-suite.mjs";
 import { assertTransition } from "../../core/fsm.mjs";
 import { redact } from "../../core/redact.mjs";
 import type {
@@ -47,42 +59,6 @@ import {
   type ParsedArgs,
 } from "../args.mjs";
 
-/** §M-CLI-SESSION — Every role a session may be opened for. */
-const ROLES: Role[] = [
-  "orchestrator",
-  "executor",
-  "reviewerPrimary",
-  "reviewerCrossVendor",
-  "e2eTester",
-  "reuseResearcher",
-  "technicalAdjudicator",
-];
-
-/**
- * §M-CLI-SESSION — Which confirmed model each role runs on.
- *
- * The four named slots come straight from the ModelSet. The two auxiliary roles
- * are mapped rather than added to the ModelSet so that the user still confirms
- * exactly four models: the reuse researcher only reads the existing codebase and
- * can share the executor's model, while the technical adjudicator must be
- * independent of the executor, which is precisely the cross-vendor slot.
- */
-function modelFor(state: RunState, role: Role): ModelRef {
-  switch (role) {
-    case "executor":
-    case "orchestrator":
-    case "reuseResearcher":
-      return state.modelSet.executor;
-    case "reviewerPrimary":
-      return state.modelSet.reviewerPrimary;
-    case "reviewerCrossVendor":
-    case "technicalAdjudicator":
-      return state.modelSet.reviewerCrossVendor;
-    case "e2eTester":
-      return state.modelSet.e2eTester;
-  }
-}
-
 /** §M-CLI-SESSION — Resolve project, run and adapter for one command. */
 interface SessionContext {
   projectKey: string;
@@ -100,6 +76,7 @@ function contextOf(args: ParsedArgs): SessionContext {
   if (!state) fail("unknown_run", `run ${runId} has no state under project ${identity.projectKey}`);
 
   requireSupportedBackend(readSettings(identity.projectKey)?.backend, optionalFlag(args, "backend"));
+  assertBackendUsable();
 
   return {
     projectKey: identity.projectKey,
@@ -111,6 +88,38 @@ function contextOf(args: ParsedArgs): SessionContext {
 }
 
 /**
+ * §M-CLI-SESSION — Refuse to drive a backend the last full suite found broken.
+ *
+ * §20 says an unsupported completion-critical capability blocks the backend,
+ * and that rule reached only preflight and the installer — the session commands
+ * checked the backend's *name* and nothing else, so a backend that had lost
+ * `stop` since the last preflight went on being driven until the run needed the
+ * thing it could not do. `BackendUnavailableError` existed for exactly this and
+ * was thrown nowhere.
+ *
+ * Read from the recorded baseline, not by calling the backend: this runs before
+ * every session command, and a capability probe per command would be both slow
+ * and a side effect of its own. A backend with no baseline is not refused —
+ * that is the state before the first full suite, and preflight already says so.
+ */
+function assertBackendUsable(): void {
+  const baseline = readCapabilityBaseline();
+  if (!baseline) return;
+  const broken = COMPLETION_CRITICAL.filter(
+    (capability) => baseline.grades[`${REPORTED_PREFIX}${capability}`] === "unsupported",
+  );
+  if (broken.length === 0) return;
+  const error = new BackendUnavailableError(
+    "herdr",
+    broken.map((capability) => `completion-critical capability ${capability} is unsupported`),
+  );
+  fail("backend_unavailable", error.message, {
+    recordedAt: baseline.recordedAt,
+    remedy: "fix the backend and re-run `meta-o capability-suite run --full`",
+  });
+}
+
+/**
  * §M-CLI-SESSION — Construct the Herdr adapter.
  *
  * `META_O_HERDR_BIN` exists so the protocol can be exercised against a scripted
@@ -119,40 +128,6 @@ function contextOf(args: ParsedArgs): SessionContext {
  */
 function herdrAdapter(): HerdrAdapter {
   return new HerdrAdapter({ binary: process.env["META_O_HERDR_BIN"] });
-}
-
-/** §M-CLI-SESSION — Read and validate the `--role` flag. */
-function roleOf(args: ParsedArgs): Role {
-  const role = requireFlag(args, "role") as Role;
-  if (!ROLES.includes(role)) fail("invalid_role", `--role must be one of ${ROLES.join("|")}`);
-  return role;
-}
-
-/** §M-CLI-SESSION — The session currently recorded for a role, if any. */
-function sessionFor(state: RunState, role: Role): SessionRef | undefined {
-  return role === "orchestrator" ? state.orchestratorSession : state.sessions[role];
-}
-
-/** §M-CLI-SESSION — Store a session handle in the slot its role belongs to. */
-function withSession(state: RunState, session: SessionRef): RunState {
-  if (session.role === "orchestrator") return { ...state, orchestratorSession: session };
-  return {
-    ...state,
-    sessions: { ...state.sessions, [session.role]: session },
-    sessionGeneration: { ...state.sessionGeneration, [session.role]: session.generation },
-  };
-}
-
-/** §M-CLI-SESSION — Forget a session handle whose backend session is gone. */
-function withoutSession(state: RunState, role: Role): RunState {
-  if (role === "orchestrator") {
-    const updated = { ...state };
-    delete updated.orchestratorSession;
-    return updated;
-  }
-  const sessions = { ...state.sessions };
-  delete sessions[role];
-  return { ...state, sessions };
 }
 
 /** §M-CLI-SESSION — Apply one change to run state under the writer lock. */
@@ -183,11 +158,6 @@ function assertNoPendingOperation(state: RunState): void {
       "run `meta-o session reconcile` before causing another effect",
     { pendingOperation: pending },
   );
-}
-
-/** §M-CLI-SESSION — Digest of the request a pending operation stands for. */
-function digestOf(request: unknown): string {
-  return sha256Hex(canonicalize(request as JsonValue));
 }
 
 /**
@@ -485,8 +455,61 @@ export async function commandWait(args: ParsedArgs): Promise<void> {
     failUncertain(pending, error);
   }
 
+  // §20's step 3 — record the acknowledgement, then clear — and `wait` and
+  // `stop` skipped straight to clearing. Crash safety never depended on it (a
+  // crash before this leaves `prepared`, which reconcile decides), but a crash
+  // *between* the returned result and the clear left a `prepared` record for a
+  // call that had already come back, and reconcile then had to re-derive an
+  // answer the process already had.
+  await mutate(context.projectKey, context.runId, (state) =>
+    withPendingOperation(state, {
+      ...pending,
+      state: "acknowledged",
+      backendReceipt: digestOf({ kind: "wait", status: result.status }),
+    }),
+  );
   await mutate(context.projectKey, context.runId, (state) => clearPendingOperation(state));
   emit({ runId: context.runId, role, ...result, deadlineAt });
+}
+
+/**
+ * §M-CLI-SESSION — Confirm a worker survived, or say plainly that it did not.
+ *
+ * The adapter has always had `resume` and nothing could call it: after a
+ * backend restart the orchestrator's only options were `status`, which reports
+ * a grade, and spawning a replacement, which throws away a worker that may be
+ * perfectly alive. §20 lists resumption among the ten operations a backend must
+ * support, so it needs a verb.
+ *
+ * No pending operation is written: resuming reads the backend and changes
+ * nothing there, so there is no effect a crash could half-apply.
+ */
+export async function commandResume(args: ParsedArgs): Promise<void> {
+  const context = contextOf(args);
+  const role = roleOf(args);
+
+  const session = sessionFor(context.state, role);
+  if (!session) fail("no_session", `role ${role} has no session`);
+
+  let resumed: SessionRef;
+  try {
+    resumed = await context.adapter.resume(session);
+  } catch (error) {
+    // Not a crash and not an error in this command: the honest report is that
+    // the worker is gone, and replacing it is the orchestrator's decision.
+    emit({
+      runId: context.runId,
+      role,
+      resumed: false,
+      reason: (error as Error).message,
+      nextStep: `meta-o session spawn --role ${role} --replace`,
+    });
+    process.exitCode = 1;
+    return;
+  }
+
+  const status = await context.adapter.status(resumed);
+  emit({ runId: context.runId, role, resumed: true, session: resumed, status });
 }
 
 /** §M-CLI-SESSION — Terminate a session this run created. */
@@ -527,6 +550,13 @@ export async function commandStop(args: ParsedArgs): Promise<void> {
     return;
   }
 
+  await mutate(context.projectKey, context.runId, (state) =>
+    withPendingOperation(state, {
+      ...pending,
+      state: "acknowledged",
+      backendReceipt: digestOf({ kind: "stop", outcome }),
+    }),
+  );
   await mutate(context.projectKey, context.runId, (state) =>
     clearPendingOperation(withoutSession(state, role)),
   );
@@ -574,7 +604,7 @@ export async function commandReconcile(args: ParsedArgs): Promise<void> {
   let recovered: SessionRef | undefined;
   if (result.effect === "applied" && pending.kind === "spawn") {
     const probe = JSON.parse(pending.probe ?? "{}") as { agentName?: string };
-    const role = roleOfPendingSpawn(context.state, pending);
+    const role = roleOfPendingSpawn(context.adapter, pending);
     if (probe.agentName && role) {
       recovered = await context.adapter.findSession(
         probe.agentName,
@@ -594,30 +624,6 @@ export async function commandReconcile(args: ParsedArgs): Promise<void> {
   });
 
   emit({ runId: context.runId, ...result, recoveredSession: recovered ?? null });
-}
-
-/**
- * §M-CLI-SESSION — Which role an interrupted spawn was creating.
- *
- * Recovered from the probe's agent name, which encodes the role: the state has
- * no session for the role yet, precisely because the spawn never completed.
- */
-function roleOfPendingSpawn(state: RunState, pending: PendingOperation): Role | undefined {
-  const probe = JSON.parse(pending.probe ?? "{}") as { agentName?: string };
-  if (!probe.agentName) return undefined;
-  const adapter = herdrAdapter();
-  return ROLES.find(
-    (role) => adapter.expectedAgentName(role, pending.operationId) === probe.agentName,
-  );
-}
-
-/** §M-CLI-SESSION — Which role currently holds a session id. */
-function roleOfSession(state: RunState, sessionId: string): Role | undefined {
-  if (state.orchestratorSession?.sessionId === sessionId) return "orchestrator";
-  for (const [role, session] of Object.entries(state.sessions)) {
-    if (session?.sessionId === sessionId) return role as Role;
-  }
-  return undefined;
 }
 
 /** §M-CLI-SESSION — List every session this run currently holds. */

@@ -13,6 +13,7 @@ dependency failed to install is a gate that will be disabled.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tomllib
@@ -45,6 +46,13 @@ def load_config(section: str, defaults: dict[str, Any] | None = None) -> dict[st
     Missing configuration falls back to the defaults so that a freshly adopted
     project runs the checkers immediately; a *malformed* table raises, because
     silently ignoring a typo would silently disable a gate.
+
+    That last sentence was only half true. A misspelled key was merged in and
+    ignored, and a value of the wrong shape was accepted whole — `skip_dirs =
+    "venv"` became the five directory names `v`, `e`, `n`, `v`, so discovery
+    quietly shrank and the gate reported `ok` about files it never opened. Both
+    are now refused: the defaults are the schema, and the type of each default
+    is the type the override must have.
     """
     merged: dict[str, Any] = dict(defaults or {})
     path = project_root() / "pyproject.toml"
@@ -57,8 +65,37 @@ def load_config(section: str, defaults: dict[str, Any] | None = None) -> dict[st
     table = data.get("tool", {}).get("meta_o", {}).get(section, {})
     if not isinstance(table, dict):
         raise SystemExit(f"[tool.meta_o.{section}] must be a table, got {type(table).__name__}")
+
+    for key, value in table.items():
+        if key not in merged:
+            known = ", ".join(sorted(merged)) or "(none)"
+            raise SystemExit(
+                f"[tool.meta_o.{section}] has no key {key!r}; known keys are {known}. "
+                "A misspelled key would silently leave the gate on its default."
+            )
+        _assert_same_shape(section, key, merged[key], value)
     merged.update(table)
     return merged
+
+
+def _assert_same_shape(section: str, key: str, default: Any, value: Any) -> None:
+    """§M-QC-COMMON — Refuse an override whose type is not the default's type."""
+    if isinstance(default, bool) != isinstance(value, bool):
+        raise SystemExit(f"[tool.meta_o.{section}] {key} must be a boolean")
+    if isinstance(default, list):
+        if not isinstance(value, list):
+            raise SystemExit(f"[tool.meta_o.{section}] {key} must be a list, got {type(value).__name__}")
+        if any(not isinstance(item, str) for item in default) or all(
+            isinstance(item, str) for item in value
+        ):
+            return
+        raise SystemExit(f"[tool.meta_o.{section}] every entry of {key} must be a string")
+    if isinstance(default, bool):
+        return
+    if isinstance(default, int) and not isinstance(value, int):
+        raise SystemExit(f"[tool.meta_o.{section}] {key} must be an integer, got {type(value).__name__}")
+    if isinstance(default, str) and not isinstance(value, str):
+        raise SystemExit(f"[tool.meta_o.{section}] {key} must be a string, got {type(value).__name__}")
 
 
 def discover_python_files(root: Path, source_roots: list[str]) -> list[Path]:
@@ -237,11 +274,18 @@ def read_json(path: Path, default: Any = None) -> Any:
 
 
 def write_json(path: Path, value: Any) -> None:
-    """§M-QC-COMMON — Write JSON atomically, so a crash cannot leave half a file."""
+    """§M-QC-COMMON — Write JSON atomically and durably.
+
+    `flush` pushes the bytes out of Python and no further; `fsync` is what makes
+    them survive the machine. This file is a gate's baseline or its result — the
+    evidence behind an attestation — so it is held to the same rule as the run
+    state, which has always been fsynced.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(f"{path.suffix}.tmp")
     with temporary.open("w", encoding="utf-8") as handle:
         json.dump(value, handle, indent=2, sort_keys=True)
         handle.write("\n")
         handle.flush()
+        os.fsync(handle.fileno())
     temporary.replace(path)

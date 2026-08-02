@@ -28,10 +28,15 @@ Every scenario builds its own throwaway repository and its own state tree:
 ## Execution
 
 ```bash
-npm run build          # scenarios exercise dist/, not src/
-npm test               # runs every scenario
+make e2e               # build, then every scenario including the Python fixtures
+node quality/run-tests.mjs                      # the same thing without the build
 node --test tests/cli-lifecycle.test.mts        # one scenario file
+python3 templates/python/tests/test_quality_gates.py   # E2E-QC-TEMPLATES-01 alone
 ```
+
+`npm test` runs the TypeScript scenarios only. It is not the E2E entry point:
+E2E-QC-TEMPLATES-01 lives in the Python starter profile, and `make e2e` is what
+runs all of them.
 
 ## Cleanup and isolation
 

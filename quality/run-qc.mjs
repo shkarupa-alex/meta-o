@@ -13,7 +13,16 @@
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -90,11 +99,25 @@ function runGate(gate) {
   };
 }
 
-/** §M-QC-RUNNER — Write the result atomically, so a crash leaves no half file. */
+/**
+ * §M-QC-RUNNER — Write the result atomically and durably.
+ *
+ * Rename alone survives a crashed process; it does not survive a lost machine,
+ * and this file is the sole evidence behind one of the four attestations. The
+ * run state is fsynced for the same reason, and the gate result had been left
+ * out of that rule.
+ */
 function writeResult(path, value) {
   mkdirSync(dirname(path), { recursive: true });
   const temporary = `${path}.tmp`;
-  writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
+  rmSync(temporary, { force: true });
+  const handle = openSync(temporary, "wx", 0o600);
+  try {
+    writeFileSync(handle, `${JSON.stringify(value, null, 2)}\n`);
+    fsyncSync(handle);
+  } finally {
+    closeSync(handle);
+  }
   renameSync(temporary, path);
 }
 

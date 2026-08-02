@@ -72,6 +72,7 @@ import {
   commandSpawn as commandSessionSpawn,
   commandStatus as commandSessionStatus,
   commandStop as commandSessionStop,
+  commandResume as commandSessionResume,
   commandWait as commandSessionWait,
 } from "./commands/session.mjs";
 import {
@@ -352,6 +353,11 @@ const COMMANDS: Record<string, { flags: string[]; run: Command; help: string }> 
     flags: ["backend", "role", "run-id", "terminal", "timeout-ms"],
     run: commandSessionWait,
     help: "wait for a session to settle",
+  },
+  "session resume": {
+    flags: ["backend", "role", "run-id"],
+    run: commandSessionResume,
+    help: "confirm a worker survived a backend restart",
   },
   "session stop": {
     flags: ["backend", "role", "run-id"],

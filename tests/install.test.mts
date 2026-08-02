@@ -102,6 +102,17 @@ test("install.sh delivers a runnable CLI made only of dependency-free .mjs", () 
       "com.meta-o.watchdog.plist",
       "meta-o-watchdog.service",
     ]);
+    // A unit copied verbatim pointed at ~/.local/bin whatever --prefix said,
+    // so a non-default install produced a service that could not start.
+    for (const unit of ["com.meta-o.watchdog.plist", "meta-o-watchdog.service"]) {
+      const text = readFileSync(join(prefix, "share", "meta-o", "service", unit), "utf8");
+      assert.ok(
+        text.includes(join(prefix, "bin", "meta-o-watchdog")),
+        `${unit} must name the binary this install actually wrote`,
+      );
+      assert.ok(!text.includes("__WATCHDOG_BIN__"), `${unit} still carries a placeholder`);
+      assert.ok(!text.includes("__HOME__"), `${unit} still carries a placeholder`);
+    }
     assert.match(help, /watchdog enable/, "and the switch that turns it on must be reachable");
   } finally {
     rmSync(prefix, { recursive: true, force: true });
@@ -161,5 +172,46 @@ test("update.sh --skip-suite actually skips the suite", () => {
     rmSync(prefix, { recursive: true, force: true });
     rmSync(skills, { recursive: true, force: true });
     rmSync(stubDir, { recursive: true, force: true });
+  }
+});
+
+test("meta-o's own gates run in the isolated worktree its protocol requires", () => {
+  // The project could not attest itself. §00 gives every gate a fresh detached
+  // worktree, a fresh checkout has no node_modules and no dist, and `make qc`
+  // there failed six gates — so `worktree run --label qc make qc`, the only
+  // command that produces the receipt `record-gate` demands, could never
+  // succeed for this repository.
+  const where = mkdtempSync(join(tmpdir(), "meta-o-gate-worktree-"));
+  try {
+    execFileSync("git", ["worktree", "add", "--detach", "--quiet", where, "HEAD"], { cwd: ROOT });
+    try {
+      assert.ok(!existsSync(join(where, "node_modules")), "a fresh checkout has no dependencies");
+      assert.ok(!existsSync(join(where, "dist")), "and no build output");
+
+      execFileSync("node", [join(where, "quality", "bootstrap.mjs")], {
+        cwd: where,
+        env: { ...process.env, META_O_ORIGIN_REPO: ROOT },
+        encoding: "utf8",
+      });
+
+      // Bootstrapped, the CLI the other gates invoke actually runs.
+      const help = execFileSync("node", [join(where, "dist", "cli", "meta-o.mjs"), "help"], {
+        cwd: where,
+        encoding: "utf8",
+      });
+      assert.match(help, /worktree run/);
+
+      // And nothing the snapshot covers moved: both borrowed directories are
+      // git-ignored, which is what makes this legal rather than a mutation.
+      const dirty = execFileSync("git", ["status", "--porcelain", "--untracked-files=all"], {
+        cwd: where,
+        encoding: "utf8",
+      });
+      assert.equal(dirty.trim(), "", "the gate worktree must stay clean");
+    } finally {
+      execFileSync("git", ["worktree", "remove", "--force", where], { cwd: ROOT });
+    }
+  } finally {
+    rmSync(where, { recursive: true, force: true });
   }
 });

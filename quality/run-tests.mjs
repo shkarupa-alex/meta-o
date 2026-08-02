@@ -34,3 +34,22 @@ if (tests.length === 0) {
     process.exitCode = 1;
   }
 }
+
+// The Python starter profile's own fixtures are scenario E2E-QC-TEMPLATES-01,
+// and nothing ran them: this file enumerated `tests/*.test.mts` only, so a
+// scenario the registry declares — and the E2E gate therefore counts as
+// selectable — had no way to execute. A shipped template whose acceptance
+// fixtures never run is a template nobody is checking.
+/** §M-QC-TESTS — The Python starter profile's fixtures, scenario E2E-QC-TEMPLATES-01. */
+const PYTHON_FIXTURES = join("templates", "python", "tests", "test_quality_gates.py");
+try {
+  execFileSync("python3", [PYTHON_FIXTURES], { cwd: ROOT, stdio: "inherit" });
+} catch (error) {
+  const missing = /** @type {{ code?: string }} */ (error).code === "ENOENT";
+  process.stderr.write(
+    missing
+      ? `python3 is not on PATH, so ${PYTHON_FIXTURES} could not run; a skipped scenario is not a pass\n`
+      : `${PYTHON_FIXTURES} failed\n`,
+  );
+  process.exitCode = 1;
+}

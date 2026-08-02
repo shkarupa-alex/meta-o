@@ -13,7 +13,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -515,5 +515,78 @@ test("the capability suite runs outside a Git repository", () => {
   } finally {
     rmSync(elsewhere, { recursive: true, force: true });
     home.dispose();
+  }
+});
+
+test("`run pending` cannot write the proof it is supposed to go and get", () => {
+  // The write-ahead protocol has one exit for an unproven effect: reconcile
+  // against the backend. `--clear` enforced that and the write path did not, so
+  // re-writing the same operationId with `state: "observed"` and then clearing
+  // it retired a genuinely unproven operation in two commands.
+  const it = fixture();
+  try {
+    const intent = {
+      operationId: "22222222-2222-4222-8222-222222222222",
+      kind: "send",
+      sessionId: "agent=mo-x;pane=%9;owned=1",
+      requestDigest: "deadbeef",
+      state: "prepared",
+    };
+    ok(
+      cli(["run", "pending", "--run-id", it.runId], {
+        ...it.context,
+        stdin: JSON.stringify(intent),
+      }),
+      "record the intent",
+    );
+
+    const cleared = cli(["run", "pending", "--run-id", it.runId, "--clear"], it.context);
+    assert.equal(errorCode(cleared), "effect_unproven");
+
+    const promoted = cli(["run", "pending", "--run-id", it.runId], {
+      ...it.context,
+      stdin: JSON.stringify({ ...intent, state: "observed" }),
+    });
+    assert.equal(errorCode(promoted), "effect_unproven");
+
+    // And a second intent under a different id cannot displace the first.
+    const displaced = cli(["run", "pending", "--run-id", it.runId], {
+      ...it.context,
+      stdin: JSON.stringify({ ...intent, operationId: "33333333-3333-4333-8333-333333333333" }),
+    });
+    assert.equal(errorCode(displaced), "effect_unproven");
+  } finally {
+    it.dispose();
+  }
+});
+
+test("resume confirms a live worker and refuses to pretend about a dead one", () => {
+  // §20 lists resumption among the operations a backend must support, and the
+  // adapter implemented it with nothing able to call it: after a backend
+  // restart the orchestrator could only re-spawn, discarding a worker that may
+  // have been perfectly alive.
+  const it = fixture();
+  try {
+    ok(cli(["session", "spawn", "--run-id", it.runId, "--role", "executor"], it.context), "spawn");
+
+    const alive = ok(
+      cli(["session", "resume", "--run-id", it.runId, "--role", "executor"], it.context),
+      "resume",
+    );
+    assert.equal(alive.json["resumed"], true);
+    assert.ok((alive.json["session"] as { sessionId: string }).sessionId);
+
+    // The backend loses the agent; resume must say so rather than report success.
+    const state = backendState(it.context);
+    const agentName = Object.keys(state.agents)[0]!;
+    delete state.agents[agentName];
+    writeFileSync(it.context.fakeState, JSON.stringify(state));
+
+    const gone = cli(["session", "resume", "--run-id", it.runId, "--role", "executor"], it.context);
+    assert.equal(gone.code, 1);
+    assert.equal(gone.json["resumed"], false);
+    assert.match(String(gone.json["nextStep"]), /--replace/);
+  } finally {
+    it.dispose();
   }
 });

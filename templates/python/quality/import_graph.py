@@ -369,41 +369,106 @@ def check_adoption_closure(
     the boundary being widened by an import statement rather than by a reviewed
     adoption change — the certified code is only as trustworthy as what it calls.
 
-    A project with no manifest, or one declaring `fully_adopted`, has nothing to
-    close: everything is inside.
+    A project with no manifest, or one declaring `fully_adopted: true`, has
+    nothing to close: everything is inside.
+
+    Every way this check could quietly decline to run is now a violation rather
+    than a silent pass: a manifest of the wrong shape, a `fully_adopted` that is
+    not a boolean, a root that matches no file, and two files claiming one
+    module name. Each of those returned `ok` about a boundary nobody had
+    checked, which is the failure mode the whole gate exists to prevent.
     """
-    manifest = read_json(root / ".quality/adoption-manifest.json", default=None)
-    if not isinstance(manifest, dict) or manifest.get("fully_adopted"):
+    path = root / ".quality/adoption-manifest.json"
+    manifest = read_json(path, default=None)
+    if manifest is None:
         return
-    roots = [str(item).strip("/") for item in manifest.get("adopted_roots", []) if str(item)]
-    if not roots:
+    relative_manifest = str(path.relative_to(root))
+
+    if not isinstance(manifest, dict):
+        report.add(relative_manifest, 1, "invalid-manifest", "the adoption manifest must be an object")
+        return
+    fully = manifest.get("fully_adopted", False)
+    if not isinstance(fully, bool):
+        report.add(
+            relative_manifest, 1, "invalid-manifest", "fully_adopted must be true or false"
+        )
+        return
+    if fully:
         return
 
-    paths = {
-        module_name(path, root, source_roots): path
-        for path in discover_python_files(root, source_roots)
-    }
+    declared = manifest.get("adopted_roots")
+    if not isinstance(declared, list) or not declared:
+        report.add(
+            relative_manifest,
+            1,
+            "invalid-manifest",
+            "adopted_roots must be a non-empty array of repository-relative paths",
+        )
+        return
+    if any(not isinstance(item, str) or not item for item in declared):
+        report.add(relative_manifest, 1, "invalid-manifest", "every adopted root must be a path")
+        return
+    # `./src/app` and `src/app/` name the same directory and neither matched.
+    roots = [item.strip("/").removeprefix("./") for item in declared]
+
+    files = discover_python_files(root, source_roots)
+    paths: dict[str, list[Path]] = {}
+    for file in files:
+        paths.setdefault(module_name(file, root, source_roots), []).append(file)
+
+    # Two files claiming one module name make every answer below ambiguous —
+    # `src/x.py` adopted and `lib/x.py` not is one module that is both.
+    for module, owners in sorted(paths.items()):
+        if len(owners) > 1:
+            report.add(
+                str(owners[0].relative_to(root)),
+                1,
+                "ambiguous-module",
+                f"{module} is claimed by {', '.join(str(o.relative_to(root)) for o in owners)}",
+            )
+
+    def inside(file: Path) -> bool:
+        """§M-QC-IMPORT-GRAPH — Whether one file sits inside a certified root."""
+        relative = str(file.relative_to(root))
+        return any(relative == item or relative.startswith(f"{item}/") for item in roots)
+
+    for index, item in enumerate(roots):
+        if not any(inside(file) for file in files) or not any(
+            str(file.relative_to(root)) == item or str(file.relative_to(root)).startswith(f"{item}/")
+            for file in files
+        ):
+            report.add(
+                relative_manifest,
+                1,
+                "unmatched-root",
+                f"adopted_roots[{index}] {declared[index]!r} matches no discovered file; a root "
+                "that names nothing certifies nothing",
+            )
 
     def adopted(module: str) -> bool:
-        """§M-QC-IMPORT-GRAPH — Whether one module's file sits inside a certified root."""
-        path = paths.get(module)
-        if path is None:
-            return False
-        relative = str(path.relative_to(root))
-        return any(relative == item or relative.startswith(f"{item}/") for item in roots)
+        """§M-QC-IMPORT-GRAPH — Whether every file claiming this module is certified."""
+        owners = paths.get(module)
+        return bool(owners) and all(inside(file) for file in owners)
 
     for module in sorted(graph):
         if not adopted(module):
             continue
         for target in sorted(graph[module]):
-            if target in paths and not adopted(target):
-                report.add(
-                    str(paths[module].relative_to(root)),
-                    1,
-                    "closure-broken",
-                    f"{module} is inside an adopted root and imports {target}, which is not; "
-                    f"adopt {target}'s root or stop depending on it",
-                )
+            # An import of `a.b` executes `a/__init__.py` too, so the closure
+            # depends on every ancestor package, not only the leaf. Checking the
+            # leaf alone let a certified module reach an uncertified package
+            # body through one of its submodules.
+            parts = target.split(".")
+            reached = [".".join(parts[: index + 1]) for index in range(len(parts))]
+            for name in reached:
+                if name in paths and not adopted(name):
+                    report.add(
+                        str(paths[module][0].relative_to(root)),
+                        1,
+                        "closure-broken",
+                        f"{module} is inside an adopted root and reaches {name}, which is not; "
+                        f"adopt {name}'s root or stop depending on it",
+                    )
 
 
 def main() -> int:

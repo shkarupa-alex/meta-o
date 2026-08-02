@@ -5,11 +5,13 @@
   §50 runs the watchdog as a user agent, never a system daemon: it reads
   ~/.meta-o, which is 0700 and belongs to one person.
 
+  The installer substitutes the real binary path for __WATCHDOG_BIN__ and the
+  real home for __HOME__, so the copy under share/meta-o/service/ is ready to
+  load as it stands.
+
   Install:
     mkdir -p ~/Library/LaunchAgents
-    sed "s|__HOME__|$HOME|g" \
-      ~/.local/share/meta-o/service/com.meta-o.watchdog.plist \
-      > ~/Library/LaunchAgents/com.meta-o.watchdog.plist
+    cp ~/.local/share/meta-o/service/com.meta-o.watchdog.plist ~/Library/LaunchAgents/
     launchctl load ~/Library/LaunchAgents/com.meta-o.watchdog.plist
 
   It observes nothing until `meta-o watchdog enable` names a project.
@@ -22,7 +24,7 @@
   <string>com.meta-o.watchdog</string>
   <key>ProgramArguments</key>
   <array>
-    <string>__HOME__/.local/bin/meta-o-watchdog</string>
+    <string>__WATCHDOG_BIN__</string>
   </array>
   <key>RunAtLoad</key>
   <true/>

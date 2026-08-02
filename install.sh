@@ -17,6 +17,9 @@ PREFIX="${META_O_PREFIX:-$HOME/.local}"
 SKILLS_DIR="${META_O_SKILLS_DIR:-$HOME/.claude/skills}"
 INSTALL_SKILLS=1
 RUN_SUITE=1
+# Comma-separated routes the capability suite must prove in addition to the
+# default. Empty means "whatever the project in $PWD has configured".
+SUITE_ROUTES="${META_O_SUITE_ROUTES:-}"
 MODE="install"
 
 usage() {
@@ -138,10 +141,15 @@ cp -R "$SOURCE_DIR/templates/." "$SHARE_DIR/templates/"
 # Copied, never installed. §50 wants the watchdog run as a user service, and
 # loading one is a change to the user's login session — their decision, made
 # with the file in front of them. `meta-o watchdog enable` points here.
+# The units name the binary by absolute path, so a non-default --prefix has to
+# reach them: copied verbatim, a unit installed from `--prefix /opt/meta-o`
+# pointed at ~/.local/bin and failed to start with nothing saying why.
 rm -rf "$SHARE_DIR/service"
 mkdir -p "$SHARE_DIR/service"
-cp "$SOURCE_DIR/service/meta-o-watchdog.service" "$SHARE_DIR/service/"
-cp "$SOURCE_DIR/service/com.meta-o.watchdog.plist" "$SHARE_DIR/service/"
+for unit in meta-o-watchdog.service com.meta-o.watchdog.plist; do
+  sed -e "s|__WATCHDOG_BIN__|$BIN_DIR/meta-o-watchdog|g" -e "s|__HOME__|$HOME|g" \
+    "$SOURCE_DIR/service/$unit" > "$SHARE_DIR/service/$unit"
+done
 
 # --- skills ------------------------------------------------------------------
 
@@ -180,7 +188,11 @@ if [ "$RUN_SUITE" -eq 1 ]; then
     printf '\nnote: %s was not found, so the capability suite did not run.\n' "${META_O_HERDR_BIN:-herdr}"
     printf 'Run `meta-o capability-suite run --full` once the backend is installed;\n'
     printf 'until then preflight has no baseline to detect a regression against.\n'
-  elif ! "$BIN_DIR/meta-o" capability-suite run --full --text; then
+  # `--cwd "$PWD"`: run from inside a project, the suite proves that project's
+  # own ModelSet routes. Run from anywhere else it proves the default one, which
+  # is all it can honestly claim. `--also-routes` overrides both.
+  elif ! "$BIN_DIR/meta-o" capability-suite run --full --text --cwd "$PWD" \
+      ${SUITE_ROUTES:+--also-routes "$SUITE_ROUTES"}; then
     printf '\nthe backend failed its capability suite.\n' >&2
     printf 'Preflight will refuse to start a run until this is fixed;\n' >&2
     printf 'there is deliberately no silent fallback.\n' >&2

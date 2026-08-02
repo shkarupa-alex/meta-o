@@ -5,9 +5,12 @@ are deliberately marked *not mechanical*: they are judgements about meaning, and
 claiming a test for them would be the exact dishonesty this workflow exists to
 prevent — a green gate standing in for a reading nobody did.
 
-Test names are the strings the runners print: `node quality/run-tests.mjs` for
-the TypeScript suite, `python3 templates/python/tests/test_quality_gates.py` for
-the Python starter profile's own fixtures.
+Test names below are written as prose. For the TypeScript suite that is
+verbatim what `node quality/run-tests.mjs` prints. For the Python starter
+profile it is the method name with underscores read as spaces —
+`a gate that discovered nothing fails` is `test_a_gate_that_discovered_nothing_fails`
+in `templates/python/tests/test_quality_gates.py`, which `make e2e` and
+`node quality/run-tests.mjs` both run.
 
 ## §00 — Master workflow
 

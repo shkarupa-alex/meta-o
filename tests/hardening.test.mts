@@ -13,7 +13,7 @@
 
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { mkdirSync, symlinkSync } from "node:fs";
+import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { createTempHome } from "./helpers.mts";
@@ -22,6 +22,7 @@ import { detectPolicyWeakening, parseMetaOPolicy } from "../dist/core/policy.mjs
 import { evaluateQc, validateResult } from "../dist/core/qc.mjs";
 import { allowedTransitions, completionProven } from "../dist/core/fsm.mjs";
 import { outsideClosure } from "../dist/core/adoption.mjs";
+import { productionHeadings } from "../dist/cli/commands/results.mjs";
 import { detectCapabilityRegression, unexercised } from "../dist/adapters/capability-suite.mjs";
 import { listRuns } from "../dist/core/state-store.mjs";
 import { roleView } from "../dist/core/role-view.mjs";
@@ -1497,6 +1498,161 @@ test("a scenario the E2E gate itself flagged can be fixed and re-run green", () 
   }
 });
 
+test("a backend the last full suite found broken may not be driven", () => {
+  // §20 blocks a backend whose completion-critical capability is unsupported,
+  // and that rule reached preflight and the installer only. The session
+  // commands checked the backend's name and nothing else, so a backend that
+  // had lost `stop` since the last preflight went on being driven until the
+  // run needed the thing it could not do.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    mkdirSync(home.dir, { recursive: true });
+    writeFileSync(
+      join(home.dir, "capability-baseline.json"),
+      JSON.stringify({
+        backend: "herdr",
+        mode: "full",
+        recordedAt: "2026-07-24T09:00:00Z",
+        grades: { "reported:statusRead": "supported", "reported:stop": "unsupported" },
+      }),
+      { mode: 0o600 },
+    );
+
+    const blocked = cli(
+      ["session", "list", "--run-id", runId],
+      context,
+    );
+    assert.equal(errorCode(blocked), "backend_unavailable");
+    assert.match(blocked.stderr, /completion-critical capability stop is unsupported/);
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("the production contract is read as Markdown, not as a substring search", () => {
+  // Every shortcut in this reader was a real wrong answer: an example inside a
+  // fence, a commented-out contract and an indented code block all satisfied
+  // the gate, while a tab-indented code block opened a fence that never closed
+  // and hid a genuine contract for the rest of the document.
+  const accepts: [string, string][] = [
+    ["a plain heading", "## Production safety\n"],
+    ["a setext heading", "Running against production\n==========================\n"],
+    ["a single-dash setext underline", "Running against production\n-\n"],
+    [
+      "a real heading after a tab-indented code block",
+      "\t```\ncode\n\n## Running against production\n\nnamespaced per run\n",
+    ],
+  ];
+  const refuses: [string, string][] = [
+    ["a fenced example", "```markdown\n## Production safety\n```\n"],
+    ["a tilde-fenced example", "~~~\n## Production safety\n~~~\n"],
+    ["a fenced example inside a longer fence", "````\n```\n## Production safety\n```\n````\n"],
+    ["a fence closed by a line carrying an info string", "```\nx\n```markdown\n## Production safety\n"],
+    ["an unclosed fence", "```\n## Production safety\n"],
+    ["a commented-out contract", "<!--\n## Production safety\n-->\n"],
+    ["an indented code block underlined", "    Production safety\n===\n"],
+    ["front matter", "---\ntitle: production runbook\n---\n\n# E2E\n"],
+    ["a quoted heading", "> ## Production safety\n"],
+    ["a heading that merely contains the letters", "### Reproduction of a failed scenario\n"],
+  ];
+
+  for (const [what, text] of accepts) {
+    assert.ok(productionHeadings(text).length > 0, `${what} must count as a contract`);
+  }
+  for (const [what, text] of refuses) {
+    assert.deepEqual(productionHeadings(text), [], `${what} must not count as a contract`);
+  }
+});
+
+test("a derived E2E finding is retired by the gate, not closed by hand", () => {
+  // The code said "only the next run of that gate can decide they are gone"
+  // and did not enforce it: `propose-fix` plus `resolve-finding` removed the
+  // projection of a scenario that was still red, and the router then stopped
+  // prescribing `fix_e2e_failures` for it.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
+    retireSpec(repo);
+    const candidate = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
+    const commitOid = candidate.json["provenanceCommit"] as string;
+    const snapshotDigest = candidate.json["snapshotDigest"] as string;
+    const plan = ok(
+      cli(["e2e", "seal-plan"], {
+        ...context,
+        stdin: JSON.stringify({
+          schemaVersion: 1,
+          commitOid,
+          selectedScenarioIds: ["E2E-SMOKE-01"],
+          selectionRationale: "the canary always runs",
+          impactedBusinessLinks: [],
+          impactedTags: [],
+        }),
+      }),
+      "seal-plan",
+    ).json as unknown as { planDigest: string };
+    ok(
+      cli(["run", "set-plan", "--run-id", runId], { ...context, stdin: JSON.stringify(plan) }),
+      "set-plan",
+    );
+    ok(cli(["worktree", "run", "--run-id", runId, "--label", "e2e", "true"], context), "isolated");
+    ok(
+      cli(["run", "record-e2e", "--run-id", runId], {
+        ...context,
+        stdin: JSON.stringify({
+          commitOid,
+          snapshotDigest,
+          planDigest: plan.planDigest,
+          selectedScenarioIds: ["E2E-SMOKE-01"],
+          selectionRationale: "the canary always runs",
+          scenarios: [{ scenarioId: "E2E-SMOKE-01", status: "failed", evidence: "it failed" }],
+          environment: "local",
+          completedAt: "2026-07-24T12:30:00Z",
+        }),
+      }),
+      "record a red result",
+    );
+
+    const derivedId = "E2E-E2E-SMOKE-01";
+    const proposed = cli(
+      [
+        "run",
+        "propose-fix",
+        "--run-id",
+        runId,
+        "--reviewer",
+        "e2e",
+        "--finding-id",
+        derivedId,
+        "--candidate-commit",
+        commitOid,
+      ],
+      {
+        ...context,
+        stdin: JSON.stringify([{ kind: "file", reference: "src/app.py:1", detail: "fixed" }]),
+      },
+    );
+    assert.equal(errorCode(proposed), "derived_finding");
+
+    // And the slot itself must be one the completion check reads.
+    const typo = cli(["run", "open-findings", "--run-id", runId, "--reviewer", "e2eTester"], {
+      ...context,
+      stdin: "[]",
+    });
+    assert.equal(errorCode(typo), "invalid_reviewer");
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
 test("a gate whose own receipt records a failure cannot be recorded as passed", () => {
   // The isolation receipt was checked for provenance and content and never for
   // outcome, so `worktree run --label smoke -- false` produced a perfectly
@@ -1537,7 +1693,7 @@ test("a gate whose own receipt records a failure cannot be recorded as passed", 
   }
 });
 
-test("a green E2E run cannot erase a blocker raised against the E2E work", () => {
+test("a green E2E run leaves a blocker raised against the E2E work standing", () => {
   // The reviewer slots carry their open blockers forward; the `e2e` slot was
   // written wholesale, so a run that passed every scenario silently dropped a
   // blocker somebody had raised against the suite itself — a scenario that
@@ -1560,7 +1716,7 @@ test("a green E2E run cannot erase a blocker raised against the E2E work", () =>
         ...context,
         stdin: JSON.stringify([
           {
-            id: "E2E-LEAK-01",
+            id: "LEAK-01",
             severity: "blocker",
             classification: "defect",
             evidence: [
@@ -1601,7 +1757,7 @@ test("a green E2E run cannot erase a blocker raised against the E2E work", () =>
       "the suite runs isolated",
     );
 
-    const green = cli(["run", "record-e2e", "--run-id", runId], {
+    const green = ok(cli(["run", "record-e2e", "--run-id", runId], {
       ...context,
       stdin: JSON.stringify({
         commitOid,
@@ -1613,9 +1769,15 @@ test("a green E2E run cannot erase a blocker raised against the E2E work", () =>
         environment: "local",
         completedAt: "2026-07-24T12:30:00Z",
       }),
-    });
-    assert.equal(errorCode(green), "findings_dropped");
-    assert.match(green.stderr + green.stdout, /E2E-LEAK-01/);
+    }), "the tester may still record the result");
+
+    // The gate passed and the blocker is untouched — and still blocks.
+    assert.equal(green.json["status"], "passed");
+    const shown = ok(cli(["run", "show", "--run-id", runId], context), "run show");
+    const open = (shown.json["openFindings"] as Record<string, { finding: { id: string } }[]>)["e2e"];
+    assert.deepEqual(open?.map((record) => record.finding.id), ["LEAK-01"]);
+    const routed = ok(cli(["run", "route", "--run-id", runId], context), "route");
+    assert.equal(routed.json["completionProven"], false, "an open blocker still blocks");
   } finally {
     home.dispose();
     repo.dispose();

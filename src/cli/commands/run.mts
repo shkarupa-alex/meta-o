@@ -480,15 +480,32 @@ export async function commandPending(args: ParsedArgs): Promise<void> {
   }
 
   const operation = await readStdinJson<PendingOperation>();
+  // This command records an *intent*, and only the two states an intent can be
+  // in. Proof that an effect landed is produced by `session reconcile` against
+  // the backend, and by nothing else — accepting `observed` here meant a caller
+  // could write the proof it was supposed to go and get. Guarding only the
+  // clear path was not enough: re-writing the same operationId with
+  // `state: "observed"` and then clearing it retired a genuinely unproven
+  // operation in two commands.
+  if (operation.state !== "prepared" && operation.state !== "uncertain") {
+    fail(
+      "effect_unproven",
+      `\`run pending\` records an intent, so it may only write \`prepared\` or \`uncertain\`, ` +
+        `not \`${operation.state}\`; an effect is proven by \`meta-o session reconcile\``,
+      { pendingOperation: operation },
+    );
+  }
   const next = await mutate(projectKey, runId, (state) => {
     // Overwriting is the same act as clearing: the record that named the
     // in-flight effect is gone either way, and the next attempt has nothing to
     // reconcile against. `--clear` refused this and the write path did not, so
     // one `run pending` with a fabricated `state: "observed"` retired a genuine
     // unproven operation.
-    if (state.pendingOperation && state.pendingOperation.operationId !== operation.operationId) {
-      assertClearable(state.pendingOperation);
-    }
+    //
+    // Same id included: a second write under the same id is still a rewrite of
+    // the record the next reconcile depends on — a different `probe` or
+    // `requestDigest` points it at different evidence.
+    if (state.pendingOperation) assertClearable(state.pendingOperation);
     return { ...state, pendingOperation: operation };
   });
   emit({ runId, pendingOperation: next.pendingOperation });

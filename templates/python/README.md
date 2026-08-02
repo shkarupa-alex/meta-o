@@ -34,11 +34,18 @@ meta-o preflight
 | `quality/purpose_check.py` | `purpose` | Every module, class and function says why it exists and cites its `§M-*` |
 | `quality/knowledge_check.py` | `knowledge` | `§B → §A → §M` anchors are unique, resolvable and cite their nearest level |
 | `quality/e2e_check.py` | `e2e-metadata` | The E2E catalog is well formed and its business links exist |
-| `quality/import_graph.py` | `import-graph` | No new import cycle, no forbidden edge, no unknown first-party boundary |
+| `quality/import_graph.py` | `import-graph` | No new import cycle, no forbidden edge, no unknown first-party boundary, adopted roots dependency-closed |
 | `quality/code_health.py` | `code-health` | File/class/function size, nesting and complexity, with a ratchet for legacy code |
 
 All of them are standard-library only: `ast`, `tomllib`, `json`, `pathlib`. They
 run on Python 3.11+.
+
+`import_graph.py` covers what Import Linter covers — layers, independence,
+forbidden edges, cycles, and a fan-in/fan-out ratchet — without being it. The
+methodology names Import Linter; this profile implements its contracts in the
+standard library instead, so a fresh project runs every gate offline with no
+dependency it did not choose. A project that would rather have the real thing
+declares it in `.quality/qc-manifest.json` and deletes this checker.
 
 ## Thresholds
 
@@ -61,7 +68,10 @@ rewrite. The ratchet then allows only improvement:
 - no existing value made worse;
 - no new cycle;
 - no baseline at all for missing purposes — those are cheap to fix and expensive
-  to lose.
+  to lose;
+- adopted roots dependency-closed: a module inside `.quality/adoption-manifest.json`
+  may not import one outside it, because certified code is only as trustworthy
+  as what it calls. Widening the boundary is its own reviewed change.
 
 Regenerate a baseline deliberately, never as a reflex:
 

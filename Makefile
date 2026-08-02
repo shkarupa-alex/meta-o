@@ -4,10 +4,16 @@
 # gate, it is non-mutating, and it aggregates every gate declared in
 # .quality/qc-manifest.json rather than a list maintained here in parallel.
 
-.PHONY: build format lint typecheck test smoke e2e qc verify-e2e-metadata install clean
+.PHONY: bootstrap build format lint typecheck test smoke e2e qc verify-e2e-metadata install clean
 .PHONY: format-check
 
-build:
+# A gate runs in a fresh detached worktree, which has no node_modules and no
+# dist. This borrows the first from the checkout the gate was launched from and
+# builds the second here; both are git-ignored, so the snapshot is untouched.
+bootstrap:
+	@node quality/bootstrap.mjs
+
+build: bootstrap
 	npx --no-install tsc -p tsconfig.json
 
 # `format` rewrites, `format-check` judges. §40 asks for both, and only the
@@ -32,7 +38,8 @@ smoke: build
 	node dist/cli/meta-o.mjs help > /dev/null && echo "smoke ok"
 
 # meta-o's E2E entry point is its own acceptance suite, which drives the real
-# CLI against real repositories. See docs/architecture/e2e.md.
+# CLI against real repositories — and, for E2E-QC-TEMPLATES-01, the Python
+# starter profile against generated ones. See docs/architecture/e2e.md.
 e2e: build
 	node quality/run-tests.mjs
 
@@ -43,7 +50,7 @@ verify-e2e-metadata:
 
 # The authoritative gate. Writes its machine-readable result to
 # $META_O_QC_RESULT when the orchestrator set it.
-qc:
+qc: bootstrap
 	node quality/run-qc.mjs
 
 install:
