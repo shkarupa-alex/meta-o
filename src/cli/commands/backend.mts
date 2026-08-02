@@ -31,6 +31,7 @@ import {
   type SuiteContext,
 } from "../../adapters/capability-suite.mjs";
 import {
+  REGRESSION_PREFIX,
   Watchdog,
   type RunMemory,
   type WatchdogDeps,
@@ -298,25 +299,86 @@ async function surfaceUncertainty(
   adapter: HerdrAdapter,
   state: RunState,
   operation: PendingOperation | undefined,
-): Promise<void> {
-  const pending = operation
-    ? `Pending operation: ${operation.kind} ${operation.operationId} (${operation.state}).`
-    : undefined;
-  const message = pending ? `${UNCERTAINTY_PROMPT}\n\n${pending}` : CAPABILITY_REGRESSION_PROMPT;
+  reason: string,
+): Promise<boolean> {
+  // The decision's own reason picks the message. It used to be picked by
+  // whether a pending operation existed, and since the regression check runs
+  // *before* the reconcile branch, "the backend lost a capability" was reliably
+  // delivered as "reconcile your pending operation" — advice for a different
+  // problem, and the one prompt that names FAILED_BACKEND was never sent.
+  const message = reason.startsWith(REGRESSION_PREFIX)
+    ? `${CAPABILITY_REGRESSION_PROMPT}\n\n${reason.slice(REGRESSION_PREFIX.length)}`
+    : [
+        UNCERTAINTY_PROMPT,
+        operation
+          ? `Pending operation: ${operation.kind} ${operation.operationId} (${operation.state}).`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+
   if (state.orchestratorSession) {
-    await adapter.send(state.orchestratorSession, randomUUID(), message);
-    return;
+    try {
+      await adapter.send(state.orchestratorSession, randomUUID(), message);
+      return true;
+    } catch (error) {
+      appendLog({
+        timestamp: isoTimestamp(),
+        projectKey: state.projectKey,
+        runId: state.runId,
+        phase: state.phase,
+        observedStatus: "unknown",
+        action: "surface_uncertainty",
+        reason: `could not deliver: ${(error as Error).message}`,
+        outcome: "failed",
+      });
+      return false;
+    }
   }
   appendLog({
     timestamp: isoTimestamp(),
     projectKey: state.projectKey,
     runId: state.runId,
     phase: state.phase,
-    observedStatus: "absent",
+    observedStatus: "unregistered",
     action: "surface_uncertainty",
     reason: `${message} (no orchestrator session to tell; user action required)`,
     outcome: "failed",
   });
+  return false;
+}
+
+/**
+ * §M-CLI-BACKEND — Create the replacement orchestrator for a run.
+ *
+ * The handle is written to state before the prompt is sent, and written even if
+ * the prompt fails. Watchdog memory is deliberately reset when it cannot be
+ * parsed, so "exactly one replacement" cannot live only there: deleting one
+ * cache file was enough to produce a second live orchestrator for a run that
+ * already had one.
+ */
+async function spawnReplacement(adapter: HerdrAdapter, state: RunState): Promise<void> {
+  const session = await adapter.spawn({
+    operationId: randomUUID(),
+    role: "orchestrator",
+    model: state.modelSet.executor,
+    prompt: "",
+    cwd: projectDirectoryOf(state),
+  });
+  // The generation is claimed here rather than left alone, because a
+  // replacement that inherits the dead orchestrator's number fences nobody out:
+  // if the predecessor were only apparently terminal, both would pass the guard
+  // in `commitState` and write the same run.
+  const generation = await withWriterLock(state.projectKey, state.runId, () => {
+    const current = readState(state.projectKey, state.runId);
+    if (!current) return state;
+    return commitState({
+      ...current,
+      orchestratorSession: session,
+      orchestratorGeneration: current.orchestratorGeneration + 1,
+    });
+  });
+  await adapter.send(session, randomUUID(), spawnPrompt(generation.orchestratorGeneration));
 }
 
 /**
@@ -330,8 +392,14 @@ async function surfaceUncertainty(
 function backendDeps(adapter: HerdrAdapter, config: WatchdogConfig): WatchdogDeps {
   const hybrid = config.classifier_mode === "hybrid";
   /** §M-CLI-BACKEND — Report the orchestrator session's state, or that it never existed. */
-  const orchestratorStatus = async (state: RunState): Promise<SessionStatus | "absent"> => {
-    if (!state.orchestratorSession) return "absent";
+  const orchestratorStatus = async (
+    state: RunState,
+  ): Promise<SessionStatus | "absent" | "unregistered"> => {
+    // Not `absent`: the two are opposite claims. `absent` is the backend saying
+    // the session it was asked about is gone; `unregistered` is this run never
+    // having named one, which proves nothing about whether an orchestrator is
+    // sitting in a terminal somewhere driving it right now.
+    if (!state.orchestratorSession) return "unregistered";
     try {
       return await adapter.status(state.orchestratorSession);
     } catch {
@@ -358,35 +426,9 @@ function backendDeps(adapter: HerdrAdapter, config: WatchdogConfig): WatchdogDep
       if (!state.orchestratorSession) return;
       await adapter.send(state.orchestratorSession, randomUUID(), WAKE_PROMPT);
     },
-    surfaceUncertainty: async (state, operation) => surfaceUncertainty(adapter, state, operation),
-    // The handle is written to state before the prompt is sent, and written
-    // even if the prompt fails. Watchdog memory is deliberately reset when it
-    // cannot be parsed, so "exactly one replacement" cannot live only there:
-    // deleting one cache file was enough to produce a second live orchestrator
-    // for a run that already had one.
-    spawnOrchestrator: async (state) => {
-      const session = await adapter.spawn({
-        operationId: randomUUID(),
-        role: "orchestrator",
-        model: state.modelSet.executor,
-        prompt: "",
-        cwd: projectDirectoryOf(state),
-      });
-      // The generation is claimed here rather than left alone, because a
-      // replacement that inherits the dead orchestrator's number fences nobody
-      // out: if the predecessor were only apparently terminal, both would pass
-      // the guard in `commitState` and write the same run.
-      const generation = await withWriterLock(state.projectKey, state.runId, () => {
-        const current = readState(state.projectKey, state.runId);
-        if (!current) return state;
-        return commitState({
-          ...current,
-          orchestratorSession: session,
-          orchestratorGeneration: current.orchestratorGeneration + 1,
-        });
-      });
-      await adapter.send(session, randomUUID(), spawnPrompt(generation.orchestratorGeneration));
-    },
+    surfaceUncertainty: async (state, operation, reason) =>
+      surfaceUncertainty(adapter, state, operation, reason),
+    spawnOrchestrator: async (state) => spawnReplacement(adapter, state),
     capabilityRegression: async () => (await adapter.capabilityReport()).blockingReasons,
     reloadConfig: loadWatchdogConfig,
     quotaResumeAtMs: (state, nowMs) => parseResetTime(state.paused?.reason ?? "", nowMs),

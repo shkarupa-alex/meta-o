@@ -42,6 +42,15 @@ export const DEFAULT_MAX_BACKOFF_SECONDS = 300;
  */
 export const DEFAULT_STALL_DEADLINE_MS = 15 * 60 * 1000;
 
+/**
+ * §M-WATCHDOG — Marks a decision reason as a capability regression.
+ *
+ * The reason string is the channel between the decision and the message that
+ * gets delivered, so the prefix is shared rather than written out twice; the
+ * two copies had already drifted apart once.
+ */
+export const REGRESSION_PREFIX = "backend capability regression: ";
+
 /** §M-WATCHDOG — One line of the durable, transcript-free watchdog log. */
 export interface WatchdogLogEntry {
   timestamp: string;
@@ -59,7 +68,7 @@ export interface WatchdogObservation {
   projectKey: string;
   runId: string;
   state: RunState;
-  orchestratorStatus: SessionStatus | "absent";
+  orchestratorStatus: SessionStatus | "absent" | "unregistered";
   reconcile?: ReconcileResult;
   progressed: boolean;
   idleForMs: number;
@@ -118,7 +127,7 @@ export interface WatchdogDeps {
   stallDeadlineMs?: number;
   listRuns(projectKey: string): string[];
   readState(projectKey: string, runId: string): RunState | undefined;
-  orchestratorStatus(state: RunState): Promise<SessionStatus | "absent">;
+  orchestratorStatus(state: RunState): Promise<SessionStatus | "absent" | "unregistered">;
   reconcile(state: RunState, operation: PendingOperation): Promise<ReconcileResult>;
   wakeOrchestrator(state: RunState): Promise<void>;
   spawnOrchestrator(state: RunState): Promise<void>;
@@ -128,8 +137,21 @@ export interface WatchdogDeps {
   readSession?(state: RunState, cursor?: string): Promise<SessionReading | undefined>;
   /** Classify a tail; supplied so hybrid mode can add a local model behind the same contract. */
   classifyTail?(tail: string): Promise<TailClassification>;
-  /** Tell the orchestrator, in its own words, that an effect could not be proven. */
-  surfaceUncertainty?(state: RunState, operation: PendingOperation | undefined): Promise<void>;
+  /**
+   * Tell the orchestrator, in its own words, what the watchdog observed.
+   *
+   * `reason` is the decision's own reason, and it selects the message: an
+   * unprovable effect and a lost backend capability call for opposite advice,
+   * and choosing between them by "is there a pending operation" delivered the
+   * reconcile prompt to a run whose backend had failed. Returns whether anyone
+   * was actually told, so a message that reached nobody is not recorded as
+   * surfaced and stops the watchdog retrying forever into a dead session.
+   */
+  surfaceUncertainty?(
+    state: RunState,
+    operation: PendingOperation | undefined,
+    reason: string,
+  ): Promise<boolean>;
   /** Blocking capability reasons, if the backend regressed since installation. */
   capabilityRegression?(): Promise<string[]>;
   /** Re-read configuration, so disabling the watchdog does not require killing it. */
@@ -175,7 +197,7 @@ export function decideAction(
     if (memory.surfacedRegression === regression) {
       return { action: "backoff", reason: "the capability regression is already surfaced" };
     }
-    return { action: "surface_uncertainty", reason: `backend capability regression: ${regression}` };
+    return { action: "surface_uncertainty", reason: `${REGRESSION_PREFIX}${regression}` };
   }
 
   if (observation.progressed) {
@@ -258,6 +280,21 @@ export function decideAction(
         reason: "orchestrator is settled past the stall deadline with work outstanding",
       };
     }
+
+    // Deliberately NOT alongside the terminal states below. "unregistered"
+    // means this run never recorded an orchestrator handle, so the watchdog has
+    // nothing to observe — which is ignorance, not proof of death. It used to
+    // fall through to `absent`, and since a run driven by a human-started
+    // orchestrator never registers one, the watchdog spawned a rival on its
+    // very first tick, with no stall deadline consulted and both able to write.
+    case "unregistered":
+      return {
+        action: "backoff",
+        reason:
+          "this run records no orchestrator session, so a live orchestrator cannot be " +
+          "distinguished from a dead one; it must register itself with " +
+          "`meta-o run set-session --role orchestrator` before the watchdog can recover it",
+      };
 
     case "complete":
     case "failed":
@@ -436,16 +473,26 @@ export class Watchdog {
           memory.backoffMs = Math.min(Math.max(memory.backoffMs, this.pollMs()) * 2, this.maxBackoffMs());
           return "performed";
 
-        case "surface_uncertainty":
+        case "surface_uncertainty": {
           if (!this.deps.surfaceUncertainty) return "skipped";
-          await this.deps.surfaceUncertainty(fresh, fresh.pendingOperation);
-          if (decision.reason.startsWith("backend capability regression: ")) {
-            memory.surfacedRegression = decision.reason.slice("backend capability regression: ".length);
+          const told = await this.deps.surfaceUncertainty(
+            fresh,
+            fresh.pendingOperation,
+            decision.reason,
+          );
+          memory.backoffMs = Math.min(Math.max(memory.backoffMs, this.pollMs()) * 2, this.maxBackoffMs());
+          // Only a message somebody received counts as surfaced. Recording it
+          // regardless meant a regression announced into a dead session was
+          // never mentioned again — the run sat blocked and the only trace was
+          // one line in a log nobody reads at 3am.
+          if (!told) return "failed";
+          if (decision.reason.startsWith(REGRESSION_PREFIX)) {
+            memory.surfacedRegression = decision.reason.slice(REGRESSION_PREFIX.length);
           } else {
             memory.surfacedForStateVersion = fresh.stateVersion;
           }
-          memory.backoffMs = Math.min(Math.max(memory.backoffMs, this.pollMs()) * 2, this.maxBackoffMs());
           return "performed";
+        }
 
         default:
           return "skipped";

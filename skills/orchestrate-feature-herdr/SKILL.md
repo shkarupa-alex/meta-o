@@ -47,6 +47,17 @@ its own `orchestrate-feature-<backend>` skill and adapter.
    whether the executor may create it. Without permission:
    `meta-o run transition --phase PAUSED_MISSING_TOOLS`.
 9. `meta-o run confirm-models --run-id <id>`.
+10. Register yourself, so the watchdog can tell a live orchestrator from a dead
+    one:
+
+    ```bash
+    meta-o run set-session --run-id <id> --role orchestrator --session-id <your own handle>
+    ```
+
+    Your handle is the Herdr agent this session is running in
+    (`herdr agent list` will name it). Until you do this the watchdog observes
+    `unregistered` and backs off — it will not recover this run at all, because
+    an unrecorded orchestrator and a dead one look identical to it.
 
 You do not judge the spec. You check that it exists and hash it; its quality is
 the executor's and the reviewers' problem.
@@ -174,7 +185,11 @@ A fresh orchestrator resumes from state alone; there is no narrative handoff.
    anything else.
 3. `meta-o session list --run-id <id>` — check every worker really is where the
    state says it is.
-4. If you are replacing a previous orchestrator, `meta-o run takeover --run-id <id>`.
+4. Register yourself as the orchestrator session for this run
+   (`meta-o run set-session --run-id <id> --role orchestrator --session-id <your handle>`),
+   replacing whatever handle the previous one left. A run whose orchestrator
+   handle is stale is one the watchdog will keep waking into a dead pane.
+5. If you are replacing a previous orchestrator, `meta-o run takeover --run-id <id>`.
    You do not declare that the previous one is gone — takeover asks the backend
    and refuses while it is still alive. If it refuses, it is telling you the run
    has an owner.
@@ -189,11 +204,16 @@ A fresh orchestrator resumes from state alone; there is no narrative handoff.
    That is what makes the fence real. Without it, an orchestrator that was
    replaced while it was mid-thought goes on writing to the same run, and the
    two of you overwrite each other's decisions with no error anywhere.
-5. `meta-o run show` reports the ModelSet this run was started with. Show it to
-   the user and ask *"still these models?"* before spending anything. A run
-   resumed days later may be resuming onto a model the user no longer has, and
-   the confirmation is per-run, not per-machine.
-6. `meta-o run route` and continue.
+6. **Only if a human started you**, `meta-o run show` reports the ModelSet this
+   run was started with: show it and ask *"still these models?"* before spending
+   anything. A run resumed days later may be resuming onto a model the user no
+   longer has, and the confirmation is per-run, not per-machine.
+
+   Skip this when your prompt says you are a **replacement orchestrator** — the
+   watchdog created you unattended, at an hour when nobody is going to answer,
+   and stopping to ask defeats the recovery you were spawned for. The ModelSet
+   is already confirmed in state; use it. Ask the next time a human speaks.
+7. `meta-o run route` and continue.
 
 A worker that timed out is replaced, and its gate is re-run. A timeout never
 weakens a gate.

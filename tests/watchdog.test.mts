@@ -23,6 +23,7 @@ import {
   type WatchdogObservation,
 } from "../dist/watchdog/watchdog.mjs";
 import { classifyTail, parseResetTime, sanitizeTail } from "../dist/watchdog/classifier.mjs";
+import { REGRESSION_PREFIX } from "../dist/watchdog/watchdog.mjs";
 import { spawnPrompt, WAKE_PROMPT } from "../dist/cli/commands/backend.mjs";
 import type {
   PendingOperation,
@@ -106,7 +107,9 @@ interface Harness {
 function harness(options: {
   states: Array<[string, RunState]>;
   config?: WatchdogConfig;
-  status?: (state: RunState) => SessionStatus | "absent";
+  status?: (state: RunState) => SessionStatus | "absent" | "unregistered";
+  /** Whether a surfaced message actually reaches anyone. */
+  deliverable?: boolean;
   reconcile?: (operation: PendingOperation) => ReconcileResult;
 }): Harness {
   const clock = new FakeClock(1_000_000);
@@ -130,8 +133,11 @@ function harness(options: {
     wakeOrchestrator: async (state) => {
       wakes.push(`${state.projectKey}/${state.runId}@${state.stateVersion}`);
     },
-    surfaceUncertainty: async (state, operation) => {
-      surfaced.push(`${state.runId}:${operation?.kind ?? "capability"}`);
+    surfaceUncertainty: async (state, operation, reason) => {
+      surfaced.push(
+        `${state.runId}:${reason.startsWith(REGRESSION_PREFIX) ? "capability" : (operation?.kind ?? "none")}`,
+      );
+      return options.deliverable ?? true;
     },
     spawnOrchestrator: async (state) => {
       spawns.push(`${state.projectKey}/${state.runId}@gen${state.orchestratorGeneration}`);
@@ -248,6 +254,22 @@ test("a dead orchestrator receives exactly one replacement generation", async ()
   await test1.watchdog.tick();
 
   assert.deepEqual(test1.spawns, ["key-1/run-1@gen1"]);
+});
+
+test("a run that never registered an orchestrator is not one whose orchestrator died", async () => {
+  // `absent` is the backend saying a named session is gone. A run with no
+  // handle at all proves nothing — and since a human-started orchestrator never
+  // registered one, this used to fall through to the terminal branch and spawn
+  // a rival on the very first tick, with no stall deadline consulted.
+  const state = makeRun({ updatedAt: new Date(0).toISOString() });
+  const test1 = harness({ states: [["key-1/run-1", state]], status: () => "unregistered" });
+
+  await test1.watchdog.tick();
+  await test1.watchdog.tick();
+
+  assert.deepEqual(test1.spawns, [], "no replacement while the truth is unknown");
+  assert.deepEqual(test1.wakes, [], "and nothing is woken through a handle that does not exist");
+  assert.match(test1.logs.at(-1)?.reason ?? "", /records no orchestrator session/);
 });
 
 test("a replacement orchestrator is told the generation it was given", () => {
@@ -507,4 +529,49 @@ test("a capability regression is surfaced instead of driven around", () => {
   });
   assert.equal(decision.action, "surface_uncertainty");
   assert.match(decision.reason, /capability regression/);
+});
+
+test("a regression is told as a regression, even with an operation in flight", async () => {
+  // The message used to be chosen by "is there a pending operation", and the
+  // regression check runs *before* the reconcile branch — so a lost capability
+  // was reliably announced as "reconcile your pending operation", and the one
+  // prompt that names FAILED_BACKEND was never sent to anybody.
+  const state = makeRun({
+    pendingOperation: { operationId: "op-1", kind: "wait", requestDigest: "d", state: "prepared" },
+  });
+  const test1 = harness({ states: [["key-1/run-1", state]] });
+  const decision = decideAction(makeObservation({ state }), makeMemory(), {
+    stallDeadlineMs: DEFAULT_STALL_DEADLINE_MS,
+    nowMs: 1_000_000,
+    capabilityRegression: ["stop is unsupported"],
+  });
+
+  assert.ok(decision.reason.startsWith(REGRESSION_PREFIX));
+  await test1.watchdog.tick();
+  assert.equal(test1.logs.length > 0, true);
+});
+
+test("a regression nobody received is surfaced again, not marked as told", async () => {
+  const test1 = harness({
+    states: [["key-1/run-1", makeRun()]],
+    deliverable: false,
+    config: makeConfig(),
+  });
+  const memory = makeMemory();
+  const first = decideAction(makeObservation(), memory, {
+    stallDeadlineMs: DEFAULT_STALL_DEADLINE_MS,
+    nowMs: 1_000_000,
+    capabilityRegression: ["stop is unsupported"],
+  });
+  assert.equal(first.action, "surface_uncertainty");
+  // Undelivered, so `surfacedRegression` stays unset and the same decision
+  // recurs — instead of the run sitting blocked with one line in a log.
+  assert.equal(memory.surfacedRegression, undefined);
+  const second = decideAction(makeObservation(), memory, {
+    stallDeadlineMs: DEFAULT_STALL_DEADLINE_MS,
+    nowMs: 1_100_000,
+    capabilityRegression: ["stop is unsupported"],
+  });
+  assert.equal(second.action, "surface_uncertainty");
+  assert.equal(test1.surfaced.length, 0, "nothing was surfaced by merely deciding");
 });
