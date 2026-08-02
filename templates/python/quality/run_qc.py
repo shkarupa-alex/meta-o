@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import hashlib
 import shlex
 import shutil
 import subprocess
@@ -29,9 +30,36 @@ SCHEMA_VERSION = 1
 
 
 def git_status(root: Path) -> str:
-    """§M-QC-RUNNER — Snapshot the worktree the way the gate contract defines it."""
+    """§M-QC-RUNNER — Snapshot the worktree by content, not by its status listing.
+
+    The listing alone was not enough. `git status --porcelain` prints the same
+    two characters and the same path whether or not the file behind them
+    changed, so a formatter rewriting a file that was *already* dirty left the
+    text identical and the mutation check passed — and the run wrote an
+    attestable green result for content the gate itself had altered. A clean
+    tree caught it and a dirty one did not, which is backwards: a dirty tree is
+    where a stray rewrite is hardest to notice.
+
+    So the snapshot is the listing plus the bytes it refers to: the full diff
+    against `HEAD` for tracked changes, and a hash per untracked file.
+    """
+    listing = _git(root, ["status", "--porcelain", "--untracked-files=all"])
+    parts = [listing, _git(root, ["diff", "HEAD"])]
+    for line in listing.splitlines():
+        if not line.startswith("?? "):
+            continue
+        path = root / line[3:].strip().strip('"')
+        try:
+            parts.append(f"{line[3:]}:{hashlib.sha256(path.read_bytes()).hexdigest()}")
+        except OSError as error:  # a file that vanished mid-run is itself a mutation
+            parts.append(f"{line[3:]}:unreadable:{error}")
+    return "\n".join(parts)
+
+
+def _git(root: Path, args: list[str]) -> str:
+    """§M-QC-RUNNER — Run one read-only git command and return its stdout."""
     result = subprocess.run(
-        ["git", "status", "--porcelain", "--untracked-files=all"],
+        ["git", *args],
         cwd=root,
         capture_output=True,
         text=True,
@@ -158,7 +186,7 @@ def main() -> int:
             {
                 "id": "non-mutating",
                 "status": "failed",
-                "command": "git status --porcelain --untracked-files=all",
+                "command": "git status --porcelain --untracked-files=all + git diff HEAD",
                 "tool_version": "git",
                 "duration_ms": 0,
             }

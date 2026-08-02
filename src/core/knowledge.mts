@@ -144,6 +144,16 @@ export interface AnchorIndex {
   byAnchor: Map<string, AnchorSection[]>;
   duplicates: string[];
   malformed: string[];
+  /**
+   * Every document the index was built from, anchored or not.
+   *
+   * Kept because some rules are about the document rather than its anchors. A
+   * retired feature spec parked in `docs/knowledge/archive/` is ordinary prose
+   * with no `§` headings at all, so deriving the file list from the sections
+   * meant the archive rule could only fire on the one shape of archive it was
+   * not written for.
+   */
+  documents: string[];
 }
 
 /** §M-KNOWLEDGE — Build an index over several knowledge documents. */
@@ -167,7 +177,13 @@ export function buildAnchorIndex(files: Array<{ path: string; text: string }>): 
     .map(([anchor]) => anchor)
     .sort();
 
-  return { sections, byAnchor, duplicates, malformed };
+  return {
+    sections,
+    byAnchor,
+    duplicates,
+    malformed,
+    documents: [...new Set(files.map((file) => file.path))].sort(),
+  };
 }
 
 /** §M-KNOWLEDGE — A module anchor defined in code rather than in Markdown. */
@@ -198,8 +214,7 @@ const ARCHIVE_SEGMENT = /(^|\/)(archive|archives|archived|old|legacy-specs|specs
  * because the archive is full of perfectly well-formed anchors.
  */
 export function featureArchives(index: AnchorIndex): string[] {
-  const paths = new Set(index.sections.map((section) => section.path));
-  return [...paths]
+  return index.documents
     .filter((path) => ARCHIVE_SEGMENT.test(path))
     .sort()
     .map(
@@ -273,6 +288,18 @@ export function validateChain(
       const cites = section.references.filter((ref) => levelOf(ref) === "business");
       if (cites.length === 0) {
         errors.push(`${section.path}:${section.line}: ${section.anchor} does not cite any §B-*`);
+      }
+    }
+    // A `§M` written as a Markdown heading is as much a module anchor as one in
+    // a docstring, and only the docstring half was held to the nearest-level
+    // rule — so a `## §M-ORPHAN` in an architecture document cited nothing and
+    // passed, which is precisely the drift the chain exists to make visible.
+    if (section.level === "module") {
+      const cites = section.references.filter((ref) => levelOf(ref) === "architecture");
+      if (cites.length === 0) {
+        errors.push(
+          `${section.path}:${section.line}: ${section.anchor} does not cite its nearest §A-*`,
+        );
       }
     }
     if (section.level === "business") {

@@ -22,7 +22,7 @@ import ast
 import sys
 from pathlib import Path
 
-from _common import Report, discover_python_files, load_config, project_root, read_json, write_json
+from _common import Report, assert_discovered, discover_python_files, load_config, project_root, read_json, write_json
 
 DEFAULTS = {
     "source_roots": ["src"],
@@ -116,6 +116,7 @@ def build_graph(
 
         for node in ast.walk(tree):
             targets: list[str] = []
+            optional_base = False
             absolute = True
             if isinstance(node, ast.Import):
                 targets = [alias.name for alias in node.names]
@@ -125,9 +126,13 @@ def build_graph(
                     if node.level
                     else (node.module or "")
                 )
-                # `from x import y` may import a submodule or a symbol; offering
-                # both to the resolver lets it pick whichever the project owns.
-                targets = [base, *(f"{base}.{alias.name}".strip(".") for alias in node.names)]
+                # `from x import y` may import a submodule or a symbol. The
+                # refinements are tried first; the base is only *required* to
+                # exist if none of them did, so a namespace package with no
+                # `__init__.py` is not reported as a missing module.
+                refinements = [f"{base}.{alias.name}".strip(".") for alias in node.names]
+                targets = [base, *refinements]
+                optional_base = any(item in known for item in refinements)
                 absolute = node.level == 0
             elif isinstance(node, ast.Call):
                 literal = literal_dynamic_import(node)
@@ -141,14 +146,23 @@ def build_graph(
                             "cannot be resolved statically; review it by hand"
                         )
 
-            for target in targets:
-                resolved = nearest_known(target, known)
+            for index, target in enumerate(targets):
+                # Exact, never nearest. Both `import a.b` and `from a.b import c`
+                # give a fully-qualified *module* path, so walking the dotted
+                # prefix down until something matched folded `myproject.missing`
+                # back onto the package `myproject` — which made the "declared
+                # first-party import that resolves to nothing" rule unreachable
+                # in any layout with `__init__.py`, and invented an edge to the
+                # package while it was there.
+                resolved = target if target in known else None
                 if resolved is None:
                     # A target under a declared first-party prefix that resolves
                     # to no module is a boundary the project asserted and does
                     # not honour — a rename left behind, or a module that only
-                    # exists at runtime.
-                    if is_first_party(target, prefixes):
+                    # exists at runtime. A refinement that does not resolve is
+                    # an ordinary symbol import and says nothing.
+                    required = index == 0 and not (isinstance(node, ast.ImportFrom) and optional_base)
+                    if required and is_first_party(target, prefixes):
                         unresolved.add(target)
                     continue
                 if resolved != name:
@@ -165,22 +179,6 @@ def build_graph(
 def is_first_party(target: str, prefixes: list[str]) -> bool:
     """§M-QC-IMPORT-GRAPH — Whether an import names something the project claims to own."""
     return any(target == prefix or target.startswith(f"{prefix}.") for prefix in prefixes)
-
-
-def nearest_known(target: str, known: set[str]) -> str | None:
-    """§M-QC-IMPORT-GRAPH — Attribute an import to the first-party module it reaches.
-
-    `from a.b.c import d` may name a module, a package or a symbol inside one;
-    walking the dotted prefix down to a module the project actually owns is what
-    turns all three into the same edge.
-    """
-    parts = target.split(".")
-    while parts:
-        candidate = ".".join(parts)
-        if candidate in known:
-            return candidate
-        parts.pop()
-    return None
 
 
 def tarjan(graph: dict[str, set[str]]) -> list[list[str]]:
@@ -367,8 +365,12 @@ def main() -> int:
     graph, known, self_imports, unresolved = build_graph(
         root, list(config["source_roots"]), report, prefixes
     )
-    if not known:
-        report.note("no first-party modules were discovered; check source_roots")
+    assert_discovered(
+        report,
+        root,
+        list(config["source_roots"]),
+        [Path(name) for name in sorted(known)],
+    )
 
     check_contracts(graph, config, report)
     check_boundary(report, known, unresolved, prefixes)

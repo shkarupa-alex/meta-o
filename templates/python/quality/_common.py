@@ -67,18 +67,48 @@ def discover_python_files(root: Path, source_roots: list[str]) -> list[Path]:
     Restricted to the configured source roots so that virtual environments,
     build outputs and vendored trees never enter a gate's judgement — and so
     that adding a directory to the gate is an explicit, reviewable act.
+
+    The skip list is matched against the path *below the source root*, never
+    the absolute path. Matching the whole path meant a checkout living under
+    `~/dist/`, `/build/` or any `venv`-named parent discovered no files at all
+    and every gate reported `ok` on a tree it had not opened — and a legitimate
+    package named `build` inside `src/` was invisible for the same reason.
     """
+    skip = {".venv", "venv", "__pycache__", "build", "dist", ".tox"}
     files: list[Path] = []
     for relative in source_roots:
         base = root / relative
         if not base.is_dir():
             continue
         for path in sorted(base.rglob("*.py")):
-            parts = set(path.parts)
-            if parts & {".venv", "venv", "__pycache__", "build", "dist", ".tox"}:
+            if set(path.relative_to(base).parts) & skip:
                 continue
             files.append(path)
     return files
+
+
+def assert_discovered(report: "Report", root: Path, source_roots: list[str], files: list[Path]) -> None:
+    """§M-QC-COMMON — Fail a gate that found nothing to judge.
+
+    §40 makes an unexpected skip a FAIL, and a gate whose file discovery came
+    back empty is the largest possible skip: it reports `ok` about a tree it
+    never opened. That happened for real — a checkout under a path with a
+    `build`, `dist` or `venv` component matched the skip list on its *absolute*
+    path — and four gates attested nothing at all, silently.
+    """
+    if files:
+        return
+    for relative in source_roots:
+        if not (root / relative).is_dir():
+            report.add(relative, 1, "missing-source-root", "configured source root does not exist")
+    report.add(
+        "pyproject.toml",
+        1,
+        "nothing-discovered",
+        "no .py files were found under "
+        + ", ".join(source_roots)
+        + "; a gate that judged nothing is a skip, not a pass",
+    )
 
 
 @dataclass

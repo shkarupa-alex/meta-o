@@ -141,6 +141,39 @@ function catalogOf(scenario: E2EScenarioEntry): string {
 }
 
 /**
+ * §M-SNAPSHOT — Receipts the run had no business writing.
+ *
+ * The main loop proves the receipts of the scenarios this run executed, and
+ * nothing looked at the rest. `last_run` is excluded from the projection digest
+ * by design and `catalogOf` strips it for the same reason, so a metadata commit
+ * could ship — in a tracked file — a receipt claiming that a scenario which was
+ * neither selected nor run had passed against this snapshot, this run and this
+ * spec.
+ */
+function untouchedReceiptViolations(
+  before: E2ERegistry | undefined,
+  after: E2ERegistry,
+  input: MetadataGuardInput,
+): string[] {
+  const executed = new Set(input.expectedScenarioStatus.keys());
+  const previous = new Map(
+    (before?.scenarios ?? []).map((item) => [item.scenario_id, JSON.stringify(item.last_run ?? null)]),
+  );
+  const violations: string[] = [];
+  for (const scenario of after.scenarios) {
+    if (executed.has(scenario.scenario_id)) continue;
+    if (JSON.stringify(scenario.last_run ?? null) === (previous.get(scenario.scenario_id) ?? "null")) {
+      continue;
+    }
+    violations.push(
+      `metadata commit wrote a last_run for ${scenario.scenario_id}, which this run neither ` +
+        "selected nor executed",
+    );
+  }
+  return violations;
+}
+
+/**
  * §M-SNAPSHOT — Check one scenario's `last_run` receipt against what was verified.
  *
  * A receipt is only evidence if it says *which* content, *which* run, *which*
@@ -250,6 +283,8 @@ export function verifyMetadataCommit(input: MetadataGuardInput): MetadataGuardRe
     const scenario = after.scenarios.find((item) => item.scenario_id === scenarioId);
     violations.push(...receiptViolations(scenarioId, scenario, status, input, attested));
   }
+
+  violations.push(...untouchedReceiptViolations(before, after, input));
 
   return {
     ok: violations.length === 0,

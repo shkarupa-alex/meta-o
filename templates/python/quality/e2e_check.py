@@ -41,6 +41,11 @@ MD_HEADING = re.compile(r"^#{1,6}\s+(.+?)\s*$")
 # permitted keys is the only way to enforce that: checking the fields we know
 # about lets every field we do not know about through, which is exactly how a
 # raw log ends up inside an attested artefact.
+# The root object needs the same treatment as the scenarios below it, and did
+# not have it: `screenshots` and `notes` added beside `scenarios` were accepted,
+# in the one file §10 says holds "only a machine-readable catalog and compact
+# last-run metadata".
+REGISTRY_FIELDS = ("schema_version", "scenarios")
 SCENARIO_FIELDS = (
     "scenario_id",
     "scenario_ref",
@@ -92,6 +97,8 @@ def validate_registry(registry: Any, config: dict, root: Path, report: Report) -
         return
     if registry.get("schema_version") != 1:
         report.add(relative, 1, "schema", "schema_version must be 1")
+    for field in sorted(set(registry) - set(REGISTRY_FIELDS)):
+        report.add(relative, 1, "unknown-field", f"unknown field {field!r}")
 
     scenarios = registry.get("scenarios")
     if not isinstance(scenarios, list) or not scenarios:

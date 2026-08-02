@@ -19,7 +19,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from _common import Report, discover_python_files, load_config, project_root
+from _common import Report, assert_discovered, discover_python_files, load_config, project_root
 
 BUSINESS = re.compile(r"§B-[A-Z0-9-]+")
 ARCHITECTURE = re.compile(r"§A-[A-Z0-9-]+")
@@ -113,17 +113,38 @@ def parse_document(path: Path, relative: str, report: Report) -> list[Section]:
 
 
 def collect_documents(root: Path, config: dict) -> list[tuple[Path, str]]:
-    """§M-QC-KNOWLEDGE — List every knowledge document the gate reads."""
-    documents: list[tuple[Path, str]] = []
-    for key in ("business", "glossary"):
-        path = root / str(config[key])
-        if path.is_file():
-            documents.append((path, str(config[key])))
+    """§M-QC-KNOWLEDGE — List every knowledge document the gate reads.
 
-    architecture = root / str(config["architecture_dir"])
-    if architecture.is_dir():
-        for path in sorted(architecture.rglob("*.md")):
-            documents.append((path, str(path.relative_to(root))))
+    The whole knowledge tree, not three configured locations. Reading only
+    `business`, `glossary` and `architecture_dir` meant a retired feature spec
+    parked one directory over in `docs/knowledge/archive/` was never opened at
+    all — so the archive rule could not fire on it, a `§B-*` defined there
+    escaped the one-document rule, and a duplicated anchor there escaped the
+    uniqueness rule. A document nobody reads is exactly where a stale second
+    source of truth survives.
+    """
+    documents: list[tuple[Path, str]] = []
+    seen: set[Path] = set()
+
+    def take(path: Path) -> None:
+        """§M-QC-KNOWLEDGE — Record one document once, by resolved path."""
+        resolved = path.resolve()
+        if resolved in seen or not path.is_file():
+            return
+        seen.add(resolved)
+        documents.append((path, str(path.relative_to(root))))
+
+    for key in ("business", "glossary"):
+        take(root / str(config[key]))
+
+    for base in {
+        (root / str(config["business"])).parent,
+        (root / str(config["glossary"])).parent,
+        root / str(config["architecture_dir"]),
+    }:
+        if base.is_dir():
+            for path in sorted(base.rglob("*.md")):
+                take(path)
     return documents
 
 
@@ -143,7 +164,9 @@ def module_anchors(root: Path, source_roots: list[str], report: Report) -> list[
     merges two modules claiming it.
     """
     anchors: list[Section] = []
-    for path in discover_python_files(root, source_roots):
+    discovered = discover_python_files(root, source_roots)
+    assert_discovered(report, root, source_roots, discovered)
+    for path in discovered:
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         except SyntaxError as error:
@@ -238,6 +261,19 @@ def main() -> int:
                     section.line,
                     "missing-business-link",
                     f"{section.anchor} cites no §B-*: an architecture decision must serve a business truth",
+                )
+
+        # A `§M` written as a Markdown heading is as much a module anchor as one
+        # in a docstring, and only the docstring half was held to the
+        # nearest-level rule — so `## §M-ORPHAN` in an architecture document
+        # cited nothing and passed, which is the drift the chain exists to show.
+        if MODULE.fullmatch(section.anchor):
+            if not any(ARCHITECTURE.fullmatch(item) for item in section.references):
+                report.add(
+                    section.path,
+                    section.line,
+                    "missing-architecture-link",
+                    f"{section.anchor} cites no §A-*: a module must cite its nearest level up",
                 )
 
     for section in module_docs:

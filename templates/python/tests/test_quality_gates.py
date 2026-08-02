@@ -358,6 +358,55 @@ class KnowledgeCheckerTests(unittest.TestCase):
         result = run_checker(self.project.root, "knowledge_check.py")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_a_module_anchor_written_as_a_heading_must_cite_architecture(self) -> None:
+        """§M-QC-TESTS — A §M is a §M wherever it is written.
+
+        The nearest-level rule was applied only to anchors harvested from
+        docstrings, so `## §M-ORPHAN` in an architecture document cited nothing
+        and passed — which is exactly the drift the chain exists to surface.
+        """
+        write(
+            self.project.root,
+            "docs/knowledge/architecture/boot.md",
+            """
+            # Boot
+
+            ## §A-BOOT-01 — One supervised entry point
+
+            Implements §B-CORE-01 so startup ordering stays checkable.
+
+            ## §M-ORPHAN — a module anchor with no architecture link
+
+            This module exists. It cites nothing.
+            """,
+        )
+        result = run_checker(self.project.root, "knowledge_check.py")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("missing-architecture-link", result.stdout)
+
+    def test_a_feature_archive_outside_the_architecture_directory_is_found(self) -> None:
+        """§M-QC-TESTS — The gate reads the whole knowledge tree, not three paths.
+
+        Only `business`, `glossary` and `architecture_dir` were opened, so a
+        retired spec parked one directory over was never parsed: the archive
+        rule could not fire on it, a `§B-*` defined there escaped the
+        one-document rule, and a duplicate anchor there escaped uniqueness.
+        """
+        write(
+            self.project.root,
+            "docs/knowledge/archive/retired-feature.md",
+            """
+            # Feature: checkout (retired 2026-06)
+
+            ## Requirements
+
+            The cart total must include tax before the confirmation step.
+            """,
+        )
+        result = run_checker(self.project.root, "knowledge_check.py")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("feature-archive", result.stdout)
+
     def test_a_duplicate_anchor_is_found(self) -> None:
         """§M-QC-TESTS — The same anchor defined twice makes references ambiguous."""
         write(
@@ -644,6 +693,45 @@ class ImportGraphTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("self-import", result.stdout)
 
+    def test_a_renamed_module_still_imported_by_name_is_blocked(self) -> None:
+        """§M-QC-TESTS — The half of the boundary rule that had become unreachable.
+
+        Imports were attributed to the *nearest* known module, walking the
+        dotted prefix down until something matched — so `boot.missing` folded
+        back onto the package that contains it, no boundary violation was
+        recorded, and a spurious edge to the package was invented on the way.
+        In any layout with `__init__.py`, which is most of them, the rule could
+        not fire at all.
+        """
+        write(self.project.root, "src/__init__.py", "")
+        write(
+            self.project.root,
+            "src/boot_again.py",
+            '''
+            """§M-BOOT-AGAIN — Import something that was renamed away. Implements §A-BOOT-01."""
+
+            from boot.missing import gone
+            ''',
+        )
+        result = run_checker(self.project.root, "import_graph.py")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("boot.missing", result.stdout)
+        self.assertIn("unknown-boundary", result.stdout)
+
+    def test_a_symbol_imported_from_a_real_module_is_not_a_missing_module(self) -> None:
+        """§M-QC-TESTS — The refinement `from x import y` offers is a symbol, not a claim."""
+        write(
+            self.project.root,
+            "src/boot_again.py",
+            '''
+            """§M-BOOT-AGAIN — Use a symbol from a module that exists. Implements §A-BOOT-01."""
+
+            from boot import start
+            ''',
+        )
+        result = run_checker(self.project.root, "import_graph.py")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_an_unknown_first_party_boundary_is_blocked(self) -> None:
         """§M-QC-TESTS — A module matching no declared prefix has no boundary to be inside."""
         write(
@@ -878,6 +966,43 @@ class E2ECheckerTests(unittest.TestCase):
         self.assertIn("'reasoning'", result.stdout)
         self.assertIn("'raw_stdout'", result.stdout)
 
+    def test_the_registry_root_is_a_closed_schema_too(self) -> None:
+        """§M-QC-TESTS — Unknown-field rejection stopped at the scenario boundary.
+
+        `scenarios[*]` and `last_run` were closed and the root object was not,
+        so `screenshots` and `notes` beside `scenarios` were accepted — in the
+        one file §10 says holds only a machine-readable catalog and compact
+        last-run metadata.
+        """
+        registry = json.loads((self.project.root / "docs/architecture/e2e.json").read_text())
+        registry["screenshots"] = {"E2E-SMOKE-01": "shot.png"}
+        registry["notes"] = "reasoning about the run"
+        write(self.project.root, "docs/architecture/e2e.json", json.dumps(registry, indent=2) + "\n")
+        result = run_checker(self.project.root, "e2e_check.py")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("'screenshots'", result.stdout)
+        self.assertIn("'notes'", result.stdout)
+
+    def test_a_gate_that_discovered_nothing_fails(self) -> None:
+        """§M-QC-TESTS — §40 makes an unexpected skip a FAIL, and this is the largest one.
+
+        The skip list was matched against the *absolute* path, so a checkout
+        living under any directory named `build`, `dist`, `venv` or `.tox`
+        discovered no files and four gates reported `ok` about a tree they had
+        never opened.
+        """
+        write(
+            self.project.root,
+            "pyproject.toml",
+            """
+            [tool.meta_o.purpose]
+            source_roots = ["not_a_directory"]
+            """,
+        )
+        result = run_checker(self.project.root, "purpose_check.py")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("nothing-discovered", result.stdout)
+
     def test_a_dangling_business_link_is_rejected(self) -> None:
         """§M-QC-TESTS — A scenario must verify a business truth that actually exists."""
         registry = json.loads((self.project.root / "docs/architecture/e2e.json").read_text())
@@ -966,6 +1091,29 @@ class RunnerTests(unittest.TestCase):
         result = run_checker(self.project.root, "run_qc.py")
         self.assertEqual(result.returncode, 1)
         self.assertIn("mutated the worktree", result.stdout + result.stderr)
+
+    def test_a_gate_that_rewrites_an_already_dirty_file_is_invalid(self) -> None:
+        """§M-QC-TESTS — The dirty tree is where a stray rewrite hides best.
+
+        Mutation used to be inferred from the text of `git status --porcelain`,
+        which prints the same two characters and the same path whether or not
+        the file behind them changed. A formatter rewriting a file that was
+        already modified left that text identical, so the check passed and the
+        run wrote an attestable green result for content the gate had altered.
+        """
+        target = self.project.root / "src" / "boot.py"
+        formatter = (
+            f"{sys.executable} -c \"from pathlib import Path; "
+            "p=Path('src/boot.py'); p.write_text(p.read_text() + '# rewritten by the gate\\n')\""
+        )
+        self._manifest([{"id": "format-check", "command": formatter, "policy": "passed"}])
+
+        target.write_text(target.read_text() + "# work in progress\n", encoding="utf-8")
+        result = run_checker(self.project.root, "run_qc.py")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("mutated the worktree", result.stdout + result.stderr)
+        self.assertIn("# rewritten by the gate", target.read_text(encoding="utf-8"))
 
     def test_the_result_records_every_declared_gate(self) -> None:
         """§M-QC-TESTS — A gate absent from the result is never treated as a pass."""

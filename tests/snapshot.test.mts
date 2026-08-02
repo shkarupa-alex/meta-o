@@ -259,3 +259,49 @@ test("a malformed registry blocks digest computation instead of being skipped", 
     repo.dispose();
   }
 });
+
+test("a receipt for a scenario the run never executed is refused", () => {
+  // `last_run` is excluded from the projection digest by design, and the
+  // catalog comparison strips it for the same reason — so the only thing that
+  // ever looked at a receipt was the loop over the scenarios this run actually
+  // executed. A metadata commit could therefore ship, in a tracked file, a
+  // receipt asserting that a scenario which was neither selected nor run had
+  // passed against this snapshot, this run and this spec.
+  const { repo, commit } = seeded();
+  try {
+    const attested = computeSnapshotDigest(repo.dir, commit);
+    const registry = JSON.parse(sampleRegistry()) as E2ERegistry;
+    const receipt = {
+      snapshot_digest: attested.digest,
+      provenance_commit: attested.provenanceCommit,
+      run_id: "run-1",
+      spec_sha256: "a".repeat(64),
+      verified_at: "2026-07-24T18:20:00Z",
+      status: "passed" as const,
+      environment: "local:docker-compose",
+    };
+    registry.scenarios[0]!.last_run = receipt;
+    registry.scenarios[1]!.last_run = { ...receipt };
+    repo.write("docs/architecture/e2e.json", `${JSON.stringify(registry, null, 2)}\n`);
+    const metadata = repo.commit("record one honest receipt and one invented one");
+
+    const report = verifyMetadataCommit({
+      repoDir: repo.dir,
+      attestedCommit: commit,
+      metadataCommit: metadata,
+      expectedRunId: "run-1",
+      expectedSpecSha256: "a".repeat(64),
+      expectedScenarioStatus: new Map([[registry.scenarios[0]!.scenario_id, "passed"]]),
+    });
+
+    assert.equal(report.ok, false);
+    assert.ok(
+      report.violations.some((violation) =>
+        violation.includes(`${registry.scenarios[1]!.scenario_id}, which this run neither`),
+      ),
+      report.violations.join("; "),
+    );
+  } finally {
+    repo.dispose();
+  }
+});

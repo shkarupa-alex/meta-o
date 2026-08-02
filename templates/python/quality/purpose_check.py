@@ -25,7 +25,7 @@ import re
 from fnmatch import fnmatch
 from pathlib import Path
 
-from _common import Report, discover_python_files, load_config, project_root
+from _common import Report, assert_discovered, discover_python_files, load_config, project_root
 
 MODULE_ANCHOR = re.compile(r"§M-[A-Z0-9-]+")
 
@@ -156,7 +156,10 @@ def main() -> int:
     patterns = [str(item) for item in config["exempt_files"]]
     report = Report("purpose")
 
-    for path in discover_python_files(root, list(config["source_roots"])):
+    roots = list(config["source_roots"])
+    discovered = discover_python_files(root, roots)
+    assert_discovered(report, root, roots, discovered)
+    for path in discovered:
         relative = str(path.relative_to(root))
         # Globs, because generated and vendored trees are directories, and a
         # literal per-file list of them stops covering the tree the first time

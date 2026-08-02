@@ -18,7 +18,7 @@ import ast
 import sys
 from pathlib import Path
 
-from _common import Report, discover_python_files, load_config, project_root, read_json, write_json
+from _common import Report, assert_discovered, discover_python_files, load_config, project_root, read_json, write_json
 
 DEFAULTS = {
     "source_roots": ["src", "tests"],
@@ -175,7 +175,10 @@ def main() -> int:
     report = Report("code-health")
 
     found: dict[str, int] = {}
-    for path in discover_python_files(root, list(config["source_roots"])):
+    roots = list(config["source_roots"])
+    discovered = discover_python_files(root, roots)
+    assert_discovered(report, root, roots, discovered)
+    for path in discovered:
         found.update(measure(path, root, config, report))
 
     baseline_path = root / str(config["baseline"])
