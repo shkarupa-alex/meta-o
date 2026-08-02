@@ -32,6 +32,13 @@ once its durable requirements have been absorbed into project knowledge. The
 reviewers still have the oracle; the repository is not left with a growing pile
 of historical intent documents.
 
+The deletion is enforced where it is reviewable. `run set-candidate` refuses a
+candidate that still tracks the spec (`spec_not_retired`), so retirement lands
+inside the window the reviewers attest rather than after it. Retiring afterwards
+would change the tree that four parties signed, and retiring never would leave
+the acceptance oracle in the repository competing with the knowledge layer that
+is supposed to have replaced it.
+
 It also bounds the risk of external specs — HTTPS only, at most three redirects,
 at most 10 MiB decompressed, never executed.
 

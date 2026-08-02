@@ -60,6 +60,8 @@ meta-o snapshot digest                 # what is this tree's content identity?
 meta-o run route --run-id <id>         # what should happen next, and why?
 meta-o run show  --run-id <id>         # the whole recoverable state
 meta-o session list --run-id <id>      # which workers exist, and any in-flight effect
+meta-o qc weakening --run-id <id>      # did anything about "passing" get easier?
+meta-o worktree run --run-id <id> --label qc make qc   # run a gate on the candidate alone
 meta-o help                            # the real command surface
 ```
 
@@ -92,6 +94,8 @@ means. It requires:
 | `docs/knowledge/business.md`, `glossary.md` | `§B-*` truth and the project's vocabulary |
 | `docs/knowledge/architecture/*.md` | `§A-*` decisions, each citing a `§B-*` |
 | `docs/architecture/e2e.md` + `e2e.json` | What is verified end to end, and how |
+| `docs/todo.md` | Where debt found outside a feature's scope goes, instead of into the feature |
+| `.quality/adoption-manifest.json` | Optional: which roots a brownfield adoption has certified so far |
 
 `templates/python/` is a starter profile to **copy and modify** — purpose,
 knowledge, import-graph and code-health checkers, all standard-library only.
@@ -108,7 +112,13 @@ create them. See the `adopt-project` skill.
 - Pass with one review because the second timed out.
 - Resend a backend instruction it cannot prove was lost.
 - Treat a missing QC result, a skipped gate or a missing tool as a pass.
-- Weaken a quality gate without the user deciding to.
+- Weaken a quality gate without the user deciding to — including by raising a
+  threshold, disabling a ratchet, widening an exemption or re-freezing a
+  baseline.
+- Record a gate that rewrote the content it was judging.
+- Let a feature change source outside the roots a brownfield adoption certified.
+- Complete with the tracked feature spec still in the tree, or delete it after
+  the reviews that attested the tree.
 - Push, open a PR or tag anything you did not ask for.
 
 ## State
