@@ -67,7 +67,7 @@ starter profile in `templates/python/tests/test_quality_gates.py`.
 | A missing tool and a silent skip both FAIL | `a missing tool fails instead of skipping`, `the result records every declared gate` (Python); `a silently skipped gate fails when the manifest requires it to pass` |
 | A formatter mutation makes the gate invalid | `a mutating gate is invalid` (Python); `a gate that rewrites the content it judges is invalid, not green` |
 | A duplicate or dangling anchor is found | `a duplicate anchor is found`, `a dangling reference is found`, `a module anchor claimed by two files is found` (Python) |
-| An undocumented private, nested or test symbol is found | `an undocumented private nested function is found`, `a dunder must state its purpose` (Python) |
+| An undocumented private, nested or test symbol is found | `an undocumented private nested function is found`, `a dunder must state its purpose`, `test code is held to the same rule` (Python) |
 | Relative and literal dynamic imports form edges | `a relative import cycle is found`, `a literal dynamic import forms an edge`, `a non literal dynamic import is reported not ignored` (Python) |
 | A new cycle and an unknown boundary are blocked | `a relative import cycle is found`, `a self import is a cycle of one`, `an unknown first party boundary is blocked`, `freezing the baseline does not swallow a contract violation` (Python) |
 | Threshold and baseline weakening is detected | `raising a threshold, dropping a root or adding an exemption is weakening`, `a re-frozen or newly frozen baseline entry is weakening`, `relaxing a threshold, a ratchet or a frozen baseline needs a user decision` |
@@ -82,8 +82,34 @@ starter profile in `templates/python/tests/test_quality_gates.py`.
 | One completion event wakes the orchestrator at most once | `one settled event wakes the orchestrator at most once` |
 | A watchdog crash between observing and acting creates no duplicate worker action | `an action is dropped when the run moved on while the watchdog was deciding`, `an unprovable pending operation is surfaced, never resent` |
 | A live orchestrator is never replaced | `a live orchestrator is never replaced, only woken`, `an unknown orchestrator status never produces a replacement` |
-| A terminal orchestrator gets exactly one new generation | `a dead orchestrator receives exactly one replacement generation` |
+| A terminal orchestrator gets exactly one new generation | `a dead orchestrator receives exactly one replacement generation`, `a replacement orchestrator is told the generation it was given` |
 | An unknown operation is never resent | `an unprovable effect is surfaced once, then backed off` |
 | A productive unlimited review loop is not a stall | `a productive loop is never treated as a stall` |
 | Two project keys are served independently | `two project keys are observed independently`, `a backend that cannot be observed backs one run off, not the whole loop` |
 | A disabled watchdog affects nothing | `a disabled watchdog performs no ticks at all` |
+
+## Bypasses
+
+Not acceptance items from the spec set — ways this implementation could have
+been made to say "verified" about something it had not verified. Each was found
+by reading the code against the spec rather than by a failing test, so each one
+now has a test that fails if the hole reopens. They live in
+`tests/hardening.test.mts`.
+
+| Bypass | Closed by |
+|---|---|
+| A policy gutted through dotted keys (`code_health.max_function_lines = 100000` under `[tool.meta_o]`) reads as unchanged | `a policy written with dotted keys is read, not skipped` |
+| A QC result reporting one gate twice — once failed, once passed — is scored on the second | `a QC result that reports one gate twice is ambiguous, not a pass` |
+| Four green gates complete a run that still carries an unresolved blocker | `an open blocking finding stops completion even when every gate reads passed` |
+| A plan sealed against an earlier candidate satisfies the plan-bound gates | `a plan sealed for another candidate cannot prove completion` |
+| The only exit from `LOCAL_QC` runs through review, disarming the E2E-loop guard | `an E2E fix can return to the E2E loop without passing through review` |
+| A brownfield change escapes the adoption boundary by being written in `.tsx`, `.sh`, `.c` or `.sql` | `the adoption boundary covers the languages a brownfield repository is written in` |
+| A smoke run and a full baseline share no check ids, so the comparison always finds nothing | `a smoke report and a full baseline share the keys the comparison needs` |
+| A runs directory replaced by a symlink reads as a project with no runs | `an unreadable runs directory is reported, not read as an empty project` |
+| A misspelled flag (`--nobackend`) is ignored, so the command runs with the opposite meaning | `a misspelled flag is refused instead of silently ignored` |
+| A superseded orchestrator keeps writing after losing a takeover | `a superseded orchestrator generation may not write to the run` |
+| A tracked spec is "retired" by renaming it out of `spec/` | `a spec that was renamed rather than retired still blocks the candidate` |
+| A tracked spec introduced as a local path escapes retirement entirely | `a tracked spec introduced as a local path is still retired` |
+| A reviewer gate is set to `passed` by `record-gate`, with no review behind it | `a reviewer gate cannot be passed without the review that produced it` |
+| A secret quoted in a finding is written verbatim into durable state | `a secret in a finding never reaches durable state` |
+| `--attested` lets the metadata guard verify one tree and record the verdict against another | `the metadata guard may not be pointed at a commit other than the candidate` |

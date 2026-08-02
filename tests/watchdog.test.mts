@@ -23,6 +23,7 @@ import {
   type WatchdogObservation,
 } from "../dist/watchdog/watchdog.mjs";
 import { classifyTail, parseResetTime, sanitizeTail } from "../dist/watchdog/classifier.mjs";
+import { spawnPrompt, WAKE_PROMPT } from "../dist/cli/commands/backend.mjs";
 import type {
   PendingOperation,
   ReconcileResult,
@@ -247,6 +248,17 @@ test("a dead orchestrator receives exactly one replacement generation", async ()
   await test1.watchdog.tick();
 
   assert.deepEqual(test1.spawns, ["key-1/run-1@gen1"]);
+});
+
+test("a replacement orchestrator is told the generation it was given", () => {
+  // The watchdog's own dedup lives in a cache file it is allowed to lose. What
+  // stops a merely-apparently-dead predecessor from writing alongside its
+  // replacement is the generation fence in `commitState`, and that fence is
+  // inert until the replacement exports the number — so the prompt must carry
+  // it, not merely imply that one exists.
+  const prompt = spawnPrompt(7);
+  assert.match(prompt, /META_O_ORCHESTRATOR_GENERATION=7/);
+  assert.ok(prompt.includes(WAKE_PROMPT), "and it still says what to do next");
 });
 
 test("an action is dropped when the run moved on while the watchdog was deciding", async () => {

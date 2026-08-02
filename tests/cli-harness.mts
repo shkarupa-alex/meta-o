@@ -1,11 +1,11 @@
 /**
  * §M-TEST-HARNESS — Driving the compiled CLI the way a skill does.
  *
- * Extracted so that more than one test file can walk a real run without
- * re-implementing the envelope handling. Running the compiled artefact rather
- * than importing the modules is the point: argument parsing, the JSON envelope
- * and the exit status are what a prompt actually depends on, and unit tests
- * never reach them.
+ * Implements §A-EXECUTABLE-ACCEPTANCE. Extracted so that more than one test
+ * file can walk a real run without re-implementing the envelope handling.
+ * Running the compiled artefact rather than importing the modules is the point:
+ * argument parsing, the JSON envelope and the exit status are what a prompt
+ * actually depends on, and unit tests never reach them.
  */
 
 import { strict as assert } from "node:assert";

@@ -116,9 +116,18 @@ create them. See the `adopt-project` skill.
   threshold, disabling a ratchet, widening an exemption or re-freezing a
   baseline.
 - Record a gate that rewrote the content it was judging.
+- Set a reviewer or E2E gate by hand: those three come from a recorded review or
+  E2E result, never from `record-gate`.
 - Let a feature change source outside the roots a brownfield adoption certified.
 - Complete with the tracked feature spec still in the tree, or delete it after
-  the reviews that attested the tree.
+  the reviews that attested the tree — including when the spec was "retired" by
+  renaming it somewhere else.
+- Verify a completion metadata commit against any tree but the attested
+  candidate.
+- Accept a flag it does not know. A misspelled `--no-backend` is an error, not a
+  silent run with the opposite meaning.
+- Let a superseded orchestrator keep writing after it lost a takeover.
+- Write a credential into `state.json` because a reviewer quoted one.
 - Push, open a PR or tag anything you did not ask for.
 
 ## State

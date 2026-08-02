@@ -280,6 +280,36 @@ class PurposeCheckerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("src/generated/*.py", result.stdout)
 
+    def test_test_code_is_held_to_the_same_rule(self) -> None:
+        """§M-QC-TESTS — A test whose purpose is unstated is a test nobody can judge."""
+        # The default `source_roots` include `tests` precisely because an
+        # undocumented test is the cheapest place to hide a check that asserts
+        # the wrong thing; the rest of this fixture narrows the roots to `src`,
+        # so without this case nothing would prove the default is honoured.
+        write(
+            self.project.root,
+            "pyproject.toml",
+            """
+            [tool.meta_o.purpose]
+            source_roots = ["src", "tests"]
+            """,
+        )
+        write(
+            self.project.root,
+            "tests/test_boot.py",
+            '''
+            """§M-BOOT-TESTS — Boot behaviour. Implements §A-BOOT-01."""
+
+
+            def test_it_starts() -> None:
+                assert True
+            ''',
+        )
+        result = run_checker(self.project.root, "purpose_check.py")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("tests/test_boot.py", result.stdout)
+        self.assertIn("test_it_starts", result.stdout)
+
 
 class KnowledgeCheckerTests(unittest.TestCase):
     """§M-QC-TESTS — The knowledge gate finds broken and skipped causal links."""

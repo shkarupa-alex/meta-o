@@ -37,7 +37,13 @@ import {
   type WatchdogLogEntry,
 } from "../../watchdog/watchdog.mjs";
 import { classifyWithFallback, parseResetTime, type LocalClassifier } from "../../watchdog/classifier.mjs";
-import { commitState, listRuns, readState, withWriterLock } from "../../core/state-store.mjs";
+import {
+  commitState,
+  GENERATION_ENV,
+  listRuns,
+  readState,
+  withWriterLock,
+} from "../../core/state-store.mjs";
 import { readSecureJson, writeSecureJson } from "../../core/safe-fs.mjs";
 import type { JsonValue } from "../../core/canonical-json.mjs";
 import {
@@ -67,6 +73,21 @@ const LOG_ROTATE_BYTES = 4 * 1024 * 1024;
 export const WAKE_PROMPT =
   "Read the orchestrate-feature-herdr skill, this run's state.json and the backend session " +
   "status, then continue the run from whatever the routing table prescribes.";
+
+/**
+ * §M-CLI-BACKEND — What a watchdog-spawned replacement orchestrator is told.
+ *
+ * A replacement is not a wake: the run it inherits has a generation the
+ * watchdog just claimed on its behalf, and until it exports that number the
+ * fence in `commitState` reads its writes as "no claim" — which is exactly what
+ * a resurrected predecessor's writes would also look like.
+ */
+export function spawnPrompt(generation: number): string {
+  return (
+    `export ${GENERATION_ENV}=${generation} before running any meta-o command: you are the ` +
+    `replacement orchestrator for this run and that is your generation. ${WAKE_PROMPT}`
+  );
+}
 
 /**
  * §M-CLI-BACKEND — What an orchestrator is told when an effect cannot be proven.
@@ -351,12 +372,20 @@ function backendDeps(adapter: HerdrAdapter, config: WatchdogConfig): WatchdogDep
         prompt: "",
         cwd: projectDirectoryOf(state),
       });
-      await withWriterLock(state.projectKey, state.runId, () => {
+      // The generation is claimed here rather than left alone, because a
+      // replacement that inherits the dead orchestrator's number fences nobody
+      // out: if the predecessor were only apparently terminal, both would pass
+      // the guard in `commitState` and write the same run.
+      const generation = await withWriterLock(state.projectKey, state.runId, () => {
         const current = readState(state.projectKey, state.runId);
         if (!current) return state;
-        return commitState({ ...current, orchestratorSession: session });
+        return commitState({
+          ...current,
+          orchestratorSession: session,
+          orchestratorGeneration: current.orchestratorGeneration + 1,
+        });
       });
-      await adapter.send(session, randomUUID(), WAKE_PROMPT);
+      await adapter.send(session, randomUUID(), spawnPrompt(generation.orchestratorGeneration));
     },
     capabilityRegression: async () => (await adapter.capabilityReport()).blockingReasons,
     reloadConfig: loadWatchdogConfig,
