@@ -277,6 +277,60 @@ export function writeSecureJson(path: string, value: JsonValue): void {
 }
 
 /**
+ * §M-SAFE-FS — Open a state file for writing, with the whole chain verified first.
+ *
+ * For the two files that cannot go through `atomicWriteFile`: an append-only
+ * log, and a lock whose entire purpose is `O_EXCL` at a fixed path. Both are
+ * inside the state tree and both were opened with a bare `openSync` after a
+ * bare `mkdirSync(..., {recursive: true})`, so `O_NOFOLLOW` protected the final
+ * component and nothing protected the parents — a symlink one level up
+ * redirected every line a long-lived watchdog wrote, for as long as it ran.
+ *
+ * The caller supplies the flags because the two uses genuinely differ;
+ * `O_NOFOLLOW` is added here so no caller can forget it.
+ */
+export function openSecureFile(path: string, flags: number, mode = FILE_MODE): number {
+  const absolute = assertInsideStateTree(path);
+  ensureSecureDir(dirname(absolute));
+  return openSync(absolute, flags | fsConstants.O_NOFOLLOW, mode);
+}
+
+/**
+ * §M-SAFE-FS — Rename one state file over another, both inside the tree.
+ *
+ * Log rotation, and nothing else so far. It exists rather than a raw
+ * `renameSync` because the source path's parents deserve the same walk every
+ * other write gets: rotating through a diverted directory moves the log
+ * somewhere the operator will never read it.
+ */
+export function renameSecureFile(from: string, to: string): void {
+  const source = assertInsideStateTree(from);
+  const target = assertInsideStateTree(to);
+  verifySecureDir(dirname(source));
+  ensureSecureDir(dirname(target));
+  renameSync(source, target);
+}
+
+/**
+ * §M-SAFE-FS — Delete a state file, refusing a diverted path.
+ *
+ * Releasing a lock and reclaiming a stale one both delete a file that another
+ * process may control the name of. `force` keeps a missing file from being an
+ * error — the lock may already be gone — but the chain is still walked, so the
+ * delete cannot be aimed outside the tree or through a symlinked parent.
+ */
+export function removeSecureFile(path: string): void {
+  const absolute = assertInsideStateTree(path);
+  try {
+    verifySecureDir(dirname(absolute));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  rmSync(absolute, { force: true });
+}
+
+/**
  * §M-SAFE-FS — Read a file outside the state tree without permission requirements.
  *
  * Repository files and user-supplied spec paths are ordinary project data; they

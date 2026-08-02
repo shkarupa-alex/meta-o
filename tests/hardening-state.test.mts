@@ -17,7 +17,10 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import {
+  chmodSync,
   mkdirSync,
+  readFileSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -35,6 +38,20 @@ import {
   startRun,
   type CliContext,
 } from "./cli-harness.mts";
+import { acquireSingleInstanceLock, appendLog } from "../dist/cli/commands/watchdog-home.mjs";
+import type { WatchdogLogEntry } from "../dist/watchdog/watchdog.mjs";
+
+/** §M-TEST-HARDENING-STATE — One well-formed watchdog log line. */
+const LOG_ENTRY: WatchdogLogEntry = {
+  timestamp: "2026-07-24T12:00:00Z",
+  projectKey: "p",
+  runId: "r",
+  phase: "LOCAL_QC",
+  observedStatus: "stopped",
+  action: "spawn_orchestrator",
+  reason: "the orchestrator is terminal",
+  outcome: "performed",
+};
 
 test("a superseded orchestrator generation may not write to the run", () => {
   const repo = seededRepo();
@@ -619,5 +636,58 @@ test("the ModelSet leaves AWAITING_MODEL_SET only on a decision the user took", 
   } finally {
     home.dispose();
     repo.dispose();
+  }
+});
+
+test("the watchdog's own log and lock get the checks every other state path gets", () => {
+  // These three files — log, single-instance lock, per-run memory — live beside
+  // run state, are written by a long-lived background process, and were the one
+  // group that bypassed the safe filesystem layer: `mkdirSync(..., {recursive:
+  // true})` accepts a symlinked parent, and `O_NOFOLLOW` on the final component
+  // says nothing about the directories above it.
+  const home = createTempHome();
+  const previous = process.env["META_O_HOME"];
+  try {
+    // A home directory anyone on the host can write to is exactly the condition
+    // the descriptor-relative requirement exists for, and the one the `0700`
+    // rule is supposed to exclude. Saying so is the point: the watchdog used to
+    // create it at whatever mode it found and write anyway.
+    const loose = join(home.dir, "loose");
+    mkdirSync(loose, { recursive: true, mode: 0o777 });
+    chmodSync(loose, 0o777);
+    process.env["META_O_HOME"] = loose;
+
+    assert.throws(
+      () => appendLog({ ...LOG_ENTRY }),
+      /group\/world accessible/,
+      "a world-writable state home is refused, not repaired and used",
+    );
+    assert.throws(() => acquireSingleInstanceLock(), /group\/world accessible/);
+
+    // And a home replaced by a symlink is refused rather than followed, which
+    // is what redirects every line a watchdog writes for as long as it runs.
+    const real = join(home.dir, "elsewhere");
+    mkdirSync(real, { recursive: true, mode: 0o700 });
+    const planted = join(home.dir, "planted");
+    symlinkSync(real, planted);
+    process.env["META_O_HOME"] = planted;
+
+    assert.throws(() => appendLog({ ...LOG_ENTRY }), /refusing to follow symlink/);
+    assert.throws(() => acquireSingleInstanceLock(), /refusing to follow symlink/);
+
+    // A home that passes both checks still works, or the guard above would be
+    // indistinguishable from a watchdog that can never log at all.
+    const sound = join(home.dir, "sound");
+    mkdirSync(sound, { recursive: true, mode: 0o700 });
+    process.env["META_O_HOME"] = sound;
+    appendLog({ ...LOG_ENTRY });
+    const lock = acquireSingleInstanceLock();
+    assert.ok(lock, "the lock is takeable in a sound state tree");
+    lock.release();
+    assert.match(readFileSync(join(sound, "watchdog.log"), "utf8"), /spawn_orchestrator/);
+  } finally {
+    if (previous === undefined) delete process.env["META_O_HOME"];
+    else process.env["META_O_HOME"] = previous;
+    home.dispose();
   }
 });

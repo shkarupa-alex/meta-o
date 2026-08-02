@@ -10,17 +10,6 @@
  */
 
 import { randomUUID } from "node:crypto";
-import {
-  closeSync,
-  constants as fsConstants,
-  lstatSync,
-  mkdirSync,
-  openSync,
-  renameSync,
-  rmSync,
-  writeSync,
-} from "node:fs";
-import { dirname } from "node:path";
 import { HerdrAdapter } from "../../adapters/herdr.mjs";
 import {
   adapterFor,
@@ -34,42 +23,46 @@ import {
   DEFAULT_POLL_SECONDS,
   REGRESSION_PREFIX,
   Watchdog,
-  type RunMemory,
   type WatchdogDeps,
-  type WatchdogLogEntry,
 } from "../../watchdog/watchdog.mjs";
 import { classifyWithFallback, parseResetTime, type LocalClassifier } from "../../watchdog/classifier.mjs";
 import {
-  commitState,
+  clearPendingOperation,
   listRuns,
   readSettings,
   readState,
-  withWriterLock,
+  withPendingOperation,
   writeSettings,
 } from "../../core/state-store.mjs";
-import { readSecureJson, writeSecureJson } from "../../core/safe-fs.mjs";
-import { redactDeep } from "../../core/redact.mjs";
-import type { JsonValue } from "../../core/canonical-json.mjs";
+import { digestOf } from "./session-state.mjs";
 import {
-  projectMetadataPath,
-  watchdogConfigPath,
-  watchdogLockPath,
-  watchdogLogPath,
-  watchdogMemoryPath,
-} from "../../core/paths.mjs";
+  markUncertain,
+  mutate,
+  prepare,
+  recordPane,
+  settleReconciled,
+} from "./write-ahead.mjs";
+import { readSecureJson, writeSecureJson } from "../../core/safe-fs.mjs";
+import {
+  acquireSingleInstanceLock,
+  appendLog,
+  readWatchdogMemory,
+  writeWatchdogMemory,
+} from "./watchdog-home.mjs";
+import type { JsonValue } from "../../core/canonical-json.mjs";
+import { projectMetadataPath, watchdogConfigPath, watchdogLogPath } from "../../core/paths.mjs";
 import { resolveProjectIdentity } from "../../core/project-key.mjs";
 import { isoTimestamp } from "../../core/clock.mjs";
 import type {
+  DeliveryResult,
   PendingOperation,
   RunState,
+  SessionRef,
   SessionStatus,
   TailClassification,
   WatchdogConfig,
 } from "../../core/types.mjs";
 import { boolFlag, emit, fail, optionalFlag, type ParsedArgs } from "../args.mjs";
-
-/** §M-CLI-WATCHDOG — Maximum watchdog log size before rotation. */
-const LOG_ROTATE_BYTES = 4 * 1024 * 1024;
 
 /**
  * §M-CLI-WATCHDOG — Load the watchdog configuration, or report that it is absent.
@@ -262,38 +255,6 @@ export function commandWatchdogStatus(): void {
   });
 }
 
-/**
- * §M-CLI-WATCHDOG — Append one line to the durable watchdog log.
- *
- * Records the decision, never the model text or worker transcript: the log's
- * job is to explain what the watchdog did, and transcripts in a rotating file
- * would be both a privacy problem and useless noise.
- *
- * The entry is redacted anyway. `reason` quotes adapter and backend error
- * messages, and a backend that fails while echoing the command it ran puts a
- * token in that message — the one channel where the "no transcript" rule was
- * not enough on its own.
- */
-function appendLog(unredacted: WatchdogLogEntry): void {
-  const entry = redactDeep(unredacted);
-  const path = watchdogLogPath();
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  try {
-    if (lstatSync(path).size > LOG_ROTATE_BYTES) renameSync(path, `${path}.1`);
-  } catch {
-    /* the log does not exist yet */
-  }
-  // `O_NOFOLLOW` rather than a plain append: this file lives in the same
-  // directory as run state and is written by a long-lived background process,
-  // so a symlink planted at the path would otherwise redirect every line the
-  // watchdog writes for as long as it runs.
-  const fd = openSync(
-    path,
-    fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_APPEND | fsConstants.O_NOFOLLOW,
-    0o600,
-  );
-  writeFileSyncFd(fd, `${JSON.stringify(entry)}\n`);
-}
 
 /**
  * §M-CLI-WATCHDOG — Tell somebody that an effect could not be proven.
@@ -363,29 +324,122 @@ async function surfaceUncertainty(
  * parsed, so "exactly one replacement" cannot live only there: deleting one
  * cache file was enough to produce a second live orchestrator for a run that
  * already had one.
+ *
+ * The whole spawn now goes through the same write-ahead record every other
+ * backend effect in this system uses. It did not, and it was the one caller
+ * that could not: the protocol lived inside the session commands as private
+ * helpers. So the watchdog — the component that exists to act while nobody is
+ * watching, and the one most likely to be killed by the same thing that killed
+ * the orchestrator — called `spawn` with nothing written down. A crash between
+ * the call and the state write left an agent nothing could name: not `run
+ * cleanup`, not the next watchdog tick, which saw the same terminal
+ * orchestrator and started another.
  */
 async function spawnReplacement(adapter: HerdrAdapter, state: RunState): Promise<void> {
-  const session = await adapter.spawn({
-    operationId: randomUUID(),
-    role: "orchestrator",
-    model: state.modelSet.executor,
-    prompt: "",
-    cwd: projectDirectoryOf(state),
+  const { projectKey, runId } = state;
+  const cwd = projectDirectoryOf(state);
+  const model = state.modelSet.executor;
+
+  // Deterministic, so a watchdog that dies after writing the record and is
+  // restarted recognises its own interrupted attempt instead of preparing a
+  // second one that looks unrelated. The generation is in the key because the
+  // next generation is a different operation, not a retry of this one.
+  const operationId = digestOf({
+    kind: "watchdog-spawn",
+    projectKey,
+    runId,
+    generation: state.orchestratorGeneration,
   });
+
+  let pending = await prepare(projectKey, runId, {
+    operationId,
+    kind: "spawn",
+    requestDigest: digestOf({ kind: "spawn", role: "orchestrator", model, cwd }),
+    probe: adapter.spawnProbe("orchestrator", operationId),
+  });
+
+  let session: SessionRef;
+  try {
+    session = await adapter.spawn(
+      { operationId, role: "orchestrator", model, prompt: "", cwd },
+      async (paneId) => {
+        pending = await recordPane(projectKey, runId, pending, paneId);
+      },
+    );
+  } catch (error) {
+    // The record stays, marked uncertain: the backend may or may not have
+    // created an agent, and the next tick reconciles rather than guessing.
+    await markUncertain(projectKey, runId, pending);
+    throw error;
+  }
+
   // The generation is claimed here rather than left alone, because a
   // replacement that inherits the dead orchestrator's number fences nobody out:
   // if the predecessor were only apparently terminal, both would pass the guard
   // in `commitState` and write the same run.
-  const generation = await withWriterLock(state.projectKey, state.runId, () => {
-    const current = readState(state.projectKey, state.runId);
-    if (!current) return state;
-    return commitState({
-      ...current,
-      orchestratorSession: session,
-      orchestratorGeneration: current.orchestratorGeneration + 1,
-    });
+  const generation = await mutate(projectKey, runId, (current) =>
+    withPendingOperation(
+      {
+        ...current,
+        orchestratorSession: session,
+        orchestratorGeneration: current.orchestratorGeneration + 1,
+      },
+      { ...pending, state: "acknowledged", sessionId: session.sessionId },
+    ),
+  );
+  await mutate(projectKey, runId, (current) => clearPendingOperation(current));
+
+  await sendSpawnPrompt(adapter, projectKey, runId, session, generation.orchestratorGeneration);
+}
+
+/**
+ * §M-CLI-WATCHDOG — Give the replacement its instructions, written ahead.
+ *
+ * A second operation rather than part of the spawn, for the same reason
+ * `session spawn` and `session send` are two commands: creating an agent and
+ * telling it what to do are two observable effects, and a crash between them
+ * has to be classifiable. A delivery this fails to prove is left `uncertain`
+ * and reconciled on a later tick — the alternative, re-sending blind, is how a
+ * recovered orchestrator ends up with two copies of its charter.
+ */
+async function sendSpawnPrompt(
+  adapter: HerdrAdapter,
+  projectKey: string,
+  runId: string,
+  session: SessionRef,
+  generation: number,
+): Promise<void> {
+  const message = spawnPrompt(generation);
+  const operationId = digestOf({ kind: "watchdog-send", projectKey, runId, generation });
+  const pending = await prepare(projectKey, runId, {
+    operationId,
+    kind: "send",
+    sessionId: session.sessionId,
+    requestDigest: digestOf({ kind: "send", sessionId: session.sessionId, message }),
+    probe: await adapter.prepareProbe(session, message),
   });
-  await adapter.send(session, randomUUID(), spawnPrompt(generation.orchestratorGeneration));
+
+  let delivery: DeliveryResult;
+  try {
+    delivery = await adapter.send(session, operationId, message);
+  } catch (error) {
+    await markUncertain(projectKey, runId, pending);
+    throw error;
+  }
+
+  if (delivery.status === "unknown") {
+    await markUncertain(projectKey, runId, pending);
+    throw new Error(`the replacement orchestrator's prompt could not be proven delivered`);
+  }
+
+  await mutate(projectKey, runId, (current) =>
+    withPendingOperation(current, {
+      ...pending,
+      state: "acknowledged",
+      ...(delivery.receipt ? { backendReceipt: delivery.receipt } : {}),
+    }),
+  );
+  await mutate(projectKey, runId, (current) => clearPendingOperation(current));
 }
 
 /**
@@ -420,7 +474,18 @@ function backendDeps(adapter: HerdrAdapter, config: WatchdogConfig): WatchdogDep
     watchdogEnabledFor: (projectKey) => readSettings(projectKey)?.watchdogEnabled !== false,
     readState,
     orchestratorStatus,
-    reconcile: async (_state, operation) => adapter.reconcile(operation),
+    // A reconcile that only reports the effect is not a reconcile. This asked
+    // the adapter, logged the answer and left the record exactly where it was,
+    // so a run whose orchestrator died mid-spawn kept its pending operation
+    // forever — and since a spawn may not start while one is in flight, the
+    // watchdog could never legitimately replace it. Settling also adopts an
+    // `applied` spawn, which is what turns an orphan agent back into a session
+    // this run names and `run cleanup` can stop.
+    reconcile: async (state, operation) => {
+      const result = await adapter.reconcile(operation);
+      await settleReconciled(state.projectKey, state.runId, adapter, state, operation, result);
+      return result;
+    },
     readSession: async (state, cursor) => {
       if (!state.orchestratorSession) return undefined;
       try {
@@ -430,6 +495,15 @@ function backendDeps(adapter: HerdrAdapter, config: WatchdogConfig): WatchdogDep
       }
     },
     classifyTail: async (tail) => classifyWithFallback(tail, hybrid ? localClassifier() : undefined),
+    // Deliberately not write-ahead recorded, unlike the spawn below. A wake is
+    // decided precisely when a pending operation may still be open — the
+    // `waiting` branch reads that operation's own deadline to decide the run is
+    // overdue — and one pending operation at a time is what makes reconcile
+    // decidable. Recording a second one would trade a duplicate prompt for an
+    // undecidable state. The anti-duplication guard is therefore watchdog
+    // memory keyed by state version, written before the call and taken back if
+    // the call observably fails; the worst case is a wake nobody received,
+    // which stalls visibly, rather than one nobody can account for.
     wakeOrchestrator: async (state) => {
       if (!state.orchestratorSession) return;
       await adapter.send(state.orchestratorSession, randomUUID(), WAKE_PROMPT);
@@ -509,22 +583,7 @@ function projectDirectoryOf(state: RunState): string {
   return metadata.canonicalPath;
 }
 
-/** §M-CLI-WATCHDOG — Durable per-run watchdog bookkeeping, keyed by project/run. */
-function readWatchdogMemory(): Record<string, RunMemory> {
-  try {
-    return readSecureJson<Record<string, RunMemory>>(watchdogMemoryPath()) ?? {};
-  } catch {
-    // Corrupt bookkeeping is not worth failing over: the worst case is one
-    // duplicate wake, whereas refusing to start loses unattended recovery
-    // entirely.
-    return {};
-  }
-}
 
-/** §M-CLI-WATCHDOG — Persist watchdog bookkeeping so a restart does not re-act. */
-function writeWatchdogMemory(all: Record<string, RunMemory>): void {
-  writeSecureJson(watchdogMemoryPath(), all as unknown as JsonValue);
-}
 
 /** §M-CLI-WATCHDOG — Environment variable naming the local classifier executable. */
 export const LOCAL_CLASSIFIER_ENV = "META_O_LOCAL_CLASSIFIER";
@@ -548,70 +607,8 @@ function localClassifier(): LocalClassifier | undefined {
   };
 }
 
-/**
- * §M-CLI-WATCHDOG — Take the watchdog's single-instance lock.
- *
- * Guards the watchdog process only, never projects or runs: two watchdogs would
- * double every wake, but a watchdog must never stop an ordinary run from
- * proceeding. A lock left behind by a dead process is reclaimed, otherwise a
- * crash would disable unattended recovery until someone noticed.
- */
-function acquireSingleInstanceLock(): { release(): void } | undefined {
-  const path = watchdogLockPath();
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      const fd = openSync(
-        path,
-        fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW,
-        0o600,
-      );
-      writeFileSyncFd(fd, JSON.stringify({ pid: process.pid, startedAt: isoTimestamp() }));
-      return {
-        release: () => {
-          rmSync(path, { force: true });
-        },
-      };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      // A lock file is created before its pid is written, so a crash inside
-      // that window leaves an empty or half-written one. Treating an unreadable
-      // holder as dead is what keeps that momentary crash from disabling
-      // unattended recovery permanently.
-      let holder: { pid?: number } | undefined;
-      try {
-        holder = readSecureJson<{ pid?: number }>(path);
-      } catch {
-        holder = undefined;
-      }
-      if (holder?.pid === undefined || !processAlive(holder.pid)) {
-        rmSync(path, { force: true });
-        continue;
-      }
-      return undefined;
-    }
-  }
-  return undefined;
-}
 
-/** §M-CLI-WATCHDOG — Whether a pid is still running on this host. */
-function processAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code !== "ESRCH";
-  }
-}
 
-/** §M-CLI-WATCHDOG — Write to an open descriptor and close it. */
-function writeFileSyncFd(fd: number, content: string): void {
-  try {
-    writeSync(fd, content);
-  } finally {
-    closeSync(fd);
-  }
-}
 
 /** §M-CLI-WATCHDOG — Report which runs a watchdog would observe right now. */
 export function commandWatchdogRuns(args: ParsedArgs): void {

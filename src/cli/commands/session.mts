@@ -17,23 +17,27 @@ import { isoTimestamp } from "../../core/clock.mjs";
 import { resolveProjectIdentity } from "../../core/project-key.mjs";
 import {
   clearPendingOperation,
-  commitState,
   readSettings,
   readState,
   withPendingOperation,
-  withWriterLock,
 } from "../../core/state-store.mjs";
 import { readCapabilityBaseline, requireSupportedBackend } from "./backend.mjs";
 import {
   digestOf,
   modelFor,
   roleOf,
-  roleOfPendingSpawn,
-  roleOfSession,
   sessionFor,
   withSession,
   withoutSession,
 } from "./session-state.mjs";
+import {
+  assertNoPendingOperation,
+  markUncertain,
+  mutate,
+  prepare,
+  recordPane,
+  settleReconciled,
+} from "./write-ahead.mjs";
 import { BackendUnavailableError, COMPLETION_CRITICAL } from "../../adapters/adapter.mjs";
 import { REPORTED_PREFIX } from "../../adapters/capability-suite.mjs";
 import { assertTransition } from "../../core/fsm.mjs";
@@ -127,74 +131,6 @@ function herdrAdapter(): HerdrAdapter {
   return new HerdrAdapter({ binary: process.env["META_O_HERDR_BIN"] });
 }
 
-/** §M-CLI-SESSION — Apply one change to run state under the writer lock. */
-async function mutate(
-  projectKey: string,
-  runId: string,
-  change: (state: RunState) => RunState,
-): Promise<RunState> {
-  return await withWriterLock(projectKey, runId, () => {
-    const current = readState(projectKey, runId);
-    if (!current) fail("unknown_run", `run ${runId} disappeared while it was being updated`);
-    return commitState(change(current));
-  });
-}
-
-/**
- * §M-CLI-SESSION — Refuse to start a second side effect while one is in flight.
- *
- * One pending operation at a time is what makes reconciliation decidable: with
- * two, an observed effect cannot be attributed to a specific intent.
- */
-function assertNoPendingOperation(state: RunState): void {
-  const pending = state.pendingOperation;
-  if (!pending) return;
-  fail(
-    "pending_operation",
-    `operation ${pending.operationId} (${pending.kind}, ${pending.state}) is still in flight; ` +
-      "run `meta-o session reconcile` before causing another effect",
-    { pendingOperation: pending },
-  );
-}
-
-/**
- * §M-CLI-SESSION — Write the intent before the backend is touched.
- *
- * The "nothing else is in flight" check is re-made here, inside the writer
- * lock, and not only against the snapshot the command started from. Two
- * `session spawn` calls that read the same pre-lock state both passed the
- * outer guard, both wrote their intent over each other's, and both spawned —
- * leaving one live worker that state does not name and nobody can stop.
- */
-async function prepare(
-  context: SessionContext,
-  operation: Omit<PendingOperation, "state" | "preparedAt">,
-): Promise<PendingOperation> {
-  const pending: PendingOperation = {
-    ...operation,
-    state: "prepared",
-    preparedAt: isoTimestamp(),
-  };
-  await mutate(context.projectKey, context.runId, (state) => {
-    assertNoPendingOperation(state);
-    return withPendingOperation(state, pending);
-  });
-  return pending;
-}
-
-/**
- * §M-CLI-SESSION — Leave the intent in place when the backend call itself fails.
- *
- * A thrown call is exactly the ambiguous case: the request may or may not have
- * reached the backend. The record therefore survives, marked `uncertain`, and
- * the only sanctioned next step is `session reconcile`.
- */
-async function markUncertain(context: SessionContext, pending: PendingOperation): Promise<void> {
-  await mutate(context.projectKey, context.runId, (state) =>
-    withPendingOperation(state, { ...pending, state: "uncertain" }),
-  );
-}
-
 /** §M-CLI-SESSION — Report a failed backend call and point at the only way forward. */
 function failUncertain(pending: PendingOperation, error: unknown): never {
   fail("backend_call_failed", redact((error as Error).message), {
@@ -247,25 +183,6 @@ async function assertReplaceable(
 }
 
 /**
- * §M-CLI-SESSION — Record the pane a spawn just created, mid-operation.
- *
- * The write-ahead record is written before the whole spawn, but a spawn is two
- * backend calls and the pane id only exists after the first. Folding it into
- * the probe as soon as it is known is what lets `reconcile` later distinguish
- * "nothing was created" from "a pane exists and an agent may be starting in it".
- */
-async function recordPane(
-  context: SessionContext,
-  pending: PendingOperation,
-  paneId: string,
-): Promise<PendingOperation> {
-  const probe = { ...(JSON.parse(pending.probe ?? "{}") as Record<string, unknown>), paneId };
-  const updated: PendingOperation = { ...pending, probe: JSON.stringify(probe) };
-  await mutate(context.projectKey, context.runId, (state) => withPendingOperation(state, updated));
-  return updated;
-}
-
-/**
  * §M-CLI-SESSION — Start a worker session for a role.
  *
  * The initial prompt is delivered by a separate `session send`, mirroring the
@@ -285,7 +202,7 @@ export async function commandSpawn(args: ParsedArgs): Promise<void> {
   const cwd = optionalFlag(args, "worker-cwd") ?? context.repoDir;
   const request = { operationId, role, model, prompt: "", cwd };
 
-  let pending = await prepare(context, {
+  let pending = await prepare(context.projectKey, context.runId, {
     operationId,
     kind: "spawn",
     requestDigest: digestOf({ kind: "spawn", role, model, cwd }),
@@ -295,10 +212,10 @@ export async function commandSpawn(args: ParsedArgs): Promise<void> {
   let session: SessionRef;
   try {
     session = await context.adapter.spawn(request, async (paneId) => {
-      pending = await recordPane(context, pending, paneId);
+      pending = await recordPane(context.projectKey, context.runId, pending, paneId);
     });
   } catch (error) {
-    await markUncertain(context, pending);
+    await markUncertain(context.projectKey, context.runId, pending);
     failUncertain(pending, error);
   }
 
@@ -347,7 +264,7 @@ export async function commandSend(args: ParsedArgs): Promise<void> {
   const redacted = message !== raw;
 
   const operationId = randomUUID();
-  const pending = await prepare(context, {
+  const pending = await prepare(context.projectKey, context.runId, {
     operationId,
     kind: "send",
     sessionId: session.sessionId,
@@ -359,7 +276,7 @@ export async function commandSend(args: ParsedArgs): Promise<void> {
   try {
     delivery = await context.adapter.send(session, operationId, message);
   } catch (error) {
-    await markUncertain(context, pending);
+    await markUncertain(context.projectKey, context.runId, pending);
     failUncertain(pending, error);
   }
 
@@ -435,7 +352,7 @@ export async function commandWait(args: ParsedArgs): Promise<void> {
   const terminal = boolFlag(args, "terminal");
 
   const operationId = randomUUID();
-  const pending = await prepare(context, {
+  const pending = await prepare(context.projectKey, context.runId, {
     operationId,
     kind: "wait",
     sessionId: session.sessionId,
@@ -448,7 +365,7 @@ export async function commandWait(args: ParsedArgs): Promise<void> {
   try {
     result = await context.adapter.wait(session, { terminal, deadlineAt });
   } catch (error) {
-    await markUncertain(context, pending);
+    await markUncertain(context.projectKey, context.runId, pending);
     failUncertain(pending, error);
   }
 
@@ -522,7 +439,7 @@ export async function commandStop(args: ParsedArgs): Promise<void> {
   }
 
   const operationId = randomUUID();
-  const pending = await prepare(context, {
+  const pending = await prepare(context.projectKey, context.runId, {
     operationId,
     kind: "stop",
     sessionId: session.sessionId,
@@ -534,7 +451,7 @@ export async function commandStop(args: ParsedArgs): Promise<void> {
   try {
     outcome = await context.adapter.stop(session);
   } catch (error) {
-    await markUncertain(context, pending);
+    await markUncertain(context.projectKey, context.runId, pending);
     failUncertain(pending, error);
   }
 
@@ -598,27 +515,14 @@ export async function commandReconcile(args: ParsedArgs): Promise<void> {
     return;
   }
 
-  let recovered: SessionRef | undefined;
-  if (result.effect === "applied" && pending.kind === "spawn") {
-    const probe = JSON.parse(pending.probe ?? "{}") as { agentName?: string };
-    const role = roleOfPendingSpawn(context.adapter, pending);
-    if (probe.agentName && role) {
-      recovered = await context.adapter.findSession(
-        probe.agentName,
-        role,
-        (context.state.sessionGeneration[role] ?? 0) + 1,
-      );
-    }
-  }
-
-  await mutate(context.projectKey, context.runId, (state) => {
-    const withRecovered = recovered ? withSession(state, recovered) : state;
-    if (result.effect === "applied" && pending.kind === "stop") {
-      const role = pending.sessionId ? roleOfSession(state, pending.sessionId) : undefined;
-      if (role) return clearPendingOperation(withoutSession(withRecovered, role));
-    }
-    return clearPendingOperation(withRecovered);
-  });
+  const recovered = await settleReconciled(
+    context.projectKey,
+    context.runId,
+    context.adapter,
+    context.state,
+    pending,
+    result,
+  );
 
   emit({ runId: context.runId, ...result, recoveredSession: recovered ?? null });
 }

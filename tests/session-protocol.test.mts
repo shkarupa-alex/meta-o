@@ -590,3 +590,104 @@ test("resume confirms a live worker and refuses to pretend about a dead one", ()
     it.dispose();
   }
 });
+
+/**
+ * §M-TEST-SESSION — Put a run in front of a watchdog that must replace its orchestrator.
+ *
+ * The handle names an agent and a pane the backend does not have, which is what
+ * `stopped` looks like from the outside — the terminal status that makes a
+ * replacement the right answer.
+ */
+function stalledRun(it: Fixture): void {
+  ok(
+    cli(
+      [
+        "run",
+        "set-session",
+        "--run-id",
+        it.runId,
+        "--role",
+        "orchestrator",
+        "--session-id",
+        "agent=mo-ghost;pane=%99;owned=1",
+      ],
+      it.context,
+    ),
+    "register a dead orchestrator",
+  );
+  ok(cli(["watchdog", "enable"], it.context), "watchdog enable");
+  writeFileSync(it.context.fakeState, JSON.stringify({ agents: {}, panes: {}, nextPane: 1 }));
+}
+
+/** §M-TEST-SESSION — The run's durable pending operation, if it has one. */
+function pendingOf(it: Fixture): { kind: string; state: string; probe?: string } | undefined {
+  const shown = ok(cli(["run", "show", "--run-id", it.runId], it.context), "run show");
+  return shown.json["pendingOperation"] as { kind: string; state: string; probe?: string } | undefined;
+}
+
+test("the watchdog writes its replacement spawn down before it makes one", () => {
+  // The watchdog was the one caller of the backend that did not write ahead:
+  // the protocol lived inside the session commands as private helpers, so the
+  // component most likely to be killed by whatever killed the orchestrator
+  // called `spawn` with nothing recorded. A crash between the call and the
+  // state write left an agent that `run cleanup` could not name, and the next
+  // tick saw the same terminal orchestrator and started another.
+  const it = fixture();
+  try {
+    stalledRun(it);
+
+    // The pane is created, then `agent start` fails: the ambiguous case, and
+    // the one where a lost record costs a live agent.
+    const ran = cli(["watchdog", "run", "--once"], {
+      ...it.context,
+      env: { FAKE_HERDR_FAIL: "agent start" },
+    });
+    assert.equal(ran.code, 0, "a failed spawn is a logged watchdog outcome, not a crash");
+
+    const pending = pendingOf(it);
+    assert.ok(pending, "the intent survives the failure that made it ambiguous");
+    assert.equal(pending.kind, "spawn");
+    assert.equal(pending.state, "uncertain", "reconcile is the only exit");
+    assert.match(
+      String(pending.probe),
+      /"paneId":"%\d+"/,
+      "the pane created before the failure is evidence, and belongs in the record",
+    );
+  } finally {
+    it.dispose();
+  }
+});
+
+test("the watchdog reconciles an interrupted operation instead of only reporting it", () => {
+  // Reconciliation used to be observation: the watchdog asked the adapter,
+  // logged the answer and left the record where it was. Since no spawn may
+  // start while an operation is in flight, a run whose orchestrator died
+  // mid-spawn could never be recovered — every tick re-asked the same question.
+  const it = fixture();
+  try {
+    stalledRun(it);
+    ok(
+      cli(["run", "pending", "--run-id", it.runId], {
+        ...it.context,
+        stdin: JSON.stringify({
+          operationId: "44444444-4444-4444-8444-444444444444",
+          kind: "spawn",
+          requestDigest: "deadbeef",
+          state: "prepared",
+          probe: JSON.stringify({ agentName: "mo-executor-abcdef12" }),
+        }),
+      }),
+      "an interrupted spawn from the dead orchestrator",
+    );
+
+    ok(cli(["watchdog", "run", "--once"], it.context), "watchdog run");
+
+    assert.equal(
+      pendingOf(it),
+      undefined,
+      "a spawn the backend never applied is settled, so recovery may proceed",
+    );
+  } finally {
+    it.dispose();
+  }
+});
