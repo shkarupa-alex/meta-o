@@ -79,7 +79,7 @@ meta-o run route --run-id <id>   →   act on routing.action   →   repeat
 | `await_selection_plan` | Dispatch `e2eTester` with the `test-e2e` skill in *planning* mode; `meta-o e2e seal-plan` then `meta-o run set-plan` |
 | `run_qc` | `--phase LOCAL_QC`, run QC in an isolated worktree (below), then `meta-o qc evaluate` and `meta-o run record-gate --gate qc --status passed` |
 | after an E2E fix | `--phase LOCAL_QC`, then straight back to `--phase E2E_STABILIZATION`; do **not** route through `SMOKE_PREFLIGHT`/`REVIEW_STABILIZATION`, which would restart the review loop the E2E loop exists to hold off |
-| `run_smoke` | `--phase SMOKE_PREFLIGHT`; the E2E tester runs build/boot/health only, then `run record-gate --gate smoke` |
+| `run_smoke` | `--phase SMOKE_PREFLIGHT`; the E2E tester runs build/boot/health only, through `meta-o worktree run --run-id <id> --label smoke -- <command>`, then `run record-gate --gate smoke` |
 | `run_reviews` | `--phase REVIEW_STABILIZATION`; dispatch **both** reviewers on the same snapshot, independently; record each by piping its `ReviewResult` JSON into `meta-o run record-review --run-id <id>` (the reviewer slot comes from the payload, not a flag) |
 | `fix_review_findings` | Hand the whole batch of open findings to the executor at once |
 | `run_selected_e2e` | `--phase E2E_STABILIZATION`; the E2E tester runs the full selected set through `meta-o worktree run --run-id <id> --label e2e --rev <candidate> -- <suite command>`, then you record the result with `meta-o run record-e2e` (which needs that receipt, and needs the result to say which `environment` it ran against) |
@@ -101,6 +101,9 @@ invalid rather than green:
 meta-o worktree run --run-id <id> --label qc make qc
 ```
 
+Anything the command needs for itself goes after a bare `--`:
+`meta-o worktree run --run-id <id> --label e2e -- pytest --maxfail=1`.
+
 That single command creates a detached worktree at the candidate commit, exports
 `META_O_SNAPSHOT_DIGEST` and `META_O_QC_RESULT` (a path inside the run's own
 external directory, so writing the result never dirties the repository), runs the
@@ -118,12 +121,16 @@ meta-o run record-gate --run-id <id> --gate qc --status passed
 declared gate is missing, skipped or computed for a different snapshot. An exit
 code alone is never evidence.
 
-`record-gate` takes a pass only for `qc` and `smoke`. A reviewer's pass goes in
-through `meta-o run record-review` and the E2E set's through
-`meta-o run record-e2e`, because those two carry the findings and the plan
-judgement that make the verdict mean anything; `record-gate --status passed`
-would record the word without them. Failures and invalidations may still be
-recorded for any gate.
+`record-gate` takes a pass only for `qc` and `smoke`, and not on your word:
+recording `qc --status passed` recomputes the verdict from the project's
+manifest and the result `make qc` itself wrote, and refuses without the
+`worktree run --label qc` receipt that proves the gate judged the candidate
+rather than someone's working tree. The smoke gate needs the same receipt under
+`--label smoke`. A reviewer's pass goes in through `meta-o run record-review`
+and the E2E set's through `meta-o run record-e2e`, because those two carry the
+findings and the plan judgement that make the verdict mean anything. Failures
+and invalidations may still be recorded for any gate, with no ceremony: they
+take nothing away.
 
 ## Dispatching a worker
 

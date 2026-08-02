@@ -18,7 +18,9 @@ the Python starter profile's own fixtures.
 | A mutating gate is invalid | `a gate that rewrites the content it judges is invalid, not green`; `a mutating gate is invalid` (Python) |
 | Two reviews of different snapshots never produce a joint PASS | `two reviews of different snapshots never produce a joint pass` |
 | An E2E fix does not restart review before the E2E loop stabilises | `an E2E fix does not pull the run back into a review round`, `once E2E is green on the new snapshot the review loop resumes` |
-| The final snapshot carries four attestations: QC, Reviewer A, Reviewer B, E2E | `one snapshot with four attestations completes`, `a run walks from start to COMPLETE only with four attestations on one snapshot` |
+| The final snapshot carries four attestations: QC, Reviewer A, Reviewer B, E2E | `one snapshot with four attestations completes`, `a run walks from start to COMPLETE only with four attestations on one snapshot`, `a QC pass is recomputed from the result, not taken on the caller's word` |
+| A rebase or squash of an identical tree invalidates nothing | `an amend that preserves the tree does not invalidate a single gate`, `a plan sealed for other content cannot prove completion` |
+| Every gate runs in a fresh detached worktree | `a gate command may carry its own flags after a bare --`, `an E2E result is refused unless a worktree receipt proves it ran isolated`, `a gate that rewrites the content it judges is invalid, not green` |
 | After `COMPLETE` no external run artefacts remain and project settings do | `cleanup removes the run directory but keeps project settings` |
 | Cleanup stops the run's remaining worker sessions before deleting anything | `cleanup removes the run directory but keeps project settings` (the stop outcomes are reported in its output) |
 | `PAUSED_MODEL_UNAVAILABLE` exits on resume **or** a newly confirmed ModelSet | `a run paused on an unavailable model can be given a new ModelSet` |
@@ -46,6 +48,8 @@ the Python starter profile's own fixtures.
 | Two parallel feature branches do not block each other | `two runs of one project take their locks independently` |
 | A fresh orchestrator recovers a run without a narrative handoff | `a fresh orchestrator recovers a run from state.json alone` |
 | A backend capability regression stops preflight | `a backend capability regression stops preflight` |
+| An orchestrator can register the session that owns the run | `an orchestrator can register itself the way the skill tells it to` |
+| Only the herdr adapter ships, and a project cannot be configured onto one that does not exist | Refused at `project set-settings`, and by every session command (`unsupported_backend`). **Scope gap, disclosed:** §20's minimal skill set names an Omnigent adapter skill; this repository implements Herdr only, as the first backend. |
 | The suite exercises concurrent completions | `two turns issued together are each proved to have landed in their own session`, `a backend that hands one session's turn to another fails the concurrency check`, `a turn that leaves no trace at all is reported, not counted as concurrency` |
 | The suite exercises reboot recovery | **Not automated**, and reported as such: restarting the backend server from inside a session it hosts cannot be done safely, so the check is `degraded` with instructions rather than a silent pass. |
 
@@ -61,6 +65,8 @@ the Python starter profile's own fixtures.
 | Writing only `last_run` does not change the projection digest | `writing only last_run leaves the digest unchanged`, `a metadata commit writing only last_run passes the guard` |
 | The E2E tester works in a fresh detached worktree | `an E2E result is refused unless a worktree receipt proves it ran isolated` |
 | A plan covers the impact it declares | `a plan that ignores the impact it declared is rejected`, `an impacted tag pulls in every scenario carrying it` |
+| Production needs a written contract as well as consent | `production needs a written contract, not only the user's consent` |
+| A reviewer may not withdraw a blocker by re-reviewing | `a second review may not erase the blocker the first one raised` |
 | E2E failures stay visible until the next run | `closed findings are pruned and only blocking ones hold up completion`, `an E2E result that skips a selected scenario does not pass` |
 | One final digest has PASS from QC, A, B and E2E | `one snapshot with four attestations completes` |
 
@@ -79,14 +85,19 @@ starter profile in `templates/python/tests/test_quality_gates.py`.
 | A new cycle and an unknown boundary are blocked | `a relative import cycle is found`, `a self import is a cycle of one`, `an unknown first party boundary is blocked`, `freezing the baseline does not swallow a contract violation` (Python) |
 | Threshold and baseline weakening is detected | `raising a threshold, dropping a root or adding an exemption is weakening`, `a re-frozen or newly frozen baseline entry is weakening`, `relaxing a threshold, a ratchet or a frozen baseline needs a user decision` |
 | A missing manifest result never yields a false PASS | `a missing QC result is never a pass`, `a declared gate that produced no result fails the run` |
-| A change to the E2E catalog after attestation is detected | `the metadata guard rejects a catalog change` (Python), `a metadata commit that edits the catalog is rejected` |
+| A change to the E2E catalog after attestation is detected | `the metadata guard rejects a catalog change` (Python), `a metadata commit that edits the catalog is rejected`, `a receipt for a scenario the run never executed is refused` |
+| A gate that judged nothing fails instead of passing | `a gate that discovered nothing fails` (Python) |
+| A gate that rewrites an already-dirty file is caught | `a gate that rewrites an already-dirty file is invalid` (Python) |
+| A `§M` cites its nearest `§A` wherever it is written | `a module anchor written as a heading must cite architecture` (Python) |
+| A feature archive is found even with no anchors in it | `a feature archive outside the architecture directory is found` (Python) |
+| A first-party import that resolves to nothing is blocked | `a renamed module still imported by name is blocked`, `a symbol imported from a real module is not a missing module` (Python) |
 
 ## §50 — Watchdog
 
 | Acceptance item | Proven by |
 |---|---|
 | A fake clock proves poll, backoff and reset | `the loop honours a bounded tick count with a fake clock`, `backoff grows exponentially and resets on observed progress`, `backoff is capped by the configured maximum` |
-| One completion event wakes the orchestrator at most once | `one settled event wakes the orchestrator at most once` |
+| One completion event wakes the orchestrator at most once | `one settled event wakes the orchestrator at most once`, `a wake is recorded before it is sent, so a crash cannot deliver it twice`, `a wake that observably failed gives its record back` |
 | A watchdog crash between observing and acting creates no duplicate worker action | `an action is dropped when the run moved on while the watchdog was deciding`, `an unprovable pending operation is surfaced, never resent` |
 | A live orchestrator is never replaced | `a live orchestrator is never replaced, only woken`, `an unknown orchestrator status never produces a replacement` |
 | A terminal orchestrator gets exactly one new generation | `a dead orchestrator receives exactly one replacement generation`, `a replacement orchestrator is told the generation it was given` |
@@ -126,3 +137,13 @@ now has a test that fails if the hole reopens. They live in
 | A reviewer reads the other reviewer's findings out of `run show` | `a reviewer's bounded view withholds the other reviewer's findings by name` |
 | A run pinned to a model the user has lost can only be cancelled | `a run paused on an unavailable model can be given a new ModelSet` |
 | A project that switched the watchdog off is watched anyway | `a project that switched the watchdog off is skipped, and says so` |
+| The `qc` attestation is recorded on the caller's word alone | `a QC pass is recomputed from the result, not taken on the caller's word` |
+| A second `record-review` erases the blocker the first one raised | `a second review may not erase the blocker the first one raised` |
+| A metadata commit invents a `last_run` for a scenario nobody ran | `a receipt for a scenario the run never executed is refused` |
+| An amend or rebase of an identical tree forces both reviews and the whole E2E set to re-run | `an amend that preserves the tree does not invalidate a single gate` |
+| The only isolated-gate command cannot run a gate that takes a flag | `a gate command may carry its own flags after a bare --` |
+| Following the orchestrator skill literally never registers the orchestrator | `an orchestrator can register itself the way the skill tells it to` |
+| A checkout under a `build`, `dist` or `venv` path makes four Python gates attest nothing | `a gate that discovered nothing fails` (Python) |
+| A formatter rewriting an already-dirty file passes the non-mutation check | `a gate that rewrites an already-dirty file is invalid` (Python) |
+| `update.sh --skip-suite` runs the suite it was told to skip | `update.sh --skip-suite actually skips the suite` |
+| A watchdog crash between the wake and its record delivers the prompt twice | `a wake is recorded before it is sent, so a crash cannot deliver it twice` |

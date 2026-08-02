@@ -63,6 +63,7 @@ meta-o run show  --run-id <id> --as-role reviewerPrimary  # only what that role 
 meta-o session list --run-id <id>      # which workers exist, and any in-flight effect
 meta-o qc weakening --run-id <id>      # did anything about "passing" get easier?
 meta-o worktree run --run-id <id> --label qc make qc   # run a gate on the candidate alone
+meta-o worktree run --run-id <id> --label e2e -- pytest --maxfail=1  # …flags after a bare --
 meta-o worktree run --run-id <id> --label e2e ./run-e2e  # …and leave the receipt record-e2e needs
 meta-o help                            # the real command surface
 ```

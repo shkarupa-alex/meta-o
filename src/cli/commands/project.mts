@@ -10,6 +10,7 @@
 import { resolveProjectIdentity } from "../../core/project-key.mjs";
 import { ensureProject, readSettings, writeSettings } from "../../core/state-store.mjs";
 import { validateModelSet, describeModelSet } from "../../core/model-set.mjs";
+import { requireSupportedBackend } from "./backend.mjs";
 import { projectDir } from "../../core/paths.mjs";
 import type { ProjectSettings } from "../../core/types.mjs";
 import { emit, fail, optionalFlag, readStdinJson, type ParsedArgs } from "../args.mjs";
@@ -74,6 +75,11 @@ export async function commandSetSettings(args: ParsedArgs): Promise<void> {
   if (payload.backend !== "herdr" && payload.backend !== "omnigent") {
     fail("invalid_backend", `backend must be herdr or omnigent, got ${String(payload.backend)}`);
   }
+  // `omnigent` is a legal backend in the contract and has no adapter, so
+  // storing it produced a project every session and backend command refuses —
+  // a setting whose only effect is to make the project unrunnable. Refused at
+  // the point of writing rather than at every later use.
+  requireSupportedBackend(payload.backend, undefined);
 
   ensureProject(identity.projectKey, identity.canonicalPath);
   const stored = writeSettings(identity.projectKey, {
