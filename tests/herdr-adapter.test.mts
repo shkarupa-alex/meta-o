@@ -34,6 +34,8 @@ interface FakeHerdr {
   agents: Map<string, HerdrAgentInfo>;
   panes: Set<string>;
   paneText: Map<string, string>;
+  /** How many `agent start` calls answer `agent_pane_busy` before one succeeds. */
+  busyStarts: number;
 }
 
 /** §M-TEST-HERDR — Build an agent info record with defaults. */
@@ -70,6 +72,7 @@ function fakeHerdr(seed: Partial<FakeHerdr> = {}): FakeHerdr {
   const agents = seed.agents ?? new Map<string, HerdrAgentInfo>();
   const panes = seed.panes ?? new Set<string>();
   const paneText = seed.paneText ?? new Map<string, string>();
+  let busyStarts = seed.busyStarts ?? 0;
   let nextPane = 1;
 
   const exec = async (args: string[]): Promise<HerdrExecResult> => {
@@ -84,6 +87,12 @@ function fakeHerdr(seed: Partial<FakeHerdr> = {}): FakeHerdr {
     }
 
     if (group === "agent" && verb === "start") {
+      // A pane returned by `pane split` is not an available shell yet, and the
+      // real CLI refuses up front rather than waiting for the prompt.
+      if (busyStarts > 0) {
+        busyStarts -= 1;
+        return serverError("agent_pane_busy", `agent target pane ${args[args.indexOf("--pane") + 1]} is not an available shell`);
+      }
       const paneIndex = args.indexOf("--pane");
       const pane = args[paneIndex + 1]!;
       agents.set(target!, agentInfo({ pane_id: pane, name: target!, agent_status: "idle" }));
@@ -103,15 +112,10 @@ function fakeHerdr(seed: Partial<FakeHerdr> = {}): FakeHerdr {
     if (group === "agent" && verb === "read") {
       const info = agents.get(target!);
       if (!info) return serverError("agent_not_found", "no such agent");
-      return ok({
-        type: "pane_read",
-        read: {
-          pane_id: info.pane_id,
-          text: paneText.get(info.pane_id) ?? "",
-          revision: info.revision,
-          truncated: false,
-        },
-      });
+      // Raw terminal text with no envelope and no revision, exactly as the real
+      // CLI prints it: `--format text|ansi` chooses how the pane is rendered,
+      // not whether the reply is JSON.
+      return { code: 0, stdout: paneText.get(info.pane_id) ?? "", stderr: "" };
     }
 
     if (group === "agent" && verb === "wait") {
@@ -138,7 +142,7 @@ function fakeHerdr(seed: Partial<FakeHerdr> = {}): FakeHerdr {
     return serverError("unhandled", `fake herdr does not implement ${args.join(" ")}`);
   };
 
-  return { exec, calls, agents, panes, paneText };
+  return { exec, calls, agents, panes, paneText, busyStarts };
 }
 
 /** §M-TEST-HERDR — Model reference used across the tests. */
@@ -426,6 +430,57 @@ test("a prepared probe captures the pre-send sequence and marker", async () => {
   );
   assert.equal(probe.seq, 11);
   assert.equal(probe.marker, "Review the diff");
+});
+
+test("a spawn waits for the split pane to become a shell instead of losing the race", async () => {
+  // `pane split` returns before the pane reaches its interactive prompt, and
+  // `agent start` refuses up front rather than waiting — its `--timeout` covers
+  // agent readiness, not the shell's. Issued back to back the two lose the race
+  // reliably, which graded `spawn` unsupported and blocked the whole backend.
+  const herdr = fakeHerdr({ busyStarts: 3 });
+  const clock = new FakeClock(0);
+  const adapter = new HerdrAdapter({ exec: herdr.exec, clock });
+
+  const session = await adapter.spawn({
+    operationId: "op-1",
+    role: "executor",
+    model: MODEL,
+    prompt: "",
+    cwd: "/repo",
+  });
+
+  assert.equal(decodeSessionId(session.sessionId).ownedPane, true);
+  assert.equal(herdr.calls.filter((c) => c[0] === "agent" && c[1] === "start").length, 4);
+  assert.equal(herdr.panes.size, 1, "and it did not split a fresh pane per attempt");
+});
+
+test("a spawn that never gets a shell leaves no pane behind", async () => {
+  const herdr = fakeHerdr({ busyStarts: 1000 });
+  const clock = new FakeClock(0);
+  const adapter = new HerdrAdapter({ exec: herdr.exec, clock, paneReadyTimeoutMs: 5_000 });
+
+  await assert.rejects(
+    adapter.spawn({ operationId: "op-1", role: "executor", model: MODEL, prompt: "", cwd: "/repo" }),
+    /agent_pane_busy/,
+  );
+  // No agent was ever started and no prompt was ever sent, so the empty pane is
+  // pure litter — and the capability suite provokes this deliberately.
+  assert.equal(herdr.panes.size, 0);
+});
+
+test("a spawn whose agent start fails for any other reason also cleans up", async () => {
+  const herdr = fakeHerdr();
+  const failing = async (args: string[], timeoutMs: number) =>
+    args[0] === "agent" && args[1] === "start"
+      ? serverError("agent_kind_unsupported", "no such agent kind")
+      : herdr.exec(args, timeoutMs);
+  const adapter = new HerdrAdapter({ exec: failing });
+
+  await assert.rejects(
+    adapter.spawn({ operationId: "op-1", role: "executor", model: MODEL, prompt: "", cwd: "/repo" }),
+    /agent_kind_unsupported/,
+  );
+  assert.equal(herdr.panes.size, 0);
 });
 
 test("stop closes only panes the adapter created", async () => {

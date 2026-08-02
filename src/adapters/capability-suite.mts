@@ -311,7 +311,7 @@ async function lifecycleChecks(
     grade: "degraded",
     detail:
       "restarting the backend server cannot be automated safely from inside a managed session; " +
-      "run `meta-o capability-suite --full` again after a manual server restart to prove it",
+      "run `meta-o capability-suite run --full` again after a manual server restart to prove it",
     durationMs: 0,
     completionCritical: false,
   });

@@ -29,6 +29,7 @@ import {
 } from "./herdr-protocol.mjs";
 import { type Clock, systemClock } from "../core/clock.mjs";
 import { buildCapabilityReport, entry } from "./adapter.mjs";
+import { deliveryEffect } from "./herdr-evidence.mjs";
 import type {
   AdapterCapabilities,
   CapabilityMatrixEntry,
@@ -70,6 +71,7 @@ export interface HerdrAdapterOptions {
   clock?: Clock;
   defaultTimeoutMs?: number;
   startupTimeoutMs?: number;
+  paneReadyTimeoutMs?: number;
   readLines?: number;
   agentNamePrefix?: string;
   modelArgs?: (model: ModelRef) => string[];
@@ -118,6 +120,58 @@ const REFUSAL_CODES = new Set([
   "cli_syntax_error",
 ]);
 
+/** §M-HERDR — Everything `startAgent` needs from the adapter that called it. */
+interface StartAgentRequest {
+  call: (args: string[], timeoutMs: number) => Promise<Record<string, unknown>>;
+  clock: Clock;
+  agentName: string;
+  paneId: string;
+  model: ModelRef;
+  modelArgs: (model: ModelRef) => string[];
+  startupTimeoutMs: number;
+  paneReadyTimeoutMs: number;
+}
+
+/**
+ * §M-HERDR — Start an agent in a pane that may not have reached its prompt yet.
+ *
+ * A pane returned by `pane split` is not an available shell for a moment, and
+ * `agent start` checks that up front rather than waiting — its `--timeout`
+ * covers *agent* readiness, not the shell's. Issued back to back the two lose
+ * the race reliably enough that the capability suite graded `spawn` unsupported
+ * and refused the backend outright.
+ *
+ * Retrying is not a blind resend: `agent_pane_busy` is the backend refusing
+ * before it does anything, so the call is proven not to have taken effect. Any
+ * other error is passed straight out.
+ */
+async function startAgent(request: StartAgentRequest): Promise<void> {
+  const args = [
+    "agent",
+    "start",
+    request.agentName,
+    "--kind",
+    request.model.route,
+    "--pane",
+    request.paneId,
+    "--timeout",
+    String(request.startupTimeoutMs),
+    "--",
+    ...request.modelArgs(request.model),
+  ];
+  const deadline = request.clock.now() + request.paneReadyTimeoutMs;
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await request.call(args, request.startupTimeoutMs + 15_000);
+      return;
+    } catch (error) {
+      const busy = error instanceof HerdrCommandError && error.code === "agent_pane_busy";
+      if (!busy || request.clock.now() >= deadline) throw error;
+      await request.clock.sleep(Math.min(250 * 2 ** attempt, 2_000));
+    }
+  }
+}
+
 /**
  * §M-HERDR — The Herdr backend adapter.
  *
@@ -138,6 +192,9 @@ export class HerdrAdapter implements SessionAdapter {
   /** §M-HERDR — Separate, longer budget for agent startup, which is legitimately slow. */
   private readonly startupTimeoutMs: number;
 
+  /** §M-HERDR — How long a freshly split pane may take to reach its shell prompt. */
+  private readonly paneReadyTimeoutMs: number;
+
   /** §M-HERDR — How much pane tail to read; enough for evidence, bounded against a flood. */
   private readonly readLines: number;
 
@@ -156,6 +213,7 @@ export class HerdrAdapter implements SessionAdapter {
     this.clock = options.clock ?? systemClock;
     this.defaultTimeoutMs = options.defaultTimeoutMs ?? 120_000;
     this.startupTimeoutMs = options.startupTimeoutMs ?? 60_000;
+    this.paneReadyTimeoutMs = options.paneReadyTimeoutMs ?? 15_000;
     this.readLines = options.readLines ?? 400;
     this.prefix = options.agentNamePrefix ?? "mo-";
     this.modelArgs = options.modelArgs ?? defaultModelArgs;
@@ -193,6 +251,24 @@ export class HerdrAdapter implements SessionAdapter {
     } catch (error) {
       throw new HerdrCommandError(args, "unparsable_response", 0, (error as Error).message);
     }
+  }
+
+  /**
+   * §M-HERDR — Run one CLI command that answers with terminal text, not JSON.
+   *
+   * `agent read` is the one subcommand that prints the pane instead of an
+   * envelope — `--format text|ansi` selects how the *terminal* is rendered, not
+   * how the CLI replies. Sending it through `call` made every read throw
+   * `unparsable_response`, which the capability suite then graded as a lost
+   * `status-read` and refused the whole backend on.
+   */
+  private async callText(args: string[], timeoutMs?: number): Promise<string> {
+    const result = await this.exec(args, timeoutMs ?? this.defaultTimeoutMs);
+    if (result.code !== 0) {
+      const message = result.stderr.trim() || result.stdout.trim() || `exit ${result.code}`;
+      throw new HerdrCommandError(args, result.code === 2 ? "cli_syntax_error" : "herdr_error", result.code, message);
+    }
+    return result.stdout;
   }
 
   /** §M-HERDR — Fetch one agent's info, or `undefined` when no such live agent exists. */
@@ -321,22 +397,26 @@ export class HerdrAdapter implements SessionAdapter {
     if (!paneId) throw new Error("herdr pane split did not return a pane id");
     if (onPaneCreated) await onPaneCreated(paneId);
 
-    await this.call(
-      [
-        "agent",
-        "start",
+    try {
+      await startAgent({
+        call: (args, timeoutMs) => this.call(args, timeoutMs),
+        clock: this.clock,
         agentName,
-        "--kind",
-        request.model.route,
-        "--pane",
         paneId,
-        "--timeout",
-        String(this.startupTimeoutMs),
-        "--",
-        ...this.modelArgs(request.model),
-      ],
-      this.startupTimeoutMs + 15_000,
-    );
+        model: request.model,
+        modelArgs: this.modelArgs,
+        startupTimeoutMs: this.startupTimeoutMs,
+        paneReadyTimeoutMs: this.paneReadyTimeoutMs,
+      });
+    } catch (error) {
+      // The pane exists and the agent does not, so nothing else will ever claim
+      // it. Left open, every failed spawn — and the capability suite makes
+      // several deliberately — deposited a dead shell in the user's workspace
+      // until it ran out of room to split and started failing for that reason
+      // instead. Closing it here cannot lose work: no agent was ever started.
+      await this.call(["pane", "close", paneId], 15_000).catch(() => undefined);
+      throw error;
+    }
 
     return {
       backend: "herdr",
@@ -446,7 +526,7 @@ export class HerdrAdapter implements SessionAdapter {
    */
   async read(session: SessionRef, cursor?: string): Promise<SessionOutput> {
     const { agentName } = decodeSessionId(session.sessionId);
-    const result = await this.call([
+    const text = await this.callText([
       "agent",
       "read",
       agentName,
@@ -457,8 +537,10 @@ export class HerdrAdapter implements SessionAdapter {
       "--format",
       "text",
     ]);
-    const read = result["read"] as { text?: string; revision?: number } | undefined;
-    const revision = read?.revision ?? 0;
+    // The text form carries no revision, so the cursor comes from `agent get`,
+    // which is the same monotonic number the pane reports.
+    const revision = (await this.agentInfo(agentName))?.revision ?? 0;
+    const read = { text };
     const status = await this.status(session);
     const unchanged = cursor !== undefined && cursor === String(revision);
     return {
@@ -557,41 +639,15 @@ export class HerdrAdapter implements SessionAdapter {
     }
 
     if (!info) return { operationId: operation.operationId, effect: "unknown" };
-
-    // A moved `state_change_seq` is not evidence that *this* prompt landed. It
-    // advances on any lifecycle change, so a worker finishing the turn it was
-    // already running looked exactly like a delivery — and the instruction that
-    // never arrived was marked applied and dropped. The marker is the only
-    // thing that names this operation; where one exists, it decides.
-    const advanced = probe.seq !== undefined && (info.state_change_seq ?? 0) > probe.seq;
-    if (advanced && !probe.marker) {
-      return { operationId: operation.operationId, effect: "unknown" };
-    }
-
-    if (probe.marker) {
-      try {
-        const output = await this.read({
-          backend: "herdr",
-          sessionId: encodeSessionId(agentName, info.pane_id, false),
-          role: "executor",
-          generation: 1,
-        });
-        if (output.text.includes(probe.marker)) {
-          return { operationId: operation.operationId, effect: "applied" };
-        }
-        // A settled worker whose visible output never mentions the marker did
-        // not receive it — unless the session moved on since the probe, in
-        // which case the marker may simply have scrolled out of the tail. That
-        // is ambiguous, and ambiguous is `unknown`.
-        if (info.agent_status === "idle" || info.agent_status === "done") {
-          return { operationId: operation.operationId, effect: advanced ? "unknown" : "not_applied" };
-        }
-      } catch {
-        return { operationId: operation.operationId, effect: "unknown" };
-      }
-    }
-
-    return { operationId: operation.operationId, effect: "unknown" };
+    const effect = await deliveryEffect(info, probe, (paneId) =>
+      this.read({
+        backend: "herdr",
+        sessionId: encodeSessionId(agentName, paneId, false),
+        role: "executor",
+        generation: 1,
+      }),
+    );
+    return { operationId: operation.operationId, effect };
   }
 
   /**

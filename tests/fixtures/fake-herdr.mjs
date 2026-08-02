@@ -129,7 +129,11 @@ if (group === "agent" && verb === "prompt") {
 if (group === "agent" && verb === "read") {
   const agent = state.agents[target];
   if (!agent) error("agent_not_found", `no agent named ${target}`);
-  ok({ read: { text: state.panes[agent.pane_id]?.text ?? "", revision: agent.revision } });
+  // Plain terminal text, no JSON envelope and no revision — this is what the
+  // real `herdr agent read` prints, and the fake said otherwise for long
+  // enough that the adapter shipped a read path that always threw against it.
+  process.stdout.write(state.panes[agent.pane_id]?.text ?? "");
+  process.exit(0);
 }
 
 if (group === "agent" && verb === "wait") {

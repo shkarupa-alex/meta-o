@@ -348,15 +348,37 @@ test("a spawn that never created anything reconciles to not_applied", () => {
   }
 });
 
-test("an unprovable effect pauses the run instead of guessing", () => {
+test("a failed spawn that cleaned up after itself is provably not applied", () => {
   const it = fixture();
   try {
-    // The pane is created and `agent start` then fails: a pane now exists with
-    // no agent in it, which is genuinely ambiguous — the agent may be racing to
-    // register — so the run must pause rather than risk a second worker.
+    // `agent start` fails on a pane that was just split. No agent exists and no
+    // prompt was ever sent, so closing the pane cannot lose work — and it turns
+    // a state nobody could interpret into one reconcile can prove.
     const failed = cli(["session", "spawn", "--run-id", it.runId, "--role", "executor"], {
       ...it.context,
       env: { FAKE_HERDR_FAIL: "agent start" },
+    });
+    assert.equal(failed.code, 1);
+    assert.equal(errorCode(failed), "backend_call_failed");
+
+    const reconciled = ok(cli(["session", "reconcile", "--run-id", it.runId], it.context), "reconcile");
+    assert.equal(reconciled.json["effect"], "not_applied");
+  } finally {
+    it.dispose();
+  }
+});
+
+test("an unprovable effect pauses the run instead of guessing", () => {
+  const it = fixture();
+  try {
+    // The pane is created, `agent start` fails, and the cleanup fails too: a
+    // pane now exists with no agent in it, which is genuinely ambiguous — the
+    // agent may be racing to register — so the run must pause rather than risk
+    // a second worker. Nothing here is inferred from the failure of the
+    // cleanup call; reconcile re-observes the pane and finds it still there.
+    const failed = cli(["session", "spawn", "--run-id", it.runId, "--role", "executor"], {
+      ...it.context,
+      env: { FAKE_HERDR_FAIL: "agent start,pane close" },
     });
     assert.equal(failed.code, 1);
     assert.equal(errorCode(failed), "backend_call_failed");
