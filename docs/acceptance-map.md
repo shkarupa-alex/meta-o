@@ -147,3 +147,9 @@ now has a test that fails if the hole reopens. They live in
 | A formatter rewriting an already-dirty file passes the non-mutation check | `a gate that rewrites an already-dirty file is invalid` (Python) |
 | `update.sh --skip-suite` runs the suite it was told to skip | `update.sh --skip-suite actually skips the suite` |
 | A watchdog crash between the wake and its record delivers the prompt twice | `a wake is recorded before it is sent, so a crash cannot deliver it twice` |
+| A green E2E run erases a blocker raised against the E2E work itself | `a green E2E run cannot erase a blocker raised against the E2E work` |
+| The production contract is satisfied by an uncommitted file, or by any heading containing the letters | `the production contract must be committed, and must be about production` |
+| A real package named `build` under a source root is never opened by the Python gates | `a package named build is judged and an output tree is not` (Python) |
+| A gate receipt matched by commit oid is discarded by an amend of an identical tree | `an amend that preserves the tree does not invalidate a single gate` |
+| A key-sorting serialiser reordering an untouched receipt reads as forgery | `a re-serialised receipt for a scenario nobody ran is not forgery` |
+| `install.sh` reports a backend failure when run outside a Git repository | `the capability suite runs outside a Git repository` |

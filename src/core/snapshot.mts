@@ -156,15 +156,20 @@ function untouchedReceiptViolations(
   input: MetadataGuardInput,
 ): string[] {
   const executed = new Set(input.expectedScenarioStatus.keys());
+  // Canonical, not `JSON.stringify`: the metadata commit is written by whatever
+  // serialiser the project uses, and one that sorts keys reorders every
+  // untouched receipt in the file. Comparing raw text called that forgery and
+  // blocked completion over a diff that changed nothing.
+  /** §M-SNAPSHOT — One scenario's receipt, in a form two serialisers agree on. */
+  const receipt = (scenario: E2EScenarioEntry): string =>
+    canonicalize((scenario.last_run ?? null) as unknown as JsonValue);
   const previous = new Map(
-    (before?.scenarios ?? []).map((item) => [item.scenario_id, JSON.stringify(item.last_run ?? null)]),
+    (before?.scenarios ?? []).map((item) => [item.scenario_id, receipt(item)]),
   );
   const violations: string[] = [];
   for (const scenario of after.scenarios) {
     if (executed.has(scenario.scenario_id)) continue;
-    if (JSON.stringify(scenario.last_run ?? null) === (previous.get(scenario.scenario_id) ?? "null")) {
-      continue;
-    }
+    if (receipt(scenario) === (previous.get(scenario.scenario_id) ?? "null")) continue;
     violations.push(
       `metadata commit wrote a last_run for ${scenario.scenario_id}, which this run neither ` +
         "selected nor executed",

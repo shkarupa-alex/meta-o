@@ -493,3 +493,27 @@ test("secrets in session output are masked before the orchestrator sees them", (
     it.dispose();
   }
 });
+
+test("the capability suite runs outside a Git repository", () => {
+  // `install.sh` and `update.sh` run this from wherever the user happens to be,
+  // which is usually not a repository. Looking the project up unguarded turned
+  // "you are not in a Git repo" into "the backend failed its capability suite"
+  // and aborted an otherwise perfect install.
+  const home = createTempHome();
+  const elsewhere = mkdtempSync(join(tmpdir(), "meta-o-not-a-repo-"));
+  try {
+    const report = ok(
+      cli(["capability-suite", "run", "--cwd", elsewhere], {
+        cwd: elsewhere,
+        home: home.dir,
+        fakeState: join(home.dir, "fake-herdr.json"),
+      }),
+      "the suite",
+    );
+    assert.equal(report.json["mode"], "smoke");
+    assert.equal(report.json["blocked"], false);
+  } finally {
+    rmSync(elsewhere, { recursive: true, force: true });
+    home.dispose();
+  }
+});

@@ -71,12 +71,12 @@ export function assertGateIsolated(
   projectKey: string,
   runId: string,
   label: string,
-  candidateCommit: string,
+  candidate: { digest: string; provenanceCommit: string },
 ): void {
   const path = gateReceiptPath(projectKey, runId, label);
-  let receipt: { commitOid?: string } | undefined;
+  let receipt: GateReceipt | undefined;
   try {
-    receipt = JSON.parse(readFileSync(path, "utf8")) as { commitOid?: string };
+    receipt = JSON.parse(readFileSync(path, "utf8")) as GateReceipt;
   } catch {
     fail(
       "gate_not_isolated",
@@ -86,14 +86,40 @@ export function assertGateIsolated(
       { expectedReceipt: path },
     );
   }
-  if (receipt?.commitOid !== candidateCommit) {
-    fail(
-      "gate_not_isolated",
-      `the ${label} receipt is for ${receipt?.commitOid ?? "an unrecorded commit"}, but the ` +
-        `candidate is ${candidateCommit}`,
-      { expectedReceipt: path },
-    );
-  }
+  assertSameContent(receipt, candidate, `the ${label} receipt`, "gate_not_isolated", path);
+}
+
+/** §M-GATE-EVIDENCE — What `worktree run` records about an isolated gate. */
+interface GateReceipt {
+  commitOid?: string;
+  snapshotDigest?: string;
+}
+
+/**
+ * §M-GATE-EVIDENCE — Hold a receipt to the content it ran against, not the commit.
+ *
+ * A receipt matched by commit oid was discarded by an amend, rebase or squash
+ * of a byte-identical tree — the churn §00 says explicitly must not happen, and
+ * for the E2E gate it meant re-running the whole selected set for a reworded
+ * commit message. Receipts written before this carried no digest, and are
+ * refused rather than assumed to match: a gate whose evidence cannot be tied to
+ * content is a gate that has to run again.
+ */
+function assertSameContent(
+  receipt: GateReceipt | undefined,
+  candidate: { digest: string; provenanceCommit: string },
+  subject: string,
+  code: string,
+  path: string,
+): void {
+  if (receipt?.snapshotDigest === candidate.digest) return;
+  const ran = receipt?.snapshotDigest ?? `an unrecorded snapshot (commit ${receipt?.commitOid})`;
+  fail(
+    code,
+    `${subject} is for ${ran}, but the candidate's content is ${candidate.digest}; re-run the ` +
+      "gate against the candidate",
+    { expectedReceipt: path },
+  );
 }
 
 /**
@@ -112,11 +138,15 @@ export function assertGateIsolated(
  * non-zero because scenarios failed still ran in isolation, and it is the
  * per-scenario statuses that decide the gate.
  */
-export function assertE2eIsolated(projectKey: string, runId: string, candidateCommit: string): void {
+export function assertE2eIsolated(
+  projectKey: string,
+  runId: string,
+  candidate: { digest: string; provenanceCommit: string },
+): void {
   const path = gateReceiptPath(projectKey, runId, E2E_RECEIPT_LABEL);
-  let receipt: { commitOid?: string; completedAt?: string } | undefined;
+  let receipt: GateReceipt | undefined;
   try {
-    receipt = JSON.parse(readFileSync(path, "utf8")) as { commitOid?: string };
+    receipt = JSON.parse(readFileSync(path, "utf8")) as GateReceipt;
   } catch {
     fail(
       "e2e_not_isolated",
@@ -126,12 +156,5 @@ export function assertE2eIsolated(projectKey: string, runId: string, candidateCo
       { expectedReceipt: path },
     );
   }
-  if (receipt?.commitOid !== candidateCommit) {
-    fail(
-      "e2e_not_isolated",
-      `the E2E worktree receipt is for ${receipt?.commitOid ?? "an unrecorded commit"}, but the ` +
-        `candidate is ${candidateCommit}; re-run the selected set against the candidate`,
-      { expectedReceipt: path },
-    );
-  }
+  assertSameContent(receipt, candidate, "the E2E worktree receipt", "e2e_not_isolated", path);
 }

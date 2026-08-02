@@ -71,20 +71,41 @@ def discover_python_files(root: Path, source_roots: list[str]) -> list[Path]:
     The skip list is matched against the path *below the source root*, never
     the absolute path. Matching the whole path meant a checkout living under
     `~/dist/`, `/build/` or any `venv`-named parent discovered no files at all
-    and every gate reported `ok` on a tree it had not opened — and a legitimate
-    package named `build` inside `src/` was invisible for the same reason.
+    and every gate reported `ok` on a tree it had not opened.
+
+    `build` and `dist` are skipped only where they are output directories. A
+    directory of either name carrying an `__init__.py` is a package somebody
+    imports, and dropping it is under-coverage of exactly the silent kind §40
+    calls a FAIL — the gate would report `ok` about source it never opened.
     """
-    skip = {".venv", "venv", "__pycache__", "build", "dist", ".tox"}
     files: list[Path] = []
     for relative in source_roots:
         base = root / relative
         if not base.is_dir():
             continue
         for path in sorted(base.rglob("*.py")):
-            if set(path.relative_to(base).parts) & skip:
+            if _skipped(base, path):
                 continue
             files.append(path)
     return files
+
+
+# Names that are output directories everywhere, and names that are output
+# directories only when they are not also packages.
+SKIP_ALWAYS = {".venv", "venv", "__pycache__", ".tox"}
+SKIP_UNLESS_PACKAGE = {"build", "dist"}
+
+
+def _skipped(base: Path, path: Path) -> bool:
+    """§M-QC-COMMON — Decide whether one discovered file sits in a skipped directory."""
+    walked = base
+    for part in path.relative_to(base).parts[:-1]:
+        walked = walked / part
+        if part in SKIP_ALWAYS:
+            return True
+        if part in SKIP_UNLESS_PACKAGE and not (walked / "__init__.py").is_file():
+            return True
+    return False
 
 
 def assert_discovered(report: "Report", root: Path, source_roots: list[str], files: list[Path]) -> None:

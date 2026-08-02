@@ -1003,6 +1003,24 @@ class E2ECheckerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("nothing-discovered", result.stdout)
 
+    def test_a_package_named_build_is_judged_and_an_output_tree_is_not(self) -> None:
+        """§M-QC-TESTS — Skipping `build` by name hid source the gate must judge.
+
+        `build` and `dist` are output directory names, and they are also
+        perfectly ordinary package names. Skipping both meant a real package
+        under `src/build/` was never opened and the gate said `ok` about it —
+        the silent under-coverage §40 makes a FAIL. An `__init__.py` is what
+        tells the two apart.
+        """
+        write(self.project.root, "src/build/__init__.py", "")
+        write(self.project.root, "src/build/module.py", "def undocumented():\n    return 1\n")
+        write(self.project.root, "src/dist/artifact.py", "def generated():\n    return 1\n")
+
+        result = run_checker(self.project.root, "purpose_check.py")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("src/build/module.py", result.stdout)
+        self.assertNotIn("src/dist/artifact.py", result.stdout)
+
     def test_a_dangling_business_link_is_rejected(self) -> None:
         """§M-QC-TESTS — A scenario must verify a business truth that actually exists."""
         registry = json.loads((self.project.root / "docs/architecture/e2e.json").read_text())

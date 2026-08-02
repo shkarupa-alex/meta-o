@@ -49,13 +49,12 @@ import type {
   RunState,
   SessionRef,
 } from "../../core/types.mjs";
-import { existsSync, readFileSync } from "node:fs";
+import { git } from "../../core/git.mjs";
 import {
   assertE2eIsolated,
   assertGateIsolated,
   assertQcProven,
 } from "./gate-evidence.mjs";
-import { gateReceiptPath, qcResultPath } from "../../core/paths.mjs";
 import { redactDeep } from "../../core/redact.mjs";
 import { identityOf, loadState, mutate, type FindingSlot } from "./run-context.mjs";
 import {
@@ -140,11 +139,11 @@ export async function commandRecordGate(args: ParsedArgs): Promise<void> {
       fail("no_plan", "reviews and E2E require a stored selection plan");
     }
     if (status === "passed" && gate === "qc") {
-      assertGateIsolated(projectKey, runId, "qc", snapshot.provenanceCommit);
+      assertGateIsolated(projectKey, runId, "qc", snapshot);
       assertQcProven(repoDir, projectKey, runId, digest);
     }
     if (status === "passed" && gate === "smoke") {
-      assertGateIsolated(projectKey, runId, "smoke", snapshot.provenanceCommit);
+      assertGateIsolated(projectKey, runId, "smoke", snapshot);
     }
 
     const result: RevisionResult = {
@@ -267,7 +266,7 @@ export async function commandRecordE2e(args: ParsedArgs): Promise<void> {
     const errors = e2eResultErrors(result, snapshot.digest, state.e2ePlan);
     if (errors.length > 0) fail("invalid_e2e_result", errors.join("; "));
 
-    assertE2eIsolated(projectKey, runId, snapshot.provenanceCommit);
+    assertE2eIsolated(projectKey, runId, snapshot);
 
     if (result.environment === "production") {
       if (!state.productionE2eApproved) {
@@ -283,7 +282,7 @@ export async function commandRecordE2e(args: ParsedArgs): Promise<void> {
       // running against production means for it — cleanup, blast radius, what
       // may not be touched. A user consenting to a run whose rules nobody wrote
       // is consenting to nothing in particular.
-      assertProductionContract(repoDir);
+      assertProductionContract(repoDir, snapshot.provenanceCommit);
     }
 
     // `commitOid` and `completedAt` are derived, not demanded. The tester knows
@@ -299,11 +298,23 @@ export async function commandRecordE2e(args: ParsedArgs): Promise<void> {
       completedAt: result.completedAt || isoTimestamp(),
     };
 
+    // Same rule as the reviewer slots, and this one was missing it: writing the
+    // `e2e` slot wholesale let a green run erase a blocker somebody had raised
+    // against the E2E work itself — a scenario that passes only by luck, an
+    // environment that leaks. It leaves by being restated or closed, not by
+    // being overwritten.
+    const derived = e2eFailureFindings(state, result, failures);
+    const carried = carryOpenBlockers(
+      state.openFindings?.e2e ?? [],
+      derived.map((record) => record.finding),
+      "e2e",
+    );
+
     return {
       ...state,
       e2eScenarioStatus: result.scenarios.map((scenario) => ({ ...scenario })),
       e2eEnvironment: result.environment,
-      openFindings: { ...state.openFindings, e2e: e2eFailureFindings(state, result, failures) },
+      openFindings: { ...state.openFindings, e2e: [...carried, ...derived] },
       confirmations: { ...state.confirmations, e2e: gate },
     };
   });
@@ -325,17 +336,24 @@ export async function commandRecordE2e(args: ParsedArgs): Promise<void> {
  * to read at all — where "the user approved a production run" is the only
  * artefact, and the rules of that run exist solely in one session's memory.
  */
-function assertProductionContract(repoDir: string): void {
-  const path = join(repoDir, "docs/architecture/e2e.md");
+function assertProductionContract(repoDir: string, candidateCommit: string): void {
+  // Read out of the candidate, never the working tree. Reading the tree let the
+  // contract be appended, the gate satisfied, and the file reverted a second
+  // later — leaving a passed production E2E gate and no contract anywhere.
   let text: string;
   try {
-    text = readFileSync(path, "utf8");
+    text = git(["show", `${candidateCommit}:docs/architecture/e2e.md`], repoDir);
   } catch (error) {
-    fail("no_production_contract", `docs/architecture/e2e.md is unreadable: ${(error as Error).message}`);
+    fail(
+      "no_production_contract",
+      `the candidate does not carry docs/architecture/e2e.md: ${(error as Error).message}`,
+    );
   }
+  // `\b` rather than a substring, because `### Reproduction of a failed
+  // scenario` contains the word and says nothing about production.
   const heading = text
     .split("\n")
-    .some((line) => /^#{1,6}\s/.test(line) && /production/i.test(line));
+    .some((line) => /^#{1,6}\s/.test(line) && /\bproduction\b/i.test(line));
   if (heading) return;
   fail(
     "no_production_contract",

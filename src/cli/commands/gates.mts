@@ -577,7 +577,9 @@ export async function commandWorktreeRun(args: ParsedArgs): Promise<void> {
       if (child.error) throw child.error;
       return child.status ?? 1;
     });
-    const receipt = runId ? writeGateReceipt(projectKey, runId, label, outcome, command) : undefined;
+    const receipt = runId
+      ? writeGateReceipt(projectKey, runId, label, outcome, command, repoDir)
+      : undefined;
     emit({
       command,
       commitOid: outcome.commitOid,
@@ -608,6 +610,7 @@ function writeGateReceipt(
   label: string,
   outcome: { commitOid: string; result: number },
   command: string[],
+  repoDir: string,
 ): string {
   const path = gateReceiptPath(projectKey, runId, label);
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
@@ -617,6 +620,11 @@ function writeGateReceipt(
       {
         label,
         commitOid: outcome.commitOid,
+        // Content identity as well as provenance. A receipt matched only by
+        // commit oid was thrown away by an amend of an identical tree, which is
+        // the churn §00 says a rebase must not cause — and for `qc` and `smoke`
+        // that meant re-running a gate whose answer could not have changed.
+        snapshotDigest: computeSnapshotDigest(repoDir, outcome.commitOid).digest,
         exitStatus: outcome.result,
         command,
         completedAt: isoTimestamp(),

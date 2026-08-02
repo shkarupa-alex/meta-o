@@ -837,7 +837,7 @@ test("an E2E result is refused unless a worktree receipt proves it ran isolated"
     assert.equal(errorCode(mismatched), "e2e_not_isolated");
     assert.match(
       (mismatched.json["error"] as { message: string }).message,
-      /but the candidate is/,
+      /but the candidate's content is/,
     );
 
     ok(
@@ -1202,6 +1202,198 @@ test("an orchestrator can register itself the way the skill tells it to", () => 
       context,
     );
     assert.equal(errorCode(bogus), "unknown_role");
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("the production contract must be committed, and must be about production", () => {
+  // Two ways the same guard was satisfied by nothing. It read the *working
+  // tree*, so the contract could be appended, the gate passed and the file
+  // reverted a second later; and it matched `production` as a bare substring,
+  // so `### Reproduction of a failed scenario` — which says nothing about
+  // production — was accepted as the contract.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
+    retireSpec(repo);
+
+    /** §M-TEST-HARDENING — Drive one production E2E attempt to the contract check. */
+    const attempt = (): ReturnType<typeof cli> => {
+      const candidate = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
+      const commitOid = candidate.json["provenanceCommit"] as string;
+      const snapshotDigest = candidate.json["snapshotDigest"] as string;
+      const plan = ok(
+        cli(["e2e", "seal-plan"], {
+          ...context,
+          stdin: JSON.stringify({
+            schemaVersion: 1,
+            commitOid,
+            selectedScenarioIds: ["E2E-SMOKE-01"],
+            selectionRationale: "the canary always runs",
+            impactedBusinessLinks: [],
+            impactedTags: [],
+          }),
+        }),
+        "seal-plan",
+      ).json as unknown as { planDigest: string; selectedScenarioIds: string[] };
+      ok(
+        cli(["run", "set-plan", "--run-id", runId], { ...context, stdin: JSON.stringify(plan) }),
+        "set-plan",
+      );
+      ok(
+        cli(["worktree", "run", "--run-id", runId, "--label", "e2e", "true"], context),
+        "the suite runs isolated",
+      );
+      return cli(["run", "record-e2e", "--run-id", runId], {
+        ...context,
+        stdin: JSON.stringify({
+          commitOid,
+          snapshotDigest,
+          planDigest: plan.planDigest,
+          selectedScenarioIds: plan.selectedScenarioIds,
+          selectionRationale: "the canary always runs",
+          scenarios: [{ scenarioId: "E2E-SMOKE-01", status: "passed", evidence: "green" }],
+          environment: "production",
+          completedAt: "2026-07-24T12:30:00Z",
+        }),
+      });
+    };
+
+    ok(
+      cli(["run", "record-decision", "--run-id", runId], {
+        ...context,
+        stdin: JSON.stringify({
+          id: "D-1",
+          category: "irreversible",
+          question: "may the selected set run against production?",
+          answer: "yes, once",
+          decidedBy: "user",
+          rationale: "there is nowhere else to exercise it",
+          decidedAt: "2026-07-24T12:00:00Z",
+        }),
+      }),
+      "record-decision",
+    );
+    ok(
+      cli(["run", "approve-production-e2e", "--run-id", runId, "--decision-id", "D-1"], context),
+      "approve-production-e2e",
+    );
+
+    // Written, never committed: the candidate does not carry it.
+    repo.write(
+      "docs/architecture/e2e.md",
+      "# E2E\n\n## e2e-smoke-01\n\n## e2e-checkout-01\n\n## Production safety\n\nNamespaced.\n",
+    );
+    assert.equal(errorCode(attempt()), "no_production_contract");
+
+    // Committed, but the heading only contains the letters.
+    repo.write(
+      "docs/architecture/e2e.md",
+      "# E2E\n\n## e2e-smoke-01\n\n## e2e-checkout-01\n\n" +
+        "### Reproduction of a failed scenario\n\nRe-run it locally.\n",
+    );
+    repo.commit("a heading that merely contains the letters");
+    assert.equal(errorCode(attempt()), "no_production_contract");
+
+    // Committed, and about production.
+    repo.write(
+      "docs/architecture/e2e.md",
+      "# E2E\n\n## e2e-smoke-01\n\n## e2e-checkout-01\n\n## Running against production\n\n" +
+        "Namespaced per run; every fixture is torn down even on failure.\n",
+    );
+    repo.commit("write down what a production run may do");
+    ok(attempt(), "record-e2e");
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("a green E2E run cannot erase a blocker raised against the E2E work", () => {
+  // The reviewer slots carry their open blockers forward; the `e2e` slot was
+  // written wholesale, so a run that passed every scenario silently dropped a
+  // blocker somebody had raised against the suite itself — a scenario that
+  // passes only by luck, an environment that leaks — and the run proved
+  // complete.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
+    retireSpec(repo);
+    const candidate = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
+    const commitOid = candidate.json["provenanceCommit"] as string;
+    const snapshotDigest = candidate.json["snapshotDigest"] as string;
+
+    ok(
+      cli(["run", "open-findings", "--run-id", runId, "--reviewer", "e2e"], {
+        ...context,
+        stdin: JSON.stringify([
+          {
+            id: "E2E-LEAK-01",
+            severity: "blocker",
+            classification: "defect",
+            evidence: [
+              { kind: "scenario", reference: "E2E-SMOKE-01", detail: "leaves fixtures behind" },
+            ],
+            basis: { type: "spec", reference: "E2E-SMOKE-01" },
+            impact: "the canary passes but leaves rows in the shared database",
+            recommendedFix: {
+              approach: "namespace the fixtures and tear them down",
+              rationale: "a suite that leaks cannot be re-run",
+            },
+          },
+        ]),
+      }),
+      "open a blocker on the e2e slot",
+    );
+
+    const plan = ok(
+      cli(["e2e", "seal-plan"], {
+        ...context,
+        stdin: JSON.stringify({
+          schemaVersion: 1,
+          commitOid,
+          selectedScenarioIds: ["E2E-SMOKE-01"],
+          selectionRationale: "the canary always runs",
+          impactedBusinessLinks: [],
+          impactedTags: [],
+        }),
+      }),
+      "seal-plan",
+    ).json as unknown as { planDigest: string; selectedScenarioIds: string[] };
+    ok(
+      cli(["run", "set-plan", "--run-id", runId], { ...context, stdin: JSON.stringify(plan) }),
+      "set-plan",
+    );
+    ok(
+      cli(["worktree", "run", "--run-id", runId, "--label", "e2e", "true"], context),
+      "the suite runs isolated",
+    );
+
+    const green = cli(["run", "record-e2e", "--run-id", runId], {
+      ...context,
+      stdin: JSON.stringify({
+        commitOid,
+        snapshotDigest,
+        planDigest: plan.planDigest,
+        selectedScenarioIds: plan.selectedScenarioIds,
+        selectionRationale: "the canary always runs",
+        scenarios: [{ scenarioId: "E2E-SMOKE-01", status: "passed", evidence: "green" }],
+        environment: "local",
+        completedAt: "2026-07-24T12:30:00Z",
+      }),
+    });
+    assert.equal(errorCode(green), "findings_dropped");
+    assert.match(green.stderr + green.stdout, /E2E-LEAK-01/);
   } finally {
     home.dispose();
     repo.dispose();

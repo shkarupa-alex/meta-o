@@ -168,6 +168,57 @@ test("a metadata commit writing only last_run passes the guard", () => {
   }
 });
 
+test("a re-serialised receipt for a scenario nobody ran is not forgery", () => {
+  // The untouched-receipt rule compared raw text, so a serialiser that sorts
+  // keys — a formatter, a different JSON library — reordered every receipt in
+  // the file and the guard called each one forged. Nothing had changed; the
+  // run simply could not complete.
+  const repo = createTempRepo();
+  try {
+    seedProjectContract(repo);
+    repo.write("src/app.py", '"""§M-APP — entry point."""\n');
+    const carried = {
+      snapshot_digest: "d".repeat(64),
+      provenance_commit: "e".repeat(40),
+      run_id: "an-earlier-run",
+      spec_sha256: "f".repeat(64),
+      verified_at: "2026-07-01T09:00:00Z",
+      status: "passed" as const,
+      environment: "local:docker-compose",
+    };
+    const withCarried = JSON.parse(sampleRegistry()) as E2ERegistry;
+    withCarried.scenarios[1]!.last_run = carried;
+    repo.write("docs/architecture/e2e.json", `${JSON.stringify(withCarried, null, 2)}\n`);
+    const commit = repo.commit("initial, with a receipt from a previous feature");
+    const attested = computeSnapshotDigest(repo.dir, commit);
+
+    // This run records its own scenario and re-serialises the file with sorted
+    // keys, which rewrites the untouched receipt byte-for-byte differently.
+    const rewritten = JSON.parse(
+      registryWithLastRun(attested.digest, "run-1", "a".repeat(64), attested.provenanceCommit),
+    ) as E2ERegistry;
+    rewritten.scenarios[1]!.last_run = Object.fromEntries(
+      Object.entries(carried).sort(([left], [right]) => left.localeCompare(right)),
+    ) as typeof carried;
+    repo.write("docs/architecture/e2e.json", `${JSON.stringify(rewritten, null, 2)}\n`);
+    const metadata = repo.commit("record verification with a key-sorting serialiser");
+
+    const report = verifyMetadataCommit({
+      repoDir: repo.dir,
+      attestedCommit: commit,
+      metadataCommit: metadata,
+      expectedRunId: "run-1",
+      expectedSpecSha256: "a".repeat(64),
+      expectedScenarioStatus: new Map([["E2E-SMOKE-01", "passed"]]),
+    });
+
+    assert.deepEqual(report.violations, []);
+    assert.equal(report.ok, true);
+  } finally {
+    repo.dispose();
+  }
+});
+
 test("a metadata commit that also touches source is rejected", () => {
   const { repo, commit } = seeded();
   try {

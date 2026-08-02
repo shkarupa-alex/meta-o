@@ -158,6 +158,20 @@ export async function commandCapabilities(args: ParsedArgs): Promise<void> {
 }
 
 /**
+ * §M-CLI-BACKEND — The project's confirmed ModelSet, if there is a project.
+ *
+ * The suite is meaningful without one: proving what a backend can do needs no
+ * project at all, and the installer has none.
+ */
+function configuredModelSet(cwd: string): ModelSet | undefined {
+  try {
+    return readSettings(resolveProjectIdentity(cwd).projectKey)?.modelSet;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * §M-CLI-BACKEND — Which extra routes this suite run should prove.
  *
  * `--also-routes` wins when given, so a caller can probe a route the project
@@ -189,8 +203,12 @@ function routesToProve(
  */
 export async function commandCapabilitySuite(args: ParsedArgs): Promise<void> {
   const adapter = adapterFor(args);
-  const { projectKey } = resolveProjectIdentity(optionalFlag(args, "cwd") ?? process.cwd());
-  const configured = readSettings(projectKey)?.modelSet;
+  // Guarded, because this command is the one thing `install.sh` and
+  // `update.sh` run — from whatever directory the user happens to be in, which
+  // is usually not a repository. An unguarded lookup turned "you are not in a
+  // Git repo" into "the backend failed its capability suite", and aborted a
+  // perfectly good install.
+  const configured = configuredModelSet(optionalFlag(args, "cwd") ?? process.cwd());
   const model: ModelRef = {
     route: (optionalFlag(args, "route") ?? configured?.executor.route ?? "claude") as ModelRef["route"],
     vendor: optionalFlag(args, "vendor") ?? configured?.executor.vendor ?? "unknown",
