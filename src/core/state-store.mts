@@ -183,8 +183,8 @@ export function listRuns(projectKey: string): string[] {
 /**
  * §M-STATE-STORE — Prepare the directory skeleton of a new run.
  *
- * Creating `input/` and `findings/` up front means later writes never race on
- * directory creation while holding the writer lock.
+ * Creating `input/` and `gate-receipts/` up front means later writes never race
+ * on directory creation while holding the writer lock.
  */
 export function ensureRunDirectories(projectKey: string, runId: string): string {
   const dir = ensureSecureDir(runDir(projectKey, runId));

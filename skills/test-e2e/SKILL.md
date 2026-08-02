@@ -64,7 +64,11 @@ Run every scenario in the plan.
 - Clean up **even when a scenario fails**. A leaked container or database is a
   failure of this role.
 - **Never** run against production without an explicit production-safe contract
-  in `docs/architecture/e2e.md` and the user's confirmation for this run. Say
+  in `docs/architecture/e2e.md` — a section that says what a production run may
+  touch, how it is namespaced and how it is cleaned up — and the user's
+  confirmation for this run. `run record-e2e` refuses on both counts; the
+  contract check only proves the document says *something* about production,
+  and whether what it says is adequate is the reviewers' reading. Say
   `"environment": "production"` in your report if you did; the orchestrator's
   `run record-e2e` refuses it unless the user's decision is already recorded
   against this run, and lying about where you ran breaks the metadata guard at

@@ -1207,3 +1207,135 @@ test("an orchestrator can register itself the way the skill tells it to", () => 
     repo.dispose();
   }
 });
+
+test("production needs a written contract, not only the user's consent", () => {
+  // §20 asks for two things — "явный production-safe contract и подтверждение
+  // пользователя" — and only the consent was checked. A user approving a run
+  // whose rules nobody has written down is approving nothing in particular.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
+    retireSpec(repo);
+    const candidate = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
+    const commitOid = candidate.json["provenanceCommit"] as string;
+    const snapshotDigest = candidate.json["snapshotDigest"] as string;
+    const plan = ok(
+      cli(["e2e", "seal-plan"], {
+        ...context,
+        stdin: JSON.stringify({
+          schemaVersion: 1,
+          commitOid,
+          selectedScenarioIds: ["E2E-CHECKOUT-01", "E2E-SMOKE-01"],
+          selectionRationale: "checkout is impacted; the canary always runs",
+          impactedBusinessLinks: ["§B-CHECKOUT-01"],
+          impactedTags: ["checkout"],
+        }),
+      }),
+      "seal-plan",
+    ).json as unknown as { planDigest: string; selectedScenarioIds: string[] };
+    ok(
+      cli(["run", "set-plan", "--run-id", runId], { ...context, stdin: JSON.stringify(plan) }),
+      "set-plan",
+    );
+    ok(
+      cli(["worktree", "run", "--run-id", runId, "--label", "e2e", "true"], context),
+      "the suite runs isolated",
+    );
+
+    const result = JSON.stringify({
+      commitOid,
+      snapshotDigest,
+      planDigest: plan.planDigest,
+      selectedScenarioIds: plan.selectedScenarioIds,
+      selectionRationale: "checkout is impacted; the canary always runs",
+      scenarios: plan.selectedScenarioIds.map((scenarioId) => ({
+        scenarioId,
+        status: "passed",
+        evidence: "green",
+      })),
+      environment: "production",
+      completedAt: "2026-07-24T12:30:00Z",
+    });
+
+    const unapproved = cli(["run", "record-e2e", "--run-id", runId], { ...context, stdin: result });
+    assert.equal(errorCode(unapproved), "production_e2e_not_approved");
+
+    ok(
+      cli(["run", "record-decision", "--run-id", runId], {
+        ...context,
+        stdin: JSON.stringify({
+          id: "D-1",
+          category: "irreversible",
+          question: "may the selected set run against production?",
+          answer: "yes, once, on the staging replica of production data",
+          decidedBy: "user",
+          rationale: "the checkout flow cannot be exercised anywhere else",
+          decidedAt: "2026-07-24T12:00:00Z",
+        }),
+      }),
+      "record-decision",
+    );
+    ok(
+      cli(["run", "approve-production-e2e", "--run-id", runId, "--decision-id", "D-1"], context),
+      "approve-production-e2e",
+    );
+
+    const uncontracted = cli(["run", "record-e2e", "--run-id", runId], { ...context, stdin: result });
+    assert.equal(errorCode(uncontracted), "no_production_contract");
+
+    // With a contract written, the same result is recorded — this run has both
+    // halves §20 asks for.
+    repo.write(
+      "docs/architecture/e2e.md",
+      "# E2E\n\n## e2e-smoke-01\n\n## e2e-checkout-01\n\n## Running against production\n\n" +
+        "Namespaced per run; every fixture is torn down even on failure.\n",
+    );
+    const contracted = repo.commit("write down what a production run may do");
+    ok(cli(["run", "set-candidate", "--run-id", runId], context), "re-point at the contract");
+    const resealed = ok(
+      cli(["e2e", "seal-plan"], {
+        ...context,
+        stdin: JSON.stringify({
+          schemaVersion: 1,
+          commitOid: contracted,
+          selectedScenarioIds: ["E2E-CHECKOUT-01", "E2E-SMOKE-01"],
+          selectionRationale: "checkout is impacted; the canary always runs",
+          impactedBusinessLinks: ["§B-CHECKOUT-01"],
+          impactedTags: ["checkout"],
+        }),
+      }),
+      "re-seal",
+    ).json as unknown as { planDigest: string; selectedScenarioIds: string[] };
+    ok(
+      cli(["run", "set-plan", "--run-id", runId], { ...context, stdin: JSON.stringify(resealed) }),
+      "set-plan again",
+    );
+    ok(
+      cli(["worktree", "run", "--run-id", runId, "--label", "e2e", "true"], context),
+      "and the suite runs isolated against the new candidate",
+    );
+    ok(
+      cli(["run", "record-e2e", "--run-id", runId], {
+        ...context,
+        stdin: JSON.stringify({
+          ...(JSON.parse(result) as Record<string, unknown>),
+          commitOid: contracted,
+          snapshotDigest: (
+            ok(cli(["run", "show", "--run-id", runId], context), "show").json[
+              "candidateSnapshot"
+            ] as { digest: string }
+          ).digest,
+          planDigest: resealed.planDigest,
+        }),
+      }),
+      "record-e2e",
+    );
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});

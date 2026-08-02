@@ -139,7 +139,7 @@ test("one snapshot with four attestations completes", () => {
 test("an E2E fix does not pull the run back into a review round", () => {
   const state = runAtGates("digest-3", "commit-3");
   state.phase = "E2E_STABILIZATION";
-  state.activeLoop = { kind: "e2e", iteration: 2, changedSinceOtherGate: true };
+  state.activeLoop = { kind: "e2e", iteration: 2 };
   state.confirmations = {
     qc: passed("digest-3", "commit-3"),
     reviewerPrimary: passed("digest-2", "commit-2"),
@@ -154,7 +154,7 @@ test("an E2E fix does not pull the run back into a review round", () => {
 test("once E2E is green on the new snapshot the review loop resumes", () => {
   const state = runAtGates("digest-3", "commit-3");
   state.phase = "E2E_STABILIZATION";
-  state.activeLoop = { kind: "e2e", iteration: 2, changedSinceOtherGate: true };
+  state.activeLoop = { kind: "e2e", iteration: 2 };
   state.confirmations = {
     qc: passed("digest-3", "commit-3"),
     smoke: passed("digest-3", "commit-3"),

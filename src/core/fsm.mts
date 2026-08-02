@@ -207,7 +207,7 @@ export function loopForPhase(phase: Phase, previous?: ActiveLoop): ActiveLoop | 
     phase === "REVIEW_STABILIZATION" ? "review" : phase === "E2E_STABILIZATION" ? "e2e" : undefined;
   if (!kind) return previous;
   if (previous?.kind === kind) return { ...previous, iteration: previous.iteration + 1 };
-  return { kind, iteration: 1, changedSinceOtherGate: false };
+  return { kind, iteration: 1 };
 }
 
 /** §M-FSM — The next thing the orchestrator should cause to happen. */

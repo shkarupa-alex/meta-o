@@ -315,7 +315,6 @@ export interface FindingRecord {
 export interface ActiveLoop {
   kind: "review" | "e2e";
   iteration: number;
-  changedSinceOtherGate: boolean;
 }
 
 /**

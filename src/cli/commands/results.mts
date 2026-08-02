@@ -255,7 +255,7 @@ export async function commandRecordReview(args: ParsedArgs): Promise<void> {
  * thing that actually happened.
  */
 export async function commandRecordE2e(args: ParsedArgs): Promise<void> {
-  const { projectKey } = identityOf(args);
+  const { projectKey, repoDir } = identityOf(args);
   const runId = requireFlag(args, "run-id");
   const result = redactDeep(await readStdinJson<E2EResult>());
 
@@ -269,13 +269,21 @@ export async function commandRecordE2e(args: ParsedArgs): Promise<void> {
 
     assertE2eIsolated(projectKey, runId, snapshot.provenanceCommit);
 
-    if (result.environment === "production" && !state.productionE2eApproved) {
-      fail(
-        "production_e2e_not_approved",
-        "§20 forbids running the E2E set against production without the user saying so for this " +
-          "run; record their decision with `meta-o run record-decision` and " +
-          "`meta-o run approve-production-e2e` first",
-      );
+    if (result.environment === "production") {
+      if (!state.productionE2eApproved) {
+        fail(
+          "production_e2e_not_approved",
+          "§20 forbids running the E2E set against production without the user saying so for " +
+            "this run; record their decision with `meta-o run record-decision` and " +
+            "`meta-o run approve-production-e2e` first",
+        );
+      }
+      // §20 asks for two things and only the user's word was checked. The other
+      // is a production-safe contract: the project must have written down what
+      // running against production means for it — cleanup, blast radius, what
+      // may not be touched. A user consenting to a run whose rules nobody wrote
+      // is consenting to nothing in particular.
+      assertProductionContract(repoDir);
     }
 
     // `commitOid` and `completedAt` are derived, not demanded. The tester knows
@@ -306,6 +314,36 @@ export async function commandRecordE2e(args: ParsedArgs): Promise<void> {
     failures: (next.e2eScenarioStatus ?? []).filter((s) => s.status !== "passed"),
     routing: routeNext(next),
   });
+}
+
+/**
+ * §M-CLI-RESULTS — Refuse production when the E2E contract does not cover it.
+ *
+ * Deliberately shallow: this proves the contract *says something* about
+ * production, not that what it says is adequate. Judging adequacy is a reading,
+ * and the reviewers do it. What this stops is the case where there is nothing
+ * to read at all — where "the user approved a production run" is the only
+ * artefact, and the rules of that run exist solely in one session's memory.
+ */
+function assertProductionContract(repoDir: string): void {
+  const path = join(repoDir, "docs/architecture/e2e.md");
+  let text: string;
+  try {
+    text = readFileSync(path, "utf8");
+  } catch (error) {
+    fail("no_production_contract", `docs/architecture/e2e.md is unreadable: ${(error as Error).message}`);
+  }
+  const heading = text
+    .split("\n")
+    .some((line) => /^#{1,6}\s/.test(line) && /production/i.test(line));
+  if (heading) return;
+  fail(
+    "no_production_contract",
+    "§20 requires an explicit production-safe contract before the E2E set may run against " +
+      "production, and docs/architecture/e2e.md has no section about it; write down what a " +
+      "production run may touch, how it is namespaced and how it is cleaned up",
+    { contract: "docs/architecture/e2e.md" },
+  );
 }
 
 /**

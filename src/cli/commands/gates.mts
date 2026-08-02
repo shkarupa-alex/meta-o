@@ -191,7 +191,10 @@ export async function commandPreflight(args: ParsedArgs): Promise<void> {
   const { repoDir } = repoOf(args);
   const report = runPreflight({
     repoDir,
-    requireCleanWorktree: optionalFlag(args, "allow-dirty") === undefined,
+    // `boolFlag`, not `optionalFlag`: a bare `--allow-dirty` parses as `true`
+    // rather than a string, so testing for `undefined` read it as absent and
+    // silently kept preflight strict. Failing safe is not the same as working.
+    requireCleanWorktree: !boolFlag(args, "allow-dirty"),
   });
 
   const checks = [...report.checks];
