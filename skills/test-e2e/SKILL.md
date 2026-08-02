@@ -80,12 +80,18 @@ Report:
 {
   "planDigest": "…",
   "snapshotDigest": "…",
+  "selectedScenarioIds": ["E2E-CHECKOUT-01", "E2E-SMOKE-01"],
+  "selectionRationale": "the same sentence the sealed plan carries",
   "environment": "local|ephemeral|staging|production",
   "scenarios": [
     { "scenarioId": "E2E-CHECKOUT-01", "status": "passed|failed|blocked", "evidence": "what you observed" }
   ]
 }
 ```
+
+`commitOid` and `completedAt` are filled in for you from the candidate and the
+clock. Everything else must be yours: the selection you actually ran is what
+the plan-bound gates are checked against.
 
 Validate it with `meta-o e2e result --run-id <id>`, which checks that every
 selected scenario actually ran and that the digests still match the candidate.

@@ -25,6 +25,7 @@ import {
   openBlockingRecords,
   proposeFix,
   pruneClosedRecords,
+  reclassifyAsTaste,
   evidenceErrors,
   resolveFinding,
   validateFinding,
@@ -56,6 +57,7 @@ import {
   assertQcProven,
 } from "./gate-evidence.mjs";
 import { redactDeep } from "../../core/redact.mjs";
+import { carryOpenBlockers } from "./findings-cli.mjs";
 import { identityOf, loadState, mutate, type FindingSlot } from "./run-context.mjs";
 import {
   boolFlag,
@@ -298,17 +300,16 @@ export async function commandRecordE2e(args: ParsedArgs): Promise<void> {
       completedAt: result.completedAt || isoTimestamp(),
     };
 
-    // Same rule as the reviewer slots, and this one was missing it: writing the
-    // `e2e` slot wholesale let a green run erase a blocker somebody had raised
-    // against the E2E work itself — a scenario that passes only by luck, an
-    // environment that leaks. It leaves by being restated or closed, not by
-    // being overwritten.
+    // The slot holds two kinds of record and they obey opposite rules. What
+    // this command derived from scenario statuses is a projection of the gate,
+    // so re-running the gate re-computes it — that is the ordinary red → fix →
+    // green loop, and carrying those forward would make a passing re-run
+    // impossible. What a person raised against the E2E work itself — a
+    // scenario that passes only by luck, an environment that leaks — is not a
+    // projection of anything, and leaves only by being restated or closed.
     const derived = e2eFailureFindings(state, result, failures);
-    const carried = carryOpenBlockers(
-      state.openFindings?.e2e ?? [],
-      derived.map((record) => record.finding),
-      "e2e",
-    );
+    const authored = (state.openFindings?.e2e ?? []).filter((record) => !record.derived);
+    const carried = carryOpenBlockers(authored, [], "e2e");
 
     return {
       ...state,
@@ -349,19 +350,56 @@ function assertProductionContract(repoDir: string, candidateCommit: string): voi
       `the candidate does not carry docs/architecture/e2e.md: ${(error as Error).message}`,
     );
   }
-  // `\b` rather than a substring, because `### Reproduction of a failed
-  // scenario` contains the word and says nothing about production.
-  const heading = text
-    .split("\n")
-    .some((line) => /^#{1,6}\s/.test(line) && /\bproduction\b/i.test(line));
-  if (heading) return;
+  if (productionHeadings(text).length > 0) return;
   fail(
     "no_production_contract",
     "§20 requires an explicit production-safe contract before the E2E set may run against " +
-      "production, and docs/architecture/e2e.md has no section about it; write down what a " +
-      "production run may touch, how it is namespaced and how it is cleaned up",
-    { contract: "docs/architecture/e2e.md" },
+      "production, and the candidate's docs/architecture/e2e.md has no section about it; write " +
+      "down what a production run may touch, how it is namespaced and how it is cleaned up, and " +
+      "commit it as part of the candidate",
+    { contract: "docs/architecture/e2e.md", candidateCommit },
   );
+}
+
+/**
+ * §M-CLI-RESULTS — The document's headings that are about production.
+ *
+ * Written as a small Markdown reader rather than one regular expression, for
+ * three reasons each of which was a real wrong answer. A heading inside a
+ * fenced block is an example, and an example of a contract is not a contract.
+ * A setext heading (`Running against production` underlined with `===`) is a
+ * heading, and refusing it told a project with a perfectly good contract that
+ * it had none. CommonMark allows up to three leading spaces on an ATX heading.
+ *
+ * `\b` rather than a substring, because `### Reproduction of a failed
+ * scenario` contains the letters and says nothing about production.
+ */
+function productionHeadings(text: string): string[] {
+  const lines = text.split("\n");
+  const headings: string[] = [];
+  let fence: string | undefined;
+  for (const [index, line] of lines.entries()) {
+    const marker = /^\s{0,3}(```+|~~~+)/.exec(line);
+    if (marker) {
+      if (fence === undefined) fence = marker[1]![0];
+      else if (marker[1]!.startsWith(fence)) fence = undefined;
+      continue;
+    }
+    if (fence !== undefined) continue;
+
+    const atx = /^ {0,3}#{1,6}\s+(.*)$/.exec(line);
+    if (atx) {
+      headings.push(atx[1]!);
+      continue;
+    }
+    // A setext underline turns the *previous* line into a heading, and only if
+    // that line was ordinary text.
+    const underlined = /^ {0,3}(=+|-{2,})\s*$/.test(line) ? lines[index - 1] : undefined;
+    if (underlined !== undefined && underlined.trim() !== "" && !/^ {0,3}#/.test(underlined)) {
+      headings.push(underlined);
+    }
+  }
+  return headings.filter((heading) => /\bproduction\b/i.test(heading));
 }
 
 /**
@@ -401,6 +439,7 @@ function e2eFailureFindings(
     },
     raisedBy,
     status: "open",
+    derived: true,
   }));
 }
 
@@ -443,197 +482,6 @@ function e2eResultErrors(
     if (!plan.selectedScenarioIds.includes(id)) errors.push(`scenario ${id} is not in the plan`);
   }
   return errors;
-}
-
-/**
- * §M-CLI-RESULTS — Keep blockers a new payload silently dropped.
- *
- * A later review round legitimately restates the slot, and a blocker the
- * reviewer no longer raises has genuinely been re-judged — but only if the
- * reviewer says so by id. Anything still open and still absent is refused
- * rather than quietly carried or quietly lost: carrying it would let a real
- * re-review never clear anything, losing it is the bypass this exists to stop.
- */
-function carryOpenBlockers(
-  existing: FindingRecord[],
-  incoming: Finding[],
-  slot: FindingSlot,
-): FindingRecord[] {
-  const restated = new Set(incoming.map((finding) => finding.id));
-  const dropped = openBlockingRecords(existing).filter((record) => !restated.has(record.finding.id));
-  if (dropped.length > 0) {
-    fail(
-      "findings_dropped",
-      `${slot} still holds open blocking finding(s) ${dropped.map((r) => r.finding.id).join(", ")} ` +
-        "that this payload neither restates nor closes; close them with `run resolve-finding` " +
-        "or `run dismiss-taste` first",
-      { dropped: dropped.map((record) => record.finding.id) },
-    );
-  }
-  return existing.filter((record) => !openBlockingRecords([record]).length && !restated.has(record.finding.id));
-}
-
-/**
- * §M-CLI-RESULTS — Store findings raised by one reviewer.
- *
- * Validated on entry so that a malformed finding — taste marked as a blocker, a
- * defect with no evidence — is rejected at the boundary instead of becoming an
- * argument between two model sessions.
- */
-export async function commandOpenFindings(args: ParsedArgs): Promise<void> {
-  const { projectKey } = identityOf(args);
-  const runId = requireFlag(args, "run-id");
-  const slot = requireFlag(args, "reviewer") as FindingSlot;
-  const findings = redactDeep(await readStdinJson<Finding[]>());
-
-  const errors = findings.flatMap((finding) => validateFinding(finding).errors);
-  if (errors.length > 0) fail("invalid_finding", errors.join("; "));
-
-  const next = await mutate(projectKey, runId, (state) => {
-    const role = slot === "e2e" ? "e2eTester" : slot;
-    const session = state.sessions[role];
-    const raisedBy: SessionRef = session ?? {
-      backend: "herdr",
-      sessionId: `unrecorded-${slot}`,
-      role,
-      generation: state.sessionGeneration[role] ?? 1,
-    };
-    // This command records what a review found; it is not a way to un-find it.
-    // Writing the slot wholesale let anyone who could reach the CLI hand in an
-    // empty array and erase a reviewer's blocker — after which four gates that
-    // were already attested completed the run. Blockers leave only through
-    // `resolve-finding` or `dismiss-taste`, which name an authority.
-    const carried = carryOpenBlockers(state.openFindings?.[slot] ?? [], findings, slot);
-    const records: FindingRecord[] = findings.map((finding) => ({
-      finding,
-      raisedBy,
-      status: "open",
-    }));
-    return { ...state, openFindings: { ...state.openFindings, [slot]: [...carried, ...records] } };
-  });
-
-  emit({
-    runId,
-    reviewer: slot,
-    open: next.openFindings?.[slot]?.length ?? 0,
-    blocking: openBlockingRecords(next.openFindings?.[slot] ?? []).length,
-  });
-}
-
-/**
- * §M-CLI-RESULTS — Record the executor's proposed fix for one finding.
- *
- * The evidence comes from stdin. It used to be copied out of the record's own
- * `resolutionEvidence`, which is empty at this point by definition — so the
- * executor had no way to say what it changed, and the reviewer had nothing to
- * check. That is the half of "close after checking candidate and evidence" the
- * executor owes.
- */
-export async function commandProposeFix(args: ParsedArgs): Promise<void> {
-  const { projectKey } = identityOf(args);
-  const runId = requireFlag(args, "run-id");
-  const slot = requireFlag(args, "reviewer") as FindingSlot;
-  const findingId = requireFlag(args, "finding-id");
-  const candidate = requireFlag(args, "candidate-commit");
-  const evidence = redactDeep(await readStdinJson<Evidence[]>());
-
-  const errors = evidenceErrors(evidence);
-  if (errors.length > 0) fail("invalid_evidence", errors.join("; "));
-
-  const next = await mutate(projectKey, runId, (state) => {
-    const records = state.openFindings?.[slot] ?? [];
-    if (!records.some((record) => record.finding.id === findingId)) {
-      fail("unknown_finding", `${slot} holds no open finding ${findingId}`);
-    }
-    const updated = records.map((record) =>
-      record.finding.id === findingId ? proposeFix(record, candidate, evidence) : record,
-    );
-    return { ...state, openFindings: { ...state.openFindings, [slot]: updated } };
-  });
-
-  emit({ runId, findingId, status: next.openFindings?.[slot]?.find((r) => r.finding.id === findingId)?.status });
-}
-
-/**
- * §M-CLI-RESULTS — The session a `--by-role` claim resolves to.
- *
- * `--by-role` is a claim, and nothing in a CLI invocation proves which model is
- * behind it. The comment here used to argue that comparing the claim against
- * the raising role made the rule safe; it does not — the executor need only
- * claim the raiser's own role, and both checks pass.
- *
- * What is checkable is that the orchestrator actually dispatched a session for
- * that role in this run. So the fabricated `unrecorded-<role>` stand-in is
- * gone: a closure now names a session that exists in state, put there by the
- * orchestrator when it spawned the reviewer. That is authority by dispatch, not
- * authentication, and the honest limit is stated in `docs/knowledge/`: a model
- * that can both reach this CLI and impersonate a dispatched reviewer is not
- * something a local tool can exclude.
- */
-function claimedSession(state: RunState, role: SessionRef["role"], findingId: string): SessionRef {
-  const session = state.sessions[role];
-  if (!session) {
-    fail(
-      "no_such_session",
-      `finding ${findingId}: this run has no ${role} session, so nothing may close a finding on ` +
-        `its authority; dispatch one with \`meta-o session spawn --role ${role}\` first`,
-    );
-  }
-  return session;
-}
-
-/** §M-CLI-RESULTS — Apply one closing transition to a single finding record. */
-async function closeFinding(
-  args: ParsedArgs,
-  apply: (record: FindingRecord, by: SessionRef) => FindingRecord,
-): Promise<void> {
-  const { projectKey } = identityOf(args);
-  const runId = requireFlag(args, "run-id");
-  const slot = requireFlag(args, "reviewer") as FindingSlot;
-  const findingId = requireFlag(args, "finding-id");
-  const byRole = requireFlag(args, "by-role") as SessionRef["role"];
-
-  const next = await mutate(projectKey, runId, (state) => {
-    const records = state.openFindings?.[slot] ?? [];
-    if (!records.some((record) => record.finding.id === findingId)) {
-      fail("unknown_finding", `${slot} holds no open finding ${findingId}`);
-    }
-    const by = claimedSession(state, byRole, findingId);
-    const updated = records.map((record) =>
-      record.finding.id === findingId ? apply(record, by) : record,
-    );
-    return { ...state, openFindings: { ...state.openFindings, [slot]: pruneClosedRecords(updated) } };
-  });
-
-  emit({
-    runId,
-    findingId,
-    remaining: next.openFindings?.[slot]?.length ?? 0,
-    blocking: openBlockingRecords(next.openFindings?.[slot] ?? []).length,
-    routing: routeNext(next),
-  });
-}
-
-/**
- * §M-CLI-RESULTS — Close a finding on the authority of its raiser or an adjudicator.
- *
- * Reviewer A may not close reviewer B's finding, and the executor may close
- * nobody's: both are the same rule, that the party who decides a problem is
- * gone must be a party able to see whether it is.
- */
-export async function commandResolveFinding(args: ParsedArgs): Promise<void> {
-  await closeFinding(args, (record, by) => resolveFinding(record, by));
-}
-
-/**
- * §M-CLI-RESULTS — Drop a taste suggestion the executor declined to act on.
- *
- * Without this verb a declined suggestion has no exit: it is not a defect, so
- * no fix is coming, and `resolve-finding` refuses a record with no proposed
- * fix. The run would sit in the review loop forever over a matter of style.
- */
-export async function commandDismissTaste(args: ParsedArgs): Promise<void> {
-  await closeFinding(args, (record, by) => dismissTaste(record, by));
 }
 
 /** §M-CLI-RESULTS — Store the executor's temporary knowledge impact plan. */

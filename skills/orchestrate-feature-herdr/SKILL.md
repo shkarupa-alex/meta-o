@@ -222,11 +222,12 @@ A fresh orchestrator resumes from state alone; there is no narrative handoff.
    and refuses while it is still alive. If it refuses, it is telling you the run
    has an owner.
 
-   Takeover prints `exportForThisOrchestrator`. Export it, and keep it exported
-   for every later `meta-o` call in this session:
+   Takeover prints `exportForThisOrchestrator`, already in `KEY=value` form.
+   Export it verbatim, and keep it exported for every later `meta-o` call in
+   this session:
 
    ```bash
-   export META_O_ORCHESTRATOR_GENERATION=<the number takeover printed>
+   export "$(meta-o run takeover --run-id "$RUN" | jq -r .exportForThisOrchestrator)"
    ```
 
    That is what makes the fence real. Without it, an orchestrator that was

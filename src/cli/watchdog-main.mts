@@ -9,7 +9,7 @@
  */
 
 import { parseArgs, fail } from "./args.mjs";
-import { commandWatchdogRun } from "./commands/backend.mjs";
+import { commandWatchdogRun } from "./commands/watchdog-cli.mjs";
 
 /** §M-WATCHDOG-MAIN — Parse arguments and run the loop until stopped. */
 async function main(): Promise<void> {

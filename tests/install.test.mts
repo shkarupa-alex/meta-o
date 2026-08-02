@@ -95,6 +95,14 @@ test("install.sh delivers a runnable CLI made only of dependency-free .mjs", () 
       ),
       "the Python starter profile must ship with the install",
     );
+
+    // §50 runs the watchdog as a user service. The units ship unloaded — the
+    // installer must deliver them and must not activate anything.
+    assert.deepEqual(walk(join(prefix, "share", "meta-o", "service")).sort(), [
+      "com.meta-o.watchdog.plist",
+      "meta-o-watchdog.service",
+    ]);
+    assert.match(help, /watchdog enable/, "and the switch that turns it on must be reachable");
   } finally {
     rmSync(prefix, { recursive: true, force: true });
     rmSync(skills, { recursive: true, force: true });

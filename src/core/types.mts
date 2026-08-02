@@ -306,9 +306,22 @@ export interface FindingRecord {
   finding: Finding;
   raisedBy: SessionRef;
   status: "open" | "fix_proposed" | "resolved" | "taste_dismissed";
+  /**
+   * Set when `record-e2e` derived this record from a scenario status rather
+   * than a person judging the change. A derived record is a projection of the
+   * gate result, so the next run of that gate re-computes it; a record a human
+   * raised is not, and survives until it is restated or closed.
+   */
+  derived?: boolean;
   resolutionCandidate?: string;
   resolutionEvidence?: Evidence[];
   resolvedBy?: SessionRef;
+  /**
+   * Set when a technical adjudicator demoted this finding to `taste`. Kept so
+   * the record says on whose authority it stopped blocking, which is the whole
+   * content of that verdict.
+   */
+  reclassifiedBy?: SessionRef;
 }
 
 /** §M-CORE-TYPES — Which stabilization loop is currently authoritative. */

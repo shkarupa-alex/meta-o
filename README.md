@@ -142,7 +142,7 @@ Everything a run knows lives outside the repository:
   config.json  watchdog.json
   projects/<readable-path>--<sha256[0:12]>/
     project.json  settings.json
-    runs/<run-id>/state.json  input/spec-<sha256>.md  findings/
+    runs/<run-id>/state.json  input/spec-<sha256>.md  gate-receipts/<label>.json
 ```
 
 Mode `0700`/`0600`, every path component checked against symlink and ownership
@@ -152,6 +152,39 @@ narrative written by a process that was about to die is not something to resume
 from.
 
 After `COMPLETE` the run directory is deleted. Your project settings stay.
+
+## The watchdog
+
+Off until you say otherwise, and off per project:
+
+```bash
+meta-o watchdog enable            # this project, deterministic classifier
+meta-o watchdog status            # what it watches, and where its log is
+meta-o watchdog disable --all     # stop watching everything
+```
+
+That writes `~/.meta-o/watchdog.json`, which you can also hand-edit:
+
+```json
+{
+  "schema_version": 1,
+  "enabled": true,
+  "project_keys": ["-home-you-work-app--73899b39f653"],
+  "poll_interval_seconds": 60,
+  "max_backoff_seconds": 900,
+  "classifier_mode": "deterministic"
+}
+```
+
+`classifier_mode: "hybrid"` lets a *local* model label a stalled tail as
+`transient`, `quota`, `external` or `unknown` — four labels and nothing else.
+It never chooses the action; the action set is closed and the decision is a
+table (`src/watchdog/decide.mts`).
+
+The loop itself is `meta-o-watchdog`, run as a user service. Unit files ship
+unloaded in `share/meta-o/service/` — a launchd agent and a systemd user unit,
+each carrying its own install instructions — because loading one changes your
+login session and that is your decision, not the installer's.
 
 ## Developing meta-o
 
@@ -181,6 +214,13 @@ its own E2E contract in [`docs/architecture/e2e.md`](docs/architecture/e2e.md).
 - **Secure state uses component `lstat` plus `O_NOFOLLOW`,** not dirfd-relative
   `openat`, which Node does not expose. This is documented in
   `src/core/safe-fs.mts` rather than hidden.
+- **The Python profile ships its own import-graph checker, not Import Linter.**
+  §40 names Import Linter; `templates/python/quality/import_graph.py` implements
+  the same contracts (layers, independence, forbidden edges, cycles, a fan-in
+  ratchet) with nothing but the standard library, because the whole starter
+  profile has to run offline with no dependency the project did not choose. A
+  project that would rather have the real thing can declare it in
+  `.quality/qc-manifest.json` and delete the checker.
 - **meta-o's own `code-health` gate measures structure from indentation,** not
   from a parsed syntax tree, so its thresholds are looser than the AST-based
   ones the Python template ships.

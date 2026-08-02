@@ -585,6 +585,70 @@ class ImportGraphTests(unittest.TestCase):
         result = run_checker(self.project.root, "import_graph.py")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_adopted_roots_must_be_dependency_closed(self) -> None:
+        """§M-QC-TESTS — §40's brownfield ratchet, which nothing used to check.
+
+        A manifest saying "these roots are certified" while a certified module
+        imports an uncertified one has widened the boundary by an import
+        statement rather than by a reviewed adoption change.
+        """
+        write(
+            self.project.root,
+            "src/adopted.py",
+            '''
+            """§M-ADOPTED — Certified code. Implements §A-BOOT-01."""
+
+            import stray
+
+
+            def use() -> object:
+                """§M-ADOPTED — Reach outside the certified boundary."""
+                return stray
+            ''',
+        )
+        write(
+            self.project.root,
+            "src/stray.py",
+            '''
+            """§M-STRAY — Uncertified code. Implements §A-BOOT-01."""
+
+
+            def helper() -> int:
+                """§M-STRAY — Do something nobody has reviewed under the contract."""
+                return 1
+            ''',
+        )
+        write(
+            self.project.root,
+            "pyproject.toml",
+            """
+            [tool.meta_o.import_graph]
+            source_roots = ["src"]
+            first_party_prefixes = ["adopted", "boot", "stray"]
+            """,
+        )
+        write(
+            self.project.root,
+            ".quality/adoption-manifest.json",
+            json.dumps({"schema_version": 1, "adopted_roots": ["src/adopted.py"]}, indent=2) + "\n",
+        )
+        result = run_checker(self.project.root, "import_graph.py")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("closure-broken", result.stdout)
+        self.assertIn("stray", result.stdout)
+
+        # Adopting what it depends on closes the boundary.
+        write(
+            self.project.root,
+            ".quality/adoption-manifest.json",
+            json.dumps(
+                {"schema_version": 1, "adopted_roots": ["src/adopted.py", "src/stray.py"]}, indent=2
+            )
+            + "\n",
+        )
+        closed = run_checker(self.project.root, "import_graph.py")
+        self.assertEqual(closed.returncode, 0, closed.stdout + closed.stderr)
+
     def test_a_relative_import_cycle_is_found(self) -> None:
         """§M-QC-TESTS — `from . import x` forms a real edge, so it can form a real cycle."""
         write(
@@ -1020,6 +1084,32 @@ class E2ECheckerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("src/build/module.py", result.stdout)
         self.assertNotIn("src/dist/artifact.py", result.stdout)
+
+    def test_a_project_may_say_which_directories_are_output_trees(self) -> None:
+        """§M-QC-TESTS — The `__init__.py` heuristic cannot see every real package.
+
+        A PEP 420 namespace package under `src/build/` carries no `__init__.py`
+        and was skipped silently; a generated tree that happens to carry one was
+        judged. Neither is decidable from the name, so the list is configurable
+        and this proves the override actually reaches discovery.
+        """
+        write(self.project.root, "src/build/sub/__init__.py", "")
+        write(self.project.root, "src/build/sub/real_source.py", "def undocumented():\n    return 1\n")
+
+        silent = run_checker(self.project.root, "purpose_check.py")
+        self.assertEqual(silent.returncode, 0, silent.stdout)
+
+        write(
+            self.project.root,
+            "pyproject.toml",
+            """
+            [tool.meta_o.discovery]
+            package_dirs = []
+            """,
+        )
+        judged = run_checker(self.project.root, "purpose_check.py")
+        self.assertEqual(judged.returncode, 1)
+        self.assertIn("src/build/sub/real_source.py", judged.stdout)
 
     def test_a_dangling_business_link_is_rejected(self) -> None:
         """§M-QC-TESTS — A scenario must verify a business truth that actually exists."""

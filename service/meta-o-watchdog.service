@@ -1,0 +1,36 @@
+# §M-WATCHDOG-SERVICE — systemd user unit for the deterministic watchdog.
+#
+# §50 runs the watchdog as a *user* service, never system-wide: it reads
+# ~/.meta-o, which is 0700 and belongs to one person, and a system unit would
+# either fail to read it or be given a reason to run as that user anyway.
+#
+# Install:
+#   mkdir -p ~/.config/systemd/user
+#   cp ~/.local/share/meta-o/service/meta-o-watchdog.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now meta-o-watchdog
+#
+# It observes nothing until `meta-o watchdog enable` names a project, so
+# starting it before adopting one is harmless.
+
+[Unit]
+Description=meta-o watchdog — observes stalled orchestrator runs
+Documentation=https://github.com/bitrix/meta-o
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/meta-o-watchdog
+Restart=on-failure
+RestartSec=30
+
+# The watchdog's whole job is to be dull and bounded. It touches ~/.meta-o and
+# the backend, and nothing else needs to be reachable from it.
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.meta-o
+
+[Install]
+WantedBy=default.target

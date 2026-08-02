@@ -133,6 +133,16 @@ rm -rf "$SHARE_DIR/templates"
 mkdir -p "$SHARE_DIR/templates"
 cp -R "$SOURCE_DIR/templates/." "$SHARE_DIR/templates/"
 
+# --- service units -----------------------------------------------------------
+
+# Copied, never installed. §50 wants the watchdog run as a user service, and
+# loading one is a change to the user's login session — their decision, made
+# with the file in front of them. `meta-o watchdog enable` points here.
+rm -rf "$SHARE_DIR/service"
+mkdir -p "$SHARE_DIR/service"
+cp "$SOURCE_DIR/service/meta-o-watchdog.service" "$SHARE_DIR/service/"
+cp "$SOURCE_DIR/service/com.meta-o.watchdog.plist" "$SHARE_DIR/service/"
+
 # --- skills ------------------------------------------------------------------
 
 if [ "$INSTALL_SKILLS" -eq 1 ]; then

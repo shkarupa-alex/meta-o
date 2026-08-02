@@ -50,7 +50,10 @@ Exactly one of:
   alternative is adequate. Record it with
   `meta-o run resolve-finding --by-role technicalAdjudicator`.
 - **reclassified** — the concern is real but is `taste`, not a defect or risk.
-  It becomes a non-blocking suggestion.
+  Record it with
+  `meta-o run reclassify-finding --reviewer <slot> --finding-id <id> --rationale "…"`.
+  It stays on the record as a non-blocking suggestion; the executor may still
+  act on it, and the reviewer who raised it may drop it with `dismiss-taste`.
 
 Do not split the difference to end the argument. "Partially valid, let's
 compromise" leaves the next person with two unresolved positions instead of one

@@ -73,37 +73,54 @@ def discover_python_files(root: Path, source_roots: list[str]) -> list[Path]:
     `~/dist/`, `/build/` or any `venv`-named parent discovered no files at all
     and every gate reported `ok` on a tree it had not opened.
 
-    `build` and `dist` are skipped only where they are output directories. A
-    directory of either name carrying an `__init__.py` is a package somebody
-    imports, and dropping it is under-coverage of exactly the silent kind §40
-    calls a FAIL — the gate would report `ok` about source it never opened.
+    `build` and `dist` name output directories in most projects and real
+    packages in some. A directory of either name carrying an `__init__.py` is
+    treated as a package, because dropping it is under-coverage of exactly the
+    silent kind §40 calls a FAIL. That heuristic cannot see a PEP 420 namespace
+    package, and it cannot see a generated tree that happens to carry an
+    `__init__.py`, so the whole list is configurable:
+
+        [tool.meta_o.discovery]
+        skip_dirs = [".venv", "venv", "__pycache__", ".tox"]
+
+    naming the directories to skip outright, and
+
+        package_dirs = ["build", "dist"]
+
+    naming those that are skipped only where they are not packages.
     """
+    config = load_config("discovery", DISCOVERY_DEFAULTS)
+    always = {str(name) for name in config["skip_dirs"]}
+    conditional = {str(name) for name in config["package_dirs"]}
     files: list[Path] = []
     for relative in source_roots:
         base = root / relative
         if not base.is_dir():
             continue
         for path in sorted(base.rglob("*.py")):
-            if _skipped(base, path):
+            if _skipped(base, path, always, conditional):
                 continue
             files.append(path)
     return files
 
 
 # Names that are output directories everywhere, and names that are output
-# directories only when they are not also packages.
-SKIP_ALWAYS = {".venv", "venv", "__pycache__", ".tox"}
-SKIP_UNLESS_PACKAGE = {"build", "dist"}
+# directories only where they are not also packages. Overridable, because no
+# name is reliably one or the other in every project.
+DISCOVERY_DEFAULTS = {
+    "skip_dirs": [".venv", "venv", "__pycache__", ".tox"],
+    "package_dirs": ["build", "dist"],
+}
 
 
-def _skipped(base: Path, path: Path) -> bool:
+def _skipped(base: Path, path: Path, always: set[str], conditional: set[str]) -> bool:
     """§M-QC-COMMON — Decide whether one discovered file sits in a skipped directory."""
     walked = base
     for part in path.relative_to(base).parts[:-1]:
         walked = walked / part
-        if part in SKIP_ALWAYS:
+        if part in always:
             return True
-        if part in SKIP_UNLESS_PACKAGE and not (walked / "__init__.py").is_file():
+        if part in conditional and not (walked / "__init__.py").is_file():
             return True
     return False
 

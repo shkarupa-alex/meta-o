@@ -87,12 +87,30 @@ export function assertGateIsolated(
     );
   }
   assertSameContent(receipt, candidate, `the ${label} receipt`, "gate_not_isolated", path);
+  // A PASS whose own receipt records a non-zero exit is the caller's word
+  // contradicting the evidence they cited. `worktree run --label smoke -- false`
+  // produced a perfectly valid receipt, and `record-gate --gate smoke --status
+  // passed` accepted it — the isolation was proved and the outcome was not.
+  //
+  // Only for a claimed pass: a receipt for a failing run is exactly what
+  // recording a failure should cite.
+  if (receipt?.exitStatus !== 0) {
+    fail(
+      "gate_did_not_pass",
+      `the ${label} receipt records exit status ${receipt?.exitStatus ?? "(unrecorded)"} for ` +
+        `\`${receipt?.command ?? "an unrecorded command"}\`; a gate cannot be recorded as passed ` +
+        "against a run that did not pass",
+      { expectedReceipt: path },
+    );
+  }
 }
 
 /** §M-GATE-EVIDENCE — What `worktree run` records about an isolated gate. */
 interface GateReceipt {
   commitOid?: string;
   snapshotDigest?: string;
+  exitStatus?: number;
+  command?: string;
 }
 
 /**

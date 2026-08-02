@@ -475,6 +475,74 @@ test("an open blocker cannot be erased by rewriting the findings slot", () => {
   }
 });
 
+test("an adjudicator can rule a finding real but not blocking", () => {
+  // §20 gives the adjudicator three verdicts and the CLI implemented two, so
+  // the honest one — "the concern is real, and it is taste" — was the one
+  // verdict the tool could not record. An adjudicator who believed it had to
+  // either uphold a blocker they disagreed with or call the concern gone.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    ok(
+      cli(["run", "open-findings", "--run-id", runId, "--reviewer", "reviewerPrimary"], {
+        ...context,
+        stdin: blocker("F-1"),
+      }),
+      "open-findings",
+    );
+
+    const args = [
+      "run",
+      "reclassify-finding",
+      "--run-id",
+      runId,
+      "--reviewer",
+      "reviewerPrimary",
+      "--finding-id",
+      "F-1",
+      "--rationale",
+      "the naming argument is real, and it is a preference",
+    ];
+
+    // Not before an adjudicator exists: the verdict names an authority.
+    assert.equal(errorCode(cli(args, context)), "no_such_session");
+
+    ok(
+      cli(
+        [
+          "run",
+          "set-session",
+          "--run-id",
+          runId,
+          "--role",
+          "technicalAdjudicator",
+          "--session-id",
+          "mo-adj",
+        ],
+        context,
+      ),
+      "dispatch the adjudicator",
+    );
+
+    const ruled = ok(cli(args, context), "reclassify");
+    assert.equal(ruled.json["blocking"], 0, "it no longer blocks");
+
+    const shown = ok(cli(["run", "show", "--run-id", runId], context), "run show");
+    const open = (shown.json["openFindings"] as Record<string, { finding: Record<string, string> }[]>)[
+      "reviewerPrimary"
+    ];
+    assert.equal(open?.length, 1, "and it is still on the record");
+    assert.equal(open?.[0]?.finding["classification"], "taste");
+    assert.equal(open?.[0]?.finding["severity"], "suggestion");
+    assert.match(open?.[0]?.finding["impact"] ?? "", /reclassified as taste: the naming argument/);
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
 test("a finding cannot be closed on the authority of a session that was never dispatched", () => {
   // `--by-role` is a claim. It used to be compared only against the raising
   // role, so the executor had merely to claim the raiser's own role — the
@@ -1301,6 +1369,28 @@ test("the production contract must be committed, and must be about production", 
     repo.commit("a heading that merely contains the letters");
     assert.equal(errorCode(attempt()), "no_production_contract");
 
+    // Committed, but the heading is an example inside a fenced block. An
+    // example of a contract is not a contract.
+    repo.write(
+      "docs/architecture/e2e.md",
+      "# E2E\n\n## e2e-smoke-01\n\n## e2e-checkout-01\n\n" +
+        "Write a section like this one:\n\n```markdown\n## Production safety\n" +
+        "what a production run may touch\n```\n",
+    );
+    repo.commit("show what the contract would look like, without writing one");
+    assert.equal(errorCode(attempt()), "no_production_contract");
+
+    // A setext heading is a heading, and refusing it told a project with a
+    // perfectly good contract that it had none.
+    repo.write(
+      "docs/architecture/e2e.md",
+      "# E2E\n\n## e2e-smoke-01\n\n## e2e-checkout-01\n\n" +
+        "Running against production\n==========================\n\n" +
+        "Namespaced per run; every fixture is torn down even on failure.\n",
+    );
+    repo.commit("write the contract with a setext heading");
+    ok(attempt(), "a setext contract counts");
+
     // Committed, and about production.
     repo.write(
       "docs/architecture/e2e.md",
@@ -1309,6 +1399,138 @@ test("the production contract must be committed, and must be about production", 
     );
     repo.commit("write down what a production run may do");
     ok(attempt(), "record-e2e");
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("a scenario the E2E gate itself flagged can be fixed and re-run green", () => {
+  // The other half of the same rule. What `record-e2e` derives from a scenario
+  // status is a projection of the gate, so the next run of the gate re-computes
+  // it — treating those like a reviewer's blocker made the ordinary red → fix →
+  // green loop impossible, because nobody but the tool ever restates them.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
+    retireSpec(repo);
+
+    /** §M-TEST-HARDENING — Run the whole E2E round once, at whatever HEAD is now. */
+    const round = (status: "failed" | "passed"): ReturnType<typeof cli> => {
+      const candidate = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
+      const commitOid = candidate.json["provenanceCommit"] as string;
+      const snapshotDigest = candidate.json["snapshotDigest"] as string;
+      const plan = ok(
+        cli(["e2e", "seal-plan"], {
+          ...context,
+          stdin: JSON.stringify({
+            schemaVersion: 1,
+            commitOid,
+            selectedScenarioIds: ["E2E-SMOKE-01"],
+            selectionRationale: "the canary always runs",
+            impactedBusinessLinks: [],
+            impactedTags: [],
+          }),
+        }),
+        "seal-plan",
+      ).json as unknown as { planDigest: string };
+      ok(
+        cli(["run", "set-plan", "--run-id", runId], { ...context, stdin: JSON.stringify(plan) }),
+        "set-plan",
+      );
+      ok(
+        cli(["worktree", "run", "--run-id", runId, "--label", "e2e", "true"], context),
+        "isolated run",
+      );
+      return cli(["run", "record-e2e", "--run-id", runId], {
+        ...context,
+        stdin: JSON.stringify({
+          commitOid,
+          snapshotDigest,
+          planDigest: plan.planDigest,
+          selectedScenarioIds: ["E2E-SMOKE-01"],
+          selectionRationale: "the canary always runs",
+          scenarios: [{ scenarioId: "E2E-SMOKE-01", status, evidence: `it ${status}` }],
+          environment: "local",
+          completedAt: "2026-07-24T12:30:00Z",
+        }),
+      });
+    };
+
+    const red = ok(round("failed"), "the first round is red");
+    assert.equal((red.json["failures"] as unknown[]).length, 1);
+
+    // A human blocker on the same slot is a different thing, and a reserved id
+    // cannot be used to smuggle one into the tool's own records.
+    const collision = cli(["run", "open-findings", "--run-id", runId, "--reviewer", "e2e"], {
+      ...context,
+      stdin: JSON.stringify([
+        {
+          id: "E2E-E2E-SMOKE-01",
+          severity: "blocker",
+          classification: "defect",
+          evidence: [{ kind: "scenario", reference: "E2E-SMOKE-01", detail: "leaks fixtures" }],
+          basis: { type: "spec", reference: "E2E-SMOKE-01" },
+          impact: "the canary leaves rows behind",
+          recommendedFix: { approach: "namespace them", rationale: "a suite that leaks cannot re-run" },
+        },
+      ]),
+    });
+    assert.equal(errorCode(collision), "finding_id_reserved");
+
+    // The executor really fixes it, which moves the candidate.
+    repo.write("src/app.py", '"""§M-APP — entry point, fixed."""\n');
+    repo.commit("fix the scenario");
+
+    const green = ok(round("passed"), "and the same scenario now passes");
+    assert.deepEqual(green.json["failures"], []);
+    assert.equal(green.json["status"], "passed");
+
+
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("a gate whose own receipt records a failure cannot be recorded as passed", () => {
+  // The isolation receipt was checked for provenance and content and never for
+  // outcome, so `worktree run --label smoke -- false` produced a perfectly
+  // valid receipt and `record-gate --status passed` accepted it. The evidence
+  // the caller cited said the run failed.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
+    retireSpec(repo);
+    ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
+    ok(cli(["run", "transition", "--run-id", runId, "--phase", "LOCAL_QC"], context), "→ LOCAL_QC");
+    ok(
+      cli(["run", "transition", "--run-id", runId, "--phase", "SMOKE_PREFLIGHT"], context),
+      "→ SMOKE",
+    );
+
+    // `worktree run` reports the failure honestly; it is `record-gate` that
+    // must refuse to call it a pass.
+    cli(["worktree", "run", "--run-id", runId, "--label", "smoke", "false"], context);
+    const claimed = cli(
+      ["run", "record-gate", "--run-id", runId, "--gate", "smoke", "--status", "passed"],
+      context,
+    );
+    assert.equal(errorCode(claimed), "gate_did_not_pass");
+
+    // Recording the failure is the plain path, and it stays open.
+    ok(
+      cli(["run", "record-gate", "--run-id", runId, "--gate", "smoke", "--status", "failed"], context),
+      "record the failure",
+    );
   } finally {
     home.dispose();
     repo.dispose();

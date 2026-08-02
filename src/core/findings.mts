@@ -319,6 +319,47 @@ export function dismissTaste(record: FindingRecord, dismissedBy: SessionRef): Fi
   return { ...record, status: "taste_dismissed", resolvedBy: dismissedBy };
 }
 
+/**
+ * §M-FINDINGS — Demote a blocking finding to taste, on an adjudicator's verdict.
+ *
+ * §20 gives the technical adjudicator exactly three verdicts, and this was the
+ * missing one: "the concern is real but it is `taste`, not a defect or a risk."
+ * Without it the adjudicator's only exits were upholding a finding nobody
+ * agreed was blocking and `resolve`, which asserts the concern is *gone* — so
+ * the honest verdict was the one verdict the tool could not record.
+ *
+ * Only the adjudicator, and only downward. A reviewer reclassifying their own
+ * blocker is that reviewer withdrawing it, which `dismiss-taste` already
+ * covers once it is taste; a promotion the other way would let a fresh session
+ * turn a style note into a completion blocker without re-reviewing anything.
+ *
+ * The record stays open. Reclassification decides how much the finding weighs,
+ * not whether it has been dealt with — it stops blocking completion and the
+ * executor may still act on it or the raiser may dismiss it.
+ */
+export function reclassifyAsTaste(record: FindingRecord, by: SessionRef): FindingRecord {
+  if (by.role !== "technicalAdjudicator") {
+    throw new FindingTransitionError(
+      record.finding.id,
+      `only a technical adjudicator may reclassify a finding, not ${by.role}`,
+    );
+  }
+  if (record.finding.classification === "taste") {
+    throw new FindingTransitionError(record.finding.id, "already taste");
+  }
+  if (record.status === "resolved" || record.status === "taste_dismissed") {
+    throw new FindingTransitionError(record.finding.id, "already closed");
+  }
+  // Severity follows classification, because §30 refuses a taste finding that
+  // calls itself a blocker — leaving the old severity in place would produce a
+  // record `validateFinding` would reject.
+  return {
+    ...record,
+    finding: { ...record.finding, classification: "taste", severity: "suggestion" },
+    reclassifiedBy: by,
+  };
+}
+
 /** §M-FINDINGS — Records that still block completion. */
 export function openBlockingRecords(records: FindingRecord[]): FindingRecord[] {
   return records.filter(

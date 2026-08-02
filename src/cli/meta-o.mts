@@ -34,15 +34,18 @@ import {
 } from "./commands/run.mjs";
 import { commandApproveProductionE2e, commandRecordDecision } from "./commands/decisions.mjs";
 import {
-  commandDismissTaste,
   commandKnowledgePlan,
-  commandOpenFindings,
-  commandProposeFix,
   commandRecordE2e,
   commandRecordGate,
   commandRecordReview,
-  commandResolveFinding,
 } from "./commands/results.mjs";
+import {
+  commandDismissTaste,
+  commandOpenFindings,
+  commandProposeFix,
+  commandReclassifyFinding,
+  commandResolveFinding,
+} from "./commands/findings-cli.mjs";
 import {
   commandBaselineSelection,
   commandE2eResult,
@@ -74,10 +77,14 @@ import {
 import {
   commandCapabilities,
   commandCapabilitySuite,
+} from "./commands/backend.mjs";
+import {
+  commandWatchdogDisable,
+  commandWatchdogEnable,
   commandWatchdogRun,
   commandWatchdogRuns,
   commandWatchdogStatus,
-} from "./commands/backend.mjs";
+} from "./commands/watchdog-cli.mjs";
 
 /** §M-CLI — One dispatchable command. */
 type Command = (args: ParsedArgs) => void | Promise<void>;
@@ -184,6 +191,11 @@ const COMMANDS: Record<string, { flags: string[]; run: Command; help: string }> 
     flags: ["by-role", "finding-id", "reviewer", "run-id"],
     run: commandResolveFinding,
     help: "close a finding as reviewer or adjudicator",
+  },
+  "run reclassify-finding": {
+    flags: ["cwd", "finding-id", "rationale", "reviewer", "run-id"],
+    run: commandReclassifyFinding,
+    help: "demote a finding to taste on an adjudicator's verdict",
   },
   "run dismiss-taste": {
     flags: ["by-role", "finding-id", "reviewer", "run-id"],
@@ -368,6 +380,16 @@ const COMMANDS: Record<string, { flags: string[]; run: Command; help: string }> 
     help: "run the smoke or full capability suite",
   },
 
+  "watchdog enable": {
+    flags: ["classifier-mode", "cwd", "max-backoff-seconds", "poll-interval-seconds", "project-key"],
+    run: commandWatchdogEnable,
+    help: "switch the watchdog on for this project",
+  },
+  "watchdog disable": {
+    flags: ["all", "cwd", "project-key"],
+    run: commandWatchdogDisable,
+    help: "stop watching this project, or all of them",
+  },
   "watchdog status": {
     flags: [],
     run: commandWatchdogStatus,

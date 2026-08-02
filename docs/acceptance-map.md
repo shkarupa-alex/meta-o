@@ -44,7 +44,7 @@ the Python starter profile's own fixtures.
 | Two project paths with the same readable form get different keys | `readable path forms that collapse identically still get distinct keys` |
 | Moving a project creates a new key; migration is explicit | `moving a project produces a different key`, `a project directory belonging to another canonical path blocks the run` |
 | A symlinked state directory is refused | `a symlinked state directory is refused` |
-| A crash at any point of a backend side effect creates no duplicate action | The eight `reconcile …` tests, plus `spawn does not create a second agent for the same operation` |
+| A crash at any point of a backend side effect creates no duplicate action | The nine tests whose names contain `reconcile` (`tests/session-protocol.test.mts`, `tests/cli-lifecycle.test.mts`), plus `spawn does not create a second agent for the same operation` |
 | Two parallel feature branches do not block each other | `two runs of one project take their locks independently` |
 | A fresh orchestrator recovers a run without a narrative handoff | `a fresh orchestrator recovers a run from state.json alone` |
 | A backend capability regression stops preflight | `a backend capability regression stops preflight` |
@@ -119,7 +119,7 @@ now has a test that fails if the hole reopens. They live in
 | A policy gutted through dotted keys (`code_health.max_function_lines = 100000` under `[tool.meta_o]`) reads as unchanged | `a policy written with dotted keys is read, not skipped` |
 | A QC result reporting one gate twice — once failed, once passed — is scored on the second | `a QC result that reports one gate twice is ambiguous, not a pass` |
 | Four green gates complete a run that still carries an unresolved blocker | `an open blocking finding stops completion even when every gate reads passed` |
-| A plan sealed against an earlier candidate satisfies the plan-bound gates | `a plan sealed for another candidate cannot prove completion` |
+| A plan sealed against an earlier candidate satisfies the plan-bound gates | `a plan sealed for other content cannot prove completion` |
 | The only exit from `LOCAL_QC` runs through review, disarming the E2E-loop guard | `an E2E fix can return to the E2E loop without passing through review` |
 | A brownfield change escapes the adoption boundary by being written in `.tsx`, `.sh`, `.c` or `.sql` | `the adoption boundary covers the languages a brownfield repository is written in` |
 | A smoke run and a full baseline share no check ids, so the comparison always finds nothing | `a smoke report and a full baseline share the keys the comparison needs` |
@@ -153,3 +153,11 @@ now has a test that fails if the hole reopens. They live in
 | A gate receipt matched by commit oid is discarded by an amend of an identical tree | `an amend that preserves the tree does not invalidate a single gate` |
 | A key-sorting serialiser reordering an untouched receipt reads as forgery | `a re-serialised receipt for a scenario nobody ran is not forgery` |
 | `install.sh` reports a backend failure when run outside a Git repository | `the capability suite runs outside a Git repository` |
+| A scenario the E2E gate itself flagged can never be re-run green | `a scenario the E2E gate itself flagged can be fixed and re-run green` |
+| A human blocker raised under an id the E2E gate derives is overwritten by the next run | `a scenario the E2E gate itself flagged can be fixed and re-run green` (the `finding_id_reserved` half) |
+| The production contract is satisfied by an example inside a fenced block, or a setext heading is refused | `the production contract must be committed, and must be about production` |
+| A gate whose own receipt records a non-zero exit is recorded as passed | `a gate whose own receipt records a failure cannot be recorded as passed` |
+| The adjudicator's third verdict — real, but taste — cannot be recorded | `an adjudicator can rule a finding real but not blocking` |
+| §40's "adopted roots dependency-closed" is declared and never verified | `adopted roots must be dependency-closed` (Python) |
+| A PEP 420 namespace package named `build` is skipped and a generated tree is judged | `a project may say which directories are output trees` (Python) |
+| §50 makes the watchdog opt-in and gives no way to opt in | `install.sh delivers a runnable CLI made only of dependency-free .mjs` (the `watchdog enable` and service-unit half) |

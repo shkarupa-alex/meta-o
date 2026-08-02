@@ -355,6 +355,57 @@ def check_boundary(
         )
 
 
+def check_adoption_closure(
+    report: Report,
+    root: Path,
+    source_roots: list[str],
+    graph: dict[str, set[str]],
+) -> None:
+    """§M-QC-IMPORT-GRAPH — Adopted roots must be dependency-closed.
+
+    §40's brownfield ratchet requires it, and nothing verified it: the manifest
+    said "these roots are certified", meta-o fenced feature changes to them, and
+    an adopted module was free to import a module nobody had certified. That is
+    the boundary being widened by an import statement rather than by a reviewed
+    adoption change — the certified code is only as trustworthy as what it calls.
+
+    A project with no manifest, or one declaring `fully_adopted`, has nothing to
+    close: everything is inside.
+    """
+    manifest = read_json(root / ".quality/adoption-manifest.json", default=None)
+    if not isinstance(manifest, dict) or manifest.get("fully_adopted"):
+        return
+    roots = [str(item).strip("/") for item in manifest.get("adopted_roots", []) if str(item)]
+    if not roots:
+        return
+
+    paths = {
+        module_name(path, root, source_roots): path
+        for path in discover_python_files(root, source_roots)
+    }
+
+    def adopted(module: str) -> bool:
+        """§M-QC-IMPORT-GRAPH — Whether one module's file sits inside a certified root."""
+        path = paths.get(module)
+        if path is None:
+            return False
+        relative = str(path.relative_to(root))
+        return any(relative == item or relative.startswith(f"{item}/") for item in roots)
+
+    for module in sorted(graph):
+        if not adopted(module):
+            continue
+        for target in sorted(graph[module]):
+            if target in paths and not adopted(target):
+                report.add(
+                    str(paths[module].relative_to(root)),
+                    1,
+                    "closure-broken",
+                    f"{module} is inside an adopted root and imports {target}, which is not; "
+                    f"adopt {target}'s root or stop depending on it",
+                )
+
+
 def main() -> int:
     """§M-QC-IMPORT-GRAPH — Build the graph, apply the contracts, apply the ratchet."""
     config = load_config("import_graph", DEFAULTS)
@@ -374,6 +425,7 @@ def main() -> int:
 
     check_contracts(graph, config, report)
     check_boundary(report, known, unresolved, prefixes)
+    check_adoption_closure(report, root, list(config["source_roots"]), graph)
 
     components = [component for component in tarjan(graph) if len(component) > 1]
     fan_in, fan_out = fan(graph)
