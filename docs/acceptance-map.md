@@ -164,3 +164,15 @@ now has a test that fails if the hole reopens. They live in
 | §40's "adopted roots dependency-closed" is declared and never verified | `adopted roots must be dependency-closed` (Python) |
 | A PEP 420 namespace package named `build` is skipped and a generated tree is judged | `a project may say which directories are output trees` (Python) |
 | §50 makes the watchdog opt-in and gives no way to opt in | `install.sh delivers a runnable CLI made only of dependency-free .mjs` (the `watchdog enable` and service-unit half) |
+| meta-o's own `make qc` cannot run in the detached worktree §00 requires | `meta-o's own gates run in the isolated worktree its protocol requires` |
+| `E2E-QC-TEMPLATES-01` is declared and no target runs it | the Python fixtures now run inside `node quality/run-tests.mjs` and `make e2e` |
+| `run pending` writes the proof it exists to go and get | `` `run pending` cannot write the proof it is supposed to go and get `` |
+| A stale QC result lets a failing gate be re-run as `true` and recorded passed | `a QC pass is recomputed from the result, not taken on the caller's word` (the `startedAt` half) |
+| A blocker filed into a slot the completion check never reads | `a derived E2E finding is retired by the gate, not closed by hand` (the `invalid_reviewer` half) |
+| A derived E2E finding closed by hand while its scenario is still red | `a derived E2E finding is retired by the gate, not closed by hand` |
+| The production contract satisfied by a fenced example, an HTML comment or front matter | `the production contract is read as Markdown, not as a substring search` |
+| A backend the last full suite found broken is driven anyway | `a backend the last full suite found broken may not be driven` |
+| A worker cannot be resumed after a backend restart, only replaced | `resume confirms a live worker and refuses to pretend about a dead one` |
+| A malformed `[tool.meta_o.*]` value silently shrinks discovery | `a malformed config stops the gate instead of shrinking it` (Python) |
+| The closure check declines to run and reports `ok` | `a closure check that cannot run says so` (Python) |
+| `import a.b` reaches an uncertified package body through a certified submodule | `an adopted module may not reach an uncertified package body` (Python) |
