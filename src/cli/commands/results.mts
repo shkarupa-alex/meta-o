@@ -35,6 +35,7 @@ import { readExternalBytes } from "../../core/safe-fs.mjs";
 import type {
   E2ERegistry,
   E2EResult,
+  E2EScenarioResult,
   E2ESelectionPlan,
   Evidence,
   Finding,
@@ -263,6 +264,7 @@ export async function commandRecordE2e(args: ParsedArgs): Promise<void> {
       ...state,
       e2eScenarioStatus: result.scenarios.map((scenario) => ({ ...scenario })),
       e2eEnvironment: result.environment,
+      openFindings: { ...state.openFindings, e2e: e2eFailureFindings(state, result, failures) },
       confirmations: { ...state.confirmations, e2e: gate },
     };
   });
@@ -273,6 +275,46 @@ export async function commandRecordE2e(args: ParsedArgs): Promise<void> {
     failures: (next.e2eScenarioStatus ?? []).filter((s) => s.status !== "passed"),
     routing: routeNext(next),
   });
+}
+
+/**
+ * §M-CLI-RESULTS — Turn the scenarios that did not pass into open findings.
+ *
+ * §30's E2E loop is "selected set → failures batch → executor fix → qc →
+ * selected set". Nothing wrote the failures anywhere the router could see them,
+ * so `fix_e2e_failures` was an action state could not produce and the router
+ * kept prescribing the same failing set forever. The findings are derived here
+ * rather than typed by the tester: they restate a result the command has
+ * already validated, and a second hand-authored copy of it would be one more
+ * thing that can disagree.
+ */
+function e2eFailureFindings(
+  state: RunState,
+  result: E2EResult,
+  failures: readonly E2EScenarioResult[],
+): FindingRecord[] {
+  const raisedBy: SessionRef = state.sessions["e2eTester"] ?? {
+    backend: "herdr",
+    sessionId: "unrecorded-e2eTester",
+    role: "e2eTester",
+    generation: state.sessionGeneration["e2eTester"] ?? 1,
+  };
+  return failures.map((scenario) => ({
+    finding: {
+      id: `E2E-${scenario.scenarioId}`,
+      severity: scenario.status === "failed" ? "blocker" : "major",
+      classification: "defect",
+      evidence: [{ kind: "scenario", reference: scenario.scenarioId, detail: scenario.evidence }],
+      basis: { type: "spec", reference: scenario.scenarioId },
+      impact: `selected scenario ${scenario.scenarioId} ${scenario.status} against ${result.environment}`,
+      recommendedFix: {
+        approach: "make the scenario pass, or prove the scenario itself is wrong",
+        rationale: "a selected scenario is a behaviour the plan says this change must not break",
+      },
+    },
+    raisedBy,
+    status: "open",
+  }));
 }
 
 /** §M-CLI-RESULTS — Everything that makes an E2E result unusable as an attestation. */

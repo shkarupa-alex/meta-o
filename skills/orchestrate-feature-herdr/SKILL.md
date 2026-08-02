@@ -264,6 +264,13 @@ Use the phase that names the actual cause, and say what would resume it:
 `PAUSED_MODEL_UNAVAILABLE`, `PAUSED_TECHNICAL_DISPUTE`,
 `PAUSED_ORCHESTRATOR_BUDGET`, `PAUSED_BACKEND_UNCERTAIN`.
 
+From `PAUSED_MODEL_UNAVAILABLE` there are two exits, not one. If the user
+recovers access to the same model, resume. If they name a different one, ask
+the four ModelSet questions again and write the answer with
+`meta-o run set-model-set --run-id <id>` (the ModelSet on stdin) before you
+resume — a run may only change models while nothing has attested anything, so
+this is refused everywhere except this pause and `AWAITING_MODEL_SET`.
+
 Terminal: `STOPPED_SPEC_IMPOSSIBLE`, `FAILED_BACKEND`, `CANCELLED`, `COMPLETE`.
 
 When your own context approaches its limit, pause with

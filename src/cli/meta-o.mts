@@ -19,6 +19,7 @@ import {
 import {
   commandCleanup,
   commandConfirmModels,
+  commandSetModelSet,
   commandHandoff,
   commandList,
   commandPending,
@@ -138,6 +139,11 @@ const COMMANDS: Record<string, { flags: string[]; run: Command; help: string }> 
     flags: ["run-id"],
     run: commandConfirmModels,
     help: "record the user's ModelSet confirmation",
+  },
+  "run set-model-set": {
+    flags: ["run-id"],
+    run: commandSetModelSet,
+    help: "replace a paused run's ModelSet with a newly confirmed one (stdin)",
   },
   "run set-candidate": {
     flags: ["rev", "run-id"],

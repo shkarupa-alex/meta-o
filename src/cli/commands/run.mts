@@ -30,8 +30,7 @@ import {
   routeNext,
 } from "../../core/fsm.mjs";
 import { computeSnapshotDigest } from "../../core/snapshot.mjs";
-import { changedPaths, git, publishedRunCommits, resolveCommit } from "../../core/git.mjs";
-import { outsideClosure, readAdoptionManifest } from "../../core/adoption.mjs";
+import { git, resolveCommit } from "../../core/git.mjs";
 import { fetchSpec, materializeSpecBlob, assertSpecUnchanged } from "../../core/spec-input.mjs";
 import { validateModelSet } from "../../core/model-set.mjs";
 import { readGlobalConfig } from "../../core/config.mjs";
@@ -79,6 +78,7 @@ import {
 
 import { redact, redactDeep } from "../../core/redact.mjs";
 import { identityOf, loadState, mutate } from "./run-context.mjs";
+import { assertCandidateAdmissible, assertUnpublished } from "./candidate-guards.mjs";
 
 /** §M-CLI-RUN — Redact an optional free-text flag before it reaches durable state. */
 function redactText(value: string | undefined): string | undefined {
@@ -317,115 +317,6 @@ export async function commandConfirmModels(args: ParsedArgs): Promise<void> {
 }
 
 /**
- * §M-CLI-RUN — Refuse a candidate that edits source outside the adopted closure.
- *
- * Checked here, at the moment content becomes a candidate, because this is the
- * last point before four gates start attesting it. A feature that quietly
- * reached into uncertified code would otherwise arrive at COMPLETE carrying
- * attestations for files nobody has ever given a purpose, an owner or a test —
- * and the adoption boundary would have been widened by no one's decision.
- */
-function assertInsideClosure(repoDir: string, state: RunState, candidateCommit: string): void {
-  const manifest = readAdoptionManifest(repoDir);
-  if (!manifest) return;
-  const touched = changedPaths(state.baseRevision, candidateCommit, repoDir);
-  const outside = outsideClosure(touched, manifest);
-  if (outside.length === 0) return;
-  fail(
-    "outside_adopted_closure",
-    `the candidate changes source outside the adopted closure: ${outside.join(", ")}`,
-    {
-      adoptedRoots: manifest.adopted_roots,
-      remedy:
-        "widen the boundary with a separate reviewed adoption change, or keep this feature " +
-        "inside the certified roots",
-    },
-  );
-}
-
-/**
- * §M-CLI-RUN — Refuse a candidate whose work has already been published.
- *
- * §00 forbids push, remote branch, PR and tag without the user asking, and the
- * rule lived only in the skills — so a run could push its candidate, tag it,
- * and still reach COMPLETE with four green gates and no remark anywhere. A tag
- * or remote ref naming a commit this run authored is the observable half of
- * that; a PR cannot be seen from inside a repository, and stays a rule the
- * orchestrator is told rather than one this can claim to enforce.
- */
-function assertUnpublished(repoDir: string, state: RunState, candidateCommit: string): void {
-  const published = publishedRunCommits(state.baseRevision, candidateCommit, repoDir);
-  if (published.length === 0) return;
-  fail(
-    "published_without_request",
-    `this run's commits are already named by ${published.join(", ")}; pushing, tagging or ` +
-      "opening a PR is the user's call, not the run's",
-    {
-      refs: published,
-      remedy:
-        "delete the ref if the run created it, or — if the user asked for it — say so and " +
-        "start the candidate from a base that already includes it",
-    },
-  );
-}
-
-/**
- * §M-CLI-RUN — Every path in the candidate that still carries the spec's bytes.
- *
- * Matched by blob identity as well as by the original locator, because renaming
- * the file is not retiring it. `git mv docs/feature.md docs/archived-feature.md`
- * left a path check satisfied and the second source of truth exactly where
- * retirement exists to remove it from.
- */
-function specCarriers(
-  repoDir: string,
-  state: RunState,
-  candidateCommit: string,
-  locator: string,
-): string[] {
-  const found = new Set<string>();
-  const atLocator = git(["ls-tree", "--name-only", candidateCommit, "--", locator], repoDir).trim();
-  if (atLocator !== "") found.add(locator);
-
-  let blobOid: string;
-  try {
-    blobOid = git(["hash-object", "--", state.specBlob], repoDir).trim();
-  } catch {
-    return [...found];
-  }
-  const listing = git(["ls-tree", "-r", "-z", "--format=%(objectname) %(path)", candidateCommit], repoDir);
-  for (const entry of listing.split("\0")) {
-    const separator = entry.indexOf(" ");
-    if (separator < 0) continue;
-    if (entry.slice(0, separator) === blobOid) found.add(entry.slice(separator + 1));
-  }
-  return [...found].sort();
-}
-
-/**
- * §M-CLI-RUN — Refuse a candidate that still carries the tracked feature spec.
- *
- * Retirement happens inside the candidate window, not after it. A spec deleted
- * once the reviews are in would be a semantic change to attested content; a spec
- * left in the tree becomes a second, stale source of truth that outlives the
- * feature and quietly contradicts the knowledge layer. The immutable blob keeps
- * the acceptance oracle available to every role regardless.
- */
-function assertSpecRetired(repoDir: string, state: RunState, candidateCommit: string): void {
-  if (state.spec.kind !== "tracked" || state.spec.disposition !== "delete_after_sync") return;
-  const locator = state.spec.locator;
-  const carriers = specCarriers(repoDir, state, candidateCommit, locator);
-  if (carriers.length === 0) return;
-  fail("spec_not_retired", `the candidate still tracks the feature spec: ${carriers.join(", ")}`, {
-    remedy:
-      "distribute the spec's durable requirements into §B/§A/§M, delete the tracked spec in " +
-      "this same candidate window, and set the candidate again; the pinned blob remains " +
-      "available as the acceptance oracle",
-    specBlob: state.specBlob,
-  });
-}
-
-/**
  * §M-CLI-RUN — Point the run at a new candidate commit.
  *
  * Recomputes the snapshot digest and invalidates every attestation that no
@@ -439,9 +330,7 @@ export async function commandSetCandidate(args: ParsedArgs): Promise<void> {
   const revision = optionalFlag(args, "rev") ?? "HEAD";
   const computed = computeSnapshotDigest(repoDir, revision);
   const current = loadState(projectKey, runId);
-  assertInsideClosure(repoDir, current, computed.provenanceCommit);
-  assertUnpublished(repoDir, current, computed.provenanceCommit);
-  assertSpecRetired(repoDir, current, computed.provenanceCommit);
+  assertCandidateAdmissible(repoDir, current, computed.provenanceCommit);
 
   const next = await mutate(projectKey, runId, (state) => ({
     ...state,
@@ -662,6 +551,67 @@ export async function commandHandoff(args: ParsedArgs): Promise<void> {
 }
 
 /**
+ * §M-CLI-RUN — Replace a paused run's ModelSet with one the user just confirmed.
+ *
+ * §00 lists "resume, or a newly confirmed ModelSet" as the two exits from
+ * `PAUSED_MODEL_UNAVAILABLE`, and the second did not exist: the set was written
+ * once at `run start` and by nothing afterwards, so a run pinned to a model the
+ * user no longer has could only be cancelled — which is the exit the spec gives
+ * to a different state entirely.
+ *
+ * Confined to the two phases where nothing has attested anything yet. A model
+ * swap mid-run would change who judged the candidate without changing the
+ * candidate, and four gates would go on describing a review by a model that was
+ * no longer in the set.
+ */
+export async function commandSetModelSet(args: ParsedArgs): Promise<void> {
+  const { projectKey } = identityOf(args);
+  const runId = requireFlag(args, "run-id");
+  const modelSet = await readStdinJson<ModelSet>();
+
+  const validation = validateModelSet(modelSet);
+  if (!validation.ok) fail("invalid_model_set", validation.errors.join("; "));
+
+  const next = await mutate(projectKey, runId, (state) => {
+    if (state.phase !== "PAUSED_MODEL_UNAVAILABLE" && state.phase !== "AWAITING_MODEL_SET") {
+      fail(
+        "model_set_locked",
+        `this run is in ${state.phase}; a ModelSet may only be replaced from ` +
+          "AWAITING_MODEL_SET or PAUSED_MODEL_UNAVAILABLE, before anything has been attested",
+      );
+    }
+    return { ...state, modelSet };
+  });
+
+  emit({ runId, modelSet: next.modelSet, phase: next.phase });
+}
+
+/**
+ * §M-CLI-RUN — Terminate every worker this run still has open.
+ *
+ * Best-effort by design: a session the backend has already lost is not a reason
+ * to refuse cleanup, and leaving the run directory in place would only mean a
+ * second attempt at the same dead handles. What each one did is reported, so a
+ * failure to stop is visible rather than swallowed.
+ */
+async function stopRemainingSessions(state: RunState): Promise<Record<string, string>> {
+  const adapter = new HerdrAdapter({ binary: process.env["META_O_HERDR_BIN"] });
+  const outcomes: Record<string, string> = {};
+  const open = [
+    ...Object.values(state.sessions),
+    ...(state.orchestratorSession ? [state.orchestratorSession] : []),
+  ];
+  for (const session of open) {
+    try {
+      outcomes[session.role] = await adapter.stop(session);
+    } catch (error) {
+      outcomes[session.role] = `unstopped: ${(error as Error).message}`;
+    }
+  }
+  return outcomes;
+}
+
+/**
  * §M-CLI-RUN — Delete every temporary artefact of a finished run.
  *
  * Refuses to run while the run is still live, because the state file is the
@@ -679,6 +629,12 @@ export async function commandCleanup(args: ParsedArgs): Promise<void> {
   if (!finished && !boolFlag(args, "force")) {
     fail("run_not_finished", `run ${runId} is in ${state.phase}; pass --force to discard it anyway`);
   }
+
+  // §00 step 5: stop the remaining worker sessions, *then* delete the run.
+  // Deleting first destroyed the only record of their handles, so a leaked
+  // reviewer sat in a pane that nothing could address any more — and the panes
+  // accumulate one per abandoned run.
+  const stopped = await stopRemainingSessions(state);
   cleanupRun(projectKey, runId);
-  emit({ runId, removed: true });
+  emit({ runId, removed: true, sessions: stopped });
 }

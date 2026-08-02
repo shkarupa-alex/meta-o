@@ -692,3 +692,67 @@ test("the metadata guard may not be pointed at a commit other than the candidate
     repo.dispose();
   }
 });
+
+test("a run paused on an unavailable model can be given a new ModelSet", () => {
+  // §00 gives PAUSED_MODEL_UNAVAILABLE two exits — resume, or a newly confirmed
+  // ModelSet — and only the first existed. `state.modelSet` was written once by
+  // `run start` and by nothing afterwards, so a run pinned to a model the user
+  // had lost could only be cancelled, which is the exit the spec assigns to a
+  // different state entirely.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  const replacement = JSON.stringify({
+    executor: { route: "claude", vendor: "anthropic", family: "claude", model: "haiku" },
+    reviewerPrimary: { route: "claude", vendor: "anthropic", family: "claude", model: "sonnet" },
+    reviewerCrossVendor: { route: "codex", vendor: "openai", family: "gpt", model: "gpt-5" },
+    e2eTester: { route: "claude", vendor: "anthropic", family: "claude", model: "sonnet" },
+  });
+  try {
+    const runId = startRun(context);
+    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    ok(
+      cli(
+        ["run", "transition", "--run-id", runId, "--phase", "PAUSED_MODEL_UNAVAILABLE",
+          "--reason", "the executor model was withdrawn",
+          "--resume-condition", "a model the user still has"],
+        context,
+      ),
+      "→ PAUSED_MODEL_UNAVAILABLE",
+    );
+
+    const rejected = cli(["run", "set-model-set", "--run-id", runId], {
+      ...context,
+      stdin: JSON.stringify({
+        executor: { route: "claude", vendor: "anthropic", family: "claude", model: "haiku" },
+        reviewerPrimary: { route: "claude", vendor: "anthropic", family: "claude", model: "sonnet" },
+        reviewerCrossVendor: { route: "claude", vendor: "anthropic", family: "claude", model: "opus" },
+        e2eTester: { route: "claude", vendor: "anthropic", family: "claude", model: "sonnet" },
+      }),
+    });
+    assert.equal(rejected.code, 1, "a single-vendor replacement is still refused");
+    assert.equal(errorCode(rejected), "invalid_model_set");
+
+    const accepted = cli(["run", "set-model-set", "--run-id", runId], {
+      ...context,
+      stdin: replacement,
+    });
+    ok(accepted, "set-model-set");
+    assert.equal(
+      ((accepted.json["modelSet"] as RunState["modelSet"]).executor).model,
+      "haiku",
+      "the run now carries the model the user confirmed",
+    );
+
+    ok(cli(["run", "transition", "--run-id", runId, "--phase", "PREFLIGHT"], context), "resume");
+    const locked = cli(["run", "set-model-set", "--run-id", runId], {
+      ...context,
+      stdin: replacement,
+    });
+    assert.equal(locked.code, 1, "a resumed run may not swap models under its own attestations");
+    assert.equal(errorCode(locked), "model_set_locked");
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
