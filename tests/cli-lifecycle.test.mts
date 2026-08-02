@@ -145,6 +145,7 @@ test("a run walks from start to COMPLETE only with four attestations on one snap
       "→ REVIEW",
     );
 
+    /** §M-TEST-CLI — A passing review payload for one reviewer slot. */
     const review = (reviewer: string): string =>
       JSON.stringify({
         reviewer,

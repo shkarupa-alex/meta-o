@@ -15,6 +15,8 @@
 
 import { canonicalize, type JsonValue } from "../core/canonical-json.mjs";
 import { redact } from "../core/redact.mjs";
+export type { HerdrAgentInfo, HerdrAgentStatus } from "./herdr-protocol.mjs";
+
 import {
   agentNameFor,
   decodeSessionId,
@@ -24,6 +26,7 @@ import {
   HerdrCommandError,
   markerOf,
   parseProbe,
+  type HerdrAgentInfo,
   type HerdrExec,
   type HerdrProbe,
 } from "./herdr-protocol.mjs";
@@ -47,22 +50,6 @@ import type {
   SpawnRequest,
   WaitResult,
 } from "../core/types.mjs";
-
-/** §M-HERDR — Herdr's own agent lifecycle vocabulary. */
-export type HerdrAgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
-
-/** §M-HERDR — Subset of Herdr's `AgentInfo` this adapter depends on. */
-export interface HerdrAgentInfo {
-  pane_id: string;
-  agent_status: HerdrAgentStatus;
-  name?: string | null;
-  agent?: string | null;
-  revision: number;
-  state_change_seq?: number;
-  interactive_ready?: boolean;
-  launch_pending?: boolean;
-  cwd?: string | null;
-}
 
 /** §M-HERDR — Tuning knobs and seams of the adapter. */
 export interface HerdrAdapterOptions {

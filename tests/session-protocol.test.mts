@@ -20,8 +20,10 @@ import { fileURLToPath } from "node:url";
 
 import { createTempHome, createTempRepo, seedProjectContract, type TempRepo } from "./helpers.mts";
 
-/** §M-TEST-SESSION — The compiled CLI and the fake backend it will talk to. */
+/** §M-TEST-SESSION — The compiled CLI under test. */
 const CLI = fileURLToPath(new URL("../dist/cli/meta-o.mjs", import.meta.url));
+
+/** §M-TEST-SESSION — The scripted backend it will talk to instead of a server. */
 const FAKE_HERDR = fileURLToPath(new URL("./fixtures/fake-herdr.mjs", import.meta.url));
 
 /** §M-TEST-SESSION — Everything one CLI invocation needs. */

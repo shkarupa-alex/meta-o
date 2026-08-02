@@ -153,3 +153,19 @@ export function defaultModelArgs(model: ModelRef): string[] {
       return [];
   }
 }
+
+/** §M-HERDR-PROTOCOL — Herdr's own agent lifecycle vocabulary. */
+export type HerdrAgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
+
+/** §M-HERDR-PROTOCOL — Subset of Herdr's `AgentInfo` this adapter depends on. */
+export interface HerdrAgentInfo {
+  pane_id: string;
+  agent_status: HerdrAgentStatus;
+  name?: string | null;
+  agent?: string | null;
+  revision: number;
+  state_change_seq?: number;
+  interactive_ready?: boolean;
+  launch_pending?: boolean;
+  cwd?: string | null;
+}

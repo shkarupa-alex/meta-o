@@ -310,6 +310,7 @@ test("raising a threshold, dropping a root or adding an exemption is weakening",
   assert.deepEqual(before.tables.get("tool.meta_o.code_health")?.["source_roots"], ["src", "tests"]);
   assert.deepEqual(detectPolicyWeakening(before, parseMetaOPolicy(STRICT_POLICY)), []);
 
+  /** §M-TEST-E2E-QC — The weakening kinds one policy edit produces. */
   const kinds = (text: string): string[] =>
     detectPolicyWeakening(before, parseMetaOPolicy(text)).map((item) => item.kind);
 

@@ -75,6 +75,7 @@ function fakeHerdr(seed: Partial<FakeHerdr> = {}): FakeHerdr {
   let busyStarts = seed.busyStarts ?? 0;
   let nextPane = 1;
 
+  /** §M-TEST-HERDR — Answer one CLI invocation the way the documented command would. */
   const exec = async (args: string[]): Promise<HerdrExecResult> => {
     calls.push(args);
     const [group, verb, target] = args;
@@ -470,6 +471,7 @@ test("a spawn that never gets a shell leaves no pane behind", async () => {
 
 test("a spawn whose agent start fails for any other reason also cleans up", async () => {
   const herdr = fakeHerdr();
+  /** §M-TEST-HERDR — The same fake, but `agent start` refuses for an unrelated reason. */
   const failing = async (args: string[], timeoutMs: number) =>
     args[0] === "agent" && args[1] === "start"
       ? serverError("agent_kind_unsupported", "no such agent kind")

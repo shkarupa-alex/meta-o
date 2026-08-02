@@ -32,6 +32,7 @@ export interface TempRepo {
  */
 export function createTempRepo(): TempRepo {
   const dir = mkdtempSync(join(tmpdir(), "meta-o-repo-"));
+  /** §M-TEST-HELPERS — Run one git command in this repository with a fixed identity. */
   const run = (args: string[]): string =>
     execFileSync("git", args, {
       cwd: dir,

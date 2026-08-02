@@ -6,8 +6,7 @@
  * which is what keeps a reconcile from quietly becoming another side effect.
  */
 
-import type { HerdrProbe } from "./herdr-protocol.mjs";
-import type { HerdrAgentInfo } from "./herdr.mjs";
+import type { HerdrAgentInfo, HerdrProbe } from "./herdr-protocol.mjs";
 import type { ReconcileResult, SessionOutput } from "../core/types.mjs";
 
 /**

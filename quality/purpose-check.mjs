@@ -40,7 +40,10 @@ const BUSINESS_ANCHOR = /§B-[A-Z0-9-]+/;
 
 /** §M-QC-PURPOSE — Every tracked source file the gate is responsible for. */
 function sourceFiles() {
-  return execFileSync("git", ["ls-files", "src/**/*.mts", "tests/**/*.mts", "quality/*.mjs"], {
+  // `*` and not `**/`: git's `**/` requires at least one intermediate
+  // directory, so `tests/**/*.mts` matched none of the thirteen files sitting
+  // directly in `tests/` and the gate ran blind over its own test suite.
+  return execFileSync("git", ["ls-files", "src/**", "tests/**", "quality/*.mjs"], {
     cwd: ROOT,
     encoding: "utf8",
   })
