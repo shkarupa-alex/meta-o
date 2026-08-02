@@ -16,6 +16,7 @@ import {
   evidenceErrors,
   reclassifyAsTaste,
   resolveFinding,
+  restateRecord,
   validateFinding,
 } from "../../core/findings.mjs";
 import { routeNext } from "../../core/fsm.mjs";
@@ -115,11 +116,13 @@ export async function commandOpenFindings(args: ParsedArgs): Promise<void> {
       findings,
       slot,
     );
-    const records: FindingRecord[] = findings.map((finding) => ({
-      finding,
-      raisedBy,
-      status: "open",
-    }));
+    const records: FindingRecord[] = findings.map((finding) =>
+      restateRecord(
+        finding,
+        raisedBy,
+        existing.find((record) => !record.derived && record.finding.id === finding.id),
+      ),
+    );
     return {
       ...state,
       openFindings: { ...state.openFindings, [slot]: [...toolOwned, ...carried, ...records] },

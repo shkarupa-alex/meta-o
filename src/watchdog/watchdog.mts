@@ -167,7 +167,7 @@ export class Watchdog {
    */
   private memoryFor(key: string, state: RunState): RunMemory {
     const existing = this.memory.get(key) ?? this.deps.loadMemory?.(key);
-    if (existing) {
+    if (existing && !existing.dedupeLost) {
       this.memory.set(key, existing);
       return existing;
     }
@@ -177,6 +177,21 @@ export class Watchdog {
       lastProgressAtMs: Number.isFinite(updatedAtMs) ? updatedAtMs : this.clock.now(),
       backoffMs: this.pollMs(),
     };
+    if (existing?.dedupeLost) {
+      // The bookkeeping was unreadable, which is not the same as this run
+      // having none. What was lost is the record of what has already been
+      // delivered, so the slot is rebuilt as though the notifications for the
+      // state as it stands had already gone out. They are the two effects the
+      // watchdog causes without a write-ahead record, precisely because their
+      // payloads are idempotent — but "assume it was sent" is still the right
+      // direction, and it is the direction every other lost proof here takes.
+      // The seed is durable, so the loss costs one stalled cycle rather than
+      // repeating on every tick, and the next thing the orchestrator does moves
+      // `stateVersion` and lifts it.
+      created.wakeSentForStateVersion = state.stateVersion;
+      created.surfacedForStateVersion = state.stateVersion;
+      this.deps.saveMemory?.(key, created);
+    }
     this.memory.set(key, created);
     return created;
   }

@@ -798,3 +798,60 @@ test("a wake that observably failed gives its record back", async () => {
   await watchdog.tick();
   assert.equal(attempts, 2, "the run is still reachable after a failed attempt");
 });
+
+test("bookkeeping the watchdog cannot read is not read as nothing sent", async () => {
+  // A corrupt `watchdog-memory.json` used to answer `{}` — "no wake has been
+  // delivered to any run" — which is the one answer that causes an effect. The
+  // wake and the uncertainty prompt are the two things the watchdog sends
+  // without a write-ahead record, so this file *is* their dedupe, and losing it
+  // put an unsolicited prompt into every live orchestrator's context at once.
+  const state = makeRun({ updatedAt: new Date(0).toISOString() });
+  const durable: Record<string, RunMemory> = {};
+  const wakes: number[] = [];
+
+  const clock = new FakeClock(1_000_000);
+  /** §M-TEST-WATCHDOG — A watchdog whose memory file is unreadable, or is not. */
+  const watchdog = (unreadable: boolean): Watchdog =>
+    new Watchdog({
+      config: makeConfig(),
+      clock,
+      listRuns: () => ["run-1"],
+      readState: () => state,
+      orchestratorStatus: async () => "waiting",
+      reconcile: async (_state, operation) => ({ operationId: operation.operationId, effect: "applied" }),
+      wakeOrchestrator: async () => {
+        wakes.push(state.stateVersion);
+      },
+      spawnOrchestrator: async () => {},
+      loadMemory: (key) =>
+        unreadable
+          ? { lastStateVersion: 0, lastProgressAtMs: 0, backoffMs: 0, dedupeLost: true }
+          : durable[key],
+      saveMemory: (key, memory) => {
+        durable[key] = { ...memory };
+      },
+      log: () => {},
+    });
+
+  await watchdog(true).tick();
+  assert.deepEqual(wakes, [], "a lost record is assumed to be a record of a delivery");
+
+  // And it is written back, so the assumption survives a restart instead of
+  // being re-made — and re-lost — on every tick.
+  assert.equal(
+    durable["key-1/run-1"]?.wakeSentForStateVersion,
+    state.stateVersion,
+    "the conservative seed is durable",
+  );
+  assert.equal(durable["key-1/run-1"]?.dedupeLost, undefined, "and is not itself a lost record");
+
+  // The suppression is bounded by the state it was seeded for: once the
+  // orchestrator has moved the run on and gone quiet again, a wake is available.
+  // Otherwise one unreadable file would disable waking for the rest of the run.
+  state.stateVersion += 1;
+  const recovered = watchdog(false);
+  await recovered.tick(); // notices the progress and restarts the stall clock
+  clock.advance(30 * 60_000);
+  await recovered.tick();
+  assert.deepEqual(wakes, [state.stateVersion], "the next state version may be woken");
+});

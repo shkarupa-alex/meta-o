@@ -285,6 +285,34 @@ export function proposeFix(
   };
 }
 
+/**
+ * §M-FINDINGS — Re-raise a finding without forgetting what has happened to it.
+ *
+ * A reviewer restating a finding is the only way, in this CLI, to say "your fix
+ * does not settle it" — there is no reject-fix verb. Both restating paths built
+ * the record from the payload alone, so the single action that makes a turn a
+ * *rebuttal* was also the action that erased the rebuttal count: `fixAttempts`
+ * went back to unset on every round, and §30's threshold of two could not be
+ * reached through the loop it was written for.
+ *
+ * The status legitimately returns to `open` — the reviewer has genuinely raised
+ * it again, and the proposed fix is no longer on the table. Only the history
+ * that survives that judgement is carried, and the resolution fields are not
+ * part of it.
+ */
+export function restateRecord(
+  finding: Finding,
+  raisedBy: SessionRef,
+  previous: FindingRecord | undefined,
+): FindingRecord {
+  return {
+    finding,
+    raisedBy,
+    status: "open",
+    ...(previous?.fixAttempts !== undefined ? { fixAttempts: previous.fixAttempts } : {}),
+  };
+}
+
 /** §M-FINDINGS — Statuses that mean the argument about a finding is over. */
 const SETTLED: ReadonlySet<FindingRecord["status"]> = new Set(["resolved", "taste_dismissed"]);
 

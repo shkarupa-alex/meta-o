@@ -335,7 +335,10 @@ export interface FindingRecord {
    *
    * Counted on `propose-fix` rather than on the reviewer's rejection, because
    * that is the turn the executor actually takes; a rejection is the reviewer
-   * re-stating the finding, which shows up as the record still being open.
+   * re-stating the finding, and `restateRecord` is what carries the count
+   * across it. It has to: restating is the only way a reviewer can reject a
+   * fix, so rebuilding the record from the payload made the one action that
+   * defines a rebuttal turn the same action that forgot how many there had been.
    */
   fixAttempts?: number;
   resolutionCandidate?: string;

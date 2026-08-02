@@ -14,6 +14,7 @@ import {
 import {
   isStaleResult,
   openBlockingRecords,
+  restateRecord,
   validateReviewResult,
 } from "../../core/findings.mjs";
 import { isoTimestamp } from "../../core/clock.mjs";
@@ -176,11 +177,14 @@ export async function commandRecordReview(args: ParsedArgs): Promise<void> {
       result.reviewer,
     );
     const raisedBy = dispatchedSession(state, result.reviewer, `a ${result.reviewer} verdict`);
-    const records: FindingRecord[] = result.findings.map((finding) => ({
-      finding,
-      raisedBy,
-      status: "open",
-    }));
+    const existing = state.openFindings?.[result.reviewer] ?? [];
+    const records: FindingRecord[] = result.findings.map((finding) =>
+      restateRecord(
+        finding,
+        raisedBy,
+        existing.find((record) => record.finding.id === finding.id),
+      ),
+    );
 
     const gate: RevisionResult = {
       commitOid: result.commitOid,

@@ -629,28 +629,83 @@ test("cleanup stops the run's workers before it deletes the state that names the
   }
 });
 
-test("the adjudicator threshold is a number the run keeps, not a memory", () => {
+test("the adjudicator threshold survives the rebuttal it is counting", () => {
   // §30 lets the orchestrator call a fresh adjudicator "after two fruitless
   // rebuttal turns", and nothing counted them: the rule lived in the skill as
   // prose, so the one number it rests on existed nowhere a recovered
-  // orchestrator could read. A run that had argued about a finding six times
-  // looked exactly like a run on its first attempt.
+  // orchestrator could read.
+  //
+  // Counting them is not enough on its own, and the first version of this test
+  // hid that by calling `propose-fix` twice in a row — the one sequence in
+  // which the counter survives, and the one that contains no rebuttal at all.
+  // A rebuttal *is* the reviewer restating the finding, because there is no
+  // "reject this fix" verb; and restating rebuilt the record from the payload,
+  // so the only action that makes a turn a rebuttal was also the action that
+  // reset the count. The threshold was unreachable through the loop it exists
+  // for, behind a green test.
   const repo = seededRepo();
   const home = createTempHome();
   const context: CliContext = { cwd: repo.dir, home: home.dir };
   try {
     const runId = startRun(context);
     dispatchWorkers(context, runId);
-    ok(
-      cli(["run", "open-findings", "--run-id", runId, "--reviewer", "reviewerPrimary"], {
+    confirmModels(context, runId);
+    ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
+    retireSpec(repo);
+    const candidate = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
+    const commitOid = candidate.json["provenanceCommit"] as string;
+    const snapshotDigest = candidate.json["snapshotDigest"] as string;
+    const plan = ok(
+      cli(["e2e", "seal-plan"], {
         ...context,
-        stdin: blocker("F-1"),
+        stdin: JSON.stringify({
+          schemaVersion: 1,
+          commitOid,
+          selectedScenarioIds: ["E2E-CHECKOUT-01", "E2E-SMOKE-01"],
+          selectionRationale: "checkout is impacted; the canary always runs",
+          impactedBusinessLinks: ["§B-CHECKOUT-01"],
+          impactedTags: ["checkout"],
+        }),
       }),
-      "open-findings",
+      "seal-plan",
+    ).json as unknown as { planDigest: string };
+    ok(
+      cli(["run", "set-plan", "--run-id", runId], { ...context, stdin: JSON.stringify(plan) }),
+      "set-plan",
     );
 
+    /** §M-TEST-HARDENING-LIFECYCLE — The reviewer restating F-1: one rebuttal turn. */
+    const rebut = (detail: string): void => {
+      ok(
+        cli(["run", "record-review", "--run-id", runId], {
+          ...context,
+          stdin: JSON.stringify({
+            reviewer: "reviewerPrimary",
+            commitOid,
+            snapshotDigest,
+            planDigest: plan.planDigest,
+            selectionPlanVerdict: "complete",
+            verdict: "changes_requested",
+            findings: [
+              {
+                id: "F-1",
+                severity: "blocker",
+                classification: "defect",
+                evidence: [{ kind: "file", reference: "src/app.py:1", detail }],
+                basis: { type: "spec", reference: "spec/feature.md" },
+                impact: "the checkout confirmation silently drops failures",
+                recommendedFix: { approach: "surface the failure", rationale: "the user must see it" },
+              },
+            ],
+            completedAt: "2026-07-24T12:00:00Z",
+          }),
+        }),
+        `the reviewer restates F-1: ${detail}`,
+      );
+    };
+
     /** §M-TEST-HARDENING-LIFECYCLE — Propose one fix, and report what routing now says. */
-    const attempt = (commit: string): { action: string; adjudicable: string[] } => {
+    const proposeFix = (commit: string): { action: string; adjudicable: string[] } => {
       const proposed = ok(
         cli(
           [
@@ -682,15 +737,51 @@ test("the adjudicator threshold is a number the run keeps, not a memory", () => 
       return { action: routing.action, adjudicable: routing.adjudicable ?? [] };
     };
 
-    const first = attempt("c1");
+    rebut("no error path");
+    const first = proposeFix("c1");
     assert.deepEqual(first.adjudicable, [], "one fruitless turn is not two");
-    const second = attempt("c2");
+
+    // The rebuttal itself: the reviewer looked at the fix and restated the
+    // finding. This is the step that used to zero the count.
+    rebut("the guard still does not cover the timeout path");
+    const second = proposeFix("c2");
     assert.deepEqual(second.adjudicable, ["F-1"], "the second reaches §30's threshold");
 
     // Reported, never acted on. §30 says the orchestrator *may* call an
     // adjudicator, so crossing the threshold changes what the run can tell the
     // orchestrator and nothing about what it prescribes.
     assert.equal(second.action, first.action, "the threshold reports; it does not route");
+
+    // A reviewer who accepts the fix ends the argument, and the record stops
+    // being nominated — otherwise the orchestrator is asked to adjudicate a
+    // finding nobody is arguing about any more.
+    ok(
+      cli(
+        [
+          "run",
+          "resolve-finding",
+          "--run-id",
+          runId,
+          "--reviewer",
+          "reviewerPrimary",
+          "--finding-id",
+          "F-1",
+          "--by-role",
+          "reviewerPrimary",
+        ],
+        {
+          ...context,
+          stdin: JSON.stringify([
+            { kind: "file", reference: "src/app.py:1", detail: "checked the guard" },
+          ]),
+        },
+      ),
+      "the reviewer accepts the fix",
+    );
+    const settled = ok(cli(["run", "route", "--run-id", runId], context), "run route").json[
+      "routing"
+    ] as { adjudicable?: string[] };
+    assert.equal(settled.adjudicable, undefined, "a settled finding is not nominated");
   } finally {
     home.dispose();
     repo.dispose();

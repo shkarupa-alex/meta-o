@@ -58,15 +58,26 @@ export function appendLog(unredacted: WatchdogLogEntry): void {
   writeFileSyncFd(fd, `${JSON.stringify(entry)}\n`);
 }
 
+/**
+ * §M-CLI-WATCHDOG-HOME — Bookkeeping that could not be read, as distinct from having none.
+ *
+ * The difference decides whether a wake is sent. "No record for this run" and
+ * "the record file is unreadable" are opposite claims, and returning `{}` for
+ * both made the second look like the first: a corrupt file said *nothing has
+ * been sent to any run*, which is the one answer that causes an effect.
+ */
+export const MEMORY_UNREADABLE = Symbol("watchdog memory unreadable");
+
 /** §M-CLI-WATCHDOG-HOME — Durable per-run watchdog bookkeeping, keyed by project/run. */
-export function readWatchdogMemory(): Record<string, RunMemory> {
+export function readWatchdogMemory(): Record<string, RunMemory> | typeof MEMORY_UNREADABLE {
   try {
     return readSecureJson<Record<string, RunMemory>>(watchdogMemoryPath()) ?? {};
   } catch {
-    // Corrupt bookkeeping is not worth failing over: the worst case is one
-    // duplicate wake, whereas refusing to start loses unattended recovery
-    // entirely.
-    return {};
+    // Not a reason to fail over — refusing to start loses unattended recovery
+    // entirely — but not a reason to guess "nothing was sent" either. The
+    // caller is told, and answers the way every other lost proof in this system
+    // is answered: assume the effect may have happened.
+    return MEMORY_UNREADABLE;
   }
 }
 

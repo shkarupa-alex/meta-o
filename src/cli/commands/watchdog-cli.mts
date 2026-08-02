@@ -47,6 +47,7 @@ import { readSecureJson, writeSecureJson } from "../../core/safe-fs.mjs";
 import {
   acquireSingleInstanceLock,
   appendLog,
+  MEMORY_UNREADABLE,
   readWatchdogMemory,
   writeWatchdogMemory,
 } from "./watchdog-home.mjs";
@@ -488,15 +489,25 @@ function backendDeps(adapter: HerdrAdapter, config: WatchdogConfig): WatchdogDep
     capabilityRegression: async () => (await adapter.capabilityReport()).blockingReasons,
     reloadConfig: loadWatchdogConfig,
     quotaResumeAtMs: (state, nowMs) => parseResetTime(state.paused?.reason ?? "", nowMs),
-    loadMemory: (key) => readWatchdogMemory()[key],
+    loadMemory: (key) => {
+      const all = readWatchdogMemory();
+      // An unreadable file is reported as such, not flattened into "this run
+      // has no record". `memoryFor` turns the distinction into a conservative
+      // slot; flattening it delivered an unsolicited prompt to every live run.
+      if (all === MEMORY_UNREADABLE) {
+        return { lastStateVersion: 0, lastProgressAtMs: 0, backoffMs: 0, dedupeLost: true };
+      }
+      return all[key];
+    },
     saveMemory: (key, memory) => {
       const all = readWatchdogMemory();
-      all[key] = memory;
-      writeWatchdogMemory(all);
+      const next = all === MEMORY_UNREADABLE ? {} : all;
+      next[key] = memory;
+      writeWatchdogMemory(next);
     },
     forgetMemory: (key) => {
       const all = readWatchdogMemory();
-      if (!(key in all)) return;
+      if (all === MEMORY_UNREADABLE || !(key in all)) return;
       delete all[key];
       writeWatchdogMemory(all);
     },

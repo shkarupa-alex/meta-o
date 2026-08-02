@@ -95,6 +95,18 @@ export interface RunMemory {
    */
   surfacedRegression?: string;
   lastCursor?: string;
+  /**
+   * Set when the bookkeeping file could not be read at all, as opposed to
+   * holding no record for this run.
+   *
+   * The two were indistinguishable, and the difference is the whole guard: a
+   * corrupt `watchdog-memory.json` answered "no wake has been sent to any run",
+   * which is the one answer that causes an effect — an unsolicited prompt into
+   * every live orchestrator's context. `memoryFor` consumes this flag and seeds
+   * the slot as though a wake had already gone out for the state as it stands,
+   * so the loss costs at most one stalled cycle, logged, instead of a duplicate.
+   */
+  dedupeLost?: boolean;
 }
 
 

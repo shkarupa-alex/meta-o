@@ -190,20 +190,32 @@ export async function settleReconciled(
   if (result.effect === "unknown") return undefined;
 
   let recovered: SessionRef | undefined;
+  let spawnedRole: Role | undefined;
   if (result.effect === "applied" && pending.kind === "spawn") {
     const probe = JSON.parse(pending.probe ?? "{}") as { agentName?: string };
-    const role = roleOfPendingSpawn(adapter, pending);
-    if (probe.agentName && role) {
+    spawnedRole = roleOfPendingSpawn(adapter, pending);
+    if (probe.agentName && spawnedRole) {
       recovered = await adapter.findSession(
         probe.agentName,
-        role,
-        (state.sessionGeneration[role] ?? 0) + 1,
+        spawnedRole,
+        (state.sessionGeneration[spawnedRole] ?? 0) + 1,
       );
     }
   }
 
   await mutate(projectKey, runId, (current) => {
-    const withRecovered = recovered ? withSession(current, recovered) : current;
+    // The generation is re-derived from the state under the lock, not from the
+    // snapshot the caller arrived with. `findSession` has to be awaited before
+    // `mutate` — it asks the backend — so the number it was handed is
+    // necessarily pre-lock, and every other read in this module is not. No
+    // scenario builds from that today (reconcile for one run is serial), but a
+    // single exception to "re-read under the lock" is the kind of thing that
+    // stops being harmless when a second caller appears.
+    const adopted =
+      recovered && spawnedRole
+        ? { ...recovered, generation: (current.sessionGeneration[spawnedRole] ?? 0) + 1 }
+        : recovered;
+    const withRecovered = adopted ? withSession(current, adopted) : current;
     if (result.effect === "applied" && pending.kind === "stop") {
       const role = pending.sessionId ? roleOfSession(current, pending.sessionId) : undefined;
       if (role) return clearPendingOperation(withoutSession(withRecovered, role));
@@ -211,6 +223,17 @@ export async function settleReconciled(
     return clearPendingOperation(withRecovered);
   });
 
+  if (recovered && spawnedRole) {
+    const settled = readState(projectKey, runId);
+    const stored =
+      spawnedRole === "orchestrator"
+        ? settled?.orchestratorSession
+        : settled?.sessions[spawnedRole];
+    // Return what was actually written, so a caller that goes on to act on the
+    // session — `finishAdoptedOrchestratorSpawn` does — is holding the same
+    // generation the run now holds.
+    if (stored) return stored;
+  }
   return recovered;
 }
 

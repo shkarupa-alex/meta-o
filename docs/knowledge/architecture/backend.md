@@ -56,6 +56,17 @@ most once per `stateVersion` and spawns at most once per
 `orchestratorGeneration`, so a wedged run produces a bounded number of attempts
 rather than a loop.
 
+Two of those actions send a prompt without a `PendingOperation`, and that is a
+deliberate exception rather than an oversight. A wake is decided exactly when an
+operation may still be in flight, and an uncertainty prompt exactly when one is
+`uncertain`; recording a second operation would break the one-at-a-time rule
+that makes reconciliation decidable at all. What makes the exception safe is
+that both payloads say "read your own state and continue", so a duplicate costs
+nothing — unlike an instruction. Their dedupe is `watchdog-memory.json`, written
+before the call, taken back only on an observable refusal, and — because it is
+the whole guard — distinguishing "unreadable" from "no record": a lost file is
+read as *notifications may already have gone out*, not as none have.
+
 It never instructs a worker, never edits the FSM, and never overrules the
 classifier: a local model may fill an `unknown` classification, but may not
 change one the patterns already decided (`src/watchdog/classifier.mts`). A quota
