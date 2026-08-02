@@ -25,6 +25,7 @@ import {
   openBlockingRecords,
   proposeFix,
   pruneClosedRecords,
+  evidenceErrors,
   resolveFinding,
   validateFinding,
   validateReviewResult,
@@ -35,6 +36,7 @@ import type {
   E2ERegistry,
   E2EResult,
   E2ESelectionPlan,
+  Evidence,
   Finding,
   FindingRecord,
   KnowledgeImpactPlan,
@@ -285,6 +287,34 @@ function e2eResultErrors(
 }
 
 /**
+ * §M-CLI-RESULTS — Keep blockers a new payload silently dropped.
+ *
+ * A later review round legitimately restates the slot, and a blocker the
+ * reviewer no longer raises has genuinely been re-judged — but only if the
+ * reviewer says so by id. Anything still open and still absent is refused
+ * rather than quietly carried or quietly lost: carrying it would let a real
+ * re-review never clear anything, losing it is the bypass this exists to stop.
+ */
+function carryOpenBlockers(
+  existing: FindingRecord[],
+  incoming: Finding[],
+  slot: FindingSlot,
+): FindingRecord[] {
+  const restated = new Set(incoming.map((finding) => finding.id));
+  const dropped = openBlockingRecords(existing).filter((record) => !restated.has(record.finding.id));
+  if (dropped.length > 0) {
+    fail(
+      "findings_dropped",
+      `${slot} still holds open blocking finding(s) ${dropped.map((r) => r.finding.id).join(", ")} ` +
+        "that this payload neither restates nor closes; close them with `run resolve-finding` " +
+        "or `run dismiss-taste` first",
+      { dropped: dropped.map((record) => record.finding.id) },
+    );
+  }
+  return existing.filter((record) => !openBlockingRecords([record]).length && !restated.has(record.finding.id));
+}
+
+/**
  * §M-CLI-RESULTS — Store findings raised by one reviewer.
  *
  * Validated on entry so that a malformed finding — taste marked as a blocker, a
@@ -301,19 +331,26 @@ export async function commandOpenFindings(args: ParsedArgs): Promise<void> {
   if (errors.length > 0) fail("invalid_finding", errors.join("; "));
 
   const next = await mutate(projectKey, runId, (state) => {
-    const session = state.sessions[slot === "e2e" ? "e2eTester" : slot];
+    const role = slot === "e2e" ? "e2eTester" : slot;
+    const session = state.sessions[role];
     const raisedBy: SessionRef = session ?? {
       backend: "herdr",
       sessionId: `unrecorded-${slot}`,
-      role: slot === "e2e" ? "e2eTester" : slot,
-      generation: state.sessionGeneration[slot === "e2e" ? "e2eTester" : slot] ?? 1,
+      role,
+      generation: state.sessionGeneration[role] ?? 1,
     };
+    // This command records what a review found; it is not a way to un-find it.
+    // Writing the slot wholesale let anyone who could reach the CLI hand in an
+    // empty array and erase a reviewer's blocker — after which four gates that
+    // were already attested completed the run. Blockers leave only through
+    // `resolve-finding` or `dismiss-taste`, which name an authority.
+    const carried = carryOpenBlockers(state.openFindings?.[slot] ?? [], findings, slot);
     const records: FindingRecord[] = findings.map((finding) => ({
       finding,
       raisedBy,
       status: "open",
     }));
-    return { ...state, openFindings: { ...state.openFindings, [slot]: records } };
+    return { ...state, openFindings: { ...state.openFindings, [slot]: [...carried, ...records] } };
   });
 
   emit({
@@ -324,18 +361,33 @@ export async function commandOpenFindings(args: ParsedArgs): Promise<void> {
   });
 }
 
-/** §M-CLI-RESULTS — Record the executor's proposed fix for one finding. */
+/**
+ * §M-CLI-RESULTS — Record the executor's proposed fix for one finding.
+ *
+ * The evidence comes from stdin. It used to be copied out of the record's own
+ * `resolutionEvidence`, which is empty at this point by definition — so the
+ * executor had no way to say what it changed, and the reviewer had nothing to
+ * check. That is the half of "close after checking candidate and evidence" the
+ * executor owes.
+ */
 export async function commandProposeFix(args: ParsedArgs): Promise<void> {
   const { projectKey } = identityOf(args);
   const runId = requireFlag(args, "run-id");
   const slot = requireFlag(args, "reviewer") as FindingSlot;
   const findingId = requireFlag(args, "finding-id");
   const candidate = requireFlag(args, "candidate-commit");
+  const evidence = redactDeep(await readStdinJson<Evidence[]>());
+
+  const errors = evidenceErrors(evidence);
+  if (errors.length > 0) fail("invalid_evidence", errors.join("; "));
 
   const next = await mutate(projectKey, runId, (state) => {
     const records = state.openFindings?.[slot] ?? [];
+    if (!records.some((record) => record.finding.id === findingId)) {
+      fail("unknown_finding", `${slot} holds no open finding ${findingId}`);
+    }
     const updated = records.map((record) =>
-      record.finding.id === findingId ? proposeFix(record, candidate, record.resolutionEvidence) : record,
+      record.finding.id === findingId ? proposeFix(record, candidate, evidence) : record,
     );
     return { ...state, openFindings: { ...state.openFindings, [slot]: updated } };
   });
@@ -346,21 +398,29 @@ export async function commandProposeFix(args: ParsedArgs): Promise<void> {
 /**
  * §M-CLI-RESULTS — The session a `--by-role` claim resolves to.
  *
- * `--by-role` is a claim, not an identity: nothing in a CLI invocation proves
- * which model is behind it. What makes the rule enforceable anyway is the check
- * in `resolveFinding`, which compares the claimed role against the role that
- * raised the finding — so the executor claiming to be a reviewer still cannot
- * close a finding the reviewer raised about the executor's own work.
+ * `--by-role` is a claim, and nothing in a CLI invocation proves which model is
+ * behind it. The comment here used to argue that comparing the claim against
+ * the raising role made the rule safe; it does not — the executor need only
+ * claim the raiser's own role, and both checks pass.
+ *
+ * What is checkable is that the orchestrator actually dispatched a session for
+ * that role in this run. So the fabricated `unrecorded-<role>` stand-in is
+ * gone: a closure now names a session that exists in state, put there by the
+ * orchestrator when it spawned the reviewer. That is authority by dispatch, not
+ * authentication, and the honest limit is stated in `docs/knowledge/`: a model
+ * that can both reach this CLI and impersonate a dispatched reviewer is not
+ * something a local tool can exclude.
  */
-function claimedSession(state: RunState, role: SessionRef["role"]): SessionRef {
-  return (
-    state.sessions[role] ?? {
-      backend: "herdr",
-      sessionId: `unrecorded-${role}`,
-      role,
-      generation: state.sessionGeneration[role] ?? 1,
-    }
-  );
+function claimedSession(state: RunState, role: SessionRef["role"], findingId: string): SessionRef {
+  const session = state.sessions[role];
+  if (!session) {
+    fail(
+      "no_such_session",
+      `finding ${findingId}: this run has no ${role} session, so nothing may close a finding on ` +
+        `its authority; dispatch one with \`meta-o session spawn --role ${role}\` first`,
+    );
+  }
+  return session;
 }
 
 /** §M-CLI-RESULTS — Apply one closing transition to a single finding record. */
@@ -379,7 +439,7 @@ async function closeFinding(
     if (!records.some((record) => record.finding.id === findingId)) {
       fail("unknown_finding", `${slot} holds no open finding ${findingId}`);
     }
-    const by = claimedSession(state, byRole);
+    const by = claimedSession(state, byRole, findingId);
     const updated = records.map((record) =>
       record.finding.id === findingId ? apply(record, by) : record,
     );

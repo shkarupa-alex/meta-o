@@ -8,7 +8,7 @@
  * so they are enforced here rather than trusted to a prompt.
  */
 
-import type { Finding, FindingRecord, ReviewResult, Role, SessionRef } from "./types.mjs";
+import type { Evidence, Finding, FindingRecord, ReviewResult, Role, SessionRef } from "./types.mjs";
 
 /** §M-FINDINGS — Severities that may never be attached to taste. */
 const DEFECT_SEVERITIES = new Set(["blocker", "major", "minor"]);
@@ -32,6 +32,28 @@ const CLASSIFICATIONS: ReadonlySet<string> = new Set(["defect", "engineering_ris
 
 /** §M-FINDINGS — Kinds of artefact a reviewer may point at as evidence. */
 const EVIDENCE_KINDS: ReadonlySet<string> = new Set(["file", "symbol", "command", "scenario"]);
+
+/**
+ * §M-FINDINGS — Everything wrong with a piece of evidence, or nothing.
+ *
+ * Shared by the finding validator and by the executor's proposed fix, because
+ * the two make the same promise: a claim about the code that names where to go
+ * and look. A fix whose evidence is weaker than the finding's would let the
+ * reviewer's check be cheaper than the objection it settles.
+ */
+export function evidenceErrors(evidence: Evidence[] | undefined): string[] {
+  if (!Array.isArray(evidence) || evidence.length === 0) {
+    return ["at least one piece of evidence is required"];
+  }
+  const errors: string[] = [];
+  for (const item of evidence) {
+    if (!item || !item.reference) errors.push("evidence needs a reference");
+    if (!item || !EVIDENCE_KINDS.has(item.kind)) {
+      errors.push(`evidence kind ${JSON.stringify(item?.kind)} is not recognised`);
+    }
+  }
+  return errors;
+}
 
 /** §M-FINDINGS — Authorities a finding may rest on. */
 const BASIS_TYPES: ReadonlySet<string> = new Set([
@@ -81,16 +103,7 @@ export function validateFinding(finding: Finding): FindingValidation {
     );
   }
 
-  if (!Array.isArray(finding.evidence) || finding.evidence.length === 0) {
-    errors.push(`${finding.id}: at least one piece of evidence is required`);
-  } else {
-    for (const item of finding.evidence) {
-      if (!item.reference) errors.push(`${finding.id}: evidence needs a reference`);
-      if (!EVIDENCE_KINDS.has(item.kind)) {
-        errors.push(`${finding.id}: evidence kind ${JSON.stringify(item.kind)} is not recognised`);
-      }
-    }
-  }
+  errors.push(...evidenceErrors(finding.evidence).map((error) => `${finding.id}: ${error}`));
 
   if (!finding.basis || !finding.basis.type || !finding.basis.reference) {
     errors.push(`${finding.id}: basis type and reference are required`);
@@ -271,6 +284,22 @@ export function resolveFinding(record: FindingRecord, resolvedBy: SessionRef): F
     throw new FindingTransitionError(
       record.finding.id,
       "cannot resolve a finding with no proposed fix",
+    );
+  }
+  // §30 closes a finding "after checking the candidate and the evidence", and
+  // both were optional here — a resolution could name neither the commit it
+  // examined nor anything it observed there. A verdict that cites nothing is
+  // indistinguishable from one nobody reached.
+  if (!record.resolutionCandidate) {
+    throw new FindingTransitionError(
+      record.finding.id,
+      "cannot resolve a finding whose proposed fix names no candidate commit",
+    );
+  }
+  if (!record.resolutionEvidence || record.resolutionEvidence.length === 0) {
+    throw new FindingTransitionError(
+      record.finding.id,
+      "cannot resolve a finding whose proposed fix carries no evidence to check",
     );
   }
   return { ...record, status: "resolved", resolvedBy };

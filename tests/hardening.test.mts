@@ -418,6 +418,154 @@ test("a secret in a finding never reaches durable state", () => {
   }
 });
 
+/** §M-TEST-HARDENING — A well-formed blocking finding, ready for stdin. */
+function blocker(id: string): string {
+  return JSON.stringify([
+    {
+      id,
+      severity: "blocker",
+      classification: "defect",
+      evidence: [{ kind: "file", reference: "src/app.py:1", detail: "the guard is missing" }],
+      basis: { type: "architecture", reference: "§A-APP-01" },
+      impact: "the endpoint accepts unauthenticated writes",
+      recommendedFix: { approach: "check the token first", rationale: "nothing else does" },
+    },
+  ]);
+}
+
+test("an open blocker cannot be erased by rewriting the findings slot", () => {
+  // The slot was written wholesale, so an empty payload deleted every record —
+  // and with four gates already attested on an unchanged snapshot, the run then
+  // completed. A blocker leaves only through a transition that names authority.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    ok(
+      cli(["run", "open-findings", "--run-id", runId, "--reviewer", "reviewerPrimary"], {
+        ...context,
+        stdin: blocker("F-1"),
+      }),
+      "open-findings",
+    );
+
+    const erased = cli(["run", "open-findings", "--run-id", runId, "--reviewer", "reviewerPrimary"], {
+      ...context,
+      stdin: "[]",
+    });
+    assert.equal(erased.code, 1);
+    assert.equal(errorCode(erased), "findings_dropped");
+
+    const shown = ok(cli(["run", "show", "--run-id", runId], context), "run show");
+    const open = (shown.json["openFindings"] as Record<string, unknown[]>)["reviewerPrimary"];
+    assert.equal(open?.length, 1, "the blocker is still there");
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("a finding cannot be closed on the authority of a session that was never dispatched", () => {
+  // `--by-role` is a claim. It used to be compared only against the raising
+  // role, so the executor had merely to claim the raiser's own role — the
+  // check the code comment said made this safe was the check being evaded.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    ok(
+      cli(["run", "open-findings", "--run-id", runId, "--reviewer", "reviewerPrimary"], {
+        ...context,
+        stdin: blocker("F-1"),
+      }),
+      "open-findings",
+    );
+    ok(
+      cli(
+        [
+          "run",
+          "propose-fix",
+          "--run-id",
+          runId,
+          "--reviewer",
+          "reviewerPrimary",
+          "--finding-id",
+          "F-1",
+          "--candidate-commit",
+          "abc123",
+        ],
+        {
+          ...context,
+          stdin: JSON.stringify([
+            { kind: "file", reference: "src/app.py:1", detail: "the token is checked now" },
+          ]),
+        },
+      ),
+      "propose-fix",
+    );
+
+    const impersonated = cli(
+      [
+        "run",
+        "resolve-finding",
+        "--run-id",
+        runId,
+        "--reviewer",
+        "reviewerPrimary",
+        "--finding-id",
+        "F-1",
+        "--by-role",
+        "reviewerPrimary",
+      ],
+      context,
+    );
+    assert.equal(impersonated.code, 1);
+    assert.equal(errorCode(impersonated), "no_such_session");
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("a proposed fix must say what it changed", () => {
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    ok(
+      cli(["run", "open-findings", "--run-id", runId, "--reviewer", "reviewerPrimary"], {
+        ...context,
+        stdin: blocker("F-1"),
+      }),
+      "open-findings",
+    );
+
+    const empty = cli(
+      [
+        "run",
+        "propose-fix",
+        "--run-id",
+        runId,
+        "--reviewer",
+        "reviewerPrimary",
+        "--finding-id",
+        "F-1",
+        "--candidate-commit",
+        "abc123",
+      ],
+      { ...context, stdin: "[]" },
+    );
+    assert.equal(empty.code, 1);
+    assert.equal(errorCode(empty), "invalid_evidence");
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
 test("the metadata guard may not be pointed at a commit other than the candidate", () => {
   const repo = seededRepo();
   const home = createTempHome();

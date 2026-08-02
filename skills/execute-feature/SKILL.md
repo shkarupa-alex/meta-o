@@ -98,9 +98,19 @@ You receive a whole batch, not one finding at a time.
   reason.
 - The reviewer proposed an expected fix. You may choose a different one — then
   explain why yours is better. That explanation is the point, not a formality.
-- You may mark a finding `fix_proposed` (`meta-o run propose-fix`). You may
-  **not** close it. Only the raising reviewer, a replacement in the same role, or
-  a technical adjudicator may resolve it.
+- You may mark a finding `fix_proposed`:
+
+  ```bash
+  echo '[{"kind":"file","reference":"src/pay.py:88","detail":"the retry is keyed on the idempotency token now"}]' \
+    | meta-o run propose-fix --run-id <id> --reviewer <slot> --finding-id <id> --candidate-commit <oid>
+  ```
+
+  The evidence on stdin is what the reviewer will check, so point at the change
+  you actually made. An empty array is refused, and a finding with no evidence
+  cannot later be resolved by anyone.
+- You may **not** close a finding. Only the raising reviewer, a replacement in
+  the same role, or a technical adjudicator may resolve it — and only through a
+  session this run actually dispatched.
 - After the batch, run `make qc` again and report the new candidate commit.
 
 ## Completion metadata

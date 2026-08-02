@@ -153,10 +153,14 @@ Start each worker prompt with: *"Read the `<skill-name>` skill and follow it."*
 ## Findings
 
 - `meta-o run open-findings --run-id <id> --reviewer <slot>` with the reviewer's
-  JSON array on stdin. Malformed findings are rejected at the boundary.
-- The executor may only reach `fix_proposed`
-  (`meta-o run propose-fix`). Closing is
-  `meta-o run resolve-finding --by-role reviewerPrimary|reviewerCrossVendor|technicalAdjudicator`.
+  JSON array on stdin. Malformed findings are rejected at the boundary, and so
+  is a payload that silently drops a blocker that is still open: to make one go
+  away, close it, or record a fresh `run record-review` that re-judges it.
+- The executor may only reach `fix_proposed` (`meta-o run propose-fix`, with the
+  fix's evidence on stdin). Closing is
+  `meta-o run resolve-finding --by-role reviewerPrimary|reviewerCrossVendor|technicalAdjudicator`,
+  and the named role must have a session this run dispatched — so spawn the
+  adjudicator before you try to close anything on its authority.
 - After two fruitless rebuttal turns on one finding, spawn a
   `technicalAdjudicator` rather than letting the loop spin.
 - Fix findings in batches. After a batch: QC, then the loop that raised them.

@@ -345,7 +345,9 @@ test("the executor may propose a fix but never close a finding", () => {
   const reviewer: SessionRef = { backend: "herdr", sessionId: "s2", role: "reviewerPrimary", generation: 1 };
   const record: FindingRecord = { finding: defect("F-8"), raisedBy: reviewer, status: "open" };
 
-  const proposed = proposeFix(record, "commit-9", record.resolutionEvidence);
+  const proposed = proposeFix(record, "commit-9", [
+    { kind: "file", reference: "src/app.py:12", detail: "the guard is now unconditional" },
+  ]);
   assert.equal(proposed.status, "fix_proposed");
 
   assert.throws(
@@ -356,6 +358,20 @@ test("the executor may propose a fix but never close a finding", () => {
   const resolved = resolveFinding(proposed, reviewer);
   assert.equal(resolved.status, "resolved");
   assert.equal(resolved.resolvedBy?.role, "reviewerPrimary");
+});
+
+test("a resolution that cites no candidate or no evidence is not a check", () => {
+  // §30 closes a finding "after checking the candidate and the evidence". Both
+  // were optional, so a verdict could name neither the commit it examined nor
+  // anything it saw there — indistinguishable from one nobody reached.
+  const reviewer: SessionRef = { backend: "herdr", sessionId: "s2", role: "reviewerPrimary", generation: 1 };
+  const record: FindingRecord = { finding: defect("F-8b"), raisedBy: reviewer, status: "open" };
+
+  const noEvidence = proposeFix(record, "commit-9", undefined);
+  assert.throws(() => resolveFinding(noEvidence, reviewer), /no evidence to check/);
+
+  const noCandidate = { ...noEvidence, resolutionCandidate: undefined };
+  assert.throws(() => resolveFinding(noCandidate, reviewer), /no candidate commit/);
 });
 
 test("a finding cannot be resolved before a fix is even proposed", () => {
