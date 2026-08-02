@@ -14,7 +14,12 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { validateRegistry, danglingBusinessLinks } from "./e2e-registry.mjs";
-import { validateManifest } from "./qc.mjs";
+import {
+  ADOPTION_MANIFEST_PATH,
+  validateAdoptionManifest,
+  type AdoptionManifest,
+} from "./adoption.mjs";
+import { PYTHON_MINIMUM_GATES, validateManifest } from "./qc.mjs";
 import { buildAnchorIndex, businessAnchors } from "./knowledge.mjs";
 import { porcelainStatus } from "./git.mjs";
 import type { E2ERegistry, QcManifest } from "./types.mjs";
@@ -47,6 +52,20 @@ export const REQUIRED_CONTRACT_FILES = [
   "docs/architecture/e2e.json",
   "docs/knowledge/business.md",
   "docs/knowledge/glossary.md",
+  "docs/todo.md",
+] as const;
+
+/**
+ * §M-PREFLIGHT — Contract files whose only requirement is that they exist.
+ *
+ * The rest of `REQUIRED_CONTRACT_FILES` get a check of their own, because for
+ * them existence is the least interesting property: a Makefile without `qc` and
+ * a catalog with no `always_required` scenario both exist and both fail.
+ */
+const PLAIN_CONTRACT_FILES = [
+  "docs/knowledge/business.md",
+  "docs/knowledge/glossary.md",
+  "docs/todo.md",
 ] as const;
 
 /**
@@ -267,14 +286,18 @@ function checkE2eContract(repoDir: string, note: Note): E2ERegistry | undefined 
 
 /** §M-PREFLIGHT — The knowledge layer must exist and cover every scenario link. */
 function checkKnowledge(repoDir: string, registry: E2ERegistry | undefined, note: Note): void {
-  for (const relative of ["docs/knowledge/business.md", "docs/knowledge/glossary.md"]) {
+  for (const relative of PLAIN_CONTRACT_FILES) {
     const present = existsSync(join(repoDir, relative));
     note({
       id: relative,
       status: present ? "ok" : "missing",
       blocking: true,
       detail: present ? `${relative} is present` : `${relative} is absent`,
-      remedy: "allow the executor to create the knowledge layer, or run adopt-project first",
+      remedy:
+        relative === "docs/todo.md"
+          ? "create docs/todo.md; debt found outside this feature's scope is recorded there, " +
+            "and with nowhere to record it the finding is either lost or smuggled into the spec"
+          : "allow the executor to create the knowledge layer, or run adopt-project first",
     });
   }
 
@@ -292,6 +315,74 @@ function checkKnowledge(repoDir: string, registry: E2ERegistry | undefined, note
       remedy: "add the missing §B anchors or correct the scenario links",
     });
   }
+}
+
+/**
+ * §M-PREFLIGHT — A Python project must declare the profile's minimum gates.
+ *
+ * Detected from `pyproject.toml` rather than configured, because the failure
+ * this prevents is silent: a manifest listing lint and tests passes every check
+ * in this file and still leaves purpose, the knowledge chain and the import
+ * graph unenforced — the four gates that make the rest of the methodology mean
+ * anything. Non-blocking, because the list is the *profile's* minimum and a
+ * project may deliberately be somewhere else; but it is always said out loud.
+ */
+function checkPythonProfile(repoDir: string, note: Note): void {
+  if (!existsSync(join(repoDir, "pyproject.toml"))) return;
+  const manifestPath = join(repoDir, ".quality/qc-manifest.json");
+  if (!existsSync(manifestPath)) return;
+
+  const parsed = readJsonFile<QcManifest>(manifestPath);
+  const declared = new Set((parsed.value?.gates ?? []).map((gate) => gate.id));
+  const missing = PYTHON_MINIMUM_GATES.filter((id) => !declared.has(id));
+  note({
+    id: "python-profile",
+    status: missing.length === 0 ? "ok" : "missing",
+    blocking: false,
+    detail:
+      missing.length === 0
+        ? "the manifest declares every gate of the Python starter profile"
+        : `the Python profile's minimum gates are not declared: ${missing.join(", ")}`,
+    remedy:
+      "adopt the starter profile from share/meta-o/templates/python, or record in the manifest " +
+      "why this project's QC contract is different",
+  });
+}
+
+/**
+ * §M-PREFLIGHT — The adoption boundary must be readable if the project declares one.
+ *
+ * Absence is not a failure: greenfield projects were written under the contract
+ * and have no boundary to record. A *malformed* manifest is a failure, because
+ * the closure check that protects uncertified code would otherwise silently
+ * pass everything.
+ */
+function checkAdoption(repoDir: string, note: Note): void {
+  const path = join(repoDir, ADOPTION_MANIFEST_PATH);
+  if (!existsSync(path)) {
+    note({
+      id: "adoption-manifest",
+      status: "ok",
+      blocking: false,
+      detail: `${ADOPTION_MANIFEST_PATH} is absent; the whole repository is treated as adopted`,
+      remedy: "run adopt-project if this is a brownfield repository being adopted in stages",
+    });
+    return;
+  }
+  const parsed = readJsonFile<unknown>(path);
+  const validation = parsed.value
+    ? validateAdoptionManifest(parsed.value)
+    : { ok: false, errors: [parsed.error ?? "unreadable"] };
+  const roots = (parsed.value as AdoptionManifest | undefined)?.adopted_roots ?? [];
+  note({
+    id: "adoption-manifest",
+    status: validation.ok ? "ok" : "invalid",
+    blocking: true,
+    detail: validation.ok
+      ? `adopted closure: ${roots.join(", ")}`
+      : validation.errors.join("; "),
+    remedy: "fix the manifest so it lists the dependency-closed roots adoption has certified",
+  });
 }
 
 /**
@@ -314,6 +405,8 @@ export function runPreflight(input: PreflightInput): PreflightReport {
   checkMakefile(repoDir, note);
   checkQcManifest(repoDir, note);
   checkKnowledge(repoDir, checkE2eContract(repoDir, note), note);
+  checkAdoption(repoDir, note);
+  checkPythonProfile(repoDir, note);
 
   const ok = checks.every((check) => !check.blocking || check.status === "ok");
   return {

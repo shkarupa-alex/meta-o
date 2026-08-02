@@ -140,8 +140,11 @@ make qc              # the same gate this project asks of others
 ```
 
 The suite builds real Git repositories, real state trees with real permission
-bits, and a scripted stand-in that speaks the backend's actual protocol. Where
-a spec lists an acceptance test, there is a test with that name.
+bits, and a scripted stand-in that speaks the backend's actual protocol.
+[`docs/acceptance-map.md`](docs/acceptance-map.md) lists every acceptance item
+in §00–§50 against the test that proves it — including the three that are
+judgements about meaning and are marked *not mechanical* instead of being given
+a test that would only look like proof.
 
 Its own knowledge lives in [`docs/knowledge/`](docs/knowledge/business.md) and
 its own E2E contract in [`docs/architecture/e2e.md`](docs/architecture/e2e.md).

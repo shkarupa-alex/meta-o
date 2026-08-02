@@ -321,6 +321,53 @@ function finalize(mode: "smoke" | "full", backend: string, checks: SuiteCheck[])
   return { mode, backend, checks, blocked: blockingReasons.length > 0, blockingReasons };
 }
 
+/** §M-CAPABILITY-SUITE — What one backend was last proven able to do. */
+export interface CapabilityBaseline {
+  backend: string;
+  mode: "smoke" | "full";
+  recordedAt: string;
+  grades: Record<string, CapabilityGrade>;
+}
+
+/** §M-CAPABILITY-SUITE — Grades ordered from best to worst, for comparison. */
+const GRADE_ORDER: Record<CapabilityGrade, number> = {
+  supported: 2,
+  degraded: 1,
+  unsupported: 0,
+};
+
+/** §M-CAPABILITY-SUITE — Reduce a report to the record a later run compares against. */
+export function baselineOf(report: SuiteReport, recordedAt: string): CapabilityBaseline {
+  const grades: Record<string, CapabilityGrade> = {};
+  for (const check of report.checks) grades[check.id] = check.grade;
+  return { backend: report.backend, mode: report.mode, recordedAt, grades };
+}
+
+/**
+ * §M-CAPABILITY-SUITE — Capabilities the backend used to have and no longer does.
+ *
+ * Only checks present in both runs are compared, so a cheap smoke report never
+ * reads as "everything the full suite proved has disappeared". A capability
+ * appearing for the first time is not a regression, and neither is one that
+ * improved — this answers exactly one question, which preflight then refuses to
+ * proceed past: did the ground move under a workflow that already depends on it.
+ */
+export function detectCapabilityRegression(
+  baseline: CapabilityBaseline | undefined,
+  report: SuiteReport,
+): string[] {
+  if (!baseline || baseline.backend !== report.backend) return [];
+  const regressions: string[] = [];
+  for (const check of report.checks) {
+    const previous = baseline.grades[check.id];
+    if (previous === undefined) continue;
+    if (GRADE_ORDER[check.grade] < GRADE_ORDER[previous]) {
+      regressions.push(`${check.id}: ${previous} → ${check.grade} (${check.detail})`);
+    }
+  }
+  return regressions;
+}
+
 /** §M-CAPABILITY-SUITE — Human-readable rendering of a suite report. */
 export function formatSuiteReport(report: SuiteReport): string {
   const lines = [`capability suite (${report.mode}) for ${report.backend}:`];

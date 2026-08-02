@@ -8,11 +8,19 @@
  */
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { resolveProjectIdentity } from "../../core/project-key.mjs";
 import { computeSnapshotDigest, verifyMetadataCommit } from "../../core/snapshot.mjs";
 import { git } from "../../core/git.mjs";
-import { runPreflight } from "../../core/preflight.mjs";
+import { runPreflight, type PreflightCheck } from "../../core/preflight.mjs";
+import { HerdrAdapter } from "../../adapters/herdr.mjs";
+import {
+  detectCapabilityRegression,
+  runSmokeSuite,
+  type SuiteReport,
+} from "../../adapters/capability-suite.mjs";
+import { readCapabilityBaseline } from "./backend.mjs";
 import {
   baselineSelection,
   computePlanDigest,
@@ -37,7 +45,7 @@ import {
 import { validateReviewResult, isStaleResult } from "../../core/findings.mjs";
 import { buildAnchorIndex, businessAnchors, validateChain } from "../../core/knowledge.mjs";
 import { collectModuleAnchors } from "../../core/module-anchors.mjs";
-import { createGateWorktree } from "../../core/worktree.mjs";
+import { createGateWorktree, withGateWorktree } from "../../core/worktree.mjs";
 import { assertCleanWorktree } from "../../core/git.mjs";
 import { commitState, readState, withWriterLock } from "../../core/state-store.mjs";
 import { isoTimestamp } from "../../core/clock.mjs";
@@ -52,7 +60,15 @@ import type {
   QcResult,
   ReviewResult,
 } from "../../core/types.mjs";
-import { emit, fail, optionalFlag, readStdinJson, requireFlag, type ParsedArgs } from "../args.mjs";
+import {
+  boolFlag,
+  emit,
+  fail,
+  optionalFlag,
+  readStdinJson,
+  requireFlag,
+  type ParsedArgs,
+} from "../args.mjs";
 
 /** §M-CLI-GATES — Resolve the repository a gate command applies to. */
 function repoOf(args: ParsedArgs): { repoDir: string; projectKey: string } {
@@ -71,15 +87,98 @@ function readRepoJson<T>(repoDir: string, relative: string): T {
   }
 }
 
-/** §M-CLI-GATES — Run every mechanical project contract check. */
-export function commandPreflight(args: ParsedArgs): void {
+/**
+ * §M-CLI-GATES — Ask the backend what it can still do, and compare that to the record.
+ *
+ * The cheap smoke variant, because preflight runs before every feature and must
+ * not cost panes or money. Two things can go wrong and they are reported apart:
+ * the backend cannot answer at all, and the backend answers *worse than it used
+ * to*. The second is the one worth the machinery — a silently degraded backend
+ * produces a run that fails four hours later for reasons nobody connects to an
+ * upgrade that happened last week.
+ */
+async function backendChecks(repoDir: string): Promise<PreflightCheck[]> {
+  const adapter = new HerdrAdapter({ binary: process.env["META_O_HERDR_BIN"] });
+  let report: SuiteReport;
+  try {
+    report = await runSmokeSuite({ adapter, backend: "herdr", cwd: repoDir, model: PROBE_MODEL });
+  } catch (error) {
+    return [
+      {
+        id: "backend-smoke",
+        status: "invalid",
+        blocking: true,
+        detail: `the backend could not be probed: ${(error as Error).message}`,
+        remedy: "install or start the backend, or pass --no-backend to check the project alone",
+      },
+    ];
+  }
+
+  const regressions = detectCapabilityRegression(readCapabilityBaseline(), report);
+  return [
+    {
+      id: "backend-smoke",
+      status: report.blocked ? "invalid" : "ok",
+      blocking: true,
+      detail: report.blocked
+        ? report.blockingReasons.join("; ")
+        : `backend answers and reports every completion-critical capability`,
+      remedy: "run `meta-o capability-suite run --full` and resolve what it reports",
+    },
+    {
+      id: "capability-regression",
+      status: regressions.length === 0 ? "ok" : "invalid",
+      blocking: true,
+      detail:
+        regressions.length === 0
+          ? "no capability is worse than the recorded baseline"
+          : regressions.join("; "),
+      remedy:
+        "this backend lost a capability the workflow depends on; fix or downgrade it, then " +
+        "re-record the baseline with `meta-o capability-suite run --full`",
+    },
+  ];
+}
+
+/** §M-CLI-GATES — The identity a capability probe presents; it never does real work. */
+const PROBE_MODEL = {
+  route: "claude",
+  vendor: "probe",
+  family: "probe",
+  model: "default",
+} as const;
+
+/**
+ * §M-CLI-GATES — Run every mechanical project contract check.
+ *
+ * Includes the backend, because a project contract the backend cannot execute
+ * is not a contract this workflow can honour. `--no-backend` checks the
+ * repository alone, which is what adoption needs before a backend exists.
+ */
+export async function commandPreflight(args: ParsedArgs): Promise<void> {
   const { repoDir } = repoOf(args);
   const report = runPreflight({
     repoDir,
     requireCleanWorktree: optionalFlag(args, "allow-dirty") === undefined,
   });
-  emit(report);
-  if (!report.ok) process.exitCode = 1;
+
+  const checks = [...report.checks];
+  const missingContract = [...report.missingContract];
+  if (!boolFlag(args, "no-backend")) {
+    for (const check of await backendChecks(repoDir)) {
+      checks.push(check);
+      if (check.blocking && check.status !== "ok") missingContract.push(check.id);
+    }
+  }
+
+  const ok = checks.every((check) => !check.blocking || check.status === "ok");
+  emit({
+    ok,
+    checks,
+    missingContract,
+    recommendedPhase: ok ? "EXECUTING" : "PAUSED_MISSING_TOOLS",
+  });
+  if (!ok) process.exitCode = 1;
 }
 
 /** §M-CLI-GATES — Compute the snapshot digest of a revision. */
@@ -455,6 +554,60 @@ export function commandWorktreeCreate(args: ParsedArgs): void {
     optionalFlag(args, "label") ?? "gate",
   );
   emit({ path: worktree.path, commitOid: worktree.commitOid });
+}
+
+/**
+ * §M-CLI-GATES — Run a gate command inside a fresh worktree and prove it stayed clean.
+ *
+ * The three things a gate must not do are all handled here rather than by a
+ * skill remembering three steps: it must not run against the developer's
+ * working tree, it must not modify the content it is judging, and it must write
+ * its machine-readable result where the run — not the repository — can find it.
+ * A formatter that rewrites a file it was asked to check invalidates the gate,
+ * and the only way to notice is to look afterwards.
+ */
+export async function commandWorktreeRun(args: ParsedArgs): Promise<void> {
+  const { repoDir, projectKey } = repoOf(args);
+  // The router has already consumed the command words, so everything left is
+  // the gate's own argv — passed as an array and never through a shell.
+  const command = args.positional;
+  if (command.length === 0) fail("usage", "name the command to run, e.g. `worktree run ... make qc`");
+
+  const runId = optionalFlag(args, "run-id");
+  const state = runId ? readState(projectKey, runId) : undefined;
+  if (runId && !state) fail("unknown_run", `run ${runId} has no state`);
+  const revision =
+    optionalFlag(args, "rev") ?? state?.candidateSnapshot?.provenanceCommit ?? "HEAD";
+
+  const environment: Record<string, string> = { ...process.env } as Record<string, string>;
+  if (state?.candidateSnapshot) {
+    environment["META_O_SNAPSHOT_DIGEST"] = state.candidateSnapshot.digest;
+  }
+  if (runId) environment["META_O_QC_RESULT"] = qcResultPath(projectKey, runId);
+
+  const label = optionalFlag(args, "label") ?? "gate";
+  try {
+    const outcome = await withGateWorktree(repoDir, revision, label, (worktree) => {
+      const child = spawnSync(command[0]!, command.slice(1), {
+        cwd: worktree.path,
+        env: environment,
+        stdio: "inherit",
+      });
+      if (child.error) throw child.error;
+      return child.status ?? 1;
+    });
+    emit({
+      command,
+      commitOid: outcome.commitOid,
+      exitStatus: outcome.result,
+      clean: true,
+      qcResultPath: environment["META_O_QC_RESULT"],
+      snapshotDigest: environment["META_O_SNAPSHOT_DIGEST"],
+    });
+    if (outcome.result !== 0) process.exitCode = outcome.result;
+  } catch (error) {
+    fail("gate_mutated_worktree", (error as Error).message, { command, revision });
+  }
 }
 
 /** §M-CLI-GATES — Assert a worktree is clean, as required before and after a gate. */

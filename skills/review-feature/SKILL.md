@@ -89,13 +89,14 @@ A PASS is only possible with `complete`.
 
 ```json
 {
-  "role": "reviewerPrimary",
+  "reviewer": "reviewerPrimary",
   "commitOid": "…",
   "snapshotDigest": "…",
   "planDigest": "…",
   "verdict": "passed | changes_requested",
   "selectionPlanVerdict": "complete | incomplete",
-  "findings": [ … ]
+  "findings": [ … ],
+  "completedAt": "2026-07-24T09:00:00.000Z"
 }
 ```
 

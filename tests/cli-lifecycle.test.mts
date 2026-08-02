@@ -122,6 +122,17 @@ function seededRepo(): TempRepo {
 }
 
 /**
+ * §M-TEST-CLI — Retire the tracked feature spec, as the executor must before a candidate.
+ *
+ * The spec is deleted inside the candidate window, not after it: a deletion
+ * after the reviews would be a semantic change to attested content.
+ */
+function retireSpec(repo: TempRepo): void {
+  repo.remove("spec/feature.md");
+  repo.commit("retire the feature spec into the knowledge chain");
+}
+
+/**
  * §M-TEST-CLI — Write the completion metadata commit's `last_run` receipts.
  *
  * Kept faithful to what the executor really writes, because the guard the test
@@ -207,12 +218,25 @@ test("a run walks from start to COMPLETE only with four attestations on one snap
       "a fresh run waits for the user to confirm the ModelSet",
     );
 
-    ok(cli(["preflight"], context), "preflight");
+    // Preflight probes the backend too, so it runs against the fake Herdr: a
+    // project contract the backend cannot execute is not a contract this
+    // workflow can honour.
+    const backed: CliContext = {
+      ...context,
+      env: { META_O_HERDR_BIN: FAKE_HERDR, FAKE_HERDR_STATE: join(home.dir, "fake-herdr.json") },
+    };
+    ok(cli(["preflight"], backed), "preflight");
     ok(cli(["e2e", "validate"], context), "e2e validate");
     ok(cli(["knowledge", "validate"], context), "knowledge validate");
 
     ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
+
+    // Retirement is part of the candidate window, and the CLI says so.
+    const stillTracked = cli(["run", "set-candidate", "--run-id", runId], context);
+    assert.equal(stillTracked.code, 1);
+    assert.equal(errorCode(stillTracked), "spec_not_retired");
+    retireSpec(repo);
 
     const candidate = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
     const snapshotDigest = candidate.json["snapshotDigest"] as string;
@@ -365,6 +389,7 @@ test("an E2E result that skips a selected scenario does not pass", () => {
   try {
     const runId = startRun(context);
     ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    retireSpec(repo);
     const candidate = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
     const plan = ok(
       cli(["e2e", "seal-plan"], {
@@ -410,6 +435,7 @@ test("a gate result for a superseded snapshot is refused", () => {
   try {
     const runId = startRun(context);
     ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    retireSpec(repo);
     const staleDigest = ok(cli(["run", "set-candidate", "--run-id", runId], context), "candidate 1")
       .json["snapshotDigest"] as string;
 
@@ -449,6 +475,7 @@ test("changing the candidate invalidates attestations of the previous one", () =
   try {
     const runId = startRun(context);
     ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    retireSpec(repo);
     ok(cli(["run", "set-candidate", "--run-id", runId], context), "candidate 1");
     ok(
       cli(["run", "record-gate", "--run-id", runId, "--gate", "qc", "--status", "passed"], context),
@@ -596,6 +623,121 @@ test("relaxing a threshold, a ratchet or a frozen baseline needs a user decision
       "baseline_raised",
       "baseline_added",
     ]));
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("a backend capability regression stops preflight", () => {
+  const repo = seededRepo();
+  const home = createTempHome();
+  const fakeState = join(home.dir, "fake-herdr.json");
+  const context: CliContext = {
+    cwd: repo.dir,
+    home: home.dir,
+    env: { META_O_HERDR_BIN: FAKE_HERDR, FAKE_HERDR_STATE: fakeState },
+  };
+
+  try {
+    ok(cli(["preflight"], context), "preflight against a healthy backend");
+
+    // The backend was proven able to do this once; the record of that is what
+    // makes a later, quieter failure legible as a regression rather than as an
+    // unexplained run that died halfway through.
+    writeFileSync(
+      join(home.dir, "capability-baseline.json"),
+      JSON.stringify({
+        backend: "herdr",
+        mode: "full",
+        recordedAt: "2026-01-01T00:00:00.000Z",
+        grades: { capabilities: "supported" },
+      }),
+      { mode: 0o600 },
+    );
+
+    const degraded = cli(["preflight"], {
+      ...context,
+      env: { ...context.env, FAKE_HERDR_FAIL: "agent list" },
+    });
+    assert.equal(degraded.code, 1);
+    const checks = degraded.json["checks"] as Array<{ id: string; status: string }>;
+    assert.equal(checks.find((check) => check.id === "backend-smoke")?.status, "invalid");
+    assert.equal(checks.find((check) => check.id === "capability-regression")?.status, "invalid");
+
+    // The project itself is fine, and --no-backend says so without pretending
+    // the backend is.
+    ok(cli(["preflight", "--no-backend"], { ...context, env: {} }), "preflight --no-backend");
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("a gate that rewrites the content it judges is invalid, not green", () => {
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+
+  try {
+    const honest = ok(
+      cli(["worktree", "run", "--label", "qc", "true"], context),
+      "a non-mutating gate",
+    );
+    assert.equal(honest.json["clean"], true);
+    assert.notEqual(honest.json["commitOid"], undefined);
+
+    // A formatter that "fixes" the file it was asked to check is the canonical
+    // version of this: the exit status says pass, and the thing that passed is
+    // no longer the thing anyone attested.
+    const mutating = cli(
+      ["worktree", "run", "--label", "format", "sh", "-c", "echo mutated >> src/app.py"],
+      context,
+    );
+    assert.equal(mutating.code, 1);
+    assert.equal(errorCode(mutating), "gate_mutated_worktree");
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("a candidate may not touch source outside the adopted closure", () => {
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+
+  try {
+    repo.write(
+      ".quality/adoption-manifest.json",
+      `${JSON.stringify({ schema_version: 1, adopted_roots: ["src"] }, null, 2)}\n`,
+    );
+    repo.commit("certify the adopted closure");
+
+    const runId = startRun(context);
+    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    retireSpec(repo);
+
+    // Inside the closure: ordinary work.
+    repo.write("src/app.py", '"""§M-APP — entry point, revised. Implements §A-APP-01."""\n');
+    repo.commit("change adopted code");
+    ok(cli(["run", "set-candidate", "--run-id", runId], context), "candidate inside the closure");
+
+    // Outside it: uncertified code has no purpose, no owner and no baseline, and
+    // reaching into it would widen the adoption boundary by nobody's decision.
+    repo.write("vendor/legacy.py", "def go():\n    return 1\n");
+    repo.commit("reach outside the closure");
+    const refused = cli(["run", "set-candidate", "--run-id", runId], context);
+    assert.equal(refused.code, 1);
+    assert.equal(errorCode(refused), "outside_adopted_closure");
+    assert.match(JSON.stringify(refused.json), /vendor\/legacy\.py/);
+
+    // Documentation is never fenced off: a feature that could not update the
+    // knowledge layer outside an adopted root could not keep the chain true.
+    repo.remove("vendor/legacy.py");
+    repo.write("docs/todo.md", "# Debt\n\n| vendor | untouched legacy | adoption feature |\n");
+    repo.commit("record the debt instead");
+    ok(cli(["run", "set-candidate", "--run-id", runId], context), "docs outside the closure");
   } finally {
     home.dispose();
     repo.dispose();

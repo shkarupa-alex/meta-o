@@ -22,9 +22,11 @@ import { dirname } from "node:path";
 import { HerdrAdapter } from "../../adapters/herdr.mjs";
 import { formatCapabilityReport } from "../../adapters/adapter.mjs";
 import {
+  baselineOf,
   formatSuiteReport,
   runFullSuite,
   runSmokeSuite,
+  type CapabilityBaseline,
   type SuiteContext,
 } from "../../adapters/capability-suite.mjs";
 import {
@@ -38,6 +40,7 @@ import { listRuns, readState } from "../../core/state-store.mjs";
 import { readSecureJson, writeSecureJson } from "../../core/safe-fs.mjs";
 import type { JsonValue } from "../../core/canonical-json.mjs";
 import {
+  capabilityBaselinePath,
   projectMetadataPath,
   watchdogConfigPath,
   watchdogLockPath,
@@ -139,13 +142,33 @@ export async function commandCapabilitySuite(args: ParsedArgs): Promise<void> {
     ...(additionalModels.length > 0 ? { additionalModels } : {}),
   };
 
-  const report = boolFlag(args, "full")
-    ? await runFullSuite(context)
-    : await runSmokeSuite(context);
+  const full = boolFlag(args, "full");
+  const report = full ? await runFullSuite(context) : await runSmokeSuite(context);
+
+  // Only the full suite may set the baseline. A smoke run proves a subset, and
+  // letting it overwrite the record would silently forgive every capability it
+  // never checked — which is the same thing as having no baseline at all.
+  let baselineWritten = false;
+  if (full && !report.blocked) {
+    writeSecureJson(
+      capabilityBaselinePath(),
+      baselineOf(report, isoTimestamp()) as unknown as JsonValue,
+    );
+    baselineWritten = true;
+  }
 
   if (boolFlag(args, "text")) process.stdout.write(`${formatSuiteReport(report)}\n`);
-  else emit(report);
+  else emit({ ...report, baselineWritten, baselinePath: capabilityBaselinePath() });
   if (report.blocked) process.exitCode = 1;
+}
+
+/** §M-CLI-BACKEND — Read the recorded capability baseline, tolerating its absence. */
+export function readCapabilityBaseline(): CapabilityBaseline | undefined {
+  try {
+    return readSecureJson<CapabilityBaseline>(capabilityBaselinePath());
+  } catch {
+    return undefined;
+  }
 }
 
 /**

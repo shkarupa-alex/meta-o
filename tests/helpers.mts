@@ -168,6 +168,7 @@ export function seedProjectContract(repo: TempRepo): void {
   repo.write("docs/knowledge/business.md", sampleBusinessKnowledge());
   repo.write("docs/knowledge/architecture/app.md", sampleArchitectureKnowledge());
   repo.write("docs/knowledge/glossary.md", "# Glossary\n");
+  repo.write("docs/todo.md", "# Debt found outside a feature's scope\n");
 }
 
 /**

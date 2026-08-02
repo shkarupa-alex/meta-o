@@ -111,3 +111,16 @@ export function watchdogLockPath(): string {
 export function watchdogMemoryPath(): string {
   return join(metaOHome(), "watchdog-memory.json");
 }
+
+/**
+ * §M-PATHS — What the backend was last proven able to do, per install.
+ *
+ * Machine-wide rather than per-project: the backend is a property of the
+ * machine, and a regression discovered in one repository is a regression
+ * everywhere. Written by the full capability suite after an install or backend
+ * update, read by preflight, which refuses to start a run on a backend that has
+ * quietly lost something a run depends on.
+ */
+export function capabilityBaselinePath(): string {
+  return join(metaOHome(), "capability-baseline.json");
+}

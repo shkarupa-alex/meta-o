@@ -66,11 +66,11 @@ meta-o run route --run-id <id>   →   act on routing.action   →   repeat
 | `run_reuse_scan` | Dispatch `reuseResearcher` with the `research-reuse` skill; then `--phase EXECUTING` |
 | `await_candidate` | Dispatch `executor` with the `execute-feature` skill; when it reports a clean candidate commit, `meta-o run set-candidate` |
 | `await_selection_plan` | Dispatch `e2eTester` with the `test-e2e` skill in *planning* mode; `meta-o e2e seal-plan` then `meta-o run set-plan` |
-| `run_qc` | `--phase LOCAL_QC`, have the executor run `make qc`, then `meta-o qc evaluate` and `meta-o run record-gate --gate qc` |
-| `run_smoke` | `--phase SMOKE_PREFLIGHT`; the E2E tester runs build/boot/health only |
-| `run_reviews` | `--phase REVIEW_STABILIZATION`; dispatch **both** reviewers on the same snapshot, independently |
+| `run_qc` | `--phase LOCAL_QC`, run QC in an isolated worktree (below), then `meta-o qc evaluate` and `meta-o run record-gate --gate qc --status passed` |
+| `run_smoke` | `--phase SMOKE_PREFLIGHT`; the E2E tester runs build/boot/health only, then `run record-gate --gate smoke` |
+| `run_reviews` | `--phase REVIEW_STABILIZATION`; dispatch **both** reviewers on the same snapshot, independently; record each with `meta-o run record-review --reviewer <slot>` |
 | `fix_review_findings` | Hand the whole batch of open findings to the executor at once |
-| `run_selected_e2e` | `--phase E2E_STABILIZATION`; the E2E tester runs the full selected set |
+| `run_selected_e2e` | `--phase E2E_STABILIZATION`; the E2E tester runs the full selected set; record it with `meta-o run record-e2e` |
 | `fix_e2e_failures` | Hand the whole batch of failures to the executor at once |
 | `finalize_metadata` | `--phase FINALIZE_METADATA`; see **Completion** |
 | `blocked` | Read `routing.reason`; resolve the pause or surface it to the user |
@@ -78,6 +78,33 @@ meta-o run route --run-id <id>   →   act on routing.action   →   repeat
 Never skip a step because it "obviously" passed, and never re-derive the action
 yourself. The number of loops is unbounded and is not, by itself, a reason to
 escalate to the user.
+
+## Running a gate on the candidate, not on the working tree
+
+Gates run against an isolated checkout of the candidate commit, never against
+the developer's working tree, and a gate that modifies what it judges is
+invalid rather than green:
+
+```bash
+meta-o worktree run --run-id <id> --label qc make qc
+```
+
+That single command creates a detached worktree at the candidate commit, exports
+`META_O_SNAPSHOT_DIGEST` and `META_O_QC_RESULT` (a path inside the run's own
+external directory, so writing the result never dirties the repository), runs the
+command there, and refuses the gate if the checkout changed. A formatter that
+"fixes" the file it was asked to check fails here — which is the point.
+
+Then judge the result rather than the exit status:
+
+```bash
+meta-o qc evaluate --run-id <id>
+meta-o run record-gate --run-id <id> --gate qc --status passed
+```
+
+`qc evaluate` reads the machine-readable result and refuses a pass if any
+declared gate is missing, skipped or computed for a different snapshot. An exit
+code alone is never evidence.
 
 ## Dispatching a worker
 
@@ -135,9 +162,15 @@ A fresh orchestrator resumes from state alone; there is no narrative handoff.
    anything else.
 3. `meta-o session list --run-id <id>` — check every worker really is where the
    state says it is.
-4. If you are replacing a previous orchestrator, prove it is gone and then
-   `meta-o run takeover --run-id <id> --previous-status complete|failed|stopped|absent`.
-5. `meta-o run route` and continue.
+4. If you are replacing a previous orchestrator, `meta-o run takeover --run-id <id>`.
+   You do not declare that the previous one is gone — takeover asks the backend
+   and refuses while it is still alive. If it refuses, it is telling you the run
+   has an owner.
+5. `meta-o run show` reports the ModelSet this run was started with. Show it to
+   the user and ask *"still these models?"* before spending anything. A run
+   resumed days later may be resuming onto a model the user no longer has, and
+   the confirmation is per-run, not per-machine.
+6. `meta-o run route` and continue.
 
 A worker that timed out is replaced, and its gate is re-run. A timeout never
 weakens a gate.

@@ -37,10 +37,13 @@ test("install.sh delivers a runnable CLI made only of dependency-free .mjs", () 
   const skills = mkdtempSync(join(tmpdir(), "meta-o-skills-"));
 
   try {
-    execFileSync(join(ROOT, "install.sh"), ["--prefix", prefix, "--skills-dir", skills], {
-      cwd: ROOT,
-      encoding: "utf8",
-    });
+    // --skip-suite: the delivery format is what is under test here, and the
+    // full capability suite really spawns agents in the developer's terminal.
+    execFileSync(
+      join(ROOT, "install.sh"),
+      ["--prefix", prefix, "--skills-dir", skills, "--skip-suite"],
+      { cwd: ROOT, encoding: "utf8" },
+    );
 
     const libraries = walk(join(prefix, "lib", "meta-o"));
     assert.ok(libraries.length > 0, "the installer copied nothing");
@@ -100,10 +103,13 @@ test("the installer touches no project: no hooks, no config, no version pin", ()
   });
 
   try {
-    execFileSync(join(ROOT, "install.sh"), ["--prefix", prefix, "--skills-dir", skills], {
-      cwd: ROOT,
-      encoding: "utf8",
-    });
+    // --skip-suite: the delivery format is what is under test here, and the
+    // full capability suite really spawns agents in the developer's terminal.
+    execFileSync(
+      join(ROOT, "install.sh"),
+      ["--prefix", prefix, "--skills-dir", skills, "--skip-suite"],
+      { cwd: ROOT, encoding: "utf8" },
+    );
 
     const after = execFileSync("git", ["status", "--porcelain", "--untracked-files=all"], {
       cwd: ROOT,

@@ -16,7 +16,7 @@ SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PREFIX="${META_O_PREFIX:-$HOME/.local}"
 SKILLS_DIR="${META_O_SKILLS_DIR:-$HOME/.claude/skills}"
 INSTALL_SKILLS=1
-RUN_SUITE=0
+RUN_SUITE=1
 MODE="install"
 
 usage() {
@@ -26,7 +26,8 @@ usage: install.sh [options]
   --prefix DIR        install binaries and libraries under DIR   (default: ~/.local)
   --skills-dir DIR    install the skills under DIR               (default: ~/.claude/skills)
   --no-skills         install only the CLI, libraries and templates
-  --capability-suite  run the full backend capability suite afterwards
+  --capability-suite  run the full backend capability suite afterwards  (default)
+  --skip-suite        install without proving what the backend can do
   --help              show this message
 
 Environment: META_O_PREFIX, META_O_SKILLS_DIR override the defaults.
@@ -50,6 +51,7 @@ while [ $# -gt 0 ]; do
     --skills-dir=*) SKILLS_DIR="${1#*=}"; shift ;;
     --no-skills) INSTALL_SKILLS=0; shift ;;
     --capability-suite) RUN_SUITE=1; shift ;;
+    --skip-suite) RUN_SUITE=0; shift ;;
     --update) MODE="update"; shift ;;
     --help|-h) usage; exit 0 ;;
     *) printf 'unknown option: %s\n\n' "$1" >&2; usage >&2; exit 2 ;;
@@ -159,9 +161,16 @@ case ":$PATH:" in
   *) printf 'note: %s is not in PATH\n' "$BIN_DIR" ;;
 esac
 
+# The suite runs by default because its *other* job is to record what the
+# backend could do at install time. Without that record, preflight has nothing
+# to compare a later, quieter degradation against, and the regression the whole
+# mechanism exists to catch becomes invisible.
 if [ "$RUN_SUITE" -eq 1 ]; then
-  printf '\nrunning the full backend capability suite\n'
-  if ! "$BIN_DIR/meta-o" capability-suite run --full --text; then
+  if ! command -v "${META_O_HERDR_BIN:-herdr}" >/dev/null 2>&1; then
+    printf '\nnote: %s was not found, so the capability suite did not run.\n' "${META_O_HERDR_BIN:-herdr}"
+    printf 'Run `meta-o capability-suite run --full` once the backend is installed;\n'
+    printf 'until then preflight has no baseline to detect a regression against.\n'
+  elif ! "$BIN_DIR/meta-o" capability-suite run --full --text; then
     printf '\nthe backend failed its capability suite.\n' >&2
     printf 'Preflight will refuse to start a run until this is fixed;\n' >&2
     printf 'there is deliberately no silent fallback.\n' >&2

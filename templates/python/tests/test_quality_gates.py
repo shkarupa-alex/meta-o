@@ -485,6 +485,41 @@ class ImportGraphTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("non-literal dynamic import", result.stdout)
 
+    def test_a_self_import_is_a_cycle_of_one(self) -> None:
+        """§M-QC-TESTS — A module importing itself is the smallest cycle, and still a cycle."""
+        write(
+            self.project.root,
+            "src/selfy.py",
+            '''
+            """§M-SELFY — Imports itself. Implements §A-BOOT-01."""
+
+            import selfy
+
+
+            def go() -> int:
+                """§M-SELFY — Do nothing useful."""
+                return selfy.go()
+            ''',
+        )
+        result = run_checker(self.project.root, "import_graph.py")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("self-import", result.stdout)
+
+    def test_an_unknown_first_party_boundary_is_blocked(self) -> None:
+        """§M-QC-TESTS — A module matching no declared prefix has no boundary to be inside."""
+        write(
+            self.project.root,
+            "pyproject.toml",
+            """
+            [tool.meta_o.import_graph]
+            source_roots = ["src"]
+            first_party_prefixes = ["app"]
+            """,
+        )
+        result = run_checker(self.project.root, "import_graph.py")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("unknown-boundary", result.stdout)
+
 
 class CodeHealthTests(unittest.TestCase):
     """§M-QC-TESTS — The structural gate holds thresholds and ratchets the baseline."""

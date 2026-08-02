@@ -57,6 +57,7 @@ import {
   commandVerifyMetadata,
   commandWorktreeAssertClean,
   commandWorktreeCreate,
+  commandWorktreeRun,
 } from "./commands/gates.mjs";
 import {
   commandList as commandSessionList,
@@ -142,6 +143,10 @@ const COMMANDS: Record<string, { run: Command; help: string }> = {
   "knowledge validate": { run: commandKnowledgeValidate, help: "validate anchors and causal links" },
 
   "worktree create": { run: commandWorktreeCreate, help: "create a fresh detached gate worktree" },
+  "worktree run": {
+    run: commandWorktreeRun,
+    help: "run a gate command in a fresh worktree and prove it changed nothing",
+  },
   "worktree assert-clean": { run: commandWorktreeAssertClean, help: "assert a worktree is pristine" },
   "spec digest": { run: commandSpecDigest, help: "fetch a spec and report its sha256" },
 

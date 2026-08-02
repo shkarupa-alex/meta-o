@@ -29,7 +29,8 @@ import {
   routeNext,
 } from "../../core/fsm.mjs";
 import { computeSnapshotDigest } from "../../core/snapshot.mjs";
-import { resolveCommit } from "../../core/git.mjs";
+import { changedPaths, git, resolveCommit } from "../../core/git.mjs";
+import { outsideClosure, readAdoptionManifest } from "../../core/adoption.mjs";
 import { fetchSpec, materializeSpecBlob, assertSpecUnchanged } from "../../core/spec-input.mjs";
 import { validateModelSet } from "../../core/model-set.mjs";
 import { readGlobalConfig } from "../../core/config.mjs";
@@ -264,6 +265,56 @@ export async function commandConfirmModels(args: ParsedArgs): Promise<void> {
 }
 
 /**
+ * §M-CLI-RUN — Refuse a candidate that edits source outside the adopted closure.
+ *
+ * Checked here, at the moment content becomes a candidate, because this is the
+ * last point before four gates start attesting it. A feature that quietly
+ * reached into uncertified code would otherwise arrive at COMPLETE carrying
+ * attestations for files nobody has ever given a purpose, an owner or a test —
+ * and the adoption boundary would have been widened by no one's decision.
+ */
+function assertInsideClosure(repoDir: string, state: RunState, candidateCommit: string): void {
+  const manifest = readAdoptionManifest(repoDir);
+  if (!manifest) return;
+  const touched = changedPaths(state.baseRevision, candidateCommit, repoDir);
+  const outside = outsideClosure(touched, manifest);
+  if (outside.length === 0) return;
+  fail(
+    "outside_adopted_closure",
+    `the candidate changes source outside the adopted closure: ${outside.join(", ")}`,
+    {
+      adoptedRoots: manifest.adopted_roots,
+      remedy:
+        "widen the boundary with a separate reviewed adoption change, or keep this feature " +
+        "inside the certified roots",
+    },
+  );
+}
+
+/**
+ * §M-CLI-RUN — Refuse a candidate that still carries the tracked feature spec.
+ *
+ * Retirement happens inside the candidate window, not after it. A spec deleted
+ * once the reviews are in would be a semantic change to attested content; a spec
+ * left in the tree becomes a second, stale source of truth that outlives the
+ * feature and quietly contradicts the knowledge layer. The immutable blob keeps
+ * the acceptance oracle available to every role regardless.
+ */
+function assertSpecRetired(repoDir: string, state: RunState, candidateCommit: string): void {
+  if (state.spec.kind !== "tracked" || state.spec.disposition !== "delete_after_sync") return;
+  const locator = state.spec.locator;
+  const present = git(["ls-tree", "--name-only", candidateCommit, "--", locator], repoDir).trim();
+  if (present === "") return;
+  fail("spec_not_retired", `the candidate still tracks the feature spec ${locator}`, {
+    remedy:
+      "distribute the spec's durable requirements into §B/§A/§M, delete the tracked spec in " +
+      "this same candidate window, and set the candidate again; the pinned blob remains " +
+      "available as the acceptance oracle",
+    specBlob: state.specBlob,
+  });
+}
+
+/**
  * §M-CLI-RUN — Point the run at a new candidate commit.
  *
  * Recomputes the snapshot digest and invalidates every attestation that no
@@ -276,6 +327,9 @@ export async function commandSetCandidate(args: ParsedArgs): Promise<void> {
   const runId = requireFlag(args, "run-id");
   const revision = optionalFlag(args, "rev") ?? "HEAD";
   const computed = computeSnapshotDigest(repoDir, revision);
+  const current = loadState(projectKey, runId);
+  assertInsideClosure(repoDir, current, computed.provenanceCommit);
+  assertSpecRetired(repoDir, current, computed.provenanceCommit);
 
   const next = await mutate(projectKey, runId, (state) => ({
     ...state,

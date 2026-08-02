@@ -22,9 +22,17 @@ Do this only after the user has agreed to it.
 | `docs/knowledge/architecture/*.md` | `§A-*` — decisions, each citing a `§B-*` |
 | `docs/architecture/e2e.md` | Environment, fixtures, execution, cleanup, scenario anchors |
 | `docs/architecture/e2e.json` | Machine-readable scenario catalog |
+| `docs/todo.md` | Debt found *outside* a feature's scope: area, risk, shape of the future feature |
+| `.quality/adoption-manifest.json` | Which dependency-closed roots adoption has certified so far |
 | `make verify-e2e-metadata` | Optional but recommended metadata guard |
 
-`meta-o preflight` reports exactly which of these are missing or invalid.
+`meta-o preflight` reports exactly which of these are missing or invalid; add
+`--no-backend` while the project still has no backend installed.
+
+`docs/todo.md` matters more than it looks. Without somewhere to put the debt a
+run finds in code the spec never mentioned, that finding has two fates and both
+are bad: it is silently fixed — which widens a reviewed change past what anyone
+approved — or it is silently dropped.
 
 ## Order of work
 
@@ -45,6 +53,18 @@ perfect chain over one module.
    At least one must be `always_required: true`.
 6. **QC manifest.** Declare the gates the project already runs. Do not invent
    gates it cannot pass today — see below.
+7. **Adoption boundary.** Write `.quality/adoption-manifest.json` listing the
+   dependency-closed roots you actually certified:
+
+   ```json
+   { "schema_version": 1, "adopted_roots": ["src/billing", "src/common"] }
+   ```
+
+   A feature may then change source only inside those roots —
+   `meta-o run set-candidate` refuses anything else. Widening the boundary is
+   its own adoption change, reviewed like any other, because widening it is the
+   moment uncertified code enters this workflow's guarantees. Set
+   `"fully_adopted": true` once first-party coverage is complete.
 
 Validate as you go: `meta-o knowledge validate`, `meta-o e2e validate`,
 `meta-o preflight`.
@@ -59,7 +79,36 @@ neither is silence:
 - declare it, let it fail, and record the debt with the user.
 
 Never soften a gate's command to make it green. `meta-o qc weakening` compares
-the manifest against the base revision, and a relaxation reaches the user.
+the manifest, the `[tool.meta_o.*]` thresholds and both ratchet baselines against
+the base revision; a raised limit, a disabled ratchet, a widened exemption or a
+re-frozen baseline all reach the user as a decision to make.
+
+Structural legacy debt may be frozen — `python quality/code_health.py
+--write-baseline` and `python quality/import_graph.py --write-baseline` record
+what the project starts with. Missing *purpose* may not be frozen: there is no
+purpose baseline, by design, because a module nobody can explain is the debt
+this methodology exists to stop accumulating.
+
+## The Python starter profile
+
+For a Python project, do not write the gates from scratch. The installer put a
+working set under `share/meta-o/templates/python`:
+
+| File | Gate |
+|---|---|
+| `quality/purpose_check.py` | Every module, class and function states why it exists and cites its `§M-*` |
+| `quality/knowledge_check.py` | `§B → §A → §M` is unique, resolvable and never skips a level |
+| `quality/import_graph.py` | No new cycle, no unknown first-party boundary, fan-in/fan-out ratchet |
+| `quality/code_health.py` | Size, nesting and complexity thresholds with a brownfield ratchet |
+| `quality/e2e_check.py` | Catalog schema, business links and the metadata guard |
+| `quality/run_qc.py` | Runs the manifest's gates and writes `$META_O_QC_RESULT` |
+| `Makefile`, `pyproject.snippet.toml` | The targets and the `[tool.meta_o.*]` thresholds to accept or change |
+
+Copy them in, then choose the thresholds deliberately — the defaults are a
+starting point, not a recommendation. The profile's minimum gate set is
+`format-check, lint, typecheck-policy, tests, build-policy, purpose, knowledge,
+import-graph, code-health, e2e-metadata`; preflight says so when a Python
+project declares fewer.
 
 ## What adoption does not do
 

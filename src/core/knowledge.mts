@@ -179,6 +179,31 @@ export interface KnowledgeValidation {
   warnings: string[];
 }
 
+/** §M-KNOWLEDGE — Path segments that mark a document as parked rather than current. */
+const ARCHIVE_SEGMENT = /(^|\/)(archive|archives|archived|old|legacy-specs|specs?)(\/|$)/i;
+
+/**
+ * §M-KNOWLEDGE — Retired feature specs parked inside the knowledge search roots.
+ *
+ * A feature spec is retired by distributing its durable requirements into the
+ * chain and deleting it. Filing it under `docs/knowledge/archive/` instead
+ * satisfies nobody's intent and recreates the problem retirement exists to
+ * remove: a second, stale source of truth that a future reader finds, believes,
+ * and cannot tell has been superseded — while every anchor check still passes,
+ * because the archive is full of perfectly well-formed anchors.
+ */
+export function featureArchives(index: AnchorIndex): string[] {
+  const paths = new Set(index.sections.map((section) => section.path));
+  return [...paths]
+    .filter((path) => ARCHIVE_SEGMENT.test(path))
+    .sort()
+    .map(
+      (path) =>
+        `${path}: a feature archive inside the knowledge search roots; retire the spec by ` +
+        "distributing its durable requirements into §B/§A/§M and deleting it",
+    );
+}
+
 /**
  * §M-KNOWLEDGE — Validate uniqueness, dangling links and nearest-level citation.
  *
@@ -197,6 +222,7 @@ export function validateChain(
   const businessDocument = options.businessDocument ?? BUSINESS_DOCUMENT;
 
   errors.push(...index.malformed);
+  errors.push(...featureArchives(index));
 
   // A §B defined outside the business document is the failure mode that makes
   // "business truth lives in one file" untrue while every checker still passes:
