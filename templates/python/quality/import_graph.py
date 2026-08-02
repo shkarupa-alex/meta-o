@@ -362,12 +362,15 @@ def main() -> int:
     components = [component for component in tarjan(graph) if len(component) > 1]
     fan_in, fan_out = fan(graph)
 
+    for name in sorted(self_imports):
+        report.add(name, 1, "self-import", f"{name} imports itself")
+
     baseline_path = root / str(config["baseline"])
     baseline = read_json(baseline_path, default={}) or {}
     known_cycles = {tuple(cycle) for cycle in baseline.get("cycles", [])}
 
     if "--write-baseline" in sys.argv:
-        return write_baseline(baseline_path, baseline, components, fan_in, fan_out, config)
+        return write_baseline(baseline_path, baseline, components, fan_in, fan_out, config, report)
 
     for component in components:
         if tuple(component) in known_cycles:
@@ -379,9 +382,6 @@ def main() -> int:
             "new-cycle",
             f"new import cycle of {len(component)} modules: {' → '.join(component)}",
         )
-
-    for name in sorted(self_imports):
-        report.add(name, 1, "self-import", f"{name} imports itself")
 
     forbid = bool(config["forbid_regressions"])
     check_ratchet(report, fan_in, baseline.get("fan_in", {}), "fan-in", forbid)
@@ -397,13 +397,27 @@ def write_baseline(
     fan_in: dict[str, int],
     fan_out: dict[str, int],
     config: dict,
+    report: Report,
 ) -> int:
     """§M-QC-IMPORT-GRAPH — Freeze the structure, refusing to freeze new cycles.
 
     As with code health, the first baseline records whatever debt the project
     starts with; after that, freezing may only record improvement. Otherwise the
     documented way past a failing structural gate is to re-freeze it.
+
+    The baseline forgives cycles and coupling and nothing else, so any violation
+    already in the report — a forbidden edge, a layering breach, an unresolved
+    first-party import, a self-import — has no frozen form to take. Writing the
+    file anyway would exit 0 while printing none of them, which is how an
+    adoption comes to believe a structural contract holds that never did.
     """
+    if report.violations:
+        sys.stderr.write(
+            f"refusing to freeze {baseline_path}: the graph contract is violated, "
+            "and a baseline can forgive cycles and coupling but not these\n"
+        )
+        return report.finish()
+
     if config["forbid_regressions"] and baseline_path.is_file():
         added = [
             component

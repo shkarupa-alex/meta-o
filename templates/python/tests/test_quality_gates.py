@@ -520,6 +520,22 @@ class ImportGraphTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("unknown-boundary", result.stdout)
 
+    def test_freezing_the_baseline_does_not_swallow_a_contract_violation(self) -> None:
+        """§M-QC-TESTS — The baseline forgives cycles and coupling, and nothing else."""
+        write(
+            self.project.root,
+            "pyproject.toml",
+            """
+            [tool.meta_o.import_graph]
+            source_roots = ["src"]
+            first_party_prefixes = ["app"]
+            """,
+        )
+        result = run_checker(self.project.root, "import_graph.py", "--write-baseline")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("unknown-boundary", result.stdout)
+        self.assertFalse((self.project.root / ".quality" / "import-graph-baseline.json").exists())
+
 
 class CodeHealthTests(unittest.TestCase):
     """§M-QC-TESTS — The structural gate holds thresholds and ratchets the baseline."""
