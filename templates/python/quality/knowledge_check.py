@@ -46,7 +46,9 @@ DEFAULTS = {
     "business": "docs/knowledge/business.md",
     "glossary": "docs/knowledge/glossary.md",
     "architecture_dir": "docs/knowledge/architecture",
-    "source_roots": ["src"],
+    # Matches the purpose gate. A narrower default let a test module declare a
+    # §M anchor citing an architecture anchor that did not exist, and pass.
+    "source_roots": ["src", "tests"],
 }
 
 

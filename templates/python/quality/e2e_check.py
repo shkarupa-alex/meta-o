@@ -36,6 +36,19 @@ SCENARIO_REF = re.compile(r"^[^#\s]+\.md#[a-z0-9][a-z0-9-]*$")
 BUSINESS_ANCHOR = re.compile(r"^§B-[A-Z0-9-]+$")
 HEADING_ANCHOR = re.compile(r"^#{1,6}\s+(§B-[A-Z0-9-]+)")
 MD_HEADING = re.compile(r"^#{1,6}\s+(.+?)\s*$")
+# §10 confines this file to "a machine-readable catalog and compact last-run
+# metadata — screenshots, raw logs and reasoning do not go there". Listing the
+# permitted keys is the only way to enforce that: checking the fields we know
+# about lets every field we do not know about through, which is exactly how a
+# raw log ends up inside an attested artefact.
+SCENARIO_FIELDS = (
+    "scenario_id",
+    "scenario_ref",
+    "business_links",
+    "always_required",
+    "tags",
+    "last_run",
+)
 LAST_RUN_FIELDS = (
     "snapshot_digest",
     "provenance_commit",
@@ -85,8 +98,24 @@ def validate_registry(registry: Any, config: dict, root: Path, report: Report) -
         report.add(relative, 1, "schema", "scenarios must be a non-empty array")
         return
 
-    anchors = markdown_anchors(root / str(config["contract"]))
-    business = business_anchors(root / str(config["business"]))
+    # Both documents are required, not optional. `markdown_anchors` and
+    # `business_anchors` answer an unreadable file with an empty set, and the
+    # two link checks below were guarded on the set being non-empty — so moving
+    # or renaming either document turned its check off and the gate reported
+    # "ok" for a registry full of references to nothing.
+    contract_path = root / str(config["contract"])
+    business_path = root / str(config["business"])
+    for label, path in (("contract", contract_path), ("business", business_path)):
+        if not path.is_file():
+            report.add(
+                relative,
+                1,
+                "missing-document",
+                f"the {label} document {path.relative_to(root)} does not exist, so this "
+                "registry's references cannot be resolved",
+            )
+    anchors = markdown_anchors(contract_path)
+    business = business_anchors(business_path)
     seen: set[str] = set()
     required = 0
 
@@ -106,7 +135,7 @@ def validate_registry(registry: Any, config: dict, root: Path, report: Report) -
         reference = str(scenario.get("scenario_ref", ""))
         if not SCENARIO_REF.match(reference):
             report.add(relative, 1, "scenario-ref", f"{identifier}: scenario_ref is malformed")
-        elif anchors:
+        elif contract_path.is_file():
             slug = reference.split("#", 1)[1]
             if slug not in anchors:
                 report.add(
@@ -123,7 +152,7 @@ def validate_registry(registry: Any, config: dict, root: Path, report: Report) -
             for link in links:
                 if not BUSINESS_ANCHOR.match(str(link)):
                     report.add(relative, 1, "business-links", f"{identifier}: {link} is malformed")
-                elif business and str(link) not in business:
+                elif business_path.is_file() and str(link) not in business:
                     report.add(
                         relative,
                         1,
@@ -136,6 +165,10 @@ def validate_registry(registry: Any, config: dict, root: Path, report: Report) -
         elif not isinstance(scenario.get("always_required"), bool):
             report.add(relative, 1, "schema", f"{identifier}: always_required must be a boolean")
 
+        unknown = sorted(set(scenario) - set(SCENARIO_FIELDS))
+        for field in unknown:
+            report.add(relative, 1, "unknown-field", f"{identifier}: unknown field {field!r}")
+
         last_run = scenario.get("last_run")
         if last_run is not None:
             if not isinstance(last_run, dict):
@@ -144,6 +177,10 @@ def validate_registry(registry: Any, config: dict, root: Path, report: Report) -
                 for field in LAST_RUN_FIELDS:
                     if not isinstance(last_run.get(field), str) or not last_run[field]:
                         report.add(relative, 1, "schema", f"{identifier}: last_run.{field} is missing")
+                for field in sorted(set(last_run) - set(LAST_RUN_FIELDS)):
+                    report.add(
+                        relative, 1, "unknown-field", f"{identifier}: last_run: unknown field {field!r}"
+                    )
                 if last_run.get("status") not in {"passed", "failed", "blocked"}:
                     report.add(relative, 1, "schema", f"{identifier}: last_run.status is invalid")
 

@@ -20,10 +20,12 @@ source_roots = ["src", "tests"]
 # Symbols in these files are generated or vendored and are exempt. Every entry
 # is a documented exception, not a convenience: list files, never whole trees.
 exempt_files = []
-# Names exempt because the language, not the author, defines their meaning.
-exempt_names = ["__init__", "__repr__", "__str__", "__eq__", "__hash__"]
-# A decorator that makes a symbol a typing artefact rather than an implementation.
-exempt_decorators = ["overload", "typing.overload", "abstractmethod"]
+# A decorator that makes a symbol a typing artefact rather than an
+# implementation. `@overload` qualifies because the documented body carries the
+# meaning. `@abstractmethod` does not, and used to be listed here: an abstract
+# method is where a port's contract is stated, so it is the last place a project
+# can afford to leave unexplained.
+exempt_decorators = ["overload", "typing.overload"]
 
 [tool.meta_o.import_graph]
 source_roots = ["src"]
@@ -38,6 +40,10 @@ independent = []
 forbidden_edges = []
 
 [tool.meta_o.knowledge]
+# The same roots the purpose gate uses. Left unset, this defaulted to `src`
+# alone while purpose covered `src` and `tests`, so a test module could declare
+# a §M anchor citing an architecture anchor that did not exist and pass both.
+source_roots = ["src", "tests"]
 business = "docs/knowledge/business.md"
 glossary = "docs/knowledge/glossary.md"
 architecture_dir = "docs/knowledge/architecture"

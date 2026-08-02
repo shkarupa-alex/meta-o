@@ -319,12 +319,26 @@ def check_boundary(
 ) -> None:
     """§M-QC-IMPORT-GRAPH — Every first-party module must be inside a declared prefix.
 
-    A declared boundary that nothing checks is a comment. With prefixes
-    configured, a discovered module belonging to none of them is either
-    misplaced or the prefix list is stale — and either way the layering and
-    independence contracts below are being applied to an incomplete picture.
+    A declared boundary that nothing checks is a comment. A discovered module
+    belonging to none of the declared prefixes is either misplaced or the prefix
+    list is stale — and either way the layering and independence contracts below
+    are being applied to an incomplete picture.
+
+    §40 states the FAIL unconditionally, so an empty prefix list is refused
+    rather than treated as "no boundary to check". With no prefixes nothing is
+    first-party, no import can be unresolved, and the gate reported `ok` for
+    every possible project — the checker's own default made the requirement
+    opt-in and then opted out.
     """
     if not prefixes:
+        report.add(
+            "pyproject.toml",
+            1,
+            "no-boundary",
+            "[tool.meta_o.import_graph] declares no first_party_prefixes, so no module has a "
+            "checkable boundary and no first-party import can be found dangling; declare the "
+            "project's own top-level package names",
+        )
         return
     for name in sorted(known):
         if not is_first_party(name, prefixes):
