@@ -8,9 +8,9 @@
  */
 
 import type { Dirent } from "node:fs";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { resolveProjectIdentity } from "../../core/project-key.mjs";
 import { computeSnapshotDigest, verifyMetadataCommit } from "../../core/snapshot.mjs";
 import { git, resolveCommit } from "../../core/git.mjs";
@@ -52,7 +52,7 @@ import { createGateWorktree, withGateWorktree } from "../../core/worktree.mjs";
 import { assertCleanWorktree } from "../../core/git.mjs";
 import { commitState, readState, withWriterLock } from "../../core/state-store.mjs";
 import { isoTimestamp } from "../../core/clock.mjs";
-import { qcResultPath } from "../../core/paths.mjs";
+import { gateReceiptPath, qcResultPath } from "../../core/paths.mjs";
 import { fetchSpec } from "../../core/spec-input.mjs";
 import type {
   E2ERegistry,
@@ -584,11 +584,13 @@ export async function commandWorktreeRun(args: ParsedArgs): Promise<void> {
       if (child.error) throw child.error;
       return child.status ?? 1;
     });
+    const receipt = runId ? writeGateReceipt(projectKey, runId, label, outcome, command) : undefined;
     emit({
       command,
       commitOid: outcome.commitOid,
       exitStatus: outcome.result,
       clean: true,
+      receipt,
       qcResultPath: environment["META_O_QC_RESULT"],
       snapshotDigest: environment["META_O_SNAPSHOT_DIGEST"],
     });
@@ -596,6 +598,42 @@ export async function commandWorktreeRun(args: ParsedArgs): Promise<void> {
   } catch (error) {
     fail("gate_mutated_worktree", (error as Error).message, { command, revision });
   }
+}
+
+/**
+ * §M-CLI-GATES — Record that a labelled gate ran isolated and left nothing behind.
+ *
+ * Written only on the path where `withGateWorktree` returned, which is the only
+ * path on which the pre- and post-checks both passed. The exit status is kept
+ * but not judged: an E2E run whose scenarios failed is still a run that
+ * happened in isolation, and it is the scenario statuses — not the harness's
+ * exit code — that decide the gate.
+ */
+function writeGateReceipt(
+  projectKey: string,
+  runId: string,
+  label: string,
+  outcome: { commitOid: string; result: number },
+  command: string[],
+): string {
+  const path = gateReceiptPath(projectKey, runId, label);
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  writeFileSync(
+    path,
+    `${JSON.stringify(
+      {
+        label,
+        commitOid: outcome.commitOid,
+        exitStatus: outcome.result,
+        command,
+        completedAt: isoTimestamp(),
+      },
+      null,
+      2,
+    )}\n`,
+    { mode: 0o600 },
+  );
+  return path;
 }
 
 /** §M-CLI-GATES — Assert a worktree is clean, as required before and after a gate. */

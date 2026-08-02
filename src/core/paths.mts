@@ -71,11 +71,6 @@ export function specBlobPath(projectKey: string, runId: string, sha256: string):
   return join(inputDir(projectKey, runId), `spec-${sha256}.md`);
 }
 
-/** §M-PATHS — Scratch area for open finding payloads too large for state. */
-export function findingsDir(projectKey: string, runId: string): string {
-  return join(runDir(projectKey, runId), "findings");
-}
-
 /** §M-PATHS — Optional executor handoff, capped at 4 KiB by the writer. */
 export function handoffPath(projectKey: string, runId: string): string {
   return join(runDir(projectKey, runId), "optional-handoff.md");
@@ -89,6 +84,26 @@ export function handoffPath(projectKey: string, runId: string): string {
  */
 export function qcResultPath(projectKey: string, runId: string): string {
   return join(runDir(projectKey, runId), "qc-result.json");
+}
+
+/**
+ * §M-PATHS — Where `worktree run` records that a gate ran isolated and clean.
+ *
+ * A receipt is the only durable trace that a gate obeyed §00's "fresh detached
+ * worktree, clean before and after" rule. Consumers that accept a result from
+ * outside — the E2E gate above all, whose result is typed by a tester rather
+ * than written by a command — look here rather than taking the claim on trust.
+ */
+export function gateReceiptsDir(projectKey: string, runId: string): string {
+  return join(runDir(projectKey, runId), "gate-receipts");
+}
+
+/** §M-PATHS — The receipt file for one gate label, refusing an unsafe name. */
+export function gateReceiptPath(projectKey: string, runId: string, label: string): string {
+  if (!/^[a-z0-9][a-z0-9._-]*$/i.test(label) || label.includes("..")) {
+    throw new Error(`gate label ${label} is not a safe file name`);
+  }
+  return join(gateReceiptsDir(projectKey, runId), `${label}.json`);
 }
 
 /** §M-PATHS — Rotating watchdog log; never contains model text or transcripts. */

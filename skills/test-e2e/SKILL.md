@@ -16,7 +16,11 @@ Read the immutable spec blob, the candidate diff, `docs/architecture/e2e.md` and
 - **every** scenario with `always_required: true` — no exceptions, this is why
   an empty plan is impossible;
 - every scenario whose `business_links` the change touches;
-- every scenario whose tags or area the change touches;
+- every scenario whose tags or area the change touches. Both are checked
+  mechanically against the `impactedBusinessLinks` and `impactedTags` you
+  declare: a plan that names an impact and then omits a scenario carrying it is
+  refused. Whether the impact you declared is the right one stays the
+  reviewers' judgement;
 - additional scenarios the diff's risk profile implies. This is the part no
   mechanical rule produces, and it is the reason a model does this job.
 
@@ -49,7 +53,13 @@ reviews from being spent on a candidate that does not start.
 Run every scenario in the plan.
 
 - Work in a fresh detached worktree of the candidate commit. Do not modify
-  tracked files.
+  tracked files. Ask the orchestrator to launch the suite through
+  `meta-o worktree run --run-id <id> --label e2e --rev <candidate> -- <command>`,
+  or run it that way yourself if you hold the run id: `run record-e2e` refuses
+  a result for which no such receipt exists, because a suite run in the
+  developer's checkout is indistinguishable from an isolated one once it is
+  reduced to JSON. A non-zero exit from your harness is fine — the per-scenario
+  statuses decide the gate, not the exit code.
 - Give the environment a namespace unique to this run and scenario.
 - Clean up **even when a scenario fails**. A leaked container or database is a
   failure of this role.

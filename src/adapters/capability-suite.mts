@@ -53,12 +53,18 @@ export interface SuiteContext {
   probePrompt?: string;
 }
 
+/** §M-CAPABILITY-SUITE — What a check body concluded, before it is timed and labelled. */
+interface CheckOutcome {
+  grade: CapabilityGrade;
+  detail: string;
+}
+
 /** §M-CAPABILITY-SUITE — Run one check, converting a throw into an `unsupported` grade. */
 async function runCheck(
   id: string,
   completionCritical: boolean,
   clock: Clock,
-  body: () => Promise<{ grade: CapabilityGrade; detail: string }>,
+  body: () => Promise<CheckOutcome>,
 ): Promise<SuiteCheck> {
   const started = clock.now();
   try {
@@ -236,17 +242,86 @@ async function observationChecks(
   );
 
   checks.push(
-    await runCheck("concurrent-sessions", false, clock, async () => {
-      const second = await probe.spawn("reviewerPrimary", probe.model);
-      const statuses = await Promise.all([adapter.status(primary!), adapter.status(second)]);
-      return {
-        grade: statuses.every((status) => status !== "unknown") ? "supported" : "degraded",
-        detail: `two concurrent sessions reported ${statuses.join(" and ")}`,
-      };
+    await runCheck("concurrent-completions", false, clock, async () => {
+      if (!primary) throw new Error("no session was spawned");
+      return concurrentCompletions(probe, primary);
     }),
   );
 
   return { checks, primary };
+}
+
+/**
+ * §M-CAPABILITY-SUITE — Drive two turns that finish at about the same time.
+ *
+ * §20 names "concurrent completions" among the capabilities the suite must
+ * exercise, and observing two sessions' `status()` — which is all this used to
+ * do — is not that: it proves the backend can hold two sessions, not that it
+ * can finish two turns without losing or crossing one. The failure this exists
+ * for is a completion attributed to the wrong session, or one that is simply
+ * dropped while the other is being handled; both leave the orchestrator waiting
+ * forever on a turn that already happened.
+ *
+ * Each session gets its own token. A token that surfaces in the other session's
+ * output is cross-wiring; a token that surfaces nowhere is a lost turn. Neither
+ * depends on what the model chooses to say, because the pane carries the prompt
+ * as well as the answer.
+ */
+async function concurrentCompletions(
+  probe: ProbeContext,
+  primary: SessionRef,
+): Promise<CheckOutcome> {
+  const { adapter, clock } = probe;
+  const second = await probe.spawn("reviewerPrimary", probe.model);
+  const pairs = [
+    { session: primary, token: `META-O-CONCURRENT-${randomUUID().slice(0, 8)}` },
+    { session: second, token: `META-O-CONCURRENT-${randomUUID().slice(0, 8)}` },
+  ];
+
+  const deliveries = await Promise.all(
+    pairs.map((pair) =>
+      adapter.send(pair.session, randomUUID(), `${probe.probePrompt} Mention ${pair.token}.`),
+    ),
+  );
+  const unacknowledged = deliveries.filter((delivery) => delivery.status !== "acknowledged");
+  if (unacknowledged.length > 0) {
+    return {
+      grade: "degraded",
+      detail: `${unacknowledged.length} of 2 concurrent deliveries reported ` +
+        unacknowledged.map((delivery) => delivery.status).join(" and "),
+    };
+  }
+
+  const deadlineAt = new Date(clock.now() + 90_000).toISOString();
+  const settled = await Promise.all(
+    pairs.map((pair) => adapter.wait(pair.session, { terminal: false, deadlineAt })),
+  );
+  const outputs = await Promise.all(pairs.map((pair) => adapter.read(pair.session)));
+
+  const lost = pairs.filter((pair, index) => !outputs[index]!.text.includes(pair.token));
+  const crossed = pairs.filter((pair, index) => outputs[1 - index]!.text.includes(pair.token));
+  if (crossed.length > 0) {
+    return {
+      grade: "unsupported",
+      detail: `a turn's own token surfaced in the other session's output: ${crossed
+        .map((pair) => pair.token)
+        .join(", ")}`,
+    };
+  }
+  if (lost.length > 0) {
+    return {
+      grade: "degraded",
+      detail:
+        `${lost.length} of 2 concurrent turns left no trace in their own session ` +
+        `(waits settled at ${settled.map((result) => result.status).join(" and ")})`,
+    };
+  }
+  return {
+    grade: "supported",
+    detail:
+      "two turns issued together each completed in their own session " +
+      `(${settled.map((result) => result.status).join(" and ")})`,
+  };
 }
 
 /**

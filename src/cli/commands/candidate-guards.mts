@@ -8,7 +8,7 @@
  * attestations exist and the question is no longer "may this be the candidate"
  * but "does this attestation still describe it".
  *
- * Verifies §A-ADOPTION-CLOSURE and §A-SPEC-RETIREMENT.
+ * Implements §A-CANDIDATE-ISOLATION and §A-IMMUTABLE-SPEC.
  */
 
 import { changedPaths, git, publishedRunCommits } from "../../core/git.mjs";

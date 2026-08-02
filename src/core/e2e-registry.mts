@@ -211,6 +211,14 @@ export function sealPlan(plan: Omit<E2ESelectionPlan, "planDigest">): E2ESelecti
  * The orchestrator checks only schema and digest — judging *coverage* is the
  * reviewers' job — but an unknown scenario id or a missing `always_required`
  * canary is a mechanical error the orchestrator must not pass on.
+ *
+ * A plan that contradicts its own declared impact is the same kind of error.
+ * §30 says the selection takes every scenario carrying an impacted business
+ * link or an impacted tag, and `impactedBusinessLinks`/`impactedTags` were read
+ * by nothing: a tester could declare checkout impacted, select one unrelated
+ * smoke scenario, and have the plan accepted and digested. Deciding *whether*
+ * checkout is impacted is still the reviewers' call — this only holds the plan
+ * to what it has already said about itself.
  */
 export function validatePlan(plan: E2ESelectionPlan, registry: E2ERegistry): ValidationOutcome {
   const errors: string[] = [];
@@ -235,6 +243,17 @@ export function validatePlan(plan: E2ESelectionPlan, registry: E2ERegistry): Val
   for (const scenario of registry.scenarios) {
     if (scenario.always_required && !(plan.selectedScenarioIds ?? []).includes(scenario.scenario_id)) {
       errors.push(`plan omits always_required scenario ${scenario.scenario_id}`);
+    }
+  }
+
+  const implied = baselineSelection(registry, {
+    businessLinks: plan.impactedBusinessLinks ?? [],
+    tags: plan.impactedTags ?? [],
+  });
+  const selected = new Set(plan.selectedScenarioIds ?? []);
+  for (const id of implied) {
+    if (!selected.has(id) && known.has(id)) {
+      errors.push(`plan declares an impact that reaches ${id} but does not select it`);
     }
   }
 

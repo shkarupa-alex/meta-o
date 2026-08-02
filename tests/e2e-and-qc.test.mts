@@ -122,6 +122,45 @@ test("a plan selecting an unknown scenario is rejected", () => {
   assert.equal(validatePlan(plan, registry()).ok, false);
 });
 
+test("a plan that ignores the impact it declared is rejected", () => {
+  // `impactedBusinessLinks` and `impactedTags` were read by nothing, so a plan
+  // could declare checkout impacted, select only the canary, and be accepted
+  // and digested — with both reviewers attesting a selection whose own stated
+  // reach it did not cover. Whether checkout is really impacted is still the
+  // reviewers' call; this only holds the plan to what it said about itself.
+  const plan = sealPlan({
+    schemaVersion: 1,
+    commitOid: "commit-1",
+    selectedScenarioIds: ["E2E-SMOKE-01"],
+    selectionRationale: "the canary is enough",
+    impactedBusinessLinks: ["§B-CHECKOUT-01"],
+    impactedTags: [],
+  });
+  const outcome = validatePlan(plan, registry());
+  assert.equal(outcome.ok, false);
+  assert.ok(
+    outcome.errors.some((error) => error.includes("E2E-CHECKOUT-01 but does not select it")),
+    outcome.errors.join("; "),
+  );
+
+  const honest = sealPlan({ ...plan, selectedScenarioIds: ["E2E-SMOKE-01", "E2E-CHECKOUT-01"] });
+  assert.deepEqual(validatePlan(honest, registry()).errors, []);
+});
+
+test("an impacted tag pulls in every scenario carrying it", () => {
+  const plan = sealPlan({
+    schemaVersion: 1,
+    commitOid: "commit-1",
+    selectedScenarioIds: ["E2E-SMOKE-01"],
+    selectionRationale: "tags are advisory",
+    impactedBusinessLinks: [],
+    impactedTags: ["checkout"],
+  });
+  const outcome = validatePlan(plan, registry());
+  assert.equal(outcome.ok, false);
+  assert.ok(outcome.errors.some((error) => error.includes("does not select it")));
+});
+
 test("a tampered plan digest is detected", () => {
   const plan = sealPlan({
     schemaVersion: 1,

@@ -47,6 +47,8 @@ import type {
   RunState,
   SessionRef,
 } from "../../core/types.mjs";
+import { readFileSync } from "node:fs";
+import { gateReceiptPath } from "../../core/paths.mjs";
 import { redactDeep } from "../../core/redact.mjs";
 import { identityOf, loadState, mutate, type FindingSlot } from "./run-context.mjs";
 import {
@@ -216,6 +218,9 @@ export async function commandRecordReview(args: ParsedArgs): Promise<void> {
   });
 }
 
+/** §M-CLI-RESULTS — The `worktree run` label whose receipt proves E2E isolation. */
+const E2E_RECEIPT_LABEL = "e2e";
+
 /**
  * §M-CLI-RESULTS — Record the outcome of the selected E2E set.
  *
@@ -237,6 +242,8 @@ export async function commandRecordE2e(args: ParsedArgs): Promise<void> {
 
     const errors = e2eResultErrors(result, snapshot.digest, state.e2ePlan);
     if (errors.length > 0) fail("invalid_e2e_result", errors.join("; "));
+
+    assertE2eIsolated(projectKey, runId, snapshot.provenanceCommit);
 
     if (result.environment === "production" && !state.productionE2eApproved) {
       fail(
@@ -275,6 +282,46 @@ export async function commandRecordE2e(args: ParsedArgs): Promise<void> {
     failures: (next.e2eScenarioStatus ?? []).filter((s) => s.status !== "passed"),
     routing: routeNext(next),
   });
+}
+
+/**
+ * §M-CLI-RESULTS — Refuse an E2E result the run has no proof was isolated.
+ *
+ * §30 requires the tester to work in a fresh detached worktree and to change no
+ * tracked file, and that requirement lived only in the skill: `record-e2e`
+ * accepted whatever JSON arrived on stdin, so a tester who ran the suite in the
+ * developer's checkout — picking up uncommitted edits, and possibly leaving
+ * some behind — produced a gate indistinguishable from an isolated one. The
+ * receipt `worktree run --label e2e` leaves is the only durable evidence that
+ * the run happened somewhere else and that the tree was clean on both sides of
+ * it, so this asks for that rather than for the tester's word.
+ *
+ * The receipt's exit status is deliberately not judged. A suite that exits
+ * non-zero because scenarios failed still ran in isolation, and it is the
+ * per-scenario statuses that decide the gate.
+ */
+function assertE2eIsolated(projectKey: string, runId: string, candidateCommit: string): void {
+  const path = gateReceiptPath(projectKey, runId, E2E_RECEIPT_LABEL);
+  let receipt: { commitOid?: string; completedAt?: string } | undefined;
+  try {
+    receipt = JSON.parse(readFileSync(path, "utf8")) as { commitOid?: string };
+  } catch {
+    fail(
+      "e2e_not_isolated",
+      "§30 requires the E2E tester to work in a fresh detached worktree, and this run has no " +
+        `receipt for one; run the suite with \`meta-o worktree run --run-id ${runId} ` +
+        `--label ${E2E_RECEIPT_LABEL} -- <command>\` and record the result afterwards`,
+      { expectedReceipt: path },
+    );
+  }
+  if (receipt?.commitOid !== candidateCommit) {
+    fail(
+      "e2e_not_isolated",
+      `the E2E worktree receipt is for ${receipt?.commitOid ?? "an unrecorded commit"}, but the ` +
+        `candidate is ${candidateCommit}; re-run the selected set against the candidate`,
+      { expectedReceipt: path },
+    );
+  }
 }
 
 /**

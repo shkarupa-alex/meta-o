@@ -23,7 +23,7 @@ import {
 import {
   handoffPath,
   inputDir,
-  findingsDir,
+  gateReceiptsDir,
   projectDir,
   projectMetadataPath,
   projectSettingsPath,
@@ -189,7 +189,7 @@ export function listRuns(projectKey: string): string[] {
 export function ensureRunDirectories(projectKey: string, runId: string): string {
   const dir = ensureSecureDir(runDir(projectKey, runId));
   ensureSecureDir(inputDir(projectKey, runId));
-  ensureSecureDir(findingsDir(projectKey, runId));
+  ensureSecureDir(gateReceiptsDir(projectKey, runId));
   return dir;
 }
 

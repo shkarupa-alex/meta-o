@@ -756,3 +756,88 @@ test("a run paused on an unavailable model can be given a new ModelSet", () => {
     repo.dispose();
   }
 });
+
+test("an E2E result is refused unless a worktree receipt proves it ran isolated", () => {
+  // §30 requires the tester to work in a fresh detached worktree and to touch
+  // no tracked file, and `record-e2e` used to accept whatever JSON arrived on
+  // stdin. A suite run in the developer's own checkout — over uncommitted
+  // edits, possibly leaving some behind — produced a gate indistinguishable
+  // from an isolated one.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
+    retireSpec(repo);
+    const candidate = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
+    const commitOid = candidate.json["provenanceCommit"] as string;
+    const snapshotDigest = candidate.json["snapshotDigest"] as string;
+
+    const plan = ok(
+      cli(["e2e", "seal-plan"], {
+        ...context,
+        stdin: JSON.stringify({
+          schemaVersion: 1,
+          commitOid,
+          selectedScenarioIds: ["E2E-CHECKOUT-01", "E2E-SMOKE-01"],
+          selectionRationale: "checkout is impacted; the canary always runs",
+          impactedBusinessLinks: ["§B-CHECKOUT-01"],
+          impactedTags: ["checkout"],
+        }),
+      }),
+      "seal-plan",
+    ).json as unknown as { planDigest: string; selectedScenarioIds: string[] };
+    ok(
+      cli(["run", "set-plan", "--run-id", runId], { ...context, stdin: JSON.stringify(plan) }),
+      "set-plan",
+    );
+
+    const e2eResult = JSON.stringify({
+      commitOid,
+      snapshotDigest,
+      planDigest: plan.planDigest,
+      selectedScenarioIds: plan.selectedScenarioIds,
+      selectionRationale: "checkout is impacted; the canary always runs",
+      scenarios: plan.selectedScenarioIds.map((scenarioId) => ({
+        scenarioId,
+        status: "passed",
+        evidence: "green",
+      })),
+      environment: "local",
+      completedAt: "2026-07-24T12:30:00Z",
+    });
+
+    const unproven = cli(["run", "record-e2e", "--run-id", runId], { ...context, stdin: e2eResult });
+    assert.equal(unproven.code, 1);
+    assert.equal(errorCode(unproven), "e2e_not_isolated");
+
+    // A receipt for some other commit is no better than none.
+    repo.write("docs/notes.md", "# notes\n");
+    repo.commit("an unrelated commit the tester might have run against");
+    ok(
+      cli(["worktree", "run", "--run-id", runId, "--label", "e2e", "--rev", "HEAD", "true"], context),
+      "worktree run against the wrong revision",
+    );
+    const mismatched = cli(["run", "record-e2e", "--run-id", runId], {
+      ...context,
+      stdin: e2eResult,
+    });
+    assert.equal(mismatched.code, 1);
+    assert.equal(errorCode(mismatched), "e2e_not_isolated");
+    assert.match(
+      (mismatched.json["error"] as { message: string }).message,
+      /but the candidate is/,
+    );
+
+    ok(
+      cli(["worktree", "run", "--run-id", runId, "--label", "e2e", "--rev", commitOid, "true"], context),
+      "worktree run against the candidate",
+    );
+    ok(cli(["run", "record-e2e", "--run-id", runId], { ...context, stdin: e2eResult }), "record-e2e");
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});

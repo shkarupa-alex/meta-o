@@ -178,6 +178,10 @@ test("a run walks from start to COMPLETE only with four attestations on one snap
       { scenarioId: "E2E-SMOKE-01", status: "passed", evidence: "boot ok" },
       { scenarioId: "E2E-CHECKOUT-01", status: "passed", evidence: "checkout ok" },
     ];
+    ok(
+      cli(["worktree", "run", "--run-id", runId, "--label", "e2e", "true"], context),
+      "the selected set runs in a fresh detached worktree",
+    );
     const afterE2e = ok(
       cli(["run", "record-e2e", "--run-id", runId], {
         ...context,

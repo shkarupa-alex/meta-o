@@ -82,7 +82,7 @@ meta-o run route --run-id <id>   →   act on routing.action   →   repeat
 | `run_smoke` | `--phase SMOKE_PREFLIGHT`; the E2E tester runs build/boot/health only, then `run record-gate --gate smoke` |
 | `run_reviews` | `--phase REVIEW_STABILIZATION`; dispatch **both** reviewers on the same snapshot, independently; record each by piping its `ReviewResult` JSON into `meta-o run record-review --run-id <id>` (the reviewer slot comes from the payload, not a flag) |
 | `fix_review_findings` | Hand the whole batch of open findings to the executor at once |
-| `run_selected_e2e` | `--phase E2E_STABILIZATION`; the E2E tester runs the full selected set; record it with `meta-o run record-e2e` (the result must say which `environment` it ran against) |
+| `run_selected_e2e` | `--phase E2E_STABILIZATION`; the E2E tester runs the full selected set through `meta-o worktree run --run-id <id> --label e2e --rev <candidate> -- <suite command>`, then you record the result with `meta-o run record-e2e` (which needs that receipt, and needs the result to say which `environment` it ran against) |
 | `fix_e2e_failures` | Open the failures as findings (below), then hand the whole batch to the executor at once |
 | `finalize_metadata` | `--phase FINALIZE_METADATA`; see **Completion** |
 | `blocked` | Read `routing.reason`; resolve the pause or surface it to the user |
