@@ -21,6 +21,8 @@ import {
   DEFAULT_STALL_DEADLINE_MS,
   REGRESSION_PREFIX,
   decideAction,
+  MEMORY_UNREADABLE,
+  type MemorySnapshot,
   type RunMemory,
   type WatchdogDecision,
   type WatchdogLogEntry,
@@ -105,7 +107,16 @@ export interface WatchdogDeps {
   capabilityRegression?(): Promise<string[]>;
   /** Re-read configuration, so disabling the watchdog does not require killing it. */
   reloadConfig?(): WatchdogConfig | undefined;
-  loadMemory?(key: string): RunMemory | undefined;
+  /**
+   * Read the whole bookkeeping file, once per tick.
+   *
+   * Per-key was wrong, and wrong in a way that hid itself: seeding one run's
+   * slot rewrites the file, so the very next key in the same tick read a
+   * perfectly valid map that simply lacked its entry — indistinguishable from a
+   * run that had never been seen. One unreadable file protected the first run
+   * and woke every other one.
+   */
+  loadAllMemory?(): MemorySnapshot;
   saveMemory?(key: string, memory: RunMemory): void;
   forgetMemory?(key: string): void;
 }
@@ -165,9 +176,15 @@ export class Watchdog {
    * a run that has already been stuck for hours — exactly the unattended case
    * it exists to cover.
    */
-  private memoryFor(key: string, state: RunState): RunMemory {
-    const existing = this.memory.get(key) ?? this.deps.loadMemory?.(key);
-    if (existing && !existing.dedupeLost) {
+  private memoryFor(
+    key: string,
+    state: RunState,
+    snapshot: MemorySnapshot,
+    regression: string,
+  ): RunMemory {
+    const lost = snapshot === MEMORY_UNREADABLE;
+    const existing = this.memory.get(key) ?? (lost ? undefined : snapshot[key]);
+    if (existing) {
       this.memory.set(key, existing);
       return existing;
     }
@@ -177,19 +194,28 @@ export class Watchdog {
       lastProgressAtMs: Number.isFinite(updatedAtMs) ? updatedAtMs : this.clock.now(),
       backoffMs: this.pollMs(),
     };
-    if (existing?.dedupeLost) {
-      // The bookkeeping was unreadable, which is not the same as this run
-      // having none. What was lost is the record of what has already been
+    if (lost) {
+      // The bookkeeping was unreadable when this tick started, which is not the
+      // same as this run having none. What was lost is the record of what has already been
       // delivered, so the slot is rebuilt as though the notifications for the
       // state as it stands had already gone out. They are the two effects the
       // watchdog causes without a write-ahead record, precisely because their
       // payloads are idempotent — but "assume it was sent" is still the right
       // direction, and it is the direction every other lost proof here takes.
+      // The spawn guard is deliberately not seeded: a spawn has a write-ahead
+      // record in durable run state, so its dedupe does not depend on this file
+      // and re-protecting it here would only duplicate the weaker half.
       // The seed is durable, so the loss costs one stalled cycle rather than
       // repeating on every tick, and the next thing the orchestrator does moves
       // `stateVersion` and lifts it.
       created.wakeSentForStateVersion = state.stateVersion;
       created.surfacedForStateVersion = state.stateVersion;
+      // All three dedupes, not two. This one is keyed by the regression's own
+      // text rather than by a state version, so it can only be seeded with the
+      // regression that is current — which is why the tick computes it before
+      // the run loop and passes it down. Seeded with `""` when there is none,
+      // which matches nothing and suppresses nothing.
+      if (regression) created.surfacedRegression = regression;
       this.deps.saveMemory?.(key, created);
     }
     this.memory.set(key, created);
@@ -370,6 +396,10 @@ export class Watchdog {
       return { observations: 0, decisions: [], nextDelayMs: this.pollMs() };
     }
 
+    // One read, one verdict, for the whole tick. Asking per run let the first
+    // run's own seed repair the file and answer "readable" for the rest.
+    const snapshot: MemorySnapshot = this.deps.loadAllMemory?.() ?? {};
+
     let capabilityRegression: string[] = [];
     try {
       capabilityRegression = (await this.deps.capabilityRegression?.()) ?? [];
@@ -433,7 +463,7 @@ export class Watchdog {
         }
         if (!state) continue;
 
-        const memory = this.memoryFor(key, state);
+        const memory = this.memoryFor(key, state, snapshot, capabilityRegression.join("; "));
         if (isTerminal(state.phase)) {
           this.memory.delete(key);
           this.deps.forgetMemory?.(key);

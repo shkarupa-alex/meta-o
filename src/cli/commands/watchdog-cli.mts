@@ -33,6 +33,7 @@ import {
   withPendingOperation,
   writeSettings,
 } from "../../core/state-store.mjs";
+import { MEMORY_UNREADABLE } from "../../watchdog/decide.mjs";
 import { digestOf } from "./session-state.mjs";
 import {
   finishAdoptedOrchestratorSpawn,
@@ -47,7 +48,6 @@ import { readSecureJson, writeSecureJson } from "../../core/safe-fs.mjs";
 import {
   acquireSingleInstanceLock,
   appendLog,
-  MEMORY_UNREADABLE,
   readWatchdogMemory,
   writeWatchdogMemory,
 } from "./watchdog-home.mjs";
@@ -489,16 +489,12 @@ function backendDeps(adapter: HerdrAdapter, config: WatchdogConfig): WatchdogDep
     capabilityRegression: async () => (await adapter.capabilityReport()).blockingReasons,
     reloadConfig: loadWatchdogConfig,
     quotaResumeAtMs: (state, nowMs) => parseResetTime(state.paused?.reason ?? "", nowMs),
-    loadMemory: (key) => {
-      const all = readWatchdogMemory();
-      // An unreadable file is reported as such, not flattened into "this run
-      // has no record". `memoryFor` turns the distinction into a conservative
-      // slot; flattening it delivered an unsolicited prompt to every live run.
-      if (all === MEMORY_UNREADABLE) {
-        return { lastStateVersion: 0, lastProgressAtMs: 0, backoffMs: 0, dedupeLost: true };
-      }
-      return all[key];
-    },
+    // The whole file, and the fact that it could not be read, handed over as
+    // one value. Answering per key let the first run's own conservative seed
+    // rewrite the file, so every later run in the same tick was told the
+    // bookkeeping was fine and merely silent about it — and got the unsolicited
+    // prompt the seed exists to prevent.
+    loadAllMemory: readWatchdogMemory,
     saveMemory: (key, memory) => {
       const all = readWatchdogMemory();
       const next = all === MEMORY_UNREADABLE ? {} : all;

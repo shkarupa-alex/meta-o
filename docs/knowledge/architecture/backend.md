@@ -65,7 +65,10 @@ that both payloads say "read your own state and continue", so a duplicate costs
 nothing — unlike an instruction. Their dedupe is `watchdog-memory.json`, written
 before the call, taken back only on an observable refusal, and — because it is
 the whole guard — distinguishing "unreadable" from "no record": a lost file is
-read as *notifications may already have gone out*, not as none have.
+read as *notifications may already have gone out*, not as none have. That
+verdict is reached once per tick over the whole file rather than per run,
+because the conservative seed is itself a write, and a write repairs the file
+for every run considered after it.
 
 It never instructs a worker, never edits the FSM, and never overrules the
 classifier: a local model may fill an `unknown` classification, but may not

@@ -29,6 +29,7 @@ import {
   sanitizeTail,
 } from "../dist/watchdog/classifier.mjs";
 import { REGRESSION_PREFIX } from "../dist/watchdog/watchdog.mjs";
+import { MEMORY_UNREADABLE } from "../dist/watchdog/decide.mjs";
 import { spawnPrompt, WAKE_PROMPT } from "../dist/cli/commands/backend.mjs";
 import type {
   PendingOperation,
@@ -740,7 +741,7 @@ test("a wake is recorded before it is sent, so a crash cannot deliver it twice",
         wakes.push(`wake@${durable["key-1/run-1"]?.wakeSentForStateVersion ?? "unrecorded"}`);
       },
       spawnOrchestrator: async () => {},
-      loadMemory: (key) => durable[key],
+      loadAllMemory: () => durable,
       saveMemory: (key, memory) => {
         durable[key] = { ...memory };
       },
@@ -786,7 +787,7 @@ test("a wake that observably failed gives its record back", async () => {
       if (attempts === 1) throw new Error("the backend refused the connection");
     },
     spawnOrchestrator: async () => {},
-    loadMemory: (key) => durable[key],
+    loadAllMemory: () => durable,
     saveMemory: (key, memory) => {
       durable[key] = { ...memory };
     },
@@ -801,57 +802,116 @@ test("a wake that observably failed gives its record back", async () => {
 
 test("bookkeeping the watchdog cannot read is not read as nothing sent", async () => {
   // A corrupt `watchdog-memory.json` used to answer `{}` — "no wake has been
-  // delivered to any run" — which is the one answer that causes an effect. The
-  // wake and the uncertainty prompt are the two things the watchdog sends
-  // without a write-ahead record, so this file *is* their dedupe, and losing it
-  // put an unsolicited prompt into every live orchestrator's context at once.
-  const state = makeRun({ updatedAt: new Date(0).toISOString() });
-  const durable: Record<string, RunMemory> = {};
-  const wakes: number[] = [];
+  // delivered to any run" — which is the one answer that causes an effect, and
+  // for every live run at once. The wake and the uncertainty prompt are the two
+  // things the watchdog sends without a write-ahead record, so this file *is*
+  // their dedupe.
+  //
+  // Three runs, not one, and a fake that is a model of the *medium*: a write is
+  // visible to the next read, and repairing the file repairs it for everybody.
+  // The first version of this test asserted over one run with a `loadMemory`
+  // that ignored what `saveMemory` had written, and stayed green against an
+  // implementation that protected the first run and woke the other two — the
+  // seed rewrote the file, so every later run in the same tick was told the
+  // bookkeeping was fine and merely silent about it.
+  const runIds = ["run-a", "run-b", "run-c"];
+  const states = Object.fromEntries(
+    runIds.map((runId) => [runId, makeRun({ runId, updatedAt: new Date(0).toISOString() })]),
+  );
+  const wakes: string[] = [];
 
+  let corrupt = true;
+  const durable: Record<string, RunMemory> = {};
   const clock = new FakeClock(1_000_000);
-  /** §M-TEST-WATCHDOG — A watchdog whose memory file is unreadable, or is not. */
-  const watchdog = (unreadable: boolean): Watchdog =>
+
+  /** §M-TEST-WATCHDOG — A watchdog over one shared, possibly unreadable, memory file. */
+  const watchdog = (): Watchdog =>
     new Watchdog({
       config: makeConfig(),
       clock,
-      listRuns: () => ["run-1"],
-      readState: () => state,
+      listRuns: () => runIds,
+      readState: (_projectKey, runId) => states[runId],
       orchestratorStatus: async () => "waiting",
       reconcile: async (_state, operation) => ({ operationId: operation.operationId, effect: "applied" }),
-      wakeOrchestrator: async () => {
-        wakes.push(state.stateVersion);
+      wakeOrchestrator: async (state) => {
+        wakes.push(state.runId);
       },
       spawnOrchestrator: async () => {},
-      loadMemory: (key) =>
-        unreadable
-          ? { lastStateVersion: 0, lastProgressAtMs: 0, backoffMs: 0, dedupeLost: true }
-          : durable[key],
+      loadAllMemory: () => (corrupt ? MEMORY_UNREADABLE : durable),
       saveMemory: (key, memory) => {
+        // Writing repairs the file — which is exactly what made the per-key
+        // version of this guard protect only whichever run came first.
+        corrupt = false;
         durable[key] = { ...memory };
       },
       log: () => {},
     });
 
-  await watchdog(true).tick();
+  await watchdog().tick();
   assert.deepEqual(wakes, [], "a lost record is assumed to be a record of a delivery");
 
-  // And it is written back, so the assumption survives a restart instead of
-  // being re-made — and re-lost — on every tick.
-  assert.equal(
-    durable["key-1/run-1"]?.wakeSentForStateVersion,
-    state.stateVersion,
-    "the conservative seed is durable",
-  );
-  assert.equal(durable["key-1/run-1"]?.dedupeLost, undefined, "and is not itself a lost record");
+  // Every run is seeded, not just the one whose save happened to repair the
+  // file, and the seed is durable so it survives a restart.
+  for (const runId of runIds) {
+    assert.equal(
+      durable[`key-1/${runId}`]?.wakeSentForStateVersion,
+      states[runId]!.stateVersion,
+      `${runId} carries the conservative seed`,
+    );
+    assert.equal(durable[`key-1/${runId}`]?.dedupeLost, undefined, "and it is not itself a loss");
+  }
 
-  // The suppression is bounded by the state it was seeded for: once the
-  // orchestrator has moved the run on and gone quiet again, a wake is available.
-  // Otherwise one unreadable file would disable waking for the rest of the run.
-  state.stateVersion += 1;
-  const recovered = watchdog(false);
+  // The suppression is bounded by the state it was seeded for: once a run has
+  // moved on and gone quiet again, a wake is available. Otherwise one
+  // unreadable file would disable waking for the rest of every run's life.
+  states["run-b"]!.stateVersion += 1;
+  const recovered = watchdog();
   await recovered.tick(); // notices the progress and restarts the stall clock
   clock.advance(30 * 60_000);
   await recovered.tick();
-  assert.deepEqual(wakes, [state.stateVersion], "the next state version may be woken");
+  assert.deepEqual(wakes, ["run-b"], "the run that moved on may be woken, and only it");
+});
+
+test("a lost record suppresses the capability regression prompt too", async () => {
+  // The seed covers three dedupes, and this is the one that is not keyed by a
+  // state version: `surfacedRegression` is compared by the regression's own
+  // text, so a slot rebuilt without it let one capability-regression prompt out
+  // per lost file. It is the mildest of the three — a regression is current
+  // state rather than a past event, so repeating it is at least true — but the
+  // claim being made is "no unsolicited prompt", and two out of three is not
+  // that claim.
+  const state = makeRun({ updatedAt: new Date(0).toISOString() });
+  const durable: Record<string, RunMemory> = {};
+  const surfaced: string[] = [];
+  let corrupt = true;
+
+  const watchdog = new Watchdog({
+    config: makeConfig(),
+    clock: new FakeClock(1_000_000),
+    listRuns: () => ["run-1"],
+    readState: () => state,
+    orchestratorStatus: async () => "waiting",
+    reconcile: async (_state, operation) => ({ operationId: operation.operationId, effect: "applied" }),
+    wakeOrchestrator: async () => {},
+    spawnOrchestrator: async () => {},
+    capabilityRegression: async () => ["stop is no longer supported"],
+    surfaceUncertainty: async (_state, _operation, reason) => {
+      surfaced.push(reason);
+      return true;
+    },
+    loadAllMemory: () => (corrupt ? MEMORY_UNREADABLE : durable),
+    saveMemory: (key, memory) => {
+      corrupt = false;
+      durable[key] = { ...memory };
+    },
+    log: () => {},
+  });
+
+  await watchdog.tick();
+  assert.deepEqual(surfaced, [], "the regression is assumed to have been reported already");
+  assert.equal(
+    durable["key-1/run-1"]?.surfacedRegression,
+    "stop is no longer supported",
+    "seeded with the regression that is current, which is the only one it could be",
+  );
 });

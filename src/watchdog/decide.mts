@@ -71,7 +71,7 @@ export interface WatchdogDecision {
 /**
  * §M-WATCHDOG-DECIDE — Per-run memory that makes actions idempotent across ticks.
  *
- * Persisted through `loadMemory`/`saveMemory` rather than held only in RAM.
+ * Persisted through `loadAllMemory`/`saveMemory` rather than held only in RAM.
  * "One wake per completion event" and "exactly one new generation" are
  * acceptance criteria, and a criterion that holds only while a process survives
  * is one that fails on the first restart — which, for a component whose whole
@@ -108,6 +108,19 @@ export interface RunMemory {
    */
   dedupeLost?: boolean;
 }
+
+/**
+ * §M-WATCHDOG-DECIDE — Bookkeeping that could not be read, as distinct from having none.
+ *
+ * "No record for this run" and "the record file is unreadable" are opposite
+ * claims, and one value cannot stand for both: the first means nothing has been
+ * sent, the second means nothing is known about what has been sent. Returning
+ * an empty map for the second is the answer that causes an effect.
+ */
+export const MEMORY_UNREADABLE = Symbol("watchdog memory unreadable");
+
+/** §M-WATCHDOG-DECIDE — A read of the whole bookkeeping file, or the fact that it failed. */
+export type MemorySnapshot = Record<string, RunMemory> | typeof MEMORY_UNREADABLE;
 
 
 /**

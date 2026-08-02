@@ -26,7 +26,9 @@ import { redactDeep } from "../../core/redact.mjs";
 import { isoTimestamp } from "../../core/clock.mjs";
 import { watchdogLockPath, watchdogLogPath, watchdogMemoryPath } from "../../core/paths.mjs";
 import type { JsonValue } from "../../core/canonical-json.mjs";
-import type { RunMemory, WatchdogLogEntry } from "../../watchdog/watchdog.mjs";
+import { MEMORY_UNREADABLE } from "../../watchdog/decide.mjs";
+import type { MemorySnapshot, RunMemory } from "../../watchdog/decide.mjs";
+import type { WatchdogLogEntry } from "../../watchdog/watchdog.mjs";
 
 /** §M-CLI-WATCHDOG-HOME — Maximum watchdog log size before rotation. */
 const LOG_ROTATE_BYTES = 4 * 1024 * 1024;
@@ -58,18 +60,8 @@ export function appendLog(unredacted: WatchdogLogEntry): void {
   writeFileSyncFd(fd, `${JSON.stringify(entry)}\n`);
 }
 
-/**
- * §M-CLI-WATCHDOG-HOME — Bookkeeping that could not be read, as distinct from having none.
- *
- * The difference decides whether a wake is sent. "No record for this run" and
- * "the record file is unreadable" are opposite claims, and returning `{}` for
- * both made the second look like the first: a corrupt file said *nothing has
- * been sent to any run*, which is the one answer that causes an effect.
- */
-export const MEMORY_UNREADABLE = Symbol("watchdog memory unreadable");
-
 /** §M-CLI-WATCHDOG-HOME — Durable per-run watchdog bookkeeping, keyed by project/run. */
-export function readWatchdogMemory(): Record<string, RunMemory> | typeof MEMORY_UNREADABLE {
+export function readWatchdogMemory(): MemorySnapshot {
   try {
     return readSecureJson<Record<string, RunMemory>>(watchdogMemoryPath()) ?? {};
   } catch {
