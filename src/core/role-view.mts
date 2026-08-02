@@ -66,13 +66,47 @@ export function roleView(state: RunState, role: Role, handoff?: string): RoleVie
     baseRevision: state.baseRevision,
     candidateSnapshot: state.candidateSnapshot,
     e2ePlan: state.e2ePlan,
-    confirmations: state.confirmations,
+    confirmations: visibleConfirmations(state, role),
     e2eScenarioStatus: state.e2eScenarioStatus,
     findings: visible.flatMap((slot) => open[slot] ?? []),
-    withheld: slots.filter((slot) => !visible.includes(slot) && (open[slot]?.length ?? 0) > 0),
+    withheld: [
+      ...slots.filter((slot) => !visible.includes(slot) && (open[slot]?.length ?? 0) > 0),
+      ...withheldVerdicts(state, role),
+    ].filter((slot, index, all) => all.indexOf(slot) === index),
     ...(role === "executor" && handoff !== undefined ? { handoff } : {}),
     updatedAt: state.updatedAt,
   };
+}
+
+/**
+ * §M-ROLE-VIEW — Hide one reviewer's verdict from the other.
+ *
+ * The findings were filtered and the verdicts were not, so a reviewer asking
+ * for its own slice was told that the other had already passed and had already
+ * called the selection plan complete. That is anchoring of the strongest kind:
+ * it does not merely suggest what to find, it removes the need to form a
+ * judgement at all — and §30 makes the plan verdict something each reviewer
+ * must reach on its own.
+ *
+ * `qc`, `smoke` and `e2e` stay visible to everyone: they are facts about the
+ * candidate, not another reviewer's opinion of it.
+ */
+function visibleConfirmations(state: RunState, role: Role): RunState["confirmations"] {
+  const reviews = ["reviewerPrimary", "reviewerCrossVendor"] as const;
+  if (!reviews.includes(role as (typeof reviews)[number])) return state.confirmations;
+  const out: RunState["confirmations"] = {};
+  for (const [gate, result] of Object.entries(state.confirmations)) {
+    if (gate !== role && reviews.includes(gate as (typeof reviews)[number])) continue;
+    out[gate as keyof RunState["confirmations"]] = result;
+  }
+  return out;
+}
+
+/** §M-ROLE-VIEW — Review slots whose verdict exists and is being kept from this role. */
+function withheldVerdicts(state: RunState, role: Role): string[] {
+  const reviews = ["reviewerPrimary", "reviewerCrossVendor"] as const;
+  if (!reviews.includes(role as (typeof reviews)[number])) return [];
+  return reviews.filter((gate) => gate !== role && state.confirmations[gate] !== undefined);
 }
 
 /** §M-ROLE-VIEW — Whether one findings slot belongs to the role asking for it. */

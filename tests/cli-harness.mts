@@ -220,6 +220,37 @@ export function confirmModels(context: CliContext, runId: string): void {
   );
 }
 
+/**
+ * §M-TEST-HARNESS — Get both reviews on the record, so the E2E loop may open.
+ *
+ * §30 starts the heavy E2E set after both reviewers pass, and the rule is
+ * enforced by the command that banks the result as well as by the transition.
+ * Every fixture that records an E2E result therefore has to get there the way a
+ * run does; the tests *about* the ordering spell it out inline instead.
+ */
+export function passReviews(
+  context: CliContext,
+  runId: string,
+  attested: { commitOid: string; snapshotDigest: string; planDigest: string },
+): void {
+  for (const reviewer of ["reviewerPrimary", "reviewerCrossVendor"]) {
+    ok(
+      cli(["run", "record-review", "--run-id", runId], {
+        ...context,
+        stdin: JSON.stringify({
+          reviewer,
+          ...attested,
+          selectionPlanVerdict: "complete",
+          verdict: "passed",
+          findings: [],
+          completedAt: "2026-07-24T12:00:00Z",
+        }),
+      }),
+      `record-review ${reviewer}`,
+    );
+  }
+}
+
 /** §M-TEST-HARNESS — Dispatch the three workers whose results a run records. */
 export function dispatchWorkers(context: CliContext, runId: string): void {
   for (const role of ["reviewerPrimary", "reviewerCrossVendor", "e2eTester"]) {

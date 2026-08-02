@@ -28,6 +28,8 @@ import type {
 } from "../../core/types.mjs";
 import { git } from "../../core/git.mjs";
 import { e2eResultErrors } from "../../core/e2e-result.mjs";
+import { fenceScanner } from "../../core/markdown.mjs";
+import { assertE2eLoopMayOpen } from "./gate-order.mjs";
 import { dispatchedSession } from "./session-state.mjs";
 import {
   assertE2eIsolated,
@@ -222,28 +224,18 @@ export async function commandRecordE2e(args: ParsedArgs): Promise<void> {
     const snapshot = state.candidateSnapshot;
     if (!snapshot) fail("no_candidate", "record a candidate with `run set-candidate` first");
     if (!state.e2ePlan) fail("no_plan", "an E2E result attests a selection plan; store one first");
+    // The same rule the transition into E2E_STABILIZATION applies. Enforcing it
+    // only there left this command — the one the E2E tester actually calls —
+    // free to bank a full selected set run before either reviewer had read the
+    // candidate, which is the spend the ordering exists to avoid.
+    assertE2eLoopMayOpen(state);
 
     const errors = e2eResultErrors(result, snapshot.digest, state.e2ePlan);
     if (errors.length > 0) fail("invalid_e2e_result", errors.join("; "));
 
     assertE2eIsolated(projectKey, runId, snapshot);
 
-    if (result.environment === "production") {
-      if (!state.productionE2eApproved) {
-        fail(
-          "production_e2e_not_approved",
-          "§20 forbids running the E2E set against production without the user saying so for " +
-            "this run; record their decision with `meta-o run record-decision` and " +
-            "`meta-o run approve-production-e2e` first",
-        );
-      }
-      // §20 asks for two things and only the user's word was checked. The other
-      // is a production-safe contract: the project must have written down what
-      // running against production means for it — cleanup, blast radius, what
-      // may not be touched. A user consenting to a run whose rules nobody wrote
-      // is consenting to nothing in particular.
-      assertProductionContract(repoDir, snapshot.provenanceCommit);
-    }
+    assertEnvironmentAllowed(state, repoDir, result.environment, snapshot.provenanceCommit);
 
     // `commitOid` and `completedAt` are derived, not demanded. The tester knows
     // the digest and the plan it ran; the commit that produced them is already
@@ -292,6 +284,35 @@ export async function commandRecordE2e(args: ParsedArgs): Promise<void> {
 }
 
 /**
+ * §M-CLI-RESULTS — Refuse the environment this result says it ran against.
+ *
+ * §20 asks for two things before production — the user's word and a written
+ * production-safe contract — and both were checked only where the result is
+ * recorded. `meta-o e2e result` is what the tester's skill tells it to run
+ * *before* handing anything in, and it said `pass: true` for a production set:
+ * by the time the recording command objected, the suite had already run against
+ * production. A pre-flight that cannot refuse the one irreversible thing is
+ * worse than none.
+ */
+export function assertEnvironmentAllowed(
+  state: RunState,
+  repoDir: string,
+  environment: string,
+  candidateCommit: string,
+): void {
+  if (environment !== "production") return;
+  if (!state.productionE2eApproved) {
+    fail(
+      "production_e2e_not_approved",
+      "§20 forbids running the E2E set against production without the user saying so for " +
+        "this run; record their decision with `meta-o run record-decision` and " +
+        "`meta-o run approve-production-e2e` first",
+    );
+  }
+  assertProductionContract(repoDir, candidateCommit);
+}
+
+/**
  * §M-CLI-RESULTS — Refuse production when the E2E contract does not cover it.
  *
  * Deliberately shallow: this proves the contract *says something* about
@@ -334,12 +355,10 @@ function assertProductionContract(repoDir: string, candidateCommit: string): voi
  * against production` underlined with `===`) is a heading, and refusing it told
  * a project with a perfectly good contract that it had none.
  *
- * The fence rules are CommonMark's, not an approximation of them, because the
- * approximation leaked: a closing fence must be at least as long as its opener
- * and carry no info string, so ```` ```` ```` around a ```` ``` ```` example no
- * longer ends at the inner line; and both fences and headings allow the same
- * up-to-three spaces of indentation, so a tab-indented code block no longer
- * opens a fence that never closes and hides the rest of the document.
+ * The fence rules live in `fenceScanner` and are CommonMark's, not an
+ * approximation of them. They are shared with the knowledge gate, which had its
+ * own naive toggle and lost anchors to nested fences: two readers of one format
+ * in one project is two answers about the same document.
  *
  * `\b` rather than a substring, because `### Reproduction of a failed
  * scenario` contains the letters and says nothing about production.
@@ -347,7 +366,7 @@ function assertProductionContract(repoDir: string, candidateCommit: string): voi
 export function productionHeadings(text: string): string[] {
   const lines = text.split("\n");
   const headings: string[] = [];
-  let fence: { marker: string; length: number } | undefined;
+  const inFence = fenceScanner();
   let comment = false;
   // Front matter is metadata, not prose: without this its closing `---` turned
   // the last metadata line into a setext heading.
@@ -360,19 +379,7 @@ export function productionHeadings(text: string): string[] {
       if (line.includes("-->")) comment = false;
       continue;
     }
-    if (fence !== undefined) {
-      const closing = /^ {0,3}(`{3,}|~{3,})\s*$/.exec(line);
-      if (closing && closing[1]![0] === fence.marker && closing[1]!.length >= fence.length) {
-        fence = undefined;
-      }
-      continue;
-    }
-
-    const opening = /^ {0,3}(`{3,}|~{3,})/.exec(line);
-    if (opening) {
-      fence = { marker: opening[1]![0]!, length: opening[1]!.length };
-      continue;
-    }
+    if (inFence(line)) continue;
     if (/^ {0,3}<!--/.test(line)) {
       if (!line.includes("-->")) comment = true;
       continue;

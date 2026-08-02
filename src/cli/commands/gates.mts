@@ -16,6 +16,8 @@ import { resolveProjectIdentity } from "../../core/project-key.mjs";
 import { computeSnapshotDigest, verifyMetadataCommit } from "../../core/snapshot.mjs";
 import { resolveCommit } from "../../core/git.mjs";
 import { e2eResultErrors } from "../../core/e2e-result.mjs";
+import { assertE2eLoopMayOpen } from "./gate-order.mjs";
+import { assertEnvironmentAllowed } from "./results.mjs";
 import {
   baselineSelection,
   computePlanDigest,
@@ -284,10 +286,13 @@ export async function commandE2eResult(args: ParsedArgs): Promise<void> {
   if (!snapshot) fail("no_candidate", "record a candidate with `run set-candidate` first");
   if (!state.e2ePlan) fail("no_plan", "an E2E result attests a selection plan; store one first");
 
-  // The same function `run record-e2e` will call, not a paraphrase of it. This
-  // command exists so the tester can find out whether its result is acceptable
-  // before handing it in; a check that answered a laxer question would tell it
-  // yes and then have the recording command say no.
+  // The same functions `run record-e2e` will call, not a paraphrase of them.
+  // This command exists so the tester can find out whether its result is
+  // acceptable before handing it in; a check that answered a laxer question
+  // would tell it yes and then have the recording command say no — and for the
+  // environment gate, only after the suite had already touched production.
+  assertE2eLoopMayOpen(state);
+  assertEnvironmentAllowed(state, repoOf(args).repoDir, result.environment, snapshot.provenanceCommit);
   const errors = e2eResultErrors(result, snapshot.digest, state.e2ePlan);
   const failures = (result.scenarios ?? []).filter((scenario) => scenario.status !== "passed");
 

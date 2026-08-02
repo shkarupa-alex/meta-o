@@ -23,8 +23,10 @@ import {
   cli,
   confirmModels,
   dispatch,
+  dispatchWorkers,
   errorCode,
   ok,
+  passReviews,
   retireSpec,
   seededRepo,
   startRun,
@@ -257,6 +259,7 @@ test("an E2E result that skips a selected scenario does not pass", () => {
 
   try {
     const runId = startRun(context);
+    dispatchWorkers(context, runId);
     confirmModels(context, runId);
     retireSpec(repo);
     const candidate = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
@@ -278,6 +281,14 @@ test("an E2E result that skips a selected scenario does not pass", () => {
       cli(["run", "set-plan", "--run-id", runId], { ...context, stdin: JSON.stringify(plan) }),
       "set-plan",
     );
+    // The dry run refuses what recording refuses, and that includes running the
+    // heavy set before the reviews: a tester asking "is this payload usable"
+    // should not first have to spend the suite to find out.
+    passReviews(context, runId, {
+      commitOid: candidate.json["provenanceCommit"] as string,
+      snapshotDigest: candidate.json["snapshotDigest"] as string,
+      planDigest: plan.planDigest,
+    });
 
     const partial = cli(["e2e", "result", "--run-id", runId], {
       ...context,

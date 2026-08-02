@@ -33,14 +33,42 @@ const VALUE_PATTERNS: Array<{ pattern: RegExp; replace: string }> = [
   },
 ];
 
-/** §M-REDACT — Mask `NAME=value` and `"name": "value"` pairs with secret-looking names. */
+/**
+ * §M-REDACT — Mask `NAME=value` and `"name": "value"` pairs with secret-looking names.
+ *
+ * The name may be quoted, which is the whole point: the docstring claimed JSON
+ * was covered and the pattern could not match it, because a character class
+ * starting at `[A-Za-z_]` never survives the opening quote. Every durable thing
+ * this project writes — `state.json`, `findings/`, the watchdog log — is JSON,
+ * so the level of protection the module calls its main one was off in exactly
+ * the format the data lives in.
+ *
+ * A quoted value is taken up to its closing quote rather than to the first
+ * space, and the separator is reproduced as it was found: rebuilding it from
+ * `match.includes(":")` turned `token: abc=def` into `token=[redacted]`,
+ * rewriting text on its way into a log meant to be read literally.
+ */
 function maskNamedAssignments(text: string): string {
-  const assignment = /([A-Za-z_][A-Za-z0-9_]*)\s*[:=]\s*("?)([^\s"',;]+)\2/g;
-  return text.replace(assignment, (match, name: string, quote: string, value: string) => {
-    if (!SECRET_NAME.test(name)) return match;
-    if (value === "") return match;
-    return `${name}${match.includes(":") && !match.includes("=") ? ": " : "="}${quote}${MASK}${quote}`;
-  });
+  const assignment =
+    /(["']?)([A-Za-z_][A-Za-z0-9_]*)\1(\s*[:=]\s*)(?:(["'])([^"']*)\4|([^\s"',;]+))/g;
+  return text.replace(
+    assignment,
+    (
+      match: string,
+      nameQuote: string,
+      name: string,
+      separator: string,
+      valueQuote: string | undefined,
+      quoted: string | undefined,
+      bare: string | undefined,
+    ) => {
+      if (!SECRET_NAME.test(name)) return match;
+      const value = quoted ?? bare ?? "";
+      if (value === "") return match;
+      const wrap = valueQuote ?? "";
+      return `${nameQuote}${name}${nameQuote}${separator}${wrap}${MASK}${wrap}`;
+    },
+  );
 }
 
 /** §M-REDACT — Mask credentials embedded in URLs, which survive plain name checks. */
@@ -72,6 +100,13 @@ export function containsSecret(text: string): boolean {
  *
  * Findings and adapter results are objects, and redacting only top-level text
  * would leave secrets in nested evidence details.
+ *
+ * The key is read, not only the value. In an object the name and the value are
+ * already separated, so the text-level rule that matches `password=…` has
+ * nothing to match — and applying `redact()` to values alone left name-based
+ * protection, which this module calls its main level, doing nothing at all for
+ * structured data. An opaque internal token quoted into `evidence[].detail`
+ * matches no `VALUE_PATTERNS` shape and reached `state.json` verbatim.
  */
 export function redactDeep<T>(value: T): T {
   if (typeof value === "string") return redact(value) as unknown as T;
@@ -79,7 +114,10 @@ export function redactDeep<T>(value: T): T {
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-      out[key] = redactDeep(item);
+      out[key] =
+        SECRET_NAME.test(key) && typeof item === "string" && item !== ""
+          ? MASK
+          : redactDeep(item);
     }
     return out as unknown as T;
   }

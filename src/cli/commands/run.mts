@@ -16,7 +16,6 @@ import {
 } from "../../core/state-store.mjs";
 import {
   assertTransition,
-  attests,
   completionProven,
   invalidatePlanBoundConfirmations,
   invalidateStaleConfirmations,
@@ -57,6 +56,7 @@ export { commandSetSession, commandTakeover } from "./ownership.mjs";
 export { commandStart } from "./run-start.mjs";
 import { WORKER_ROLES } from "../../core/types.mjs";
 import { assertCandidateAdmissible, assertUnpublished } from "./candidate-guards.mjs";
+import { assertE2eLoopMayOpen } from "./gate-order.mjs";
 
 /** §M-CLI-RUN — Redact an optional free-text flag before it reaches durable state. */
 function redactText(value: string | undefined): string | undefined {
@@ -149,42 +149,6 @@ function assertCompletable(state: RunState): void {
       "metadata_not_verified",
       "COMPLETE requires a passing `meta-o snapshot verify-metadata` for the attested snapshot",
       { attestedSnapshot: digest, metadataVerified: state.metadataVerified ?? null },
-    );
-  }
-}
-
-/**
- * §M-CLI-RUN — Refuse to open the E2E loop before both reviews have passed.
- *
- * §30: "Heavy E2E начинается после PASS обоих reviewers." The router honoured
- * the second half of that rule — an E2E fix does not drag the run back into a
- * review round — by arming on `activeLoop.kind === "e2e"` alone, and nothing
- * checked how the loop came to be armed. A transition straight from
- * `REVIEW_STABILIZATION` with zero reviews recorded therefore prescribed the
- * full selected set against a candidate no reviewer had read. It could not
- * produce a false green, because completion still needs four attestations on
- * one digest; what it could do is spend a heavy suite twice.
- *
- * Re-entry from `LOCAL_QC` is the E2E fix's return leg and is allowed on the
- * strength of the loop already being open — the reviews that opened it are
- * `invalidated` by then precisely because the fix changed the content.
- */
-function assertE2eLoopMayOpen(state: RunState): void {
-  if (state.activeLoop?.kind === "e2e") return;
-  const digest = state.candidateSnapshot?.digest;
-  const plan = state.e2ePlan?.planDigest;
-  if (!digest || !plan) {
-    fail("no_candidate", "the E2E loop needs a candidate and a sealed selection plan");
-  }
-  const missing = (["reviewerPrimary", "reviewerCrossVendor"] as const).filter(
-    (gate) => !attests(state.confirmations[gate], digest!, plan),
-  );
-  if (missing.length > 0) {
-    fail(
-      "reviews_not_passed",
-      `heavy E2E starts after both reviewers pass; ${missing.join(" and ")} ` +
-        "have not passed on this snapshot and plan",
-      { missingGates: missing },
     );
   }
 }

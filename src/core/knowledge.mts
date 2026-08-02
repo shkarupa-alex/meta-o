@@ -8,6 +8,8 @@
  * defined here" a fact instead of a guess.
  */
 
+import { fenceScanner } from "./markdown.mjs";
+
 /** §M-KNOWLEDGE — Grammar of a business anchor. */
 export const BUSINESS_ANCHOR = /§B-[A-Z0-9-]+/g;
 
@@ -90,13 +92,9 @@ export function parseDocumentFully(
   const headings: Array<{ index: number; level: number; anchor?: string }> = [];
   const malformed: string[] = [];
 
-  let inFence = false;
+  const inFence = fenceScanner();
   lines.forEach((line, index) => {
-    if (/^\s*(```|~~~)/.test(line)) {
-      inFence = !inFence;
-      return;
-    }
-    if (inFence) return;
+    if (inFence(line)) return;
 
     for (const token of line.match(ANCHOR_TOKEN) ?? []) {
       if (!WELL_FORMED.test(token)) malformed.push(`${path}:${index + 1}: malformed anchor ${token}`);
@@ -281,10 +279,18 @@ export function validateChain(
     errors.push(`duplicate anchor ${anchor} defined at ${where}`);
   }
 
-  const defined = new Set<string>(index.byAnchor.keys());
+  // Two sets, because the same anchor in two docstrings and the same anchor in
+  // a docstring and a heading are different mistakes with different fixes. One
+  // set reported both as "also defined in Markdown", which sent the reader
+  // looking through `docs/` for a heading that was never there — the four
+  // hardening suites, split out of one file, each kept the original §M.
+  const inMarkdown = new Set<string>(index.byAnchor.keys());
+  const defined = new Set<string>(inMarkdown);
   for (const module of moduleAnchors) {
-    if (defined.has(module.anchor)) {
-      errors.push(`module anchor ${module.anchor} is also defined in Markdown`);
+    if (inMarkdown.has(module.anchor)) {
+      errors.push(
+        `${module.path}: module anchor ${module.anchor} is also defined in Markdown`,
+      );
     }
     defined.add(module.anchor);
   }
