@@ -47,6 +47,33 @@ standard library instead, so a fresh project runs every gate offline with no
 dependency it did not choose. A project that would rather have the real thing
 declares it in `.quality/qc-manifest.json` and deletes this checker.
 
+## The checkers are not judged by default
+
+`source_roots = ["src", "tests"]` — so `quality/` itself is outside every gate,
+including its own. The checkers you copy declare `§M-QC-COMMON`,
+`§M-QC-KNOWLEDGE` and five more, and nothing asks those anchors to cite a `§A`
+in *your* knowledge layer, because nothing reads them.
+
+That is the one place this profile and `meta-o knowledge validate` give
+different answers about the same tree. meta-o runs its own gate with
+`--roots src,quality,tests`, because for meta-o the checkers *are* the product;
+run it that way over a copied profile and you get seven errors of the form
+`quality/_common.py: module anchor §M-QC-COMMON does not cite any §A-*`. Neither
+answer is wrong — they are answers to different questions — but you should pick
+one deliberately:
+
+- **Leave it.** The checkers are third-party code you adopted, like any
+  dependency, and your knowledge layer is about your product.
+- **Adopt them.** Add `"quality"` to `source_roots` and give each checker's
+  `§M-QC-*` a `§A` in your architecture layer to cite. Then the profile holds
+  its own checkers to the standard they impose on everything else, which is the
+  stronger position if you intend to modify them.
+
+Whichever you choose, do not run meta-o's gate with `--roots` covering
+`quality/` while the profile's own `source_roots` exclude it: the two will
+disagree on every run, and a gate that contradicts another gate teaches people
+to ignore both.
+
 ## Thresholds
 
 `pyproject.snippet.toml` carries starter values. They are starter values, not

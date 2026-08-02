@@ -26,6 +26,8 @@ export interface RoleView {
   baseRevision: string;
   candidateSnapshot?: RunState["candidateSnapshot"];
   e2ePlan?: RunState["e2ePlan"];
+  /** What the run said it would touch, for the reviewers who judge the diff against it. */
+  knowledgeImpactPlan?: RunState["knowledgeImpactPlan"];
   confirmations: RunState["confirmations"];
   e2eScenarioStatus?: RunState["e2eScenarioStatus"];
   /** Findings this role is answerable for: its own, or — for the executor — all of them. */
@@ -66,6 +68,12 @@ export function roleView(state: RunState, role: Role, handoff?: string): RoleVie
     baseRevision: state.baseRevision,
     candidateSnapshot: state.candidateSnapshot,
     e2ePlan: state.e2ePlan,
+    // §30 asks both reviewers whether the knowledge diff is proportionate to
+    // the change. This is the run's own statement of what it expected to
+    // touch — the document that question is asked against — and the bounded
+    // view withheld it from every role, so the question could only be answered
+    // from the diff alone.
+    knowledgeImpactPlan: state.knowledgeImpactPlan,
     confirmations: visibleConfirmations(state, role),
     e2eScenarioStatus: state.e2eScenarioStatus,
     findings: visible.flatMap((slot) => open[slot] ?? []),

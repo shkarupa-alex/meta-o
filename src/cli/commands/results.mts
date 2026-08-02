@@ -29,6 +29,7 @@ import type {
 import { git } from "../../core/git.mjs";
 import { e2eResultErrors } from "../../core/e2e-result.mjs";
 import { fenceScanner } from "../../core/markdown.mjs";
+import { validateKnowledgeImpactPlan } from "../../core/knowledge.mjs";
 import { assertE2eLoopMayOpen, assertReviewsMayOpen } from "./gate-order.mjs";
 import { dispatchedSession } from "./session-state.mjs";
 import {
@@ -457,11 +458,22 @@ function e2eFailureFindings(
   }));
 }
 
-/** §M-CLI-RESULTS — Store the executor's temporary knowledge impact plan. */
+/**
+ * §M-CLI-RESULTS — Store the executor's temporary knowledge impact plan.
+ *
+ * Validated, and no longer written into a field nobody reads. It arrived
+ * unchecked — `{"impactedModules": "src/app.py"}` was accepted — and the reason
+ * that never hurt anyone is worse than the bug: nothing consumed it. §30 asks
+ * both reviewers to judge whether the knowledge diff is proportionate to the
+ * change, and the run's own statement of what it expected to touch is the
+ * document that question is asked against, so it is in the role view.
+ */
 export async function commandKnowledgePlan(args: ParsedArgs): Promise<void> {
   const { projectKey } = identityOf(args);
   const runId = requireFlag(args, "run-id");
   const plan = redactDeep(await readStdinJson<KnowledgeImpactPlan>());
+  const validation = validateKnowledgeImpactPlan(plan);
+  if (!validation.ok) fail("invalid_knowledge_plan", validation.errors.join("; "));
   const next = await mutate(projectKey, runId, (state) => ({ ...state, knowledgeImpactPlan: plan }));
   emit({ runId, knowledgeImpactPlan: next.knowledgeImpactPlan });
 }

@@ -916,3 +916,122 @@ test("a reviewer's PASS is refused until QC and smoke have passed on the snapsho
     repo.dispose();
   }
 });
+
+test("a manifest that exempts every gate is not a manifest that declares them", () => {
+  // The check compared gate ids, so a Python project could list all ten of the
+  // starter profile's gates with `policy: "not_applicable"` — which demands
+  // nothing of any of them — and preflight said it declared the whole profile.
+  // That is the same failure the check exists to catch, reached by a different
+  // route, with a green line saying otherwise.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    repo.write("pyproject.toml", "[project]\nname = \"thing\"\n");
+    const gates = [
+      "format-check",
+      "lint",
+      "typecheck-policy",
+      "tests",
+      "build-policy",
+      "purpose",
+      "knowledge",
+      "import-graph",
+      "code-health",
+      "e2e-metadata",
+    ];
+    /** §M-TEST-HARDENING-GATES — A manifest declaring the profile's gates at one policy. */
+    const manifest = (policy: string): string =>
+      `${JSON.stringify(
+        {
+          schema_version: 1,
+          gates: gates.map((id) => ({
+            id,
+            command: `make ${id}`,
+            policy,
+            ...(policy === "not_applicable" ? { rationale: "this project is different" } : {}),
+          })),
+        },
+        null,
+        2,
+      )}\n`;
+
+    /** §M-TEST-HARDENING-GATES — What preflight says about the Python profile. */
+    const profileCheck = (): { status: string; detail: string } => {
+      const checks = cli(["preflight"], context).json["checks"] as Array<{
+        id: string;
+        status: string;
+        detail: string;
+      }>;
+      return checks.find((check) => check.id === "python-profile")!;
+    };
+
+    repo.write(".quality/qc-manifest.json", manifest("not_applicable"));
+    repo.commit("exempt every gate of the profile");
+    const exempted = profileCheck();
+    assert.equal(exempted.status, "missing");
+    assert.match(exempted.detail, /declared not_applicable: format-check, lint/);
+
+    repo.write(".quality/qc-manifest.json", manifest("passed"));
+    repo.commit("require every gate of the profile");
+    assert.equal(profileCheck().status, "ok");
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("a knowledge impact plan is validated, and somebody reads it", () => {
+  // It was stored exactly as it arrived, so `{"impactedModules": "src/app.py"}`
+  // was accepted — and the reason that never hurt anyone is worse than the bug:
+  // nothing consumed the field. §30 asks both reviewers whether the knowledge
+  // diff is proportionate, and this is the run's own statement of what it
+  // expected to touch.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    dispatchWorkers(context, runId);
+
+    const malformed = cli(["run", "knowledge-plan", "--run-id", runId], {
+      ...context,
+      stdin: JSON.stringify({
+        impactedBusinessAnchors: [],
+        impactedArchitectureAnchors: ["§a-lower-01"],
+        impactedModules: "src/app.py",
+        expectedSpecRetirement: [],
+      }),
+    });
+    assert.equal(errorCode(malformed), "invalid_knowledge_plan");
+    const message = (malformed.json["error"] as { message: string }).message;
+    assert.match(message, /impactedModules must be an array of strings/);
+    assert.match(message, /not a well-formed anchor: §a-lower-01/);
+
+    ok(
+      cli(["run", "knowledge-plan", "--run-id", runId], {
+        ...context,
+        stdin: JSON.stringify({
+          impactedBusinessAnchors: ["§B-CHECKOUT-01"],
+          impactedArchitectureAnchors: ["§A-APP-01"],
+          impactedModules: ["§M-APP"],
+          expectedSpecRetirement: ["spec/feature.md"],
+        }),
+      }),
+      "a well-formed plan",
+    );
+
+    // The anchors it names need not exist yet — the plan is written before the
+    // work and describes what the work will touch.
+    for (const role of ["reviewerPrimary", "reviewerCrossVendor", "executor"]) {
+      const view = ok(
+        cli(["run", "show", "--run-id", runId, "--as-role", role], context),
+        `run show --as-role ${role}`,
+      ).json["knowledgeImpactPlan"] as { impactedModules: string[] } | undefined;
+      assert.deepEqual(view?.impactedModules, ["§M-APP"], `${role} must be able to read it`);
+    }
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});

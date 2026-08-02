@@ -386,3 +386,53 @@ export function duplicateModuleAnchors(moduleAnchors: ModuleAnchorDefinition[]):
     .map(([anchor, paths]) => `duplicate module anchor ${anchor} declared in ${paths.join(", ")}`)
     .sort();
 }
+
+/**
+ * §M-KNOWLEDGE — Check a knowledge impact plan is a plan and not merely JSON.
+ *
+ * The plan was stored exactly as it arrived: `readStdinJson`, `redactDeep`,
+ * into `state.json`. So `{"impactedModules": "src/app.py"}` was accepted, and
+ * every later reader of that field would have iterated a string one character
+ * at a time. Nothing read it, which is why the shape was never contradicted —
+ * an artefact that only ever gets written cannot be wrong.
+ *
+ * Anchors are checked against their grammar, not against the knowledge layer.
+ * The whole point of the plan is that it names anchors that do not exist yet:
+ * it is written before the work and describes what the work will touch.
+ */
+export function validateKnowledgeImpactPlan(raw: unknown): { ok: boolean; errors: string[] } {
+  const errors: string[] = [];
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return { ok: false, errors: ["a knowledge impact plan must be a JSON object"] };
+  }
+  const plan = raw as Record<string, unknown>;
+  const fields = [
+    ["impactedBusinessAnchors", /^§B-[A-Z0-9-]+$/],
+    ["impactedArchitectureAnchors", /^§A-[A-Z0-9-]+$/],
+    ["impactedModules", /^§M-[A-Z0-9-]+$/],
+    ["expectedSpecRetirement", undefined],
+  ] as const;
+
+  for (const [field, grammar] of fields) {
+    const value = plan[field];
+    if (!Array.isArray(value)) {
+      errors.push(`${field} must be an array of strings`);
+      continue;
+    }
+    for (const [index, entry] of value.entries()) {
+      if (typeof entry !== "string" || entry.trim() === "") {
+        errors.push(`${field}[${index}] must be a non-empty string`);
+        continue;
+      }
+      if (grammar && !grammar.test(entry)) {
+        errors.push(`${field}[${index}] is not a well-formed anchor: ${entry}`);
+      }
+    }
+  }
+
+  const known = new Set(fields.map(([field]) => field as string));
+  for (const field of Object.keys(plan)) {
+    if (!known.has(field)) errors.push(`unknown field ${field}`);
+  }
+  return { ok: errors.length === 0, errors };
+}

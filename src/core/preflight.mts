@@ -297,6 +297,14 @@ function checkKnowledge(repoDir: string, registry: E2ERegistry | undefined, note
  * graph unenforced — the four gates that make the rest of the methodology mean
  * anything. Non-blocking, because the list is the *profile's* minimum and a
  * project may deliberately be somewhere else; but it is always said out loud.
+ *
+ * A gate is counted only if its policy is `passed`. The check compared ids, so
+ * a manifest that listed all ten with `policy: "not_applicable"` — which
+ * demands nothing of any of them — was told it declared the whole profile. That
+ * is the same shape as the failure the check exists to catch, reached by a
+ * different route and with a green line saying otherwise. `not_applicable`
+ * needs a reviewed rationale to validate at all, so this is not a way of
+ * calling an honest exemption a mistake: it is named separately, and named.
  */
 function checkPythonProfile(repoDir: string, note: Note): void {
   if (!existsSync(join(repoDir, "pyproject.toml"))) return;
@@ -304,16 +312,22 @@ function checkPythonProfile(repoDir: string, note: Note): void {
   if (!existsSync(manifestPath)) return;
 
   const parsed = readJsonFile<QcManifest>(manifestPath);
-  const declared = new Set((parsed.value?.gates ?? []).map((gate) => gate.id));
-  const missing = PYTHON_MINIMUM_GATES.filter((id) => !declared.has(id));
+  const gates = new Map((parsed.value?.gates ?? []).map((gate) => [gate.id, gate.policy]));
+  const missing = PYTHON_MINIMUM_GATES.filter((id) => !gates.has(id));
+  const exempted = PYTHON_MINIMUM_GATES.filter((id) => gates.get(id) === "not_applicable");
+
+  const problems = [
+    ...(missing.length > 0 ? [`not declared: ${missing.join(", ")}`] : []),
+    ...(exempted.length > 0 ? [`declared not_applicable: ${exempted.join(", ")}`] : []),
+  ];
   note({
     id: "python-profile",
-    status: missing.length === 0 ? "ok" : "missing",
+    status: problems.length === 0 ? "ok" : "missing",
     blocking: false,
     detail:
-      missing.length === 0
-        ? "the manifest declares every gate of the Python starter profile"
-        : `the Python profile's minimum gates are not declared: ${missing.join(", ")}`,
+      problems.length === 0
+        ? "the manifest requires every gate of the Python starter profile to pass"
+        : `the Python profile's minimum gates: ${problems.join("; ")}`,
     remedy:
       "adopt the starter profile from share/meta-o/templates/python, or record in the manifest " +
       "why this project's QC contract is different",
