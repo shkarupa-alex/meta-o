@@ -121,9 +121,9 @@ const COMMANDS: Record<string, { flags: string[]; run: Command; help: string }> 
     help: "list runs of this project",
   },
   "run show": {
-    flags: ["run-id"],
+    flags: ["as-role", "run-id"],
     run: commandShow,
-    help: "print the full state of a run",
+    help: "print a run's state, whole or bounded to one worker role with --as-role",
   },
   "run route": {
     flags: ["run-id"],

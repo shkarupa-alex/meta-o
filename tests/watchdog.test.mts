@@ -111,6 +111,8 @@ function harness(options: {
   /** Whether a surfaced message actually reaches anyone. */
   deliverable?: boolean;
   reconcile?: (operation: PendingOperation) => ReconcileResult;
+  /** Projects whose own settings have switched the watchdog off. */
+  optedOut?: string[];
 }): Harness {
   const clock = new FakeClock(1_000_000);
   const logs: WatchdogLogEntry[] = [];
@@ -126,6 +128,7 @@ function harness(options: {
       [...states.keys()]
         .filter((key) => key.startsWith(`${projectKey}/`))
         .map((key) => key.slice(projectKey.length + 1)),
+    watchdogEnabledFor: (projectKey) => !(options.optedOut ?? []).includes(projectKey),
     readState: (projectKey, runId) => states.get(`${projectKey}/${runId}`),
     orchestratorStatus: async (state) => options.status?.(state) ?? "waiting",
     reconcile: async (_state, operation) =>
@@ -353,6 +356,29 @@ test("a disabled watchdog performs no ticks at all", async () => {
   });
   assert.equal(await test1.watchdog.run(5), 0);
   assert.deepEqual(test1.logs, []);
+});
+
+test("a project that switched the watchdog off is skipped, and says so", async () => {
+  // §50 makes the watchdog opt-in, and `ProjectSettings.watchdogEnabled` is the
+  // answer the project itself gave — read by nothing, so a project that had
+  // turned the watchdog off was watched anyway the moment anyone added its key
+  // to `watchdog.json`.
+  const test1 = harness({
+    states: [
+      ["key-1/run-1", makeRun({ projectKey: "key-1", runId: "run-1" })],
+      ["key-2/run-2", makeRun({ projectKey: "key-2", runId: "run-2" })],
+    ],
+    config: makeConfig({ project_keys: ["key-1", "key-2"] }),
+    optedOut: ["key-1"],
+    status: () => "absent",
+  });
+
+  const report = await test1.watchdog.tick();
+  assert.equal(report.observations, 1, "only the project that consented is observed");
+  assert.deepEqual(test1.spawns, ["key-2/run-2@gen1"]);
+  const skipped = test1.logs.find((entry) => entry.projectKey === "key-1");
+  assert.equal(skipped?.action, "noop");
+  assert.match(skipped?.reason ?? "", /watchdog switched off/);
 });
 
 test("unreadable state is reported and never acted upon", async () => {

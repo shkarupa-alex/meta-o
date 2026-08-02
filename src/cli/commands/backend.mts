@@ -432,6 +432,7 @@ function backendDeps(adapter: HerdrAdapter, config: WatchdogConfig): WatchdogDep
   return {
     config,
     listRuns,
+    watchdogEnabledFor: (projectKey) => readSettings(projectKey)?.watchdogEnabled !== false,
     readState,
     orchestratorStatus,
     reconcile: async (_state, operation) => adapter.reconcile(operation),

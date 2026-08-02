@@ -31,8 +31,10 @@ import type {
   SpawnRequest,
 } from "../dist/core/types.mjs";
 
+/** §M-TEST-CAPABILITY-SUITE — The model every probe session is spawned on. */
 const MODEL: ModelRef = { route: "claude", vendor: "anthropic", family: "claude", model: "opus" };
 
+/** §M-TEST-CAPABILITY-SUITE — A backend that claims everything, so behaviour decides. */
 const CAPABILITIES: AdapterCapabilities = {
   deliveryReceipt: true,
   idempotencyKey: true,
@@ -54,18 +56,23 @@ type Misbehaviour = "none" | "cross-wire" | "lose-turn";
  * prompt lands in the pane whether or not a model ever answers.
  */
 class FakeBackend implements SessionAdapter {
+  /** §M-TEST-CAPABILITY-SUITE — Pane text per session id, appended to by every send that reaches it. */
   private readonly panes = new Map<string, string>();
+  /** §M-TEST-CAPABILITY-SUITE — Monotonic source of session ids, so `fake-2` is always the second spawn. */
   private counter = 0;
+  /** §M-TEST-CAPABILITY-SUITE — How this backend mishandles the second session's turn, if at all. */
   private readonly misbehaviour: Misbehaviour;
 
   constructor(misbehaviour: Misbehaviour = "none") {
     this.misbehaviour = misbehaviour;
   }
 
+  /** §M-TEST-CAPABILITY-SUITE — Claim every capability; the probes decide the truth. */
   async capabilities(): Promise<AdapterCapabilities> {
     return CAPABILITIES;
   }
 
+  /** §M-TEST-CAPABILITY-SUITE — The same claim in matrix form. */
   async capabilityReport(): Promise<CapabilityReport> {
     const matrix = Object.fromEntries(
       Object.keys(CAPABILITIES).map((key) => [key, { grade: "supported", detail: "fake" }]),
@@ -80,6 +87,7 @@ class FakeBackend implements SessionAdapter {
     };
   }
 
+  /** §M-TEST-CAPABILITY-SUITE — Open a numbered pane for a role. */
   async spawn(request: SpawnRequest): Promise<SessionRef> {
     this.counter += 1;
     const sessionId = `fake-${this.counter}`;
@@ -87,6 +95,7 @@ class FakeBackend implements SessionAdapter {
     return { backend: "herdr", sessionId, role: request.role, generation: 1 };
   }
 
+  /** §M-TEST-CAPABILITY-SUITE — Append the message wherever the misbehaviour sends it. */
   async send(session: SessionRef, operationId: string, message: string): Promise<DeliveryResult> {
     const target = this.misdirect(session.sessionId);
     if (target !== undefined) this.panes.set(target, `${this.panes.get(target) ?? ""}${message}\n`);
@@ -99,27 +108,33 @@ class FakeBackend implements SessionAdapter {
     return this.misbehaviour === "cross-wire" ? "fake-1" : undefined;
   }
 
+  /** §M-TEST-CAPABILITY-SUITE — Always alive; liveness is not what these tests probe. */
   async status(_session: SessionRef): Promise<SessionStatus> {
     return "waiting";
   }
 
+  /** §M-TEST-CAPABILITY-SUITE — The whole pane, cursor at its end. */
   async read(session: SessionRef, _cursor?: string): Promise<SessionOutput> {
     const text = this.panes.get(session.sessionId) ?? "";
     return { cursor: String(text.length), text, terminal: false };
   }
 
+  /** §M-TEST-CAPABILITY-SUITE — Settle immediately; the panes already hold the answer. */
   async wait(_session: SessionRef, _expected: ExpectedState): Promise<SuiteWait> {
     return { status: "waiting" };
   }
 
+  /** §M-TEST-CAPABILITY-SUITE — Native resume returns the same handle. */
   async resume(session: SessionRef): Promise<SessionRef> {
     return session;
   }
 
+  /** §M-TEST-CAPABILITY-SUITE — Nothing here is ever uncertain. */
   async reconcile(operation: PendingOperation): Promise<ReconcileResult> {
     return { effect: "applied", operationId: operation.operationId };
   }
 
+  /** §M-TEST-CAPABILITY-SUITE — Stop always succeeds, so cleanup never masks a failure. */
   async stop(_session: SessionRef): Promise<"stopped" | "already_terminal" | "unknown"> {
     return "stopped";
   }

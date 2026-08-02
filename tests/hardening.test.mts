@@ -24,6 +24,7 @@ import { allowedTransitions, completionProven } from "../dist/core/fsm.mjs";
 import { outsideClosure } from "../dist/core/adoption.mjs";
 import { detectCapabilityRegression, unexercised } from "../dist/adapters/capability-suite.mjs";
 import { listRuns } from "../dist/core/state-store.mjs";
+import { roleView } from "../dist/core/role-view.mjs";
 import type { CapabilityBaseline, SuiteReport } from "../dist/adapters/capability-suite.mjs";
 import type { QcManifest, QcResult, RunState } from "../dist/core/types.mjs";
 
@@ -836,6 +837,73 @@ test("an E2E result is refused unless a worktree receipt proves it ran isolated"
       "worktree run against the candidate",
     );
     ok(cli(["run", "record-e2e", "--run-id", runId], { ...context, stdin: e2eResult }), "record-e2e");
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("a reviewer's bounded view withholds the other reviewer's findings by name", () => {
+  // §30: the two reviewers "не получают … findings друг друга". `run show`
+  // printed the whole state, so a reviewer that ran it for the candidate digest
+  // read the other reviewer's verdict on the way past — and two reviewers who
+  // have read each other are one reviewer with extra steps.
+  const state: RunState = {
+    ...({} as RunState),
+    runId: "run-1",
+    phase: "REVIEW_STABILIZATION",
+    specBlob: "/blob",
+    baseRevision: "base",
+    confirmations: {},
+    updatedAt: "2026-07-24T00:00:00Z",
+    openFindings: {
+      reviewerPrimary: [{ finding: { id: "F-1" }, status: "open" } as never],
+      reviewerCrossVendor: [{ finding: { id: "F-2" }, status: "open" } as never],
+      e2e: [{ finding: { id: "E2E-1" }, status: "open" } as never],
+    },
+  };
+
+  const primary = roleView(state, "reviewerPrimary");
+  assert.deepEqual(
+    primary.findings.map((record) => record.finding.id),
+    ["F-1"],
+  );
+  assert.deepEqual(
+    primary.withheld,
+    ["reviewerCrossVendor", "e2e"],
+    "withholding is named, because silence would read as `the others found nothing`",
+  );
+
+  // The executor is answerable for all of them, so it sees all of them.
+  assert.deepEqual(
+    roleView(state, "executor").findings.map((record) => record.finding.id),
+    ["F-1", "F-2", "E2E-1"],
+  );
+  assert.deepEqual(roleView(state, "executor").withheld, []);
+  assert.deepEqual(
+    roleView(state, "e2eTester").findings.map((record) => record.finding.id),
+    ["E2E-1"],
+  );
+  assert.deepEqual(roleView(state, "reuseResearcher").findings, []);
+});
+
+test("the bounded view is reachable from the CLI and rejects a role it does not know", () => {
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    const view = ok(
+      cli(["run", "show", "--run-id", runId, "--as-role", "reviewerCrossVendor"], context),
+      "run show --as-role",
+    );
+    assert.equal(view.json["role"], "reviewerCrossVendor");
+    assert.equal(view.json["modelSet"], undefined, "a worker is not told what judges it");
+    assert.equal(view.json["sessions"], undefined, "nor how to reach the other workers");
+
+    const refused = cli(["run", "show", "--run-id", runId, "--as-role", "orchestrator"], context);
+    assert.equal(refused.code, 1);
+    assert.equal(errorCode(refused), "unknown_role");
   } finally {
     home.dispose();
     repo.dispose();

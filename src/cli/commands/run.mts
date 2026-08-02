@@ -62,6 +62,7 @@ import type {
   Phase,
   ReviewResult,
   RevisionResult,
+  Role,
   RunState,
   SessionRef,
 } from "../../core/types.mjs";
@@ -78,6 +79,8 @@ import {
 
 import { redact, redactDeep } from "../../core/redact.mjs";
 import { identityOf, loadState, mutate } from "./run-context.mjs";
+import { roleView } from "../../core/role-view.mjs";
+import { WORKER_ROLES } from "../../core/types.mjs";
 import { assertCandidateAdmissible, assertUnpublished } from "./candidate-guards.mjs";
 
 /** §M-CLI-RUN — Redact an optional free-text flag before it reaches durable state. */
@@ -203,10 +206,31 @@ export function commandList(args: ParsedArgs): void {
   emit({ projectKey, runs });
 }
 
-/** §M-CLI-RUN — Show the full recoverable state of a run. */
+/**
+ * §M-CLI-RUN — Show the state of a run, whole or bounded to one role.
+ *
+ * Without `--as-role` this is the orchestrator's view and holds everything.
+ * With it, the caller gets only §30's list for that role — and, for a reviewer,
+ * not the other reviewer's findings. Two reviewers who have read each other are
+ * one reviewer with extra steps.
+ *
+ * The bound is a rule the workflow states, not a wall it builds: run state is a
+ * readable file, and an agent with a shell can go around it. What it removes is
+ * the accident — the reviewer who runs `run show` for the candidate digest and
+ * reads a verdict on the way past.
+ */
 export function commandShow(args: ParsedArgs): void {
   const { projectKey } = identityOf(args);
-  emit(loadState(projectKey, requireFlag(args, "run-id")));
+  const state = loadState(projectKey, requireFlag(args, "run-id"));
+  const role = optionalFlag(args, "as-role");
+  if (role === undefined) {
+    emit(state);
+    return;
+  }
+  if (!(WORKER_ROLES as readonly string[]).includes(role)) {
+    fail("unknown_role", `--as-role must name a worker role: ${WORKER_ROLES.join(", ")}`);
+  }
+  emit(roleView(state, role as Role));
 }
 
 /**

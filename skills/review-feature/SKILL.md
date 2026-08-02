@@ -20,6 +20,19 @@ implementation narrative, or the other reviewer's findings. If you find yourself
 wanting them, that is a sign the artefact itself is not self-explanatory — which
 is a finding.
 
+If you need the run's own facts — the candidate digest, the plan, which gates
+have been recorded — ask for them with
+
+```bash
+meta-o run show --run-id <id> --as-role reviewerPrimary   # or reviewerCrossVendor
+```
+
+which returns your slice and names, without showing, anything withheld. Plain
+`run show` returns the whole state including the other reviewer's findings; run
+state is an ordinary readable file, so this bound is a rule you keep rather than
+a wall that stops you. Reading around it makes the two reviews one review and
+the cross-vendor gate worthless.
+
 Work in a fresh detached worktree of the candidate commit. Do not modify tracked
 files. `git status --porcelain --untracked-files=all` must be empty when you
 finish.
