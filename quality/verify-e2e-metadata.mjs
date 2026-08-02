@@ -8,6 +8,14 @@
  * and one more tiny edit would be so convenient. If anything beyond
  * `scenarios[*].last_run` moved, the four attestations no longer describe what
  * is in the tree.
+ *
+ * What it deliberately cannot check is whether a `last_run` block is *true*.
+ * This guard runs from the repository and knows nothing about which scenarios a
+ * run selected or executed, so a receipt invented for a scenario nobody ran
+ * looks exactly like an honest one from here. `meta-o snapshot verify-metadata`
+ * has the run's state and does check it; that is the guard §00 puts in the
+ * completion path, and this one is the repository-side backstop for the part
+ * that needs no run to judge.
  */
 
 import { execFileSync } from "node:child_process";
