@@ -98,7 +98,12 @@ export function allowedTransitions(from: Phase): Phase[] {
     PREFLIGHT: ["SOLUTION_SCAN", "EXECUTING"],
     SOLUTION_SCAN: ["EXECUTING"],
     EXECUTING: ["LOCAL_QC"],
-    LOCAL_QC: ["SMOKE_PREFLIGHT", "EXECUTING"],
+    // LOCAL_QC → E2E_STABILIZATION is the return leg of an E2E fix. Without it
+    // the only way out of LOCAL_QC ran through REVIEW_STABILIZATION, which
+    // rewrites `activeLoop` to `review` and so disarms the guard that exists to
+    // stop an E2E fix from dragging the run back into a review round — the
+    // deadlock and the rule it broke were the same edge.
+    LOCAL_QC: ["SMOKE_PREFLIGHT", "E2E_STABILIZATION", "EXECUTING"],
     SMOKE_PREFLIGHT: ["REVIEW_STABILIZATION", "EXECUTING"],
     REVIEW_STABILIZATION: ["E2E_STABILIZATION", "EXECUTING", "LOCAL_QC"],
     E2E_STABILIZATION: ["FINALIZE_METADATA", "REVIEW_STABILIZATION", "EXECUTING", "LOCAL_QC"],
@@ -317,6 +322,39 @@ function routeReviews(
 }
 
 /**
+ * §M-FSM — Everything that must exist before any gate can be judged.
+ *
+ * A plan sealed for an earlier candidate counts as no plan. Reviews and E2E
+ * attest a scenario selection derived from a specific diff, so a plan whose
+ * commit is not the candidate's describes work nobody re-examined.
+ */
+function routePrerequisites(state: RunState): Routing | undefined {
+  const none: Array<keyof Confirmations> = [];
+
+  const byPhase = routeByPhase(state);
+  if (byPhase) return byPhase;
+
+  if (!state.candidateSnapshot?.digest) {
+    return {
+      action: "await_candidate",
+      phase: "EXECUTING",
+      reason: "no clean candidate commit exists yet",
+      missingGates: none,
+    };
+  }
+
+  if (!state.e2ePlan || state.e2ePlan.commitOid !== state.candidateSnapshot.provenanceCommit) {
+    return {
+      action: "await_selection_plan",
+      phase: "SMOKE_PREFLIGHT",
+      reason: "the E2E tester has not produced a selection plan for this candidate",
+      missingGates: none,
+    };
+  }
+  return undefined;
+}
+
+/**
  * §M-FSM — Compute the next step from state alone.
  *
  * Encodes the normative routing table. The one subtle rule is the E2E loop
@@ -328,29 +366,11 @@ function routeReviews(
 export function routeNext(state: RunState): Routing {
   const none: Array<keyof Confirmations> = [];
 
-  const byPhase = routeByPhase(state);
-  if (byPhase) return byPhase;
+  const prerequisite = routePrerequisites(state);
+  if (prerequisite) return prerequisite;
 
-  const snapshot = state.candidateSnapshot?.digest;
-  if (!snapshot) {
-    return {
-      action: "await_candidate",
-      phase: "EXECUTING",
-      reason: "no clean candidate commit exists yet",
-      missingGates: none,
-    };
-  }
-
-  if (!state.e2ePlan || state.e2ePlan.commitOid !== state.candidateSnapshot?.provenanceCommit) {
-    return {
-      action: "await_selection_plan",
-      phase: "SMOKE_PREFLIGHT",
-      reason: "the E2E tester has not produced a selection plan for this candidate",
-      missingGates: none,
-    };
-  }
-
-  const plan = state.e2ePlan.planDigest;
+  const snapshot = state.candidateSnapshot!.digest;
+  const plan = state.e2ePlan!.planDigest;
   const qcOk = attests(state.confirmations.qc, snapshot);
   const smokeOk = attests(state.confirmations.smoke, snapshot);
   const primaryOk = attests(state.confirmations.reviewerPrimary, snapshot, plan);
@@ -396,6 +416,16 @@ export function routeNext(state: RunState): Routing {
     };
   }
 
+  const blockers = openBlockingFindings(state);
+  if (blockers > 0) {
+    return {
+      action: "fix_review_findings",
+      phase: "REVIEW_STABILIZATION",
+      reason: `${blockers} blocking finding(s) are still open; a PASS cannot stand over an open defect`,
+      missingGates: none,
+    };
+  }
+
   return {
     action: "finalize_metadata",
     phase: "FINALIZE_METADATA",
@@ -405,16 +435,40 @@ export function routeNext(state: RunState): Routing {
 }
 
 /**
+ * §M-FSM — Every unresolved blocking finding, whoever raised it.
+ *
+ * Read from state rather than from the review results, because a verdict is a
+ * moment and a finding is a fact that outlives it. A reviewer may attest a
+ * snapshot and then, on a later reading of the same tree, open a blocker; the
+ * attestation is still true about what it saw and the blocker is still open.
+ */
+export function openBlockingFindings(state: RunState): number {
+  const slots = state.openFindings ?? {};
+  return (
+    openBlockingRecords(slots.reviewerPrimary ?? []).length +
+    openBlockingRecords(slots.reviewerCrossVendor ?? []).length +
+    openBlockingRecords(slots.e2e ?? []).length
+  );
+}
+
+/**
  * §M-FSM — Whether completion is provable right now.
  *
  * Deliberately re-derived from the four attestations instead of trusting a
  * `phase === "FINALIZE_METADATA"` flag, so a mis-sequenced transition cannot
  * manufacture a completion.
+ *
+ * Open blockers are checked here and not only inside the review round, because
+ * the review round is skipped once both reviewer gates read `passed` — which is
+ * exactly the state a run is in when someone records a gate directly instead of
+ * recording the review that produced it.
  */
 export function completionProven(state: RunState): boolean {
   const snapshot = state.candidateSnapshot?.digest;
   const plan = state.e2ePlan?.planDigest;
   if (!snapshot || !plan) return false;
+  if (state.e2ePlan?.commitOid !== state.candidateSnapshot?.provenanceCommit) return false;
+  if (openBlockingFindings(state) > 0) return false;
   return (
     attests(state.confirmations.qc, snapshot) &&
     attests(state.confirmations.reviewerPrimary, snapshot, plan) &&

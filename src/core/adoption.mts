@@ -15,7 +15,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { isSourceFile } from "./module-anchors.mjs";
+
 
 /**
  * §M-ADOPTION — Where the manifest lives.
@@ -95,17 +95,37 @@ function within(path: string, root: string): boolean {
 }
 
 /**
- * §M-ADOPTION — Source files a change touched outside the certified closure.
+ * §M-ADOPTION — Paths that are outside the boundary by their nature, not their location.
  *
- * Only source files are judged. Documentation, the knowledge layer and the
- * project's own contract must stay editable everywhere — a feature that may not
- * update `docs/knowledge` outside an adopted root could not keep the chain true,
- * and the chain is the thing adoption exists to establish.
+ * Documentation and the knowledge layer must stay editable everywhere: a feature
+ * that may not update `docs/knowledge` outside an adopted root could not keep
+ * the chain true, and the chain is what adoption exists to establish.
+ */
+const ALWAYS_EDITABLE = [/^docs\//, /^\.quality\//, /\.(md|rst|txt|adoc)$/i];
+
+/**
+ * §M-ADOPTION — Whether a changed path is fenced by the adoption boundary.
+ *
+ * Default-deny, because the alternative was default-allow against a list of
+ * thirteen file extensions. `.tsx`, `.sh`, `.c`, `.sql` and `.cjs` were not on
+ * it, so a React or shell-driven brownfield repository had a boundary that
+ * covered almost none of its code while reporting that it held.
+ */
+export function isFenced(path: string): boolean {
+  return !ALWAYS_EDITABLE.some((pattern) => pattern.test(path));
+}
+
+/**
+ * §M-ADOPTION — Files a change touched outside the certified closure.
+ *
+ * A root may name a single file as well as a directory, which is how a project
+ * lets a shared manifest — `package.json`, a lockfile, the Makefile — be edited
+ * while the code around it is still uncertified.
  */
 export function outsideClosure(changed: string[], manifest: AdoptionManifest | undefined): string[] {
   if (!manifest || manifest.fully_adopted === true) return [];
   return changed
-    .filter((path) => isSourceFile(path))
+    .filter((path) => isFenced(path))
     .filter((path) => !manifest.adopted_roots.some((root) => within(path, root)))
     .sort();
 }

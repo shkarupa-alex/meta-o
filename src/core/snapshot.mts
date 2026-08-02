@@ -27,6 +27,7 @@ import { canonicalize, type JsonValue } from "./canonical-json.mjs";
 import { sha256Hex } from "./hash.mjs";
 import { listTree, readBlob, resolveCommit, changedPaths } from "./git.mjs";
 import type { E2ERegistry, E2EScenarioEntry } from "./types.mjs";
+import { validateRegistry } from "./e2e-registry.mjs";
 
 /** §M-SNAPSHOT — Repository-relative path of the machine-readable E2E registry. */
 export const E2E_REGISTRY_PATH = "docs/architecture/e2e.json";
@@ -209,6 +210,16 @@ export function verifyMetadataCommit(input: MetadataGuardInput): MetadataGuardRe
       attestedDigest: attested.digest,
       metadataDigest: metadata.digest,
     };
+  }
+
+  // The registry that ships must still be a valid registry. The projection
+  // digest deliberately excludes `last_run`, so anything smuggled inside it is
+  // invisible to every later gate — and §30 names exactly what tends to be
+  // smuggled: screenshots, raw logs, model reasoning. Re-validating the whole
+  // document is the only check that sees them.
+  const registryValidation = validateRegistry(after as unknown);
+  for (const error of registryValidation.errors) {
+    violations.push(`${E2E_REGISTRY_PATH} in the metadata commit is invalid: ${error}`);
   }
 
   const beforeCatalog = new Map((before?.scenarios ?? []).map((s) => [s.scenario_id, catalogOf(s)]));

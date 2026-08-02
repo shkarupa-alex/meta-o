@@ -56,12 +56,23 @@ import {
   type ParsedArgs,
 } from "../args.mjs";
 
+/** §M-CLI-RESULTS — Gates whose PASS must arrive with the evidence that produced it. */
+const EVIDENCE_BOUND_GATES = new Set(["reviewerPrimary", "reviewerCrossVendor", "e2e"]);
+
 /**
  * §M-CLI-RESULTS — Record one gate's outcome against the current candidate.
  *
  * A result is stored with the digest it attests, never merely "the latest", so
  * a late-arriving verdict for superseded content is visibly stale instead of
  * silently counted.
+ *
+ * A *pass* for a reviewer or the E2E set cannot be recorded here at all. This
+ * command validates neither the verdict, nor the findings it should have
+ * carried, nor the plan judgement, and it stamps the run's own plan digest onto
+ * the result — so it always matched. That made it a one-line way to turn a
+ * `changes_requested` with an open blocker into a green gate, and a reviewer
+ * who never ran into one who approved. Failures and invalidations stay here:
+ * they take nothing away from anybody.
  */
 export async function commandRecordGate(args: ParsedArgs): Promise<void> {
   const { projectKey } = identityOf(args);
@@ -77,6 +88,14 @@ export async function commandRecordGate(args: ParsedArgs): Promise<void> {
   }
   if (!["passed", "failed", "invalidated"].includes(status)) {
     fail("invalid_status", `--status must be passed|failed|invalidated, got ${status}`);
+  }
+  if (status === "passed" && EVIDENCE_BOUND_GATES.has(gate)) {
+    fail(
+      "evidence_required",
+      `${gate} cannot be passed with record-gate; use ` +
+        `${gate === "e2e" ? "`meta-o run record-e2e`" : "`meta-o run record-review`"}, ` +
+        "which validates the verdict, its findings and the plan it judged",
+    );
   }
 
   const next = await mutate(projectKey, runId, (state) => {

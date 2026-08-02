@@ -13,7 +13,7 @@ import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { resolveProjectIdentity } from "../../core/project-key.mjs";
 import { computeSnapshotDigest, verifyMetadataCommit } from "../../core/snapshot.mjs";
-import { git } from "../../core/git.mjs";
+import { git, resolveCommit } from "../../core/git.mjs";
 import { runPreflight, type PreflightCheck } from "../../core/preflight.mjs";
 import { HerdrAdapter } from "../../adapters/herdr.mjs";
 import {
@@ -182,6 +182,15 @@ export async function commandPreflight(args: ParsedArgs): Promise<void> {
   if (!ok) process.exitCode = 1;
 }
 
+/** §M-CLI-GATES — Resolve a revision to its commit OID, or nothing if it names none. */
+function tryResolveCommit(repoDir: string, revision: string): string | undefined {
+  try {
+    return resolveCommit(revision, repoDir);
+  } catch {
+    return undefined;
+  }
+}
+
 /** §M-CLI-GATES — Compute the snapshot digest of a revision. */
 export function commandSnapshotDigest(args: ParsedArgs): void {
   const { repoDir } = repoOf(args);
@@ -202,7 +211,23 @@ export async function commandVerifyMetadata(args: ParsedArgs): Promise<void> {
   const state = readState(projectKey, runId);
   if (!state) fail("unknown_run", `run ${runId} has no state`);
 
-  const attested = optionalFlag(args, "attested") ?? state.candidateSnapshot?.provenanceCommit;
+  // `--attested` may name the commit, but it may not *choose* it. Left free, it
+  // let a run verify one tree, record the verdict against another, and complete
+  // with source no reviewer or scenario had ever seen — the whole guard read as
+  // a formality the caller filled in.
+  const provenance = state.candidateSnapshot?.provenanceCommit;
+  const declared = optionalFlag(args, "attested");
+  if (declared !== undefined && provenance !== undefined && declared !== provenance) {
+    const resolved = tryResolveCommit(repoDir, declared);
+    if (resolved !== provenance) {
+      fail(
+        "attested_commit_mismatch",
+        `--attested ${declared} is not the attested candidate ${provenance}`,
+        { declared, resolved, attestedCandidate: provenance },
+      );
+    }
+  }
+  const attested = declared ?? provenance;
   if (!attested) fail("no_candidate", "the run has no attested candidate commit");
 
   const observed = state.e2eScenarioStatus;
@@ -229,10 +254,19 @@ export async function commandVerifyMetadata(args: ParsedArgs): Promise<void> {
     await withWriterLock(projectKey, runId, () => {
       const current = readState(projectKey, runId);
       if (!current?.candidateSnapshot) fail("unknown_run", `run ${runId} disappeared`);
+      // The digest recorded is the one the guard read, never the one the run
+      // happens to hold. Writing the state's digest here would have made the
+      // receipt describe a tree this command never looked at.
+      if (report.attestedDigest !== current.candidateSnapshot.digest) {
+        fail(
+          "attested_digest_mismatch",
+          `the guard verified ${report.attestedDigest}, the run's candidate is ${current.candidateSnapshot.digest}`,
+        );
+      }
       return commitState({
         ...current,
         metadataVerified: {
-          snapshotDigest: current.candidateSnapshot.digest,
+          snapshotDigest: report.attestedDigest,
           metadataCommit,
           verifiedAt: isoTimestamp(),
         },
@@ -329,131 +363,6 @@ export function commandQcEvaluate(args: ParsedArgs): void {
   if (!evaluation.pass) process.exitCode = 1;
 }
 
-/** §M-CLI-GATES — Read a repository file at one revision, or nothing if it did not exist. */
-function readAt(repoDir: string, revision: string, relative: string): string | undefined {
-  try {
-    return git(["show", `${revision}:${relative}`], repoDir);
-  } catch {
-    return undefined;
-  }
-}
-
-/** §M-CLI-GATES — Read a repository file from the working tree, or nothing if absent. */
-function readNow(repoDir: string, relative: string): string | undefined {
-  const path = join(repoDir, relative);
-  return existsSync(path) ? readFileSync(path, "utf8") : undefined;
-}
-
-/** §M-CLI-GATES — Ratchet baselines compared alongside the thresholds that produced them. */
-const BASELINE_FILES = [
-  ".quality/code-health-baseline.json",
-  ".quality/import-graph-baseline.json",
-];
-
-/**
- * §M-CLI-GATES — Compare the configured thresholds and frozen baselines across revisions.
- *
- * Separate from the manifest comparison because it fails differently: an
- * unreadable `[tool.meta_o.*]` key is not a weakening, but it *is* a hole in
- * this check, and reporting it as a parse error keeps the answer honest instead
- * of quietly narrow.
- */
-function policyWeakenings(
-  repoDir: string,
-  baseRevision: string,
-): { weakenings: PolicyWeakening[]; notes: string[]; blindSpots: string[] } {
-  const weakenings: PolicyWeakening[] = [];
-  const notes: string[] = [];
-  const blindSpots: string[] = [];
-
-  const beforeToml = readAt(repoDir, baseRevision, "pyproject.toml");
-  const afterToml = readNow(repoDir, "pyproject.toml");
-  if (beforeToml !== undefined && afterToml === undefined) {
-    weakenings.push({
-      source: "pyproject.toml",
-      key: "*",
-      kind: "section_removed",
-      detail: "pyproject.toml was deleted, so every gate falls back to its built-in defaults",
-    });
-  } else if (beforeToml === undefined && afterToml !== undefined) {
-    notes.push(`pyproject.toml did not exist at ${baseRevision}; there is no policy to compare`);
-  } else if (beforeToml !== undefined && afterToml !== undefined) {
-    const before = parseMetaOPolicy(beforeToml);
-    const after = parseMetaOPolicy(afterToml);
-    for (const error of [...before.errors, ...after.errors]) {
-      blindSpots.push(`pyproject.toml could not be fully read: ${error}`);
-    }
-    weakenings.push(...detectPolicyWeakening(before, after));
-  }
-
-  for (const relative of BASELINE_FILES) {
-    const before = readAt(repoDir, baseRevision, relative);
-    const after = readNow(repoDir, relative);
-    if (before === undefined && after === undefined) continue;
-    if (before === undefined) {
-      notes.push(`${relative} did not exist at ${baseRevision}; the first baseline is not a weakening`);
-      continue;
-    }
-    if (after === undefined) {
-      // Deleting a baseline is not the same as having none. The ratchet lets a
-      // project record the debt it starts with exactly once; removing the file
-      // restores that exception, so the next `--write-baseline` may freeze
-      // whatever the code has grown into.
-      weakenings.push({
-        source: relative,
-        key: "*",
-        kind: "changed",
-        detail: `${relative} was deleted, which makes the next freeze a first baseline again`,
-      });
-      continue;
-    }
-    try {
-      weakenings.push(...detectBaselineWeakening(relative, JSON.parse(before), JSON.parse(after)));
-    } catch (error) {
-      blindSpots.push(`${relative} could not be compared: ${(error as Error).message}`);
-    }
-  }
-
-  return { weakenings, notes, blindSpots };
-}
-
-/**
- * §M-CLI-GATES — Detect any weakening of the QC contract since the base revision.
- *
- * The executor is the party this gate constrains, so an unexplained relaxation
- * must reach the user rather than be applied by the party it benefits. "The
- * contract" is more than the list of gates: it is also the thresholds they
- * enforce and the debt they were allowed to forgive, because a gate whose limit
- * moved to meet the code has stopped being a limit.
- */
-export function commandQcWeakening(args: ParsedArgs): void {
-  const { repoDir, projectKey } = repoOf(args);
-  const runId = optionalFlag(args, "run-id");
-  const state = runId ? readState(projectKey, runId) : undefined;
-  const baseRevision = optionalFlag(args, "base-rev") ?? state?.baseRevision;
-  if (!baseRevision) fail("no_base_revision", "--base-rev or --run-id is required");
-
-  const policy = policyWeakenings(repoDir, baseRevision);
-  const notes = [...policy.notes];
-  const blindSpots = [...policy.blindSpots];
-  const weakenings: (QcWeakening | PolicyWeakening)[] = [...policy.weakenings];
-
-  const baseManifest = readAt(repoDir, baseRevision, ".quality/qc-manifest.json");
-  if (baseManifest === undefined) {
-    notes.push(`no QC manifest existed at ${baseRevision}; the gate list has nothing to compare`);
-  } else {
-    const current = readRepoJson<QcManifest>(repoDir, ".quality/qc-manifest.json");
-    weakenings.push(...detectWeakening(JSON.parse(baseManifest) as QcManifest, current));
-  }
-
-  // A blind spot decides like a weakening. A key this parser cannot read is a
-  // key whose relaxation it cannot see, so answering "no weakening" would be a
-  // claim about ground it never covered — and `max_nesting_depth = 0x40` is a
-  // perfectly ordinary way to arrive there by accident.
-  const requiresUserDecision = weakenings.length > 0 || blindSpots.length > 0;
-  emit({ baseRevision, weakenings, notes, blindSpots, requiresUserDecision });
-  if (requiresUserDecision) process.exitCode = 1;
-}
 
 /**
  * §M-CLI-GATES — Validate a reviewer's structured result.

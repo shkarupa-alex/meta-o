@@ -145,8 +145,16 @@ export function assertCleanWorktree(cwd: string): void {
   if (status.trim() !== "") throw new DirtyWorktreeError(cwd, status);
 }
 
-/** §M-GIT — Paths that differ between two commits. */
+/**
+ * §M-GIT — Paths that differ between two commits.
+ *
+ * `--no-renames` on purpose. With rename detection on, `git mv a/x.py b/x.py`
+ * reports only the destination, so a boundary check reading this list sees a
+ * file appearing inside the permitted area and nothing leaving the forbidden
+ * one. Every caller here asks "what did this change touch", and a rename
+ * touches both ends.
+ */
 export function changedPaths(fromCommit: string, toCommit: string, cwd: string): string[] {
-  const raw = git(["diff", "--name-only", "-z", fromCommit, toCommit], cwd);
+  const raw = git(["diff", "--name-only", "--no-renames", "-z", fromCommit, toCommit], cwd);
   return raw.split("\0").filter((path) => path !== "");
 }

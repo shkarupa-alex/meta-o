@@ -48,7 +48,7 @@ import {
 import { HerdrAdapter } from "../../adapters/herdr.mjs";
 import { isoTimestamp } from "../../core/clock.mjs";
 import { readExternalBytes } from "../../core/safe-fs.mjs";
-import { join } from "node:path";
+import { isAbsolute, join, relative as relativePath, resolve } from "node:path";
 import type {
   E2ERegistry,
   E2EResult,
@@ -78,6 +78,32 @@ import {
 import { identityOf, loadState, mutate } from "./run-context.mjs";
 
 /**
+ * §M-CLI-RUN — Resolve what a spec reference really is, not what it was called.
+ *
+ * `--spec-kind local` pointing at a file git tracks is a tracked spec. Taking
+ * the caller's word for it set `disposition: "external"`, which turns off
+ * retirement entirely — so the same document could ship in the completed tree
+ * simply by being introduced with an absolute path. Kind is a fact about the
+ * repository, and this is where it gets established.
+ */
+function normalizeSpecReference(
+  repoDir: string,
+  kind: string,
+  locator: string,
+): ["tracked" | "local" | "url", string] {
+  if (kind !== "local") return [kind as "tracked" | "url", locator];
+  const absolute = isAbsolute(locator) ? locator : resolve(repoDir, locator);
+  const relative = relativePath(repoDir, absolute);
+  if (relative.startsWith("..") || isAbsolute(relative)) return ["local", locator];
+  try {
+    git(["ls-files", "--error-unmatch", "--", relative], repoDir);
+  } catch {
+    return ["local", locator];
+  }
+  return ["tracked", relative];
+}
+
+/**
  * §M-CLI-RUN — Start a run by pinning its spec and creating recoverable state.
  *
  * The spec blob is materialised before anything else: from this point the run
@@ -92,8 +118,8 @@ export async function commandStart(args: ParsedArgs): Promise<void> {
   if (kind !== "tracked" && kind !== "local" && kind !== "url") {
     fail("invalid_spec_kind", `--spec-kind must be tracked|local|url, got ${kind}`);
   }
-  const locator = requireFlag(args, "spec-locator");
   const declaredSha = optionalFlag(args, "spec-sha256");
+  const [specKind, locator] = normalizeSpecReference(repoDir, kind, requireFlag(args, "spec-locator"));
 
   const settings = readSettings(projectKey);
   const globalConfig = readGlobalConfig();
@@ -117,10 +143,10 @@ export async function commandStart(args: ParsedArgs): Promise<void> {
   if (!validation.ok) fail("invalid_model_set", validation.errors.join("; "));
 
   const specRef = {
-    kind,
+    kind: specKind,
     locator,
     sha256: declaredSha ?? "",
-    disposition: kind === "tracked" ? "delete_after_sync" : "external",
+    disposition: specKind === "tracked" ? "delete_after_sync" : "external",
   } as RunState["spec"];
 
   const fetched = await fetchSpec(specRef, repoDir);
@@ -292,6 +318,39 @@ function assertInsideClosure(repoDir: string, state: RunState, candidateCommit: 
 }
 
 /**
+ * §M-CLI-RUN — Every path in the candidate that still carries the spec's bytes.
+ *
+ * Matched by blob identity as well as by the original locator, because renaming
+ * the file is not retiring it. `git mv docs/feature.md docs/archived-feature.md`
+ * left a path check satisfied and the second source of truth exactly where
+ * retirement exists to remove it from.
+ */
+function specCarriers(
+  repoDir: string,
+  state: RunState,
+  candidateCommit: string,
+  locator: string,
+): string[] {
+  const found = new Set<string>();
+  const atLocator = git(["ls-tree", "--name-only", candidateCommit, "--", locator], repoDir).trim();
+  if (atLocator !== "") found.add(locator);
+
+  let blobOid: string;
+  try {
+    blobOid = git(["hash-object", "--", state.specBlob], repoDir).trim();
+  } catch {
+    return [...found];
+  }
+  const listing = git(["ls-tree", "-r", "-z", "--format=%(objectname) %(path)", candidateCommit], repoDir);
+  for (const entry of listing.split("\0")) {
+    const separator = entry.indexOf(" ");
+    if (separator < 0) continue;
+    if (entry.slice(0, separator) === blobOid) found.add(entry.slice(separator + 1));
+  }
+  return [...found].sort();
+}
+
+/**
  * §M-CLI-RUN — Refuse a candidate that still carries the tracked feature spec.
  *
  * Retirement happens inside the candidate window, not after it. A spec deleted
@@ -303,9 +362,9 @@ function assertInsideClosure(repoDir: string, state: RunState, candidateCommit: 
 function assertSpecRetired(repoDir: string, state: RunState, candidateCommit: string): void {
   if (state.spec.kind !== "tracked" || state.spec.disposition !== "delete_after_sync") return;
   const locator = state.spec.locator;
-  const present = git(["ls-tree", "--name-only", candidateCommit, "--", locator], repoDir).trim();
-  if (present === "") return;
-  fail("spec_not_retired", `the candidate still tracks the feature spec ${locator}`, {
+  const carriers = specCarriers(repoDir, state, candidateCommit, locator);
+  if (carriers.length === 0) return;
+  fail("spec_not_retired", `the candidate still tracks the feature spec: ${carriers.join(", ")}`, {
     remedy:
       "distribute the spec's durable requirements into §B/§A/§M, delete the tracked spec in " +
       "this same candidate window, and set the candidate again; the pinned blob remains " +

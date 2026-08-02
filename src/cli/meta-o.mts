@@ -48,7 +48,6 @@ import {
   commandKnowledgeValidate,
   commandPreflight,
   commandQcEvaluate,
-  commandQcWeakening,
   commandReviewValidate,
   commandSealPlan,
   commandSnapshotDigest,
@@ -59,6 +58,7 @@ import {
   commandWorktreeCreate,
   commandWorktreeRun,
 } from "./commands/gates.mjs";
+import { commandQcWeakening } from "./commands/weakening.mjs";
 import {
   commandList as commandSessionList,
   commandRead as commandSessionRead,
