@@ -86,9 +86,14 @@ export const CAPABILITY_REGRESSION_PROMPT =
 export function requireSupportedBackend(configured: string | undefined, flag: string | undefined): void {
   const backend = flag ?? configured ?? "herdr";
   if (backend !== "herdr") {
+    // Say which of the two asked for it. The message named the project's
+    // settings unconditionally, so `--backend omnigent` against a
+    // herdr-configured project reported a misconfiguration that was not there,
+    // and sent the reader to edit a file that was already correct.
+    const source = flag !== undefined ? "--backend" : "this project's settings";
     fail(
       "unsupported_backend",
-      `this project is configured for ${backend}, and only the herdr adapter ships today; ` +
+      `${source} asks for ${backend}, and only the herdr adapter ships today; ` +
         `${backend} needs its own adapter and an orchestrate-feature-${backend} skill`,
       { configured: configured ?? null, flag: flag ?? null },
     );

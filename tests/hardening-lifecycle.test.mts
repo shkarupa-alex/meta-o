@@ -83,6 +83,16 @@ test("a secret in a finding never reaches durable state", () => {
                 reference: "src/client.py:12",
                 detail: "client = Client(api_key='sk-abcdefghijklmnopqrstuvwxyz012345')",
               },
+              {
+                // The other half of the rule, and the half that used to be a
+                // claim rather than a behaviour: a secret recognised by the
+                // name it is bound to rather than by looking like a token.
+                // Most real credentials — a database password, an internal
+                // service key — match no vendor's pattern at all.
+                kind: "command",
+                reference: "deploy/run.sh:4",
+                detail: "DB_PASSWORD=correct-horse-battery && ./deploy",
+              },
             ],
             basis: { type: "engineering", reference: "no credential may be literal" },
             impact: "the key is committed and must be rotated",
@@ -99,7 +109,16 @@ test("a secret in a finding never reaches durable state", () => {
     const shown = ok(cli(["run", "show", "--run-id", runId], context), "run show");
     const serialized = JSON.stringify(shown.json);
     assert.ok(!serialized.includes("sk-abcdefghijklmnopqrstuvwxyz012345"), "the token is gone");
+    assert.ok(
+      !serialized.includes("correct-horse-battery"),
+      "and so is the one that looks like nothing in particular",
+    );
     assert.ok(serialized.includes("[redacted]"), "and its absence is visible");
+
+    // Not everything that sits next to an `=` — a redactor that masked
+    // `--maxfail=1` would make findings unreadable and get itself turned off.
+    assert.ok(serialized.includes("src/client.py:12"), "the reference survives");
+    assert.ok(serialized.includes("deploy/run.sh:4"), "and so does the other");
   } finally {
     home.dispose();
     repo.dispose();

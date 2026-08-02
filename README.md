@@ -181,7 +181,12 @@ graph — because a fresh orchestrator has to be able to resume from it, and a
 narrative written by a process that was about to die is not something to resume
 from.
 
-After `COMPLETE` the run directory is deleted. Your project settings stay.
+`meta-o run cleanup` deletes the run directory once the run has finished —
+`COMPLETE`, `CANCELLED`, `STOPPED_SPEC_IMPOSSIBLE` or `FAILED_BACKEND`. It is a
+command, not something reaching `COMPLETE` triggers: it stops the run's
+remaining worker sessions first, and doing that behind your back on a run you
+might still want to read would be the wrong default. Your project settings stay
+either way.
 
 ## The watchdog
 
@@ -253,9 +258,18 @@ its own E2E contract in [`docs/architecture/e2e.md`](docs/architecture/e2e.md).
 - **`reboot-recovery` is graded `degraded`, not proven.** Restarting the backend
   server cannot be automated from inside a session it manages. Run the full
   suite again after a manual restart.
-- **Secure state uses component `lstat` plus `O_NOFOLLOW`,** not dirfd-relative
-  `openat`, which Node does not expose. This is documented in
-  `src/core/safe-fs.mts` rather than hidden.
+- **§20's descriptor-relative requirement is not met.** The spec asks that state
+  files be created and replaced relative to an already-verified directory
+  descriptor. Node exposes neither `openat` nor `mkdirat`, and this
+  implementation is dependency-free by choice, so `src/core/safe-fs.mts`
+  verifies each component with `lstat` and then opens the leaf with
+  `O_NOFOLLOW`. That closes symlink substitution — the class of attack that
+  redirects a whole subtree — and leaves a narrow window between the check and
+  the open, which the `0700` requirement on `~/.meta-o` is what excludes. It is
+  a real gap, not a different way of satisfying the rule: on a host where
+  another process can already write inside your state tree, the guarantee is
+  the permission bits, not the code. Closing it properly needs a native helper
+  or `node:fs` growing the `*at` family.
 - **The Python profile ships its own import-graph checker, not Import Linter.**
   §40 names Import Linter; `templates/python/quality/import_graph.py` implements
   the same contracts (layers, independence, forbidden edges, cycles, a fan-in

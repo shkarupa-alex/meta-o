@@ -22,9 +22,15 @@ stop two feature branches from progressing independently, which is a normal
 thing to want.
 
 Every path component is verified with `lstat` before use: a symlink, a foreign
-owner or group/other permissions block the run (`src/core/safe-fs.mts`). Node
-exposes no `openat`, so this is checked component-wise plus `O_NOFOLLOW` — a
-documented deviation from the ideal dirfd-relative walk.
+owner or group/other permissions block the run (`src/core/safe-fs.mts`). The
+master spec's orchestration chapter asks for more than this — creation and
+replacement relative to a verified directory descriptor — and that part is
+**unmet**, not satisfied differently:
+Node exposes neither `openat` nor `mkdirat`, so the check and the open are two
+operations with a window between them. Symlink substitution is closed;
+a process that can already write inside `~/.meta-o` is excluded by the `0700`
+requirement rather than by this code. `README.md`'s **Known limits** says so in
+the same terms.
 
 ## §A-CRASH-RECOVERY — A fresh orchestrator resumes from state, never from a summary
 

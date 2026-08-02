@@ -314,3 +314,61 @@ test("a missing verify-e2e-metadata target warns without blocking", () => {
     repo.dispose();
   }
 });
+
+test("a fence inside a fence does not swallow the document", () => {
+  // The knowledge reader toggled a boolean on any line starting with three
+  // backticks or three tildes. A four-backtick block wrapping a three-backtick
+  // example therefore "closed" at the inner line, and everything after it read
+  // as prose — inverted, so the *next* real fence opened one. The anchor that
+  // fell inside the phantom fence vanished from the index: its own "must cite a
+  // §B" check never ran, and any §M citing it failed for referencing an anchor
+  // that does exist. The contract gate had a CommonMark-accurate scanner all
+  // along; the two now share it.
+  const documents: Array<[string, string]> = [
+    [
+      "a longer fence wrapping a shorter one",
+      "## §A-ONE — first\n\nImplements §B-CORE-01.\n\n````\n```\nexample\n```\n````\n\n## §A-TWO — second\n\nImplements §B-CORE-01.\n",
+    ],
+    [
+      "a tilde fence wrapping a backtick one",
+      "## §A-ONE — first\n\nImplements §B-CORE-01.\n\n~~~\n```\nexample\n```\n~~~\n\n## §A-TWO — second\n\nImplements §B-CORE-01.\n",
+    ],
+  ];
+
+  for (const [what, text] of documents) {
+    const index = buildAnchorIndex([
+      { path: "docs/knowledge/business.md", text: sampleBusinessKnowledge() },
+      { path: "docs/knowledge/architecture/main.md", text },
+    ]);
+    const anchors = index.sections
+      .filter((section) => section.level === "architecture")
+      .map((section) => section.anchor);
+    assert.deepEqual(anchors, ["§A-ONE", "§A-TWO"], what);
+    assert.equal(validateChain(index).ok, true, `${what} must leave a sound chain`);
+  }
+
+  // A closing line carrying an info string does not close anything — that is
+  // CommonMark, and it is why this is a shared scanner rather than a second
+  // guess. The heading after it is inside the still-open fence, and a reader
+  // that indexed it would be inventing an anchor nobody wrote.
+  const unclosed = buildAnchorIndex([
+    {
+      path: "docs/knowledge/architecture/main.md",
+      text: "## §A-ONE — first\n\nImplements §B-CORE-01.\n\n```\nexample\n```markdown\n\n## §A-TWO — second\n",
+    },
+  ]);
+  assert.deepEqual(
+    unclosed.sections.map((section) => section.anchor),
+    ["§A-ONE"],
+  );
+
+  // And a real fence still hides what is inside it, or the fix would be a
+  // scanner that has stopped scanning.
+  const hidden = buildAnchorIndex([
+    {
+      path: "docs/knowledge/architecture/main.md",
+      text: "```\n## §A-EXAMPLE-01 — not a real anchor\n```\n",
+    },
+  ]);
+  assert.deepEqual(hidden.sections, []);
+});

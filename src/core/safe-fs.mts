@@ -8,13 +8,21 @@
  * ownership and permission checks across a dozen call sites, where they would
  * silently rot.
  *
- * Known deviation from the master spec: the spec asks for creation and
- * replacement relative to an already verified directory descriptor. Node
- * exposes neither `openat` nor `mkdirat`, so this module verifies each
- * component with `lstat` and then opens with `O_NOFOLLOW`. That closes the
- * symlink-substitution class of attack but leaves a narrow TOCTOU window on a
- * host where another process can already write inside `~/.meta-o` — which the
- * `0700` requirement is meant to exclude.
+ * §20's descriptor-relative requirement is **not met** by this module, and
+ * calling that a deviation understated it. The spec asks for creation and
+ * replacement relative to an already verified directory descriptor; Node
+ * exposes neither `openat` nor `mkdirat`, and adding a native dependency to a
+ * dependency-free tool is a worse trade than saying this plainly. So each
+ * component is verified with `lstat` and the leaf is opened with `O_NOFOLLOW`.
+ *
+ * What that buys: symlink substitution is closed, including a symlink planted
+ * at a parent directory. What it does not buy: the check and the open are two
+ * operations, and on a host where another process can already write inside
+ * `~/.meta-o` the window between them is exploitable. In that case the
+ * guarantee is the `0700` requirement on the tree, which is a permission bit
+ * someone else's `umask` could have got wrong — not this code. `README.md`'s
+ * **Known limits** and `docs/knowledge/architecture/state.md` say the same, so
+ * nobody reads one of the three and concludes the rule is satisfied.
  */
 
 import {
