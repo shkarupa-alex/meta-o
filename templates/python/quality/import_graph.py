@@ -19,6 +19,7 @@ most.
 from __future__ import annotations
 
 import ast
+import re
 import sys
 from pathlib import Path
 
@@ -242,23 +243,39 @@ def layer_of(module: str, layers: list[str]) -> int | None:
     return None
 
 
+MODULE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
+
+
 def _split_contract(section_key: str, entry: str, separator: str) -> tuple[str, str]:
     """§M-QC-IMPORT-GRAPH — Read one two-sided contract entry, or stop the gate.
 
-    A malformed entry is never skipped. `independent` used to be declared as a
-    list of pairs, which `load_config` rejects outright as a non-string list,
-    while the only shape it accepted — a flat list of module names — was
-    silently discarded here: a declared structural contract that reported `ok`
-    over a live violation. Both sides are strings now, and anything this cannot
-    parse fails the gate instead of disappearing.
+    A malformed entry is never skipped, and "malformed" is judged strictly.
+    `independent` used to be declared as a list of pairs, which `load_config`
+    rejects outright as a non-string list, while the only shape it accepted — a
+    flat list of module names — was silently discarded here: a declared
+    structural contract that reported `ok` over a live violation.
+
+    Splitting on the first separator is not enough either, because it turns
+    three kinds of typo into a contract that quietly checks something else.
+    `"a -> b -> c"` partitions into `("a", "b -> c")`, which no real edge can
+    match; `"a <-> b"` written under `forbidden_edges` splits on the `->` inside
+    `<->` and yields the left side `"a <"`. So the separator must appear exactly
+    once and both sides must be module names — every one of those fails the gate
+    instead of disabling the rule it declares.
     """
+    if entry.count(separator) != 1:
+        raise SystemExit(
+            f"[tool.meta_o.import_graph] {section_key} entry {entry!r} must contain "
+            f"exactly one {separator!r}"
+        )
     left, _, right = entry.partition(separator)
-    if not left.strip() or not right.strip():
+    left, right = left.strip(), right.strip()
+    if not MODULE_NAME.match(left) or not MODULE_NAME.match(right):
         raise SystemExit(
             f"[tool.meta_o.import_graph] {section_key} entry {entry!r} must be "
             f'"<module> {separator} <module>"'
         )
-    return left.strip(), right.strip()
+    return left, right
 
 
 def check_contracts(graph: dict[str, set[str]], config: dict, report: Report) -> None:

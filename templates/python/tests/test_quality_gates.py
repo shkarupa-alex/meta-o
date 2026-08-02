@@ -1021,11 +1021,25 @@ class ImportGraphTests(unittest.TestCase):
                 self.assertIn(kind, result.stdout)
 
         # And a contract this cannot parse stops the gate rather than vanishing.
-        for line in ('independent = ["alpha"]', 'forbidden_edges = ["oops-no-arrow"]'):
+        # A first-separator split is not enough: each of these yields a pair no
+        # real edge can match, so accepting it would disable the very rule the
+        # entry declares — the silent pass wearing a different hat.
+        malformed = [
+            'independent = ["alpha"]',
+            'forbidden_edges = ["oops-no-arrow"]',
+            'forbidden_edges = ["alpha -> beta -> typo"]',
+            'independent = ["alpha <-> beta <-> typo"]',
+            # The other contract's separator is still wrong here, and `<->`
+            # contains `->`, so a naive split reads the left side as "alpha <".
+            'forbidden_edges = ["alpha <-> beta"]',
+            'independent = ["alpha -> beta"]',
+        ]
+        for line in malformed:
             with self.subTest(malformed=line):
                 result = with_contract(line)
                 self.assertEqual(result.returncode, 1)
-                self.assertIn("must be", result.stdout + result.stderr)
+                self.assertIn("must", result.stdout + result.stderr)
+                self.assertNotIn("import-graph: ok", result.stdout)
 
         # The same tree with no contract declared is clean, so the failures
         # above are the contracts talking and not some unrelated violation.

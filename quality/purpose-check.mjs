@@ -55,7 +55,11 @@ const ROOTS = ["src", "tests", "quality"];
 function sourceFiles() {
   const files = execFileSync("git", ["ls-files", "--", ...ROOTS], { cwd: ROOT, encoding: "utf8" })
     .split("\n")
-    .filter(Boolean);
+    // Extension, not everything under the root: this gate parses its input as
+    // TypeScript, and a root may legitimately hold data a parser has nothing to
+    // say about — a test fixture's certificate is not a module missing a
+    // docstring. `.mts`/`.mjs` is exactly what the gate can judge.
+    .filter((file) => file.endsWith(".mts") || file.endsWith(".mjs"));
 
   const empty = ROOTS.filter((root) => !files.some((file) => file.startsWith(`${root}/`)));
   if (empty.length > 0) {

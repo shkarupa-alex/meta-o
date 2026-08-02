@@ -2322,20 +2322,47 @@ test("an E2E result must state the set it ran, and it must be the sealed one", (
         }),
       });
 
-    const silent = record({ selectedScenarioIds: [] });
-    assert.equal(errorCode(silent), "invalid_e2e_result");
-    assert.match(silent.stderr, /selectedScenarioIds is required/);
-
     // A result that ran the scenarios but claims a different set is the case
     // the plan-bound digest cannot catch on its own.
-    const disagrees = record({ selectedScenarioIds: ["E2E-SMOKE-01"] });
-    assert.equal(errorCode(disagrees), "invalid_e2e_result");
-    assert.match(disagrees.stderr, /the sealed plan selects/);
+    //
+    // `e2e result` is the pre-flight check the tester's skill tells it to run
+    // before handing anything in. It used to judge a strict subset of what
+    // recording judges, so it printed `pass: true` for payloads the run then
+    // refused. Both now call one function; these assert they agree.
+    /** §M-TEST-HARDENING — The same payload, offered to the dry run instead. */
+    const dryRun = (overrides: Record<string, unknown>) =>
+      cli(["e2e", "result", "--run-id", runId], {
+        ...context,
+        stdin: JSON.stringify({
+          commitOid,
+          snapshotDigest,
+          planDigest: plan.planDigest,
+          selectedScenarioIds: plan.selectedScenarioIds,
+          selectionRationale: "checkout is impacted; the canary always runs",
+          scenarios: [
+            { scenarioId: "E2E-CHECKOUT-01", status: "passed", evidence: "checkout ok" },
+            { scenarioId: "E2E-SMOKE-01", status: "passed", evidence: "boot ok" },
+          ],
+          environment: "local",
+          completedAt: "2026-07-24T12:30:00Z",
+          ...overrides,
+        }),
+      });
 
-    const unexplained = record({ selectionRationale: "   " });
-    assert.equal(errorCode(unexplained), "invalid_e2e_result");
-    assert.match(unexplained.stderr, /selectionRationale is required/);
+    for (const [what, overrides, expected] of [
+      ["a silent selection", { selectedScenarioIds: [] }, /selectedScenarioIds is required/],
+      ["a disagreeing selection", { selectedScenarioIds: ["E2E-SMOKE-01"] }, /the sealed plan selects/],
+      ["an unexplained selection", { selectionRationale: "   " }, /selectionRationale is required/],
+      ["an unnamed environment", { environment: "somewhere" }, /is not one of/],
+    ] as Array<[string, Record<string, unknown>, RegExp]>) {
+      const preflight = dryRun(overrides);
+      assert.equal(preflight.code, 1, `the dry run refuses ${what}`);
+      assert.equal(preflight.json["pass"], false);
+      assert.match((preflight.json["errors"] as string[]).join("\n"), expected);
+      assert.equal(errorCode(record(overrides)), "invalid_e2e_result", `recording refuses ${what}`);
+    }
 
+    assert.equal(ok(dryRun({}), "the dry run accepts what recording accepts").json["pass"], true);
     ok(record({}), "the shape the skill documents is the shape the command accepts");
   } finally {
     home.dispose();

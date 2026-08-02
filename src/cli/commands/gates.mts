@@ -15,6 +15,7 @@ import { readRepoJson } from "../repo-json.mjs";
 import { resolveProjectIdentity } from "../../core/project-key.mjs";
 import { computeSnapshotDigest, verifyMetadataCommit } from "../../core/snapshot.mjs";
 import { resolveCommit } from "../../core/git.mjs";
+import { e2eResultErrors } from "../../core/e2e-result.mjs";
 import {
   baselineSelection,
   computePlanDigest,
@@ -39,7 +40,7 @@ import { gateReceiptPath, qcResultPath } from "../../core/paths.mjs";
 import { fetchSpec } from "../../core/spec-input.mjs";
 import type {
   E2ERegistry,
-  E2EScenarioResult,
+  E2EResult,
   E2ESelectionPlan,
   FeatureSpecRef,
   QcManifest,
@@ -278,26 +279,17 @@ export async function commandE2eResult(args: ParsedArgs): Promise<void> {
   const state = readState(projectKey, runId);
   if (!state) fail("unknown_run", `run ${runId} has no state`);
 
-  const payload = await readStdinJson<{
-    planDigest: string;
-    snapshotDigest: string;
-    scenarios: E2EScenarioResult[];
-  }>();
+  const result = await readStdinJson<E2EResult>();
+  const snapshot = state.candidateSnapshot;
+  if (!snapshot) fail("no_candidate", "record a candidate with `run set-candidate` first");
+  if (!state.e2ePlan) fail("no_plan", "an E2E result attests a selection plan; store one first");
 
-  const errors: string[] = [];
-  if (!state.e2ePlan) errors.push("the run has no stored selection plan");
-  else if (payload.planDigest !== state.e2ePlan.planDigest) {
-    errors.push(`result attests plan ${payload.planDigest}, run holds ${state.e2ePlan.planDigest}`);
-  }
-  if (payload.snapshotDigest !== state.candidateSnapshot?.digest) {
-    errors.push(`result attests snapshot ${payload.snapshotDigest}, candidate is ${state.candidateSnapshot?.digest}`);
-  }
-
-  const executed = new Set(payload.scenarios.map((scenario) => scenario.scenarioId));
-  for (const id of state.e2ePlan?.selectedScenarioIds ?? []) {
-    if (!executed.has(id)) errors.push(`selected scenario ${id} was not executed`);
-  }
-  const failures = payload.scenarios.filter((scenario) => scenario.status !== "passed");
+  // The same function `run record-e2e` will call, not a paraphrase of it. This
+  // command exists so the tester can find out whether its result is acceptable
+  // before handing it in; a check that answered a laxer question would tell it
+  // yes and then have the recording command say no.
+  const errors = e2eResultErrors(result, snapshot.digest, state.e2ePlan);
+  const failures = (result.scenarios ?? []).filter((scenario) => scenario.status !== "passed");
 
   const pass = errors.length === 0 && failures.length === 0;
   emit({ pass, errors, failures });
