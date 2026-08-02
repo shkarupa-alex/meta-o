@@ -516,11 +516,14 @@ def main() -> int:
     graph, known, self_imports, unresolved = build_graph(
         root, list(config["source_roots"]), report, prefixes
     )
+    # The discovered *files*, not the module names built from them: the floor
+    # asks which configured roots produced nothing, and a module name has no
+    # path to answer that with.
     assert_discovered(
         report,
         root,
         list(config["source_roots"]),
-        [Path(name) for name in sorted(known)],
+        discover_python_files(root, list(config["source_roots"])),
     )
 
     check_contracts(graph, config, report)

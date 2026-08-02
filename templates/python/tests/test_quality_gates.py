@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -1316,6 +1317,65 @@ class E2ECheckerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("nothing-discovered", result.stdout)
 
+    def test_a_source_root_that_moved_is_a_failure_not_a_quiet_skip(self) -> None:
+        """§M-QC-TESTS — Each configured root is judged, not just the all-empty case.
+
+        The floor returned early whenever *any* root produced files, so renaming
+        `tests/` while `source_roots` still named it left the whole directory
+        outside the gate — and because no configuration changed, `meta-o qc
+        weakening` had nothing to report either.
+        """
+        write(
+            self.project.root,
+            "pyproject.toml",
+            """
+            [tool.meta_o.purpose]
+            source_roots = ["src", "testing"]
+            """,
+        )
+        write(self.project.root, "src/kept.py", '"""§M-KEPT — still here."""\n')
+        ok = run_checker(self.project.root, "purpose_check.py")
+        self.assertEqual(ok.returncode, 1, ok.stdout)
+        self.assertIn("missing-source-root", ok.stdout)
+
+        # A root that exists and holds nothing is the same skip wearing a
+        # different hat: the gate judged one root and reported on two.
+        (self.project.root / "testing").mkdir()
+        empty = run_checker(self.project.root, "purpose_check.py")
+        self.assertEqual(empty.returncode, 1, empty.stdout)
+        self.assertIn("nothing-discovered", empty.stdout)
+
+        write(self.project.root, "testing/test_it.py", '"""§M-T — a test module."""\n')
+        self.assertEqual(run_checker(self.project.root, "purpose_check.py").returncode, 0)
+
+    def test_a_package_reached_through_a_symlink_is_judged(self) -> None:
+        """§M-QC-TESTS — Discovery follows what the import machinery follows.
+
+        `Path.rglob` stopped recursing into directory symlinks in Python 3.13;
+        `import` never stopped. A package linked into a source root was
+        importable, was imported, and no gate ever opened it.
+        """
+        write(self.project.root, "vendored/hidden.py", """
+            def undocumented(a, b):
+                return a + b
+            """)
+        (self.project.root / "src" / "linked").symlink_to(
+            self.project.root / "vendored", target_is_directory=True
+        )
+
+        result = run_checker(self.project.root, "purpose_check.py")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("undocumented", result.stdout)
+
+    def test_symlink_recursion_terminates(self) -> None:
+        """§M-QC-TESTS — A link pointing at an ancestor ends the walk, not the process."""
+        (self.project.root / "src" / "loop").symlink_to(
+            self.project.root / "src", target_is_directory=True
+        )
+        result = run_checker(self.project.root, "purpose_check.py")
+        self.assertIn(result.returncode, (0, 1), result.stderr)
+        self.assertNotIn("RecursionError", result.stderr)
+
     def test_a_package_named_build_is_judged_and_an_output_tree_is_not(self) -> None:
         """§M-QC-TESTS — Skipping `build` by name hid source the gate must judge.
 
@@ -1528,6 +1588,66 @@ class RunnerTests(unittest.TestCase):
             sorted((gate["id"], gate["status"]) for gate in written["gates"]),
             [("build-policy", "not_applicable"), ("tests", "passed")],
         )
+
+
+class AdoptedProfileTest(unittest.TestCase):
+    """§M-QC-TESTS — The profile as an adopting project actually installs it.
+
+    Every other test here runs the checkers from *this* repository against a
+    fixture directory, so anything they leave behind lands under meta-o's own
+    `.gitignore` and never appears in the fixture's `git status`. That hid a
+    defect that made the whole profile unusable: copied into a project the way
+    `templates/python/README.md` says to, the first `import _common` wrote
+    `quality/__pycache__/*.pyc` into the tree, `meta-o worktree run` saw a
+    mutated worktree, and the gate could not be recorded at all.
+    """
+
+    def test_the_gate_does_not_rewrite_the_tree_it_judges(self) -> None:
+        """§M-QC-TESTS — `make qc` leaves a copied profile byte-identical."""
+        template = QUALITY.parent
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            git(root, "init", "--quiet", "--initial-branch=main")
+            for name in ("Makefile", ".quality", "quality"):
+                source = template / name
+                if source.is_dir():
+                    shutil.copytree(
+                        source, root / name, ignore=shutil.ignore_patterns("__pycache__")
+                    )
+                else:
+                    shutil.copy2(source, root / name)
+            write(root, "src/pkg/__init__.py", '"""§M-PKG — a package."""\n')
+            write(
+                root,
+                "pyproject.toml",
+                """
+                [tool.meta_o.purpose]
+                source_roots = ["src"]
+                """,
+            )
+            git(root, "add", "--all")
+            git(root, "commit", "--quiet", "--message", "the profile as adopted")
+            self.assertEqual(self._status(root), "", "the fixture starts clean")
+
+            # The exit status is beside the point — ruff and mypy are not
+            # installed here, and §40 makes that a failure rather than a skip.
+            # What is being asserted is that running the gate changed nothing.
+            subprocess.run(
+                ["make", "qc"], cwd=root, capture_output=True, text=True, check=False
+            )
+            self.assertEqual(
+                self._status(root), "", "`make qc` may not rewrite what it judges"
+            )
+
+    def _status(self, root: Path) -> str:
+        """§M-QC-TESTS — The worktree's dirtiness, untracked files included."""
+        return subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=all"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
 
 
 if __name__ == "__main__":

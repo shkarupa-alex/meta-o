@@ -10,7 +10,7 @@
 import { isoTimestamp } from "../../core/clock.mjs";
 import { redactDeep } from "../../core/redact.mjs";
 import type { DecisionRecord } from "../../core/types.mjs";
-import { identityOf, mutate } from "./run-context.mjs";
+import { identityOf, mutate, requireUserDecision } from "./run-context.mjs";
 import { emit, fail, readStdinJson, requireFlag, type ParsedArgs } from "../args.mjs";
 
 /** §M-CLI-DECISIONS — Categories a recorded decision may fall under. */
@@ -82,15 +82,7 @@ export async function commandApproveProductionE2e(args: ParsedArgs): Promise<voi
   const decisionId = requireFlag(args, "decision-id");
 
   const next = await mutate(projectKey, runId, (state) => {
-    const decision = state.decisions.find((item) => item.id === decisionId);
-    if (!decision) fail("unknown_decision", `this run records no decision ${decisionId}`);
-    if (decision.decidedBy !== "user") {
-      fail(
-        "not_a_user_decision",
-        `decision ${decisionId} was taken by ${decision.decidedBy}; running against production ` +
-          "is the user's call and nobody else's",
-      );
-    }
+    requireUserDecision(state, decisionId, "running the E2E set against production");
     return { ...state, productionE2eApproved: { decisionId, approvedAt: isoTimestamp() } };
   });
 

@@ -44,5 +44,9 @@ verify-e2e-metadata:
 # .quality/qc-manifest.json, writes the machine-readable result to
 # $META_O_QC_RESULT when the orchestrator set it, and fails on a missing tool,
 # an unexpected skip or a mutated worktree.
+# `-B`, because a gate may not rewrite what it judges: without it the first
+# `import _common` drops `quality/__pycache__/*.pyc` into the worktree and
+# `meta-o worktree run` refuses the gate as mutating. `run_qc.py` passes
+# `PYTHONDONTWRITEBYTECODE` to every checker it spawns for the same reason.
 qc:
-	$(PYTHON) quality/run_qc.py
+	$(PYTHON) -B quality/run_qc.py

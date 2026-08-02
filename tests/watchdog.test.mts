@@ -118,6 +118,12 @@ function harness(options: {
   reconcile?: (operation: PendingOperation) => ReconcileResult;
   /** Projects whose own settings have switched the watchdog off. */
   optedOut?: string[];
+  /**
+   * Whether the pane is observed at all. The shipped CLI supplies
+   * `readSession`; a harness that omits it leaves `outputAdvanced` permanently
+   * `undefined`, which is a configuration the product never runs in.
+   */
+  observePane?: boolean;
 }): Harness {
   const clock = new FakeClock(1_000_000);
   const logs: WatchdogLogEntry[] = [];
@@ -125,6 +131,7 @@ function harness(options: {
   const spawns: string[] = [];
   const surfaced: string[] = [];
   const states = new Map(options.states);
+  let paneRevision = 1;
 
   const watchdog = new Watchdog({
     config: options.config ?? makeConfig(),
@@ -138,8 +145,16 @@ function harness(options: {
     orchestratorStatus: async (state) => options.status?.(state) ?? "waiting",
     reconcile: async (_state, operation) =>
       options.reconcile?.(operation) ?? { operationId: operation.operationId, effect: "applied" },
+    ...(options.observePane
+      ? {
+          // A wake is delivered by typing into the pane, so the very next read
+          // sees new output. That is the loop the guard has to survive.
+          readSession: async () => ({ cursor: String(paneRevision), text: "", terminal: false }),
+        }
+      : {}),
     wakeOrchestrator: async (state) => {
       wakes.push(`${state.projectKey}/${state.runId}@${state.stateVersion}`);
+      paneRevision += 1;
     },
     surfaceUncertainty: async (state, operation, reason) => {
       surfaced.push(
@@ -251,6 +266,45 @@ test("one settled event wakes the orchestrator at most once", async () => {
 
   const backoffDecision = test1.logs.at(-1);
   assert.equal(backoffDecision?.action, "backoff");
+});
+
+test("a wake does not renew its own permission to wake", async () => {
+  // The guard is keyed to `stateVersion`, and it was cleared whenever the pane
+  // produced new output — but a wake *is* new output, so each wake refreshed
+  // the permission for the next one. A wedged orchestrator got one unsolicited
+  // prompt per stall deadline, forever, on a state version that never moved.
+  //
+  // The harness observes the pane here, which is what the shipped CLI does and
+  // what the older test never did: with `readSession` absent, `outputAdvanced`
+  // is permanently `undefined` and the clearing branch is unreachable.
+  const state = makeRun({ updatedAt: new Date(0).toISOString() });
+  const test1 = harness({
+    states: [["key-1/run-1", state]],
+    status: () => "waiting",
+    observePane: true,
+  });
+
+  // The first tick has no previous cursor to compare against, so it establishes
+  // one rather than concluding anything from it.
+  await test1.watchdog.tick();
+  assert.deepEqual(test1.wakes, [], "nothing is concluded from the first observation");
+  test1.clock.advance(2 * DEFAULT_STALL_DEADLINE_MS);
+  await test1.watchdog.tick();
+  assert.deepEqual(test1.wakes, ["key-1/run-1@7"]);
+
+  for (let window = 0; window < 3; window += 1) {
+    test1.clock.advance(2 * DEFAULT_STALL_DEADLINE_MS);
+    await test1.watchdog.tick();
+  }
+  assert.deepEqual(test1.wakes, ["key-1/run-1@7"], "the same settled state is woken once");
+
+  // A version that actually moved is a different event, and is woken again.
+  test1.states.set("key-1/run-1", { ...state, stateVersion: state.stateVersion + 1 });
+  await test1.watchdog.tick();
+  assert.deepEqual(test1.wakes, ["key-1/run-1@7"], "and progress is not itself a reason to wake");
+  test1.clock.advance(2 * DEFAULT_STALL_DEADLINE_MS);
+  await test1.watchdog.tick();
+  assert.deepEqual(test1.wakes, ["key-1/run-1@7", "key-1/run-1@8"]);
 });
 
 test("a dead orchestrator receives exactly one replacement generation", async () => {

@@ -78,6 +78,9 @@ export interface FindingValidation {
   errors: string[];
 }
 
+/** §M-FINDINGS — The shape of a finding id, matching what `findingPath` will accept. */
+const FINDING_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
 /**
  * §M-FINDINGS — Validate one finding's internal consistency.
  *
@@ -88,6 +91,16 @@ export interface FindingValidation {
 export function validateFinding(finding: Finding): FindingValidation {
   const errors: string[] = [];
   if (!finding.id) errors.push("finding.id is required");
+  else if (!FINDING_ID.test(finding.id)) {
+    // An id is a name people type at a CLI and a name the run's `findings/`
+    // view writes a file under. An unconstrained one was accepted into
+    // `state.json` and then quietly failed to appear in the projection, so a
+    // blocker existed that no reader of that directory could see.
+    errors.push(
+      `${JSON.stringify(finding.id)}: a finding id may hold letters, digits, ` +
+        "'.', '_' and '-', and must start with a letter or a digit",
+    );
+  }
   if (!finding.impact) errors.push(`${finding.id}: impact is required`);
 
   if (!SEVERITIES.has(finding.severity)) {

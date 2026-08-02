@@ -51,7 +51,7 @@ import {
 } from "../args.mjs";
 
 import { redact } from "../../core/redact.mjs";
-import { identityOf, loadState, mutate } from "./run-context.mjs";
+import { identityOf, loadState, mutate, requireUserDecision } from "./run-context.mjs";
 import { roleView } from "../../core/role-view.mjs";
 export { commandSetSession, commandTakeover } from "./ownership.mjs";
 export { commandStart } from "./run-start.mjs";
@@ -258,22 +258,7 @@ export async function commandConfirmModels(args: ParsedArgs): Promise<void> {
   const decisionId = requireFlag(args, "decision-id");
   const next = await mutate(projectKey, runId, (state) => {
     assertTransition(state.phase, "PREFLIGHT");
-    const decision = state.decisions.find((item) => item.id === decisionId);
-    if (!decision) {
-      fail(
-        "unknown_decision",
-        `this run records no decision ${decisionId}; show the ModelSet, ask the user, and ` +
-          "record the answer with `meta-o run record-decision` before confirming",
-      );
-    }
-    if (decision.decidedBy !== "user") {
-      fail(
-        "not_a_user_decision",
-        `decision ${decisionId} was taken by ${decision.decidedBy}; the ModelSet is confirmed by ` +
-          "the user, and an orchestrator confirming its own choice is not a confirmation",
-        { decidedBy: decision.decidedBy },
-      );
-    }
+    requireUserDecision(state, decisionId, "this run's ModelSet");
     return { ...state, phase: "PREFLIGHT", modelSetConfirmedBy: decisionId };
   });
   emit({
@@ -494,6 +479,7 @@ export async function commandHandoff(args: ParsedArgs): Promise<void> {
 export async function commandSetModelSet(args: ParsedArgs): Promise<void> {
   const { projectKey } = identityOf(args);
   const runId = requireFlag(args, "run-id");
+  const decisionId = requireFlag(args, "decision-id");
   const modelSet = await readStdinJson<ModelSet>();
 
   const validation = validateModelSet(modelSet);
@@ -507,10 +493,21 @@ export async function commandSetModelSet(args: ParsedArgs): Promise<void> {
           "AWAITING_MODEL_SET or PAUSED_MODEL_UNAVAILABLE, before anything has been attested",
       );
     }
-    return { ...state, modelSet };
+    // §00's pause table lets `PAUSED_MODEL_UNAVAILABLE` exit on a newly
+    // *confirmed* ModelSet, and this command took no evidence: the four models
+    // could be swapped for four nobody had ever been shown, while
+    // `modelSetConfirmedBy` went on naming a decision about the old ones. A run
+    // that says "the user confirmed these" has to mean these.
+    requireUserDecision(state, decisionId, "the replacement ModelSet");
+    return { ...state, modelSet, modelSetConfirmedBy: decisionId };
   });
 
-  emit({ runId, modelSet: next.modelSet, phase: next.phase });
+  emit({
+    runId,
+    modelSet: next.modelSet,
+    phase: next.phase,
+    modelSetConfirmedBy: next.modelSetConfirmedBy,
+  });
 }
 
 /**

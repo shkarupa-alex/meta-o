@@ -161,7 +161,7 @@ const COMMANDS: Record<string, { flags: string[]; run: Command; help: string }> 
     help: "leave AWAITING_MODEL_SET, naming the user decision that confirmed the ModelSet",
   },
   "run set-model-set": {
-    flags: ["run-id"],
+    flags: ["run-id", "decision-id"],
     run: commandSetModelSet,
     help: "replace a paused run's ModelSet with a newly confirmed one (stdin)",
   },

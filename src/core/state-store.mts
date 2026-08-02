@@ -276,7 +276,12 @@ function projectFindings(state: RunState): void {
   const open = new Map<string, JsonValue>();
   for (const [role, records] of Object.entries(state.openFindings ?? {})) {
     for (const record of records ?? []) {
-      open.set(record.finding.id, { role, ...record } as unknown as JsonValue);
+      // Keyed by slot *and* id. Two reviewers may raise the same id — the
+      // duplicate check is per slot, deliberately, because they review
+      // independently and must not see each other's numbering — and keying by
+      // id alone meant the second one overwrote the first: two open blockers in
+      // `state.json`, one file, attributed to whichever slot iterated last.
+      open.set(`${role}.${record.finding.id}`, { role, ...record } as unknown as JsonValue);
     }
   }
   try {

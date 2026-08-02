@@ -106,6 +106,31 @@ async function reportedChecks(context: SuiteContext, clock: Clock): Promise<Suit
 }
 
 /**
+ * §M-CAPABILITY-SUITE — Judge the one stop the smoke probe performs.
+ *
+ * Only `stopped` counts. This session was created seconds ago and observed
+ * alive, so neither `unknown` nor `already_terminal` can mean "it was probably
+ * gone anyway" — and `already_terminal` is returned *without* the backend being
+ * asked to close the pane, which is how a probe that graded `supported` still
+ * leaked the agent it had opened.
+ *
+ * The session is named on failure because it is now unreachable: the probe
+ * belongs to no run, so no `run cleanup` or `session stop` will ever find it. A
+ * backend that cannot close panes leaks one per preflight, and the only thing
+ * left to do is say which one to close by hand.
+ */
+function gradeProbeStop(probe: SessionRef, outcome: string): CheckOutcome {
+  return outcome === "stopped"
+    ? { grade: "supported", detail: "stop closed the pane the probe opened" }
+    : {
+        grade: "unsupported",
+        detail:
+          `stop reported ${outcome} for a pane it had just opened and observed alive; ` +
+          `session ${probe.sessionId} is still running and belongs to no run`,
+      };
+}
+
+/**
  * §M-CAPABILITY-SUITE — The short smoke §20 puts on every preflight.
  *
  * It spawns one throwaway agent, observes it and stops it. That is three of the
@@ -162,15 +187,7 @@ export async function runSmokeSuite(context: SuiteContext): Promise<SuiteReport>
   checks.push(
     await runCheck("stop", true, clock, async () => {
       if (!probeSession) throw new Error("no session was spawned");
-      const outcome = await adapter.stop(probeSession);
-      // Stricter than the full suite's sweep, which stops sessions that may
-      // already have ended on their own. This one was created seconds ago and
-      // observed alive, so `unknown` cannot mean "it was probably gone anyway";
-      // it means the backend could not close a pane it owns, and the run would
-      // leak a worker per gate.
-      return outcome === "stopped" || outcome === "already_terminal"
-        ? { grade: "supported", detail: `stop reported ${outcome}` }
-        : { grade: "unsupported", detail: `stop reported ${outcome} for a pane it had just opened` };
+      return gradeProbeStop(probeSession, await adapter.stop(probeSession));
     }),
   );
 

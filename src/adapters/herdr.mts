@@ -102,6 +102,29 @@ function herdrCapabilityReport(reachable: boolean, detail: string): CapabilityRe
 const UNKNOWN_VERB = /unknown (sub)?command|unrecognized (sub)?command|no such (sub)?command|not supported/i;
 
 /**
+ * §M-HERDR — How the CLI says a thing is gone, as opposed to unreachable.
+ *
+ * Herdr reports every server-side failure as JSON on stderr with exit 1, so a
+ * socket hiccup, an internal error and "no such agent" all arrive identically
+ * at the exit status. Observation used to discriminate on that status, which
+ * meant a live worker whose `agent get` errored read as `complete`, and `stop`
+ * answered `already_terminal` for a pane it never closed. `send` had the rule
+ * right all along — everything that is not a proven refusal is `unknown` — and
+ * observation is the path that decides whether a running worker is replaced.
+ *
+ * The message is consulted as well as the code, because a Herdr build that
+ * prints prose instead of an envelope would otherwise turn every "gone" into a
+ * thrown error and strand a run that is merely finished.
+ */
+const ABSENT = /not found|no such|does not exist|unknown agent|unknown pane/i;
+
+/** §M-HERDR — Whether an error proves the thing asked about is gone, rather than unreachable. */
+function isAbsence(error: unknown, code: string): boolean {
+  if (!(error instanceof HerdrCommandError)) return false;
+  return error.code === code || (error.code === "herdr_error" && ABSENT.test(error.message));
+}
+
+/**
  * §M-HERDR — Error codes that prove a prompt was refused before it was acted on.
  *
  * A closed set, because the default has to be `unknown`. Exit status 1 covers a
@@ -274,7 +297,7 @@ export class HerdrAdapter implements SessionAdapter {
       const result = await this.call(["agent", "get", target], 15_000);
       return result["agent"] as HerdrAgentInfo | undefined;
     } catch (error) {
-      if (error instanceof HerdrCommandError && error.exitCode === 1) return undefined;
+      if (isAbsence(error, "agent_not_found")) return undefined;
       throw error;
     }
   }
@@ -285,7 +308,7 @@ export class HerdrAdapter implements SessionAdapter {
       await this.call(["pane", "get", paneId], 15_000);
       return true;
     } catch (error) {
-      if (error instanceof HerdrCommandError && error.exitCode === 1) return false;
+      if (isAbsence(error, "pane_not_found")) return false;
       throw error;
     }
   }

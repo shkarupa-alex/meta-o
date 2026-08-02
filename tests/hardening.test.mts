@@ -825,7 +825,30 @@ test("a run paused on an unavailable model can be given a new ModelSet", () => {
       "→ PAUSED_MODEL_UNAVAILABLE",
     );
 
-    const rejected = cli(["run", "set-model-set", "--run-id", runId], {
+    // The replacement is the user's to approve, exactly as the first set was:
+    // without this the four models could be swapped for four nobody had been
+    // shown, while `modelSetConfirmedBy` went on naming the old ones.
+    const unconfirmed = cli(["run", "set-model-set", "--run-id", runId, "--decision-id", "D-NONE"], {
+      ...context,
+      stdin: replacement,
+    });
+    assert.equal(errorCode(unconfirmed), "unknown_decision");
+    ok(
+      cli(["run", "record-decision", "--run-id", runId], {
+        ...context,
+        stdin: JSON.stringify({
+          id: "D-REPLACE",
+          question: "run with this replacement ModelSet?",
+          answer: "yes",
+          rationale: "the withdrawn executor model is replaced by haiku",
+          category: "tooling",
+          decidedBy: "user",
+        }),
+      }),
+      "record-decision D-REPLACE",
+    );
+
+    const rejected = cli(["run", "set-model-set", "--run-id", runId, "--decision-id", "D-REPLACE"], {
       ...context,
       stdin: JSON.stringify({
         executor: { route: "claude", vendor: "anthropic", family: "claude", model: "haiku" },
@@ -837,11 +860,16 @@ test("a run paused on an unavailable model can be given a new ModelSet", () => {
     assert.equal(rejected.code, 1, "a single-vendor replacement is still refused");
     assert.equal(errorCode(rejected), "invalid_model_set");
 
-    const accepted = cli(["run", "set-model-set", "--run-id", runId], {
+    const accepted = cli(["run", "set-model-set", "--run-id", runId, "--decision-id", "D-REPLACE"], {
       ...context,
       stdin: replacement,
     });
     ok(accepted, "set-model-set");
+    assert.equal(
+      accepted.json["modelSetConfirmedBy"],
+      "D-REPLACE",
+      "and the run now names the decision that approved *these* models",
+    );
     assert.equal(
       ((accepted.json["modelSet"] as RunState["modelSet"]).executor).model,
       "haiku",
@@ -849,7 +877,7 @@ test("a run paused on an unavailable model can be given a new ModelSet", () => {
     );
 
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "PREFLIGHT"], context), "resume");
-    const locked = cli(["run", "set-model-set", "--run-id", runId], {
+    const locked = cli(["run", "set-model-set", "--run-id", runId, "--decision-id", "D-REPLACE"], {
       ...context,
       stdin: replacement,
     });
@@ -2582,8 +2610,8 @@ test("§20's findings directory is a view of the open records, not an archive", 
       }),
       "open-findings",
     );
-    assert.deepEqual(readdirSync(dir), ["F-1.json"]);
-    const projected = JSON.parse(readFileSync(join(dir, "F-1.json"), "utf8")) as {
+    assert.deepEqual(readdirSync(dir), ["reviewerPrimary.F-1.json"]);
+    const projected = JSON.parse(readFileSync(join(dir, "reviewerPrimary.F-1.json"), "utf8")) as {
       role: string;
       status: string;
       finding: { id: string };
@@ -2616,10 +2644,40 @@ test("§20's findings directory is a view of the open records, not an archive", 
       "propose-fix",
     );
     assert.equal(
-      (JSON.parse(readFileSync(join(dir, "F-1.json"), "utf8")) as { status: string }).status,
+      (
+        JSON.parse(readFileSync(join(dir, "reviewerPrimary.F-1.json"), "utf8")) as {
+          status: string;
+        }
+      ).status,
       "fix_proposed",
       "the view follows the record rather than lagging behind it",
     );
+
+    // The two reviewers number their findings independently and never see each
+    // other's, so the same id from both is ordinary. Keyed by id alone, the
+    // second overwrote the first and one of two open blockers vanished from the
+    // view.
+    dispatch(context, runId, "reviewerCrossVendor");
+    ok(
+      cli(["run", "open-findings", "--run-id", runId, "--reviewer", "reviewerCrossVendor"], {
+        ...context,
+        stdin: blocker("F-1"),
+      }),
+      "the other reviewer raises the same id",
+    );
+    assert.deepEqual(readdirSync(dir).sort(), [
+      "reviewerCrossVendor.F-1.json",
+      "reviewerPrimary.F-1.json",
+    ]);
+
+    // An id that could not be a file name is refused on the way in, rather than
+    // accepted into state.json and then silently missing from the view.
+    const unusable = cli(["run", "open-findings", "--run-id", runId, "--reviewer", "reviewerPrimary"], {
+      ...context,
+      stdin: blocker("../../../../evil"),
+    });
+    assert.equal(errorCode(unusable), "invalid_finding");
+    assert.match(unusable.stderr, /a finding id may hold letters/);
 
     ok(
       cli(
@@ -2639,7 +2697,11 @@ test("§20's findings directory is a view of the open records, not an archive", 
       ),
       "resolve-finding",
     );
-    assert.deepEqual(readdirSync(dir), [], "a closed record is deleted, not archived");
+    assert.deepEqual(
+      readdirSync(dir),
+      ["reviewerCrossVendor.F-1.json"],
+      "a closed record is deleted, not archived — and only that one",
+    );
   } finally {
     home.dispose();
     repo.dispose();

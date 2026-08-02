@@ -455,10 +455,25 @@ export class Watchdog {
           continue;
         }
 
+        // Two different questions, and they were answered by one branch.
+        //
+        // "Is this session alive" is answered by either signal: new output is a
+        // sign of life even when no state was committed, so it resets the stall
+        // clock and the backoff.
+        //
+        // "Has this orchestrator acted on what we told it" is answered only by
+        // the state version moving. A wake writes its own prompt into the pane,
+        // so keying the guard on output meant the wake refreshed the permission
+        // to wake: a wedged orchestrator got one unsolicited prompt per stall
+        // deadline, forever, on a `stateVersion` that never changed. §50 allows
+        // one wake per completion event. The same trap was already found for
+        // `surfacedForStateVersion`, and the same answer applies to it.
         if (observation.progressed || observation.outputAdvanced) {
-          memory.lastStateVersion = state.stateVersion;
           memory.lastProgressAtMs = this.clock.now();
           memory.backoffMs = this.pollMs();
+        }
+        if (observation.progressed) {
+          memory.lastStateVersion = state.stateVersion;
           delete memory.wakeSentForStateVersion;
           delete memory.surfacedForStateVersion;
         }

@@ -66,3 +66,32 @@ export async function mutate(
   });
 }
 
+
+/**
+ * §M-CLI-RUN-CONTEXT — The recorded decision in which the user answered a question.
+ *
+ * Three commands turn on the user having said yes: confirming the ModelSet,
+ * replacing it, and letting the E2E set touch production. Each names a decision
+ * already on the run's record rather than taking a flag, because a boolean
+ * nobody has to justify is exactly what an unattended session would set — and
+ * because a fresh orchestrator can then read who decided what, instead of
+ * asking again.
+ */
+export function requireUserDecision(state: RunState, decisionId: string, what: string): void {
+  const decision = state.decisions.find((item) => item.id === decisionId);
+  if (!decision) {
+    fail(
+      "unknown_decision",
+      `this run records no decision ${decisionId}; ask the user about ${what} and record the ` +
+        "answer with `meta-o run record-decision` first",
+    );
+  }
+  if (decision.decidedBy !== "user") {
+    fail(
+      "not_a_user_decision",
+      `decision ${decisionId} was taken by ${decision.decidedBy}; ${what} is the user's to ` +
+        "decide, and an orchestrator confirming its own choice is not a confirmation",
+      { decidedBy: decision.decidedBy },
+    );
+  }
+}

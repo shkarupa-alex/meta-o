@@ -134,11 +134,40 @@ def discover_python_files(root: Path, source_roots: list[str]) -> list[Path]:
         base = root / relative
         if not base.is_dir():
             continue
-        for path in sorted(base.rglob("*.py")):
+        for path in sorted(_walk_python_files(base)):
             if _skipped(base, path, always, conditional):
                 continue
             files.append(path)
     return files
+
+
+def _walk_python_files(base: Path) -> list[Path]:
+    """§M-QC-COMMON — Every `.py` file under a root, following directory symlinks.
+
+    `Path.rglob` stopped recursing into directory symlinks in Python 3.13, and
+    the import machinery never did: a package linked into a source root was
+    importable, was imported, and was invisible to every gate. Under-coverage
+    nobody can see is exactly what §40 calls a skip.
+
+    `os.walk(followlinks=True)` can loop, so visited directories are remembered
+    by identity rather than by name — two links to one tree are one tree, and a
+    link to an ancestor terminates instead of recursing forever.
+    """
+    found: list[Path] = []
+    seen: set[tuple[int, int]] = set()
+    for current, directories, names in os.walk(base, followlinks=True):
+        here = Path(current)
+        try:
+            stat = here.stat()
+        except OSError:
+            directories[:] = []
+            continue
+        if (stat.st_dev, stat.st_ino) in seen:
+            directories[:] = []
+            continue
+        seen.add((stat.st_dev, stat.st_ino))
+        found.extend(here / name for name in names if name.endswith(".py"))
+    return found
 
 
 # Names that are output directories everywhere, and names that are output
@@ -170,12 +199,27 @@ def assert_discovered(report: "Report", root: Path, source_roots: list[str], fil
     never opened. That happened for real — a checkout under a path with a
     `build`, `dist` or `venv` component matched the skip list on its *absolute*
     path — and four gates attested nothing at all, silently.
+
+    Every configured root is judged, not just the all-empty case. Renaming
+    `tests/` while `source_roots` still names it changes no configuration, so
+    `meta-o qc weakening` sees nothing — and while the check was skipped
+    whenever *any* root produced files, the whole directory silently left the
+    gate's sight.
     """
+    for relative in source_roots:
+        base = root / relative
+        if not base.is_dir():
+            report.add(relative, 1, "missing-source-root", "configured source root does not exist")
+        elif not any(_under(path, base) for path in files):
+            report.add(
+                relative,
+                1,
+                "nothing-discovered",
+                "this source root exists and yielded no .py file; a gate that judged nothing "
+                "there is a skip, not a pass",
+            )
     if files:
         return
-    for relative in source_roots:
-        if not (root / relative).is_dir():
-            report.add(relative, 1, "missing-source-root", "configured source root does not exist")
     report.add(
         "pyproject.toml",
         1,
@@ -184,6 +228,11 @@ def assert_discovered(report: "Report", root: Path, source_roots: list[str], fil
         + ", ".join(source_roots)
         + "; a gate that judged nothing is a skip, not a pass",
     )
+
+
+def _under(path: Path, base: Path) -> bool:
+    """§M-QC-COMMON — Whether one discovered file belongs to a given source root."""
+    return path == base or base in path.parents
 
 
 @dataclass

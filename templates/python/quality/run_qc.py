@@ -132,6 +132,13 @@ def run_gate(gate: dict[str, Any], root: Path) -> dict[str, Any]:
     environment["PYTHONPATH"] = os.pathsep.join(
         [str(root / "quality"), environment.get("PYTHONPATH", "")]
     ).rstrip(os.pathsep)
+    # A checker that leaves `quality/__pycache__/*.pyc` behind has rewritten the
+    # tree it was judging, and `meta-o worktree run` refuses the gate for it —
+    # so a project that copied this profile could never record a `qc`
+    # attestation at all. The interpreter is told not to write them rather than
+    # the project being told to ignore them: ignoring a mutation is how a
+    # mutating gate stays green.
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
 
     result = subprocess.run(parts, cwd=root, env=environment, check=False)
     duration = int((time.monotonic() - started) * 1000)
