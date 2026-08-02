@@ -11,8 +11,9 @@
  * never validates the feature spec.
  */
 
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { knowledgeDocuments } from "./knowledge-files.mjs";
 import { validateRegistry, danglingBusinessLinks } from "./e2e-registry.mjs";
 import {
   ADOPTION_MANIFEST_PATH,
@@ -112,39 +113,7 @@ function readJsonFile<T>(path: string): { value?: T; error?: string } {
   }
 }
 
-/** §M-PREFLIGHT — Markdown files that together define the knowledge layer. */
-function knowledgeFiles(repoDir: string): Array<{ path: string; text: string }> {
-  const files: Array<{ path: string; text: string }> = [];
-  const businessPath = join(repoDir, "docs/knowledge/business.md");
-  if (existsSync(businessPath)) {
-    files.push({ path: "docs/knowledge/business.md", text: readFileSync(businessPath, "utf8") });
-  }
-  const architectureDir = join(repoDir, "docs/knowledge/architecture");
-  if (existsSync(architectureDir) && statSync(architectureDir).isDirectory()) {
-    for (const entry of readdirSafe(architectureDir)) {
-      if (!entry.endsWith(".md")) continue;
-      files.push({
-        path: `docs/knowledge/architecture/${entry}`,
-        text: readFileSync(join(architectureDir, entry), "utf8"),
-      });
-    }
-  }
-  return files;
-}
 
-/**
- * §M-PREFLIGHT — List a directory, treating an unreadable one as empty.
- *
- * An unreadable architecture directory is reported by the knowledge checks that
- * follow, so preflight must not abort here and lose the other findings.
- */
-function readdirSafe(path: string): string[] {
-  try {
-    return readdirSync(path);
-  } catch {
-    return [];
-  }
-}
 
 /** §M-PREFLIGHT — Everything preflight needs that it cannot discover itself. */
 export interface PreflightInput {
@@ -303,7 +272,7 @@ function checkKnowledge(repoDir: string, registry: E2ERegistry | undefined, note
     });
   }
 
-  const index = buildAnchorIndex(knowledgeFiles(repoDir));
+  const index = buildAnchorIndex(knowledgeDocuments(repoDir));
   if (registry) {
     const dangling = danglingBusinessLinks(registry, businessAnchors(index));
     note({

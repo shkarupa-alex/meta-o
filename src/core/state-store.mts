@@ -78,6 +78,28 @@ export class StaleGenerationError extends Error {
   }
 }
 
+/**
+ * §M-STATE-STORE — Raised when the declared orchestrator generation is unreadable.
+ *
+ * Separate from a stale one, because the remedy is different: a stale writer
+ * has to take the run over, an unreadable claim has to be fixed in whatever
+ * produced it.
+ */
+export class InvalidGenerationError extends Error {
+  /** §M-STATE-STORE — The value that could not be read as a generation. */
+  readonly declared: string;
+
+  /** §M-STATE-STORE — Quote the value, since the point is that it is malformed. */
+  constructor(declared: string) {
+    super(
+      `${GENERATION_ENV}=${JSON.stringify(declared)} is not a generation number; ` +
+        "unset it to make no claim, or set it to the generation this orchestrator holds",
+    );
+    this.name = "InvalidGenerationError";
+    this.declared = declared;
+  }
+}
+
 /** §M-STATE-STORE — Raised when state changed under a reader between read and write. */
 export class ConcurrentWriteError extends Error {
   /** §M-STATE-STORE — Version currently on disk. */
@@ -219,8 +241,17 @@ export const GENERATION_ENV = "META_O_ORCHESTRATOR_GENERATION";
 function assertOwningGeneration(current: RunState): void {
   const declared = process.env[GENERATION_ENV];
   if (declared === undefined || declared === "") return;
+  // Unset is "I make no claim" and is allowed. Set-but-unreadable is a claim
+  // that cannot be checked, and it used to be treated as the first: a value of
+  // `2x`, or one built from an empty shell variable as `generation-`, parsed to
+  // `NaN` and disabled the fence for that command — silently, and precisely for
+  // the superseded orchestrator whose environment is most likely to be wrong.
+  // `parseInt` is also why `2x` is not simply rejected by parsing: it returns 2
+  // and ignores the rest.
+  if (!/^\s*\d+\s*$/.test(declared)) {
+    throw new InvalidGenerationError(declared);
+  }
   const claimed = Number.parseInt(declared, 10);
-  if (!Number.isFinite(claimed)) return;
   if (claimed < current.orchestratorGeneration) {
     throw new StaleGenerationError(current.orchestratorGeneration, claimed);
   }

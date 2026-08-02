@@ -7,10 +7,10 @@
  * with the catalog, did the metadata commit stay inside its permitted field.
  */
 
-import type { Dirent } from "node:fs";
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
+import { knowledgeDocuments } from "../../core/knowledge-files.mjs";
 import { readRepoJson } from "../repo-json.mjs";
 import { resolveProjectIdentity } from "../../core/project-key.mjs";
 import { computeSnapshotDigest, verifyMetadataCommit } from "../../core/snapshot.mjs";
@@ -318,15 +318,7 @@ export function commandKnowledgeValidate(args: ParsedArgs): void {
     .split(",")
     .map((entry) => entry.trim())
     .filter((entry) => entry !== "");
-  const files: Array<{ path: string; text: string }> = [];
-  const candidates = ["docs/knowledge/business.md", "docs/knowledge/glossary.md"];
-  for (const relative of markdownUnder(repoDir, "docs/knowledge")) {
-    if (!candidates.includes(relative)) candidates.push(relative);
-  }
-  for (const relative of candidates) {
-    const path = join(repoDir, relative);
-    if (existsSync(path)) files.push({ path: relative, text: readFileSync(path, "utf8") });
-  }
+  const files = knowledgeDocuments(repoDir);
 
   const index = buildAnchorIndex(files);
   const moduleAnchors = collectModuleAnchors(repoDir, roots);
@@ -357,31 +349,6 @@ export function commandKnowledgeValidate(args: ParsedArgs): void {
   if (!validation.ok || discovery.length > 0) process.exitCode = 1;
 }
 
-/**
- * §M-CLI-GATES — Every Markdown file under a directory, tolerating its absence.
- *
- * Recursive on purpose. A non-recursive listing of `architecture/` made the
- * feature-archive rule unreachable — a retired spec parked in
- * `docs/knowledge/archive/` was never read, so the check that exists to find
- * exactly that could never fire. An unreadable subdirectory must still not abort
- * validation of the business layer, which is the part a human is most likely to
- * be reading.
- */
-function markdownUnder(repoDir: string, relative: string): string[] {
-  let entries: Dirent[];
-  try {
-    entries = readdirSync(join(repoDir, relative), { withFileTypes: true });
-  } catch {
-    return [];
-  }
-  const found: string[] = [];
-  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-    const child = `${relative}/${entry.name}`;
-    if (entry.isDirectory()) found.push(...markdownUnder(repoDir, child));
-    else if (entry.isFile() && entry.name.endsWith(".md")) found.push(child);
-  }
-  return found;
-}
 
 /** §M-CLI-GATES — Create a fresh detached worktree for a gate. */
 export function commandWorktreeCreate(args: ParsedArgs): void {

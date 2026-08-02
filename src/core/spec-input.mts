@@ -9,6 +9,7 @@
  * never as an update.
  */
 
+import { realpathSync } from "node:fs";
 import { createGunzip, createInflate, createBrotliDecompress } from "node:zlib";
 import { request } from "node:https";
 import { isAbsolute, join, normalize, resolve, relative } from "node:path";
@@ -154,12 +155,35 @@ export async function fetchHttpsSpec(url: string, redirectsLeft = MAX_REDIRECTS)
  *
  * A tracked locator is repository-relative by definition; letting it escape via
  * `..` would turn "read the spec" into "read any file the agent can reach".
+ *
+ * The lexical check is not enough on its own, and was all there was. A repo
+ * containing a symlink — `spec/current.md → /etc/passwd`, or a whole `spec/`
+ * pointing outside the tree — passes it, because the string never leaves the
+ * repository even though the read does. Both ends are resolved before they are
+ * compared, so a repository reached through a symlinked parent (`/tmp` on
+ * macOS) is not itself read as an escape.
+ *
+ * A locator that does not exist yet is returned unchanged: the read that
+ * follows reports a missing spec, which is the honest error, and resolving is
+ * not this function's way of saying the file is there.
  */
 export function resolveTrackedSpecPath(repoDir: string, locator: string): string {
   const candidate = resolve(repoDir, normalize(locator));
   const rel = relative(repoDir, candidate);
   if (rel.startsWith("..") || isAbsolute(rel)) {
     throw new Error(`tracked spec locator escapes the repository: ${locator}`);
+  }
+
+  let real: string;
+  try {
+    real = realpathSync(candidate);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return candidate;
+    throw error;
+  }
+  const realRel = relative(realpathSync(repoDir), real);
+  if (realRel.startsWith("..") || isAbsolute(realRel)) {
+    throw new Error(`tracked spec locator resolves outside the repository: ${locator} → ${real}`);
   }
   return candidate;
 }

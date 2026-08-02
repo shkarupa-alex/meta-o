@@ -25,7 +25,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 
-import { createTempHome } from "./helpers.mts";
+import { createTempHome, createTempRepo } from "./helpers.mts";
 import {
   cli,
   confirmModels,
@@ -35,10 +35,12 @@ import {
   ok,
   retireSpec,
   seededRepo,
+  SETTINGS,
   startRun,
   type CliContext,
 } from "./cli-harness.mts";
 import { acquireSingleInstanceLock, appendLog } from "../dist/cli/commands/watchdog-home.mjs";
+import { knowledgeDocuments } from "../dist/core/knowledge-files.mjs";
 import type { WatchdogLogEntry } from "../dist/watchdog/watchdog.mjs";
 
 /** §M-TEST-HARDENING-STATE — One well-formed watchdog log line. */
@@ -689,5 +691,116 @@ test("the watchdog's own log and lock get the checks every other state path gets
     if (previous === undefined) delete process.env["META_O_HOME"];
     else process.env["META_O_HOME"] = previous;
     home.dispose();
+  }
+});
+
+test("a generation claim that cannot be read is refused, not ignored", () => {
+  // Unset is "I make no claim" and is allowed. Set-but-unreadable is a claim
+  // that cannot be checked, and it was treated as the first: `parseInt` turned
+  // `generation-` — what an empty shell variable produces — into NaN and
+  // disabled the fence for that command, silently, and precisely for the
+  // superseded orchestrator whose environment is most likely to be wrong.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    ok(cli(["run", "takeover", "--run-id", runId], context), "takeover");
+
+    for (const declared of ["", "generation-", "2x", "-1", "two"]) {
+      const attempt = cli(["run", "transition", "--run-id", runId, "--phase", "PREFLIGHT"], {
+        ...context,
+        env: { META_O_ORCHESTRATOR_GENERATION: declared },
+      });
+      if (declared === "") {
+        // An empty variable is indistinguishable from an unset one by the time
+        // a child process reads it, so it has to keep meaning "no claim".
+        assert.equal(attempt.code, 0, "an empty claim is no claim");
+        continue;
+      }
+      assert.equal(errorCode(attempt), "invalid_generation", `${declared} must be refused`);
+    }
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("a tracked spec that is a symlink out of the repository is refused", () => {
+  // The locator check was lexical, so `spec/current.md → /etc/passwd` passed:
+  // the string never leaves the repository even though the read does.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const outside = join(home.dir, "elsewhere.md");
+    writeFileSync(outside, "# Not this repository's spec\n");
+    symlinkSync(outside, join(repo.dir, "spec/escape.md"));
+    repo.git(["add", "-A"]);
+    repo.commit("track a spec that is a symlink");
+
+    ok(cli(["project", "init"], context), "project init");
+    ok(cli(["project", "set-settings"], { ...context, stdin: SETTINGS }), "set-settings");
+    const refused = cli(
+      ["run", "start", "--spec-kind", "tracked", "--spec-locator", "spec/escape.md"],
+      context,
+    );
+    assert.equal(refused.code, 1);
+    assert.match(
+      `${refused.stderr}${refused.stdout}`,
+      /resolves outside the repository/,
+      "the read is what escapes, and the message says so",
+    );
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("preflight and the knowledge gate read the same tree", () => {
+  // The gate walked `docs/knowledge` recursively; preflight read `business.md`
+  // and one flat listing of `architecture/`. Nothing preflight consumes today
+  // makes that visible — it uses the index only for business links, and those
+  // are defined in one document by design — so this is the kind of divergence
+  // that is free until the day someone adds a check. Both now call one reader,
+  // and the test is on that reader: two definitions of "the knowledge layer"
+  // is the defect, whether or not it has surfaced yet.
+  const repo = seededRepo();
+  try {
+    repo.write(
+      "docs/knowledge/architecture/payments/ledger.md",
+      "# Ledger\n\n## §A-LEDGER-01 — Double entry\n\nImplements §B-CHECKOUT-01.\n",
+    );
+    repo.write("docs/knowledge/archive/retired-feature.md", "# A retired spec\n");
+    repo.commit("group the architecture documents into subdirectories");
+
+    const read = knowledgeDocuments(repo.dir).map((file) => file.path);
+    assert.deepEqual(read, [
+      "docs/knowledge/business.md",
+      "docs/knowledge/glossary.md",
+      "docs/knowledge/architecture/app.md",
+      "docs/knowledge/architecture/payments/ledger.md",
+      "docs/knowledge/archive/retired-feature.md",
+    ]);
+
+    // The two documents a reader is directed to by name come first, so the
+    // gate's `documents` list stays diffable between runs.
+    assert.deepEqual(read.slice(0, 2), [
+      "docs/knowledge/business.md",
+      "docs/knowledge/glossary.md",
+    ]);
+  } finally {
+    repo.dispose();
+  }
+});
+
+test("a repository with no knowledge layer yet reads as empty, not as a crash", () => {
+  const repo = createTempRepo();
+  try {
+    repo.write("README.md", "# Nothing here yet\n");
+    repo.commit("an unadopted repository");
+    assert.deepEqual(knowledgeDocuments(repo.dir), []);
+  } finally {
+    repo.dispose();
   }
 });
