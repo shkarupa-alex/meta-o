@@ -24,7 +24,9 @@ blob is the acceptance oracle.
 3. `make qc` passes, unmodified.
 4. Knowledge is in sync: every claim the code now contradicts is updated.
 5. The tracked feature-spec file is deleted once its durable requirements have
-   been absorbed into project knowledge.
+   been absorbed into project knowledge — in this same candidate, not later.
+   `meta-o run set-candidate` refuses a candidate that still tracks it, because
+   deleting it after the reviews would change content they already attested.
 6. One clean local commit. `git status --porcelain --untracked-files=all` is
    empty afterwards.
 
@@ -59,12 +61,33 @@ belongs to the completion step alone.
 ## The QC contract
 
 `make qc` is the project's, not yours. You may strengthen it. You may not weaken
-it — not a removed gate, not a relaxed policy, not a narrowed command — without
-the user's explicit decision. `meta-o qc weakening --run-id <id>` will find it if
-you do, and it goes to the user, not to you.
+it — not a removed gate, not a relaxed policy, not a narrowed command, not a
+raised threshold, not a disabled ratchet, not a widened exemption, not a
+re-frozen baseline — without the user's explicit decision.
+`meta-o qc weakening --run-id <id>` compares all of those against the base
+revision, and what it finds goes to the user, not to you.
+
+The orchestrator runs the gate in an isolated checkout of your candidate
+(`meta-o worktree run`), exporting `META_O_QC_RESULT` and
+`META_O_SNAPSHOT_DIGEST`. Two consequences for how you write the project's
+`make qc`: it must write its machine-readable result to `$META_O_QC_RESULT`
+rather than into the repository, and it must not modify the tree — a gate that
+reformats what it was asked to check is recorded as invalid, not as a pass.
 
 If the project has no `Makefile`, no `.quality/qc-manifest.json` or no E2E
 contract, say so and stop. Creating them is a separate, user-authorised step.
+
+## Debt you find that the spec never mentioned
+
+Debt inside the spec's scope is yours to fix. Debt outside it is not: fixing it
+widens a change past what was reviewed and approved, and ignoring it loses a
+real finding. Write one short line in `docs/todo.md` — area, risk, the shape the
+future feature would take — and carry on with the scope you were given.
+
+If the project declares `.quality/adoption-manifest.json`, you may change source
+only inside the roots it certifies. `meta-o run set-candidate` refuses anything
+else; widening the boundary is a separate adoption change, and it is the user's
+call, not yours.
 
 ## Fixing findings
 
