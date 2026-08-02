@@ -67,6 +67,7 @@ meta-o run route --run-id <id>   →   act on routing.action   →   repeat
 | `await_candidate` | Dispatch `executor` with the `execute-feature` skill; when it reports a clean candidate commit, `meta-o run set-candidate` |
 | `await_selection_plan` | Dispatch `e2eTester` with the `test-e2e` skill in *planning* mode; `meta-o e2e seal-plan` then `meta-o run set-plan` |
 | `run_qc` | `--phase LOCAL_QC`, run QC in an isolated worktree (below), then `meta-o qc evaluate` and `meta-o run record-gate --gate qc --status passed` |
+| after an E2E fix | `--phase LOCAL_QC`, then straight back to `--phase E2E_STABILIZATION`; do **not** route through `SMOKE_PREFLIGHT`/`REVIEW_STABILIZATION`, which would restart the review loop the E2E loop exists to hold off |
 | `run_smoke` | `--phase SMOKE_PREFLIGHT`; the E2E tester runs build/boot/health only, then `run record-gate --gate smoke` |
 | `run_reviews` | `--phase REVIEW_STABILIZATION`; dispatch **both** reviewers on the same snapshot, independently; record each with `meta-o run record-review --reviewer <slot>` |
 | `fix_review_findings` | Hand the whole batch of open findings to the executor at once |
@@ -105,6 +106,13 @@ meta-o run record-gate --run-id <id> --gate qc --status passed
 `qc evaluate` reads the machine-readable result and refuses a pass if any
 declared gate is missing, skipped or computed for a different snapshot. An exit
 code alone is never evidence.
+
+`record-gate` takes a pass only for `qc` and `smoke`. A reviewer's pass goes in
+through `meta-o run record-review` and the E2E set's through
+`meta-o run record-e2e`, because those two carry the findings and the plan
+judgement that make the verdict mean anything; `record-gate --status passed`
+would record the word without them. Failures and invalidations may still be
+recorded for any gate.
 
 ## Dispatching a worker
 
@@ -166,6 +174,17 @@ A fresh orchestrator resumes from state alone; there is no narrative handoff.
    You do not declare that the previous one is gone — takeover asks the backend
    and refuses while it is still alive. If it refuses, it is telling you the run
    has an owner.
+
+   Takeover prints `exportForThisOrchestrator`. Export it, and keep it exported
+   for every later `meta-o` call in this session:
+
+   ```bash
+   export META_O_ORCHESTRATOR_GENERATION=<the number takeover printed>
+   ```
+
+   That is what makes the fence real. Without it, an orchestrator that was
+   replaced while it was mid-thought goes on writing to the same run, and the
+   two of you overwrite each other's decisions with no error anywhere.
 5. `meta-o run show` reports the ModelSet this run was started with. Show it to
    the user and ask *"still these models?"* before spending anything. A run
    resumed days later may be resuming onto a model the user no longer has, and

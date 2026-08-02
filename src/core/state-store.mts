@@ -194,6 +194,34 @@ export function ensureRunDirectories(projectKey: string, runId: string): string 
 }
 
 /**
+ * §M-STATE-STORE — Generation the calling orchestrator believes it owns.
+ *
+ * An environment variable rather than a flag on sixty commands: an orchestrator
+ * is one long-lived session, and `run takeover` prints the value it should
+ * export. Unset means "no claim", which is what a human running a command by
+ * hand is doing.
+ */
+export const GENERATION_ENV = "META_O_ORCHESTRATOR_GENERATION";
+
+/**
+ * §M-STATE-STORE — Refuse a write from an orchestrator that has been replaced.
+ *
+ * The comparison inside `commitState` cannot do this on its own. Every command
+ * re-reads state under the lock and mutates *that* object, so the generation it
+ * commits is by construction the one on disk — the guard could never fire, and
+ * a superseded orchestrator went on writing as if nothing had happened.
+ */
+function assertOwningGeneration(current: RunState): void {
+  const declared = process.env[GENERATION_ENV];
+  if (declared === undefined || declared === "") return;
+  const claimed = Number.parseInt(declared, 10);
+  if (!Number.isFinite(claimed)) return;
+  if (claimed < current.orchestratorGeneration) {
+    throw new StaleGenerationError(current.orchestratorGeneration, claimed);
+  }
+}
+
+/**
  * §M-STATE-STORE — Commit a state transition.
  *
  * Enforces two independent guards: an orchestrator of an older generation may
@@ -205,6 +233,7 @@ export function commitState(next: RunState, clock: Clock = systemClock): RunStat
   const path = statePath(next.projectKey, next.runId);
   const current = readSecureJson<RunState>(path);
   if (current) {
+    assertOwningGeneration(current);
     if (current.orchestratorGeneration > next.orchestratorGeneration) {
       throw new StaleGenerationError(current.orchestratorGeneration, next.orchestratorGeneration);
     }

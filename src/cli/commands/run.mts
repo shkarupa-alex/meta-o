@@ -14,6 +14,7 @@ import {
   commitState,
   ensureProject,
   ensureRunDirectories,
+  GENERATION_ENV,
   listRuns,
   readSettings,
   readState,
@@ -573,14 +574,24 @@ export async function commandTakeover(args: ParsedArgs): Promise<void> {
     );
   }
 
-  const next = await mutate(projectKey, runId, (state) => ({
-    ...state,
-    orchestratorGeneration: state.orchestratorGeneration + 1,
-  }));
+  // Taking over is allowed to raise the generation past the caller's own claim;
+  // that is what taking over means. Every later write is fenced against it.
+  const previousClaim = process.env[GENERATION_ENV];
+  delete process.env[GENERATION_ENV];
+  let next: RunState;
+  try {
+    next = await mutate(projectKey, runId, (state) => ({
+      ...state,
+      orchestratorGeneration: state.orchestratorGeneration + 1,
+    }));
+  } finally {
+    if (previousClaim !== undefined) process.env[GENERATION_ENV] = previousClaim;
+  }
   emit({
     runId,
     previousStatus: observed,
     orchestratorGeneration: next.orchestratorGeneration,
+    exportForThisOrchestrator: `${GENERATION_ENV}=${next.orchestratorGeneration}`,
     routing: routeNext(next),
   });
 }

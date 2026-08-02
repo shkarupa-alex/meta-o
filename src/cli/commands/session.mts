@@ -194,7 +194,15 @@ function digestOf(request: unknown): string {
   return sha256Hex(canonicalize(request as JsonValue));
 }
 
-/** §M-CLI-SESSION — Write the intent before the backend is touched. */
+/**
+ * §M-CLI-SESSION — Write the intent before the backend is touched.
+ *
+ * The "nothing else is in flight" check is re-made here, inside the writer
+ * lock, and not only against the snapshot the command started from. Two
+ * `session spawn` calls that read the same pre-lock state both passed the
+ * outer guard, both wrote their intent over each other's, and both spawned —
+ * leaving one live worker that state does not name and nobody can stop.
+ */
 async function prepare(
   context: SessionContext,
   operation: Omit<PendingOperation, "state" | "preparedAt">,
@@ -204,7 +212,10 @@ async function prepare(
     state: "prepared",
     preparedAt: isoTimestamp(),
   };
-  await mutate(context.projectKey, context.runId, (state) => withPendingOperation(state, pending));
+  await mutate(context.projectKey, context.runId, (state) => {
+    assertNoPendingOperation(state);
+    return withPendingOperation(state, pending);
+  });
   return pending;
 }
 
@@ -328,15 +339,18 @@ export async function commandSpawn(args: ParsedArgs): Promise<void> {
     failUncertain(pending, error);
   }
 
-  const generation = (context.state.sessionGeneration[role] ?? 0) + 1;
-  const recorded: SessionRef = { ...session, generation };
-  await mutate(context.projectKey, context.runId, (state) =>
-    withPendingOperation(withSession(state, recorded), {
+  // The generation is read under the lock, from the state being written. Taking
+  // it from the pre-lock snapshot handed two concurrent spawns the same number,
+  // which is a lost update in the one field that distinguishes them.
+  let recorded: SessionRef = { ...session, generation: 1 };
+  await mutate(context.projectKey, context.runId, (state) => {
+    recorded = { ...session, generation: (state.sessionGeneration[role] ?? 0) + 1 };
+    return withPendingOperation(withSession(state, recorded), {
       ...pending,
       state: "acknowledged",
       sessionId: recorded.sessionId,
-    }),
-  );
+    });
+  });
 
   const status = await context.adapter.status(recorded);
   await mutate(context.projectKey, context.runId, (state) => clearPendingOperation(state));
