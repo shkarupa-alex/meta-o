@@ -188,6 +188,7 @@ test("a run walks from start to COMPLETE only with four attestations on one snap
           selectedScenarioIds: plan.selectedScenarioIds,
           selectionRationale: plan.selectionRationale,
           scenarios,
+          environment: "local",
           completedAt: "2026-07-24T12:30:00Z",
         }),
       }),

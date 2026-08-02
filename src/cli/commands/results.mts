@@ -59,6 +59,20 @@ import {
   type ParsedArgs,
 } from "../args.mjs";
 
+/**
+ * §M-CLI-RESULTS — Where an E2E set may say it ran.
+ *
+ * A closed set because `production` has to be nameable to be refusable: §20
+ * forbids it without an explicit user decision, and while the result carried no
+ * environment at all there was nothing for the rule to bite on.
+ */
+const E2E_ENVIRONMENTS: ReadonlySet<string> = new Set([
+  "local",
+  "ephemeral",
+  "staging",
+  "production",
+]);
+
 /** §M-CLI-RESULTS — Gates whose PASS must arrive with the evidence that produced it. */
 const EVIDENCE_BOUND_GATES = new Set(["reviewerPrimary", "reviewerCrossVendor", "e2e"]);
 
@@ -223,6 +237,15 @@ export async function commandRecordE2e(args: ParsedArgs): Promise<void> {
     const errors = e2eResultErrors(result, snapshot.digest, state.e2ePlan);
     if (errors.length > 0) fail("invalid_e2e_result", errors.join("; "));
 
+    if (result.environment === "production" && !state.productionE2eApproved) {
+      fail(
+        "production_e2e_not_approved",
+        "§20 forbids running the E2E set against production without the user saying so for this " +
+          "run; record their decision with `meta-o run record-decision` and " +
+          "`meta-o run approve-production-e2e` first",
+      );
+    }
+
     // `commitOid` and `completedAt` are derived, not demanded. The tester knows
     // the digest and the plan it ran; the commit that produced them is already
     // in state, and requiring the tester to restate it made the shape the skill
@@ -239,6 +262,7 @@ export async function commandRecordE2e(args: ParsedArgs): Promise<void> {
     return {
       ...state,
       e2eScenarioStatus: result.scenarios.map((scenario) => ({ ...scenario })),
+      e2eEnvironment: result.environment,
       confirmations: { ...state.confirmations, e2e: gate },
     };
   });
@@ -258,6 +282,12 @@ function e2eResultErrors(
   plan: E2ESelectionPlan,
 ): string[] {
   const errors: string[] = [];
+  if (!E2E_ENVIRONMENTS.has(result.environment)) {
+    errors.push(
+      `environment ${JSON.stringify(result.environment)} is not one of ` +
+        [...E2E_ENVIRONMENTS].join("|"),
+    );
+  }
   if (result.snapshotDigest !== snapshotDigest) {
     errors.push(`result attests snapshot ${result.snapshotDigest}, candidate is ${snapshotDigest}`);
   }

@@ -113,6 +113,13 @@ export interface MetadataGuardInput {
   expectedRunId: string;
   expectedSpecSha256: string;
   expectedScenarioStatus: Map<string, "passed" | "failed" | "blocked">;
+  /**
+   * Where the recorded E2E set actually ran. `last_run.environment` was written
+   * by the executor and compared against nothing, so the receipt could claim a
+   * staging run for a set executed against production — the one environment
+   * §20 forbids without the user's say-so.
+   */
+  expectedEnvironment?: string;
 }
 
 /** §M-SNAPSHOT — Read and parse the registry as it exists in one commit. */
@@ -172,6 +179,12 @@ function receiptViolations(
   }
   if (!Number.isFinite(Date.parse(lastRun.verified_at))) {
     violations.push(`scenario ${scenarioId} records an unparseable verified_at`);
+  }
+  if (input.expectedEnvironment !== undefined && lastRun.environment !== input.expectedEnvironment) {
+    violations.push(
+      `scenario ${scenarioId} records environment ${lastRun.environment}, ` +
+        `but the recorded E2E result ran against ${input.expectedEnvironment}`,
+    );
   }
   return violations;
 }

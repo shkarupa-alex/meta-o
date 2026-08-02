@@ -158,3 +158,37 @@ export function changedPaths(fromCommit: string, toCommit: string, cwd: string):
   const raw = git(["diff", "--name-only", "--no-renames", "-z", fromCommit, toCommit], cwd);
   return raw.split("\0").filter((path) => path !== "");
 }
+
+/**
+ * §M-GIT — Tags and remote refs that name a commit this run created.
+ *
+ * §00 forbids push, remote branch, PR and tag without the user asking, and
+ * nothing checked: a run could push its candidate and tag it `v1.0.0` and still
+ * reach COMPLETE with every gate green. Asking whether a published ref points
+ * into `base..head` is the direct question — it names the offending ref, needs
+ * no snapshot taken at run start, and leaves the tags a repository already had
+ * on older commits alone.
+ *
+ * A PR cannot be seen from inside a repository at all; that one stays a rule the
+ * orchestrator is told, and this function does not pretend otherwise.
+ */
+export function publishedRunCommits(baseRevision: string, head: string, cwd: string): string[] {
+  const own = new Set(
+    git(["rev-list", `${baseRevision}..${head}`], cwd)
+      .split("\n")
+      .filter((line) => line !== ""),
+  );
+  if (own.size === 0) return [];
+
+  return git(
+    ["for-each-ref", "--format=%(refname) %(objectname)", "refs/tags", "refs/remotes"],
+    cwd,
+  )
+    .split("\n")
+    .filter((line) => line !== "")
+    .flatMap((line) => {
+      const [refname, oid] = line.split(" ");
+      return refname && oid && own.has(oid) ? [refname] : [];
+    })
+    .sort();
+}

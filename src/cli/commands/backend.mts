@@ -42,6 +42,7 @@ import {
   commitState,
   GENERATION_ENV,
   listRuns,
+  readSettings,
   readState,
   withWriterLock,
 } from "../../core/state-store.mjs";
@@ -110,15 +111,36 @@ export const CAPABILITY_REGRESSION_PROMPT =
   "sessions. Run `meta-o adapter capabilities`, report the blocking reasons to the user, and " +
   "move the run to FAILED_BACKEND if they cannot be resolved.";
 
-/** §M-CLI-BACKEND — Build the adapter for the configured backend. */
-function adapterFor(args: ParsedArgs): HerdrAdapter {
-  const backend = optionalFlag(args, "backend") ?? "herdr";
+/**
+ * §M-CLI-BACKEND — Build the adapter for the backend this project chose.
+ *
+ * The project's recorded `backend` is consulted, not just the flag. Both were
+ * validated and stored and then ignored in favour of a herdr default, so a
+ * project configured for omnigent got herdr silently — the one outcome worse
+ * than refusing, because the run looked like it was honouring the setting.
+ */
+export function requireSupportedBackend(configured: string | undefined, flag: string | undefined): void {
+  const backend = flag ?? configured ?? "herdr";
   if (backend !== "herdr") {
     fail(
       "unsupported_backend",
-      `only the herdr adapter ships today; ${backend} needs its own orchestrate-feature-<backend> skill`,
+      `this project is configured for ${backend}, and only the herdr adapter ships today; ` +
+        `${backend} needs its own adapter and an orchestrate-feature-${backend} skill`,
+      { configured: configured ?? null, flag: flag ?? null },
     );
   }
+}
+
+/** §M-CLI-BACKEND — Build the adapter for the configured backend. */
+function adapterFor(args: ParsedArgs): HerdrAdapter {
+  const cwd = optionalFlag(args, "cwd") ?? process.cwd();
+  let configured: string | undefined;
+  try {
+    configured = readSettings(resolveProjectIdentity(cwd).projectKey)?.backend;
+  } catch {
+    /* outside a known project there is nothing recorded to honour */
+  }
+  requireSupportedBackend(configured, optionalFlag(args, "backend"));
   return new HerdrAdapter({ binary: process.env["META_O_HERDR_BIN"] });
 }
 

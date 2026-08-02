@@ -566,6 +566,110 @@ test("a proposed fix must say what it changed", () => {
   }
 });
 
+test("only the user can let an E2E set touch production", () => {
+  // `environment` was declared, required non-empty by the registry schema, and
+  // compared to nothing. §20 forbids production without an explicit user
+  // decision, and until the result said where it ran there was nothing to
+  // forbid it against.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+
+    /** §M-TEST-HARDENING — Record one decision attributed to the given role. */
+    const decided = (by: string, id: string): void => {
+      ok(
+        cli(["run", "record-decision", "--run-id", runId], {
+          ...context,
+          stdin: JSON.stringify({
+            id,
+            category: "irreversible",
+            question: "may the checkout scenarios run against production?",
+            answer: "yes, the sandbox tenant only",
+            decidedBy: by,
+            rationale: "staging has no payment provider, so nothing else exercises the callback",
+          }),
+        }),
+        `record-decision by ${by}`,
+      );
+    };
+
+    decided("orchestrator", "D-1");
+    const notUser = cli(
+      ["run", "approve-production-e2e", "--run-id", runId, "--decision-id", "D-1"],
+      context,
+    );
+    assert.equal(notUser.code, 1);
+    assert.equal(errorCode(notUser), "not_a_user_decision");
+
+    decided("user", "D-2");
+    ok(
+      cli(["run", "approve-production-e2e", "--run-id", runId, "--decision-id", "D-2"], context),
+      "a user decision is accepted",
+    );
+
+    const shown = ok(cli(["run", "show", "--run-id", runId], context), "run show");
+    assert.equal((shown.json["decisions"] as unknown[]).length, 2, "and both survive a crash");
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("a decision cannot be rewritten once it is recorded", () => {
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    const payload = JSON.stringify({
+      id: "D-1",
+      category: "architecture",
+      question: "one queue or two?",
+      answer: "one",
+      decidedBy: "user",
+      rationale: "two would need a second failure mode nobody is watching",
+    });
+    ok(cli(["run", "record-decision", "--run-id", runId], { ...context, stdin: payload }), "first");
+    const again = cli(["run", "record-decision", "--run-id", runId], { ...context, stdin: payload });
+    assert.equal(again.code, 1);
+    assert.equal(errorCode(again), "duplicate_decision");
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("a run that tagged or pushed its own work cannot set a candidate", () => {
+  // §00 forbids push, remote branch, PR and tag without the user asking, and
+  // the rule lived only in the skills: a run could push its candidate, tag it
+  // v1.0.0, and reach COMPLETE with four green gates and no remark anywhere.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
+    retireSpec(repo);
+    repo.git(["tag", "v1.0.0"]);
+
+    const refused = cli(["run", "set-candidate", "--run-id", runId], context);
+    assert.equal(refused.code, 1);
+    assert.equal(errorCode(refused), "published_without_request");
+    assert.match((refused.json["error"] as { message: string }).message, /refs\/tags\/v1\.0\.0/);
+
+    // A tag on a commit the run did not author is somebody else's business.
+    repo.git(["tag", "-d", "v1.0.0"]);
+    repo.git(["tag", "v0.9.0", "HEAD~1"]);
+    ok(cli(["run", "set-candidate", "--run-id", runId], context), "an older tag is untouched");
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
 test("the metadata guard may not be pointed at a commit other than the candidate", () => {
   const repo = seededRepo();
   const home = createTempHome();

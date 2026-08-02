@@ -30,7 +30,7 @@ import {
   routeNext,
 } from "../../core/fsm.mjs";
 import { computeSnapshotDigest } from "../../core/snapshot.mjs";
-import { changedPaths, git, resolveCommit } from "../../core/git.mjs";
+import { changedPaths, git, publishedRunCommits, resolveCommit } from "../../core/git.mjs";
 import { outsideClosure, readAdoptionManifest } from "../../core/adoption.mjs";
 import { fetchSpec, materializeSpecBlob, assertSpecUnchanged } from "../../core/spec-input.mjs";
 import { validateModelSet } from "../../core/model-set.mjs";
@@ -51,6 +51,7 @@ import { isoTimestamp } from "../../core/clock.mjs";
 import { readExternalBytes } from "../../core/safe-fs.mjs";
 import { isAbsolute, join, relative as relativePath, resolve } from "node:path";
 import type {
+  DecisionRecord,
   E2ERegistry,
   E2EResult,
   E2ESelectionPlan,
@@ -76,7 +77,7 @@ import {
   type ParsedArgs,
 } from "../args.mjs";
 
-import { redact } from "../../core/redact.mjs";
+import { redact, redactDeep } from "../../core/redact.mjs";
 import { identityOf, loadState, mutate } from "./run-context.mjs";
 
 /** §M-CLI-RUN — Redact an optional free-text flag before it reaches durable state. */
@@ -253,7 +254,7 @@ function assertCompletable(state: RunState): void {
 
 /** §M-CLI-RUN — Move a run to another phase, refusing undefined transitions. */
 export async function commandTransition(args: ParsedArgs): Promise<void> {
-  const { projectKey } = identityOf(args);
+  const { projectKey, repoDir } = identityOf(args);
   const runId = requireFlag(args, "run-id");
   const phase = requireFlag(args, "phase") as Phase;
   const reason = redactText(optionalFlag(args, "reason"));
@@ -261,7 +262,25 @@ export async function commandTransition(args: ParsedArgs): Promise<void> {
 
   const next = await mutate(projectKey, runId, (state) => {
     assertTransition(state.phase, phase);
-    if (phase === "COMPLETE") assertCompletable(state);
+    // `reuseScanEnabled` was written at `run start` and read by nothing, so the
+    // optional phase could be entered whatever the user had said — and the
+    // routing table then reported "the user enabled the optional reuse scan"
+    // as a fact, with the recorded consent saying the opposite.
+    if (phase === "SOLUTION_SCAN" && state.reuseScanEnabled !== true) {
+      fail(
+        "reuse_scan_not_enabled",
+        "this run did not enable the optional reuse scan; start a run with --reuse-scan, or " +
+          "transition straight to EXECUTING",
+      );
+    }
+    if (phase === "COMPLETE") {
+      assertCompletable(state);
+      // Re-checked here and not only at `set-candidate`: the metadata commit
+      // lands between the two, and a push after attestation is the same
+      // forbidden act at a moment nothing else was looking.
+      const head = state.candidateSnapshot?.provenanceCommit;
+      if (head) assertUnpublished(repoDir, state, head);
+    }
     const updated: RunState = { ...state, phase };
     const loop = loopForPhase(phase, state.activeLoop);
     if (loop) updated.activeLoop = loop;
@@ -320,6 +339,32 @@ function assertInsideClosure(repoDir: string, state: RunState, candidateCommit: 
       remedy:
         "widen the boundary with a separate reviewed adoption change, or keep this feature " +
         "inside the certified roots",
+    },
+  );
+}
+
+/**
+ * §M-CLI-RUN — Refuse a candidate whose work has already been published.
+ *
+ * §00 forbids push, remote branch, PR and tag without the user asking, and the
+ * rule lived only in the skills — so a run could push its candidate, tag it,
+ * and still reach COMPLETE with four green gates and no remark anywhere. A tag
+ * or remote ref naming a commit this run authored is the observable half of
+ * that; a PR cannot be seen from inside a repository, and stays a rule the
+ * orchestrator is told rather than one this can claim to enforce.
+ */
+function assertUnpublished(repoDir: string, state: RunState, candidateCommit: string): void {
+  const published = publishedRunCommits(state.baseRevision, candidateCommit, repoDir);
+  if (published.length === 0) return;
+  fail(
+    "published_without_request",
+    `this run's commits are already named by ${published.join(", ")}; pushing, tagging or ` +
+      "opening a PR is the user's call, not the run's",
+    {
+      refs: published,
+      remedy:
+        "delete the ref if the run created it, or — if the user asked for it — say so and " +
+        "start the candidate from a base that already includes it",
     },
   );
 }
@@ -395,6 +440,7 @@ export async function commandSetCandidate(args: ParsedArgs): Promise<void> {
   const computed = computeSnapshotDigest(repoDir, revision);
   const current = loadState(projectKey, runId);
   assertInsideClosure(repoDir, current, computed.provenanceCommit);
+  assertUnpublished(repoDir, current, computed.provenanceCommit);
   assertSpecRetired(repoDir, current, computed.provenanceCommit);
 
   const next = await mutate(projectKey, runId, (state) => ({

@@ -31,6 +31,7 @@ import {
   commandTakeover,
   commandTransition,
 } from "./commands/run.mjs";
+import { commandApproveProductionE2e, commandRecordDecision } from "./commands/decisions.mjs";
 import {
   commandDismissTaste,
   commandKnowledgePlan,
@@ -182,6 +183,16 @@ const COMMANDS: Record<string, { flags: string[]; run: Command; help: string }> 
     flags: ["by-role", "finding-id", "reviewer", "run-id"],
     run: commandDismissTaste,
     help: "drop a declined taste suggestion",
+  },
+  "run record-decision": {
+    flags: ["run-id"],
+    run: commandRecordDecision,
+    help: "append one compact decision record from stdin",
+  },
+  "run approve-production-e2e": {
+    flags: ["decision-id", "run-id"],
+    run: commandApproveProductionE2e,
+    help: "let this run's E2E set touch production, on a recorded user decision",
   },
   "run knowledge-plan": {
     flags: ["run-id"],

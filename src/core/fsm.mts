@@ -281,7 +281,7 @@ function routeByPhase(state: RunState): Routing | undefined {
     return {
       action: "run_reuse_scan",
       phase: "SOLUTION_SCAN",
-      reason: "the user enabled the optional reuse scan",
+      reason: "this run enabled the optional reuse scan",
       missingGates: none,
     };
   }

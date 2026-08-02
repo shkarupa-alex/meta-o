@@ -80,10 +80,10 @@ meta-o run route --run-id <id>   →   act on routing.action   →   repeat
 | `run_qc` | `--phase LOCAL_QC`, run QC in an isolated worktree (below), then `meta-o qc evaluate` and `meta-o run record-gate --gate qc --status passed` |
 | after an E2E fix | `--phase LOCAL_QC`, then straight back to `--phase E2E_STABILIZATION`; do **not** route through `SMOKE_PREFLIGHT`/`REVIEW_STABILIZATION`, which would restart the review loop the E2E loop exists to hold off |
 | `run_smoke` | `--phase SMOKE_PREFLIGHT`; the E2E tester runs build/boot/health only, then `run record-gate --gate smoke` |
-| `run_reviews` | `--phase REVIEW_STABILIZATION`; dispatch **both** reviewers on the same snapshot, independently; record each with `meta-o run record-review --reviewer <slot>` |
+| `run_reviews` | `--phase REVIEW_STABILIZATION`; dispatch **both** reviewers on the same snapshot, independently; record each by piping its `ReviewResult` JSON into `meta-o run record-review --run-id <id>` (the reviewer slot comes from the payload, not a flag) |
 | `fix_review_findings` | Hand the whole batch of open findings to the executor at once |
-| `run_selected_e2e` | `--phase E2E_STABILIZATION`; the E2E tester runs the full selected set; record it with `meta-o run record-e2e` |
-| `fix_e2e_failures` | Hand the whole batch of failures to the executor at once |
+| `run_selected_e2e` | `--phase E2E_STABILIZATION`; the E2E tester runs the full selected set; record it with `meta-o run record-e2e` (the result must say which `environment` it ran against) |
+| `fix_e2e_failures` | Open the failures as findings (below), then hand the whole batch to the executor at once |
 | `finalize_metadata` | `--phase FINALIZE_METADATA`; see **Completion** |
 | `blocked` | Read `routing.reason`; resolve the pause or surface it to the user |
 
@@ -175,6 +175,27 @@ Start each worker prompt with: *"Read the `<skill-name>` skill and follow it."*
 - After two fruitless rebuttal turns on one finding, spawn a
   `technicalAdjudicator` rather than letting the loop spin.
 - Fix findings in batches. After a batch: QC, then the loop that raised them.
+
+## Decisions and the two things only the user may allow
+
+Escalations are recorded, not remembered:
+
+```bash
+meta-o run record-decision --run-id <id> < decision.json
+```
+
+The record names the question, the answer, who decided and why. It is
+append-only, and it is the only part of an escalation that survives your death.
+
+Two things need a *user* decision specifically, and both are refused without
+one:
+
+- **Running the E2E set against production.** Record the user's decision, then
+  `meta-o run approve-production-e2e --run-id <id> --decision-id <id>`. A
+  decision taken by you or by an adjudicator is not accepted here.
+- **Pushing, tagging, opening a PR.** There is no flag for this: do not do it.
+  `run set-candidate` and `--phase COMPLETE` both refuse when a tag or remote
+  ref names a commit this run authored.
 
 ## Recovery
 

@@ -289,6 +289,7 @@ export async function commandVerifyMetadata(args: ParsedArgs): Promise<void> {
     expectedRunId: runId,
     expectedSpecSha256: state.spec.sha256,
     expectedScenarioStatus: expected,
+    ...(state.e2eEnvironment ? { expectedEnvironment: state.e2eEnvironment } : {}),
   });
 
   if (report.ok && state.candidateSnapshot) {

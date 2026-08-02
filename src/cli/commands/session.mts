@@ -20,10 +20,12 @@ import { resolveProjectIdentity } from "../../core/project-key.mjs";
 import {
   clearPendingOperation,
   commitState,
+  readSettings,
   readState,
   withPendingOperation,
   withWriterLock,
 } from "../../core/state-store.mjs";
+import { requireSupportedBackend } from "./backend.mjs";
 import { assertTransition } from "../../core/fsm.mjs";
 import { redact } from "../../core/redact.mjs";
 import type {
@@ -97,13 +99,7 @@ function contextOf(args: ParsedArgs): SessionContext {
   const state = readState(identity.projectKey, runId);
   if (!state) fail("unknown_run", `run ${runId} has no state under project ${identity.projectKey}`);
 
-  const backend = optionalFlag(args, "backend") ?? "herdr";
-  if (backend !== "herdr") {
-    fail(
-      "unsupported_backend",
-      `this skill drives herdr; ${backend} needs its own orchestrate-feature-<backend> skill and adapter`,
-    );
-  }
+  requireSupportedBackend(readSettings(identity.projectKey)?.backend, optionalFlag(args, "backend"));
 
   return {
     projectKey: identity.projectKey,

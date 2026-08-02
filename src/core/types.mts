@@ -280,6 +280,9 @@ export interface E2EScenarioResult {
   evidence: string;
 }
 
+/** §M-CORE-TYPES — Environments an E2E set may be executed against. */
+export type E2EEnvironment = "local" | "ephemeral" | "staging" | "production";
+
 /** §M-CORE-TYPES — Outcome of one full selected E2E set. */
 export interface E2EResult {
   commitOid: string;
@@ -288,6 +291,13 @@ export interface E2EResult {
   selectedScenarioIds: string[];
   selectionRationale: string;
   scenarios: E2EScenarioResult[];
+  /**
+   * Where the set actually ran. Declared by the tester and written verbatim
+   * into `last_run.environment`, so the metadata guard can hold the two to each
+   * other; §20 forbids production without an explicit user decision, and until
+   * the result said where it ran there was nothing to forbid it against.
+   */
+  environment: E2EEnvironment;
   completedAt: string;
 }
 
@@ -366,12 +376,20 @@ export interface RunState {
    * actually observed rather than assume everything passed.
    */
   e2eScenarioStatus?: E2EScenarioResult[];
+  /** Where the recorded E2E set ran, so the metadata commit can be held to it. */
+  e2eEnvironment?: E2EEnvironment;
   /**
    * Proof that the metadata commit was inspected and stayed inside its
    * permitted field. Recorded so that `COMPLETE` can require it, instead of
    * leaving the last step of the lifecycle as advice in a prompt.
    */
   metadataVerified?: { snapshotDigest: string; metadataCommit: string; verifiedAt: string };
+  /**
+   * The user's decision to allow E2E against production for this run. §20
+   * requires it explicitly, and a boolean would not be enough to audit: the
+   * decision record names who allowed it and why.
+   */
+  productionE2eApproved?: { decisionId: string; approvedAt: string };
   openFindings?: Partial<
     Record<"reviewerPrimary" | "reviewerCrossVendor" | "e2e", FindingRecord[]>
   >;

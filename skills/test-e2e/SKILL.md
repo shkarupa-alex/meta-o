@@ -54,7 +54,11 @@ Run every scenario in the plan.
 - Clean up **even when a scenario fails**. A leaked container or database is a
   failure of this role.
 - **Never** run against production without an explicit production-safe contract
-  in `docs/architecture/e2e.md` and the user's confirmation for this run.
+  in `docs/architecture/e2e.md` and the user's confirmation for this run. Say
+  `"environment": "production"` in your report if you did; the orchestrator's
+  `run record-e2e` refuses it unless the user's decision is already recorded
+  against this run, and lying about where you ran breaks the metadata guard at
+  the last step instead of here.
 
 Report:
 
@@ -62,6 +66,7 @@ Report:
 {
   "planDigest": "…",
   "snapshotDigest": "…",
+  "environment": "local|ephemeral|staging|production",
   "scenarios": [
     { "scenarioId": "E2E-CHECKOUT-01", "status": "passed|failed|blocked", "evidence": "what you observed" }
   ]
