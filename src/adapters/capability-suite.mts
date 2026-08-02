@@ -13,6 +13,7 @@
 
 import { randomUUID } from "node:crypto";
 import { type Clock, systemClock } from "../core/clock.mjs";
+import { COMPLETION_CRITICAL } from "./adapter.mjs";
 import type {
   CapabilityGrade,
   ModelRef,
@@ -74,11 +75,38 @@ async function runCheck(
   }
 }
 
+/** §M-CAPABILITY-SUITE — Prefix marking a check that is the backend's own word, not a probe. */
+export const REPORTED_PREFIX = "reported:";
+
+/**
+ * §M-CAPABILITY-SUITE — Grade each capability the backend claims, under a shared id.
+ *
+ * Emitted by both suites, and that is the whole point: the full suite's
+ * behavioural ids and the smoke suite's single summary check used to be disjoint
+ * sets, so comparing a smoke report against a full baseline found nothing in
+ * common and therefore never found a regression either. These ids exist in both
+ * reports, so the comparison has something to compare.
+ */
+async function reportedChecks(context: SuiteContext, clock: Clock): Promise<SuiteCheck[]> {
+  const report = await context.adapter.capabilityReport();
+  const critical = new Set<string>(COMPLETION_CRITICAL as string[]);
+  return Object.entries(report.matrix).map(([key, value]) => ({
+    id: `${REPORTED_PREFIX}${key}`,
+    grade: value.grade,
+    detail: value.detail,
+    durationMs: 0,
+    completionCritical: critical.has(key) && value.grade === "unsupported",
+  }));
+}
+
 /**
  * §M-CAPABILITY-SUITE — Fast, non-mutating checks safe to run at preflight.
  *
  * Spawning agents at every preflight would cost real money and real panes, so
- * the smoke run only proves the socket answers and reports capabilities.
+ * the smoke run proves only that the socket answers and records what the backend
+ * says it can do. What it cannot do is re-prove behaviour: the full suite's
+ * probes are the expensive part, and `unexercised` names them rather than
+ * letting their silence read as agreement.
  */
 export async function runSmokeSuite(context: SuiteContext): Promise<SuiteReport> {
   const clock = context.clock ?? systemClock;
@@ -93,8 +121,38 @@ export async function runSmokeSuite(context: SuiteContext): Promise<SuiteReport>
         : { grade: "unsupported", detail: `missing completion-critical: ${missing.join(", ")}` };
     }),
   );
+  try {
+    checks.push(...(await reportedChecks(context, clock)));
+  } catch (error) {
+    checks.push({
+      id: "capabilities",
+      grade: "unsupported",
+      detail: `the backend could not report its capabilities: ${(error as Error).message}`,
+      durationMs: 0,
+      completionCritical: true,
+    });
+  }
 
   return finalize("smoke", context.backend, checks);
+}
+
+/**
+ * §M-CAPABILITY-SUITE — Baseline checks a report did not re-exercise.
+ *
+ * A smoke run says nothing about whether spawning still works; reporting "no
+ * capability is worse than the baseline" on that silence is the failure this
+ * names. The caller decides what to do with it — preflight prints it, so the
+ * answer stops sounding like a verification it was not.
+ */
+export function unexercised(
+  baseline: CapabilityBaseline | undefined,
+  report: SuiteReport,
+): string[] {
+  if (!baseline || baseline.backend !== report.backend) return [];
+  const seen = new Set(report.checks.map((check) => check.id));
+  return Object.keys(baseline.grades)
+    .filter((id) => !seen.has(id))
+    .sort();
 }
 
 /** §M-CAPABILITY-SUITE — Everything the individual probe groups share. */
@@ -308,6 +366,12 @@ export async function runFullSuite(context: SuiteContext): Promise<SuiteReport> 
         /* cleanup is best effort; the report already records what happened */
       }
     }
+  }
+
+  try {
+    checks.push(...(await reportedChecks(context, clock)));
+  } catch {
+    /* the behavioural probes above already recorded what the backend could not do */
   }
 
   return finalize("full", context.backend, checks);

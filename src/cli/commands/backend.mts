@@ -23,6 +23,7 @@ import { HerdrAdapter } from "../../adapters/herdr.mjs";
 import { formatCapabilityReport } from "../../adapters/adapter.mjs";
 import {
   baselineOf,
+  detectCapabilityRegression,
   formatSuiteReport,
   runFullSuite,
   runSmokeSuite,
@@ -36,7 +37,7 @@ import {
   type WatchdogLogEntry,
 } from "../../watchdog/watchdog.mjs";
 import { classifyWithFallback, parseResetTime, type LocalClassifier } from "../../watchdog/classifier.mjs";
-import { listRuns, readState } from "../../core/state-store.mjs";
+import { commitState, listRuns, readState, withWriterLock } from "../../core/state-store.mjs";
 import { readSecureJson, writeSecureJson } from "../../core/safe-fs.mjs";
 import type { JsonValue } from "../../core/canonical-json.mjs";
 import {
@@ -148,8 +149,14 @@ export async function commandCapabilitySuite(args: ParsedArgs): Promise<void> {
   // Only the full suite may set the baseline. A smoke run proves a subset, and
   // letting it overwrite the record would silently forgive every capability it
   // never checked — which is the same thing as having no baseline at all.
+  //
+  // A regression blocks the write even when the report is not `blocked`. Most
+  // regressions are supported → degraded, which does not block; overwriting on
+  // those was how `update.sh` turned a backend that had quietly lost `stop`
+  // into the new normal, and reported success while doing it.
+  const regressions = full ? detectCapabilityRegression(readCapabilityBaseline(), report) : [];
   let baselineWritten = false;
-  if (full && !report.blocked) {
+  if (full && !report.blocked && regressions.length === 0) {
     writeSecureJson(
       capabilityBaselinePath(),
       baselineOf(report, isoTimestamp()) as unknown as JsonValue,
@@ -157,17 +164,31 @@ export async function commandCapabilitySuite(args: ParsedArgs): Promise<void> {
     baselineWritten = true;
   }
 
-  if (boolFlag(args, "text")) process.stdout.write(`${formatSuiteReport(report)}\n`);
-  else emit({ ...report, baselineWritten, baselinePath: capabilityBaselinePath() });
-  if (report.blocked) process.exitCode = 1;
+  if (boolFlag(args, "text")) {
+    process.stdout.write(`${formatSuiteReport(report)}\n`);
+    for (const regression of regressions) process.stderr.write(`regression: ${regression}\n`);
+  } else {
+    emit({ ...report, regressions, baselineWritten, baselinePath: capabilityBaselinePath() });
+  }
+  if (report.blocked || regressions.length > 0) process.exitCode = 1;
 }
 
-/** §M-CLI-BACKEND — Read the recorded capability baseline, tolerating its absence. */
+/**
+ * §M-CLI-BACKEND — Read the recorded capability baseline, tolerating only its absence.
+ *
+ * A baseline that exists and cannot be read is not the same as no baseline.
+ * Swallowing the error returned `undefined`, which the regression check treats
+ * as "nothing to compare, therefore fine" — so wrong permissions on one file
+ * turned the check off without saying so.
+ */
 export function readCapabilityBaseline(): CapabilityBaseline | undefined {
   try {
     return readSecureJson<CapabilityBaseline>(capabilityBaselinePath());
-  } catch {
-    return undefined;
+  } catch (error) {
+    throw new Error(
+      `${capabilityBaselinePath()} exists but could not be read: ${(error as Error).message}; ` +
+        "re-record it with `meta-o capability-suite run --full` or remove it deliberately",
+    );
   }
 }
 
@@ -317,6 +338,11 @@ function backendDeps(adapter: HerdrAdapter, config: WatchdogConfig): WatchdogDep
       await adapter.send(state.orchestratorSession, randomUUID(), WAKE_PROMPT);
     },
     surfaceUncertainty: async (state, operation) => surfaceUncertainty(adapter, state, operation),
+    // The handle is written to state before the prompt is sent, and written
+    // even if the prompt fails. Watchdog memory is deliberately reset when it
+    // cannot be parsed, so "exactly one replacement" cannot live only there:
+    // deleting one cache file was enough to produce a second live orchestrator
+    // for a run that already had one.
     spawnOrchestrator: async (state) => {
       const session = await adapter.spawn({
         operationId: randomUUID(),
@@ -324,6 +350,11 @@ function backendDeps(adapter: HerdrAdapter, config: WatchdogConfig): WatchdogDep
         model: state.modelSet.executor,
         prompt: "",
         cwd: projectDirectoryOf(state),
+      });
+      await withWriterLock(state.projectKey, state.runId, () => {
+        const current = readState(state.projectKey, state.runId);
+        if (!current) return state;
+        return commitState({ ...current, orchestratorSession: session });
       });
       await adapter.send(session, randomUUID(), WAKE_PROMPT);
     },

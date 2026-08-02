@@ -44,6 +44,7 @@ import type {
   RunState,
   SessionRef,
 } from "../../core/types.mjs";
+import { redactDeep } from "../../core/redact.mjs";
 import { identityOf, loadState, mutate, type FindingSlot } from "./run-context.mjs";
 import {
   boolFlag,
@@ -130,17 +131,21 @@ export async function commandRecordGate(args: ParsedArgs): Promise<void> {
 /**
  * §M-CLI-RESULTS — Record a whole review — verdict, findings and plan judgement — at once.
  *
- * `record-gate` will take a bare `passed` for a reviewer slot, which is fine for
- * a replay or a repair but leaves three checks to the caller's discipline: that
- * the verdict is a real verdict, that a pass carries no open defects, and that
- * the result describes the current snapshot *and* plan. Doing all of it in one
- * command means a reviewer's word only enters state together with the evidence
- * that makes it meaningful.
+ * The only way a reviewer slot can be set to `passed`. Three checks would
+ * otherwise be left to the caller's discipline: that the verdict is a real
+ * verdict, that a pass carries no open defects, and that the result describes
+ * the current snapshot *and* plan. Doing all of it in one command means a
+ * reviewer's word only enters state together with the evidence that makes it
+ * meaningful.
+ *
+ * The payload is redacted on the way in. Findings quote code and error output,
+ * both of which routinely carry a token, and everything stored here is read
+ * back verbatim by the executor and by every fresh orchestrator.
  */
 export async function commandRecordReview(args: ParsedArgs): Promise<void> {
   const { projectKey } = identityOf(args);
   const runId = requireFlag(args, "run-id");
-  const result = await readStdinJson<ReviewResult>();
+  const result = redactDeep(await readStdinJson<ReviewResult>());
 
   const validation = validateReviewResult(result);
   if (!validation.ok) fail("invalid_review_result", validation.errors.join("; "));
@@ -206,7 +211,7 @@ export async function commandRecordReview(args: ParsedArgs): Promise<void> {
 export async function commandRecordE2e(args: ParsedArgs): Promise<void> {
   const { projectKey } = identityOf(args);
   const runId = requireFlag(args, "run-id");
-  const result = await readStdinJson<E2EResult>();
+  const result = redactDeep(await readStdinJson<E2EResult>());
 
   const next = await mutate(projectKey, runId, (state) => {
     const snapshot = state.candidateSnapshot;
@@ -216,9 +221,13 @@ export async function commandRecordE2e(args: ParsedArgs): Promise<void> {
     const errors = e2eResultErrors(result, snapshot.digest, state.e2ePlan);
     if (errors.length > 0) fail("invalid_e2e_result", errors.join("; "));
 
+    // `commitOid` and `completedAt` are derived, not demanded. The tester knows
+    // the digest and the plan it ran; the commit that produced them is already
+    // in state, and requiring the tester to restate it made the shape the skill
+    // documents unusable against the command meant to consume it.
     const failures = result.scenarios.filter((scenario) => scenario.status !== "passed");
     const gate: RevisionResult = {
-      commitOid: result.commitOid,
+      commitOid: result.commitOid || snapshot.provenanceCommit,
       snapshotDigest: result.snapshotDigest,
       planDigest: result.planDigest,
       status: failures.length === 0 ? "passed" : "failed",
@@ -247,8 +256,6 @@ function e2eResultErrors(
   plan: E2ESelectionPlan,
 ): string[] {
   const errors: string[] = [];
-  if (!result.commitOid) errors.push("commitOid is required");
-  if (!result.completedAt) errors.push("completedAt is required");
   if (result.snapshotDigest !== snapshotDigest) {
     errors.push(`result attests snapshot ${result.snapshotDigest}, candidate is ${snapshotDigest}`);
   }
@@ -288,7 +295,7 @@ export async function commandOpenFindings(args: ParsedArgs): Promise<void> {
   const { projectKey } = identityOf(args);
   const runId = requireFlag(args, "run-id");
   const slot = requireFlag(args, "reviewer") as FindingSlot;
-  const findings = await readStdinJson<Finding[]>();
+  const findings = redactDeep(await readStdinJson<Finding[]>());
 
   const errors = findings.flatMap((finding) => validateFinding(finding).errors);
   if (errors.length > 0) fail("invalid_finding", errors.join("; "));
@@ -414,7 +421,7 @@ export async function commandDismissTaste(args: ParsedArgs): Promise<void> {
 export async function commandKnowledgePlan(args: ParsedArgs): Promise<void> {
   const { projectKey } = identityOf(args);
   const runId = requireFlag(args, "run-id");
-  const plan = await readStdinJson<KnowledgeImpactPlan>();
+  const plan = redactDeep(await readStdinJson<KnowledgeImpactPlan>());
   const next = await mutate(projectKey, runId, (state) => ({ ...state, knowledgeImpactPlan: plan }));
   emit({ runId, knowledgeImpactPlan: next.knowledgeImpactPlan });
 }

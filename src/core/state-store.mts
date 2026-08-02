@@ -10,7 +10,7 @@
 
 import { closeSync, constants as fsConstants, openSync, rmSync, writeSync } from "node:fs";
 import { hostname } from "node:os";
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import type { JsonValue } from "./canonical-json.mjs";
 import { type Clock, isoTimestamp, systemClock } from "./clock.mjs";
 import {
@@ -161,21 +161,23 @@ export function readState(projectKey: string, runId: string): RunState | undefin
   return readSecureJson<RunState>(statePath(projectKey, runId));
 }
 
-/** §M-STATE-STORE — Every run id currently present for a project. */
+/**
+ * §M-STATE-STORE — Every run id currently present for a project.
+ *
+ * A project with no runs directory yet has no runs, and that is an empty list.
+ * A runs directory that fails its ownership and symlink checks is a different
+ * fact entirely, and it propagates: swallowing it returned `[]`, which read as
+ * "nothing to observe" — so replacing `runs/` with a symlink made the watchdog
+ * quietly stop watching that project instead of telling anyone.
+ */
 export function listRuns(projectKey: string): string[] {
-  try {
-    verifySecureDir(runsDir(projectKey));
-  } catch {
-    return [];
-  }
-  try {
-    return readdirSync(runsDir(projectKey), { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name)
-      .sort();
-  } catch {
-    return [];
-  }
+  const directory = runsDir(projectKey);
+  if (!existsSync(directory)) return [];
+  verifySecureDir(directory);
+  return readdirSync(directory, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
 }
 
 /**

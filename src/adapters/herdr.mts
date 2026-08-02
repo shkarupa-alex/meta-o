@@ -31,6 +31,7 @@ import { type Clock, systemClock } from "../core/clock.mjs";
 import { buildCapabilityReport, entry } from "./adapter.mjs";
 import type {
   AdapterCapabilities,
+  CapabilityMatrixEntry,
   CapabilityReport,
   DeliveryResult,
   ExpectedState,
@@ -74,6 +75,48 @@ export interface HerdrAdapterOptions {
   modelArgs?: (model: ModelRef) => string[];
   paneId?: string;
 }
+
+/**
+ * §M-HERDR — Build the capability matrix from one reachability observation.
+ *
+ * A free function rather than a method: it needs nothing from the adapter but
+ * the answer to "did the socket reply", and every row it writes is either that
+ * answer or a fixed fact about what Herdr does not offer.
+ */
+function herdrCapabilityReport(reachable: boolean, detail: string): CapabilityReport {
+  /** §M-HERDR — Grade a capability that only exists when the backend answered at all. */
+  const live = (supported: string): CapabilityMatrixEntry =>
+    reachable ? entry("supported", supported) : entry("unsupported", detail);
+
+  return buildCapabilityReport("herdr", {
+    deliveryReceipt: entry(
+      "degraded",
+      "agent prompt returns the updated AgentInfo but no receipt id that survives a crash",
+    ),
+    idempotencyKey: entry("unsupported", "herdr has no client-supplied idempotency key"),
+    statusRead: live("agent get / agent read expose status, revision and pane text"),
+    wait: live("agent wait supports settled states and --until with a timeout"),
+    nativeResume: live("agents persist in panes across client detach and reattach"),
+    stop: live("pane close terminates a session this adapter created"),
+    concurrentSessions: live("independent panes host independent agents"),
+  });
+}
+
+/**
+ * §M-HERDR — Error codes that prove a prompt was refused before it was acted on.
+ *
+ * A closed set, because the default has to be `unknown`. Exit status 1 covers a
+ * refused request, a server that died mid-request and a connection that dropped
+ * after the prompt landed — and only the first of those is safe to treat as
+ * "nothing happened".
+ */
+const REFUSAL_CODES = new Set([
+  "agent_not_found",
+  "agent_busy",
+  "invalid_argument",
+  "pane_not_found",
+  "cli_syntax_error",
+]);
 
 /**
  * §M-HERDR — The Herdr backend adapter.
@@ -177,36 +220,22 @@ export class HerdrAdapter implements SessionAdapter {
   /**
    * §M-HERDR — Grade what Herdr actually provides.
    *
-   * The two `unsupported` rows are the load-bearing honesty of this adapter: no
-   * idempotency key and no durable receipt is exactly why the orchestrator is
-   * required to reconcile rather than retry.
+   * One probe decides every live row: if the socket answers, the capabilities
+   * that depend on it are present, and if it does not, none of them are. The
+   * two static `unsupported`/`degraded` rows are the load-bearing honesty of
+   * this adapter — no idempotency key and no durable receipt is exactly why the
+   * orchestrator is required to reconcile rather than retry.
    */
   async capabilityReport(): Promise<CapabilityReport> {
-    let reachable = true;
     let detail = "socket API reachable";
+    let reachable = true;
     try {
       await this.call(["agent", "list"], 15_000);
     } catch (error) {
       reachable = false;
       detail = `socket API unreachable: ${(error as Error).message}`;
     }
-
-    /** §M-HERDR — Grade a capability that only exists when the backend answered at all. */
-    const live = (supported: string): CapabilityGradeDetail =>
-      reachable ? entry("supported", supported) : entry("unsupported", detail);
-
-    return buildCapabilityReport("herdr", {
-      deliveryReceipt: entry(
-        "degraded",
-        "agent prompt returns the updated AgentInfo but no receipt id that survives a crash",
-      ),
-      idempotencyKey: entry("unsupported", "herdr has no client-supplied idempotency key"),
-      statusRead: live("agent get / agent read expose status, revision and pane text"),
-      wait: live("agent wait supports settled states and --until with a timeout"),
-      nativeResume: live("agents persist in panes across client detach and reattach"),
-      stop: live("pane close terminates a session this adapter created"),
-      concurrentSessions: live("independent panes host independent agents"),
-    });
+    return herdrCapabilityReport(reachable, detail);
   }
 
   /** §M-HERDR — Boolean capability view required by the adapter interface. */
@@ -368,8 +397,15 @@ export class HerdrAdapter implements SessionAdapter {
       if (error instanceof HerdrCommandError && error.code === "agent_prompt_stalled") {
         return { operationId, status: "unknown", receipt: error.code };
       }
-      if (error instanceof HerdrCommandError && error.exitCode === 1) {
+      if (error instanceof HerdrCommandError && REFUSAL_CODES.has(error.code)) {
         return { operationId, status: "rejected", receipt: error.code };
+      }
+      // Everything else is `unknown`, including a bare exit 1. The backend may
+      // have applied the prompt and then lost the connection; treating that as
+      // a refusal cleared the write-ahead record and invited the resend this
+      // whole protocol exists to prevent.
+      if (error instanceof HerdrCommandError) {
+        return { operationId, status: "unknown", receipt: error.code };
       }
       throw error;
     }
@@ -522,8 +558,14 @@ export class HerdrAdapter implements SessionAdapter {
 
     if (!info) return { operationId: operation.operationId, effect: "unknown" };
 
-    if (probe.seq !== undefined && (info.state_change_seq ?? 0) > probe.seq) {
-      return { operationId: operation.operationId, effect: "applied" };
+    // A moved `state_change_seq` is not evidence that *this* prompt landed. It
+    // advances on any lifecycle change, so a worker finishing the turn it was
+    // already running looked exactly like a delivery — and the instruction that
+    // never arrived was marked applied and dropped. The marker is the only
+    // thing that names this operation; where one exists, it decides.
+    const advanced = probe.seq !== undefined && (info.state_change_seq ?? 0) > probe.seq;
+    if (advanced && !probe.marker) {
+      return { operationId: operation.operationId, effect: "unknown" };
     }
 
     if (probe.marker) {
@@ -537,8 +579,12 @@ export class HerdrAdapter implements SessionAdapter {
         if (output.text.includes(probe.marker)) {
           return { operationId: operation.operationId, effect: "applied" };
         }
+        // A settled worker whose visible output never mentions the marker did
+        // not receive it — unless the session moved on since the probe, in
+        // which case the marker may simply have scrolled out of the tail. That
+        // is ambiguous, and ambiguous is `unknown`.
         if (info.agent_status === "idle" || info.agent_status === "done") {
-          return { operationId: operation.operationId, effect: "not_applied" };
+          return { operationId: operation.operationId, effect: advanced ? "unknown" : "not_applied" };
         }
       } catch {
         return { operationId: operation.operationId, effect: "unknown" };

@@ -19,6 +19,8 @@ import { HerdrAdapter } from "../../adapters/herdr.mjs";
 import {
   detectCapabilityRegression,
   runSmokeSuite,
+  unexercised,
+  type CapabilityBaseline,
   type SuiteReport,
 } from "../../adapters/capability-suite.mjs";
 import { readCapabilityBaseline } from "./backend.mjs";
@@ -89,6 +91,28 @@ function readRepoJson<T>(repoDir: string, relative: string): T {
 }
 
 /**
+ * §M-CLI-GATES — Say what the capability comparison actually covered.
+ *
+ * Naming the unexercised checks matters more than the verdict. The smoke run
+ * re-reads the backend's self-report; it does not re-spawn an agent, so the
+ * behavioural checks the full suite proved are last-proven facts, not
+ * re-verified ones, and a detail line that omitted the difference read as a
+ * verification it was not.
+ */
+function capabilityDetail(
+  baseline: CapabilityBaseline | undefined,
+  regressions: string[],
+  skipped: string[],
+): string {
+  if (regressions.length > 0) return regressions.join("; ");
+  if (!baseline) return "no capability baseline is recorded; run `meta-o capability-suite run --full`";
+  const compared = `no reported capability is worse than the baseline of ${baseline.recordedAt}`;
+  return skipped.length === 0
+    ? compared
+    : `${compared}; not re-exercised at preflight: ${skipped.join(", ")}`;
+}
+
+/**
  * §M-CLI-GATES — Ask the backend what it can still do, and compare that to the record.
  *
  * The cheap smoke variant, because preflight runs before every feature and must
@@ -115,7 +139,23 @@ async function backendChecks(repoDir: string): Promise<PreflightCheck[]> {
     ];
   }
 
-  const regressions = detectCapabilityRegression(readCapabilityBaseline(), report);
+  let baseline: CapabilityBaseline | undefined;
+  try {
+    baseline = readCapabilityBaseline();
+  } catch (error) {
+    return [
+      {
+        id: "capability-regression",
+        status: "invalid",
+        blocking: true,
+        detail: (error as Error).message,
+        remedy: "re-record the baseline with `meta-o capability-suite run --full`",
+      },
+    ];
+  }
+
+  const regressions = detectCapabilityRegression(baseline, report);
+  const skipped = unexercised(baseline, report);
   return [
     {
       id: "backend-smoke",
@@ -130,10 +170,11 @@ async function backendChecks(repoDir: string): Promise<PreflightCheck[]> {
       id: "capability-regression",
       status: regressions.length === 0 ? "ok" : "invalid",
       blocking: true,
-      detail:
-        regressions.length === 0
-          ? "no capability is worse than the recorded baseline"
-          : regressions.join("; "),
+      // Says what it compared, not merely that it found nothing. The smoke run
+      // re-reads the backend's self-report; it does not re-spawn an agent, so
+      // the behavioural checks the full suite proved are named as last-proven
+      // rather than silently counted as still true.
+      detail: capabilityDetail(baseline, regressions, skipped),
       remedy:
         "this backend lost a capability the workflow depends on; fix or downgrade it, then " +
         "re-record the baseline with `meta-o capability-suite run --full`",

@@ -92,6 +92,15 @@ export interface RunMemory {
   wakeSentForStateVersion?: number;
   spawnedForGeneration?: number;
   surfacedForStateVersion?: number;
+  /**
+   * Which capability regression has already been reported to this run.
+   *
+   * Separate from `surfacedForStateVersion`, and deliberately not cleared when
+   * the session produces output: surfacing *is* output, so keying the guard on
+   * progress made the message re-send itself on every tick — roughly two
+   * unsolicited prompts a minute into a live orchestrator's context.
+   */
+  surfacedRegression?: string;
   lastCursor?: string;
 }
 
@@ -162,13 +171,11 @@ export function decideAction(
   }
 
   if (options.capabilityRegression?.length) {
-    if (memory.surfacedForStateVersion === state.stateVersion) {
+    const regression = options.capabilityRegression.join("; ");
+    if (memory.surfacedRegression === regression) {
       return { action: "backoff", reason: "the capability regression is already surfaced" };
     }
-    return {
-      action: "surface_uncertainty",
-      reason: `backend capability regression: ${options.capabilityRegression.join("; ")}`,
-    };
+    return { action: "surface_uncertainty", reason: `backend capability regression: ${regression}` };
   }
 
   if (observation.progressed) {
@@ -414,8 +421,15 @@ export class Watchdog {
           return "performed";
 
         case "spawn_orchestrator":
-          await this.deps.spawnOrchestrator(fresh);
+          // The generation is claimed *before* the attempt, not after it. A
+          // spawn is two backend calls with no write-ahead record, so a failure
+          // says nothing about whether an agent now exists; recording only on
+          // success turned a failing `agent prompt` into one new orchestrator
+          // per tick, indefinitely. One attempt per generation, and if it
+          // failed a human decides.
           memory.spawnedForGeneration = fresh.orchestratorGeneration;
+          this.deps.saveMemory?.(`${observation.projectKey}/${observation.runId}`, memory);
+          await this.deps.spawnOrchestrator(fresh);
           return "performed";
 
         case "backoff":
@@ -425,7 +439,11 @@ export class Watchdog {
         case "surface_uncertainty":
           if (!this.deps.surfaceUncertainty) return "skipped";
           await this.deps.surfaceUncertainty(fresh, fresh.pendingOperation);
-          memory.surfacedForStateVersion = fresh.stateVersion;
+          if (decision.reason.startsWith("backend capability regression: ")) {
+            memory.surfacedRegression = decision.reason.slice("backend capability regression: ".length);
+          } else {
+            memory.surfacedForStateVersion = fresh.stateVersion;
+          }
           memory.backoffMs = Math.min(Math.max(memory.backoffMs, this.pollMs()) * 2, this.maxBackoffMs());
           return "performed";
 
@@ -469,7 +487,20 @@ export class Watchdog {
       let runIds: string[];
       try {
         runIds = this.deps.listRuns(projectKey);
-      } catch {
+      } catch (error) {
+        // Not observable is not the same as nothing to observe. A tampered or
+        // unreadable state tree used to leave the loop silently skipping the
+        // project, which is indistinguishable from "that project is idle".
+        this.deps.log({
+          timestamp: isoTimestamp(this.clock),
+          projectKey,
+          runId: "",
+          phase: "unknown",
+          observedStatus: "unreadable",
+          action: "surface_uncertainty",
+          reason: `the run list could not be read: ${(error as Error).message}`,
+          outcome: "performed",
+        });
         continue;
       }
 

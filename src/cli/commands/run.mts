@@ -75,7 +75,13 @@ import {
   type ParsedArgs,
 } from "../args.mjs";
 
+import { redact } from "../../core/redact.mjs";
 import { identityOf, loadState, mutate } from "./run-context.mjs";
+
+/** §M-CLI-RUN — Redact an optional free-text flag before it reaches durable state. */
+function redactText(value: string | undefined): string | undefined {
+  return value === undefined ? undefined : redact(value);
+}
 
 /**
  * §M-CLI-RUN — Resolve what a spec reference really is, not what it was called.
@@ -249,7 +255,7 @@ export async function commandTransition(args: ParsedArgs): Promise<void> {
   const { projectKey } = identityOf(args);
   const runId = requireFlag(args, "run-id");
   const phase = requireFlag(args, "phase") as Phase;
-  const reason = optionalFlag(args, "reason");
+  const reason = redactText(optionalFlag(args, "reason"));
   const resumeCondition = optionalFlag(args, "resume-condition");
 
   const next = await mutate(projectKey, runId, (state) => {
@@ -490,7 +496,17 @@ export async function commandPending(args: ParsedArgs): Promise<void> {
   }
 
   const operation = await readStdinJson<PendingOperation>();
-  const next = await mutate(projectKey, runId, (state) => ({ ...state, pendingOperation: operation }));
+  const next = await mutate(projectKey, runId, (state) => {
+    // Overwriting is the same act as clearing: the record that named the
+    // in-flight effect is gone either way, and the next attempt has nothing to
+    // reconcile against. `--clear` refused this and the write path did not, so
+    // one `run pending` with a fabricated `state: "observed"` retired a genuine
+    // unproven operation.
+    if (state.pendingOperation && state.pendingOperation.operationId !== operation.operationId) {
+      assertClearable(state.pendingOperation);
+    }
+    return { ...state, pendingOperation: operation };
+  });
   emit({ runId, pendingOperation: next.pendingOperation });
 }
 
@@ -499,12 +515,20 @@ export async function commandSetSession(args: ParsedArgs): Promise<void> {
   const { projectKey } = identityOf(args);
   const runId = requireFlag(args, "run-id");
   const session = await readStdinJson<SessionRef>();
-  const next = await mutate(projectKey, runId, (state) => ({
-    ...state,
-    sessions: { ...state.sessions, [session.role]: session },
-    sessionGeneration: { ...state.sessionGeneration, [session.role]: session.generation },
-  }));
-  emit({ runId, sessions: next.sessions });
+  const next = await mutate(projectKey, runId, (state) =>
+    // The orchestrator lives in its own slot, not in `sessions`. Filing it under
+    // `sessions.orchestrator` left `orchestratorSession` empty, so every reader
+    // — takeover, the watchdog — saw a live orchestrator as absent and acted on
+    // that: one replaced it, the other spawned a second one.
+    session.role === "orchestrator"
+      ? { ...state, orchestratorSession: session }
+      : {
+          ...state,
+          sessions: { ...state.sessions, [session.role]: session },
+          sessionGeneration: { ...state.sessionGeneration, [session.role]: session.generation },
+        },
+  );
+  emit({ runId, sessions: next.sessions, orchestratorSession: next.orchestratorSession ?? null });
 }
 
 /** §M-CLI-RUN — Backend statuses that prove an orchestrator will issue nothing further. */
@@ -571,7 +595,7 @@ export async function commandHandoff(args: ParsedArgs): Promise<void> {
       "this run did not start with handoff consent; start it with --handoff or set handoffDefault",
     );
   }
-  const content = await readStdin();
+  const content = redact(await readStdin());
   try {
     writeHandoff(projectKey, runId, content);
   } catch (error) {

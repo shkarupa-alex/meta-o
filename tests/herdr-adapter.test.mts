@@ -345,7 +345,9 @@ test("reconcile admits it does not know when a pane survived without its agent",
   assert.equal((await adapter.reconcile(operation)).effect, "unknown");
 });
 
-test("reconcile proves a delivery from an advanced state_change_seq", async () => {
+test("an advanced state_change_seq alone never proves a delivery", async () => {
+  // The sequence advances on any lifecycle change, so a worker finishing the
+  // turn it was already running is indistinguishable from a prompt arriving.
   const agents = new Map([["a", agentInfo({ pane_id: "w1:p2", name: "a", state_change_seq: 9 })]]);
   const adapter = new HerdrAdapter({ exec: fakeHerdr({ agents }).exec });
   const operation: PendingOperation = {
@@ -355,7 +357,23 @@ test("reconcile proves a delivery from an advanced state_change_seq", async () =
     state: "prepared",
     probe: JSON.stringify({ agentName: "a", paneId: "w1:p2", seq: 4 }),
   };
-  assert.equal((await adapter.reconcile(operation)).effect, "applied");
+  assert.equal((await adapter.reconcile(operation)).effect, "unknown");
+});
+
+test("a settled worker that moved on since the probe is unknown, not undelivered", async () => {
+  const agents = new Map([
+    ["a", agentInfo({ pane_id: "w1:p2", name: "a", state_change_seq: 9, agent_status: "idle" })],
+  ]);
+  const paneText = new Map([["w1:p2", "unrelated output"]]);
+  const adapter = new HerdrAdapter({ exec: fakeHerdr({ agents, paneText }).exec });
+  const operation: PendingOperation = {
+    operationId: "op-1",
+    kind: "send",
+    requestDigest: "d",
+    state: "prepared",
+    probe: JSON.stringify({ agentName: "a", paneId: "w1:p2", seq: 4, marker: "review the diff" }),
+  };
+  assert.equal((await adapter.reconcile(operation)).effect, "unknown");
 });
 
 test("reconcile finds an undelivered prompt when the tail lacks its marker", async () => {

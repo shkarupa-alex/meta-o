@@ -478,6 +478,7 @@ export interface ReconcileResult {
  */
 export interface SessionAdapter {
   capabilities(): Promise<AdapterCapabilities>;
+  capabilityReport(): Promise<CapabilityReport>;
   spawn(request: SpawnRequest): Promise<SessionRef>;
   send(session: SessionRef, operationId: string, message: string): Promise<DeliveryResult>;
   status(session: SessionRef): Promise<SessionStatus>;
