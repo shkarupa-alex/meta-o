@@ -106,6 +106,7 @@ function attestedState(overrides: Partial<RunState> = {}): RunState {
       impactedBusinessLinks: [],
       impactedTags: [],
     },
+    e2ePlanSnapshotDigest: "digest",
     confirmations: { qc: gate, reviewerPrimary: gate, reviewerCrossVendor: gate, e2e: gate },
     updatedAt: "t",
     ...overrides,
@@ -143,11 +144,18 @@ test("an open blocking finding stops completion even when every gate reads passe
   assert.equal(completionProven(blocked), false);
 });
 
-test("a plan sealed for another candidate cannot prove completion", () => {
-  const stale = attestedState({
-    e2ePlan: { ...attestedState().e2ePlan!, commitOid: "c0" },
-  });
+test("a plan sealed for other content cannot prove completion", () => {
+  // Sealed against a different *tree*, not merely a different commit: an
+  // amend, rebase or squash that preserves the tree changes the commit and
+  // nothing else, and §00 says explicitly that must not invalidate a gate.
+  const stale = attestedState({ e2ePlanSnapshotDigest: "another-digest" });
   assert.equal(completionProven(stale), false);
+
+  const rebased = attestedState({
+    candidateSnapshot: { digest: "digest", provenanceCommit: "c1-amended", computedAt: "t" },
+    e2ePlan: { ...attestedState().e2ePlan!, commitOid: "c1" },
+  });
+  assert.equal(completionProven(rebased), true, "the commit moved; the content did not");
 });
 
 test("an E2E fix can return to the E2E loop without passing through review", () => {
@@ -904,6 +912,296 @@ test("the bounded view is reachable from the CLI and rejects a role it does not 
     const refused = cli(["run", "show", "--run-id", runId, "--as-role", "orchestrator"], context);
     assert.equal(refused.code, 1);
     assert.equal(errorCode(refused), "unknown_role");
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("a second review may not erase the blocker the first one raised", () => {
+  // Every designed exit refuses this: `open-findings` with an empty array is
+  // `findings_dropped`, `resolve-finding` without a dispatched reviewer is
+  // `no_such_session`, `record-gate --status passed` is `evidence_required`.
+  // `record-review` wrote the slot wholesale, so one command did what all three
+  // refuse — and the executor has the CLI on its PATH.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
+    retireSpec(repo);
+    const candidate = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
+    const commitOid = candidate.json["provenanceCommit"] as string;
+    const snapshotDigest = candidate.json["snapshotDigest"] as string;
+    const plan = ok(
+      cli(["e2e", "seal-plan"], {
+        ...context,
+        stdin: JSON.stringify({
+          schemaVersion: 1,
+          commitOid,
+          selectedScenarioIds: ["E2E-CHECKOUT-01", "E2E-SMOKE-01"],
+          selectionRationale: "checkout is impacted; the canary always runs",
+          impactedBusinessLinks: ["§B-CHECKOUT-01"],
+          impactedTags: ["checkout"],
+        }),
+      }),
+      "seal-plan",
+    ).json as unknown as { planDigest: string };
+    ok(
+      cli(["run", "set-plan", "--run-id", runId], { ...context, stdin: JSON.stringify(plan) }),
+      "set-plan",
+    );
+
+    /** §M-TEST-HARDENING — One reviewer payload, varying only in verdict and findings. */
+    const review = (verdict: string, findings: unknown[]): string =>
+      JSON.stringify({
+        reviewer: "reviewerCrossVendor",
+        commitOid,
+        snapshotDigest,
+        planDigest: plan.planDigest,
+        selectionPlanVerdict: "complete",
+        verdict,
+        findings,
+        completedAt: "2026-07-24T12:00:00Z",
+      });
+
+    ok(
+      cli(["run", "record-review", "--run-id", runId], {
+        ...context,
+        stdin: review("changes_requested", [
+          {
+            id: "F-1",
+            severity: "blocker",
+            classification: "defect",
+            evidence: [{ kind: "file", reference: "src/app.py:1", detail: "no error path" }],
+            basis: { type: "spec", reference: "spec/feature.md" },
+            impact: "the checkout confirmation silently drops failures",
+            recommendedFix: { approach: "surface the failure", rationale: "the user must see it" },
+          },
+        ]),
+      }),
+      "the blocker is raised",
+    );
+
+    const erased = cli(["run", "record-review", "--run-id", runId], {
+      ...context,
+      stdin: review("passed", []),
+    });
+    assert.equal(erased.code, 1);
+    assert.equal(errorCode(erased), "findings_dropped");
+
+    // Restating it by id is a real re-review, and is allowed.
+    const restated = ok(
+      cli(["run", "record-review", "--run-id", runId], {
+        ...context,
+        stdin: review("changes_requested", [
+          {
+            id: "F-1",
+            severity: "major",
+            classification: "defect",
+            evidence: [{ kind: "file", reference: "src/app.py:1", detail: "still no error path" }],
+            basis: { type: "spec", reference: "spec/feature.md" },
+            impact: "narrower than first judged, but still real",
+            recommendedFix: { approach: "surface the failure", rationale: "the user must see it" },
+          },
+        ]),
+      }),
+      "a re-review that restates the finding",
+    );
+    assert.equal(restated.json["blocking"], 1);
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("a QC pass is recomputed from the result, not taken on the caller's word", () => {
+  // Three of §00's four completion attestations were unforgeable and `qc` was
+  // not: `record-gate --gate qc --status passed` was accepted with no `make qc`
+  // behind it, no result in the run directory, and `qc evaluate` never called.
+  // The command existed and computed a real verdict — nothing wrote its answer
+  // into state and nothing read it back.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
+    retireSpec(repo);
+    ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
+
+    const bare = cli(
+      ["run", "record-gate", "--run-id", runId, "--gate", "qc", "--status", "passed"],
+      context,
+    );
+    assert.equal(bare.code, 1);
+    assert.equal(errorCode(bare), "gate_not_isolated");
+
+    // Running it outside a worktree is not enough either: the receipt is what
+    // proves the gate judged the candidate rather than the developer's tree.
+    ok(
+      cli(["worktree", "run", "--run-id", runId, "--label", "qc", "make", "qc"], context),
+      "make qc in an isolated worktree",
+    );
+    ok(
+      cli(["run", "record-gate", "--run-id", runId, "--gate", "qc", "--status", "passed"], context),
+      "record qc",
+    );
+
+    // And a result that does not describe this candidate cannot green it.
+    repo.write("src/app.py", '"""§M-APP — changed. Implements §A-APP-01."""\n');
+    repo.commit("a new candidate, with the old QC result still on disk");
+    ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate again");
+    const stale = cli(
+      ["run", "record-gate", "--run-id", runId, "--gate", "qc", "--status", "passed"],
+      context,
+    );
+    assert.equal(stale.code, 1);
+    assert.equal(errorCode(stale), "gate_not_isolated", "the receipt names the previous commit");
+
+    // A failure still goes through the plain command: it takes nothing away.
+    ok(
+      cli(["run", "record-gate", "--run-id", runId, "--gate", "qc", "--status", "failed"], context),
+      "a failing QC gate needs no ceremony",
+    );
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("an amend that preserves the tree does not invalidate a single gate", () => {
+  // §00: "Изменение code, tests, config, knowledge, purpose или E2E catalog
+  // инвалидирует attestations. Rebase/squash идентичного tree — нет." The plan
+  // was compared to the candidate by commit oid, so an amend — which changes
+  // the oid and nothing else — sent the run back for both reviews and the whole
+  // selected E2E set.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
+    retireSpec(repo);
+    const first = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
+    const commitOid = first.json["provenanceCommit"] as string;
+    const digest = first.json["snapshotDigest"] as string;
+
+    const plan = ok(
+      cli(["e2e", "seal-plan"], {
+        ...context,
+        stdin: JSON.stringify({
+          schemaVersion: 1,
+          commitOid,
+          selectedScenarioIds: ["E2E-CHECKOUT-01", "E2E-SMOKE-01"],
+          selectionRationale: "checkout is impacted; the canary always runs",
+          impactedBusinessLinks: ["§B-CHECKOUT-01"],
+          impactedTags: ["checkout"],
+        }),
+      }),
+      "seal-plan",
+    ).json as unknown as { planDigest: string };
+    ok(
+      cli(["run", "set-plan", "--run-id", runId], { ...context, stdin: JSON.stringify(plan) }),
+      "set-plan",
+    );
+
+    repo.git(["commit", "--amend", "--no-edit", "--date=2020-01-01T00:00:00Z"]);
+    const amended = ok(cli(["run", "set-candidate", "--run-id", runId], context), "re-point");
+    assert.equal(amended.json["snapshotDigest"], digest, "the tree is unchanged");
+    assert.notEqual(amended.json["provenanceCommit"], commitOid, "the commit is not");
+    assert.notEqual(
+      (amended.json["routing"] as { action: string }).action,
+      "await_selection_plan",
+      "the plan still describes this content",
+    );
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("a gate command may carry its own flags after a bare --", () => {
+  // §00 gives every gate a fresh detached worktree, and `worktree run` is the
+  // only thing that implements it — but `--` was refused outright and any flag
+  // before it was read as meta-o's own. So `pytest -q`, `npm test -- …` and
+  // `playwright test --project=ci` could not be run through the sanctioned
+  // path at all, and `record-e2e` refuses a result without its receipt.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
+    ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
+    retireSpec(repo);
+    ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
+
+    const ran = ok(
+      cli(
+        ["worktree", "run", "--run-id", runId, "--label", "e2e", "--", "true", "--maxfail=1"],
+        context,
+      ),
+      "a command with its own flags",
+    );
+    assert.deepEqual(ran.json["command"], ["true", "--maxfail=1"]);
+
+    // Without the terminator the gate's flag is still meta-o's to reject — but
+    // the refusal now says what to do about it.
+    const confused = cli(
+      ["worktree", "run", "--run-id", runId, "--label", "e2e", "pytest", "--maxfail=1"],
+      context,
+    );
+    assert.equal(errorCode(confused), "unknown_flag");
+    assert.match((confused.json["error"] as { message: string }).message, /after a bare `--`/);
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("an orchestrator can register itself the way the skill tells it to", () => {
+  // The skill's literal instruction — `run set-session --role orchestrator
+  // --session-id <handle>` — returned `unknown_flag`, and the working form
+  // (a whole SessionRef on stdin) was documented nowhere. An orchestrator
+  // following the skill never registered, so the watchdog observed
+  // `unregistered` for the life of the run and recovered nothing.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    const registered = ok(
+      cli(
+        ["run", "set-session", "--run-id", runId, "--role", "orchestrator", "--session-id", "mo-1"],
+        context,
+      ),
+      "the documented form",
+    );
+    assert.equal(
+      (registered.json["orchestratorSession"] as { sessionId: string }).sessionId,
+      "mo-1",
+    );
+
+    const worker = ok(
+      cli(
+        ["run", "set-session", "--run-id", runId, "--role", "executor", "--session-id", "mo-2"],
+        context,
+      ),
+      "a worker too",
+    );
+    const sessions = worker.json["sessions"] as Record<string, { sessionId: string } | undefined>;
+    assert.equal(sessions["executor"]?.sessionId, "mo-2");
+
+    const bogus = cli(
+      ["run", "set-session", "--run-id", runId, "--role", "auditor", "--session-id", "mo-3"],
+      context,
+    );
+    assert.equal(errorCode(bogus), "unknown_role");
   } finally {
     home.dispose();
     repo.dispose();

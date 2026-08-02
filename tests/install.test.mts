@@ -13,7 +13,15 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -119,5 +127,31 @@ test("the installer touches no project: no hooks, no config, no version pin", ()
   } finally {
     rmSync(prefix, { recursive: true, force: true });
     rmSync(skills, { recursive: true, force: true });
+  }
+});
+
+test("update.sh --skip-suite actually skips the suite", () => {
+  // The flag was consumed and never forwarded, and install.sh defaults to
+  // running the suite — so a user who typed --skip-suite got the probe run
+  // against their real backend, and the update failed on it. A stub `herdr`
+  // that fails on contact makes the difference observable without touching a
+  // real backend.
+  const prefix = mkdtempSync(join(tmpdir(), "meta-o-prefix-"));
+  const skills = mkdtempSync(join(tmpdir(), "meta-o-skills-"));
+  const stubDir = mkdtempSync(join(tmpdir(), "meta-o-stub-"));
+  const log = join(stubDir, "herdr.log");
+  writeFileSync(join(stubDir, "herdr"), `#!/bin/sh\necho "$@" >> ${log}\nexit 1\n`, { mode: 0o755 });
+
+  try {
+    execFileSync(join(ROOT, "update.sh"), ["--prefix", prefix, "--skills-dir", skills, "--skip-suite"], {
+      cwd: ROOT,
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${stubDir}:${process.env["PATH"] ?? ""}` },
+    });
+    assert.equal(existsSync(log), false, "the backend was contacted despite --skip-suite");
+  } finally {
+    rmSync(prefix, { recursive: true, force: true });
+    rmSync(skills, { recursive: true, force: true });
+    rmSync(stubDir, { recursive: true, force: true });
   }
 });

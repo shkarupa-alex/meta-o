@@ -211,9 +211,9 @@ const COMMANDS: Record<string, { flags: string[]; run: Command; help: string }> 
     help: "write or clear the in-flight backend operation",
   },
   "run set-session": {
-    flags: ["run-id"],
+    flags: ["generation", "role", "run-id", "session-id"],
     run: commandSetSession,
-    help: "register a worker session handle",
+    help: "register a session handle (--role/--session-id, or a SessionRef on stdin)",
   },
   "run takeover": {
     flags: ["backend", "run-id"],
@@ -441,7 +441,10 @@ function assertKnownFlags(name: string, args: ParsedArgs): void {
   if (unknown.length === 0) return;
   fail(
     "unknown_flag",
-    `${name} does not accept ${unknown.map((flag) => `--${flag}`).join(", ")}`,
+    `${name} does not accept ${unknown.map((flag) => `--${flag}`).join(", ")}` +
+      (args.positional.length > 0
+        ? "; if these belong to the command being run, put them after a bare `--`"
+        : ""),
     { accepted: [...allowed].sort() },
   );
 }

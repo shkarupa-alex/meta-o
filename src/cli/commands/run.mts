@@ -80,6 +80,7 @@ import {
 import { redact, redactDeep } from "../../core/redact.mjs";
 import { identityOf, loadState, mutate } from "./run-context.mjs";
 import { roleView } from "../../core/role-view.mjs";
+export { commandSetSession, commandTakeover } from "./ownership.mjs";
 import { WORKER_ROLES } from "../../core/types.mjs";
 import { assertCandidateAdmissible, assertUnpublished } from "./candidate-guards.mjs";
 
@@ -398,9 +399,32 @@ export async function commandSetPlan(args: ParsedArgs): Promise<void> {
   const validation = validatePlan(plan, registry);
   if (!validation.ok) fail("invalid_plan", validation.errors.join("; "));
 
+  const current = loadState(projectKey, runId);
+  const candidate = current.candidateSnapshot;
+  if (!candidate) fail("no_candidate", "a plan is sealed against a candidate; set one first");
+
+  // The plan names a commit, and the run tracks content. A plan sealed against
+  // an amended, rebased or squashed commit describes exactly the same tree, so
+  // the commit is compared by what it *contains* rather than by its own oid —
+  // otherwise a rebase would invalidate both reviews and the entire selected
+  // E2E set, which §00 says explicitly it must not.
+  let planned: string;
+  try {
+    planned = computeSnapshotDigest(repoDir, plan.commitOid).digest;
+  } catch (error) {
+    fail("unknown_plan_commit", `the plan names ${plan.commitOid}: ${(error as Error).message}`);
+  }
+  if (planned !== candidate.digest) {
+    fail(
+      "plan_describes_other_content",
+      `the plan was sealed against content ${planned}, the candidate is ${candidate.digest}`,
+    );
+  }
+
   const next = await mutate(projectKey, runId, (state) => ({
     ...state,
     e2ePlan: plan,
+    e2ePlanSnapshotDigest: candidate.digest,
     confirmations: invalidatePlanBoundConfirmations(state.confirmations, plan.planDigest),
   }));
   emit({
@@ -468,91 +492,6 @@ export async function commandPending(args: ParsedArgs): Promise<void> {
     return { ...state, pendingOperation: operation };
   });
   emit({ runId, pendingOperation: next.pendingOperation });
-}
-
-/** §M-CLI-RUN — Register a worker session handle for a role. */
-export async function commandSetSession(args: ParsedArgs): Promise<void> {
-  const { projectKey } = identityOf(args);
-  const runId = requireFlag(args, "run-id");
-  const session = await readStdinJson<SessionRef>();
-  const next = await mutate(projectKey, runId, (state) =>
-    // The orchestrator lives in its own slot, not in `sessions`. Filing it under
-    // `sessions.orchestrator` left `orchestratorSession` empty, so every reader
-    // — takeover, the watchdog — saw a live orchestrator as absent and acted on
-    // that: one replaced it, the other spawned a second one.
-    session.role === "orchestrator"
-      ? { ...state, orchestratorSession: session }
-      : {
-          ...state,
-          sessions: { ...state.sessions, [session.role]: session },
-          sessionGeneration: { ...state.sessionGeneration, [session.role]: session.generation },
-        },
-  );
-  emit({ runId, sessions: next.sessions, orchestratorSession: next.orchestratorSession ?? null });
-}
-
-/** §M-CLI-RUN — Backend statuses that prove an orchestrator will issue nothing further. */
-const TERMINAL_ORCHESTRATOR_STATUS = new Set(["complete", "failed", "stopped", "absent"]);
-
-/**
- * §M-CLI-RUN — Ask the backend what became of the orchestrator being replaced.
- *
- * Observed, never declared. A caller-supplied status is worth nothing here: the
- * party most likely to supply it is a fresh orchestrator that has no way of
- * knowing, and the cost of being wrong is two live generations driving the same
- * workers. A backend that cannot answer yields `unknown`, which is refused.
- */
-async function observePreviousOrchestrator(state: RunState): Promise<string> {
-  const session = state.orchestratorSession;
-  if (!session) return "absent";
-  try {
-    return await new HerdrAdapter({ binary: process.env["META_O_HERDR_BIN"] }).status(session);
-  } catch (error) {
-    return `unreadable: ${(error as Error).message}`;
-  }
-}
-
-/**
- * §M-CLI-RUN — Take over a run with a fresh orchestrator generation.
- *
- * Requires proof that the previous orchestrator is terminal or absent; without
- * that, two generations could drive the same run and issue conflicting
- * instructions to the same workers.
- */
-export async function commandTakeover(args: ParsedArgs): Promise<void> {
-  const { projectKey } = identityOf(args);
-  const runId = requireFlag(args, "run-id");
-  const observed = await observePreviousOrchestrator(loadState(projectKey, runId));
-
-  if (!TERMINAL_ORCHESTRATOR_STATUS.has(observed)) {
-    fail(
-      "takeover_unproven",
-      `the backend reports the previous orchestrator as ${observed}; ` +
-        "takeover requires it to be complete, failed, stopped or absent",
-      { observedStatus: observed },
-    );
-  }
-
-  // Taking over is allowed to raise the generation past the caller's own claim;
-  // that is what taking over means. Every later write is fenced against it.
-  const previousClaim = process.env[GENERATION_ENV];
-  delete process.env[GENERATION_ENV];
-  let next: RunState;
-  try {
-    next = await mutate(projectKey, runId, (state) => ({
-      ...state,
-      orchestratorGeneration: state.orchestratorGeneration + 1,
-    }));
-  } finally {
-    if (previousClaim !== undefined) process.env[GENERATION_ENV] = previousClaim;
-  }
-  emit({
-    runId,
-    previousStatus: observed,
-    orchestratorGeneration: next.orchestratorGeneration,
-    exportForThisOrchestrator: `${GENERATION_ENV}=${next.orchestratorGeneration}`,
-    routing: routeNext(next),
-  });
 }
 
 /** §M-CLI-RUN — Write the optional executor handoff, refusing to truncate it. */

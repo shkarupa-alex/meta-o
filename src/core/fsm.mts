@@ -343,7 +343,7 @@ function routePrerequisites(state: RunState): Routing | undefined {
     };
   }
 
-  if (!state.e2ePlan || state.e2ePlan.commitOid !== state.candidateSnapshot.provenanceCommit) {
+  if (!state.e2ePlan || state.e2ePlanSnapshotDigest !== state.candidateSnapshot.digest) {
     return {
       action: "await_selection_plan",
       phase: "SMOKE_PREFLIGHT",
@@ -467,7 +467,7 @@ export function completionProven(state: RunState): boolean {
   const snapshot = state.candidateSnapshot?.digest;
   const plan = state.e2ePlan?.planDigest;
   if (!snapshot || !plan) return false;
-  if (state.e2ePlan?.commitOid !== state.candidateSnapshot?.provenanceCommit) return false;
+  if (state.e2ePlanSnapshotDigest !== state.candidateSnapshot?.digest) return false;
   if (openBlockingFindings(state) > 0) return false;
   return (
     attests(state.confirmations.qc, snapshot) &&

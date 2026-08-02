@@ -60,6 +60,7 @@ import { resolveProjectIdentity } from "../../core/project-key.mjs";
 import { isoTimestamp } from "../../core/clock.mjs";
 import type {
   ModelRef,
+  ModelSet,
   PendingOperation,
   RunState,
   SessionStatus,
@@ -157,6 +158,30 @@ export async function commandCapabilities(args: ParsedArgs): Promise<void> {
 }
 
 /**
+ * §M-CLI-BACKEND — Which extra routes this suite run should prove.
+ *
+ * `--also-routes` wins when given, so a caller can probe a route the project
+ * has not adopted yet. Otherwise every distinct route in the confirmed ModelSet
+ * is proved, which is exactly the set the run will try to launch.
+ */
+function routesToProve(
+  args: ParsedArgs,
+  configured: ModelSet | undefined,
+  primary: ModelRef["route"],
+): ModelRef["route"][] {
+  const declared = optionalFlag(args, "also-routes");
+  const candidates =
+    declared === undefined
+      ? configured
+        ? (Object.values(configured) as ModelRef[]).map((ref) => ref.route)
+        : []
+      : declared.split(",").map((route) => route.trim());
+  return [...new Set(candidates)].filter(
+    (route): route is ModelRef["route"] => route !== "" && route !== primary,
+  );
+}
+
+/**
  * §M-CLI-BACKEND — Run the executable capability suite.
  *
  * `--smoke` is the cheap preflight variant; `--full` really creates sessions
@@ -164,20 +189,27 @@ export async function commandCapabilities(args: ParsedArgs): Promise<void> {
  */
 export async function commandCapabilitySuite(args: ParsedArgs): Promise<void> {
   const adapter = adapterFor(args);
+  const { projectKey } = resolveProjectIdentity(optionalFlag(args, "cwd") ?? process.cwd());
+  const configured = readSettings(projectKey)?.modelSet;
   const model: ModelRef = {
-    route: (optionalFlag(args, "route") ?? "claude") as ModelRef["route"],
-    vendor: optionalFlag(args, "vendor") ?? "unknown",
-    family: optionalFlag(args, "family") ?? "unknown",
-    model: optionalFlag(args, "model") ?? "default",
+    route: (optionalFlag(args, "route") ?? configured?.executor.route ?? "claude") as ModelRef["route"],
+    vendor: optionalFlag(args, "vendor") ?? configured?.executor.vendor ?? "unknown",
+    family: optionalFlag(args, "family") ?? configured?.executor.family ?? "unknown",
+    model: optionalFlag(args, "model") ?? configured?.executor.model ?? "default",
   };
   // The spec asks the full suite to prove *the chosen routes*, plural: a
   // backend can host one CLI perfectly and fail to launch another, and finding
   // that out when the cross-vendor reviewer is spawned costs a whole run.
-  const additionalModels: ModelRef[] = (optionalFlag(args, "also-routes") ?? "")
-    .split(",")
-    .map((route) => route.trim())
-    .filter((route) => route !== "" && route !== model.route)
-    .map((route) => ({ ...model, route: route as ModelRef["route"] }));
+  //
+  // Taken from the project's own ModelSet when the flag is absent, because
+  // `install.sh` and `update.sh` pass neither and nobody types `--also-routes`
+  // by hand. A suite that only ever proved the default `claude` route recorded
+  // a baseline saying nothing about the `codex` the cross-vendor reviewer is
+  // pinned to, and preflight then reported no regression against it.
+  const additionalModels: ModelRef[] = routesToProve(args, configured, model.route).map((route) => ({
+    ...model,
+    route,
+  }));
 
   const context: SuiteContext = {
     adapter,

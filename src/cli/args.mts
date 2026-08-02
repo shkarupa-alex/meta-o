@@ -27,6 +27,14 @@ export class UsageError extends Error {
  *
  * Deliberately does not support single-dash short flags: abbreviations invite
  * guessing, and every caller here is a script or a skill, not a human typing.
+ *
+ * A bare `--` ends meta-o's own arguments and passes everything after it
+ * through as positional, verbatim. That is what the skills and this CLI's own
+ * error messages tell callers to write, and it used to be refused outright —
+ * so `worktree run … -- pytest --maxfail=1` failed, and without the terminator
+ * the gate's own `--maxfail` was read as a meta-o flag and rejected as unknown.
+ * The one sanctioned way to run a gate in isolation could not run any gate that
+ * takes an argument.
  */
 export function parseArgs(argv: string[]): ParsedArgs {
   const positional: string[] = [];
@@ -34,12 +42,15 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index]!;
+    if (token === "--") {
+      positional.push(...argv.slice(index + 1));
+      break;
+    }
     if (!token.startsWith("--")) {
       positional.push(token);
       continue;
     }
     const body = token.slice(2);
-    if (body === "") throw new UsageError("bare -- is not accepted");
     const eq = body.indexOf("=");
     if (eq >= 0) {
       flags.set(body.slice(0, eq), body.slice(eq + 1));

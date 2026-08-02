@@ -366,6 +366,16 @@ export interface RunState {
   decisions: DecisionRecord[];
   knowledgeImpactPlan?: KnowledgeImpactPlan;
   e2ePlan?: E2ESelectionPlan;
+  /**
+   * Content identity the stored plan was sealed against.
+   *
+   * The plan carries a `commitOid`, and comparing *that* to the candidate's
+   * provenance commit made an amend, rebase or squash of a byte-identical tree
+   * invalidate both reviews and the whole selected E2E set — the one thing §00
+   * says a rebase must not do. Content identity is the digest; the commit is
+   * provenance, and provenance is allowed to move.
+   */
+  e2ePlanSnapshotDigest?: string;
   pendingOperation?: PendingOperation;
   activeLoop?: ActiveLoop;
   confirmations: Confirmations;

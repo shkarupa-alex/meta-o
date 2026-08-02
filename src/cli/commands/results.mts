@@ -42,13 +42,20 @@ import type {
   FindingRecord,
   KnowledgeImpactPlan,
   Phase,
+  QcManifest,
+  QcResult,
   ReviewResult,
   RevisionResult,
   RunState,
   SessionRef,
 } from "../../core/types.mjs";
-import { readFileSync } from "node:fs";
-import { gateReceiptPath } from "../../core/paths.mjs";
+import { existsSync, readFileSync } from "node:fs";
+import {
+  assertE2eIsolated,
+  assertGateIsolated,
+  assertQcProven,
+} from "./gate-evidence.mjs";
+import { gateReceiptPath, qcResultPath } from "../../core/paths.mjs";
 import { redactDeep } from "../../core/redact.mjs";
 import { identityOf, loadState, mutate, type FindingSlot } from "./run-context.mjs";
 import {
@@ -76,7 +83,7 @@ const E2E_ENVIRONMENTS: ReadonlySet<string> = new Set([
   "production",
 ]);
 
-/** §M-CLI-RESULTS — Gates whose PASS must arrive with the evidence that produced it. */
+/** §M-CLI-RESULTS — Gates whose PASS must arrive through the command that validates it. */
 const EVIDENCE_BOUND_GATES = new Set(["reviewerPrimary", "reviewerCrossVendor", "e2e"]);
 
 /**
@@ -95,7 +102,7 @@ const EVIDENCE_BOUND_GATES = new Set(["reviewerPrimary", "reviewerCrossVendor", 
  * they take nothing away from anybody.
  */
 export async function commandRecordGate(args: ParsedArgs): Promise<void> {
-  const { projectKey } = identityOf(args);
+  const { projectKey, repoDir } = identityOf(args);
   const runId = requireFlag(args, "run-id");
   const gate = requireFlag(args, "gate") as keyof RunState["confirmations"];
   const status = requireFlag(args, "status") as RevisionResult["status"];
@@ -131,6 +138,13 @@ export async function commandRecordGate(args: ParsedArgs): Promise<void> {
     }
     if (gate !== "qc" && gate !== "smoke" && !state.e2ePlan) {
       fail("no_plan", "reviews and E2E require a stored selection plan");
+    }
+    if (status === "passed" && gate === "qc") {
+      assertGateIsolated(projectKey, runId, "qc", snapshot.provenanceCommit);
+      assertQcProven(repoDir, projectKey, runId, digest);
+    }
+    if (status === "passed" && gate === "smoke") {
+      assertGateIsolated(projectKey, runId, "smoke", snapshot.provenanceCommit);
     }
 
     const result: RevisionResult = {
@@ -181,6 +195,19 @@ export async function commandRecordReview(args: ParsedArgs): Promise<void> {
       );
     }
 
+    // A later round legitimately restates this slot, but "restates" is the
+    // operative word: writing it wholesale meant a second `record-review` with
+    // `verdict: passed` and an empty findings array erased the blocker the
+    // first one raised, and greened the gate on the same unchanged snapshot.
+    // Every designed exit — `open-findings`, `resolve-finding`, `record-gate` —
+    // refuses that; this one did it in a single command, and the executor has
+    // the CLI on its PATH. A blocker leaves only by being restated here or
+    // closed by an authority that named itself.
+    const carried = carryOpenBlockers(
+      state.openFindings?.[result.reviewer] ?? [],
+      result.findings,
+      result.reviewer,
+    );
     const records: FindingRecord[] = result.findings.map((finding) => ({
       finding,
       raisedBy: state.sessions[result.reviewer] ?? {
@@ -203,7 +230,7 @@ export async function commandRecordReview(args: ParsedArgs): Promise<void> {
 
     return {
       ...state,
-      openFindings: { ...state.openFindings, [result.reviewer]: records },
+      openFindings: { ...state.openFindings, [result.reviewer]: [...carried, ...records] },
       confirmations: { ...state.confirmations, [result.reviewer]: gate },
     };
   });
@@ -217,9 +244,6 @@ export async function commandRecordReview(args: ParsedArgs): Promise<void> {
     routing: routeNext(next),
   });
 }
-
-/** §M-CLI-RESULTS — The `worktree run` label whose receipt proves E2E isolation. */
-const E2E_RECEIPT_LABEL = "e2e";
 
 /**
  * §M-CLI-RESULTS — Record the outcome of the selected E2E set.
@@ -282,46 +306,6 @@ export async function commandRecordE2e(args: ParsedArgs): Promise<void> {
     failures: (next.e2eScenarioStatus ?? []).filter((s) => s.status !== "passed"),
     routing: routeNext(next),
   });
-}
-
-/**
- * §M-CLI-RESULTS — Refuse an E2E result the run has no proof was isolated.
- *
- * §30 requires the tester to work in a fresh detached worktree and to change no
- * tracked file, and that requirement lived only in the skill: `record-e2e`
- * accepted whatever JSON arrived on stdin, so a tester who ran the suite in the
- * developer's checkout — picking up uncommitted edits, and possibly leaving
- * some behind — produced a gate indistinguishable from an isolated one. The
- * receipt `worktree run --label e2e` leaves is the only durable evidence that
- * the run happened somewhere else and that the tree was clean on both sides of
- * it, so this asks for that rather than for the tester's word.
- *
- * The receipt's exit status is deliberately not judged. A suite that exits
- * non-zero because scenarios failed still ran in isolation, and it is the
- * per-scenario statuses that decide the gate.
- */
-function assertE2eIsolated(projectKey: string, runId: string, candidateCommit: string): void {
-  const path = gateReceiptPath(projectKey, runId, E2E_RECEIPT_LABEL);
-  let receipt: { commitOid?: string; completedAt?: string } | undefined;
-  try {
-    receipt = JSON.parse(readFileSync(path, "utf8")) as { commitOid?: string };
-  } catch {
-    fail(
-      "e2e_not_isolated",
-      "§30 requires the E2E tester to work in a fresh detached worktree, and this run has no " +
-        `receipt for one; run the suite with \`meta-o worktree run --run-id ${runId} ` +
-        `--label ${E2E_RECEIPT_LABEL} -- <command>\` and record the result afterwards`,
-      { expectedReceipt: path },
-    );
-  }
-  if (receipt?.commitOid !== candidateCommit) {
-    fail(
-      "e2e_not_isolated",
-      `the E2E worktree receipt is for ${receipt?.commitOid ?? "an unrecorded commit"}, but the ` +
-        `candidate is ${candidateCommit}; re-run the selected set against the candidate`,
-      { expectedReceipt: path },
-    );
-  }
 }
 
 /**

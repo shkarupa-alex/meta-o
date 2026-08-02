@@ -39,8 +39,13 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# Both branches are forwarded explicitly. install.sh defaults to running the
+# suite, so forwarding nothing when the user asked to skip it ran the probe
+# against their backend anyway — the opposite of what they typed.
 if [ "$RUN_SUITE" -eq 1 ]; then
   FORWARD+=(--capability-suite)
+else
+  FORWARD+=(--skip-suite)
 fi
 
 exec "$SOURCE_DIR/install.sh" --update "${FORWARD[@]}"

@@ -601,3 +601,88 @@ test("a regression nobody received is surfaced again, not marked as told", async
   assert.equal(second.action, "surface_uncertainty");
   assert.equal(test1.surfaced.length, 0, "nothing was surfaced by merely deciding");
 });
+
+test("a wake is recorded before it is sent, so a crash cannot deliver it twice", async () => {
+  // §50: one completion event wakes the orchestrator at most once — and the
+  // criterion is persisted precisely because a watchdog that dies overnight is
+  // the normal case. The flag used to be set after the call and written only
+  // when the tick ended, so a process killed in between left no trace of a
+  // prompt that had already arrived, and its successor delivered a second one
+  // into the same session.
+  const durable: Record<string, RunMemory> = {};
+  const state = makeRun({ updatedAt: new Date(0).toISOString() });
+  const wakes: string[] = [];
+
+  /** §M-TEST-WATCHDOG — A watchdog process sharing one durable memory file. */
+  const spawnProcess = (): Watchdog =>
+    new Watchdog({
+      config: makeConfig(),
+      clock: new FakeClock(1_000_000),
+      listRuns: () => ["run-1"],
+      readState: () => state,
+      orchestratorStatus: async () => "waiting",
+      reconcile: async (_state, operation) => ({ operationId: operation.operationId, effect: "applied" }),
+      wakeOrchestrator: async () => {
+        // Observed from inside the call: whatever is on disk now is all a
+        // process killed mid-send would leave behind.
+        wakes.push(`wake@${durable["key-1/run-1"]?.wakeSentForStateVersion ?? "unrecorded"}`);
+      },
+      spawnOrchestrator: async () => {},
+      loadMemory: (key) => durable[key],
+      saveMemory: (key, memory) => {
+        durable[key] = { ...memory };
+      },
+      log: () => {},
+    });
+
+  // The prompt reaches the backend only after the record reaches disk, so a
+  // process killed at any point during the send leaves the record behind.
+  await spawnProcess().tick();
+  assert.deepEqual(
+    wakes,
+    [`wake@${state.stateVersion}`],
+    "the wake reached the backend before it reached disk",
+  );
+
+  // A fresh process reading that memory must not repeat it.
+  await spawnProcess().tick();
+  assert.deepEqual(
+    wakes,
+    [`wake@${state.stateVersion}`],
+    "the successor delivered a second prompt for one event",
+  );
+});
+
+test("a wake that observably failed gives its record back", async () => {
+  // The write-ahead errs toward not-resending, which is right for a crash: the
+  // prompt may already be in the session. A call that *returned* an error is a
+  // different claim — nothing was delivered — and keeping the record would
+  // strand the run behind a wake it never received.
+  const durable: Record<string, RunMemory> = {};
+  const state = makeRun({ updatedAt: new Date(0).toISOString() });
+  let attempts = 0;
+
+  const watchdog = new Watchdog({
+    config: makeConfig(),
+    clock: new FakeClock(1_000_000),
+    listRuns: () => ["run-1"],
+    readState: () => state,
+    orchestratorStatus: async () => "waiting",
+    reconcile: async (_state, operation) => ({ operationId: operation.operationId, effect: "applied" }),
+    wakeOrchestrator: async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("the backend refused the connection");
+    },
+    spawnOrchestrator: async () => {},
+    loadMemory: (key) => durable[key],
+    saveMemory: (key, memory) => {
+      durable[key] = { ...memory };
+    },
+    log: () => {},
+  });
+
+  await watchdog.tick();
+  assert.equal(durable["key-1/run-1"]?.wakeSentForStateVersion, undefined, "a refusal is not a delivery");
+  await watchdog.tick();
+  assert.equal(attempts, 2, "the run is still reachable after a failed attempt");
+});

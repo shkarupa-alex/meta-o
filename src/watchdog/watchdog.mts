@@ -232,6 +232,31 @@ export class Watchdog {
   }
 
   /**
+   * §M-WATCHDOG — Deliver one wake, recorded before it is attempted.
+   *
+   * Split out so the write-ahead and its rollback stay next to each other: the
+   * guard is only honest if an observed failure gives the record back.
+   */
+  private async wake(
+    observation: WatchdogObservation,
+    fresh: RunState,
+    memory: RunMemory,
+  ): Promise<WatchdogLogEntry["outcome"]> {
+    const key = `${observation.projectKey}/${observation.runId}`;
+    const previous = memory.wakeSentForStateVersion;
+    memory.wakeSentForStateVersion = fresh.stateVersion;
+    this.deps.saveMemory?.(key, memory);
+    try {
+      await this.deps.wakeOrchestrator(fresh);
+    } catch (error) {
+      memory.wakeSentForStateVersion = previous;
+      this.deps.saveMemory?.(key, memory);
+      throw error;
+    }
+    return "performed";
+  }
+
+  /**
    * §M-WATCHDOG — Perform a decided action after re-proving it is still current.
    *
    * The re-read is the anti-duplication guard: if the orchestrator moved the run
@@ -251,9 +276,21 @@ export class Watchdog {
     try {
       switch (decision.action) {
         case "wake_orchestrator":
-          await this.deps.wakeOrchestrator(fresh);
-          memory.wakeSentForStateVersion = fresh.stateVersion;
-          return "performed";
+          // Written ahead for the same reason the spawn below is: "one wake per
+          // completion event" is an acceptance criterion, and recording it only
+          // after the call left no trace of a wake that had already arrived if
+          // the watchdog died in between. The next process re-decided on the
+          // unchanged `stateVersion` and delivered a second prompt into the
+          // same session.
+          //
+          // The trade is a wake recorded but never sent, which leaves the run
+          // idle while the watchdog backs off saying, every tick, that it
+          // already delivered one. That is a stall a human can read in the log
+          // rather than an unsolicited prompt in a live orchestrator's context,
+          // and it is the same direction every other uncertain effect in this
+          // system is resolved. A call that *fails* observably is not that
+          // case, so the record is taken back.
+          return await this.wake(observation, fresh, memory);
 
         case "spawn_orchestrator":
           // The generation is claimed *before* the attempt, not after it. A

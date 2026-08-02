@@ -162,7 +162,25 @@ export function sampleManifest(): string {
  * what makes their failure messages meaningful.
  */
 export function seedProjectContract(repo: TempRepo): void {
-  repo.write("Makefile", "qc:\n\t@true\n\nverify-e2e-metadata:\n\t@true\n");
+  // `qc` writes the machine-readable result the run reads back, because the
+  // attestation is recomputed from that file rather than taken on the caller's
+  // word. A target that only exits zero cannot prove a gate ran.
+  repo.write(
+    "Makefile",
+    [
+      "qc:",
+      "\t@printf '{\"schema_version\":1,\"snapshot_digest\":\"%s\",\"gates\":[" +
+        '{\"id\":\"lint\",\"status\":\"passed\",\"command\":\"ruff check .\",' +
+        '\"tool_version\":\"ruff 0.6\",\"duration_ms\":10},' +
+        '{\"id\":\"tests\",\"status\":\"passed\",\"command\":\"pytest\",' +
+        '\"tool_version\":\"pytest 8\",\"duration_ms\":20}]}\' ' +
+        '"$$META_O_SNAPSHOT_DIGEST" > "$$META_O_QC_RESULT"',
+      "",
+      "verify-e2e-metadata:",
+      "\t@true",
+      "",
+    ].join("\n"),
+  );
   repo.write(".quality/qc-manifest.json", sampleManifest());
   repo.write("docs/architecture/e2e.md", "# E2E\n\n## e2e-smoke-01\n\n## e2e-checkout-01\n");
   repo.write("docs/architecture/e2e.json", sampleRegistry());

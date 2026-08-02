@@ -11,6 +11,7 @@ import type { Dirent } from "node:fs";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
+import { readRepoJson } from "../repo-json.mjs";
 import { resolveProjectIdentity } from "../../core/project-key.mjs";
 import { computeSnapshotDigest, verifyMetadataCommit } from "../../core/snapshot.mjs";
 import { git, resolveCommit } from "../../core/git.mjs";
@@ -77,17 +78,6 @@ import {
 function repoOf(args: ParsedArgs): { repoDir: string; projectKey: string } {
   const identity = resolveProjectIdentity(optionalFlag(args, "cwd") ?? process.cwd());
   return { repoDir: identity.canonicalPath, projectKey: identity.projectKey };
-}
-
-/** §M-CLI-GATES — Read a repository JSON file or fail with its path. */
-function readRepoJson<T>(repoDir: string, relative: string): T {
-  const path = join(repoDir, relative);
-  if (!existsSync(path)) fail("missing_file", `${relative} is absent`);
-  try {
-    return JSON.parse(readFileSync(path, "utf8")) as T;
-  } catch (error) {
-    fail("invalid_json", `${relative} is not valid JSON: ${(error as Error).message}`);
-  }
 }
 
 /**

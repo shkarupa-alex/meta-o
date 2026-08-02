@@ -122,7 +122,13 @@ test("a run walks from start to COMPLETE only with four attestations on one snap
     assert.equal(errorCode(premature), "illegal_transition");
 
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "LOCAL_QC"], context), "→ LOCAL_QC");
-    writeQcResult(home.dir, projectKey, runId, snapshotDigest);
+    // The real path: `make qc` runs in a fresh detached worktree of the
+    // candidate and writes its own result to `$META_O_QC_RESULT`. Nothing here
+    // hands the run a verdict; the run recomputes one from that file.
+    ok(
+      cli(["worktree", "run", "--run-id", runId, "--label", "qc", "make", "qc"], context),
+      "make qc in an isolated worktree",
+    );
     const qc = ok(cli(["qc", "evaluate", "--run-id", runId], context), "qc evaluate");
     assert.equal(qc.json["pass"], true);
     ok(cli(["qc", "weakening", "--run-id", runId], context), "qc weakening");
@@ -134,6 +140,10 @@ test("a run walks from start to COMPLETE only with four attestations on one snap
     assert.equal(action(afterQc), "run_smoke", "the smoke gate stands before the reviewers");
 
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "SMOKE_PREFLIGHT"], context), "→ SMOKE");
+    ok(
+      cli(["worktree", "run", "--run-id", runId, "--label", "smoke", "true"], context),
+      "the smoke runs in a worktree too",
+    );
     const afterSmoke = ok(
       cli(["run", "record-gate", "--run-id", runId, "--gate", "smoke", "--status", "passed"], context),
       "record smoke",
@@ -334,6 +344,10 @@ test("changing the candidate invalidates attestations of the previous one", () =
     ok(cli(["run", "confirm-models", "--run-id", runId], context), "confirm-models");
     retireSpec(repo);
     ok(cli(["run", "set-candidate", "--run-id", runId], context), "candidate 1");
+    ok(
+      cli(["worktree", "run", "--run-id", runId, "--label", "qc", "make", "qc"], context),
+      "make qc in an isolated worktree",
+    );
     ok(
       cli(["run", "record-gate", "--run-id", runId, "--gate", "qc", "--status", "passed"], context),
       "record qc",

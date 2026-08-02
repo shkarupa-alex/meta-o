@@ -73,6 +73,7 @@ function runAtGates(digest: string, commit: string): RunState {
       impactedTags: [],
       planDigest: "plan-digest",
     },
+    e2ePlanSnapshotDigest: digest,
     confirmations: {},
     updatedAt: "2026-01-01T00:00:00Z",
   };
