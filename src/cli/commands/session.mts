@@ -13,8 +13,6 @@
 
 import { randomUUID } from "node:crypto";
 import { HerdrAdapter } from "../../adapters/herdr.mjs";
-import { canonicalize, type JsonValue } from "../../core/canonical-json.mjs";
-import { sha256Hex } from "../../core/hash.mjs";
 import { isoTimestamp } from "../../core/clock.mjs";
 import { resolveProjectIdentity } from "../../core/project-key.mjs";
 import {
@@ -42,7 +40,6 @@ import { assertTransition } from "../../core/fsm.mjs";
 import { redact } from "../../core/redact.mjs";
 import type {
   DeliveryResult,
-  ModelRef,
   PendingOperation,
   Role,
   RunState,

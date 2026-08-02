@@ -30,6 +30,8 @@ import {
   WAKE_PROMPT,
 } from "./backend.mjs";
 import {
+  DEFAULT_MAX_BACKOFF_SECONDS,
+  DEFAULT_POLL_SECONDS,
   REGRESSION_PREFIX,
   Watchdog,
   type RunMemory,
@@ -43,8 +45,10 @@ import {
   readSettings,
   readState,
   withWriterLock,
+  writeSettings,
 } from "../../core/state-store.mjs";
 import { readSecureJson, writeSecureJson } from "../../core/safe-fs.mjs";
+import { redactDeep } from "../../core/redact.mjs";
 import type { JsonValue } from "../../core/canonical-json.mjs";
 import {
   projectMetadataPath,
@@ -138,10 +142,13 @@ export function commandWatchdogEnable(args: ParsedArgs): void {
     schema_version: 1,
     enabled: true,
     project_keys: [...keys].sort(),
+    // The same two defaults the loop itself falls back to (§50's config
+    // example). Writing a different pair here would mean `watchdog enable`
+    // silently produced a slower watchdog than an empty config does.
     poll_interval_seconds: numericFlag(args, "poll-interval-seconds")
-      ?? existing?.poll_interval_seconds ?? 60,
+      ?? existing?.poll_interval_seconds ?? DEFAULT_POLL_SECONDS,
     max_backoff_seconds: numericFlag(args, "max-backoff-seconds")
-      ?? existing?.max_backoff_seconds ?? 900,
+      ?? existing?.max_backoff_seconds ?? DEFAULT_MAX_BACKOFF_SECONDS,
     classifier_mode: (optionalFlag(args, "classifier-mode")
       ?? existing?.classifier_mode ?? "deterministic") as WatchdogConfig["classifier_mode"],
   };
@@ -150,9 +157,11 @@ export function commandWatchdogEnable(args: ParsedArgs): void {
   }
 
   writeSecureJson(watchdogConfigPath(), config as unknown as JsonValue);
+  const projectSetting = setProjectWatchdog(projectKey, true);
   emit({
     configPath: watchdogConfigPath(),
     ...config,
+    projectSettingUpdated: projectSetting,
     // The loop still has to be started by something, and §50 says that is a
     // user service. Naming the files here is the difference between a switch
     // and a switch nobody can reach.
@@ -188,7 +197,30 @@ export function commandWatchdogDisable(args: ParsedArgs): void {
     project_keys: remaining,
   };
   writeSecureJson(watchdogConfigPath(), config as unknown as JsonValue);
-  emit({ configPath: watchdogConfigPath(), ...config });
+  const touched = all
+    ? existing.project_keys.map((key) => setProjectWatchdog(key, false))
+    : [setProjectWatchdog(projectKey!, false)];
+  emit({ configPath: watchdogConfigPath(), ...config, projectSettingUpdated: touched.some(Boolean) });
+}
+
+/**
+ * §M-CLI-WATCHDOG — Record the decision in the project's own settings too.
+ *
+ * There were two switches and the loop read the other one. `watchdog.json`
+ * says which projects a watchdog looks at; `ProjectSettings.watchdogEnabled`
+ * is the project's own opt-out, and it is what `watchdogEnabledFor` consults.
+ * Writing only the first meant `meta-o watchdog enable` printed a success
+ * payload naming the project and changed nothing the loop would read.
+ *
+ * A project with no settings file is left alone: there is nothing to opt out
+ * of yet, and absent already means watchable.
+ */
+function setProjectWatchdog(projectKey: string, enabled: boolean): boolean {
+  const settings = readSettings(projectKey);
+  if (!settings) return false;
+  if (settings.watchdogEnabled === enabled) return false;
+  writeSettings(projectKey, { ...settings, watchdogEnabled: enabled });
+  return true;
 }
 
 /** §M-CLI-WATCHDOG — Read a positive numeric flag, refusing anything else. */
@@ -236,8 +268,14 @@ export function commandWatchdogStatus(): void {
  * Records the decision, never the model text or worker transcript: the log's
  * job is to explain what the watchdog did, and transcripts in a rotating file
  * would be both a privacy problem and useless noise.
+ *
+ * The entry is redacted anyway. `reason` quotes adapter and backend error
+ * messages, and a backend that fails while echoing the command it ran puts a
+ * token in that message — the one channel where the "no transcript" rule was
+ * not enough on its own.
  */
-function appendLog(entry: WatchdogLogEntry): void {
+function appendLog(unredacted: WatchdogLogEntry): void {
+  const entry = redactDeep(unredacted);
   const path = watchdogLogPath();
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   try {

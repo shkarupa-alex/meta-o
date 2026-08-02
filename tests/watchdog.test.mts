@@ -22,7 +22,12 @@ import {
   type WatchdogLogEntry,
   type WatchdogObservation,
 } from "../dist/watchdog/watchdog.mjs";
-import { classifyTail, parseResetTime, sanitizeTail } from "../dist/watchdog/classifier.mjs";
+import {
+  classifyTail,
+  classifyWithFallback,
+  parseResetTime,
+  sanitizeTail,
+} from "../dist/watchdog/classifier.mjs";
 import { REGRESSION_PREFIX } from "../dist/watchdog/watchdog.mjs";
 import { spawnPrompt, WAKE_PROMPT } from "../dist/cli/commands/backend.mjs";
 import type {
@@ -441,6 +446,59 @@ test("tails are redacted and bounded before any classifier sees them", () => {
   const sanitized = sanitizeTail(tail);
   assert.ok(Buffer.byteLength(sanitized, "utf8") <= 8 * 1024);
   assert.ok(!sanitized.includes("sk-abcdefghijklmnopqrstuvwxyz"));
+});
+
+test("a hybrid local model may only break a tie, never overrule the evidence", async () => {
+  // §50: the local classifier is "не authority". These four cases are the whole
+  // contract — it is consulted only on abstention, its answer is bounded to the
+  // four labels, its failure is not the watchdog's failure, and what it is shown
+  // has already been sanitized.
+  const asked: string[] = [];
+  /** §M-TEST-WATCHDOG — A local model that always says "quota", and records what it saw. */
+  const claimsQuota = async (tail: string) => {
+    asked.push(tail);
+    return "quota" as const;
+  };
+
+  assert.equal(
+    await classifyWithFallback("getaddrinfo ENOTFOUND api.example.com", claimsQuota),
+    "external",
+    "a proven label wins; a model that disagrees is not consulted",
+  );
+  assert.equal(asked.length, 0);
+
+  assert.equal(
+    await classifyWithFallback("the model said something unusual", claimsQuota),
+    "quota",
+    "on abstention the model's label is taken",
+  );
+
+  assert.equal(
+    await classifyWithFallback("the model said something unusual", undefined),
+    "unknown",
+    "with no local model, hybrid is deterministic",
+  );
+
+  assert.equal(
+    await classifyWithFallback("still nothing recognisable", async () => "resume the run" as never),
+    "unknown",
+    "a label outside the closed set degrades to unknown rather than becoming an action",
+  );
+
+  assert.equal(
+    await classifyWithFallback("still nothing recognisable", async () => {
+      throw new Error("classifier binary is not executable");
+    }),
+    "unknown",
+    "a broken classifier is an abstention, not a crashed watchdog",
+  );
+
+  const secret = "nothing recognisable here API_KEY=sk-abcdefghijklmnopqrstuvwxyz";
+  await classifyWithFallback(secret, claimsQuota);
+  assert.ok(
+    !asked.join("").includes("sk-abcdefghijklmnopqrstuvwxyz"),
+    "the tail reaches the local model already redacted",
+  );
 });
 
 test("a pause the watchdog cannot release is left to whoever can", () => {

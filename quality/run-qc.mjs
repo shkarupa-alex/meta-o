@@ -13,6 +13,7 @@
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   closeSync,
   fsyncSync,
@@ -32,12 +33,40 @@ const ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], {
   encoding: "utf8",
 }).trim();
 
-/** §M-QC-RUNNER — The worktree state the gate contract compares against. */
+/** §M-QC-RUNNER — The porcelain listing of what the worktree has outstanding. */
 function gitStatus() {
   return execFileSync("git", ["status", "--porcelain", "--untracked-files=all"], {
     cwd: ROOT,
     encoding: "utf8",
   });
+}
+
+/**
+ * §M-QC-RUNNER — Snapshot the worktree by content, not by its status listing.
+ *
+ * The listing alone is not enough, and the Python template already says so:
+ * `git status --porcelain` prints the same two characters and the same path
+ * whether or not the bytes behind them changed, so a formatter rewriting a file
+ * that was *already* dirty leaves the listing identical and the mutation check
+ * passes — writing an attestable green result for content the gate itself
+ * altered. A clean tree caught that and a dirty one did not, which is backwards.
+ *
+ * So the snapshot is the listing plus the bytes it refers to: the full diff
+ * against `HEAD` for tracked changes, and a hash per untracked file.
+ */
+function worktreeFingerprint(listing) {
+  const parts = [listing, execFileSync("git", ["diff", "HEAD"], { cwd: ROOT, encoding: "utf8" })];
+  for (const line of listing.split("\n")) {
+    if (!line.startsWith("?? ")) continue;
+    const name = line.slice(3).trim().replace(/^"|"$/g, "");
+    try {
+      parts.push(`${name}:${createHash("sha256").update(readFileSync(join(ROOT, name))).digest("hex")}`);
+    } catch (error) {
+      // A file that vanished or became unreadable mid-run is itself a mutation.
+      parts.push(`${name}:unreadable:${error.code ?? error.message}`);
+    }
+  }
+  return parts.join("\n");
 }
 
 /**
@@ -126,7 +155,8 @@ function main() {
   const manifestPath = join(ROOT, ".quality", "qc-manifest.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 
-  const before = gitStatus();
+  const listing = gitStatus();
+  const before = worktreeFingerprint(listing);
   const results = [];
 
   // Clean, not merely unchanged — but only when this run is producing an
@@ -136,8 +166,8 @@ function main() {
   // developer running `make qc` by hand attests nothing, and failing them for a
   // dirty tree would just teach everyone to bypass the gate.
   const attesting = Boolean(process.env["META_O_QC_RESULT"]);
-  if (before.trim() !== "" && attesting) {
-    process.stderr.write(`the worktree is dirty; qc cannot attest content that is not committed:\n${before}`);
+  if (listing.trim() !== "" && attesting) {
+    process.stderr.write(`the worktree is dirty; qc cannot attest content that is not committed:\n${listing}`);
     results.push({
       id: "clean-worktree",
       status: "failed",
@@ -163,12 +193,12 @@ function main() {
     results.push(runGate(gate));
   }
 
-  if (gitStatus() !== before) {
+  if (worktreeFingerprint(gitStatus()) !== before) {
     process.stderr.write("qc mutated the worktree; a gate that rewrites the tree cannot attest it\n");
     results.push({
       id: "non-mutating",
       status: "failed",
-      command: "git status --porcelain --untracked-files=all",
+      command: "git status --porcelain --untracked-files=all + git diff HEAD",
       tool_version: "git",
       duration_ms: 0,
     });

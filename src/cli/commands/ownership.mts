@@ -10,7 +10,6 @@
 import { HerdrAdapter } from "../../adapters/herdr.mjs";
 import { GENERATION_ENV, readSettings } from "../../core/state-store.mjs";
 import { routeNext } from "../../core/fsm.mjs";
-import { isoTimestamp } from "../../core/clock.mjs";
 import type { ParsedArgs } from "../args.mjs";
 import { emit, fail, optionalFlag, readStdinJson, requireFlag } from "../args.mjs";
 import type { Role, RunState, SessionRef } from "../../core/types.mjs";

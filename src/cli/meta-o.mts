@@ -11,6 +11,8 @@
 
 import { parseArgs, fail, UsageError, type ParsedArgs } from "./args.mjs";
 import {
+  commandConfigSetDefaults,
+  commandConfigShow,
   commandInit,
   commandKey,
   commandSetSettings,
@@ -116,6 +118,16 @@ const COMMANDS: Record<string, { flags: string[]; run: Command; help: string }> 
     flags: [],
     run: commandSetSettings,
     help: "store confirmed settings from a JSON payload on stdin",
+  },
+  "config show": {
+    flags: [],
+    run: commandConfigShow,
+    help: "show the machine-wide defaults in ~/.meta-o/config.json",
+  },
+  "config set-defaults": {
+    flags: [],
+    run: commandConfigSetDefaults,
+    help: "store machine-wide defaults from a JSON payload on stdin",
   },
 
   "run start": {

@@ -12,10 +12,16 @@ included. The undocumented private helper is precisely the one that later turns
 out to contain the business rule, and `__eq__` is precisely the dunder whose
 notion of equality nobody can reconstruct a year later.
 
-Exactly three grounds excuse a symbol, and all three are declared rather than
-inferred: the file is generated, the file is vendored, or the definition is an
+Exactly two grounds excuse a symbol, and both are declared rather than
+inferred: the file carries a generated-code marker, or the definition is an
 `@overload` typing artefact with no body to explain. "It is obvious" and "it is
 short" are not among them.
+
+There is deliberately no "vendored" ground. An `exempt_files` entry with no
+generated marker is refused as an `unmarked-exemption`, because an exemption
+list is otherwise a place to hide code nobody has to justify. Keep a genuinely
+vendored tree out of `source_roots` instead — that is a boundary a reader can
+see.
 """
 
 from __future__ import annotations

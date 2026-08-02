@@ -8,14 +8,13 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { resolveProjectIdentity } from "../../core/project-key.mjs";
 import {
   cleanupRun,
   commitState,
   ensureProject,
   ensureRunDirectories,
-  GENERATION_ENV,
   listRuns,
+  readHandoff,
   readSettings,
   readState,
   withWriterLock,
@@ -35,36 +34,18 @@ import { fetchSpec, materializeSpecBlob, assertSpecUnchanged } from "../../core/
 import { validateModelSet } from "../../core/model-set.mjs";
 import { readGlobalConfig } from "../../core/config.mjs";
 import { validatePlan } from "../../core/e2e-registry.mjs";
-import {
-  dismissTaste,
-  isStaleResult,
-  openBlockingRecords,
-  proposeFix,
-  pruneClosedRecords,
-  resolveFinding,
-  validateFinding,
-  validateReviewResult,
-} from "../../core/findings.mjs";
 import { HerdrAdapter } from "../../adapters/herdr.mjs";
 import { isoTimestamp } from "../../core/clock.mjs";
 import { readExternalBytes } from "../../core/safe-fs.mjs";
 import { isAbsolute, join, relative as relativePath, resolve } from "node:path";
 import type {
-  DecisionRecord,
   E2ERegistry,
-  E2EResult,
   E2ESelectionPlan,
-  Finding,
-  FindingRecord,
-  KnowledgeImpactPlan,
   ModelSet,
   PendingOperation,
   Phase,
-  ReviewResult,
-  RevisionResult,
   Role,
   RunState,
-  SessionRef,
 } from "../../core/types.mjs";
 import {
   boolFlag,
@@ -77,7 +58,7 @@ import {
   type ParsedArgs,
 } from "../args.mjs";
 
-import { redact, redactDeep } from "../../core/redact.mjs";
+import { redact } from "../../core/redact.mjs";
 import { identityOf, loadState, mutate } from "./run-context.mjs";
 import { roleView } from "../../core/role-view.mjs";
 export { commandSetSession, commandTakeover } from "./ownership.mjs";
@@ -148,7 +129,8 @@ export async function commandStart(args: ParsedArgs): Promise<void> {
     fail(
       "no_model_set",
       "this project has no confirmed ModelSet, and ~/.meta-o/config.json declares no " +
-        "defaultModelSet; run `meta-o project set-settings` first",
+        "defaultModelSet; run `meta-o project set-settings` for this project, or " +
+        "`meta-o config set-defaults` for every project on this machine",
     );
   }
   const validation = validateModelSet(modelSet);
@@ -222,16 +204,18 @@ export function commandList(args: ParsedArgs): void {
  */
 export function commandShow(args: ParsedArgs): void {
   const { projectKey } = identityOf(args);
-  const state = loadState(projectKey, requireFlag(args, "run-id"));
+  const runId = requireFlag(args, "run-id");
+  const state = loadState(projectKey, runId);
+  const handoff = readHandoff(projectKey, runId);
   const role = optionalFlag(args, "as-role");
   if (role === undefined) {
-    emit(state);
+    emit({ ...state, ...(handoff === undefined ? {} : { handoff }) });
     return;
   }
   if (!(WORKER_ROLES as readonly string[]).includes(role)) {
     fail("unknown_role", `--as-role must name a worker role: ${WORKER_ROLES.join(", ")}`);
   }
-  emit(roleView(state, role as Role));
+  emit(roleView(state, role as Role, handoff));
 }
 
 /**
@@ -246,6 +230,12 @@ export function commandRoute(args: ParsedArgs): void {
   emit({
     runId: state.runId,
     phase: state.phase,
+    // The loop and its round are reported, not just used internally. The
+    // counter was incremented on every re-entry and read by nothing, so the one
+    // number that says "this loop has gone round four times" — the signal the
+    // skill turns into "spawn an adjudicator rather than let it spin" — was
+    // invisible to the only reader who could act on it.
+    ...(state.activeLoop ? { activeLoop: state.activeLoop } : {}),
     routing: routeNext(state),
     completionProven: completionProven(state),
   });
@@ -447,7 +437,11 @@ export async function commandSetPlan(args: ParsedArgs): Promise<void> {
  */
 function assertClearable(pending: PendingOperation | undefined): void {
   if (!pending) return;
-  const proven = pending.state === "observed" || (pending.state === "acknowledged" && pending.backendReceipt);
+  // `acknowledged` with a receipt, and nothing else. There used to be an
+  // `observed` state here too, which no code path ever wrote — a value that
+  // only an outside caller could produce, and whose only effect was to make
+  // this check pass.
+  const proven = pending.state === "acknowledged" && Boolean(pending.backendReceipt);
   if (proven) return;
   fail(
     "effect_unproven",

@@ -1498,6 +1498,56 @@ test("a scenario the E2E gate itself flagged can be fixed and re-run green", () 
   }
 });
 
+test("`watchdog enable` reaches the switch the watchdog loop actually reads", () => {
+  // There were two opt-in switches and the loop read the other one.
+  // `project set-settings` — the step the orchestrator skill makes mandatory,
+  // and the only way to store a ModelSet — wrote `watchdogEnabled: false`
+  // whenever its payload omitted a key no document mentions. Every real
+  // project therefore had the watchdog off, and `watchdog enable` printed a
+  // success payload naming the project while changing nothing.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    /** §M-TEST-HARDENING — What the project's own settings say about the watchdog. */
+    const setting = (): unknown =>
+      (ok(cli(["project", "settings"], context), "project settings").json["settings"] as
+        | Record<string, unknown>
+        | undefined)?.["watchdogEnabled"];
+
+    // `startRun` performs the mandatory `project set-settings`; the watchdog
+    // decision must come out absent, not a default nobody asked for.
+    startRun(context);
+    assert.equal(setting(), undefined, "storing a ModelSet decides nothing about the watchdog");
+
+    const enabled = ok(cli(["watchdog", "enable"], context), "watchdog enable");
+    assert.equal(enabled.json["projectSettingUpdated"], true);
+    assert.equal(setting(), true);
+
+    // And the mandatory step must not silently reverse it.
+    ok(
+      cli(["project", "set-settings"], {
+        ...context,
+        stdin: JSON.stringify({
+          schemaVersion: 1,
+          backend: "herdr",
+          modelSet: (ok(cli(["project", "settings"], context), "settings").json["settings"] as {
+            modelSet: unknown;
+          }).modelSet,
+        }),
+      }),
+      "re-store the ModelSet",
+    );
+    assert.equal(setting(), true, "the watchdog decision survives an unrelated settings write");
+
+    ok(cli(["watchdog", "disable"], context), "watchdog disable");
+    assert.equal(setting(), false);
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
 test("a backend the last full suite found broken may not be driven", () => {
   // §20 blocks a backend whose completion-critical capability is unsupported,
   // and that rule reached preflight and the installer only. The session
@@ -1913,5 +1963,96 @@ test("production needs a written contract, not only the user's consent", () => {
   } finally {
     home.dispose();
     repo.dispose();
+  }
+});
+
+test("the optional handoff is read back, and only by the role it belongs to", () => {
+  // §20 gives the run an `optional-handoff.md` and a 4 KiB cap on it, and the
+  // implementation wrote one that nothing ever read: a note whose only reader
+  // was the filesystem. §30's boundary decides who may read it — it is executor
+  // narrative, which is the first thing a reviewer must not be handed.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context, ["--handoff"]);
+    const note = "left the retry budget at three; see the comment in checkout.ts";
+    ok(cli(["run", "handoff", "--run-id", runId], { ...context, stdin: note }), "write the handoff");
+
+    assert.equal(
+      ok(cli(["run", "show", "--run-id", runId], context), "orchestrator view").json["handoff"],
+      note,
+      "the orchestrator sees the note it is responsible for passing on",
+    );
+    assert.equal(
+      ok(
+        cli(["run", "show", "--run-id", runId, "--as-role", "executor"], context),
+        "executor view",
+      ).json["handoff"],
+      note,
+      "the successor executor is the reader the handoff exists for",
+    );
+    for (const role of ["reviewerPrimary", "reviewerCrossVendor", "e2eTester"]) {
+      assert.equal(
+        ok(cli(["run", "show", "--run-id", runId, "--as-role", role], context), role).json[
+          "handoff"
+        ],
+        undefined,
+        `${role} must not be handed executor narrative`,
+      );
+    }
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("the machine-wide defaults the error message names can be written", () => {
+  // `run start` told users that `~/.meta-o/config.json` could declare a
+  // `defaultModelSet`, and no command wrote that file: the documented
+  // convenience was reachable only with a text editor.
+  const home = createTempHome();
+  const context: CliContext = { cwd: process.cwd(), home: home.dir };
+  const modelSet = {
+    executor: { route: "claude", vendor: "anthropic", family: "claude", model: "opus" },
+    reviewerPrimary: { route: "claude", vendor: "anthropic", family: "claude", model: "sonnet" },
+    reviewerCrossVendor: { route: "codex", vendor: "openai", family: "gpt", model: "gpt-5" },
+    e2eTester: { route: "claude", vendor: "anthropic", family: "claude", model: "sonnet" },
+  };
+  try {
+    assert.equal(
+      ok(cli(["config", "show"], context), "config show on a fresh machine").json["config"],
+      null,
+      "absence is reported as absence, not as an error",
+    );
+
+    // The same invariants as the project settings: a default that violates
+    // cross-vendor independence would be re-offered at every start on the machine.
+    const sameVendor = { ...modelSet, reviewerCrossVendor: modelSet.reviewerPrimary };
+    assert.equal(
+      errorCode(
+        cli(["config", "set-defaults"], {
+          ...context,
+          stdin: JSON.stringify({ defaultModelSet: sameVendor }),
+        }),
+      ),
+      "invalid_model_set",
+    );
+
+    ok(
+      cli(["config", "set-defaults"], {
+        ...context,
+        stdin: JSON.stringify({ defaultModelSet: modelSet, defaultBackend: "herdr" }),
+      }),
+      "config set-defaults",
+    );
+    const shown = ok(cli(["config", "show"], context), "config show").json["config"] as Record<
+      string,
+      unknown
+    >;
+    assert.equal(shown["schema_version"], 1);
+    assert.deepEqual(shown["defaultModelSet"], modelSet);
+  } finally {
+    home.dispose();
   }
 });

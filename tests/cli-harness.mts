@@ -103,7 +103,10 @@ export const SETTINGS = JSON.stringify({
     e2eTester: { route: "claude", vendor: "anthropic", family: "claude", model: "sonnet" },
   },
   backend: "herdr",
-  watchdogEnabled: false,
+  // No `watchdogEnabled`: the orchestrator skill's mandatory settings step does
+  // not mention the key, so a fixture that sends it is not the payload the
+  // workflow actually produces — and sending `false` here hid the fact that
+  // the command omitting it used to write `false` anyway.
   handoffDefault: false,
 });
 

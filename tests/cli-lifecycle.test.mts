@@ -12,15 +12,12 @@
 
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 
-import { createTempHome, type TempRepo } from "./helpers.mts";
+import { createTempHome } from "./helpers.mts";
 import type { E2ESelectionPlan } from "../dist/core/types.mjs";
 import {
-  CLI,
   FAKE_HERDR,
   action,
   cli,
@@ -31,7 +28,6 @@ import {
   startRun,
   writeLastRun,
   type CliContext,
-  type CliResult,
 } from "./cli-harness.mts";
 
 test("a handoff is refused unless the run started with consent", () => {
@@ -55,9 +51,7 @@ test("a run walks from start to COMPLETE only with four attestations on one snap
   const context: CliContext = { cwd: repo.dir, home: home.dir };
 
   try {
-    const projectKey = ok(cli(["project", "key"], context), "project key").json[
-      "projectKey"
-    ] as string;
+    ok(cli(["project", "key"], context), "project key");
 
     const runId = startRun(context);
     const shown = ok(cli(["run", "show", "--run-id", runId], context), "run show");
@@ -614,21 +608,3 @@ test("a candidate may not touch source outside the adopted closure", () => {
     repo.dispose();
   }
 });
-
-/** §M-TEST-CLI — Write the QC result the way a project's `make qc` would. */
-function writeQcResult(home: string, projectKey: string, runId: string, snapshotDigest: string): void {
-  const path = join(home, "projects", projectKey, "runs", runId, "qc-result.json");
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  writeFileSync(
-    path,
-    JSON.stringify({
-      schema_version: 1,
-      snapshot_digest: snapshotDigest,
-      gates: [
-        { id: "lint", status: "passed", command: "ruff check .", tool_version: "ruff 0.6", duration_ms: 10 },
-        { id: "tests", status: "passed", command: "pytest", tool_version: "pytest 8", duration_ms: 20 },
-      ],
-    }),
-    { mode: 0o600 },
-  );
-}

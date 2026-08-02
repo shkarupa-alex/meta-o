@@ -1,9 +1,10 @@
 # Acceptance map
 
-Every acceptance item the spec set lists, and where it is proven. Three items
-are deliberately marked *not mechanical*: they are judgements about meaning, and
-claiming a test for them would be the exact dishonesty this workflow exists to
-prevent — a green gate standing in for a reading nobody did.
+Every acceptance item the spec set lists, and where it is proven. Five items are
+deliberately marked *not mechanical*: three are judgements about meaning, and two
+are gates that are their own proof — in each case claiming a test would be the
+exact dishonesty this workflow exists to prevent, a green gate standing in for a
+reading nobody did.
 
 Test names below are written as prose. For the TypeScript suite that is
 verbatim what `node quality/run-tests.mjs` prints. For the Python starter
@@ -150,7 +151,7 @@ now has a test that fails if the hole reopens. They live in
 | A formatter rewriting an already-dirty file passes the non-mutation check | `a gate that rewrites an already-dirty file is invalid` (Python) |
 | `update.sh --skip-suite` runs the suite it was told to skip | `update.sh --skip-suite actually skips the suite` |
 | A watchdog crash between the wake and its record delivers the prompt twice | `a wake is recorded before it is sent, so a crash cannot deliver it twice` |
-| A green E2E run erases a blocker raised against the E2E work itself | `a green E2E run cannot erase a blocker raised against the E2E work` |
+| A green E2E run erases a blocker raised against the E2E work itself | `a green E2E run leaves a blocker raised against the E2E work standing` |
 | The production contract is satisfied by an uncommitted file, or by any heading containing the letters | `the production contract must be committed, and must be about production` |
 | A real package named `build` under a source root is never opened by the Python gates | `a package named build is judged and an output tree is not` (Python) |
 | A gate receipt matched by commit oid is discarded by an amend of an identical tree | `an amend that preserves the tree does not invalidate a single gate` |
@@ -176,3 +177,9 @@ now has a test that fails if the hole reopens. They live in
 | A malformed `[tool.meta_o.*]` value silently shrinks discovery | `a malformed config stops the gate instead of shrinking it` (Python) |
 | The closure check declines to run and reports `ok` | `a closure check that cannot run says so` (Python) |
 | `import a.b` reaches an uncertified package body through a certified submodule | `an adopted module may not reach an uncertified package body` (Python) |
+| `watchdog enable` writes a switch and the loop reads a different one | `` `watchdog enable` reaches the switch the watchdog loop actually reads `` |
+| §50's hybrid classifier is optional and nothing proves it stays non-authoritative | `a hybrid local model may only break a tie, never overrule the evidence` |
+| §20's `optional-handoff.md` is written and never read by anybody | `the optional handoff is read back, and only by the role it belongs to` |
+| `~/.meta-o/config.json` is named by an error message and creatable only by hand | `the machine-wide defaults the error message names can be written` |
+| meta-o's own `make qc` misses a mutation of a file that was already dirty | *not mechanical* — `a gate that rewrites an already-dirty file is invalid` (Python) proves the rule; `quality/run-qc.mjs` now computes the same listing-plus-bytes fingerprint, and a test would have to run meta-o's whole gate set twice to observe it |
+| `quality/lint.mjs` reports success over a set of files it never discovered | *not mechanical* — the gate proves itself: it fails when any declared root yields no files, so an empty discovery is a red gate rather than a green one, and no separate test can assert that without disabling the check it is asserting |

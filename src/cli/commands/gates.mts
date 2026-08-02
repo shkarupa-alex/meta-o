@@ -14,7 +14,7 @@ import { dirname, join } from "node:path";
 import { readRepoJson } from "../repo-json.mjs";
 import { resolveProjectIdentity } from "../../core/project-key.mjs";
 import { computeSnapshotDigest, verifyMetadataCommit } from "../../core/snapshot.mjs";
-import { git, resolveCommit } from "../../core/git.mjs";
+import { resolveCommit } from "../../core/git.mjs";
 import { runPreflight, type PreflightCheck } from "../../core/preflight.mjs";
 import { HerdrAdapter } from "../../adapters/herdr.mjs";
 import {
@@ -34,18 +34,10 @@ import {
   validateRegistry,
 } from "../../core/e2e-registry.mjs";
 import {
-  detectWeakening,
   evaluateQc,
   validateManifest,
   validateResult,
-  type QcWeakening,
 } from "../../core/qc.mjs";
-import {
-  detectBaselineWeakening,
-  detectPolicyWeakening,
-  parseMetaOPolicy,
-  type PolicyWeakening,
-} from "../../core/policy.mjs";
 import { validateReviewResult, isStaleResult } from "../../core/findings.mjs";
 import { buildAnchorIndex, businessAnchors, validateChain } from "../../core/knowledge.mjs";
 import { collectModuleAnchors } from "../../core/module-anchors.mjs";

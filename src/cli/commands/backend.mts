@@ -7,18 +7,6 @@
  * lives in `watchdog-cli.mts`, which builds on the adapter this file makes.
  */
 
-import { randomUUID } from "node:crypto";
-import {
-  closeSync,
-  constants as fsConstants,
-  lstatSync,
-  mkdirSync,
-  openSync,
-  renameSync,
-  rmSync,
-  writeSync,
-} from "node:fs";
-import { dirname } from "node:path";
 import { HerdrAdapter } from "../../adapters/herdr.mjs";
 import { formatCapabilityReport } from "../../adapters/adapter.mjs";
 import {
@@ -31,46 +19,21 @@ import {
   type SuiteContext,
 } from "../../adapters/capability-suite.mjs";
 import {
-  REGRESSION_PREFIX,
-  Watchdog,
-  type RunMemory,
-  type WatchdogDeps,
-  type WatchdogLogEntry,
-} from "../../watchdog/watchdog.mjs";
-import { classifyWithFallback, parseResetTime, type LocalClassifier } from "../../watchdog/classifier.mjs";
-import {
-  commitState,
   GENERATION_ENV,
-  listRuns,
   readSettings,
-  readState,
-  withWriterLock,
 } from "../../core/state-store.mjs";
 import { readSecureJson, writeSecureJson } from "../../core/safe-fs.mjs";
 import type { JsonValue } from "../../core/canonical-json.mjs";
 import {
   capabilityBaselinePath,
-  projectMetadataPath,
-  watchdogConfigPath,
-  watchdogLockPath,
-  watchdogLogPath,
-  watchdogMemoryPath,
 } from "../../core/paths.mjs";
 import { resolveProjectIdentity } from "../../core/project-key.mjs";
 import { isoTimestamp } from "../../core/clock.mjs";
 import type {
   ModelRef,
   ModelSet,
-  PendingOperation,
-  RunState,
-  SessionStatus,
-  TailClassification,
-  WatchdogConfig,
 } from "../../core/types.mjs";
 import { boolFlag, emit, fail, optionalFlag, type ParsedArgs } from "../args.mjs";
-
-/** §M-CLI-BACKEND — Maximum watchdog log size before rotation. */
-const LOG_ROTATE_BYTES = 4 * 1024 * 1024;
 
 /** §M-CLI-BACKEND — Wake prompt a recovered orchestrator receives. */
 export const WAKE_PROMPT =

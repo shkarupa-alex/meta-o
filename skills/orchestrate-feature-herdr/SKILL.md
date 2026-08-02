@@ -163,8 +163,10 @@ Give each role exactly this, and nothing else:
 | `technicalAdjudicator` | the single disputed finding, the evidence on both sides, the candidate |
 
 Reviewers must not receive executor reasoning, implementation narrative, or each
-other's findings. You receive structured results and evidence references from
-workers — not full diffs, logs or transcripts.
+other's findings. What you *pass on* is structured results and evidence
+references — never a diff, a log or a transcript. You will still read raw pane
+text yourself: `meta-o session read` returns it, and observing the effect of an
+instruction is a step §20 requires. Read it, act on it, and do not forward it.
 
 Start each worker prompt with: *"Read the `<skill-name>` skill and follow it."*
 
@@ -180,7 +182,14 @@ Start each worker prompt with: *"Read the `<skill-name>` skill and follow it."*
   and the named role must have a session this run dispatched — so spawn the
   adjudicator before you try to close anything on its authority.
 - After two fruitless rebuttal turns on one finding, spawn a
-  `technicalAdjudicator` rather than letting the loop spin.
+  `technicalAdjudicator` rather than letting the loop spin. Its third verdict —
+  the concern is real but it is taste — is
+  `meta-o run reclassify-finding --reviewer <slot> --finding-id <id> --rationale "…"`.
+  The finding stays on the record and stops blocking.
+- Findings the E2E gate derived from a scenario status carry ids beginning
+  `E2E-` and belong to that gate. They are not closed by hand: re-run the
+  selected set against a candidate where the scenario passes, and they go.
+  Raise your own findings under your own ids.
 - Fix findings in batches. After a batch: QC, then the loop that raised them.
 
 ## Decisions and the two things only the user may allow

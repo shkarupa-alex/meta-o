@@ -55,6 +55,7 @@ The orchestrator confirms the ModelSet with you, runs preflight, and drives the
 run through `meta-o`. Everything it decides mechanically, you can reproduce:
 
 ```bash
+meta-o config show                     # machine-wide defaults, if any were set
 meta-o preflight                       # is the project contract there and valid?
 meta-o snapshot digest                 # what is this tree's content identity?
 meta-o run route --run-id <id>         # what should happen next, and why?
@@ -143,7 +144,14 @@ Everything a run knows lives outside the repository:
   projects/<readable-path>--<sha256[0:12]>/
     project.json  settings.json
     runs/<run-id>/state.json  input/spec-<sha256>.md  gate-receipts/<label>.json
+                  optional-handoff.md   # only if the user enabled it at start
 ```
+
+`config.json` is optional and holds machine-wide defaults — the four models and
+the backend — so the tenth project does not need them typed out again. Write it
+with `meta-o config set-defaults` (JSON on stdin) or by hand; a project's own
+`settings.json` always wins, and a run seeded from either still starts in
+`AWAITING_MODEL_SET` and still has to be confirmed.
 
 Findings are *in* `state.json`, not in a directory of their own: they are
 working memory for one run, and a closed one is pruned rather than archived —
@@ -174,8 +182,8 @@ That writes `~/.meta-o/watchdog.json`, which you can also hand-edit:
   "schema_version": 1,
   "enabled": true,
   "project_keys": ["-home-you-work-app--73899b39f653"],
-  "poll_interval_seconds": 60,
-  "max_backoff_seconds": 900,
+  "poll_interval_seconds": 30,
+  "max_backoff_seconds": 300,
   "classifier_mode": "deterministic"
 }
 ```
@@ -212,9 +220,9 @@ make qc              # the same gate this project asks of others
 The suite builds real Git repositories, real state trees with real permission
 bits, and a scripted stand-in that speaks the backend's actual protocol.
 [`docs/acceptance-map.md`](docs/acceptance-map.md) lists every acceptance item
-in §00–§50 against the test that proves it — including the three that are
-judgements about meaning and are marked *not mechanical* instead of being given
-a test that would only look like proof.
+in §00–§50 against the test that proves it — including the five marked *not
+mechanical*, three of them judgements about meaning and two of them gates that
+are their own proof, rather than being given a test that would only look like one.
 
 Its own knowledge lives in [`docs/knowledge/`](docs/knowledge/business.md) and
 its own E2E contract in [`docs/architecture/e2e.md`](docs/architecture/e2e.md).

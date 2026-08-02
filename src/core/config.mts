@@ -14,8 +14,9 @@
  */
 
 import { configPath } from "./paths.mjs";
-import { readSecureJson } from "./safe-fs.mjs";
+import { ensureSecureDir, metaOHome, readSecureJson, writeSecureJson } from "./safe-fs.mjs";
 import { validateModelSet } from "./model-set.mjs";
+import type { JsonValue } from "./canonical-json.mjs";
 import type { Backend, ModelSet } from "./types.mjs";
 
 /** §M-CONFIG — Shape of `~/.meta-o/config.json`. */
@@ -24,7 +25,6 @@ export interface GlobalConfig {
   defaultModelSet?: ModelSet;
   defaultBackend?: Backend;
   handoffDefault?: boolean;
-  watchdogEnabled?: boolean;
 }
 
 /**
@@ -48,4 +48,17 @@ export function readGlobalConfig(): GlobalConfig | undefined {
     return rest as GlobalConfig;
   }
   return raw;
+}
+
+/**
+ * §M-CONFIG — Write the machine-wide defaults.
+ *
+ * The file was readable and documented but unwritable by any command, so the
+ * `no_model_set` error pointed users at a path only a text editor could create.
+ * A convenience that has to be hand-authored to be used is not one.
+ */
+export function writeGlobalConfig(config: GlobalConfig): GlobalConfig {
+  ensureSecureDir(metaOHome());
+  writeSecureJson(configPath(), config as unknown as JsonValue);
+  return config;
 }

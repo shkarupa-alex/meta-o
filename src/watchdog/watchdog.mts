@@ -42,7 +42,6 @@ import type {
   RunState,
   SessionStatus,
   TailClassification,
-  WatchdogAction,
   WatchdogConfig,
 } from "../core/types.mjs";
 

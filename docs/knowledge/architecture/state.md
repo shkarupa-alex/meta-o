@@ -40,8 +40,10 @@ That restriction is the feature. A fresh orchestrator reads it and knows exactly
 what to do next, because the next step is computed from it. A handoff document
 would be a second source of truth, written by a process that was about to die.
 
-Takeover requires proof that the previous orchestrator is terminal or failed
-(`run takeover --previous-status`), and every commit re-checks the generation
-fence. Two live orchestrators driving one run would issue conflicting
+Takeover requires proof that the previous orchestrator is terminal or failed —
+and `meta-o run takeover` obtains that proof itself, by asking the backend,
+rather than accepting a status the caller declares. It reports what it observed
+as `previousStatus` and refuses when the predecessor is still alive. Every
+commit then re-checks the generation fence. Two live orchestrators driving one run would issue conflicting
 instructions to the same workers — a failure that is silent at first and
 expensive later.

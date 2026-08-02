@@ -110,7 +110,18 @@ export interface ProjectSettings {
   schemaVersion: 1;
   modelSet: ModelSet;
   backend: Backend;
-  watchdogEnabled: boolean;
+  /**
+   * Whether this project has opted *out* of the watchdog. Three-valued on
+   * purpose: absent means "not decided here", and the watchdog treats that as
+   * watchable, because the decision to watch at all is `watchdog.json`'s.
+   *
+   * It was a plain boolean, and `project set-settings` — the step the
+   * orchestrator skill makes mandatory — wrote `false` whenever the payload
+   * omitted a key nothing documents. Every real project therefore had the
+   * watchdog switched off by a step taken for another reason entirely, and
+   * `meta-o watchdog enable` could not turn it on.
+   */
+  watchdogEnabled?: boolean;
   handoffDefault: boolean;
   updatedAt: string;
 }
@@ -236,7 +247,7 @@ export interface PendingOperation {
   kind: "spawn" | "send" | "wait" | "stop";
   sessionId?: string;
   requestDigest: string;
-  state: "prepared" | "acknowledged" | "observed" | "uncertain";
+  state: "prepared" | "acknowledged" | "uncertain";
   backendReceipt?: string;
   probe?: string;
   preparedAt?: string;

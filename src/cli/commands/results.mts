@@ -8,43 +8,21 @@
  * is what stops four gates from agreeing about four different trees.
  */
 
-import { randomUUID } from "node:crypto";
-import { join } from "node:path";
-import { commitState, withWriterLock } from "../../core/state-store.mjs";
 import {
-  assertTransition,
-  invalidatePlanBoundConfirmations,
-  invalidateStaleConfirmations,
-  loopForPhase,
   routeNext,
 } from "../../core/fsm.mjs";
-import { validatePlan } from "../../core/e2e-registry.mjs";
 import {
-  dismissTaste,
   isStaleResult,
   openBlockingRecords,
-  proposeFix,
-  pruneClosedRecords,
-  reclassifyAsTaste,
-  evidenceErrors,
-  resolveFinding,
-  validateFinding,
   validateReviewResult,
 } from "../../core/findings.mjs";
 import { isoTimestamp } from "../../core/clock.mjs";
-import { readExternalBytes } from "../../core/safe-fs.mjs";
 import type {
-  E2ERegistry,
   E2EResult,
   E2EScenarioResult,
   E2ESelectionPlan,
-  Evidence,
-  Finding,
   FindingRecord,
   KnowledgeImpactPlan,
-  Phase,
-  QcManifest,
-  QcResult,
   ReviewResult,
   RevisionResult,
   RunState,
@@ -58,13 +36,11 @@ import {
 } from "./gate-evidence.mjs";
 import { redactDeep } from "../../core/redact.mjs";
 import { carryOpenBlockers } from "./findings-cli.mjs";
-import { findingSlot, identityOf, loadState, mutate, type FindingSlot } from "./run-context.mjs";
+import { identityOf, mutate } from "./run-context.mjs";
 import {
-  boolFlag,
   emit,
   fail,
   optionalFlag,
-  readStdin,
   readStdinJson,
   requireFlag,
   type ParsedArgs,

@@ -137,3 +137,8 @@ snapshot, and only when the orchestrator asks:
 If — and only if — the user enabled it at the start, you may leave up to 4 KiB
 of continuation notes with `meta-o run handoff --run-id <id>`. Oversized notes
 are rejected, not truncated; rewrite them shorter.
+
+Write it for your successor, not for the orchestrator. If a previous executor
+session left one, `meta-o run show --run-id <id> --as-role executor` returns it
+as `handoff`; read it before you start, and treat it as a hint, never as a
+substitute for reading the spec and the code. Reviewers never receive it.

@@ -21,7 +21,7 @@ import {
 import { routeNext } from "../../core/fsm.mjs";
 import { redactDeep } from "../../core/redact.mjs";
 import { findingSlot, identityOf, mutate, type FindingSlot } from "./run-context.mjs";
-import { emit, fail, optionalFlag, readStdinJson, requireFlag, type ParsedArgs } from "../args.mjs";
+import { emit, fail, readStdinJson, requireFlag, type ParsedArgs } from "../args.mjs";
 import type { Evidence, Finding, FindingRecord, RunState, SessionRef } from "../../core/types.mjs";
 
 /**

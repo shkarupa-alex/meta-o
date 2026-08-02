@@ -47,14 +47,42 @@ const RULES = [
   },
 ];
 
-/** §M-QC-LINT — Tracked sources this gate applies to. */
+/** §M-QC-LINT — Roots this gate is responsible for; each must contribute a file. */
+const ROOTS = ["src", "tests", "quality"];
+
+/**
+ * §M-QC-LINT — Tracked sources this gate applies to.
+ *
+ * The glob is `tests/**`, filtered by extension here, because git's
+ * double-star form requires at least one intermediate directory: the old
+ * pattern matched none of the files sitting directly in `tests/`, and this gate
+ * ran blind over the whole test suite while reporting `ok`. The purpose gate
+ * documents the identical bug as found and fixed; this one still had it.
+ */
 function sources() {
-  return execFileSync("git", ["ls-files", "src/**/*.mts", "tests/**/*.mts", "quality/*.mjs"], {
-    cwd: ROOT,
-    encoding: "utf8",
-  })
+  // Plain path arguments and an extension filter, no globs at all. Git's
+  // double-star requires an intermediate directory, so `tests/**/*.mts`
+  // silently matched none of the files sitting directly in `tests/` — this
+  // gate ran blind over the whole test suite and reported `ok`. A pattern that
+  // can fail this way is not worth keeping once a directory listing does.
+  const files = execFileSync("git", ["ls-files", "--", ...ROOTS], { cwd: ROOT, encoding: "utf8" })
     .split("\n")
-    .filter(Boolean);
+    .filter((file) => file.endsWith(".mts") || file.endsWith(".mjs"));
+
+  // §40 makes an unexpected skip a FAIL, and a gate that discovered nothing is
+  // the largest possible skip. The Python profile has `assert_discovered` for
+  // exactly this; the JS gates had no equivalent, so an emptied glob could not
+  // surface. The floor is deliberately crude — it only has to be impossible to
+  // reach by accident while the suite exists.
+  const empty = ROOTS.filter((root) => !files.some((file) => file.startsWith(`${root}/`)));
+  if (empty.length > 0) {
+    process.stderr.write(
+      `lint discovered no sources under ${empty.join(", ")}; a gate that judged nothing is a ` +
+        "skip, not a pass\n",
+    );
+    process.exit(1);
+  }
+  return files;
 }
 
 const problems = [];

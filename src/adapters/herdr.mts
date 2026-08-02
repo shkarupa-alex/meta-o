@@ -658,5 +658,3 @@ export class HerdrAdapter implements SessionAdapter {
   }
 }
 
-/** §M-HERDR — Matrix entry shape, aliased for readability inside the grading table. */
-type CapabilityGradeDetail = ReturnType<typeof entry>;

@@ -15,6 +15,7 @@ import type { JsonValue } from "./canonical-json.mjs";
 import { type Clock, isoTimestamp, systemClock } from "./clock.mjs";
 import {
   ensureSecureDir,
+  readSecureFile,
   readSecureJson,
   writeSecureJson,
   atomicWriteFile,
@@ -381,6 +382,23 @@ export function writeHandoff(projectKey: string, runId: string, content: string)
   if (bytes > HANDOFF_MAX_BYTES) throw new HandoffTooLargeError(bytes);
   ensureRunDirectories(projectKey, runId);
   atomicWriteFile(handoffPath(projectKey, runId), content);
+}
+
+/**
+ * §M-STATE-STORE — Read the optional executor handoff, or `undefined`.
+ *
+ * A note nobody reads is not a handoff. This is the read side: `run show`
+ * serves it to the orchestrator and to the executor, and to nobody else —
+ * §30 forbids handing executor narrative to a reviewer, and the handoff is
+ * exactly that narrative.
+ */
+export function readHandoff(projectKey: string, runId: string): string | undefined {
+  try {
+    return readSecureFile(handoffPath(projectKey, runId)).toString("utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
 }
 
 /**

@@ -32,6 +32,8 @@ export interface RoleView {
   findings: FindingRecord[];
   /** Named so a worker can tell "no findings yet" from "findings you may not see". */
   withheld: string[];
+  /** The optional handoff, for the executor only: it is executor narrative. */
+  handoff?: string;
   updatedAt: string;
 }
 
@@ -46,8 +48,12 @@ export interface RoleView {
  * and is told, by name, which slots were withheld — silence there would read as
  * "the other reviewer found nothing", which is a different and much more
  * dangerous claim.
+ *
+ * `handoff` is passed in rather than read here so this stays a pure function of
+ * state, and it reaches the executor alone: it is the previous executor session's
+ * narrative, which is the first thing §30 says a reviewer may not be given.
  */
-export function roleView(state: RunState, role: Role): RoleView {
+export function roleView(state: RunState, role: Role, handoff?: string): RoleView {
   const open = state.openFindings ?? {};
   const slots = ["reviewerPrimary", "reviewerCrossVendor", "e2e"] as const;
   const visible = slots.filter((slot) => isVisibleTo(slot, role));
@@ -64,6 +70,7 @@ export function roleView(state: RunState, role: Role): RoleView {
     e2eScenarioStatus: state.e2eScenarioStatus,
     findings: visible.flatMap((slot) => open[slot] ?? []),
     withheld: slots.filter((slot) => !visible.includes(slot) && (open[slot]?.length ?? 0) > 0),
+    ...(role === "executor" && handoff !== undefined ? { handoff } : {}),
     updatedAt: state.updatedAt,
   };
 }

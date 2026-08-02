@@ -10,6 +10,11 @@
     "outDir": "dist",
 
     "strict": true,
+    // A leftover import is invisible to every other gate here: `lint.mjs` has no
+    // unused-symbol rule, and splitting a large module leaves a dozen of them.
+    // Parameters are deliberately not included: a signature that conforms to an
+    // interface may legitimately ignore an argument.
+    "noUnusedLocals": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
