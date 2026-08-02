@@ -107,6 +107,17 @@ export function containsSecret(text: string): boolean {
  * protection, which this module calls its main level, doing nothing at all for
  * structured data. An opaque internal token quoted into `evidence[].detail`
  * matches no `VALUE_PATTERNS` shape and reached `state.json` verbatim.
+ *
+ * Reassembly uses `defineProperty` and not `out[key] = …`, because assignment
+ * is not a way of putting a property on an object — it is a way of invoking
+ * whatever setter answers to that name. `JSON.parse` happily produces an own
+ * `__proto__`, and assignment turned it back into a prototype write: the key
+ * left `Object.keys` while its contents stayed readable through the chain. Every
+ * validator downstream that decides by enumerating own keys — the knowledge
+ * plan's unknown-field check among them — was then reading a different object
+ * than the one it went on to store. A plan whose four fields lived on the
+ * prototype passed validation and was stored as `{}`, which is precisely the
+ * value the same validator rejects.
  */
 export function redactDeep<T>(value: T): T {
   if (typeof value === "string") return redact(value) as unknown as T;
@@ -114,10 +125,15 @@ export function redactDeep<T>(value: T): T {
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-      out[key] =
-        SECRET_NAME.test(key) && typeof item === "string" && item !== ""
-          ? MASK
-          : redactDeep(item);
+      Object.defineProperty(out, key, {
+        value:
+          SECRET_NAME.test(key) && typeof item === "string" && item !== ""
+            ? MASK
+            : redactDeep(item),
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      });
     }
     return out as unknown as T;
   }

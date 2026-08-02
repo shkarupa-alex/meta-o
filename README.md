@@ -75,7 +75,7 @@ meta-o help                            # the real command surface
 |---|---|
 | `orchestrate-feature-herdr` | Owns the FSM and addresses work. Reads no code. |
 | `execute-feature` | Implements the whole scope, syncs knowledge, makes the candidate |
-| `review-feature` | One of the two independent reviews, on a fixed seven-lens rubric |
+| `review-feature` | One of the two independent reviews, on a fixed eight-lens rubric |
 | `test-e2e` | Selection plan, smoke, then the selected scenario set |
 | `adopt-project` | Brings a brownfield repository up to the project contract |
 | `research-reuse` | Optional scan for machinery that already exists |

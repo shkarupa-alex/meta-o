@@ -25,6 +25,7 @@ import { createTempHome } from "./helpers.mts";
 import {
   cli,
   confirmModels,
+  FAKE_HERDR,
   passLocalGates,
   passReviews,
   dispatchWorkers,
@@ -575,6 +576,121 @@ test("a backend nothing implements is refused at start, not printed and dropped"
     const runId = startRun(context);
     const state = ok(cli(["run", "show", "--run-id", runId], context), "run show").json;
     assert.equal(state["backend"], "herdr");
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("cleanup stops the run's workers before it deletes the state that names them", () => {
+  // §00 step 5 orders these two, and the acceptance map claimed the ordering
+  // was proven by a test that calls the state-store function directly — it
+  // never spawns a session and never sees a stop outcome. The behaviour was
+  // right and nothing was holding it there: deleting first destroys the only
+  // record of the handles, so a leaked reviewer sits in a pane nothing can
+  // address, one per abandoned run.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const fakeState = join(home.dir, "fake-herdr.json");
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    dispatchWorkers(context, runId);
+
+    /** §M-TEST-HARDENING-LIFECYCLE — Panes the scripted backend currently holds. */
+    const panes = (): string[] =>
+      Object.keys(
+        (JSON.parse(readFileSync(fakeState, "utf8")) as { panes: Record<string, unknown> }).panes,
+      );
+    assert.equal(panes().length, 3, "three workers were dispatched");
+
+    const cleaned = ok(
+      cli(["run", "cleanup", "--run-id", runId, "--force"], {
+        ...context,
+        env: { META_O_HERDR_BIN: FAKE_HERDR, FAKE_HERDR_STATE: fakeState },
+      }),
+      "run cleanup",
+    );
+
+    const sessions = cleaned.json["sessions"] as Record<string, string>;
+    assert.deepEqual(
+      Object.keys(sessions).sort(),
+      ["e2eTester", "reviewerCrossVendor", "reviewerPrimary"],
+      "every dispatched worker is accounted for by name",
+    );
+    for (const [role, outcome] of Object.entries(sessions)) {
+      assert.equal(outcome, "stopped", `${role} was stopped, not abandoned`);
+    }
+    assert.deepEqual(panes(), [], "and the backend is holding nothing for this run");
+    assert.deepEqual(ok(cli(["run", "list"], context), "run list").json["runs"], []);
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("the adjudicator threshold is a number the run keeps, not a memory", () => {
+  // §30 lets the orchestrator call a fresh adjudicator "after two fruitless
+  // rebuttal turns", and nothing counted them: the rule lived in the skill as
+  // prose, so the one number it rests on existed nowhere a recovered
+  // orchestrator could read. A run that had argued about a finding six times
+  // looked exactly like a run on its first attempt.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    dispatchWorkers(context, runId);
+    ok(
+      cli(["run", "open-findings", "--run-id", runId, "--reviewer", "reviewerPrimary"], {
+        ...context,
+        stdin: blocker("F-1"),
+      }),
+      "open-findings",
+    );
+
+    /** §M-TEST-HARDENING-LIFECYCLE — Propose one fix, and report what routing now says. */
+    const attempt = (commit: string): { action: string; adjudicable: string[] } => {
+      const proposed = ok(
+        cli(
+          [
+            "run",
+            "propose-fix",
+            "--run-id",
+            runId,
+            "--reviewer",
+            "reviewerPrimary",
+            "--finding-id",
+            "F-1",
+            "--candidate-commit",
+            commit,
+          ],
+          {
+            ...context,
+            stdin: JSON.stringify([
+              { kind: "file", reference: "src/app.py:1", detail: "guard added" },
+            ]),
+          },
+        ),
+        `propose-fix ${commit}`,
+      );
+      assert.equal(proposed.json["status"], "fix_proposed");
+      // `run route` and not `run show`: the threshold is a routing signal, and
+      // routing is what the orchestrator skill is told to read.
+      const routed = ok(cli(["run", "route", "--run-id", runId], context), "run route");
+      const routing = routed.json["routing"] as { action: string; adjudicable?: string[] };
+      return { action: routing.action, adjudicable: routing.adjudicable ?? [] };
+    };
+
+    const first = attempt("c1");
+    assert.deepEqual(first.adjudicable, [], "one fruitless turn is not two");
+    const second = attempt("c2");
+    assert.deepEqual(second.adjudicable, ["F-1"], "the second reaches §30's threshold");
+
+    // Reported, never acted on. §30 says the orchestrator *may* call an
+    // adjudicator, so crossing the threshold changes what the run can tell the
+    // orchestrator and nothing about what it prescribes.
+    assert.equal(second.action, first.action, "the threshold reports; it does not route");
   } finally {
     home.dispose();
     repo.dispose();

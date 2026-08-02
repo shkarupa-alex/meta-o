@@ -14,7 +14,6 @@ import { HerdrAdapter } from "../../adapters/herdr.mjs";
 import {
   adapterFor,
   CAPABILITY_REGRESSION_PROMPT,
-  spawnPrompt,
   UNCERTAINTY_PROMPT,
   WAKE_PROMPT,
 } from "./backend.mjs";
@@ -36,10 +35,12 @@ import {
 } from "../../core/state-store.mjs";
 import { digestOf } from "./session-state.mjs";
 import {
+  finishAdoptedOrchestratorSpawn,
   markUncertain,
   mutate,
   prepare,
   recordPane,
+  sendSpawnPrompt,
   settleReconciled,
 } from "./write-ahead.mjs";
 import { readSecureJson, writeSecureJson } from "../../core/safe-fs.mjs";
@@ -54,8 +55,8 @@ import { projectMetadataPath, watchdogConfigPath, watchdogLogPath } from "../../
 import { resolveProjectIdentity } from "../../core/project-key.mjs";
 import { isoTimestamp } from "../../core/clock.mjs";
 import type {
-  DeliveryResult,
   PendingOperation,
+  ReconcileResult,
   RunState,
   SessionRef,
   SessionStatus,
@@ -393,53 +394,37 @@ async function spawnReplacement(adapter: HerdrAdapter, state: RunState): Promise
 }
 
 /**
- * §M-CLI-WATCHDOG — Give the replacement its instructions, written ahead.
+ * §M-CLI-WATCHDOG — Ask what became of an operation, then finish what it started.
  *
- * A second operation rather than part of the spawn, for the same reason
- * `session spawn` and `session send` are two commands: creating an agent and
- * telling it what to do are two observable effects, and a crash between them
- * has to be classifiable. A delivery this fails to prove is left `uncertain`
- * and reconciled on a later tick — the alternative, re-sending blind, is how a
- * recovered orchestrator ends up with two copies of its charter.
+ * A reconcile that only *reports* the effect is not a reconcile. This asked the
+ * adapter, logged the answer and left the record exactly where it was, so a run
+ * whose orchestrator died mid-spawn kept its pending operation forever — and
+ * since a spawn may not start while one is in flight, the watchdog could never
+ * legitimately replace it.
+ *
+ * Settling adopts an `applied` spawn, which turns an orphan agent back into a
+ * session this run names and `run cleanup` can stop; an adopted *orchestrator*
+ * then needs the two steps the crash skipped, or the run gets an orchestrator
+ * that exists, is named, and was never told anything.
  */
-async function sendSpawnPrompt(
+async function reconcileAndSettle(
   adapter: HerdrAdapter,
-  projectKey: string,
-  runId: string,
-  session: SessionRef,
-  generation: number,
-): Promise<void> {
-  const message = spawnPrompt(generation);
-  const operationId = digestOf({ kind: "watchdog-send", projectKey, runId, generation });
-  const pending = await prepare(projectKey, runId, {
-    operationId,
-    kind: "send",
-    sessionId: session.sessionId,
-    requestDigest: digestOf({ kind: "send", sessionId: session.sessionId, message }),
-    probe: await adapter.prepareProbe(session, message),
-  });
-
-  let delivery: DeliveryResult;
-  try {
-    delivery = await adapter.send(session, operationId, message);
-  } catch (error) {
-    await markUncertain(projectKey, runId, pending);
-    throw error;
-  }
-
-  if (delivery.status === "unknown") {
-    await markUncertain(projectKey, runId, pending);
-    throw new Error(`the replacement orchestrator's prompt could not be proven delivered`);
-  }
-
-  await mutate(projectKey, runId, (current) =>
-    withPendingOperation(current, {
-      ...pending,
-      state: "acknowledged",
-      ...(delivery.receipt ? { backendReceipt: delivery.receipt } : {}),
-    }),
+  state: RunState,
+  operation: PendingOperation,
+): Promise<ReconcileResult> {
+  const result = await adapter.reconcile(operation);
+  const recovered = await settleReconciled(
+    state.projectKey,
+    state.runId,
+    adapter,
+    state,
+    operation,
+    result,
   );
-  await mutate(projectKey, runId, (current) => clearPendingOperation(current));
+  if (recovered?.role === "orchestrator") {
+    await finishAdoptedOrchestratorSpawn(adapter, state.projectKey, state.runId, recovered);
+  }
+  return result;
 }
 
 /**
@@ -474,18 +459,7 @@ function backendDeps(adapter: HerdrAdapter, config: WatchdogConfig): WatchdogDep
     watchdogEnabledFor: (projectKey) => readSettings(projectKey)?.watchdogEnabled !== false,
     readState,
     orchestratorStatus,
-    // A reconcile that only reports the effect is not a reconcile. This asked
-    // the adapter, logged the answer and left the record exactly where it was,
-    // so a run whose orchestrator died mid-spawn kept its pending operation
-    // forever — and since a spawn may not start while one is in flight, the
-    // watchdog could never legitimately replace it. Settling also adopts an
-    // `applied` spawn, which is what turns an orphan agent back into a session
-    // this run names and `run cleanup` can stop.
-    reconcile: async (state, operation) => {
-      const result = await adapter.reconcile(operation);
-      await settleReconciled(state.projectKey, state.runId, adapter, state, operation, result);
-      return result;
-    },
+    reconcile: (state, operation) => reconcileAndSettle(adapter, state, operation),
     readSession: async (state, cursor) => {
       if (!state.orchestratorSession) return undefined;
       try {

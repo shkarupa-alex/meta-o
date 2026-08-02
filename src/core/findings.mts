@@ -279,9 +279,33 @@ export function proposeFix(
   return {
     ...record,
     status: "fix_proposed",
+    fixAttempts: (record.fixAttempts ?? 0) + 1,
     resolutionCandidate: candidateCommit,
     ...(evidence ? { resolutionEvidence: evidence } : {}),
   };
+}
+
+/** §M-FINDINGS — Statuses that mean the argument about a finding is over. */
+const SETTLED: ReadonlySet<FindingRecord["status"]> = new Set(["resolved", "taste_dismissed"]);
+
+/**
+ * §M-FINDINGS — Findings that have been argued about long enough to adjudicate.
+ *
+ * §30: "После двух бесплодных rebuttal turns оркестратор может вызвать fresh
+ * technical adjudicator." The threshold is two, the decision is the
+ * orchestrator's — `может`, not `должен` — and this reports which findings have
+ * reached it rather than acting. What it replaces is a sentence in a skill
+ * prompt about a number nothing was keeping.
+ *
+ * A fix that is still `fix_proposed` counts: the reviewer has not accepted it
+ * yet. `resolved` and `taste_dismissed` do not — the first ended the argument
+ * and the second *is* the adjudicator's ruling, so continuing to nominate it
+ * would ask the orchestrator to adjudicate the same finding for ever.
+ */
+export function adjudicable(records: FindingRecord[], threshold = 2): string[] {
+  return records
+    .filter((record) => !SETTLED.has(record.status) && (record.fixAttempts ?? 0) >= threshold)
+    .map((record) => record.finding.id);
 }
 
 /**

@@ -339,6 +339,36 @@ export function removeSecureFile(path: string): void {
 }
 
 /**
+ * §M-SAFE-FS — Read a state-tree file another process was asked to write.
+ *
+ * `qc-result.json` is the one file in a run directory meta-o does not write:
+ * the project's own `make qc` writes it, at whatever mode the project's umask
+ * produces. Holding it to the `0600` rule would fail every honest run, so the
+ * mode check is dropped — and only the mode check. The directories above it are
+ * still verified, the leaf must still be a regular file and not a symlink, and
+ * the open still carries `O_NOFOLLOW`, so the diversion this layer exists to
+ * refuse is refused the same way it is everywhere else.
+ */
+export function readDelegatedJson<T>(path: string): T | undefined {
+  const absolute = assertInsideStateTree(path);
+  verifySecureDir(dirname(absolute));
+  const stat = lstatSync(absolute, { throwIfNoEntry: false });
+  if (!stat) return undefined;
+  if (stat.isSymbolicLink()) {
+    throw new InsecureStateError(`refusing to follow symlink in state tree: ${absolute}`, absolute);
+  }
+  if (!stat.isFile()) {
+    throw new InsecureStateError(`expected a regular file: ${absolute}`, absolute);
+  }
+  const fd = openSync(absolute, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+  try {
+    return JSON.parse(readFileSync(fd, "utf8")) as T;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
  * §M-SAFE-FS — Read a file outside the state tree without permission requirements.
  *
  * Repository files and user-supplied spec paths are ordinary project data; they

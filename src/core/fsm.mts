@@ -9,7 +9,7 @@
  * state, not recalled.
  */
 
-import { openBlockingRecords } from "./findings.mjs";
+import { adjudicable, openBlockingRecords } from "./findings.mjs";
 import type { ActiveLoop, Confirmations, Phase, RevisionResult, RunState } from "./types.mjs";
 
 /** §M-FSM — Normal forward order of the lifecycle. */
@@ -233,6 +233,17 @@ export interface Routing {
   phase: Phase;
   reason: string;
   missingGates: Array<keyof Confirmations>;
+  /**
+   * Findings the executor has failed to settle twice, by §30's threshold.
+   *
+   * Reported, not acted on: §30 says the orchestrator *may* call an adjudicator,
+   * and turning "may" into an automatic dispatch would spend a fourth model on
+   * every stubborn finding. What was wrong is that the number the decision rests
+   * on existed nowhere, so the rule could only be followed by an orchestrator
+   * that happened to remember its own earlier turns — which is the one thing a
+   * recovered orchestrator cannot do.
+   */
+  adjudicable?: string[];
 }
 
 /**
@@ -363,7 +374,7 @@ function routePrerequisites(state: RunState): Routing | undefined {
  * re-reviewing after every small behavioural fix is exactly the churn the
  * separate loops exist to prevent.
  */
-export function routeNext(state: RunState): Routing {
+function routeStep(state: RunState): Routing {
   const none: Array<keyof Confirmations> = [];
 
   const prerequisite = routePrerequisites(state);
@@ -432,6 +443,26 @@ export function routeNext(state: RunState): Routing {
     reason: "QC, both reviews and the selected E2E set attest one snapshot",
     missingGates: none,
   };
+}
+
+/**
+ * §M-FSM — The routing table's answer, plus the facts that outlive the branch.
+ *
+ * `adjudicable` is attached here rather than inside the review branch, and the
+ * difference is not cosmetic. Proposing a fix is what makes a finding count
+ * towards §30's threshold, and it is also what moves the candidate — so the
+ * very next routing call goes to `run_qc`, not to the review branch. Computed
+ * where it is used, the counter would be visible only in the states a run
+ * leaves the moment it earns one. It is a fact about the argument, not about
+ * the step, so every envelope carries it.
+ */
+export function routeNext(state: RunState): Routing {
+  const routing = routeStep(state);
+  const stuck = adjudicable([
+    ...(state.openFindings?.reviewerPrimary ?? []),
+    ...(state.openFindings?.reviewerCrossVendor ?? []),
+  ]);
+  return stuck.length > 0 ? { ...routing, adjudicable: stuck } : routing;
 }
 
 /**

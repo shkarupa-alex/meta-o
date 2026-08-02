@@ -324,6 +324,20 @@ export interface FindingRecord {
    * raised is not, and survives until it is restated or closed.
    */
   derived?: boolean;
+  /**
+   * How many times the executor has proposed a fix for this finding.
+   *
+   * §30 lets the orchestrator call a fresh technical adjudicator "after two
+   * fruitless rebuttal turns", and nothing counted them: the rule lived in the
+   * orchestrator skill as prose, so the one number it depends on did not exist
+   * anywhere a fresh orchestrator could read. A run that had argued about one
+   * finding six times looked exactly like a run on its first attempt.
+   *
+   * Counted on `propose-fix` rather than on the reviewer's rejection, because
+   * that is the turn the executor actually takes; a rejection is the reviewer
+   * re-stating the finding, which shows up as the record still being open.
+   */
+  fixAttempts?: number;
   resolutionCandidate?: string;
   resolutionEvidence?: Evidence[];
   resolvedBy?: SessionRef;

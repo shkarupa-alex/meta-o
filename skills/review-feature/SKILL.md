@@ -1,6 +1,6 @@
 ---
 name: review-feature
-description: Review one candidate snapshot against its immutable spec through a fixed seven-lens rubric and emit structured findings plus a verdict on the E2E selection plan. Use when an orchestrator dispatches you as reviewerPrimary or reviewerCrossVendor in the AI-driven development workflow.
+description: Review one candidate snapshot against its immutable spec through a fixed eight-lens rubric and emit structured findings plus a verdict on the E2E selection plan. Use when an orchestrator dispatches you as reviewerPrimary or reviewerCrossVendor in the AI-driven development workflow.
 ---
 
 # Review one candidate
@@ -50,9 +50,18 @@ Every lens is mandatory. The order you apply them is yours.
 5. **Purpose semantics and knowledge drift** — does every `§M-*` say why the
    module exists? Does the knowledge chain still describe the code that exists
    now?
-6. **Maintainability** — accumulated layers, dead abstractions, code that only
+6. **Knowledge diff proportionality** — is the size of the knowledge change in
+   proportion to the change in behaviour? A one-symbol fix that rewrites three
+   architecture anchors, and a new subsystem that adds one line to `§B`, are
+   the same defect from opposite ends: knowledge written as ritual rather than
+   because something became true. No checker can tell those apart — this lens
+   is the only thing that asks, so a review that skips it is the rule not being
+   enforced at all. Compare against the run's own `knowledgeImpactPlan` in your
+   bounded view: it is what the run said it expected to touch, and a wide gap in
+   either direction is worth a finding.
+7. **Maintainability** — accumulated layers, dead abstractions, code that only
    the author can change.
-7. **E2E selection plan completeness** — see below.
+8. **E2E selection plan completeness** — see below.
 
 ## Findings
 

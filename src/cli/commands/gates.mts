@@ -7,10 +7,11 @@
  * with the catalog, did the metadata commit stay inside its permitted field.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { knowledgeDocuments } from "../../core/knowledge-files.mjs";
+import { readDelegatedJson, writeSecureJson } from "../../core/safe-fs.mjs";
 import { readRepoJson } from "../repo-json.mjs";
 import { resolveProjectIdentity } from "../../core/project-key.mjs";
 import { computeSnapshotDigest, verifyMetadataCommit } from "../../core/snapshot.mjs";
@@ -226,11 +227,17 @@ export function commandQcEvaluate(args: ParsedArgs): void {
   const manifestValidation = validateManifest(manifest);
   if (!manifestValidation.ok) fail("invalid_manifest", manifestValidation.errors.join("; "));
 
-  const resultFile = optionalFlag(args, "result") ?? qcResultPath(projectKey, runId);
+  // `--result` is the operator naming a file outside the state tree on purpose,
+  // so it is read plainly; the default lives in the run directory and is read
+  // under the same symlink refusal as every other state file.
+  const override = optionalFlag(args, "result");
+  const resultFile = override ?? qcResultPath(projectKey, runId);
   let result: QcResult | undefined;
   if (existsSync(resultFile)) {
     try {
-      result = JSON.parse(readFileSync(resultFile, "utf8")) as QcResult;
+      result = override
+        ? (JSON.parse(readFileSync(resultFile, "utf8")) as QcResult)
+        : readDelegatedJson<QcResult>(resultFile);
     } catch (error) {
       fail("invalid_qc_result", `${resultFile}: ${(error as Error).message}`);
     }
@@ -445,31 +452,28 @@ function writeGateReceipt(
   repoDir: string,
 ): string {
   const path = gateReceiptPath(projectKey, runId, label);
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  writeFileSync(
-    path,
-    `${JSON.stringify(
-      {
-        label,
-        commitOid: outcome.commitOid,
-        // Content identity as well as provenance. A receipt matched only by
-        // commit oid was thrown away by an amend of an identical tree, which is
-        // the churn §00 says a rebase must not cause — and for `qc` and `smoke`
-        // that meant re-running a gate whose answer could not have changed.
-        snapshotDigest: computeSnapshotDigest(repoDir, outcome.commitOid).digest,
-        exitStatus: outcome.result,
-        command,
-        // Both ends of the run, because a gate's other evidence has to be shown
-        // to come from *this* run: a QC result file left by an earlier, failing
-        // run of the same label is otherwise still there to be believed.
-        startedAt: outcome.startedAt,
-        completedAt: isoTimestamp(),
-      },
-      null,
-      2,
-    )}\n`,
-    { mode: 0o600 },
-  );
+  // Through safe-fs, like every other write in the state tree. This one was the
+  // exception — a bare `mkdirSync(..., {recursive: true})` plus `writeFileSync`
+  // — and the exception was load-bearing: a symlink at `gate-receipts/qc.json`
+  // sent the receipt through to whatever it pointed at, and a symlink at the
+  // directory sent the whole set somewhere world-writable, where the isolation
+  // proof that `assertGateIsolated` later reads back could be edited by anyone.
+  writeSecureJson(path, {
+    label,
+    commitOid: outcome.commitOid,
+    // Content identity as well as provenance. A receipt matched only by
+    // commit oid was thrown away by an amend of an identical tree, which is
+    // the churn §00 says a rebase must not cause — and for `qc` and `smoke`
+    // that meant re-running a gate whose answer could not have changed.
+    snapshotDigest: computeSnapshotDigest(repoDir, outcome.commitOid).digest,
+    exitStatus: outcome.result,
+    command,
+    // Both ends of the run, because a gate's other evidence has to be shown
+    // to come from *this* run: a QC result file left by an earlier, failing
+    // run of the same label is otherwise still there to be believed.
+    startedAt: outcome.startedAt,
+    completedAt: isoTimestamp(),
+  });
   return path;
 }
 

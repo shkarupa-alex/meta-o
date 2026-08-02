@@ -25,14 +25,13 @@ import {
   encodeSessionId,
   HerdrCommandError,
   markerOf,
-  parseProbe,
   type HerdrAgentInfo,
   type HerdrExec,
   type HerdrProbe,
 } from "./herdr-protocol.mjs";
 import { type Clock, systemClock } from "../core/clock.mjs";
 import { buildCapabilityReport, entry } from "./adapter.mjs";
-import { deliveryEffect } from "./herdr-evidence.mjs";
+import { reconcileOperation } from "./herdr-evidence.mjs";
 import type {
   AdapterCapabilities,
   CapabilityMatrixEntry,
@@ -380,6 +379,28 @@ export class HerdrAdapter implements SessionAdapter {
   }
 
   /**
+   * §M-HERDR — Close a pane a write-ahead record names but no session does.
+   *
+   * `run cleanup` stops what run state names, and a spawn interrupted between
+   * the pane and the agent leaves a pane that state does not name — only the
+   * pending operation's probe does. Without this the cleanup reported success
+   * and left the pane open, and after the record was cleared nothing knew it
+   * existed at all.
+   *
+   * Only ever called for a pane this adapter created, and only when no agent is
+   * running in it, so there is no work to lose.
+   */
+  async closeOrphanPane(paneId: string): Promise<"closed" | "already_gone" | "unknown"> {
+    if (!(await this.paneExists(paneId))) return "already_gone";
+    try {
+      await this.call(["pane", "close", paneId], 15_000);
+      return "closed";
+    } catch {
+      return "unknown";
+    }
+  }
+
+  /**
    * §M-HERDR — Create a pane and start an agent in it.
    *
    * The initial prompt is *not* delivered here. Starting a session and giving
@@ -624,56 +645,34 @@ export class HerdrAdapter implements SessionAdapter {
   /**
    * §M-HERDR — Determine what became of an interrupted side effect.
    *
-   * Returns `unknown` whenever the evidence is genuinely ambiguous. That is not
-   * a failure of this function: an unknown effect pauses the run, which is
-   * strictly better than duplicating a worker or a prompt.
+   * The decision itself lives in `herdr-evidence.mts` and is handed only the
+   * observations it may consider, so it cannot reach the backend on its own;
+   * the one effect it is allowed — closing a pane it has just proved carries no
+   * agent — arrives as an explicit capability rather than as access to `call`.
    */
   async reconcile(operation: PendingOperation): Promise<ReconcileResult> {
-    const probe = parseProbe(operation.probe);
-
-    if (operation.kind === "wait") {
-      return { operationId: operation.operationId, effect: "applied" };
-    }
-
-    const agentName = probe.agentName;
-    if (!agentName) return { operationId: operation.operationId, effect: "unknown" };
-
-    const info = await this.agentInfo(agentName);
-
-    if (operation.kind === "spawn") {
-      if (info) return { operationId: operation.operationId, effect: "applied" };
-      if (!probe.paneId) {
-        // No agent, and the probe never recorded a pane — so `pane split` never
-        // returned, and nothing this operation would have created exists. A
-        // retry cannot duplicate a worker that was never started.
-        return { operationId: operation.operationId, effect: "not_applied" };
-      }
-      if (!(await this.paneExists(probe.paneId))) {
-        return { operationId: operation.operationId, effect: "not_applied" };
-      }
-      // The pane exists but carries no agent: `agent start` may still be racing
-      // to register, and answering `not_applied` here is how a duplicate worker
-      // gets created.
-      return { operationId: operation.operationId, effect: "unknown" };
-    }
-
-    if (operation.kind === "stop") {
-      return {
-        operationId: operation.operationId,
-        effect: info ? "not_applied" : "applied",
-      };
-    }
-
-    if (!info) return { operationId: operation.operationId, effect: "unknown" };
-    const effect = await deliveryEffect(info, probe, (paneId) =>
-      this.read({
-        backend: "herdr",
-        sessionId: encodeSessionId(agentName, paneId, false),
-        role: "executor",
-        generation: 1,
-      }),
+    return await reconcileOperation(
+      {
+        agentInfo: (name) => this.agentInfo(name),
+        paneExists: (paneId) => this.paneExists(paneId),
+        closePane: async (paneId) => {
+          await this.call(["pane", "close", paneId], 15_000).catch(() => undefined);
+        },
+        readPane: (agentName, paneId) =>
+          this.read({
+            backend: "herdr",
+            sessionId: encodeSessionId(agentName, paneId, false),
+            role: "executor",
+            generation: 1,
+          }),
+        now: () => this.clock.now(),
+        // The longest a `startAgent` that was in flight when the caller died
+        // could still be running: its pane-ready retry budget plus the agent
+        // startup budget it passes to Herdr.
+        spawnRaceWindowMs: this.paneReadyTimeoutMs + this.startupTimeoutMs,
+      },
+      operation,
     );
-    return { operationId: operation.operationId, effect };
   }
 
   /**

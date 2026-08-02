@@ -18,8 +18,11 @@ import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import {
   chmodSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
+  rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -801,6 +804,124 @@ test("a repository with no knowledge layer yet reads as empty, not as a crash", 
     repo.commit("an unadopted repository");
     assert.deepEqual(knowledgeDocuments(repo.dir), []);
   } finally {
+    repo.dispose();
+  }
+});
+
+test("a gate receipt cannot be diverted out of the state tree", () => {
+  // The one write in the state tree that skipped safe-fs. A symlink at the leaf
+  // sent the receipt through to an arbitrary file, and a symlink at the
+  // directory sent the whole set into a world-writable one — where the
+  // isolation proof `assertGateIsolated` reads back could be edited by anybody.
+  // Every sibling path refused both; this one had no check at all.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    confirmModels(context, runId);
+    const projectKey = ok(cli(["project", "key"], context), "project key").json[
+      "projectKey"
+    ] as string;
+    const receipts = join(home.dir, "projects", projectKey, "runs", runId, "gate-receipts");
+
+    // The leaf: a receipt file that is really a symlink to something outside.
+    const victim = join(home.dir, "victim.txt");
+    writeFileSync(victim, "not a receipt\n");
+    mkdirSync(receipts, { recursive: true, mode: 0o700 });
+    symlinkSync(victim, join(receipts, "qc.json"));
+
+    ok(
+      cli(["worktree", "run", "--run-id", runId, "--label", "qc", "--", "true"], context),
+      "the gate runs",
+    );
+    // Not a refusal but a replacement, and that is the stronger outcome: the
+    // write goes to a temporary file and is renamed into place, so the symlink
+    // is what gets replaced. Before, `writeFileSync` followed it.
+    assert.equal(readFileSync(victim, "utf8"), "not a receipt\n", "the victim is untouched");
+    assert.ok(!lstatSync(join(receipts, "qc.json")).isSymbolicLink(), "the plant is gone");
+
+    // The directory: everything under a symlinked `gate-receipts/`.
+    rmSync(join(receipts, "qc.json"), { force: true });
+    rmSync(receipts, { recursive: true, force: true });
+    const elsewhere = join(home.dir, "elsewhere");
+    mkdirSync(elsewhere, { recursive: true, mode: 0o700 });
+    symlinkSync(elsewhere, receipts);
+
+    const redirected = cli(
+      ["worktree", "run", "--run-id", runId, "--label", "qc", "--", "true"],
+      context,
+    );
+    assert.notEqual(redirected.code, 0, "a symlinked receipts directory is refused");
+    assert.deepEqual(readdirSync(elsewhere), [], "nothing was written through the symlink");
+
+    // And with no symlink in the way the gate still records, or the two
+    // assertions above would hold for a command that never works.
+    rmSync(receipts, { force: true });
+    ok(
+      cli(["worktree", "run", "--run-id", runId, "--label", "qc", "--", "true"], context),
+      "a sound state tree still takes the receipt",
+    );
+    assert.deepEqual(readdirSync(receipts), ["qc.json"]);
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("a __proto__ key cannot smuggle a knowledge plan past validation", () => {
+  // `redactDeep` rebuilt every object with `out[key] = …`, and for `__proto__`
+  // that is not a way of setting a property — it is a way of invoking the
+  // prototype setter. The key left `Object.keys` while its contents stayed
+  // readable through the chain, so the unknown-field check enumerated an empty
+  // object, every field check resolved through the prototype and passed, and
+  // what got stored — and shown to every reviewer — was `{}`: the one value the
+  // same validator rejects.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    const plan = {
+      impactedBusinessAnchors: ["§B-CORE-01"],
+      impactedArchitectureAnchors: ["§A-APP-01"],
+      impactedModules: ["§M-APP"],
+      expectedSpecRetirement: ["spec/feature.md"],
+    };
+
+    // Written as text, not as an object literal: in a literal `__proto__:` sets
+    // the prototype rather than making a key, so the payload has to be spelled
+    // out to be the one a model could actually send. `JSON.parse` does make it
+    // an own property, which is where the whole problem started.
+    const fields = JSON.stringify(plan).slice(1, -1);
+    const smuggled = cli(["run", "knowledge-plan", "--run-id", runId], {
+      ...context,
+      stdin: `{"__proto__":{${fields}}}`,
+    });
+    assert.equal(errorCode(smuggled), "invalid_knowledge_plan");
+
+    // The same trick against the unknown-field check, which is the rule a plan
+    // with a stray field is supposed to trip.
+    const extra = cli(["run", "knowledge-plan", "--run-id", runId], {
+      ...context,
+      stdin: `{${fields},"__proto__":{"polluted":true}}`,
+    });
+    assert.equal(errorCode(extra), "invalid_knowledge_plan");
+
+    // Nothing was stored by either attempt, and an honest plan still is.
+    const before = ok(cli(["run", "show", "--run-id", runId], context), "run show");
+    assert.equal(before.json["knowledgeImpactPlan"], undefined);
+    ok(
+      cli(["run", "knowledge-plan", "--run-id", runId], { ...context, stdin: JSON.stringify(plan) }),
+      "an honest plan is accepted",
+    );
+    const after = ok(cli(["run", "show", "--run-id", runId], context), "run show");
+    assert.deepEqual(
+      (after.json["knowledgeImpactPlan"] as { impactedModules: string[] }).impactedModules,
+      ["§M-APP"],
+    );
+  } finally {
+    home.dispose();
     repo.dispose();
   }
 });

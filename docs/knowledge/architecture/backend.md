@@ -27,6 +27,20 @@ else has an honest degradation, but a run that cannot observe its workers cannot
 attest anything, and one that cannot stop them leaves orphans behind
 (`src/adapters/adapter.mts`).
 
+One window in the protocol is not closed, and is written down here rather than
+implied to be. A spawn is two backend calls, and the pane id only exists once
+the first has returned; the write-ahead record therefore learns it a moment
+after the pane exists. A process killed inside that moment leaves an empty pane
+that no record names. Every guarantee the protocol makes still holds — no agent
+was started, so `not_applied` is the true answer about the operation and a retry
+cannot duplicate a worker — but the pane survives, and repeated crashes at that
+exact point accumulate them. Closing it would need Herdr to let the adapter
+enumerate panes, or to accept a caller-supplied name at `pane split`, and it
+offers neither; the adapter treats a pane id as opaque and will not guess at its
+format. Every *other* orphan is reachable: a pane the record does name is closed
+by `reconcile` once the start race is provably over, and a live agent the record
+names is stopped by `run cleanup` even before any session names it.
+
 ## §A-DETERMINISTIC-WATCHDOG — Recovery decides from a closed set of actions
 
 Implements §B-WORKFLOW-02.
@@ -35,7 +49,7 @@ Unattended recovery is where a helpful process does the most damage. A watchdog
 that "nudges" a stuck session, or that asks a model what to do, will eventually
 resend a prompt, spawn a second executor, or talk a paused run into continuing.
 
-So the watchdog is a pure function over state with four possible actions —
+So the watchdog is a pure function over state with five possible actions —
 `noop`, `wake_orchestrator`, `spawn_orchestrator`, `backoff`,
 `surface_uncertainty` — and no others (`src/watchdog/watchdog.mts`). It wakes at
 most once per `stateVersion` and spawns at most once per

@@ -169,9 +169,21 @@ test("derived agent names satisfy the Herdr grammar and are deterministic", () =
 
 test("model arguments are built per route", () => {
   assert.deepEqual(defaultModelArgs(MODEL), ["--model", "opus"]);
+  // Codex is the cross-vendor reviewer's usual route, so it is the one route a
+  // project cannot do without — and it was exercised only as a ModelSet value,
+  // never for the argument vector actually handed to the backend.
+  assert.deepEqual(
+    defaultModelArgs({ route: "codex", vendor: "openai", family: "gpt", model: "gpt-5" }),
+    ["--model", "gpt-5"],
+  );
   assert.deepEqual(
     defaultModelArgs({ route: "opencode", vendor: "x", family: "y", model: "m", providerId: "p" }),
     ["--model", "p/m"],
+  );
+  // An opencode model with no provider is not decorated with a bare slash.
+  assert.deepEqual(
+    defaultModelArgs({ route: "opencode", vendor: "x", family: "y", model: "m" }),
+    ["--model", "m"],
   );
 });
 
@@ -339,15 +351,52 @@ test("reconcile reports not_applied when neither the agent nor its pane exists",
 });
 
 test("reconcile admits it does not know when a pane survived without its agent", async () => {
-  const adapter = new HerdrAdapter({ exec: fakeHerdr({ panes: new Set(["w1:p9"]) }).exec });
+  const clock = new FakeClock(Date.parse("2026-07-24T12:00:00Z"));
+  const adapter = new HerdrAdapter({ exec: fakeHerdr({ panes: new Set(["w1:p9"]) }).exec, clock });
   const operation: PendingOperation = {
     operationId: "op-1",
     kind: "spawn",
     requestDigest: "d",
     state: "prepared",
     probe: JSON.stringify({ agentName: "missing", paneId: "w1:p9" }),
+    // Prepared a second ago: `agent start` could still be registering, and
+    // answering `not_applied` inside that window is how a duplicate is made.
+    preparedAt: "2026-07-24T11:59:59Z",
   };
   assert.equal((await adapter.reconcile(operation)).effect, "unknown");
+});
+
+test("a spawn whose start race is over reconciles instead of waiting forever", async () => {
+  // `unknown` past the race window is not caution, it is a wedge. Nothing in
+  // the CLI could settle it: reconcile forced PAUSED_BACKEND_UNCERTAIN, `run
+  // pending --clear` refused the effect as unproven, and spawn and stop both
+  // refused a second operation — so the run could only be rescued by deleting
+  // the pane out of band, which nothing told the operator to do.
+  const clock = new FakeClock(Date.parse("2026-07-24T12:00:00Z"));
+  const herdr = fakeHerdr({ panes: new Set(["w1:p9"]) });
+  const adapter = new HerdrAdapter({
+    exec: herdr.exec,
+    clock,
+    paneReadyTimeoutMs: 15_000,
+    startupTimeoutMs: 60_000,
+  });
+  const operation: PendingOperation = {
+    operationId: "op-1",
+    kind: "spawn",
+    requestDigest: "d",
+    state: "prepared",
+    probe: JSON.stringify({ agentName: "missing", paneId: "w1:p9" }),
+    // Past both budgets `startAgent` is given, so nothing can still be racing.
+    preparedAt: "2026-07-24T11:58:00Z",
+  };
+
+  assert.equal((await adapter.reconcile(operation)).effect, "not_applied");
+  assert.ok(!herdr.panes.has("w1:p9"), "the empty pane it proved had no agent is closed");
+  assert.deepEqual(
+    herdr.calls.filter((call) => call[0] === "pane" && call[1] === "close"),
+    [["pane", "close", "w1:p9"]],
+    "and closed exactly once, by name",
+  );
 });
 
 test("an advanced state_change_seq alone never proves a delivery", async () => {

@@ -8,7 +8,8 @@
  * only an isolated run could have produced.
  */
 
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
+import { readDelegatedJson, readSecureJson } from "../../core/safe-fs.mjs";
 import { readRepoJson } from "../repo-json.mjs";
 import { evaluateQc, validateManifest, validateResult } from "../../core/qc.mjs";
 import { gateReceiptPath, qcResultPath } from "../../core/paths.mjs";
@@ -43,7 +44,7 @@ export function assertQcProven(repoDir: string, projectKey: string, runId: strin
   const receiptPath = gateReceiptPath(projectKey, runId, "qc");
   let receipt: { startedAt?: string } | undefined;
   try {
-    receipt = JSON.parse(readFileSync(receiptPath, "utf8")) as { startedAt?: string };
+    receipt = readSecureJson<{ startedAt?: string }>(receiptPath);
   } catch {
     /* `assertGateIsolated` has already refused a run with no receipt */
   }
@@ -55,7 +56,8 @@ export function assertQcProven(repoDir: string, projectKey: string, runId: strin
   let result: QcResult | undefined;
   if (existsSync(resultFile)) {
     try {
-      result = JSON.parse(readFileSync(resultFile, "utf8")) as QcResult;
+      // The project writes this one, not meta-o; see `readDelegatedJson`.
+      result = readDelegatedJson<QcResult>(resultFile);
     } catch (error) {
       fail("invalid_qc_result", `${resultFile}: ${(error as Error).message}`);
     }
@@ -105,8 +107,11 @@ export function assertGateIsolated(
   const path = gateReceiptPath(projectKey, runId, label);
   let receipt: GateReceipt | undefined;
   try {
-    receipt = JSON.parse(readFileSync(path, "utf8")) as GateReceipt;
+    receipt = readSecureJson<GateReceipt>(path);
   } catch {
+    /* an unreadable receipt is no receipt; the absence is reported below */
+  }
+  if (!receipt) {
     fail(
       "gate_not_isolated",
       `§00 runs every gate in a fresh detached worktree, and this run has no receipt for the ` +
@@ -193,8 +198,11 @@ export function assertE2eIsolated(
   const path = gateReceiptPath(projectKey, runId, E2E_RECEIPT_LABEL);
   let receipt: GateReceipt | undefined;
   try {
-    receipt = JSON.parse(readFileSync(path, "utf8")) as GateReceipt;
+    receipt = readSecureJson<GateReceipt>(path);
   } catch {
+    /* an unreadable receipt is no receipt; the absence is reported below */
+  }
+  if (!receipt) {
     fail(
       "e2e_not_isolated",
       "§30 requires the E2E tester to work in a fresh detached worktree, and this run has no " +

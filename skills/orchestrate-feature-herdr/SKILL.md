@@ -195,8 +195,13 @@ Start each worker prompt with: *"Read the `<skill-name>` skill and follow it."*
   and the named role must have a session this run dispatched — so spawn the
   adjudicator before you try to close anything on its authority.
 - After two fruitless rebuttal turns on one finding, spawn a
-  `technicalAdjudicator` rather than letting the loop spin. Its third verdict —
-  the concern is real but it is taste — is
+  `technicalAdjudicator` rather than letting the loop spin. You do not have to
+  keep count: every routing envelope carries `adjudicable`, the ids of findings
+  the executor has proposed a fix for twice or more without the reviewer
+  accepting it. An empty or absent list means nobody is stuck. This matters
+  most after a takeover — a fresh orchestrator has no memory of the earlier
+  turns, and the count is in `state.json` precisely so it does not need one.
+  The adjudicator's third verdict — the concern is real but it is taste — is
   `meta-o run reclassify-finding --reviewer <slot> --finding-id <id> --rationale "…"`.
   The finding stays on the record and stops blocking.
 - Findings the E2E gate derived from a scenario status carry ids beginning

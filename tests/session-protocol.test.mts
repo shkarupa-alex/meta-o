@@ -19,6 +19,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createTempHome, createTempRepo, seedProjectContract, type TempRepo } from "./helpers.mts";
+import { agentNameFor } from "../dist/adapters/herdr-protocol.mjs";
 
 /** §M-TEST-SESSION — The compiled CLI under test. */
 const CLI = fileURLToPath(new URL("../dist/cli/meta-o.mjs", import.meta.url));
@@ -686,6 +687,145 @@ test("the watchdog reconciles an interrupted operation instead of only reporting
       pendingOf(it),
       undefined,
       "a spawn the backend never applied is settled, so recovery may proceed",
+    );
+  } finally {
+    it.dispose();
+  }
+});
+
+test("run cleanup stops what only the write-ahead record names", () => {
+  // Between `agent start` returning and the state write that names the session,
+  // the run's only knowledge of a live agent is the pending operation's probe.
+  // Cleanup read `state.sessions` and `orchestratorSession` and nothing else,
+  // so in that window it reported `already_terminal` and left a real agent and
+  // its pane running — and clearing the record afterwards made them unreachable.
+  const it = fixture();
+  try {
+    const operationId = "66666666-6666-4666-8666-666666666666";
+    const agentName = agentNameFor("mo-", "executor", operationId);
+    writeFileSync(
+      it.context.fakeState,
+      JSON.stringify({
+        agents: {
+          [agentName]: {
+            name: agentName,
+            agent: "claude",
+            pane_id: "%1",
+            agent_status: "idle",
+            revision: 1,
+            state_change_seq: 1,
+            launch_pending: false,
+            interactive_ready: true,
+          },
+        },
+        panes: { "%1": { pane_id: "%1", cwd: "", text: "" } },
+        nextPane: 2,
+      }),
+    );
+
+    ok(
+      cli(["run", "pending", "--run-id", it.runId], {
+        ...it.context,
+        stdin: JSON.stringify({
+          operationId,
+          kind: "spawn",
+          requestDigest: "deadbeef",
+          state: "prepared",
+          probe: JSON.stringify({ agentName, paneId: "%1" }),
+        }),
+      }),
+      "a spawn recorded but never adopted",
+    );
+    // The precondition that made cleanup answer `already_terminal`: run state
+    // names no session at all.
+    const shown = ok(cli(["run", "show", "--run-id", it.runId], it.context), "run show");
+    assert.deepEqual(shown.json["sessions"], {});
+
+    const cleaned = ok(
+      cli(["run", "cleanup", "--run-id", it.runId, "--force"], it.context),
+      "run cleanup --force",
+    );
+    assert.equal(
+      (cleaned.json["sessions"] as Record<string, string>)["pending:executor"],
+      "stopped",
+      "the agent the record names is reported stopped, by role",
+    );
+
+    const backend = backendState(it.context);
+    assert.deepEqual(Object.keys(backend.agents), [], "no agent is left running");
+    assert.deepEqual(Object.keys(backend.panes), [], "and its pane is closed with it");
+  } finally {
+    it.dispose();
+  }
+});
+
+test("an adopted orchestrator is finished, not left mute", () => {
+  // Adoption alone produced the worst outcome available: an orchestrator that
+  // exists, that the run names, and that was never told anything. Because the
+  // generation was never claimed either, the watchdog's one-attempt-per-
+  // generation guard read the interrupted attempt as the attempt for the
+  // current generation — so when the mute orchestrator died, every later tick
+  // refused to replace it and unattended recovery was off for that run for good.
+  const it = fixture();
+  try {
+    stalledRun(it);
+    const before = ok(cli(["run", "show", "--run-id", it.runId], it.context), "run show").json[
+      "orchestratorGeneration"
+    ] as number;
+
+    const operationId = "77777777-7777-4777-8777-777777777777";
+    const agentName = agentNameFor("mo-", "orchestrator", operationId);
+    writeFileSync(
+      it.context.fakeState,
+      JSON.stringify({
+        agents: {
+          [agentName]: {
+            name: agentName,
+            agent: "claude",
+            pane_id: "%1",
+            agent_status: "idle",
+            revision: 1,
+            state_change_seq: 1,
+            launch_pending: false,
+            interactive_ready: true,
+          },
+        },
+        panes: { "%1": { pane_id: "%1", cwd: "", text: "" } },
+        nextPane: 2,
+      }),
+    );
+    ok(
+      cli(["run", "pending", "--run-id", it.runId], {
+        ...it.context,
+        stdin: JSON.stringify({
+          operationId,
+          kind: "spawn",
+          requestDigest: "deadbeef",
+          state: "uncertain",
+          probe: JSON.stringify({ agentName, paneId: "%1" }),
+        }),
+      }),
+      "a spawn that reached the backend and never reached state",
+    );
+
+    ok(cli(["watchdog", "run", "--once"], it.context), "watchdog run");
+
+    const after = ok(cli(["run", "show", "--run-id", it.runId], it.context), "run show");
+    assert.equal(pendingOf(it), undefined, "the record is settled");
+    assert.match(
+      String((after.json["orchestratorSession"] as { sessionId?: string })?.sessionId),
+      new RegExp(`agent=${agentName};`),
+      "the adopted agent is the run's orchestrator",
+    );
+    assert.equal(
+      after.json["orchestratorGeneration"],
+      before + 1,
+      "the generation the crash never claimed is claimed now, so recovery is not frozen",
+    );
+    assert.match(
+      backendState(it.context).panes["%1"]!.text,
+      /generation/i,
+      "and it is told what it is, instead of sitting in an empty context",
     );
   } finally {
     it.dispose();

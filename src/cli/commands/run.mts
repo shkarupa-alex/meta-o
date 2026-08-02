@@ -56,6 +56,7 @@ export { commandSetSession, commandTakeover } from "./ownership.mjs";
 export { commandStart } from "./run-start.mjs";
 import { WORKER_ROLES } from "../../core/types.mjs";
 import { assertCandidateAdmissible, assertUnpublished } from "./candidate-guards.mjs";
+import { roleOfPendingSpawn } from "./session-state.mjs";
 import { assertE2eLoopMayOpen, assertReviewsMayOpen } from "./gate-order.mjs";
 
 /** §M-CLI-RUN — Redact an optional free-text flag before it reaches durable state. */
@@ -502,7 +503,54 @@ async function stopRemainingSessions(state: RunState): Promise<Record<string, st
       outcomes[session.role] = `unstopped: ${(error as Error).message}`;
     }
   }
+  await stopPendingSpawn(adapter, state, outcomes);
   return outcomes;
+}
+
+/**
+ * §M-CLI-RUN — Stop what only the write-ahead record names.
+ *
+ * Between `agent start` returning and the state write that names the session,
+ * the run's only knowledge of a live agent is the pending operation's probe.
+ * Cleanup read `state.sessions` and `orchestratorSession` and nothing else, so
+ * in that window it reported `already_terminal` for the orchestrator and left a
+ * real agent — and its pane — running with nothing left to name them: clearing
+ * the record afterwards made them unreachable for good.
+ *
+ * The pane is closed only when no agent answers to the name, because `stop`
+ * closes the pane itself when one does.
+ */
+async function stopPendingSpawn(
+  adapter: HerdrAdapter,
+  state: RunState,
+  outcomes: Record<string, string>,
+): Promise<void> {
+  const pending = state.pendingOperation;
+  if (!pending || pending.kind !== "spawn") return;
+  const probe = JSON.parse(pending.probe ?? "{}") as { agentName?: string; paneId?: string };
+  const role = roleOfPendingSpawn(adapter, pending);
+
+  let stopped = false;
+  if (probe.agentName && role) {
+    try {
+      const orphan = await adapter.findSession(probe.agentName, role);
+      if (orphan) {
+        outcomes[`pending:${role}`] = await adapter.stop(orphan);
+        stopped = true;
+      }
+    } catch (error) {
+      outcomes[`pending:${role}`] = `unstopped: ${(error as Error).message}`;
+      stopped = true;
+    }
+  }
+
+  if (!stopped && probe.paneId) {
+    try {
+      outcomes["pending:pane"] = await adapter.closeOrphanPane(probe.paneId);
+    } catch (error) {
+      outcomes["pending:pane"] = `unstopped: ${(error as Error).message}`;
+    }
+  }
 }
 
 /**

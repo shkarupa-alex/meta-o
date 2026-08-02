@@ -23,14 +23,34 @@ import {
   withPendingOperation,
   withWriterLock,
 } from "../../core/state-store.mjs";
-import { roleOfPendingSpawn, roleOfSession, withSession, withoutSession } from "./session-state.mjs";
-import type { PendingOperation, ReconcileResult, Role, RunState, SessionRef } from "../../core/types.mjs";
+import {
+  digestOf,
+  roleOfPendingSpawn,
+  roleOfSession,
+  withSession,
+  withoutSession,
+} from "./session-state.mjs";
+import { spawnPrompt } from "./backend.mjs";
+import type {
+  DeliveryResult,
+  PendingOperation,
+  ReconcileResult,
+  Role,
+  RunState,
+  SessionRef,
+} from "../../core/types.mjs";
 import { fail } from "../args.mjs";
 
 /** §M-CLI-WRITE-AHEAD — What reconciliation needs from a backend adapter. */
 export interface ReconcilingAdapter {
   expectedAgentName(role: Role, operationId: string): string;
   findSession(agentName: string, role: Role, generation: number): Promise<SessionRef | undefined>;
+}
+
+/** §M-CLI-WRITE-AHEAD — What a write-ahead delivery needs from a backend adapter. */
+export interface SendingAdapter {
+  prepareProbe(session: SessionRef, message?: string): Promise<string>;
+  send(session: SessionRef, operationId: string, message: string): Promise<DeliveryResult>;
 }
 
 /** §M-CLI-WRITE-AHEAD — Apply one change to run state under the writer lock. */
@@ -192,4 +212,85 @@ export async function settleReconciled(
   });
 
   return recovered;
+}
+
+/**
+ * §M-CLI-WRITE-AHEAD — Give a replacement orchestrator its instructions, written ahead.
+ *
+ * A second operation rather than part of the spawn, for the same reason
+ * `session spawn` and `session send` are two commands: creating an agent and
+ * telling it what to do are two observable effects, and a crash between them
+ * has to be classifiable. A delivery this fails to prove is left `uncertain`
+ * and reconciled on a later tick — the alternative, re-sending blind, is how a
+ * recovered orchestrator ends up with two copies of its charter.
+ */
+export async function sendSpawnPrompt(
+  adapter: SendingAdapter,
+  projectKey: string,
+  runId: string,
+  session: SessionRef,
+  generation: number,
+): Promise<void> {
+  const message = spawnPrompt(generation);
+  const operationId = digestOf({ kind: "watchdog-send", projectKey, runId, generation });
+  const pending = await prepare(projectKey, runId, {
+    operationId,
+    kind: "send",
+    sessionId: session.sessionId,
+    requestDigest: digestOf({ kind: "send", sessionId: session.sessionId, message }),
+    probe: await adapter.prepareProbe(session, message),
+  });
+
+  let delivery: DeliveryResult;
+  try {
+    delivery = await adapter.send(session, operationId, message);
+  } catch (error) {
+    await markUncertain(projectKey, runId, pending);
+    throw error;
+  }
+
+  if (delivery.status === "unknown") {
+    await markUncertain(projectKey, runId, pending);
+    throw new Error(`the replacement orchestrator's prompt could not be proven delivered`);
+  }
+
+  await mutate(projectKey, runId, (current) =>
+    withPendingOperation(current, {
+      ...pending,
+      state: "acknowledged",
+      ...(delivery.receipt ? { backendReceipt: delivery.receipt } : {}),
+    }),
+  );
+  await mutate(projectKey, runId, (current) => clearPendingOperation(current));
+}
+
+/**
+ * §M-CLI-WRITE-AHEAD — Finish a spawn a crash interrupted, instead of half-adopting it.
+ *
+ * Adoption alone produced the worst outcome available: an orchestrator that
+ * exists, that the run names, and that was never told anything. It sat in its
+ * pane with an empty context while the run waited on it, and because the
+ * generation was never claimed, the watchdog's one-attempt-per-generation guard
+ * read the interrupted attempt as the attempt for the current generation — so
+ * when the mute orchestrator later died, every tick refused to replace it and
+ * unattended recovery was off for that run permanently.
+ *
+ * The two steps the crash skipped are therefore done here: claim the generation,
+ * then deliver the charter under its own write-ahead record. Both callers of
+ * `settleReconciled` need this — the watchdog because it is the component that
+ * spawns, and `session reconcile` because a human running it by hand adopts the
+ * same orphan and no later tick would ever notice the orchestrator is mute.
+ */
+export async function finishAdoptedOrchestratorSpawn(
+  adapter: SendingAdapter,
+  projectKey: string,
+  runId: string,
+  session: SessionRef,
+): Promise<void> {
+  const claimed = await mutate(projectKey, runId, (current) => ({
+    ...current,
+    orchestratorSession: session,
+    orchestratorGeneration: current.orchestratorGeneration + 1,
+  }));
+  await sendSpawnPrompt(adapter, projectKey, runId, session, claimed.orchestratorGeneration);
 }

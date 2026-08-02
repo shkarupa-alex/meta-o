@@ -36,6 +36,7 @@ import {
   mutate,
   prepare,
   recordPane,
+  finishAdoptedOrchestratorSpawn,
   settleReconciled,
 } from "./write-ahead.mjs";
 import { BackendUnavailableError, COMPLETION_CRITICAL } from "../../adapters/adapter.mjs";
@@ -510,7 +511,16 @@ export async function commandReconcile(args: ParsedArgs): Promise<void> {
         },
       };
     });
-    emit({ runId: context.runId, ...result, phase: next.phase });
+    // The probe travels with the answer. An operator told only "unknown" has
+    // nothing to act on, and the one thing that would let them act — which pane
+    // and which agent name this operation was about — was reachable only by
+    // reading the raw record out of `run show`.
+    emit({
+      runId: context.runId,
+      ...result,
+      phase: next.phase,
+      probe: pending.probe ?? null,
+    });
     process.exitCode = 1;
     return;
   }
@@ -523,6 +533,19 @@ export async function commandReconcile(args: ParsedArgs): Promise<void> {
     pending,
     result,
   );
+
+  // An adopted orchestrator is finished here too, not only on a watchdog tick.
+  // A human reconciling by hand adopts the same orphan, and the ticks that
+  // follow see a live orchestrator and leave it alone — so without this the
+  // manual path is the one that produces a permanently mute orchestrator.
+  if (recovered?.role === "orchestrator") {
+    await finishAdoptedOrchestratorSpawn(
+      context.adapter,
+      context.projectKey,
+      context.runId,
+      recovered,
+    );
+  }
 
   emit({ runId: context.runId, ...result, recoveredSession: recovered ?? null });
 }
