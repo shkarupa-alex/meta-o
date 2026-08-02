@@ -28,6 +28,7 @@ import { createTempHome } from "./helpers.mts";
 import {
   cli,
   confirmModels,
+  passLocalGates,
   passReviews,
   dispatch,
   dispatchWorkers,
@@ -575,6 +576,7 @@ test("the heavy E2E loop does not open before both reviews have passed", () => {
     );
 
     ok(cli(["run", "transition", "--run-id", runId, "--phase", "LOCAL_QC"], context), "→ LOCAL_QC");
+    passLocalGates(context, runId);
     const early = cli(["run", "transition", "--run-id", runId, "--phase", "E2E_STABILIZATION"], context);
     assert.equal(errorCode(early), "reviews_not_passed");
     assert.deepEqual((early.json["error"] as { missingGates?: string[] }).missingGates, [
@@ -782,6 +784,132 @@ test("§20's findings directory is a view of the open records, not an archive", 
       readdirSync(dir),
       ["reviewerCrossVendor.F-1.json"],
       "a closed record is deleted, not archived — and only that one",
+    );
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+test("a reviewer's PASS is refused until QC and smoke have passed on the snapshot", () => {
+  // §00 and §30 order the gates QC → smoke → reviews → heavy E2E, and only the
+  // last arrow was enforced. `record-review` asked for a candidate, a plan and
+  // a dispatched session, so both reviewers could pass a snapshot `make qc` had
+  // never run on; recording QC afterwards left four attestations, all present
+  // and all describing one digest, in an order §00 forbids.
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+  try {
+    const runId = startRun(context);
+    dispatchWorkers(context, runId);
+    confirmModels(context, runId);
+    ok(cli(["run", "transition", "--run-id", runId, "--phase", "EXECUTING"], context), "→ EXECUTING");
+    retireSpec(repo);
+    const candidate = ok(cli(["run", "set-candidate", "--run-id", runId], context), "set-candidate");
+    const commitOid = candidate.json["provenanceCommit"] as string;
+    const snapshotDigest = candidate.json["snapshotDigest"] as string;
+    const plan = ok(
+      cli(["e2e", "seal-plan"], {
+        ...context,
+        stdin: JSON.stringify({
+          schemaVersion: 1,
+          commitOid,
+          selectedScenarioIds: ["E2E-SMOKE-01"],
+          selectionRationale: "the canary always runs",
+          impactedBusinessLinks: [],
+          impactedTags: [],
+        }),
+      }),
+      "seal-plan",
+    ).json as unknown as { planDigest: string };
+    ok(
+      cli(["run", "set-plan", "--run-id", runId], { ...context, stdin: JSON.stringify(plan) }),
+      "set-plan",
+    );
+
+    /** §M-TEST-HARDENING-GATES — One reviewer's verdict on the sealed candidate. */
+    const review = (verdict: string, reviewer = "reviewerPrimary"): string =>
+      JSON.stringify({
+        reviewer,
+        commitOid,
+        snapshotDigest,
+        planDigest: plan.planDigest,
+        selectionPlanVerdict: "complete",
+        verdict,
+        findings: verdict === "passed" ? [] : JSON.parse(blocker("B-1")),
+        completedAt: "2026-07-24T12:00:00Z",
+      });
+
+    const beforeQc = cli(["run", "record-review", "--run-id", runId], {
+      ...context,
+      stdin: review("passed"),
+    });
+    assert.equal(errorCode(beforeQc), "gates_not_passed");
+    assert.deepEqual((beforeQc.json["error"] as { missingGates?: string[] }).missingGates, [
+      "qc",
+      "smoke",
+    ]);
+
+    // The transition into the review round answers alike, or the guard would be
+    // one command away from irrelevant.
+    ok(cli(["run", "transition", "--run-id", runId, "--phase", "LOCAL_QC"], context), "→ LOCAL_QC");
+    ok(
+      cli(["run", "transition", "--run-id", runId, "--phase", "SMOKE_PREFLIGHT"], context),
+      "→ SMOKE_PREFLIGHT",
+    );
+    const earlyRound = cli(
+      ["run", "transition", "--run-id", runId, "--phase", "REVIEW_STABILIZATION"],
+      context,
+    );
+    assert.equal(errorCode(earlyRound), "gates_not_passed");
+
+    // A *failing* review is not held to the order: the reviewer who found a
+    // blocker before QC ran still knows something, and refusing the record
+    // would lose the finding to enforce a sequence it has already settled.
+    ok(
+      cli(["run", "record-review", "--run-id", runId], {
+        ...context,
+        stdin: review("changes_requested", "reviewerCrossVendor"),
+      }),
+      "a blocker is recordable whenever it is found",
+    );
+
+    ok(
+      cli(["worktree", "run", "--run-id", runId, "--label", "qc", "make", "qc"], context),
+      "make qc",
+    );
+    ok(
+      cli(["run", "record-gate", "--run-id", runId, "--gate", "qc", "--status", "passed"], context),
+      "record qc",
+    );
+
+    // QC alone is not enough: smoke is what makes spending two reviewers and a
+    // full E2E set on this candidate worth the money.
+    const beforeSmoke = cli(["run", "record-review", "--run-id", runId], {
+      ...context,
+      stdin: review("passed"),
+    });
+    assert.equal(errorCode(beforeSmoke), "gates_not_passed");
+    assert.deepEqual((beforeSmoke.json["error"] as { missingGates?: string[] }).missingGates, [
+      "smoke",
+    ]);
+
+    ok(
+      cli(["worktree", "run", "--run-id", runId, "--label", "smoke", "--", "true"], context),
+      "smoke",
+    );
+    ok(
+      cli(["run", "record-gate", "--run-id", runId, "--gate", "smoke", "--status", "passed"], context),
+      "record smoke",
+    );
+    ok(
+      cli(["run", "transition", "--run-id", runId, "--phase", "REVIEW_STABILIZATION"], context),
+      "the review round opens once its prerequisites are on the record",
+    );
+    ok(
+      cli(["run", "record-review", "--run-id", runId], { ...context, stdin: review("passed") }),
+      "and the PASS is accepted",
     );
   } finally {
     home.dispose();

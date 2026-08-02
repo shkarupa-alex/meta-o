@@ -12,6 +12,46 @@ import { fail } from "../args.mjs";
 import type { RunState } from "../../core/types.mjs";
 
 /**
+ * §M-CLI-GATE-ORDER — Refuse a reviewer's PASS before QC and smoke have earned it.
+ *
+ * §00 and §30 order the gates QC → smoke → reviews → heavy E2E, and only the
+ * last arrow was enforced. `record-review` asked for a candidate, a plan and a
+ * dispatched session, so both reviewers could pass a snapshot before `make qc`
+ * had ever run on it; QC could then be recorded afterwards and the four
+ * completion attestations would all be present and all describe one digest.
+ * The order §00 makes normative — a human-scarce resource is spent only on
+ * something that already builds and passes its own checks — was advice from the
+ * router, which no direct CLI call has to take.
+ *
+ * A *failing* review is deliberately not held to this. A reviewer who found a
+ * blocker before QC ran still knows something worth storing, and refusing the
+ * record would lose the finding to enforce a sequence the finding has already
+ * made irrelevant.
+ *
+ * The phase name is not the check. It is bookkeeping the orchestrator writes,
+ * and entering `REVIEW_STABILIZATION` requires no evidence; the attestations
+ * are the fact. This assertion therefore guards the transition as well, so the
+ * two answer alike.
+ */
+export function assertReviewsMayOpen(state: RunState): void {
+  const digest = state.candidateSnapshot?.digest;
+  if (!digest) {
+    fail("no_candidate", "a review reads a candidate; record one with `run set-candidate` first");
+  }
+  const missing = (["qc", "smoke"] as const).filter(
+    (gate) => !attests(state.confirmations[gate], digest!),
+  );
+  if (missing.length > 0) {
+    fail(
+      "gates_not_passed",
+      `reviews start after QC and smoke pass; ${missing.join(" and ")} ` +
+        "have not passed on this snapshot",
+      { missingGates: missing },
+    );
+  }
+}
+
+/**
  * §M-CLI-GATE-ORDER — Refuse to open the E2E loop before both reviews have passed.
  *
  * §30: "Heavy E2E начинается после PASS обоих reviewers." The router honoured

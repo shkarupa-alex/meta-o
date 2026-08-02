@@ -56,7 +56,7 @@ export { commandSetSession, commandTakeover } from "./ownership.mjs";
 export { commandStart } from "./run-start.mjs";
 import { WORKER_ROLES } from "../../core/types.mjs";
 import { assertCandidateAdmissible, assertUnpublished } from "./candidate-guards.mjs";
-import { assertE2eLoopMayOpen } from "./gate-order.mjs";
+import { assertE2eLoopMayOpen, assertReviewsMayOpen } from "./gate-order.mjs";
 
 /** §M-CLI-RUN — Redact an optional free-text flag before it reaches durable state. */
 function redactText(value: string | undefined): string | undefined {
@@ -173,6 +173,12 @@ export async function commandTransition(args: ParsedArgs): Promise<void> {
         "this run did not enable the optional reuse scan; start a run with --reuse-scan, or " +
           "transition straight to EXECUTING",
       );
+    }
+    // Both arrows of §00's order, checked where the phase changes and again
+    // where the result is banked: an orchestrator that transitions and one that
+    // calls the recording command directly must meet the same bar.
+    if (phase === "REVIEW_STABILIZATION" && state.phase !== "E2E_STABILIZATION") {
+      assertReviewsMayOpen(state);
     }
     if (phase === "E2E_STABILIZATION") assertE2eLoopMayOpen(state);
     if (phase === "COMPLETE") {

@@ -26,6 +26,7 @@ import { createTempHome } from "./helpers.mts";
 import {
   cli,
   confirmModels,
+  passLocalGates,
   passReviews,
   dispatch,
   dispatchWorkers,
@@ -639,6 +640,9 @@ test("a result may only be attributed to a worker this run dispatched", () => {
       cli(["run", "set-plan", "--run-id", runId], { ...context, stdin: JSON.stringify(plan) }),
       "set-plan",
     );
+    // The ordering guard is satisfied first, so what the payload runs into
+    // below is the authority check and nothing else.
+    passLocalGates(context, runId);
 
     const undispatched = cli(["run", "record-review", "--run-id", runId], {
       ...context,

@@ -221,18 +221,49 @@ export function confirmModels(context: CliContext, runId: string): void {
 }
 
 /**
+ * §M-TEST-HARNESS — Pass the two local gates a review is allowed to follow.
+ *
+ * Both need a worktree receipt, so both go through `worktree run`: a fixture
+ * that recorded them without one would be asserting against a rule the product
+ * does not have.
+ */
+export function passLocalGates(context: CliContext, runId: string): void {
+  ok(
+    cli(["worktree", "run", "--run-id", runId, "--label", "qc", "make", "qc"], context),
+    "make qc in an isolated worktree",
+  );
+  ok(
+    cli(["run", "record-gate", "--run-id", runId, "--gate", "qc", "--status", "passed"], context),
+    "record qc",
+  );
+  ok(
+    cli(["worktree", "run", "--run-id", runId, "--label", "smoke", "--", "true"], context),
+    "smoke in an isolated worktree",
+  );
+  ok(
+    cli(["run", "record-gate", "--run-id", runId, "--gate", "smoke", "--status", "passed"], context),
+    "record smoke",
+  );
+}
+
+/**
  * §M-TEST-HARNESS — Get both reviews on the record, so the E2E loop may open.
  *
  * §30 starts the heavy E2E set after both reviewers pass, and the rule is
  * enforced by the command that banks the result as well as by the transition.
  * Every fixture that records an E2E result therefore has to get there the way a
  * run does; the tests *about* the ordering spell it out inline instead.
+ *
+ * QC and smoke come first because §00 orders them first and `record-review`
+ * enforces it: a reviewer's PASS is only meaningful about something that
+ * already builds and passes its own checks.
  */
 export function passReviews(
   context: CliContext,
   runId: string,
   attested: { commitOid: string; snapshotDigest: string; planDigest: string },
 ): void {
+  passLocalGates(context, runId);
   for (const reviewer of ["reviewerPrimary", "reviewerCrossVendor"]) {
     ok(
       cli(["run", "record-review", "--run-id", runId], {

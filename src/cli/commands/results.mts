@@ -29,7 +29,7 @@ import type {
 import { git } from "../../core/git.mjs";
 import { e2eResultErrors } from "../../core/e2e-result.mjs";
 import { fenceScanner } from "../../core/markdown.mjs";
-import { assertE2eLoopMayOpen } from "./gate-order.mjs";
+import { assertE2eLoopMayOpen, assertReviewsMayOpen } from "./gate-order.mjs";
 import { dispatchedSession } from "./session-state.mjs";
 import {
   assertE2eIsolated,
@@ -152,6 +152,7 @@ export async function commandRecordReview(args: ParsedArgs): Promise<void> {
     const snapshot = state.candidateSnapshot;
     if (!snapshot) fail("no_candidate", "record a candidate with `run set-candidate` first");
     if (!state.e2ePlan) fail("no_plan", "a review attests a selection plan; store one first");
+    if (result.verdict === "passed") assertReviewsMayOpen(state);
     if (isStaleResult(result, { snapshotDigest: snapshot.digest, planDigest: state.e2ePlan.planDigest })) {
       fail(
         "stale_review_result",

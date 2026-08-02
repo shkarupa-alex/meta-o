@@ -25,6 +25,7 @@ import { createTempHome } from "./helpers.mts";
 import {
   cli,
   confirmModels,
+  passLocalGates,
   passReviews,
   dispatchWorkers,
   errorCode,
@@ -204,6 +205,7 @@ test("a second review may not erase the blocker the first one raised", () => {
       cli(["run", "set-plan", "--run-id", runId], { ...context, stdin: JSON.stringify(plan) }),
       "set-plan",
     );
+    passLocalGates(context, runId);
 
     /** §M-TEST-HARDENING-LIFECYCLE — One reviewer payload, varying only in verdict and findings. */
     const review = (verdict: string, findings: unknown[]): string =>
