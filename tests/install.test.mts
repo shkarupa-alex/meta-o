@@ -6,6 +6,8 @@
  * installer that quietly depends on `node_modules`, or that copies a `.d.mts`
  * the runtime cannot use, works perfectly on the machine that built it and
  * fails on every other one.
+ *
+ * Verifies §A-SKILL-TOOLING.
  */
 
 import { strict as assert } from "node:assert";

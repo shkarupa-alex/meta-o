@@ -31,6 +31,7 @@ DEFAULTS = {
     "layers": [],
     "independent": [],
     "forbidden_edges": [],
+    "forbid_regressions": True,
 }
 
 
@@ -86,13 +87,23 @@ def literal_dynamic_import(node: ast.Call) -> str | None:
 
 
 def build_graph(
-    root: Path, source_roots: list[str], report: Report
-) -> tuple[dict[str, set[str]], set[str]]:
-    """§M-QC-IMPORT-GRAPH — Parse every source file into a module dependency graph."""
+    root: Path, source_roots: list[str], report: Report, prefixes: list[str]
+) -> tuple[dict[str, set[str]], set[str], set[str], set[str]]:
+    """§M-QC-IMPORT-GRAPH — Parse every source file into a module dependency graph.
+
+    Returns the graph, the first-party module names, the modules that import
+    themselves, and every import target that looked first-party but resolved to
+    nothing. The last two are returned separately rather than folded into the
+    graph: a self-edge would make Tarjan report a one-module component that the
+    cycle rules are not written for, and an unresolved target is not an edge at
+    all — it is a module the project claims to own and does not have.
+    """
     files = discover_python_files(root, source_roots)
     names = {path: module_name(path, root, source_roots) for path in files}
     known = {name for name in names.values() if name}
     graph: dict[str, set[str]] = {name: set() for name in known}
+    self_imports: set[str] = set()
+    unresolved: set[str] = set()
 
     for path, name in names.items():
         if not name:
@@ -105,6 +116,7 @@ def build_graph(
 
         for node in ast.walk(tree):
             targets: list[str] = []
+            absolute = True
             if isinstance(node, ast.Import):
                 targets = [alias.name for alias in node.names]
             elif isinstance(node, ast.ImportFrom):
@@ -116,6 +128,7 @@ def build_graph(
                 # `from x import y` may import a submodule or a symbol; offering
                 # both to the resolver lets it pick whichever the project owns.
                 targets = [base, *(f"{base}.{alias.name}".strip(".") for alias in node.names)]
+                absolute = node.level == 0
             elif isinstance(node, ast.Call):
                 literal = literal_dynamic_import(node)
                 if literal:
@@ -130,10 +143,28 @@ def build_graph(
 
             for target in targets:
                 resolved = nearest_known(target, known)
-                if resolved and resolved != name:
+                if resolved is None:
+                    # A target under a declared first-party prefix that resolves
+                    # to no module is a boundary the project asserted and does
+                    # not honour — a rename left behind, or a module that only
+                    # exists at runtime.
+                    if is_first_party(target, prefixes):
+                        unresolved.add(target)
+                    continue
+                if resolved != name:
                     graph[name].add(resolved)
+                elif absolute:
+                    # `from . import x` inside a package resolves to the package
+                    # itself and is ordinary; only an absolute self-import is the
+                    # circular definition the rule is about.
+                    self_imports.add(name)
 
-    return graph, known
+    return graph, known, self_imports, unresolved
+
+
+def is_first_party(target: str, prefixes: list[str]) -> bool:
+    """§M-QC-IMPORT-GRAPH — Whether an import names something the project claims to own."""
+    return any(target == prefix or target.startswith(f"{prefix}.") for prefix in prefixes)
 
 
 def nearest_known(target: str, known: set[str]) -> str | None:
@@ -249,29 +280,94 @@ def check_contracts(graph: dict[str, set[str]], config: dict, report: Report) ->
                     report.add(source, 1, "independence", f"{left} and {right} must not depend on each other")
 
 
+def fan(graph: dict[str, set[str]]) -> tuple[dict[str, int], dict[str, int]]:
+    """§M-QC-IMPORT-GRAPH — Fan-out and fan-in of every module.
+
+    Cycles are the loud structural failure; fan-in and fan-out are the quiet
+    one. A module that quietly acquires twenty dependents is as hard to change
+    as one in a cycle, and nothing in the cycle rules would ever notice it.
+    """
+    fan_out = {name: len(targets) for name, targets in graph.items()}
+    fan_in = {name: 0 for name in graph}
+    for targets in graph.values():
+        for target in targets:
+            fan_in[target] = fan_in.get(target, 0) + 1
+    return fan_in, fan_out
+
+
+def check_ratchet(
+    report: Report,
+    current: dict[str, int],
+    frozen: dict[str, int],
+    rule: str,
+    forbid_regressions: bool,
+) -> None:
+    """§M-QC-IMPORT-GRAPH — Fail any module whose coupling grew beyond its baseline."""
+    if not forbid_regressions:
+        return
+    for name in sorted(current):
+        before = int(frozen.get(name, 0))
+        if current[name] > before and name in frozen:
+            report.add(name, 1, rule, f"{name} {rule} grew from {before} to {current[name]}")
+
+
+def check_boundary(
+    report: Report,
+    known: set[str],
+    unresolved: set[str],
+    prefixes: list[str],
+) -> None:
+    """§M-QC-IMPORT-GRAPH — Every first-party module must be inside a declared prefix.
+
+    A declared boundary that nothing checks is a comment. With prefixes
+    configured, a discovered module belonging to none of them is either
+    misplaced or the prefix list is stale — and either way the layering and
+    independence contracts below are being applied to an incomplete picture.
+    """
+    if not prefixes:
+        return
+    for name in sorted(known):
+        if not is_first_party(name, prefixes):
+            report.add(
+                name,
+                1,
+                "unknown-boundary",
+                f"{name} matches no declared first_party_prefixes {prefixes}",
+            )
+    for target in sorted(unresolved):
+        report.add(
+            target,
+            1,
+            "unknown-boundary",
+            f"{target} is declared first-party but resolves to no module in source_roots",
+        )
+
+
 def main() -> int:
     """§M-QC-IMPORT-GRAPH — Build the graph, apply the contracts, apply the ratchet."""
     config = load_config("import_graph", DEFAULTS)
     root = project_root()
     report = Report("import-graph")
+    prefixes = [str(item) for item in config["first_party_prefixes"]]
 
-    graph, known = build_graph(root, list(config["source_roots"]), report)
+    graph, known, self_imports, unresolved = build_graph(
+        root, list(config["source_roots"]), report, prefixes
+    )
     if not known:
         report.note("no first-party modules were discovered; check source_roots")
 
     check_contracts(graph, config, report)
+    check_boundary(report, known, unresolved, prefixes)
 
     components = [component for component in tarjan(graph) if len(component) > 1]
-    self_cycles = sorted(name for name, targets in graph.items() if name in targets)
+    fan_in, fan_out = fan(graph)
 
     baseline_path = root / str(config["baseline"])
-    baseline = read_json(baseline_path, default={"cycles": []}) or {"cycles": []}
+    baseline = read_json(baseline_path, default={}) or {}
     known_cycles = {tuple(cycle) for cycle in baseline.get("cycles", [])}
 
     if "--write-baseline" in sys.argv:
-        write_json(baseline_path, {"cycles": [list(component) for component in components]})
-        sys.stdout.write(f"baseline written to {baseline_path} with {len(components)} cycle(s)\n")
-        return 0
+        return write_baseline(baseline_path, baseline, components, fan_in, fan_out, config)
 
     for component in components:
         if tuple(component) in known_cycles:
@@ -284,10 +380,51 @@ def main() -> int:
             f"new import cycle of {len(component)} modules: {' → '.join(component)}",
         )
 
-    for name in self_cycles:
+    for name in sorted(self_imports):
         report.add(name, 1, "self-import", f"{name} imports itself")
 
+    forbid = bool(config["forbid_regressions"])
+    check_ratchet(report, fan_in, baseline.get("fan_in", {}), "fan-in", forbid)
+    check_ratchet(report, fan_out, baseline.get("fan_out", {}), "fan-out", forbid)
+
     return report.finish()
+
+
+def write_baseline(
+    baseline_path: Path,
+    baseline: dict,
+    components: list[list[str]],
+    fan_in: dict[str, int],
+    fan_out: dict[str, int],
+    config: dict,
+) -> int:
+    """§M-QC-IMPORT-GRAPH — Freeze the structure, refusing to freeze new cycles.
+
+    As with code health, the first baseline records whatever debt the project
+    starts with; after that, freezing may only record improvement. Otherwise the
+    documented way past a failing structural gate is to re-freeze it.
+    """
+    if config["forbid_regressions"] and baseline_path.is_file():
+        added = [
+            component
+            for component in components
+            if tuple(component) not in {tuple(cycle) for cycle in baseline.get("cycles", [])}
+        ]
+        if added:
+            for component in added:
+                sys.stderr.write(f"refusing to freeze new cycle {' → '.join(component)}\n")
+            return 1
+
+    write_json(
+        baseline_path,
+        {
+            "cycles": [list(component) for component in components],
+            "fan_in": fan_in,
+            "fan_out": fan_out,
+        },
+    )
+    sys.stdout.write(f"baseline written to {baseline_path} with {len(components)} cycle(s)\n")
+    return 0
 
 
 if __name__ == "__main__":

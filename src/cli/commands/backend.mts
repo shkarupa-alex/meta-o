@@ -27,7 +27,12 @@ import {
   runSmokeSuite,
   type SuiteContext,
 } from "../../adapters/capability-suite.mjs";
-import { Watchdog, type RunMemory, type WatchdogLogEntry } from "../../watchdog/watchdog.mjs";
+import {
+  Watchdog,
+  type RunMemory,
+  type WatchdogDeps,
+  type WatchdogLogEntry,
+} from "../../watchdog/watchdog.mjs";
 import { classifyWithFallback, parseResetTime, type LocalClassifier } from "../../watchdog/classifier.mjs";
 import { listRuns, readState } from "../../core/state-store.mjs";
 import { readSecureJson, writeSecureJson } from "../../core/safe-fs.mjs";
@@ -43,6 +48,7 @@ import { resolveProjectIdentity } from "../../core/project-key.mjs";
 import { isoTimestamp } from "../../core/clock.mjs";
 import type {
   ModelRef,
+  PendingOperation,
   RunState,
   SessionStatus,
   TailClassification,
@@ -217,28 +223,47 @@ function appendLog(entry: WatchdogLogEntry): void {
 }
 
 /**
- * §M-CLI-BACKEND — Run the watchdog loop.
+ * §M-CLI-BACKEND — Tell somebody that an effect could not be proven.
  *
- * Every recovery path goes through `status`, `read` and `reconcile` first; the
- * watchdog never sends a blind `continue`, never instructs a worker and never
- * edits the FSM itself.
+ * The orchestrator first, because it can act. If there is none, the durable log
+ * a human reads: staying silent here is what turned an uncertain operation on a
+ * dead orchestrator into a run stuck forever with no trace of why.
  */
-export async function commandWatchdogRun(args: ParsedArgs): Promise<void> {
-  const config = loadWatchdogConfig();
-  if (!config || !config.enabled) {
-    emit({ ran: false, reason: "watchdog is not enabled in ~/.meta-o/watchdog.json" });
+async function surfaceUncertainty(
+  adapter: HerdrAdapter,
+  state: RunState,
+  operation: PendingOperation | undefined,
+): Promise<void> {
+  const pending = operation
+    ? `Pending operation: ${operation.kind} ${operation.operationId} (${operation.state}).`
+    : undefined;
+  const message = pending ? `${UNCERTAINTY_PROMPT}\n\n${pending}` : CAPABILITY_REGRESSION_PROMPT;
+  if (state.orchestratorSession) {
+    await adapter.send(state.orchestratorSession, randomUUID(), message);
     return;
   }
+  appendLog({
+    timestamp: isoTimestamp(),
+    projectKey: state.projectKey,
+    runId: state.runId,
+    phase: state.phase,
+    observedStatus: "absent",
+    action: "surface_uncertainty",
+    reason: `${message} (no orchestrator session to tell; user action required)`,
+    outcome: "failed",
+  });
+}
 
-  const instanceLock = acquireSingleInstanceLock();
-  if (!instanceLock) {
-    emit({ ran: false, reason: "another watchdog instance already holds the single-instance lock" });
-    return;
-  }
-
-  const adapter = adapterFor(args);
-  const maxTicks = Number(optionalFlag(args, "max-ticks") ?? (boolFlag(args, "once") ? 1 : Infinity));
-
+/**
+ * §M-CLI-BACKEND — Wire the watchdog's deterministic core to the real backend.
+ *
+ * Separated from the command so that the policy — which action follows which
+ * observation — stays in one readable place, and this file holds only the
+ * plumbing: how an observation is obtained and how an approved action reaches
+ * the backend.
+ */
+function backendDeps(adapter: HerdrAdapter, config: WatchdogConfig): WatchdogDeps {
+  const hybrid = config.classifier_mode === "hybrid";
   const orchestratorStatus = async (state: RunState): Promise<SessionStatus | "absent"> => {
     if (!state.orchestratorSession) return "absent";
     try {
@@ -248,8 +273,7 @@ export async function commandWatchdogRun(args: ParsedArgs): Promise<void> {
     }
   };
 
-  const hybrid = config.classifier_mode === "hybrid";
-  const watchdog = new Watchdog({
+  return {
     config,
     listRuns,
     readState,
@@ -268,28 +292,7 @@ export async function commandWatchdogRun(args: ParsedArgs): Promise<void> {
       if (!state.orchestratorSession) return;
       await adapter.send(state.orchestratorSession, randomUUID(), WAKE_PROMPT);
     },
-    surfaceUncertainty: async (state, operation) => {
-      const message = operation
-        ? `${UNCERTAINTY_PROMPT}\n\nPending operation: ${operation.kind} ${operation.operationId} (${operation.state}).`
-        : CAPABILITY_REGRESSION_PROMPT;
-      if (state.orchestratorSession) {
-        await adapter.send(state.orchestratorSession, randomUUID(), message);
-        return;
-      }
-      // Nobody is listening, so the only remaining channel is the durable log a
-      // human reads. Staying silent here is what turned an uncertain operation
-      // on a dead orchestrator into a run stuck forever with no trace of why.
-      appendLog({
-        timestamp: isoTimestamp(),
-        projectKey: state.projectKey,
-        runId: state.runId,
-        phase: state.phase,
-        observedStatus: "absent",
-        action: "surface_uncertainty",
-        reason: `${message} (no orchestrator session to tell; user action required)`,
-        outcome: "failed",
-      });
-    },
+    surfaceUncertainty: async (state, operation) => surfaceUncertainty(adapter, state, operation),
     spawnOrchestrator: async (state) => {
       const session = await adapter.spawn({
         operationId: randomUUID(),
@@ -316,7 +319,32 @@ export async function commandWatchdogRun(args: ParsedArgs): Promise<void> {
       writeWatchdogMemory(all);
     },
     log: appendLog,
-  });
+  };
+}
+
+/**
+ * §M-CLI-BACKEND — Run the watchdog loop.
+ *
+ * Every recovery path goes through `status`, `read` and `reconcile` first; the
+ * watchdog never sends a blind `continue`, never instructs a worker and never
+ * edits the FSM itself.
+ */
+export async function commandWatchdogRun(args: ParsedArgs): Promise<void> {
+  const config = loadWatchdogConfig();
+  if (!config || !config.enabled) {
+    emit({ ran: false, reason: "watchdog is not enabled in ~/.meta-o/watchdog.json" });
+    return;
+  }
+
+  const instanceLock = acquireSingleInstanceLock();
+  if (!instanceLock) {
+    emit({ ran: false, reason: "another watchdog instance already holds the single-instance lock" });
+    return;
+  }
+
+  const adapter = adapterFor(args);
+  const maxTicks = Number(optionalFlag(args, "max-ticks") ?? (boolFlag(args, "once") ? 1 : Infinity));
+  const watchdog = new Watchdog(backendDeps(adapter, config));
 
   const handleSignal = (): void => watchdog.stop();
   process.on("SIGINT", handleSignal);

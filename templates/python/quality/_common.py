@@ -89,15 +89,20 @@ class Violation:
     line: int
     rule: str
     message: str
+    symbol: str = ""
 
     def key(self) -> str:
         """§M-QC-COMMON — Stable identity of a violation across runs.
 
-        Deliberately excludes the line number: a violation that merely moved
-        down the file is the same violation, and a baseline keyed on line
-        numbers would expire on every unrelated edit.
+        Excludes the line number, because a violation that merely moved down the
+        file is the same violation and a baseline keyed on lines would expire on
+        every unrelated edit. It includes the *symbol*, because without it every
+        violation of one rule in one file collapses to a single key: one frozen
+        entry would then forgive an unbounded number of new violations in that
+        file, and a regression in one function would be masked by whichever
+        function the walk happened to measure last.
         """
-        return f"{self.path}::{self.rule}"
+        return f"{self.path}::{self.rule}::{self.symbol}" if self.symbol else f"{self.path}::{self.rule}"
 
     def render(self) -> str:
         """§M-QC-COMMON — Render a violation the way an editor can jump to it."""
@@ -112,7 +117,14 @@ class Report:
     violations: list[Violation] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
-    def add(self, path: Path | str, line: int, rule: str, message: str) -> None:
+    def add(
+        self,
+        path: Path | str,
+        line: int,
+        rule: str,
+        message: str,
+        symbol: str = "",
+    ) -> None:
         """§M-QC-COMMON — Record one violation, with a path relative to the root."""
         root = project_root()
         text = str(path)
@@ -120,7 +132,7 @@ class Report:
             text = str(Path(path).resolve().relative_to(root))
         except ValueError:
             pass
-        self.violations.append(Violation(text, line, rule, message))
+        self.violations.append(Violation(text, line, rule, message, symbol))
 
     def note(self, message: str) -> None:
         """§M-QC-COMMON — Record something a reviewer should see but that does not fail."""

@@ -5,6 +5,8 @@
  * moving a project creates a new key, a symlinked state directory is refused,
  * a fresh orchestrator recovers a run from `state.json` alone, and two parallel
  * runs never block each other.
+ *
+ * Verifies §A-EXTERNAL-STATE and §A-CRASH-RECOVERY.
  */
 
 import { strict as assert } from "node:assert";

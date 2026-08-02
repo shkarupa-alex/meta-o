@@ -44,6 +44,52 @@ export function isSourceFile(path: string): boolean {
 }
 
 /**
+ * §M-MODULE-ANCHORS — Extract the leading doc comment of a source file.
+ *
+ * The module's own documentation block, not a fixed slice of lines. Taking the
+ * first N lines wholesale reads code as though it were prose: a test whose
+ * fixture strings contain example anchors was reported as citing anchors that
+ * do not exist, which is a false failure — and false failures are how a gate
+ * gets switched off. Supports the three shapes the workflow's languages use: a
+ * block comment, a docstring, and a run of line comments.
+ */
+export function headerOf(text: string): string {
+  const lines = text.split("\n").slice(0, HEADER_LINES);
+  let index = 0;
+  while (index < lines.length && (lines[index]!.trim() === "" || lines[index]!.startsWith("#!"))) {
+    index += 1;
+  }
+  const first = lines[index]?.trim() ?? "";
+  const block: string[] = [];
+
+  const closing = /^[rbuf]*("""|''')/.exec(first)?.[1];
+  if (closing) {
+    const opener = first.slice(first.indexOf(closing) + 3);
+    if (opener.includes(closing)) return first;
+    for (; index < lines.length; index += 1) {
+      block.push(lines[index]!);
+      if (block.length > 1 && lines[index]!.includes(closing)) break;
+    }
+    return block.join("\n");
+  }
+
+  if (first.startsWith("/*")) {
+    for (; index < lines.length; index += 1) {
+      block.push(lines[index]!);
+      if (lines[index]!.includes("*/")) break;
+    }
+    return block.join("\n");
+  }
+
+  for (; index < lines.length; index += 1) {
+    const line = lines[index]!.trim();
+    if (!line.startsWith("//") && !line.startsWith("#")) break;
+    block.push(line);
+  }
+  return block.join("\n");
+}
+
+/**
  * §M-MODULE-ANCHORS — Read the `§M` declaration and citations from one header.
  *
  * The first anchor is the declaration and everything else in the header is a
@@ -52,7 +98,7 @@ export function isSourceFile(path: string): boolean {
  * module's.
  */
 export function moduleAnchorOf(path: string, text: string): ModuleAnchorDefinition | undefined {
-  const header = text.split("\n", HEADER_LINES).join("\n");
+  const header = headerOf(text);
   const anchors = referencesIn(header);
   const declaration = anchors.find((anchor) => anchor.startsWith("§M-"));
   if (!declaration) return undefined;

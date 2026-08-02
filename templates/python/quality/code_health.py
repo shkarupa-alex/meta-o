@@ -82,65 +82,88 @@ def nesting_depth(node: ast.AST, depth: int = 0) -> int:
     return deepest
 
 
+def definitions(tree: ast.AST, prefix: str = "") -> list[tuple[ast.AST, str]]:
+    """§M-QC-CODE-HEALTH — Every class and function with its qualified name.
+
+    Qualified, because the baseline is keyed on the symbol. Two functions in one
+    file are two separate things to ratchet; collapsing them to the file name
+    would let one frozen entry forgive every future violation in that file.
+    """
+    found: list[tuple[ast.AST, str]] = []
+    for node in ast.iter_child_nodes(tree):
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            qualified = f"{prefix}.{node.name}" if prefix else node.name
+            found.append((node, qualified))
+            found.extend(definitions(node, qualified))
+        else:
+            found.extend(definitions(node, prefix))
+    return found
+
+
 def measure(path: Path, root: Path, config: dict, report: Report) -> dict[str, int]:
     """§M-QC-CODE-HEALTH — Measure one file and record every threshold it exceeds."""
     relative = str(path.relative_to(root))
     source = path.read_text(encoding="utf-8")
     measurements: dict[str, int] = {}
 
+    def exceeded(node: ast.AST, symbol: str, rule: str, value: int, message: str) -> None:
+        """§M-QC-CODE-HEALTH — Record one exceeded threshold under its own key."""
+        report.add(path, getattr(node, "lineno", 1), rule, message, symbol)
+        measurements[f"{relative}::{rule}::{symbol}"] = value
+
     lines = len(source.splitlines())
     if lines > int(config["max_file_lines"]):
-        report.add(path, 1, "file-lines", f"{lines} lines exceeds {config['max_file_lines']}")
-        measurements[f"{relative}::file-lines"] = lines
+        report.add(path, 1, "file-lines", f"{lines} lines exceeds {config['max_file_lines']}", "<module>")
+        measurements[f"{relative}::file-lines::<module>"] = lines
 
     try:
         tree = ast.parse(source, filename=str(path))
     except SyntaxError as error:
-        report.add(path, error.lineno or 1, "syntax", f"cannot parse: {error.msg}")
+        report.add(path, error.lineno or 1, "syntax", f"cannot parse: {error.msg}", "<module>")
         return measurements
 
-    for node in ast.walk(tree):
+    for node, symbol in definitions(tree):
         if isinstance(node, ast.ClassDef):
             size = span(node)
             if size > int(config["max_class_lines"]):
-                report.add(
-                    path,
-                    node.lineno,
+                exceeded(
+                    node,
+                    symbol,
                     "class-lines",
-                    f"class {node.name} spans {size} lines, over {config['max_class_lines']}",
+                    size,
+                    f"class {symbol} spans {size} lines, over {config['max_class_lines']}",
                 )
-                measurements[f"{relative}::class-lines"] = size
+            continue
 
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            size = span(node)
-            if size > int(config["max_function_lines"]):
-                report.add(
-                    path,
-                    node.lineno,
-                    "function-lines",
-                    f"{node.name} spans {size} lines, over {config['max_function_lines']}",
-                )
-                measurements[f"{relative}::function-lines"] = size
+        size = span(node)
+        if size > int(config["max_function_lines"]):
+            exceeded(
+                node,
+                symbol,
+                "function-lines",
+                size,
+                f"{symbol} spans {size} lines, over {config['max_function_lines']}",
+            )
 
-            score = complexity(node)
-            if score > int(config["max_cyclomatic_complexity"]):
-                report.add(
-                    path,
-                    node.lineno,
-                    "complexity",
-                    f"{node.name} has complexity {score}, over {config['max_cyclomatic_complexity']}",
-                )
-                measurements[f"{relative}::complexity"] = score
+        score = complexity(node)
+        if score > int(config["max_cyclomatic_complexity"]):
+            exceeded(
+                node,
+                symbol,
+                "complexity",
+                score,
+                f"{symbol} has complexity {score}, over {config['max_cyclomatic_complexity']}",
+            )
 
-            depth = nesting_depth(node)
-            if depth > int(config["max_nesting_depth"]):
-                report.add(
-                    path,
-                    node.lineno,
-                    "nesting",
-                    f"{node.name} nests {depth} deep, over {config['max_nesting_depth']}",
-                )
-                measurements[f"{relative}::nesting"] = depth
+        depth = nesting_depth(node)
+        if depth > int(config["max_nesting_depth"]):
+            exceeded(
+                node,
+                symbol,
+                "nesting",
+                depth,
+                f"{symbol} nests {depth} deep, over {config['max_nesting_depth']}",
+            )
 
     return measurements
 
@@ -156,12 +179,10 @@ def main() -> int:
         found.update(measure(path, root, config, report))
 
     baseline_path = root / str(config["baseline"])
-    if "--write-baseline" in sys.argv:
-        write_json(baseline_path, found)
-        sys.stdout.write(f"baseline written to {baseline_path} with {len(found)} entr(ies)\n")
-        return 0
-
     baseline: dict[str, int] = read_json(baseline_path, default={}) or {}
+
+    if "--write-baseline" in sys.argv:
+        return write_baseline(baseline_path, baseline, found, config)
 
     # Anything the baseline forgives stops being a violation — but only at a
     # value no worse than the one that was frozen.
@@ -180,11 +201,45 @@ def main() -> int:
     if forgiven:
         report.note(f"{len(forgiven)} pre-existing violation(s) tolerated by {config['baseline']}")
 
-    if config["forbid_new_baseline_entries"]:
-        for key in sorted(set(baseline) - set(found)):
-            report.note(f"baseline entry {key} is now clean and can be removed")
+    for key in sorted(set(baseline) - set(found)):
+        report.note(f"baseline entry {key} is now clean and can be removed")
 
     return report.finish()
+
+
+def write_baseline(
+    baseline_path: Path,
+    baseline: dict[str, int],
+    found: dict[str, int],
+    config: dict,
+) -> int:
+    """§M-QC-CODE-HEALTH — Freeze the current measurements, honouring the ratchet.
+
+    With `forbid_new_baseline_entries` set, freezing is allowed to *shrink* the
+    debt and never to grow it. Without that rule the flag was decorative and the
+    escape from any failing gate was one `--write-baseline` away, which turns a
+    ratchet into a suggestion.
+
+    Creating the *first* baseline is the exception, and the whole point of
+    adoption: a brownfield project has to be able to record the debt it starts
+    with. After that the file exists, and the ratchet only tightens.
+    """
+    if config["forbid_new_baseline_entries"] and baseline_path.is_file():
+        added = sorted(set(found) - set(baseline))
+        raised = sorted(key for key in set(found) & set(baseline) if found[key] > int(baseline[key]))
+        if added or raised:
+            for key in added:
+                sys.stderr.write(f"refusing to freeze new violation {key}\n")
+            for key in raised:
+                sys.stderr.write(f"refusing to raise frozen {key} from {baseline[key]} to {found[key]}\n")
+            sys.stderr.write(
+                "forbid_new_baseline_entries is set; fix these or change the policy deliberately\n"
+            )
+            return 1
+
+    write_json(baseline_path, found)
+    sys.stdout.write(f"baseline written to {baseline_path} with {len(found)} entr(ies)\n")
+    return 0
 
 
 if __name__ == "__main__":

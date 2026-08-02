@@ -7,15 +7,22 @@ purpose is *good* — that is the reviewers' job, and no AST walk will ever do i
 It proves the weaker but mechanical property: the purpose is present, and it is
 attached to the `§M-*` anchor that ties the symbol back into the knowledge chain.
 
-Nested functions, private helpers, methods and test functions are all included.
-The undocumented private helper is precisely the one that later turns out to
-contain the business rule.
+Nested functions, private helpers, methods, dunders and test functions are all
+included. The undocumented private helper is precisely the one that later turns
+out to contain the business rule, and `__eq__` is precisely the dunder whose
+notion of equality nobody can reconstruct a year later.
+
+Exactly three grounds excuse a symbol, and all three are declared rather than
+inferred: the file is generated, the file is vendored, or the definition is an
+`@overload` typing artefact with no body to explain. "It is obvious" and "it is
+short" are not among them.
 """
 
 from __future__ import annotations
 
 import ast
 import re
+from fnmatch import fnmatch
 from pathlib import Path
 
 from _common import Report, discover_python_files, load_config, project_root
@@ -25,8 +32,7 @@ MODULE_ANCHOR = re.compile(r"§M-[A-Z0-9-]+")
 DEFAULTS = {
     "source_roots": ["src", "tests"],
     "exempt_files": [],
-    "exempt_names": ["__init__", "__repr__", "__str__", "__eq__", "__hash__"],
-    "exempt_decorators": ["overload", "typing.overload", "abstractmethod"],
+    "exempt_decorators": ["overload", "typing.overload"],
 }
 
 
@@ -41,20 +47,34 @@ def decorator_name(node: ast.expr) -> str:
     return ""
 
 
-def is_exempt(node: ast.AST, exempt_names: list[str], exempt_decorators: list[str]) -> bool:
+def is_exempt(node: ast.AST, exempt_decorators: list[str]) -> bool:
     """§M-QC-PURPOSE — Whether a symbol is excused from carrying its own purpose.
 
-    Only two grounds are accepted: the language defines the meaning (`__eq__`),
-    or the symbol is a typing artefact rather than an implementation
-    (`@overload`). "It is obvious" is not one of them.
+    Only the declared decorator exemption applies here: an `@overload` stub is a
+    signature, not an implementation, and has nothing of its own to explain. Name
+    based exemptions are deliberately absent — the moment `__init__` is excused,
+    the constructor that decides what the object *means* stops being documented.
     """
-    name = getattr(node, "name", "")
-    if name in exempt_names:
-        return True
     for decorator in getattr(node, "decorator_list", []):
         if decorator_name(decorator) in exempt_decorators:
             return True
     return False
+
+
+def qualify(tree: ast.AST) -> list[tuple[ast.AST, str]]:
+    """§M-QC-PURPOSE — Every class and function with its qualified name.
+
+    Qualified so that a violation names `Registry.load` rather than `load`, which
+    matters as soon as a file defines the same short name twice.
+    """
+    found: list[tuple[ast.AST, str]] = []
+    for node in ast.iter_child_nodes(tree):
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            found.append((node, node.name))
+            found.extend((child, f"{node.name}.{name}") for child, name in qualify(node))
+        else:
+            found.extend(qualify(node))
+    return found
 
 
 def check_file(path: Path, report: Report, config: dict) -> None:
@@ -67,41 +87,58 @@ def check_file(path: Path, report: Report, config: dict) -> None:
         return
 
     module_doc = ast.get_docstring(tree) or ""
+    anchors = MODULE_ANCHOR.findall(module_doc)
     if not module_doc.strip():
-        report.add(path, 1, "module-purpose", "module has no docstring")
-    elif not MODULE_ANCHOR.search(module_doc):
+        report.add(path, 1, "module-purpose", "module has no docstring", "<module>")
+    elif not anchors:
         report.add(
             path,
             1,
             "module-anchor",
             "module docstring declares no §M-* anchor, so nothing links it to the knowledge chain",
+            "<module>",
         )
 
-    exempt_names = list(config["exempt_names"])
     exempt_decorators = list(config["exempt_decorators"])
 
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+    for node, symbol in qualify(tree):
+        if is_exempt(node, exempt_decorators):
             continue
-        if is_exempt(node, exempt_names, exempt_decorators):
-            continue
-        docstring = ast.get_docstring(node) or ""
         kind = "class" if isinstance(node, ast.ClassDef) else "function"
+        docstring = ast.get_docstring(node) or ""
+        line = getattr(node, "lineno", 1)
         if not docstring.strip():
-            report.add(path, node.lineno, "symbol-purpose", f"{kind} {node.name} has no docstring")
+            report.add(path, line, "symbol-purpose", f"{kind} {symbol} has no docstring", symbol)
+            continue
+        # The link is the point. A docstring that restates the signature in prose
+        # documents nothing; one that names the module anchor states which part of
+        # the architecture the symbol serves, and that claim is checkable — the
+        # anchor has to exist and to resolve upwards through §A to §B.
+        if anchors and not any(anchor in docstring for anchor in anchors):
+            report.add(
+                path,
+                line,
+                "symbol-anchor",
+                f"{kind} {symbol} cites no §M-* anchor of its module ({', '.join(anchors)})",
+                symbol,
+            )
 
 
 def main() -> int:
     """§M-QC-PURPOSE — Run the purpose gate over every configured source root."""
     config = load_config("purpose", DEFAULTS)
     root = project_root()
-    exempt_files = {str(item) for item in config["exempt_files"]}
+    patterns = [str(item) for item in config["exempt_files"]]
     report = Report("purpose")
 
     for path in discover_python_files(root, list(config["source_roots"])):
         relative = str(path.relative_to(root))
-        if relative in exempt_files:
-            report.note(f"{relative} is an declared exemption")
+        # Globs, because generated and vendored trees are directories, and a
+        # literal per-file list of them stops covering the tree the first time
+        # the generator emits a file nobody remembered to add to the list.
+        matched = next((pattern for pattern in patterns if fnmatch(relative, pattern)), None)
+        if matched is not None:
+            report.note(f"{relative} is exempt by declared pattern {matched}")
             continue
         check_file(path, report, config)
 

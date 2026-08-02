@@ -33,7 +33,7 @@
     },
     {
       "id": "knowledge",
-      "command": "node dist/cli/meta-o.mjs knowledge validate",
+      "command": "node dist/cli/meta-o.mjs knowledge validate --roots src,quality,tests",
       "policy": "passed"
     },
     {

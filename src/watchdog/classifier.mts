@@ -77,6 +77,15 @@ export function classifyTail(tail: string): TailClassification {
   return "unknown";
 }
 
+/** §M-CLASSIFIER — A timestamp introduced by a reset or retry keyword. */
+const ISO_RESET = new RegExp(
+  [
+    String.raw`\b(?:reset|retry|resumes?|available|try again)[a-z-]*\b[^\n]{0,40}?\b`,
+    String.raw`(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2}))`,
+  ].join(""),
+  "i",
+);
+
 /**
  * §M-CLASSIFIER — Extract a provably stated quota reset time, as an epoch.
  *
@@ -97,10 +106,7 @@ export function classifyTail(tail: string): TailClassification {
 export function parseResetTime(tail: string, nowMs: number = Date.now()): number | undefined {
   const text = sanitizeTail(tail);
 
-  const iso =
-    /\b(?:reset|retry|resumes?|available|try again)[a-z-]*\b[^\n]{0,40}?\b(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2}))/i.exec(
-      text,
-    );
+  const iso = ISO_RESET.exec(text);
   if (iso) {
     const value = Date.parse(iso[1]!.replace(" ", "T"));
     if (Number.isFinite(value)) return value;

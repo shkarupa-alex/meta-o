@@ -5,6 +5,8 @@
  * never produce a joint pass, an E2E fix does not restart review mid-loop, the
  * final snapshot carries four attestations, a reviewer cannot pass with open
  * defects, taste cannot block, and the executor cannot close a finding.
+ *
+ * Verifies §A-RUN-LIFECYCLE and §A-INDEPENDENT-REVIEW.
  */
 
 import { strict as assert } from "node:assert";

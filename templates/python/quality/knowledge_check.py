@@ -92,9 +92,22 @@ def collect_documents(root: Path, config: dict) -> list[tuple[Path, str]]:
     return documents
 
 
-def module_anchors(root: Path, source_roots: list[str], report: Report) -> dict[str, set[str]]:
-    """§M-QC-KNOWLEDGE — Read each module's `§M-*` anchor and what it cites."""
-    anchors: dict[str, set[str]] = {}
+def docstring_line(tree: ast.Module) -> int:
+    """§M-QC-KNOWLEDGE — Line the module docstring starts on, for a jumpable report."""
+    body = getattr(tree, "body", [])
+    if body and isinstance(body[0], ast.Expr):
+        return int(getattr(body[0], "lineno", 1))
+    return 1
+
+
+def module_anchors(root: Path, source_roots: list[str], report: Report) -> list[Section]:
+    """§M-QC-KNOWLEDGE — Read each module's `§M-*` anchor and what it cites.
+
+    Returned as sections rather than a dict keyed on the anchor: the anchor is
+    what may be duplicated, so it cannot also be the identity that silently
+    merges two modules claiming it.
+    """
+    anchors: list[Section] = []
     for path in discover_python_files(root, source_roots):
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -102,8 +115,13 @@ def module_anchors(root: Path, source_roots: list[str], report: Report) -> dict[
             report.add(path, error.lineno or 1, "syntax", f"cannot parse: {error.msg}")
             continue
         docstring = ast.get_docstring(tree) or ""
+        line = docstring_line(tree)
+        relative = str(path.relative_to(root))
         for anchor in MODULE.findall(docstring):
-            anchors.setdefault(anchor, set()).update(ANY_ANCHOR.findall(docstring))
+            section = Section(anchor=anchor, path=relative, line=line)
+            section.references.update(ANY_ANCHOR.findall(docstring))
+            section.references.discard(anchor)
+            anchors.append(section)
     return anchors
 
 
@@ -126,8 +144,13 @@ def main() -> int:
         )
         return report.finish()
 
+    module_docs = module_anchors(root, list(config["source_roots"]), report)
+
+    # Uniqueness spans documents *and* modules in one namespace. Two files
+    # claiming one §M is the failure that makes `symbol → §M → §A` ambiguous:
+    # the chain resolves, but to two different places depending on who reads it.
     seen: dict[str, Section] = {}
-    for section in sections:
+    for section in [*sections, *module_docs]:
         first = seen.get(section.anchor)
         if first is not None:
             report.add(
@@ -140,8 +163,6 @@ def main() -> int:
         seen[section.anchor] = section
 
     defined = set(seen)
-    module_docs = module_anchors(root, list(config["source_roots"]), report)
-    defined.update(module_docs)
 
     for section in sections:
         for reference in sorted(section.references):
@@ -162,23 +183,35 @@ def main() -> int:
                     f"{section.anchor} cites no §B-*: an architecture decision must serve a business truth",
                 )
 
-    for anchor, references in sorted(module_docs.items()):
+    for section in module_docs:
+        references = section.references
         cites_architecture = any(ARCHITECTURE.fullmatch(item) for item in references)
         cites_business = any(BUSINESS.fullmatch(item) for item in references)
-        if not cites_architecture and cites_business:
+        if not cites_architecture:
+            # Unconditional, not "only when it cites §B". A module that names no
+            # §A at all has skipped the level just as thoroughly as one that
+            # reaches past it to §B — and it is the commoner of the two, because
+            # citing nothing takes no effort.
             report.add(
-                "src",
-                1,
+                section.path,
+                section.line,
+                "missing-architecture-link",
+                f"{section.anchor} cites no §A-*: a module must name the architecture decision it implements",
+            )
+        if cites_business and not cites_architecture:
+            report.add(
+                section.path,
+                section.line,
                 "level-skipped",
-                f"{anchor} cites a §B-* directly; it must cite its nearest §A-* level instead",
+                f"{section.anchor} cites a §B-* directly; it must reach business truth through its §A-*",
             )
         for reference in sorted(references):
-            if ANY_ANCHOR.fullmatch(reference) and reference not in defined:
+            if reference not in defined:
                 report.add(
-                    "src",
-                    1,
+                    section.path,
+                    section.line,
                     "dangling-reference",
-                    f"{anchor} references unknown {reference}",
+                    f"{section.anchor} references unknown {reference}",
                 )
 
     return report.finish()

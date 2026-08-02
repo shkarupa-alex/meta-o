@@ -216,6 +216,70 @@ class PurposeCheckerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("module-anchor", result.stdout)
 
+    def test_a_dunder_must_state_its_purpose(self) -> None:
+        """§M-QC-TESTS — The language defines `__eq__`'s signature, not what equality means here."""
+        write(
+            self.project.root,
+            "src/boot.py",
+            '''
+            """§M-BOOT — Start the application. Implements §A-BOOT-01."""
+
+
+            class Config:
+                """§M-BOOT — Startup configuration."""
+
+                def __eq__(self, other: object) -> bool:
+                    return True
+            ''',
+        )
+        result = run_checker(self.project.root, "purpose_check.py")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Config.__eq__", result.stdout)
+
+    def test_a_symbol_must_cite_its_module_anchor(self) -> None:
+        """§M-QC-TESTS — A docstring that names no §M-* leaves the symbol outside the chain."""
+        write(
+            self.project.root,
+            "src/boot.py",
+            '''
+            """§M-BOOT — Start the application. Implements §A-BOOT-01."""
+
+
+            def start() -> int:
+                """Start the process and report its exit status."""
+                return 0
+            ''',
+        )
+        result = run_checker(self.project.root, "purpose_check.py")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("symbol-anchor", result.stdout)
+
+    def test_a_declared_generated_tree_is_exempt_by_glob(self) -> None:
+        """§M-QC-TESTS — Generated code is excused by pattern, not one file at a time."""
+        write(
+            self.project.root,
+            "src/generated/api.py",
+            """
+            def call() -> int:
+                return 0
+            """,
+        )
+        result = run_checker(self.project.root, "purpose_check.py")
+        self.assertEqual(result.returncode, 1, result.stdout)
+
+        write(
+            self.project.root,
+            "pyproject.toml",
+            """
+            [tool.meta_o.purpose]
+            source_roots = ["src"]
+            exempt_files = ["src/generated/*.py"]
+            """,
+        )
+        result = run_checker(self.project.root, "purpose_check.py")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("src/generated/*.py", result.stdout)
+
 
 class KnowledgeCheckerTests(unittest.TestCase):
     """§M-QC-TESTS — The knowledge gate finds broken and skipped causal links."""
@@ -281,6 +345,43 @@ class KnowledgeCheckerTests(unittest.TestCase):
         result = run_checker(self.project.root, "knowledge_check.py")
         self.assertEqual(result.returncode, 1)
         self.assertIn("level-skipped", result.stdout)
+
+    def test_a_module_citing_nothing_is_found(self) -> None:
+        """§M-QC-TESTS — Citing no §A-* skips the level as surely as reaching past it."""
+        write(
+            self.project.root,
+            "src/boot.py",
+            '''
+            """§M-BOOT — Start the application."""
+
+
+            def start() -> int:
+                """§M-BOOT — Start the process."""
+                return 0
+            ''',
+        )
+        result = run_checker(self.project.root, "knowledge_check.py")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("missing-architecture-link", result.stdout)
+
+    def test_a_module_anchor_claimed_by_two_files_is_found(self) -> None:
+        """§M-QC-TESTS — One §M-* in two modules makes `symbol → §M` resolve to both."""
+        write(
+            self.project.root,
+            "src/boot_again.py",
+            '''
+            """§M-BOOT — Also claims to start the application. Implements §A-BOOT-01."""
+
+
+            def start_again() -> int:
+                """§M-BOOT — Start the process a second time."""
+                return 0
+            ''',
+        )
+        result = run_checker(self.project.root, "knowledge_check.py")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("duplicate-anchor", result.stdout)
+        self.assertIn("src/boot_again.py", result.stdout)
 
 
 class ImportGraphTests(unittest.TestCase):

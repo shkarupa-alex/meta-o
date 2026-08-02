@@ -8,20 +8,21 @@
  *
  * The Herdr CLI is replaced by a scripted runner, so the suite runs without a
  * server while still exercising the real argument construction and JSON parsing.
+ *
+ * Verifies §A-BACKEND-CONTRACT.
  */
 
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
+import { HerdrAdapter, type HerdrAgentInfo } from "../dist/adapters/herdr.mjs";
 import {
-  HerdrAdapter,
   agentNameFor,
   decodeSessionId,
   defaultModelArgs,
   encodeSessionId,
-  type HerdrAgentInfo,
   type HerdrExecResult,
-} from "../dist/adapters/herdr.mjs";
+} from "../dist/adapters/herdr-protocol.mjs";
 import { COMPLETION_CRITICAL } from "../dist/adapters/adapter.mjs";
 import { FakeClock } from "../dist/core/clock.mjs";
 import type { ModelRef, PendingOperation, SessionRef } from "../dist/core/types.mjs";

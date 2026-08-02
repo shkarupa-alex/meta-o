@@ -21,7 +21,19 @@ import {
   validatePlan,
   validateRegistry,
 } from "../../core/e2e-registry.mjs";
-import { detectWeakening, evaluateQc, validateManifest, validateResult } from "../../core/qc.mjs";
+import {
+  detectWeakening,
+  evaluateQc,
+  validateManifest,
+  validateResult,
+  type QcWeakening,
+} from "../../core/qc.mjs";
+import {
+  detectBaselineWeakening,
+  detectPolicyWeakening,
+  parseMetaOPolicy,
+  type PolicyWeakening,
+} from "../../core/policy.mjs";
 import { validateReviewResult, isStaleResult } from "../../core/findings.mjs";
 import { buildAnchorIndex, businessAnchors, validateChain } from "../../core/knowledge.mjs";
 import { collectModuleAnchors } from "../../core/module-anchors.mjs";
@@ -217,11 +229,81 @@ export function commandQcEvaluate(args: ParsedArgs): void {
   if (!evaluation.pass) process.exitCode = 1;
 }
 
+/** §M-CLI-GATES — Read a repository file at one revision, or nothing if it did not exist. */
+function readAt(repoDir: string, revision: string, relative: string): string | undefined {
+  try {
+    return git(["show", `${revision}:${relative}`], repoDir);
+  } catch {
+    return undefined;
+  }
+}
+
+/** §M-CLI-GATES — Read a repository file from the working tree, or nothing if absent. */
+function readNow(repoDir: string, relative: string): string | undefined {
+  const path = join(repoDir, relative);
+  return existsSync(path) ? readFileSync(path, "utf8") : undefined;
+}
+
+/** §M-CLI-GATES — Ratchet baselines compared alongside the thresholds that produced them. */
+const BASELINE_FILES = [
+  ".quality/code-health-baseline.json",
+  ".quality/import-graph-baseline.json",
+];
+
+/**
+ * §M-CLI-GATES — Compare the configured thresholds and frozen baselines across revisions.
+ *
+ * Separate from the manifest comparison because it fails differently: an
+ * unreadable `[tool.meta_o.*]` key is not a weakening, but it *is* a hole in
+ * this check, and reporting it as a parse error keeps the answer honest instead
+ * of quietly narrow.
+ */
+function policyWeakenings(
+  repoDir: string,
+  baseRevision: string,
+): { weakenings: PolicyWeakening[]; notes: string[] } {
+  const weakenings: PolicyWeakening[] = [];
+  const notes: string[] = [];
+
+  const beforeToml = readAt(repoDir, baseRevision, "pyproject.toml");
+  const afterToml = readNow(repoDir, "pyproject.toml");
+  if (beforeToml === undefined || afterToml === undefined) {
+    notes.push(`pyproject.toml is absent at ${beforeToml === undefined ? baseRevision : "HEAD"}`);
+  } else {
+    const before = parseMetaOPolicy(beforeToml);
+    const after = parseMetaOPolicy(afterToml);
+    for (const error of [...before.errors, ...after.errors]) {
+      notes.push(`pyproject.toml could not be fully read: ${error}`);
+    }
+    weakenings.push(...detectPolicyWeakening(before, after));
+  }
+
+  for (const relative of BASELINE_FILES) {
+    const before = readAt(repoDir, baseRevision, relative);
+    const after = readNow(repoDir, relative);
+    if (after === undefined) continue;
+    if (before === undefined) {
+      notes.push(`${relative} did not exist at ${baseRevision}; the first baseline is not a weakening`);
+      continue;
+    }
+    try {
+      weakenings.push(...detectBaselineWeakening(relative, JSON.parse(before), JSON.parse(after)));
+    } catch (error) {
+      notes.push(`${relative} could not be compared: ${(error as Error).message}`);
+    }
+  }
+
+  return { weakenings, notes };
+}
+
 /**
  * §M-CLI-GATES — Detect any weakening of the QC contract since the base revision.
  *
  * The executor is the party this gate constrains, so an unexplained relaxation
- * must reach the user rather than be applied by the party it benefits.
+ * must reach the user rather than be applied by the party it benefits. "The
+ * contract" is more than the list of gates: it is also the thresholds they
+ * enforce and the debt they were allowed to forgive, because a gate whose limit
+ * moved to meet the code has stopped being a limit.
  */
 export function commandQcWeakening(args: ParsedArgs): void {
   const { repoDir, projectKey } = repoOf(args);
@@ -230,23 +312,19 @@ export function commandQcWeakening(args: ParsedArgs): void {
   const baseRevision = optionalFlag(args, "base-rev") ?? state?.baseRevision;
   if (!baseRevision) fail("no_base_revision", "--base-rev or --run-id is required");
 
-  const current = readRepoJson<QcManifest>(repoDir, ".quality/qc-manifest.json");
-  let baseline: QcManifest;
-  try {
-    baseline = JSON.parse(
-      git(["show", `${baseRevision}:.quality/qc-manifest.json`], repoDir),
-    ) as QcManifest;
-  } catch {
-    emit({
-      weakenings: [],
-      note: `no QC manifest existed at ${baseRevision}; nothing to compare`,
-      baseRevision,
-    });
-    return;
+  const policy = policyWeakenings(repoDir, baseRevision);
+  const notes = [...policy.notes];
+  const weakenings: (QcWeakening | PolicyWeakening)[] = [...policy.weakenings];
+
+  const baseManifest = readAt(repoDir, baseRevision, ".quality/qc-manifest.json");
+  if (baseManifest === undefined) {
+    notes.push(`no QC manifest existed at ${baseRevision}; the gate list has nothing to compare`);
+  } else {
+    const current = readRepoJson<QcManifest>(repoDir, ".quality/qc-manifest.json");
+    weakenings.push(...detectWeakening(JSON.parse(baseManifest) as QcManifest, current));
   }
 
-  const weakenings = detectWeakening(baseline, current);
-  emit({ baseRevision, weakenings, requiresUserDecision: weakenings.length > 0 });
+  emit({ baseRevision, weakenings, notes, requiresUserDecision: weakenings.length > 0 });
   if (weakenings.length > 0) process.exitCode = 1;
 }
 
@@ -310,9 +388,23 @@ export async function commandE2eResult(args: ParsedArgs): Promise<void> {
   if (!pass) process.exitCode = 1;
 }
 
-/** §M-CLI-GATES — Validate the knowledge layer's anchors and causal links. */
+/**
+ * §M-CLI-GATES — Validate the knowledge layer's anchors and causal links.
+ *
+ * `--roots` narrows which tracked directories declare module anchors, and
+ * defaults to the whole tree so that forgetting it cannot hide a module. A
+ * project needs it when it *ships* source that is not its own — template trees
+ * copied into other repositories declare anchors belonging to the project that
+ * installs them, and scanning those would report a duplicate for every template
+ * whose counterpart exists here. Narrowing it is a change to the gate command,
+ * which `meta-o qc weakening` reports.
+ */
 export function commandKnowledgeValidate(args: ParsedArgs): void {
   const { repoDir } = repoOf(args);
+  const roots = (optionalFlag(args, "roots") ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry !== "");
   const files: Array<{ path: string; text: string }> = [];
   const candidates = ["docs/knowledge/business.md", "docs/knowledge/glossary.md"];
   const architectureDir = join(repoDir, "docs/knowledge/architecture");
@@ -327,10 +419,11 @@ export function commandKnowledgeValidate(args: ParsedArgs): void {
   }
 
   const index = buildAnchorIndex(files);
-  const moduleAnchors = collectModuleAnchors(repoDir);
+  const moduleAnchors = collectModuleAnchors(repoDir, roots);
   const validation = validateChain(index, moduleAnchors);
   emit({
     ...validation,
+    roots: roots.length > 0 ? roots : ["<whole tree>"],
     documents: files.map((file) => file.path),
     anchors: index.sections.length,
     moduleAnchors: moduleAnchors.length,

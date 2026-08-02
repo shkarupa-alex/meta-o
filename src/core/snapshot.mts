@@ -133,6 +133,49 @@ function catalogOf(scenario: E2EScenarioEntry): string {
 }
 
 /**
+ * §M-SNAPSHOT — Check one scenario's `last_run` receipt against what was verified.
+ *
+ * A receipt is only evidence if it says *which* content, *which* run, *which*
+ * spec, *which* commit and *when*. Drop any one of those and a `last_run` block
+ * copied forward from an earlier feature satisfies every remaining check.
+ */
+function receiptViolations(
+  scenarioId: string,
+  scenario: E2EScenarioEntry | undefined,
+  status: "passed" | "failed" | "blocked",
+  input: MetadataGuardInput,
+  attested: SnapshotComputation,
+): string[] {
+  if (!scenario) return [`verified scenario ${scenarioId} is absent from the registry`];
+  const lastRun = scenario.last_run;
+  if (!lastRun) return [`scenario ${scenarioId} has no last_run after verification`];
+
+  const violations: string[] = [];
+  if (lastRun.status !== status) {
+    violations.push(`scenario ${scenarioId} recorded status ${lastRun.status}, expected ${status}`);
+  }
+  if (lastRun.snapshot_digest !== attested.digest) {
+    violations.push(`scenario ${scenarioId} records a different snapshot digest`);
+  }
+  if (lastRun.run_id !== input.expectedRunId) {
+    violations.push(`scenario ${scenarioId} records run ${lastRun.run_id}`);
+  }
+  if (lastRun.spec_sha256 !== input.expectedSpecSha256) {
+    violations.push(`scenario ${scenarioId} records a different spec digest`);
+  }
+  if (lastRun.provenance_commit !== attested.provenanceCommit) {
+    violations.push(
+      `scenario ${scenarioId} records provenance ${lastRun.provenance_commit}, ` +
+        `expected the attested commit ${attested.provenanceCommit}`,
+    );
+  }
+  if (!Number.isFinite(Date.parse(lastRun.verified_at))) {
+    violations.push(`scenario ${scenarioId} records an unparseable verified_at`);
+  }
+  return violations;
+}
+
+/**
  * §M-SNAPSHOT — Prove that a completion metadata commit changed nothing but `last_run`.
  *
  * Runs after the four gates have already passed, at the one moment when the
@@ -181,41 +224,7 @@ export function verifyMetadataCommit(input: MetadataGuardInput): MetadataGuardRe
 
   for (const [scenarioId, status] of input.expectedScenarioStatus) {
     const scenario = after.scenarios.find((item) => item.scenario_id === scenarioId);
-    if (!scenario) {
-      violations.push(`verified scenario ${scenarioId} is absent from the registry`);
-      continue;
-    }
-    const lastRun = scenario.last_run;
-    if (!lastRun) {
-      violations.push(`scenario ${scenarioId} has no last_run after verification`);
-      continue;
-    }
-    if (lastRun.status !== status) {
-      violations.push(
-        `scenario ${scenarioId} recorded status ${lastRun.status}, expected ${status}`,
-      );
-    }
-    if (lastRun.snapshot_digest !== attested.digest) {
-      violations.push(`scenario ${scenarioId} records a different snapshot digest`);
-    }
-    if (lastRun.run_id !== input.expectedRunId) {
-      violations.push(`scenario ${scenarioId} records run ${lastRun.run_id}`);
-    }
-    if (lastRun.spec_sha256 !== input.expectedSpecSha256) {
-      violations.push(`scenario ${scenarioId} records a different spec digest`);
-    }
-    // The receipt has to identify *which* commit was exercised and *when*.
-    // Without these two, a `last_run` block can be copied forward from an
-    // earlier feature and still satisfy every other check here.
-    if (lastRun.provenance_commit !== attested.provenanceCommit) {
-      violations.push(
-        `scenario ${scenarioId} records provenance ${lastRun.provenance_commit}, ` +
-          `expected the attested commit ${attested.provenanceCommit}`,
-      );
-    }
-    if (!Number.isFinite(Date.parse(lastRun.verified_at))) {
-      violations.push(`scenario ${scenarioId} records an unparseable verified_at`);
-    }
+    violations.push(...receiptViolations(scenarioId, scenario, status, input, attested));
   }
 
   return {

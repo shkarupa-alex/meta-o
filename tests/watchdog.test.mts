@@ -6,6 +6,8 @@
  * generation, no replacement while the orchestrator lives or its status is
  * unknown, no resend of an unprovable operation, productive loops not counted
  * as stalls, independent projects, and a disabled watchdog doing nothing.
+ *
+ * Verifies §A-DETERMINISTIC-WATCHDOG.
  */
 
 import { strict as assert } from "node:assert";

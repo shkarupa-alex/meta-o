@@ -6,6 +6,8 @@
  * commands a skill would issue, and by showing that the shortcuts a confused
  * orchestrator might take — completing without four attestations, recording a
  * gate for a superseded snapshot, taking over a live run — are refused.
+ *
+ * Verifies §A-RUN-LIFECYCLE and §A-SNAPSHOT-ATTESTATION.
  */
 
 import { strict as assert } from "node:assert";
@@ -534,6 +536,66 @@ test("an unknown command and a missing flag both fail with a JSON envelope", () 
     const help = cli(["help"], context);
     assert.equal(help.code, 0);
     assert.match(help.stdout, /run route/);
+  } finally {
+    home.dispose();
+    repo.dispose();
+  }
+});
+
+/** §M-TEST-CLI — A deliberately strict Python QC policy, as adoption would write it. */
+const STRICT_PYPROJECT = `[tool.meta_o.code_health]
+source_roots = ["src", "tests"]
+max_function_lines = 60
+forbid_regressions = true
+
+[tool.meta_o.purpose]
+exempt_files = []
+`;
+
+test("relaxing a threshold, a ratchet or a frozen baseline needs a user decision", () => {
+  const repo = seededRepo();
+  const home = createTempHome();
+  const context: CliContext = { cwd: repo.dir, home: home.dir };
+
+  try {
+    repo.write("pyproject.toml", STRICT_PYPROJECT);
+    repo.write(
+      ".quality/code-health-baseline.json",
+      `${JSON.stringify({ "src/app.py::complexity::start": 12 }, null, 2)}\n`,
+    );
+    const base = repo.commit("declare the quality policy");
+
+    const unchanged = cli(["qc", "weakening", "--base-rev", base], context);
+    assert.equal(unchanged.code, 0, unchanged.stdout + unchanged.stderr);
+    assert.deepEqual(unchanged.json["weakenings"], []);
+
+    // Every one of these leaves `make qc` green while deleting what it enforced.
+    repo.write(
+      "pyproject.toml",
+      STRICT_PYPROJECT.replace("max_function_lines = 60", "max_function_lines = 600")
+        .replace("forbid_regressions = true", "forbid_regressions = false")
+        .replace('exempt_files = []', 'exempt_files = ["src/legacy/*.py"]'),
+    );
+    repo.write(
+      ".quality/code-health-baseline.json",
+      `${JSON.stringify(
+        { "src/app.py::complexity::start": 40, "src/app.py::complexity::stop": 11 },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const weakened = cli(["qc", "weakening", "--base-rev", base], context);
+    assert.equal(weakened.code, 1);
+    assert.equal(weakened.json["requiresUserDecision"], true);
+    const kinds = (weakened.json["weakenings"] as Array<{ kind: string }>).map((item) => item.kind);
+    assert.deepEqual(new Set(kinds), new Set([
+      "threshold_raised",
+      "ratchet_disabled",
+      "exemption_added",
+      "baseline_raised",
+      "baseline_added",
+    ]));
   } finally {
     home.dispose();
     repo.dispose();

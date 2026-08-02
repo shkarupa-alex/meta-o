@@ -5,6 +5,8 @@
  * not invalidate attestations, changing the E2E catalog does, writing only
  * `last_run` does not, and a metadata commit that touches anything else is
  * rejected.
+ *
+ * Verifies §A-SNAPSHOT-ATTESTATION and §A-DIGEST-STABILITY.
  */
 
 import { strict as assert } from "node:assert";

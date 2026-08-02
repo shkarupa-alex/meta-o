@@ -6,6 +6,8 @@
  * Herdr stand-in and then asks the question that matters after a crash: is the
  * intent still recorded, and does reconciliation reach a defensible verdict
  * rather than a convenient one.
+ *
+ * Verifies §A-BACKEND-CONTRACT and §A-CRASH-RECOVERY.
  */
 
 import { strict as assert } from "node:assert";

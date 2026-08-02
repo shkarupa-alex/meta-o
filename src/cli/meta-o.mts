@@ -19,17 +19,9 @@ import {
 import {
   commandCleanup,
   commandConfirmModels,
-  commandDismissTaste,
   commandHandoff,
-  commandKnowledgePlan,
   commandList,
-  commandOpenFindings,
   commandPending,
-  commandProposeFix,
-  commandRecordE2e,
-  commandRecordGate,
-  commandRecordReview,
-  commandResolveFinding,
   commandRoute,
   commandSetCandidate,
   commandSetPlan,
@@ -39,6 +31,16 @@ import {
   commandTakeover,
   commandTransition,
 } from "./commands/run.mjs";
+import {
+  commandDismissTaste,
+  commandKnowledgePlan,
+  commandOpenFindings,
+  commandProposeFix,
+  commandRecordE2e,
+  commandRecordGate,
+  commandRecordReview,
+  commandResolveFinding,
+} from "./commands/results.mjs";
 import {
   commandBaselineSelection,
   commandE2eResult,

@@ -5,6 +5,8 @@
  * found, a level may not skip its nearest parent, an immutable spec that
  * changed is refused rather than adopted, and a project missing its contract
  * routes to `PAUSED_MISSING_TOOLS` instead of starting.
+ *
+ * Verifies §A-CAUSAL-KNOWLEDGE and §A-IMMUTABLE-SPEC.
  */
 
 import { strict as assert } from "node:assert";

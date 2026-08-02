@@ -5,6 +5,8 @@
  * of `always_required`, a plan digest binds the commitments it names, a missing
  * QC result is never a pass, a silently skipped gate fails, and weakening the
  * contract relative to the base revision is detected.
+ *
+ * Verifies §A-E2E-SELECTION and §A-AUTHORITATIVE-QC.
  */
 
 import { strict as assert } from "node:assert";
@@ -24,6 +26,11 @@ import {
   validateManifest,
   validateResult,
 } from "../dist/core/qc.mjs";
+import {
+  detectBaselineWeakening,
+  detectPolicyWeakening,
+  parseMetaOPolicy,
+} from "../dist/core/policy.mjs";
 import { sampleRegistry } from "./helpers.mts";
 import type { E2ERegistry, QcManifest, QcResult } from "../dist/core/types.mjs";
 
@@ -281,4 +288,66 @@ test("removing, relaxing or rewriting a gate is reported as weakening", () => {
   assert.equal(detectWeakening(baseline, relaxed)[0]?.kind, "policy_relaxed");
   assert.equal(detectWeakening(baseline, rewritten)[0]?.kind, "command_changed");
   assert.deepEqual(detectWeakening(baseline, manifest()), []);
+});
+
+/** §M-TEST-E2E-QC — A pyproject whose `[tool.meta_o.*]` policy is deliberately strict. */
+const STRICT_POLICY = `
+[project]
+name = "demo"
+
+[tool.meta_o.code_health]
+source_roots = ["src", "tests"]
+max_function_lines = 60
+forbid_regressions = true
+
+[tool.meta_o.purpose]
+exempt_files = ["src/generated/*.py"]
+`;
+
+test("raising a threshold, dropping a root or adding an exemption is weakening", () => {
+  const before = parseMetaOPolicy(STRICT_POLICY);
+  assert.deepEqual(before.errors, []);
+  assert.deepEqual(before.tables.get("tool.meta_o.code_health")?.["source_roots"], ["src", "tests"]);
+  assert.deepEqual(detectPolicyWeakening(before, parseMetaOPolicy(STRICT_POLICY)), []);
+
+  const kinds = (text: string): string[] =>
+    detectPolicyWeakening(before, parseMetaOPolicy(text)).map((item) => item.kind);
+
+  assert.deepEqual(kinds(STRICT_POLICY.replace("max_function_lines = 60", "max_function_lines = 600")), [
+    "threshold_raised",
+  ]);
+  assert.deepEqual(kinds(STRICT_POLICY.replace("max_function_lines = 60", "max_function_lines = 40")), []);
+  assert.deepEqual(kinds(STRICT_POLICY.replace("forbid_regressions = true", "forbid_regressions = false")), [
+    "ratchet_disabled",
+  ]);
+  assert.deepEqual(kinds(STRICT_POLICY.replace(`, "tests"`, "")), ["scope_narrowed"]);
+  assert.deepEqual(kinds(STRICT_POLICY.replace(`"src/generated/*.py"`, `"src/generated/*.py", "src/legacy/*.py"`)), [
+    "exemption_added",
+  ]);
+  assert.deepEqual(kinds(STRICT_POLICY.replace("[tool.meta_o.purpose]", "[tool.other.purpose]")), [
+    "section_removed",
+  ]);
+});
+
+test("a policy key this parser cannot read is an error, never a silent pass", () => {
+  const parsed = parseMetaOPolicy(`
+[tool.meta_o.code_health]
+thresholds = { max_function_lines = 60 }
+`);
+  assert.equal(parsed.errors.length, 1);
+  assert.match(parsed.errors[0]!, /unsupported value/);
+});
+
+test("a re-frozen or newly frozen baseline entry is weakening", () => {
+  const before = { "src/a.py::complexity::f": 12, cycles: [["a", "b"]], fan_in: { a: 3 } };
+  const worse = { "src/a.py::complexity::f": 19, cycles: [["a", "b"]], fan_in: { a: 3 } };
+  const grown = { "src/a.py::complexity::f": 12, cycles: [["a", "b"], ["c", "d"]], fan_in: { a: 3 } };
+  const better = { "src/a.py::complexity::f": 11, cycles: [], fan_in: { a: 1 } };
+
+  assert.deepEqual(detectBaselineWeakening("b.json", before, before), []);
+  assert.deepEqual(detectBaselineWeakening("b.json", before, better), []);
+  assert.equal(detectBaselineWeakening("b.json", before, worse)[0]?.kind, "baseline_raised");
+  const added = detectBaselineWeakening("b.json", before, grown);
+  assert.equal(added[0]?.kind, "baseline_added");
+  assert.match(added[0]!.key, /cycles\[c→d\]/);
 });
