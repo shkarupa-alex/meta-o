@@ -1,0 +1,59 @@
+{
+  "target_id": "proposal-2",
+  "approval_score": 8,
+  "would_adopt": true,
+  "summary": "I tried hard to break this and the architecture held. Its factual base is exceptionally accurate: I independently verified roughly a dozen [V] claims and every one was exact — herdr api schema is 251,527 bytes with zero 'compact' matches, AgentInfo.tokens really is a free-form display map with pattern ^[A-Za-z0-9_-]{1,32}$ rather than LLM tokens, agent_session is in the schema, ~/.claude/hooks/herdr-agent-state.sh exists, omnigent session export --id --output is real, apm install advertises SKILL.md support with agent-skills/claude/codex/opencode runtimes, agent-browser is 0.33.2, codex --help contains no 'goal', and the skill states verbatim that agent prompt atomically submits text and Enter honouring bracketed-paste and that --wait tracks lifecycle rather than turn boundaries — from which it correctly derives 'wait for idle, then prompt'. Section 0's demonstration that the current session read --complete is not merely heavy but broken (doubling to 32000 lines then returning empty with truncated:true over a channel whose own docs say the rows are gone) reframes the mandate from simplification to correctness. Section 5.4's argument against a shared adapter is empirical and I could not break it. The 500-line health indicator, the self-deletion metric for its own script, the three-violations-before-a-script rule, replacing the watchdog's only need for a deterministic timer with the backend's blocking agent wait, and running the anchor system through sdd-issues.md's own artifact test are all genuinely strong. Remaining defects are amendments, not redesigns: making file handoff primary directly contradicts the installed skill's explicit 'do not request file output in the initial prompt' without disclosing the prohibition; the STATUS-block premature-idle detector is self-reported and shares a root cause with the failure it detects; it missed ~/.codex/goals_1.sqlite, which makes its 'high probability /goal does not exist' estimate too pessimistic, leaves activation verified by banner-scraping the alternate screen it proves is lossy, understates Codex route telemetry, and leaves variant C's superiority over A asserted since native pause/deferral may prevent A's stated defect; refs/mo/candidate is a single global ref with no collision or staleness semantics; interrogate at fail-under=100 with all ignores disabled will manufacture ritual docstrings with only file-level escape hatches; and section 14's entire evidence base cites a 'section 21 sources' that does not exist.",
+  "phase": "approach-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "major",
+      "area": "file handoff contradicts the installed Herdr skill",
+      "description": "Section 5.1 S1 declares the installed binary the source of truth and instructs the agent to read herdr --skill. Section 5.1 S5 then places a file-write instruction in every worker prompt, describing it as the skill's own fallback elevated to primary. The skill's actual text ends: 'Use this only as a fallback; do not request file output in the initial prompt.' The elevation is disclosed but the prohibition is not. The engineering judgment is defensible — for a multi-page reviewer verdict the panel tail is lossy by construction and a retrospective re-export is regeneration rather than retrieval — but an implementer following S1 will hit a direct conflict and may revert, silently restoring the lossy path the task names a hard criterion.",
+      "required_change": "State the override explicitly in mo-herdr with its rationale (prospective write beats retrospective re-export for verdict-sized outputs), so the conflict is reconciled rather than reverted."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Codex goal state channel missed",
+      "description": "The risk table rates '/goal does not exist or is unreachable' as high probability because codex --help lacks the word (confirmed). But codex-cli 0.146.0 ships sqlx migrations creating ~/.codex/goals_1.sqlite with thread_goals(thread_id, goal_id, objective, status CHECK IN active|paused|blocked|usage_limited|budget_limited|complete, token_budget, tokens_used, time_used_seconds, created_at_ms, updated_at_ms) and thread_goal_continuation_deferrals. Consequences: the probability estimate is too pessimistic; section 6.3 verifies activation by pattern-matching a banner in agent read output, i.e. scraping the alternate screen the document itself proves unreliable for content; section 19's Codex row understates available telemetry, since tokens_used/token_budget/time_used_seconds/updated_at_ms are stronger than the proposed transcript-byte-size proxy; and status='paused' plus thread_goal_continuation_deferrals bear on section 6.4, since variant A's stated defect (auto-continuation while awaiting gates) may be natively preventable, leaving C's superiority argued rather than established. thread_goals currently has 0 rows, so end-to-end behaviour still needs Phase 0.",
+      "required_change": "Add the goal store as a route-level channel for existence, activation and status verification; downgrade the risk probability; correct the Codex telemetry row; and re-evaluate goal granularity A vs C in light of native pause/deferral. Note the layout is version-specific and must be re-probed."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "premature-idle detector is self-reported",
+      "description": "The STATUS block is described as 'the only thing compensating for the absence of goal mode', but SCOPE-COMPLETE is self-assessed: an executor that has prematurely concluded it is done will print 'yes'. The detector catches honest-but-incomplete stops and misses confidently-wrong ones, which is exactly the failure /goal exists to prevent. TESTS/QC/SMOKE/CLEAN COMMIT are independently verifiable by the orchestrator; SCOPE-COMPLETE is not.",
+      "required_change": "Pair the block with an orchestrator-side check that never saw the implementation (enumerate the spec's requirement headings at kickoff and diff against the executor's final claim), and drop the 'only thing compensating' framing."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "refs/mo/candidate namespacing",
+      "description": "A single global ref is the one fact persisted outside sessions, which makes its naming load-bearing. Two features in flight in one repository — plausible given the explicit self-hosting scenario — collide silently. A ref left from a feature completed weeks ago will be picked up by the section 4.1 no-argument flow and reported as unfinished work. The risk table covers only accidental deletion, not collision or staleness.",
+      "required_change": "Namespace as refs/mo/candidate/<branch-slug> and delete on completion; state that a stale ref must be reconciled against git log rather than trusted."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "purpose coverage noise and missing sources section",
+      "description": "interrogate fail-under=100 with ignore-private/ignore-magic/ignore-nested-functions all false requires docstrings on every closure and dunder, with only a file-level exclusion list for generated/vendored code — risking exactly the 'бессмысленные повторяющиеся docstrings' the task warns against, even with the depth rule allowing one line. Separately, section 14 states its data is [V] 'с первоисточниками (см. §21 «источники исследования»)', but section 21 is 'Рефлексия' and no sources section exists, leaving the Oxlint parity, stability-date, TypeScript 7.0 requirement and missing-rule claims — which underpin N-028 — without a reachable citation.",
+      "required_change": "Add a symbol-class exclusion mechanism (trivial accessors, closures under N lines) alongside the file list, each with a recorded reason; and add the promised sources section or inline the primary-source links for the QC claims."
+    }
+  ],
+  "assumptions": [
+    "The absent paseo CLI reflects the real target environment, which the proposal already handles correctly by marking mo-paseo unvalidated.",
+    "Reading ~/.codex and ~/.claude state files read-only is acceptable, consistent with the proposal's own mo-lastmsg design.",
+    "Oxlint and Prettier/eslint-config-prettier claims I could not verify offline are accurate as stated; they support conservative conclusions, so an error would not change the recommended default profile.",
+    "The 2-3 hour Phase 0 estimate is optimistic but harmless, since Phase 0 gates deletion rather than delivery."
+  ],
+  "round": 2,
+  "reviewer": "opus1mhigh",
+  "judge": {
+    "slug": "opus1mhigh",
+    "model": "opus[1m]",
+    "route": "claude-agent-sdk",
+    "effort": "high"
+  }
+}

@@ -1,0 +1,132 @@
+{
+  "target_id": "spec-review",
+  "approval_score": 5,
+  "would_adopt": false,
+  "summary": "Спецификация делает правильный и честный шаг: удаляет FSM, state, receipts, snapshot digest, adapters, Structured JSON и installer, оставляя Git SHA, native CLI и reasoning в качестве control layer; правило «любой новый SHA инвалидирует все gates», отмена executor skill, разделение permission bypass и workspace trust, условная роль E2E tester и сведение ~/.meta-o к одному файлу model preferences — сильные, проверяемые решения. Однако центральный механизм всей методологии — извлечение полного последнего сообщения reviewer через Herdr — проверкой не подтверждается: установленный herdr skill 0.8.0 прямо утверждает, что строки, покинувшие alternate screen, не попадают в host scrollback и рекомендует именно тот файловый fallback, который спека запрещает; `herdr agent attach` интерактивен и не скриптуем; `send-keys` шлёт клавиши в сам агент; при этом native `codex --no-alt-screen` (inline mode, preserving scrollback) в спеке не упомянут вовсе, а у claude/opencode эквивалента нет, из-за чего по правилу §7.3 эти route станут unsupported и сделают недостижимым обязательный cross-vendor reviewer из §10. Отдельно: gate «unknown → перезапустить reviewer» детерминированно зацикливается, §23 ложно объявляет отсутствие blocking questions, отсутствуют шесть обязательных deliverables задачи (per-backend context/cache/compaction таблица, сравнение трёх архитектурных уровней, список сознательно удалённых гарантий, карта переноса execute-feature, pre-mortem против bloat, subscription-first проверка), а review scope (BASE SHA), candidate freeze verification, goal deactivation, standalone-контракт mo-review и весь интерфейс mo-models.mjs (включая противоречие SDK-зависимостей и distribution без installer) остаются неопределёнными.",
+  "phase": "spec-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "§7.2 Herdr full-turn retrieval",
+      "description": "Главный gate построен на механизме, который установленный herdr skill 0.8.0 объявляет невозможным: «Rows that leave the alternate screen do not enter Herdr's host scrollback, so a larger line count cannot recover them», а его штатный fallback (агент пишет полный ответ в файл) спека запрещает. `herdr agent attach` — интерактивное подключение с detach по ctrl+b q, оно не скриптуемо для цикла scroll+read; `herdr agent send-keys` шлёт клавиши в сам агент и может загрязнить его input buffer. Per-kind scroll keys, размер overlap, правило завершения и защита фокуса не заданы. При этом `codex --help` локально показывает `--no-alt-screen` («Runs the TUI in inline mode, preserving terminal scrollback history»), а §7.1 уже допускает `agent start -- <args>` — проверенное готовое решение проигнорировано.",
+      "required_change": "Ввести ladder: (1) launch-mode mitigation — для Codex `--no-alt-screen` через `herdr agent start ... -- --no-alt-screen`, для Claude/OpenCode проверить inline/accessibility режимы в Phase 0; (2) non-interactive reviewer surface (`claude -p`, `codex exec`, `opencode run` в обычной pane, читаемой `herdr pane read --source recent-unwrapped`) как явно рассмотренная альтернатива с решением принять или отклонить; (3) scroll-stitching только третьим уровнем с точным overlap (число строк), retry budget и правилом завершения; (4) ограниченный бюджет попыток и переход в named `needs_attention` вместо бесконечного перезапуска reviewer."
+    },
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "§23 Open questions / §10 cross-vendor review",
+      "description": "§23 утверждает, что blocking architecture questions отсутствуют, но провал Herdr fixture для Claude и OpenCode одновременно делает недостижимым требование §10 «минимум один reviewer другого vendor относительно executor» и требует смены архитектуры review, а не только пометки route unsupported. Взаимодействие «unsupported route × обязательный cross-vendor reviewer» нигде не разобрано.",
+      "required_change": "Признать retrieval-контракт blocking open question; описать поведение при единственном retrievable vendor (деградация до одного reviewer недопустима — либо print-mode surface, либо `needs_attention` с явной причиной), и связать статус supported route с возможностью выполнить cross-vendor правило."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "§5.4 candidate freeze / §10 review scope",
+      "description": "Freeze candidate существует только как инструкция: нет проверок `git rev-parse HEAD` и `git status --porcelain --untracked-files=all` до и после каждого gate, поэтому мутация дерева без нового commit (formatter, тесты, lock-файл, сам reviewer) не инвалидирует ничего. Одновременно review scope задан как «Git diff названного SHA» без BASE/merge-base, из-за чего reviewer многокоммитной feature может проверить только последний commit и выдать PASS.",
+      "required_change": "Передавать каждому gate пару BASE_SHA + CANDIDATE_SHA с точной командой diff (`git diff BASE...CANDIDATE`); добавить обязательные две git-команды проверки HEAD и чистоты дерева до и после каждого gate; определить, что именно считается clean (tracked/untracked/ignored)."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "§6 goal lifecycle",
+      "description": "Спека требует, чтобы goal была «выключена» на время независимых review/E2E, но не называет ни команду деактивации для Codex (`/goal pause|clear`?) и Claude, ни способ подтвердить, что goal неактивна. Без этого главный риск (executor автономно коммитит поверх проверяемого candidate) ничем не предотвращён, а freeze §5.4 опирается именно на это.",
+      "required_change": "Указать конкретные команды активации, паузы/очистки и проверки состояния goal для каждой поддерживаемой surface, включая ожидаемое observable evidence, и поведение при недоказанной деактивации."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "§10 mo-review standalone",
+      "description": "Standalone-режим объявлен, но не спроектирован: не заданы backend, механизм создания/поиска двух reviewer actors, адресация автора для fixes, поведение при отсутствии Herdr (HERDR_ENV != 1) и Omnigent. Для non-code artifacts template verdict требует полный SHA и WORKTREE clean|dirty, что несовместимо с untracked документом/презентацией, которых требует задача §5.1.",
+      "required_change": "Описать два явных режима (orchestrated: caller передаёт backend/actors/BASE+CANDIDATE; standalone: skill выбирает доступный backend и фиксирует author/fix target) и отдельный минимальный identity-контракт для non-Git artifacts вместо обязательного SHA."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Отсутствующие обязательные deliverables",
+      "description": "Не выполнены прямо перечисленные требования задачи к итоговому документу: (18) per-backend context/cache/compaction capability table `available|inferred|unavailable` с fallback rules — отсутствует полностью; сравнение трёх архитектурных уровней — отсутствует; (6) карта переноса требований execute-feature — отсутствует (в частности потеряно требование писать тесты для добавленного поведения); (23) tooling audit с keep/replace/delete/defer по перечисленному списку компонентов — подменён списком Phase 2; (26) pre-mortem против wrapper/control-layer bloat — отсутствует; раздел «Guarantees consciously removed», присутствующий в synthesis.md, в спеку не перенесён; subscription-first проверка backend (task §2.2) не отражена.",
+      "required_change": "Добавить перечисленные разделы; как минимум capability matrix оформить поставляемым reference-файлом, а карту переноса execute-feature — вместе с готовым шаблоном AGENTS.md, поскольку без него отмена executor skill не исполнима."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "§15 mo-models.mjs / §19 distribution",
+      "description": "Единственный оставшийся .mjs не имеет CLI signature, exit codes, stdout-контракта, atomic write/locking, поведения при corrupt JSON, грамматики `route/model/effort`, схемы `dismissedUpgrades` и алгоритма отличия successor release от sibling family. Одновременно он объявлен использующим official SDK, тогда как install.sh удалён и APM/skills копируют файлы без установки зависимостей — источник node_modules не определён.",
+      "required_change": "Либо задать zero-dependency источники (локальные CLI вроде `opencode models`, ранее сохранённый набор) и полный интерфейс helper, либо перенести SDK-based discovery в Deferred до закрытия source matrix; в обоих случаях выписать argv, exit codes, формат вывода и поведение при ошибках."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "§5.4 / §12.3 Make contract",
+      "description": "§5.4 безусловно выполняет `make mo-qc`, §12.3 называет его обязательным aggregate entry, тогда как задача требует поддерживать проекты без Make через native task runner и сначала обнаруживать существующие package.json scripts. Для Node-проекта без Makefile спека фактически предписывает завести второй параллельный toolchain.",
+      "required_change": "Заменить обязательный `make mo-qc` на run-local текстовый план команд (QC_COMMAND/SMOKE_COMMAND/E2E_MODE), где Make — лишь один из вариантов, и явно описать эквивалент для npm/pnpm/just."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "§17 session naming",
+      "description": "Herdr требует имена агентов `[a-z][a-z0-9_-]{0,31}` и уникальность среди живых агентов; спека предлагает `<slug>-exec`/`<slug>-review-a` без алгоритма slug, правил обрезки до 32 символов и collision policy. Возможна адресация не того actor при похожих feature.",
+      "required_change": "Задать алгоритм slug (источник, нормализация, максимальная длина), правило суффиксов и поведение при коллизии с уже живым агентом."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "Traceability ledger",
+      "description": "Обратная трассируемость нарушена: в ledger отсутствуют существенные решения тела — goal lifetime и деактивация на время gates, обязательный clean worktree, `make mo-qc` как универсальный entry, exit code 2 и префикс AGENT_REQUIRED, schema models.json и существование mo-models.mjs, лимиты reviewer subagents, purpose coverage/exceptions, механическое копирование canonical reference, три раунда reuse и обязательный Rust search, convention именования sessions, начальные thresholds §13.2.",
+      "required_change": "Дополнить ledger перечисленными решениями с rationale и source, чтобы реализация не могла изменить их бесшумно."
+    }
+  ],
+  "non_blocking_findings": [
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "§10 reviewer transport",
+      "description": "Полный Markdown verdict копируется в `herdr agent prompt <TARGET> <TEXT>` как argv; предел размера, quoting и правило разбиения на последовательные prompts не заданы, а файловый обход запрещён."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "§9 mo-reuse prerequisites",
+      "description": "`gh` не объявлен prerequisite в mo-setup; нет поведения при отсутствии auth, rate limit и offline; нет privacy-правила для private repositories (внутренние имена компонентов уходят в публичный search)."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "§11 make mo-e2e exit code",
+      "description": "Exit code 2 сломает агрегатор, вызывающий все mo-* targets подряд; защищён явно только mo-qc."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "§13.2 thresholds",
+      "description": "Диапазоны 400–500 / 60–80 / 10–15 / 30–40 без правила выбора конкретного значения приведут к расхождению между проектами."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "§10 reviewer independence",
+      "description": "Правило «другого vendor» не проверяемо: models.json хранит свободную строку route/model/effort без нормализованного vendor/provider."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "§14 vs docs/references/grace.md",
+      "description": "Из GRACE сохранено ядро purpose, но осознанно отброшены модульная причинная цепочка (§B→§A→§M) и grep-friendly семантические якоря; это может быть верным решением, но оно нигде не названо как сознательно удалённая гарантия."
+    }
+  ],
+  "assumptions": [
+    "Спека под ревью — актуальная редакция; существующий spec-review-gpt56solmedium-R1.md я использовал только для сверки после собственной проверки, а все ключевые факты подтвердил локально (herdr 0.8.0, codex/claude/opencode/omnigent --help, which -a).",
+    "Addendum задачи о запрете verdict-файлов и provider-private transcripts остаётся в силе, поэтому альтернативы предлагаю в пределах Herdr surfaces (включая pane read для non-interactive режимов).",
+    "Отсутствие WebFetch-проверки официальных docs Codex/Claude /goal и APM/skills не меняет выводов: все blocking findings опираются на локально проверяемые факты либо на внутренние противоречия документа.",
+    "Требования «Требования к итоговой спецификации» из task-description считаю обязательным чек-листом полноты, а не пожеланием."
+  ],
+  "round": 1,
+  "reviewer": "opus1mhigh",
+  "judge": {
+    "slug": "opus1mhigh",
+    "model": "opus[1m]",
+    "route": "claude-agent-sdk",
+    "effort": "high"
+  }
+}

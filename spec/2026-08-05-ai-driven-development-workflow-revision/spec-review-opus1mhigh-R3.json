@@ -1,0 +1,113 @@
+{
+  "target_id": "spec-review",
+  "approval_score": 7,
+  "would_adopt": true,
+  "summary": "Третья редакция закрывает почти всё, что оставалось: разделены Herdr/Omnigent release trains, выбран и обоснован host-model для Omnigent с явным отказом от REPL-в-Herdr и PTY-адаптера, добавлены детерминированное восстановление BASE_SHA через git log --follow, сходимость fix-loop в три раунда, строгая политика minor, определение knowledge sync, оба E2E layout с порогом выбора, optimistic CAS для models.json, state-origin audit и human-attention policy. Живые probes подтвердили ключевые внешние утверждения: apm 0.27.0 действительно имеет --skill NAME и -t agent-skills, codex --no-alt-screen существует, Omnigent 0.6 действительно REPL-only с единственной неинтерактивной session export и записью формата session_meta/item, herdr agent prompt --wait не отслеживает turn. Однако центральный acceptance-путь сломан фактами: §10.2 шаг 7 требует «qualified Herdr-native scroll surface», которого в Herdr 0.8.0 нет ни в pane, ни в agent, ни в terminal, ни в top-level, а socket schema отдаёт только read-only PaneScrollInfo (offset_from_bottom, max_offset_from_bottom, viewport_rows) и событие pane.scroll_changed; вместе с §1 (обязательный interactive agent-read для Claude, Codex и OpenCode), §10.3 (pane-route не удовлетворяет acceptance) и удалением разрешённого задачей ручного fallback это делает Herdr release недостижимым, а §32 не задаёт точки эскалации к пользователю. Дополнительно: «exactly 32 rendered rows of overlap» — тот самый unqualified magic number, который спека сама отвергла в случае 64 KiB, и он игнорирует уже доступный viewport_rows; MAX_HANDOFF_BYTES включает target context admission, но измеряется один раз на свежей сессии и применяется к executor-сессии с почти полным контекстом; §7.4 в формулировке «если влияние ignored state неизвестно — gate unsupported» делает unsupported практически любой Node/Python-репозиторий; §8.2 задаёт лимиты HTTP-клиента, которые skill не контролирует, поскольку фетчит нативный tool агента.",
+  "phase": "spec-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "§10.2 / §1 / §32 — обязательный retrieval-путь",
+      "description": "§10.2 шаг 7 опирается на «qualified Herdr-native scroll surface that does not send keys into agent input». В Herdr 0.8.0 такой команды нет: проверены группы pane (list/get/layout/read/split/send-text/send-keys/wait-output/run/…), agent (read/send-keys/attach/focus/wait/prompt), terminal (attach, session control, session observe, title) и top-level; socket schema содержит только read-only PaneScrollInfo и событие pane.scroll_changed, то есть наблюдение позиции, но не управление. Единственные способы сдвинуть внутренний TUI — send-keys (запрещено спекой) или интерактивный attach (не скриптуем). Поскольку §1 требует mandatory interactive agent-read для Claude, Codex и OpenCode, §10.3 запрещает pane-route удовлетворять acceptance, а §12.3 требует двух разных lineages, провал Claude и OpenCode одновременно делает Herdr release недостижимым. При этом исходная задача §5 прямо допускала «ручное открытие/прочтение session как допустимый fallback», и R3 этот вариант из acceptance убрал; §32 фиксирует только запреты, не описывая, что происходит вместо релиза.",
+      "required_change": "1) Явно назвать кандидатов inline-режима для Phase 0A: Codex --no-alt-screen (подтверждён), Claude --ax-screen-reader (существует локально), для OpenCode честно зафиксировать отсутствие известного флага. 2) Убрать опору на несуществующий scroll surface: либо ограничить acceptance теми провайдерами, у которых история попадает в host scrollback, либо использовать read-only PaneScrollInfo как доказательство границы. 3) Добавить именованную точку эскалации: при невозможности квалифицировать провайдера orchestrator предъявляет пользователю выбор (принять pane-route для этого провайдера, принять документированный ручной read, исключить провайдера), вместо бессрочного unsupported."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "§10.2 шаг 8 — 32-row overlap",
+      "description": "Требование «exactly 32 rendered rows of overlap» — unqualified magic number, ровно того класса, который спека отвергает в Rejected («Fixed 64 KiB handoff limit — unqualified magic number»). Число не связано с высотой viewport, делает алгоритм невыполнимым при viewport < 32 строк и при типичных 40–50 строках оставляет всего 8–18 строк продвижения за шаг. При этом Herdr уже отдаёт viewport_rows, max_offset_from_bottom и offset_from_bottom, из которых overlap и признак достижения верха выводятся объективно.",
+      "required_change": "Вывести overlap из наблюдаемого viewport_rows (например, не менее четверти viewport и не менее фиксированного минимума), а исчерпание истории и достижение верхней границы доказывать через offset_from_bottom/max_offset_from_bottom, а не через фиксированную константу."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "§10.5 — capacity измеряется один раз",
+      "description": "Формула MAX_HANDOFF_BYTES включает target context admission — величину, убывающую по мере заполнения executor-сессии. Fixture измеряет её на свежей сессии, а доставка findings происходит в сессию, прожившую всю реализацию, то есть именно тогда, когда риск молчаливого усечения максимален. Проверка тремя уникальными токенами описана как fixture, а не как процедура каждой доставки.",
+      "required_change": "Сделать проверку доставки процедурой runtime, а не только fixture: после каждой крупной передачи findings target обязан вернуть три токена и длину полученного текста; при несовпадении — needs_attention. Либо явно ограничить применимость измеренной capacity свежими сессиями и требовать fresh actor при превышении."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "§7.4 — правило ignored state",
+      "description": "«Ignored configuration, local databases или caches, способные изменить behavior, очищаются или изолируются до каждого gate. Если их влияние неизвестно, gate unsupported» — в реальных проектах влияние node_modules, .venv, __pycache__, .next, target/ нигде не документировано, то есть формально неизвестно. Буквальное применение делает unsupported практически любой репозиторий и обесценивает весь freeze-контракт.",
+      "required_change": "Инвертировать презумпцию: стандартные dependency/build caches считаются нейтральными по умолчанию; строгое требование очистки/изоляции применяется к состоянию, которое проект явно объявил behavior-affecting (локальные БД, seeded fixtures, snapshot-хранилища) в AGENTS.md или через mo-setup."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "§8.2 — неисполнимая URL-политика",
+      "description": "Лимиты «максимум 5 redirects», «2 MiB decompressed», «10 MiB PDF», запрет loopback/link-local/private — это контракт HTTP-клиента. Orchestrator получает URL через нативный fetch-tool своего агента, чей redirect/size/SSRF-профиль он не задаёт и не наблюдает. Обеспечить эти лимиты можно только собственным fetcher-helper, который по §3 требует proof и в спеке отсутствует.",
+      "required_change": "Указать, какой surface выполняет загрузку, и разделить требования на проверяемые (HTTPS-only, отсутствие ambient credentials, фиксация final URL и извлечённого текста, needs_attention при любой неопределённости) и рекомендательные для host-инструмента; либо обосновать fetcher-helper по §3."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "§9.2 — goal после resume у Claude",
+      "description": "Если pause/clear недоступны, executor-сессия «safely stopped» перед gates, но qualification §9.2 включает resume с восстановлением active goal. Возобновление сессии для передачи findings может реактивировать автономную работу в момент, когда candidate должен быть заморожен. Правило повторной проверки/деактивации goal сразу после resume отсутствует.",
+      "required_change": "Добавить правило: после любого resume executor-сессии goal-состояние проверяется заново и деактивируется до отправки первого prompt; недоказуемая деактивация после resume делает route unsupported для frozen lifecycle."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "§12.3 / §18.1 — modelLineage",
+      "description": "Независимость требует различия и modelVendor, и modelLineage, но разные vendor всегда дают разные lineage, поэтому второй предикат ничего не добавляет к решающему тесту. При этом §18.1 делает modelLineage обязательным непустым полем, а authoritative-источника «lineage» ни один native catalog не публикует — поле будет заполняться произвольными строками.",
+      "required_change": "Либо дать операциональное определение lineage и использовать его для same-vendor случая (два маршрута одного vendor), либо убрать его из обязательных полей валидации и оставить как optional hint."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "§6.2 — стек capability-harness",
+      "description": "Введены tests/capabilities/*.test.mts и npm run test:capabilities в репозитории, из которого удаляется src/, но не назван test runner, tsconfig, package.json-контракт и способ, которым live-TUI fixture получает pane, HERDR_ENV и provider auth. К самому harness не применён §3 proof-шаблон, хотя он является новым исполняемым инструментом.",
+      "required_change": "Назвать runner и минимальный build-контракт fixture-пакета, описать требования к окружению для live-фикстур и добавить короткий §3 proof для harness как для любого нового исполняемого компонента."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "Traceability — решения тела без ledger",
+      "description": "В ledger отсутствуют: §7.5 restart base recovery (алгоритм идентификации первого spec-commit по git log --follow и трём признакам), §6.3 положительная политика resume/compact/fresh, §18.1 обязательные поля валидации route, §12.1 правило «оба backend доступны → needs_attention».",
+      "required_change": "Добавить перечисленные решения в Adopted с rationale и source, чтобы реализация не могла изменить их бесшумно."
+    }
+  ],
+  "non_blocking_findings": [
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "§30 acceptance #22",
+      "description": "«Both E2E documentation layouts work» — единственный acceptance-пункт без проверяющего fixture, в отличие от §10.6 и §15.4."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "§8.5 + §12.6 — wall-clock цена",
+      "description": "Строго последовательные gates, повторяемые до трёх раундов, дают часы-сутки на крупной feature; спека честно называет компромисс, но численной оценки и рекомендаций по autonomous overnight run не даёт."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "§7.1.7 vs §21",
+      "description": "Ветка meta-o/<slug> не оговаривает, используется ли тот же slug-алгоритм, что и для Herdr actor names, включая 32-символьное ограничение и hash-суффикс."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "§28 — распознавание SKILL_BUNDLE",
+      "description": "apm --skill NAME подтверждён и работает «from a SKILL_BUNDLE»; не проверено, распознаёт ли apm корнем бандла ./dist или ожидает ./dist/skills. Phase 0A пункт 10 это покрывает, но стоит зафиксировать ожидаемый корень явно."
+    }
+  ],
+  "assumptions": [
+    "Проверял установленные локально версии: herdr 0.8.0 (включая полный socket schema через herdr api schema --json), omnigent 0.6.0, apm 0.27.0, claude/codex/opencode из PATH пользователя; выводы об отсутствующих surfaces относятся именно к этим версиям.",
+    "WebFetch к docs Claude /goal, Codex goals, Oxlint и vercel-labs/skills не выполнялся; ни один blocking finding на них не опирается — все основаны на локальных probes либо на внутренних противоречиях документа.",
+    "Формулировку задачи §5 («ручное открытие/прочтение session как допустимый fallback») считаю действующей, поскольку superseding addendum ограничивает интерфейс извлечения, но не отменяет допустимость ручного участия.",
+    "Раздел «Требования к итоговой спецификации» трактую как обязательный чек-лист полноты; по нему R3 закрыт полностью, поэтому findings касаются исполнимости, а не отсутствующих разделов."
+  ],
+  "round": 3,
+  "reviewer": "opus1mhigh",
+  "judge": {
+    "slug": "opus1mhigh",
+    "model": "opus[1m]",
+    "route": "claude-agent-sdk",
+    "effort": "high"
+  }
+}
