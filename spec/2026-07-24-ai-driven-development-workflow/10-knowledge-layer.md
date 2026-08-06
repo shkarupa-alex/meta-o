@@ -62,7 +62,7 @@ Purpose обязателен для каждого first-party:
 - method, включая private, async, property и dunder;
 - test code.
 
-Используется native docstring style языка; XML и специальный `@purpose`
+Используется native docstring style языка. XML и специальный `@purpose`
 не требуются. Текст обязан объяснять, зачем сущность существует и что сломается
 или станет лишним при её удалении, а не пересказывать реализацию.
 

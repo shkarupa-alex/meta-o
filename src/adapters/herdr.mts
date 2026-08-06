@@ -12,13 +12,13 @@
  *
  * Every command is invoked with an argument array, never a shell string.
  */
-
 import { canonicalize, type JsonValue } from "../core/canonical-json.mjs";
 import { redact } from "../core/redact.mjs";
 export type { HerdrAgentInfo, HerdrAgentStatus } from "./herdr-protocol.mjs";
 
 import {
   agentNameFor,
+  callHerdrText,
   decodeSessionId,
   defaultExec,
   defaultModelArgs,
@@ -29,6 +29,8 @@ import {
   type HerdrExec,
   type HerdrProbe,
 } from "./herdr-protocol.mjs";
+import { readCompleteHerdrTurn } from "./herdr-output.mjs";
+import { stopOwnedHerdrSession } from "./herdr-stop.mjs";
 import { type Clock, systemClock } from "../core/clock.mjs";
 import { buildCapabilityReport, entry } from "./adapter.mjs";
 import { reconcileOperation } from "./herdr-evidence.mjs";
@@ -59,6 +61,7 @@ export interface HerdrAdapterOptions {
   startupTimeoutMs?: number;
   paneReadyTimeoutMs?: number;
   readLines?: number;
+  maxReadLines?: number;
   agentNamePrefix?: string;
   modelArgs?: (model: ModelRef) => string[];
   paneId?: string;
@@ -217,6 +220,9 @@ export class HerdrAdapter implements SessionAdapter {
   /** §M-HERDR — How much pane tail to read; enough for evidence, bounded against a flood. */
   private readonly readLines: number;
 
+  /** §M-HERDR — Hard ceiling for an internal complete-turn history scan. */
+  private readonly maxReadLines: number;
+
   /** §M-HERDR — Agent-name prefix, so this run's agents are distinguishable from a user's own. */
   private readonly prefix: string;
 
@@ -234,6 +240,7 @@ export class HerdrAdapter implements SessionAdapter {
     this.startupTimeoutMs = options.startupTimeoutMs ?? 60_000;
     this.paneReadyTimeoutMs = options.paneReadyTimeoutMs ?? 15_000;
     this.readLines = options.readLines ?? 400;
+    this.maxReadLines = Math.max(this.readLines, options.maxReadLines ?? 32_000);
     this.prefix = options.agentNamePrefix ?? "mo-";
     this.modelArgs = options.modelArgs ?? defaultModelArgs;
     this.paneId = options.paneId ?? process.env["HERDR_PANE_ID"];
@@ -270,24 +277,6 @@ export class HerdrAdapter implements SessionAdapter {
     } catch (error) {
       throw new HerdrCommandError(args, "unparsable_response", 0, (error as Error).message);
     }
-  }
-
-  /**
-   * §M-HERDR — Run one CLI command that answers with terminal text, not JSON.
-   *
-   * `agent read` is the one subcommand that prints the pane instead of an
-   * envelope — `--format text|ansi` selects how the *terminal* is rendered, not
-   * how the CLI replies. Sending it through `call` made every read throw
-   * `unparsable_response`, which the capability suite then graded as a lost
-   * `status-read` and refused the whole backend on.
-   */
-  private async callText(args: string[], timeoutMs?: number): Promise<string> {
-    const result = await this.exec(args, timeoutMs ?? this.defaultTimeoutMs);
-    if (result.code !== 0) {
-      const message = result.stderr.trim() || result.stdout.trim() || `exit ${result.code}`;
-      throw new HerdrCommandError(args, result.code === 2 ? "cli_syntax_error" : "herdr_error", result.code, message);
-    }
-    return result.stdout;
   }
 
   /** §M-HERDR — Fetch one agent's info, or `undefined` when no such live agent exists. */
@@ -567,7 +556,7 @@ export class HerdrAdapter implements SessionAdapter {
    */
   async read(session: SessionRef, cursor?: string): Promise<SessionOutput> {
     const { agentName } = decodeSessionId(session.sessionId);
-    const text = await this.callText([
+    const text = await callHerdrText(this.exec, [
       "agent",
       "read",
       agentName,
@@ -577,7 +566,7 @@ export class HerdrAdapter implements SessionAdapter {
       String(this.readLines),
       "--format",
       "text",
-    ]);
+    ], this.defaultTimeoutMs);
     // The text form carries no revision, so the cursor comes from `agent get`,
     // which is the same monotonic number the pane reports.
     const revision = (await this.agentInfo(agentName))?.revision ?? 0;
@@ -589,6 +578,23 @@ export class HerdrAdapter implements SessionAdapter {
       text: unchanged ? "" : redact(read?.text ?? ""),
       terminal: status === "complete" || status === "stopped" || status === "failed",
     };
+  }
+
+  /** §M-HERDR — Extract one complete worker result without exposing its transcript. */
+  async readCompleteTurn(
+    session: SessionRef,
+    turnId: string,
+    maxLines = this.maxReadLines,
+  ): Promise<SessionOutput> {
+    return await readCompleteHerdrTurn({
+      session,
+      turnId,
+      initialLines: this.readLines,
+      maxLines,
+      status: (target) => this.status(target),
+      agentInfo: (agentName) => this.agentInfo(agentName),
+      readText: (args) => callHerdrText(this.exec, args, this.defaultTimeoutMs),
+    });
   }
 
   /**
@@ -682,17 +688,12 @@ export class HerdrAdapter implements SessionAdapter {
    * belongs to the user, and closing it would destroy their work.
    */
   async stop(session: SessionRef): Promise<"stopped" | "already_terminal" | "unknown"> {
-    const { agentName, paneId, ownedPane } = decodeSessionId(session.sessionId);
-    const info = await this.agentInfo(agentName);
-    if (!info) return "already_terminal";
-    if (!ownedPane) return "unknown";
-    try {
-      await this.call(["pane", "close", paneId], 30_000);
-      return "stopped";
-    } catch (error) {
-      if (error instanceof HerdrCommandError && error.exitCode === 1) return "unknown";
-      throw error;
-    }
+    return await stopOwnedHerdrSession(
+      {
+        agentInfo: (agentName) => this.agentInfo(agentName),
+        closePane: async (paneId) => void (await this.call(["pane", "close", paneId], 30_000)),
+      },
+      session,
+    );
   }
 }
-

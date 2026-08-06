@@ -118,7 +118,12 @@ if (group === "agent" && verb === "prompt") {
   if (process.env["FAKE_HERDR_STALL"] === "1") error("agent_prompt_stalled", "the agent never moved");
 
   const pane = state.panes[agent.pane_id];
-  if (pane) pane.text = `${pane.text}\n${argv[3] ?? ""}`.slice(-8192);
+  const prompt = argv[3] ?? "";
+  const turnId = prompt.match(/^Turn token: ([A-Za-z0-9_-]+)$/m)?.[1];
+  const result = turnId
+    ? `\nMETA_O_RESULT_BEGIN ${turnId}\nfake complete worker result\nMETA_O_RESULT_END ${turnId}`
+    : "";
+  if (pane) pane.text = `${pane.text}\n${prompt}${result}`.slice(-8192);
   agent.revision += 1;
   agent.state_change_seq += 1;
   agent.agent_status = "idle";

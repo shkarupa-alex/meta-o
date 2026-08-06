@@ -449,8 +449,20 @@ test("status and read observe a session without recording an intent", () => {
     );
     assert.equal(unchanged.json["text"], "");
 
+    const complete = ok(
+      cli(["session", "read", "--run-id", it.runId, "--role", "executor", "--complete"], it.context),
+      "complete turn read",
+    );
+    assert.equal(complete.json["complete"], true);
+    assert.equal(complete.json["truncated"], false);
+    assert.equal(complete.json["text"], "fake complete worker result");
+    assert.ok(typeof complete.json["turnId"] === "string");
+
     const shown = ok(cli(["run", "show", "--run-id", it.runId], it.context), "run show");
     assert.equal(shown.json["pendingOperation"], undefined);
+    const executorTurn = (shown.json["sessionTurns"] as Record<string, { turnId: string }>).executor;
+    assert.ok(executorTurn);
+    assert.equal(executorTurn.turnId, complete.json["turnId"]);
   } finally {
     it.dispose();
   }

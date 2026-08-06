@@ -11,7 +11,14 @@
 import { canonicalize, type JsonValue } from "../../core/canonical-json.mjs";
 import { sha256Hex } from "../../core/hash.mjs";
 import { fail, requireFlag, type ParsedArgs } from "../args.mjs";
-import type { ModelRef, PendingOperation, Role, RunState, SessionRef } from "../../core/types.mjs";
+import type {
+  ModelRef,
+  PendingOperation,
+  Role,
+  RunState,
+  SessionRef,
+  SessionTurn,
+} from "../../core/types.mjs";
 
 /** §M-CLI-SESSION-STATE — Every role a session may be opened for. */
 export const ROLES: Role[] = [
@@ -104,14 +111,21 @@ export function withSession(state: RunState, session: SessionRef): RunState {
 
 /** §M-CLI-SESSION-STATE — Forget a session handle whose backend session is gone. */
 export function withoutSession(state: RunState, role: Role): RunState {
+  const sessionTurns = { ...state.sessionTurns };
+  delete sessionTurns[role];
   if (role === "orchestrator") {
-    const updated = { ...state };
+    const updated = { ...state, sessionTurns };
     delete updated.orchestratorSession;
     return updated;
   }
   const sessions = { ...state.sessions };
   delete sessions[role];
-  return { ...state, sessions };
+  return { ...state, sessions, sessionTurns };
+}
+
+/** §M-CLI-SESSION-STATE — Remember the latest result-bearing turn for recovery and reading. */
+export function withSessionTurn(state: RunState, role: Role, turn: SessionTurn): RunState {
+  return { ...state, sessionTurns: { ...state.sessionTurns, [role]: turn } };
 }
 
 /** §M-CLI-SESSION-STATE — Digest of the request a pending operation stands for. */
@@ -144,4 +158,3 @@ export function roleOfSession(state: RunState, sessionId: string): Role | undefi
   }
   return undefined;
 }
-

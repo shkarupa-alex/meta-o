@@ -357,9 +357,9 @@ const COMMANDS: Record<string, { flags: string[]; run: Command; help: string }> 
     help: "report the backend's view of a session",
   },
   "session read": {
-    flags: ["backend", "cursor", "role", "run-id"],
+    flags: ["backend", "complete", "cursor", "max-lines", "role", "run-id", "turn-id"],
     run: commandSessionRead,
-    help: "read new output from a session",
+    help: "read a session tail, or extract one complete framed worker result",
   },
   "session wait": {
     flags: ["backend", "role", "run-id", "terminal", "timeout-ms"],

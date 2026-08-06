@@ -21,6 +21,8 @@ import {
   decodeSessionId,
   defaultModelArgs,
   encodeSessionId,
+  extractTurnResult,
+  frameTurnPrompt,
   type HerdrExecResult,
 } from "../dist/adapters/herdr-protocol.mjs";
 import { COMPLETION_CRITICAL } from "../dist/adapters/adapter.mjs";
@@ -116,7 +118,20 @@ function fakeHerdr(seed: Partial<FakeHerdr> = {}): FakeHerdr {
       // Raw terminal text with no envelope and no revision, exactly as the real
       // CLI prints it: `--format text|ansi` chooses how the pane is rendered,
       // not whether the reply is JSON.
-      return { code: 0, stdout: paneText.get(info.pane_id) ?? "", stderr: "" };
+      const text = paneText.get(info.pane_id) ?? "";
+      const linesAt = args.indexOf("--lines");
+      const lines = linesAt >= 0 ? Number(args[linesAt + 1]) : undefined;
+      const stdout = lines === undefined ? text : text.split("\n").slice(-lines).join("\n");
+      return { code: 0, stdout, stderr: "" };
+    }
+
+    if (group === "pane" && verb === "read") {
+      if (!panes.has(target!)) return serverError("pane_not_found", "no such pane");
+      const text = paneText.get(target!) ?? "";
+      const linesAt = args.indexOf("--lines");
+      const lines = linesAt >= 0 ? Number(args[linesAt + 1]) : undefined;
+      const stdout = lines === undefined ? text : text.split("\n").slice(-lines).join("\n");
+      return { code: 0, stdout, stderr: "" };
     }
 
     if (group === "agent" && verb === "wait") {
@@ -611,6 +626,149 @@ test("reads return the pane revision as a cursor and suppress unchanged text", a
 
   const second = await adapter.read(session, "42");
   assert.equal(second.text, "", "an unchanged revision yields no new text");
+});
+
+test("turn prompts do not echo an assembled result marker", () => {
+  const prompt = frameTurnPrompt("Do the work.", "turn-17");
+  assert.ok(!prompt.includes("META_O_RESULT_BEGIN turn-17"));
+  assert.ok(!prompt.includes("META_O_RESULT_END turn-17"));
+  assert.equal(
+    extractTurnResult(
+      "noise\nMETA_O_RESULT_BEGIN turn-17\ncomplete answer\nMETA_O_RESULT_END turn-17\nfooter",
+      "turn-17",
+    ),
+    "complete answer",
+  );
+});
+
+test("a complete-turn read expands internally and returns no prompts or tool calls", async () => {
+  const turnId = "turn-long";
+  const toolNoise = Array.from({ length: 500 }, (_, index) => `TOOL_CALL_${index + 1}`);
+  const answer = Array.from({ length: 700 }, (_, index) => `ANSWER_${index + 1}`);
+  const transcript = [
+    "old prompt",
+    ...toolNoise,
+    `META_O_RESULT_BEGIN ${turnId}`,
+    ...answer,
+    `META_O_RESULT_END ${turnId}`,
+    "custom statusline",
+  ].join("\n");
+  const agents = new Map([["a", agentInfo({ pane_id: "w1:p2", name: "a", revision: 42 })]]);
+  const herdr = fakeHerdr({ agents, paneText: new Map([["w1:p2", transcript]]) });
+  const adapter = new HerdrAdapter({ exec: herdr.exec, readLines: 400, maxReadLines: 3_200 });
+  const session: SessionRef = {
+    backend: "herdr",
+    sessionId: encodeSessionId("a", "w1:p2", true),
+    role: "executor",
+    generation: 1,
+  };
+
+  const output = await adapter.readCompleteTurn(session, turnId);
+  assert.equal(output.complete, true);
+  assert.equal(output.truncated, false);
+  assert.equal(output.text, answer.join("\n"));
+  assert.ok(!output.text.includes("TOOL_CALL_"));
+  assert.ok(!output.text.includes("custom statusline"));
+  assert.deepEqual(
+    herdr.calls
+      .filter((call) => call[0] === "agent" && call[1] === "read")
+      .map((call) => Number(call[call.indexOf("--lines") + 1])),
+    [400, 800, 1_600, 3_200],
+  );
+});
+
+test("a complete-turn read reports truncation instead of returning a partial answer", async () => {
+  const turnId = "turn-truncated";
+  const transcript = [
+    `META_O_RESULT_BEGIN ${turnId}`,
+    ...Array.from({ length: 1_500 }, (_, index) => `ANSWER_${index + 1}`),
+    `META_O_RESULT_END ${turnId}`,
+  ].join("\n");
+  const agents = new Map([["a", agentInfo({ pane_id: "w1:p2", name: "a" })]]);
+  const adapter = new HerdrAdapter({
+    exec: fakeHerdr({ agents, paneText: new Map([["w1:p2", transcript]]) }).exec,
+    readLines: 400,
+    maxReadLines: 800,
+  });
+  const output = await adapter.readCompleteTurn(
+    {
+      backend: "herdr",
+      sessionId: encodeSessionId("a", "w1:p2", true),
+      role: "executor",
+      generation: 1,
+    },
+    turnId,
+  );
+  assert.equal(output.complete, false);
+  assert.equal(output.truncated, true);
+  assert.equal(output.incompleteReason, "history_truncated");
+  assert.equal(output.text, "");
+});
+
+test("a complete-turn read never mistakes a stable tool transcript for a result", async () => {
+  const agents = new Map([["a", agentInfo({ pane_id: "w1:p2", name: "a" })]]);
+  const adapter = new HerdrAdapter({
+    exec: fakeHerdr({
+      agents,
+      paneText: new Map([["w1:p2", "prompt\nTOOL_CALL one\nTOOL_RESULT two\ncustom footer"]]),
+    }).exec,
+  });
+  const output = await adapter.readCompleteTurn(
+    {
+      backend: "herdr",
+      sessionId: encodeSessionId("a", "w1:p2", true),
+      role: "executor",
+      generation: 1,
+    },
+    "turn-missing",
+  );
+  assert.equal(output.complete, false);
+  assert.equal(output.truncated, false);
+  assert.equal(output.incompleteReason, "result_envelope_missing");
+  assert.equal(output.text, "");
+});
+
+test("a complete-turn read refuses to sample a worker that is still running", async () => {
+  const agents = new Map([
+    ["a", agentInfo({ pane_id: "w1:p2", name: "a", agent_status: "working", revision: 9 })],
+  ]);
+  const herdr = fakeHerdr({ agents });
+  const adapter = new HerdrAdapter({ exec: herdr.exec });
+  const output = await adapter.readCompleteTurn(
+    {
+      backend: "herdr",
+      sessionId: encodeSessionId("a", "w1:p2", true),
+      role: "executor",
+      generation: 1,
+    },
+    "turn-running",
+  );
+  assert.equal(output.complete, false);
+  assert.equal(output.incompleteReason, "agent_not_settled");
+  assert.equal(herdr.calls.some((call) => call[0] === "agent" && call[1] === "read"), false);
+});
+
+test("a complete-turn read can recover a final envelope after the agent process exits", async () => {
+  const turnId = "turn-exited";
+  const transcript = `META_O_RESULT_BEGIN ${turnId}\nfinal answer\nMETA_O_RESULT_END ${turnId}`;
+  const adapter = new HerdrAdapter({
+    exec: fakeHerdr({
+      panes: new Set(["w1:p2"]),
+      paneText: new Map([["w1:p2", transcript]]),
+    }).exec,
+  });
+  const output = await adapter.readCompleteTurn(
+    {
+      backend: "herdr",
+      sessionId: encodeSessionId("gone", "w1:p2", true),
+      role: "executor",
+      generation: 1,
+    },
+    turnId,
+  );
+  assert.equal(output.complete, true);
+  assert.equal(output.terminal, true);
+  assert.equal(output.text, "final answer");
 });
 
 test("secrets in pane output are redacted before the orchestrator sees them", async () => {

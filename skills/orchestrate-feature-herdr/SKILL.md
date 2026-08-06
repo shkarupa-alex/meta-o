@@ -155,13 +155,26 @@ directly is off-protocol.
 meta-o session spawn --run-id <id> --role <role>
 meta-o session send  --run-id <id> --role <role> < prompt.txt
 meta-o session wait   --run-id <id> --role <role> --timeout-ms 900000
-meta-o session read   --run-id <id> --role <role> --cursor <cursor>
+meta-o session read   --run-id <id> --role <role> --complete
 meta-o session stop   --run-id <id> --role <role>
 ```
 
 If any of these exits non-zero with a pending operation, **stop** and run
 `meta-o session reconcile --run-id <id>`. Never send the same instruction twice
 on the assumption that the first one was lost.
+
+`session send` adds a per-turn result envelope to the worker prompt and records
+its id in run state. After `session wait`, use `session read --complete` exactly
+once. The command expands the Herdr history window internally and emits only the
+worker's final envelope — prompts, intermediate tool calls and terminal UI never
+enter your context, and their Claude/Codex/OpenCode rendering is deliberately
+not parsed. It exits non-zero instead of returning a partial result when the
+worker is still active, the retained history is insufficient, or the envelope
+is missing. A raw tail may then be read only to diagnose a blocked worker or a
+broken envelope contract; it is never a worker result or gate input.
+
+Plain `session read --cursor <cursor>` is a diagnostic tail/read-progress
+operation. It is not a complete worker result and must not be used as gate input.
 
 ### Bounded context per role
 
@@ -178,8 +191,9 @@ Give each role exactly this, and nothing else:
 Reviewers must not receive executor reasoning, implementation narrative, or each
 other's findings. What you *pass on* is structured results and evidence
 references — never a diff, a log or a transcript. You will still read raw pane
-text yourself: `meta-o session read` returns it, and observing the effect of an
-instruction is a step §20 requires. Read it, act on it, and do not forward it.
+text yourself: `meta-o session read --complete` returns the framed final result,
+and observing the effect of an instruction is a step §20 requires. Read it, act
+on it, and do not forward it.
 
 Start each worker prompt with: *"Read the `<skill-name>` skill and follow it."*
 

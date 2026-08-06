@@ -27,6 +27,21 @@ else has an honest degradation, but a run that cannot observe its workers cannot
 attest anything, and one that cannot stop them leaves orphans behind
 (`src/adapters/adapter.mts`).
 
+Observing a worker result is a content protocol, not terminal-screen parsing.
+Every orchestrator-issued worker prompt carries a unique turn token and asks the
+worker to place its final response between markers assembled only in that final
+response. The exact marker does not occur in the echoed prompt. After the agent
+settles, `session read --complete` grows the `recent-unwrapped` history window
+inside the adapter until two snapshots agree, then returns only the last complete
+envelope for that token. Intermediate snapshots never cross the CLI boundary, so
+prompts, tool calls, status lines and other UI chrome consume no orchestrator
+context; their Claude, Codex and OpenCode rendering is intentionally unknown to
+meta-o. The command refuses a moving worker, an exhausted history budget or a
+missing envelope instead of presenting a tail as a result. The turn token is
+kept in run state so recovery does not depend on an orchestrator remembering the
+stdout of `session send` (`src/adapters/herdr-output.mts`,
+`src/cli/commands/session.mts`).
+
 One window in the protocol is not closed, and is written down here rather than
 implied to be. A spawn is two backend calls, and the pane id only exists once
 the first has returned; the write-ahead record therefore learns it a moment

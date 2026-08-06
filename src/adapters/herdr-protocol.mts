@@ -67,6 +67,25 @@ export function defaultExec(binary: string): HerdrExec {
     });
 }
 
+/** §M-HERDR-PROTOCOL — Run the one CLI command whose success payload is terminal text. */
+export async function callHerdrText(
+  exec: HerdrExec,
+  args: string[],
+  timeoutMs: number,
+): Promise<string> {
+  const result = await exec(args, timeoutMs);
+  if (result.code !== 0) {
+    const message = result.stderr.trim() || result.stdout.trim() || `exit ${result.code}`;
+    throw new HerdrCommandError(
+      args,
+      result.code === 2 ? "cli_syntax_error" : "herdr_error",
+      result.code,
+      message,
+    );
+  }
+  return result.stdout;
+}
+
 /**
  * §M-HERDR-PROTOCOL — Encode a session handle that survives a process restart.
  *
@@ -123,6 +142,45 @@ export interface HerdrProbe {
 /** §M-HERDR-PROTOCOL — Distinctive prefix of a message, used as delivery evidence. */
 export function markerOf(message: string): string {
   return message.replace(/\s+/g, " ").trim().slice(0, 48);
+}
+
+/** §M-HERDR-PROTOCOL — Begin prefix a worker joins with its turn id only in the final answer. */
+export const RESULT_BEGIN_PREFIX = "META_O_RESULT_BEGIN";
+
+/** §M-HERDR-PROTOCOL — End prefix a worker joins with its turn id only in the final answer. */
+export const RESULT_END_PREFIX = "META_O_RESULT_END";
+
+/** §M-HERDR-PROTOCOL — Add a UI-independent final-result contract to a worker prompt. */
+export function frameTurnPrompt(message: string, turnId: string): string {
+  return (
+    `${message.trimEnd()}\n\n` +
+    "After all reasoning and tool use is finished, emit the complete final response once, " +
+    "inside a result envelope. " +
+    "Build each marker by joining the named prefix, one ASCII space, and the turn token below. " +
+    "Do not emit either assembled marker before the final response.\n" +
+    `Begin prefix: ${RESULT_BEGIN_PREFIX}\n` +
+    `End prefix: ${RESULT_END_PREFIX}\n` +
+    `Turn token: ${turnId}\n` +
+    "The assembled begin marker must be on its own line immediately before the response. " +
+    "The assembled end marker must be on its own line immediately after it."
+  );
+}
+
+/** §M-HERDR-PROTOCOL — Extract the last complete result envelope for one turn. */
+export function extractTurnResult(
+  transcript: string,
+  turnId: string,
+): string | undefined {
+  const begin = `${RESULT_BEGIN_PREFIX} ${turnId}`;
+  const end = `${RESULT_END_PREFIX} ${turnId}`;
+  const endAt = transcript.lastIndexOf(end);
+  if (endAt < 0) return undefined;
+  const beginAt = transcript.lastIndexOf(begin, endAt);
+  if (beginAt < 0) return undefined;
+
+  let result = transcript.slice(beginAt + begin.length, endAt);
+  result = result.replace(/^\r?\n/, "").replace(/\r?\n$/, "");
+  return result;
 }
 
 /** §M-HERDR-PROTOCOL — Parse the probe written before a side effect. */

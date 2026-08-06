@@ -13,6 +13,7 @@
 
 import { randomUUID } from "node:crypto";
 import { HerdrAdapter } from "../../adapters/herdr.mjs";
+import { frameTurnPrompt } from "../../adapters/herdr-protocol.mjs";
 import { isoTimestamp } from "../../core/clock.mjs";
 import { resolveProjectIdentity } from "../../core/project-key.mjs";
 import {
@@ -28,6 +29,7 @@ import {
   roleOf,
   sessionFor,
   withSession,
+  withSessionTurn,
   withoutSession,
 } from "./session-state.mjs";
 import {
@@ -261,16 +263,17 @@ export async function commandSend(args: ParsedArgs): Promise<void> {
   // protect the logs and leak the secret. Masking rather than refusing keeps a
   // false positive from wedging a run — the prompt still arrives, minus the
   // thing that must not travel.
-  const message = redact(raw);
-  const redacted = message !== raw;
-
   const operationId = randomUUID();
+  const body = redact(raw);
+  const redacted = body !== raw;
+  const message = frameTurnPrompt(body, operationId);
   const pending = await prepare(context.projectKey, context.runId, {
     operationId,
     kind: "send",
     sessionId: session.sessionId,
     requestDigest: digestOf({ kind: "send", sessionId: session.sessionId, message }),
     probe: await context.adapter.prepareProbe(session, message),
+    turnId: operationId,
   });
 
   let delivery: DeliveryResult;
@@ -290,13 +293,20 @@ export async function commandSend(args: ParsedArgs): Promise<void> {
     return;
   }
 
-  await mutate(context.projectKey, context.runId, (state) =>
-    withPendingOperation(state, {
+  await mutate(context.projectKey, context.runId, (state) => {
+    const acknowledged = withPendingOperation(state, {
       ...pending,
       state: "acknowledged",
       ...(delivery.receipt ? { backendReceipt: delivery.receipt } : {}),
-    }),
-  );
+    });
+    return delivery.status === "acknowledged"
+      ? withSessionTurn(acknowledged, role, {
+          turnId: operationId,
+          sessionId: session.sessionId,
+          sentAt: isoTimestamp(),
+        })
+      : acknowledged;
+  });
 
   const status = await context.adapter.status(session);
   await mutate(context.projectKey, context.runId, (state) => clearPendingOperation(state));
@@ -329,10 +339,39 @@ export async function commandRead(args: ParsedArgs): Promise<void> {
   const role = roleOf(args);
   const session = sessionFor(context.state, role);
   if (!session) fail("no_session", `role ${role} has no session`);
+  const complete = boolFlag(args, "complete");
+  const explicitTurnId = optionalFlag(args, "turn-id");
+  const recordedTurn = context.state.sessionTurns?.[role];
+  if (complete && !explicitTurnId && recordedTurn && recordedTurn.sessionId !== session.sessionId) {
+    fail("stale_result_turn", `the recorded turn for role ${role} belongs to a replaced session`);
+  }
+  const turnId = explicitTurnId ?? recordedTurn?.turnId;
+  const maxLinesRaw = optionalFlag(args, "max-lines");
+  const maxLines = maxLinesRaw === undefined ? undefined : Number(maxLinesRaw);
+  if (maxLines !== undefined && (!Number.isInteger(maxLines) || maxLines <= 0)) {
+    fail("invalid_max_lines", "--max-lines must be a positive integer");
+  }
+  if (complete && !turnId) {
+    fail("no_result_turn", `role ${role} has no recorded result-bearing turn`);
+  }
+  const output = complete
+    ? await context.adapter.readCompleteTurn(session, turnId!, maxLines)
+    : await context.adapter.read(session, optionalFlag(args, "cursor"));
+  if (complete && !output.complete) {
+    fail(
+      "incomplete_session_output",
+      `could not read the complete result for turn ${turnId}: ${output.incompleteReason}`,
+      {
+        turnId,
+        truncated: output.truncated ?? false,
+        requestedLines: output.requestedLines ?? 0,
+      },
+    );
+  }
   emit({
     runId: context.runId,
     role,
-    ...(await context.adapter.read(session, optionalFlag(args, "cursor"))),
+    ...output,
   });
 }
 

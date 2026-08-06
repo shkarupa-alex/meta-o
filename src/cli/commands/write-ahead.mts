@@ -28,6 +28,7 @@ import {
   roleOfPendingSpawn,
   roleOfSession,
   withSession,
+  withSessionTurn,
   withoutSession,
 } from "./session-state.mjs";
 import { spawnPrompt } from "./backend.mjs";
@@ -216,11 +217,23 @@ export async function settleReconciled(
         ? { ...recovered, generation: (current.sessionGeneration[spawnedRole] ?? 0) + 1 }
         : recovered;
     const withRecovered = adopted ? withSession(current, adopted) : current;
+    const deliveredRole =
+      result.effect === "applied" && pending.kind === "send" && pending.sessionId && pending.turnId
+        ? roleOfSession(withRecovered, pending.sessionId)
+        : undefined;
+    const withRecoveredTurn =
+      deliveredRole && pending.sessionId && pending.turnId
+        ? withSessionTurn(withRecovered, deliveredRole, {
+            turnId: pending.turnId,
+            sessionId: pending.sessionId,
+            sentAt: pending.preparedAt ?? isoTimestamp(),
+          })
+        : withRecovered;
     if (result.effect === "applied" && pending.kind === "stop") {
       const role = pending.sessionId ? roleOfSession(current, pending.sessionId) : undefined;
-      if (role) return clearPendingOperation(withoutSession(withRecovered, role));
+      if (role) return clearPendingOperation(withoutSession(withRecoveredTurn, role));
     }
-    return clearPendingOperation(withRecovered);
+    return clearPendingOperation(withRecoveredTurn);
   });
 
   if (recovered && spawnedRole) {

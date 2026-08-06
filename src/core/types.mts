@@ -252,6 +252,15 @@ export interface PendingOperation {
   probe?: string;
   preparedAt?: string;
   deadlineAt?: string;
+  /** Result-envelope id added to a worker prompt, when this send expects a readable turn result. */
+  turnId?: string;
+}
+
+/** §M-CORE-TYPES — Last result-bearing turn delivered to one session role. */
+export interface SessionTurn {
+  turnId: string;
+  sessionId: string;
+  sentAt: string;
 }
 
 /** §M-CORE-TYPES — One concrete artefact a reviewer points at. */
@@ -404,6 +413,8 @@ export interface RunState {
   modelSet: ModelSet;
   sessions: Partial<Record<Role, SessionRef>>;
   sessionGeneration: Partial<Record<Role, number>>;
+  /** Recoverable pointer to the last result envelope expected from each worker role. */
+  sessionTurns?: Partial<Record<Role, SessionTurn>>;
   /**
    * Handle of the session currently driving this run. A meta-o extension over
    * the master-spec shape: without it the watchdog cannot tell a live
@@ -530,6 +541,16 @@ export interface SessionOutput {
   cursor: string;
   text: string;
   terminal: boolean;
+  /** Whether `text` is a complete, explicitly framed worker result. */
+  complete?: boolean;
+  /** Whether the configured history budget ended before the pane snapshot was exhausted. */
+  truncated?: boolean;
+  /** Rendered-row window used for the final internal read. */
+  requestedLines?: number;
+  /** Envelope id extracted by a complete-turn read. */
+  turnId?: string;
+  /** Machine-readable reason a complete-turn read could not return a result. */
+  incompleteReason?: "agent_not_settled" | "history_truncated" | "result_envelope_missing";
 }
 
 /** §M-CORE-TYPES — What a caller of `wait` is waiting for. */
