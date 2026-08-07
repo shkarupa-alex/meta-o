@@ -19,11 +19,17 @@ Two things are both required and pull opposite ways:
 ## The decision
 
 - Source of truth lives in `shared/`: `references/methodology.md`,
-  `references/purpose-and-architecture.md`, `scripts/mo-models.mjs`.
+  `references/purpose-and-architecture.md`, `scripts/mo-models.mjs` and
+  `scripts/mo-posture.sh`.
 - `src/skills/<name>/` holds only what that skill owns — its `SKILL.md` and its
   own backend or profile references.
 - `tools/build-skills.mjs` copies the shared files into each skill that declares
   them and emits `skills/`, the installable tree.
+- `mo-herdr`, `mo-omnigent` and `mo-setup` each receive the one methodology copy;
+  setup owns remediation, but it does not restate the shared diagnostic protocol.
+- The same three skills receive `scripts/mo-posture.sh`, because the diagnostic
+  matrix is fragile executable protocol rather than prose and each skill must
+  remain independently installable.
 - `make mo-qc` runs `build-skills.mjs --check`, which refuses a `skills/` that
   does not byte-match a fresh build.
 - The build also refuses a source skill that _shadows_ a shared file. That is the
@@ -32,8 +38,9 @@ Two things are both required and pull opposite ways:
 `skills/` is committed, because the package managers install what the repository
 has committed.
 
-**No runtime shared package and no executable router appears.** The duplication
-is a build artefact, not an import graph.
+**No runtime shared package and no executable router appears.** The posture
+script is a bounded diagnostic leaf: it starts no provider and stores no state.
+Its duplication is a build artefact, not an import graph.
 
 ## Why the built tree is `skills/` and the sources are under `src/`
 

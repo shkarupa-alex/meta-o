@@ -16,6 +16,8 @@ mo-lint:
 	npx --no-install prettier --check .
 	node --check shared/scripts/mo-models.mjs
 	node --check tools/build-skills.mjs
+	bash -n shared/scripts/mo-posture.sh
+	shared/scripts/mo-posture.sh --self-check --shell all
 
 format:
 	npx --no-install prettier --write .
@@ -37,7 +39,7 @@ skills:
 mo-test:
 	node --test "tests/*.test.mjs"
 
-# Does the one shipped helper boot and answer? Under a throwaway HOME, because
+# Does the shipped settings helper boot and answer? Under a throwaway HOME, because
 # this gate judges the repository: a settings file the developer happens to have
 # — or a corrupt one — must not decide whether an unmodified checkout is green.
 mo-smoke:

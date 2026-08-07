@@ -16,6 +16,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -154,6 +155,13 @@ test("the shared files are byte-identical copies in every skill that declares th
   }
 });
 
+test("the posture diagnostic stays executable in every built consumer", () => {
+  assert.notEqual(statSync(join(SHARED, "scripts", "mo-posture.sh")).mode & 0o111, 0);
+  for (const skill of ["mo-herdr", "mo-omnigent", "mo-setup"]) {
+    assert.notEqual(statSync(join(OUTPUT, skill, "scripts", "mo-posture.sh")).mode & 0o111, 0);
+  }
+});
+
 test("the methodology has exactly one source owner", () => {
   const shared = walk(SHARED).filter((path) => path.endsWith("methodology.md"));
   assert.deepEqual(shared, ["references/methodology.md"]);
@@ -225,8 +233,8 @@ function documentPaths(text) {
     // A space is meaningful in a `<...>` destination and is a word boundary
     // anywhere else: `cmp -s AGENTS.md CLAUDE.md` is a command, not a path.
     const shape = allowSpaces
-      ? /^[A-Za-z0-9._][A-Za-z0-9. _/-]*\.(?:md|mjs)$/
-      : /^[A-Za-z0-9._][A-Za-z0-9._/-]*\.(?:md|mjs)$/;
+      ? /^[A-Za-z0-9._][A-Za-z0-9. _/-]*\.(?:md|mjs|sh)$/
+      : /^[A-Za-z0-9._][A-Za-z0-9._/-]*\.(?:md|mjs|sh)$/;
     if (shape.test(value)) found.push(value);
   };
   const visit = (tokens) => {

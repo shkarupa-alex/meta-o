@@ -69,6 +69,31 @@ decision, recovery or external input is genuinely required. The other state is
 **Orchestrator** — the thin role that addresses work and does not do it. It reads
 the repository and runs commands; it never becomes the implementer.
 
+**Launch posture** — the verified way one concrete provider launch surface gets
+all required fixed invocation behaviour: permission, approval, sandbox,
+environment, prompt and other fixed arguments where applicable, plus caller
+argument pass-through. It is supplied by an executable wrapper that resolves
+first (possibly through a credential-free forwarding alias or function), or a
+named provider-native configuration proven on that surface. Any intentional
+difference is part of the verdict; a posture verdict never transfers from TUI to
+inline, hook or harness.
+
+**Provider-posture probe** — the shipped, read-only `mo-posture.sh` diagnostic
+that classifies provider command kinds and first executable paths across shell
+startup modes. Its per-shell 0/1/2 result means identical kinds and paths,
+divergent kinds or paths, or unreadable evidence; it neither launches a provider
+nor proves a real backend, hook or harness surface.
+
+**`PATH` wrapper** — an executable found through `PATH` that launches a provider
+with the user's required permission, approval, sandbox and other fixed arguments,
+then passes the caller's arguments through. A shell alias or function is not
+itself a `PATH` wrapper: it can participate in a **Launch posture** only by
+forwarding to a verified wrapper, and an interactive profile may load it when a
+script, hook or orchestrator will not. A wrapper file is unavailable whenever
+another provider executable resolves before it, even if the wrapper directory is
+present later in `PATH`; support is about first resolution, not membership or
+existence.
+
 **Project contract** — `AGENTS.md` and `CLAUDE.md`, byte-for-byte identical, plus
 `make mo-qc` and its gates. The provider CLI loads the instruction file itself,
 which is why an orchestrator never copies it into a prompt.
@@ -78,8 +103,9 @@ which is why an orchestrator never copies it into a prompt.
 commit.
 
 **Route** — a provider path a role runs on, written `route/model/effort`. A route
-is _supported_ only after its acceptance fixtures pass; otherwise it is honestly
-unsupported for the gate in question.
+is _supported for a named launch surface and gate_ only after their acceptance
+fixtures pass; otherwise that combination is honestly unsupported. One surface's
+failure does not erase another surface's evidence.
 
 **Shared file** — a file with exactly one source owner under `shared/`, copied
 mechanically into each skill that needs it. Editing a copy is forbidden and

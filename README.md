@@ -4,10 +4,10 @@ Seven agent skills that take one feature from a spec to a verified candidate
 commit, using tools you already have.
 
 It is a methodology, written down and installable — not a framework. There is no
-CLI, no daemon, no state store and no adapter layer. Git, the tracked task/spec,
-the recorded business framing behind it, your project instructions and your
-backend's own sessions are the only durable state, which is why a restart costs a
-re-read rather than a recovery protocol.
+orchestration or provider-proxy CLI, no daemon, no state store and no adapter
+layer. Git, the tracked task/spec, the recorded business framing behind it, your
+project instructions and your backend's own sessions are the only durable state,
+which is why a restart costs a re-read rather than a recovery protocol.
 
 The framing is the part people skip: your request and every clarification, kept
 verbatim in `docs/business.md`, because a spec is a lossy compression of the
@@ -62,9 +62,15 @@ npx skills add shkarupa-alex/meta-o
 
 apm deploys to the harness it detects in the consuming project (`.claude/`,
 `CLAUDE.md`, `.codex/`, `.opencode/`, …); in a directory with no marker at all it
-asks for `--target claude` rather than guessing. Node ≥ 22 and Git on the target
-machine. Nothing is compiled and nothing is written into the projects the skills
-work on.
+asks for `--target claude` rather than guessing. The installed skills need Bash
+3.2 or newer specifically at `/bin/bash`; the posture diagnostic also requires
+`/usr/bin/printf`, `/usr/bin/false` and `/bin/sleep` at those paths, plus the
+standard `mktemp` and `rm` found by `command -p`. A Bash matrix additionally
+requires `/usr/bin/env` with `-0`; a requested Zsh matrix needs Zsh.
+NixOS/Alpine-style layouts without these absolute paths are outside this helper's
+compatibility contract. Building and installing this repository also needs Node
+≥ 22 and Git, and its full `make mo-qc` needs Zsh. Nothing is compiled and nothing
+is written into the projects the skills work on.
 
 The installed unit is a directory: `SKILL.md` plus the `references/` and
 `scripts/` that skill owns. `tests/install.test.mjs` runs a real local `apm
@@ -97,7 +103,7 @@ coding context costs more than the methodology bias risks.
 
 ```text
 src/skills/      the authored skills — SKILL.md plus what only that skill owns
-shared/          single source owner: methodology, purpose contract, mo-models.mjs
+shared/          source owner: methodology, purpose contract, mo-models.mjs, mo-posture.sh
 skills/          the installable tree, built from the two above and committed
 tools/           build-skills.mjs — copies shared files in, and verifies identity
 docs/            this project's own contract, knowledge and fixtures

@@ -87,49 +87,81 @@ removing.
 ### The Phase 0 fixtures that remain open, after the 2026-08-06 run
 
 **Why.** Most rows now have evidence: §H for three providers on both surfaces, §G
-except the trust step, §O except two rows, §W, §M, §R in full, and §P for two
-providers of three. What is still open needs something this machine cannot supply:
+except the trust step, §O except two rows, §W, §M and §R in full. In §P, the
+Claude and Codex wrapper files are verified, but no actual Herdr, hook or harness
+surface has supplied its own posture evidence. What is still open needs a real
+surface capture, something this machine cannot supply, or a confirmed
+personal-config change:
 I3–I5 need the repository pushed; §Q needs real Python and TypeScript projects; G3b
 needs a workspace that has never been trusted; H7b needs a host-window resize (the
 pane-split resize is now measured on all three routes and changes nothing) — and note
 that H7b measures Herdr rather than any provider, so it is open on **every** route at
 once and no route is literally fully answered until it is closed; H6 needs a
 provider that truly repaints; H9 on the OpenCode route needs a compaction that route
-has never been through; O6 needs a paused Omnigent session; O7 needs proof that
-Omnigent resolves the provider through the user's `PATH` wrapper rather than around
-it — and it now looks unlikely, since the harness comes up under a throwaway
-`CODEX_HOME` inside the working directory; P2c/P3c need an OpenCode wrapper or a
-verified native configuration.
+has never been through; O6 needs a paused Omnigent session; O7 needs a verified
+launch posture inside the actual Omnigent harness — and its throwaway `CODEX_HOME`
+inside the working directory makes inherited configuration doubtful; P4a/P4b need
+checks inside every claimed surface after remediation; P2c/P3c/P4c need an
+OpenCode wrapper or verified native posture.
 
-**Practical impact.** Each open row still makes its route unsupported for the gate it
-feeds — the remote installs are unverified, no tooling profile has been wired up on a
-real project, and the OpenCode permission posture is unaccounted for. What is no
-longer true is the blanket statement that nothing is proven.
+**Practical impact.** Each open row keeps the affected launch surface unsupported
+for the gate it feeds — the remote installs are unverified, no tooling profile has
+been wired up on a real project, and unattended provider posture is unaccounted
+for. What is no longer true is the blanket statement that nothing is proven.
 
 **Next step.** Work the remaining rows when their preconditions exist: push the
 repository (I3–I5), pick a real Python and a real TypeScript project (§Q), and settle
 O7 by finding out how Omnigent resolves the provider binary.
 
+### Claude and Codex non-interactive surfaces do not resolve the wrappers first
+
+**Why.** The wrapper files exist and `~/bin` is present, but first resolution
+differs by shell mode. On 2026-08-07, the user's `~/.zprofile` ran
+`brew shellenv` after the system login profile and prepended `/opt/homebrew/bin`;
+`zsh -lc` therefore put it before `~/bin`, while the interactive profile
+prepended `~/bin` again. The canonical zsh matrix exits 1 on that divergence,
+while bash exits 0 and finds the wrappers in all four modes because its login
+profile has no corresponding Homebrew prepend. A `zsh -c` probe launched from an
+interactive parent inherited its already-modified `PATH` and did not prove a
+hook's environment. `zsh -lic` likewise resembles a Herdr login pane but is not
+evidence captured inside that pane. Phase 0 P4a/P4b therefore keep every actual
+launch surface `unknown` while recording the failing login diagnostic.
+
+**Practical impact.** A script, hook or backend launched without the interactive
+`PATH` can bypass both wrappers and lose the intended permission, approval,
+sandbox, environment, prompt and other fixed arguments. It may then stop for
+confirmation or run under different instructions despite an interactive session
+working.
+
+**Next step.** With explicit user confirmation, place each wrapper-directory
+prepend after every other applicable `PATH` initializer as required by
+`mo-setup §3`, then re-check first resolution and required fixed
+behaviour inside each real surface. If the user declines, keep those surfaces
+unsupported where the bare launch is proven and `unknown` otherwise, and record
+that decision here.
+
 ### The OpenCode route has no `PATH` wrapper, so its posture is unaccounted for
 
-**Why.** The §P rows are the only ones a helper can close without a live session,
-and they were first written up as one row per command and closed as a "qualified
-pass" — two providers of three. That framing was wrong in exactly the way this
-project exists to refuse, so the rows are now per provider: P2a/P2b and P3a/P3b are
-closed for Claude and Codex, and **P2c/P3c are open** because `which -a opencode`
-finds only `/opt/homebrew/bin/opencode`.
+**Why.** The local wrapper rows in §P were first written up as one row per command
+and closed as a "qualified pass" — two providers of three. That framing was wrong
+in exactly the way this project exists to refuse, so the rows are now per provider:
+P2a/P2b and P3a/P3b are closed for the Claude and Codex wrapper files, while
+**P2c/P3c/P4c are open** because every checked shell finds only
+`/opt/homebrew/bin/opencode` and no native posture is verified.
 
-**Practical impact.** On the OpenCode route nothing in `PATH` supplies the
-permission, approval or sandbox posture the wrappers supply for the other two. It
-either comes from OpenCode's own configuration — unread and unverified — or from
-nowhere, and an unattended run there is operating on an unknown posture. An
-orchestrator must say the wrapper is absent rather than report "wrappers verified".
+**Practical impact.** On the OpenCode route nothing in `PATH` supplies the fixed
+permission, approval, sandbox, environment or prompt behaviour the wrappers may
+supply for the other two. It either comes from OpenCode's own configuration —
+unread and unverified — or from nowhere, and an unattended run there is operating
+on an unknown posture. An orchestrator must say the wrapper is absent rather than
+report "wrappers verified".
 
-**Next step.** Either add an `opencode` wrapper alongside the other two, or change
-the criterion to "a wrapper **or** a named native configuration" and then actually
-verify it: read `opencode.json` / `~/.config/opencode/`, record which key sets the
-posture, and cite that key in the evidence column. Changing the criterion without
-the second half is how the qualified pass happened in the first place.
+**Next step.** Either add an `opencode` wrapper alongside the other two, or verify
+a named provider-native posture with credential-safe, key-filtered queries against
+`opencode.json` / `~/.config/opencode/`. Record which required keys supply the
+behaviour and cite evidence for each launch surface without dumping their values.
+Naming native configuration without proving it is how the qualified pass happened
+in the first place.
 
 ### The business framing grows without a proven answer, and its rules have no gate
 
@@ -245,6 +277,46 @@ copied, so it takes longer and the result varies between projects.
 **Next step.** After `mo-setup` has been run against two real projects, see
 whether the overlap is worth extracting. Not before — a template written from
 zero uses is a guess.
+
+### Some defensive posture checks are intentionally equivalent under black-box mutation
+
+**Why.** `mo-posture.sh` validates name/kind/path consistency once inside each
+child probe and again in the parent before accepting a record. Removing only the
+child copy can be an equivalent mutant: the parent still returns status 2 for the
+same forged record. Likewise, removing one reap/verification operation can be
+masked by the remaining process-group termination checks. The deterministic test
+therefore calls its 25-mutant campaign selected, not exhaustive, and does not
+inflate its count with mutants whose observable contract is unchanged.
+
+**Practical impact.** The shipped behavior is still covered end to end, including
+both exported-function naming schemes, option-export detection, failed or empty
+`env -0`, absolute paths, status precedence, normal-exit group quiescence before
+capture reads, unknown-on-unquiesce, the launch window, reentrant signal delivery
+and a TERM-resistant descendant. A future reviewer cannot infer that every
+duplicated internal guard has an independently killable black-box mutant merely
+from the zero-survivor summary.
+
+**Next step.** If either validation layer becomes independently observable,
+split its fixture and add layer-specific mutations. Otherwise keep equivalent
+survivors named here instead of weakening the second validation just to improve a
+mutation score.
+
+### A profile can deliberately escape the managed process group
+
+**Why.** The diagnostic owns one process group per measured shell and terminates
+ordinary foreground and background descendants in that group. A profile that
+explicitly creates a new session or process group can escape that portable
+boundary; discovering and killing arbitrary descendants would require an
+OS-specific process supervisor or process-table traversal.
+
+**Practical impact.** A hostile or unusually daemonizing profile can retain a
+process after the runner exits, although it cannot keep the deleted private
+capture path visible by name. Ordinary background commands, including a
+TERM-resistant descendant, are covered by the direct-runner signal regression.
+
+**Next step.** Treat a profile known to daemonize during startup as an unsupported
+surface and diagnose it locally. Add an OS-specific supervisor only if a real
+backend launch needs one; do not grow this read-only helper speculatively.
 
 ## Resolved
 

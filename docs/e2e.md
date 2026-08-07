@@ -1,6 +1,6 @@
 # End-to-end verification of meta-o itself
 
-This project ships Markdown and one dependency-free `.mjs` file. Most of what
+This project ships Markdown and two dependency-free helpers (`.mjs` and `.sh`). Most of what
 would be an E2E suite elsewhere is a deterministic console check here, so it runs
 inside `make mo-qc` and needs no separate tester.
 
@@ -9,14 +9,15 @@ The set is small, so it lives in this one file rather than under
 
 ## Deterministic, in `mo-qc` — no agent required
 
-| Scenario                      | Command                               | Asserts                                                                 |
-| ----------------------------- | ------------------------------------- | ----------------------------------------------------------------------- |
-| The helper runs               | `make mo-smoke`                       | `--help` and `--show` answer and exit 0, under a throwaway `HOME`       |
-| The built tree is in sync     | `node tools/build-skills.mjs --check` | `skills/` byte-matches a fresh build from `src/skills/` + `shared/`     |
-| The contract has not diverged | `cmp -s AGENTS.md CLAUDE.md`          | the two project-instruction files are byte-identical                    |
-| Unit behaviour                | `make mo-test`                        | selection grammar, upgrade rule, settings I/O, build validation         |
-| Settings stay untouched       | `make mo-test`                        | `--show` writes nothing; a bad `--set` persists nothing                 |
-| A real apm install            | `make mo-test`                        | seven complete skills, and `--skill mo-review` alone with its reference |
+| Scenario                      | Command                                       | Asserts                                                                                                                                                                                                                                                                                                                                                    |
+| ----------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The helper runs               | `make mo-smoke`                               | `--help` and `--show` answer and exit 0, under a throwaway `HOME`                                                                                                                                                                                                                                                                                          |
+| Posture matrices are readable | `node --test tests/provider-posture.test.mjs` | both shells cover kind/path divergence, framing, malformed evidence, inherited state and scan failure, dispatch shadows, ownership-anchored group shutdown before capture reads, unknown-on-unquiesce, launch/temporary-directory races, reentrant signals, and 0/1/2 precedence; the selected campaign tries 25 named guard mutations with zero survivors |
+| The built tree is in sync     | `node tools/build-skills.mjs --check`         | `skills/` byte-matches a fresh build from `src/skills/` + `shared/`                                                                                                                                                                                                                                                                                        |
+| The contract has not diverged | `cmp -s AGENTS.md CLAUDE.md`                  | the two project-instruction files are byte-identical                                                                                                                                                                                                                                                                                                       |
+| Unit behaviour                | `make mo-test`                                | selection grammar, upgrade rule, settings I/O, build validation                                                                                                                                                                                                                                                                                            |
+| Settings stay untouched       | `make mo-test`                                | `--show` writes nothing; a bad `--set` persists nothing                                                                                                                                                                                                                                                                                                    |
+| A real apm install            | `make mo-test`                                | seven complete skills, and `--skill mo-review` alone with its reference                                                                                                                                                                                                                                                                                    |
 
 ## Agent-required — not executed by `make`
 
@@ -175,8 +176,8 @@ run anything, and `mo-qc` does not depend on it.
 
 ## Environment and cleanup
 
-The deterministic scenarios need Node ≥ 22 and Git, and touch nothing outside the
-repository. `mo-models.mjs` writes only `~/.meta-o/models.json`; the tests and
+The deterministic scenarios need Node ≥ 22, Git, Bash and Zsh, and touch nothing
+outside the repository. `mo-models.mjs` writes only `~/.meta-o/models.json`; the tests and
 `make mo-smoke` both point `HOME` at a temporary directory, so the real settings
 file is never read or written by the gate — and a corrupt one cannot make an
 unmodified checkout fail.

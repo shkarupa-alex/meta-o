@@ -100,9 +100,13 @@ dispute goes back to the same session with a second file.
 current state before sending, or the tail end of a previously running turn will
 satisfy your new wait and you will read the wrong answer as the new one.
 
-Start the provider through the user's `PATH` wrapper (`command -v claude codex
-opencode`). An absolute binary silently drops the permission mode, approval
-flags and sandbox settings the user configured.
+Before starting the provider, apply `references/methodology.md §2` to the exact
+launch surface. A TUI pane may be supported while inline or hook launches are not;
+do not transfer the verdict. An interactive login pane may load an alias or a
+`PATH` assembled only by interactive startup files and therefore happen to work.
+Use the verified wrapper or named provider-native posture for this surface. An
+absolute binary behind that mechanism can silently change permission, sandbox,
+environment, prompt or other required fixed launch behaviour.
 
 A worktree is not the default here either. Create one only for a genuinely
 parallel build/run or to isolate a destructive E2E; a review diff reads fine by

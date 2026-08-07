@@ -21,9 +21,13 @@ both would be vague about both.
 ## Precondition
 
 Read the installed Omnigent skill and its `--help`. Every command in these files
-is an example; the installed interface is the syntactic source of truth. Resolve
-the provider CLIs through `PATH` (`command -v`, `which -a`) and never call an
-absolute binary behind the user's wrapper.
+is an example; the installed interface is the syntactic source of truth. Apply
+the interactive-versus-non-interactive provider check in
+`references/methodology.md §2`, including the lookup inside the actual harness;
+an inherited interactive `PATH` is not proof. The verdict belongs to that harness
+surface only, and names either its verified wrapper or its verified
+provider-native posture, including all required fixed launch behaviour. Never
+call an absolute binary behind the proven mechanism.
 
 Before declaring any Omnigent route supported, close the Phase 0 checks in
 `references/omnigent-mechanics.md §3`. A route with an unproven full export is

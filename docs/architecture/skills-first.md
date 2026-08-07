@@ -38,8 +38,10 @@ one fail-closed rule instead of impact analysis nobody can audit.
   contract is the input; a methodology skill would trade implementation
   attention for ritual, and the executor's job is the implementation.
 - **One skill per backend, no shared adapter.** `mo-herdr` and `mo-omnigent` do
-  not call each other and share no executable. Their session semantics differ
-  enough that a single generic prompt would be vague about both — and a generic
-  adapter is exactly the layer this project deleted.
+  not call each other or share an executable backend abstraction. They do carry
+  byte-identical leaf diagnostics such as `mo-posture.sh`; those helpers know
+  nothing about backend sessions. Session semantics differ enough that a single
+  generic prompt would be vague about both — and a generic adapter is exactly
+  the layer this project deleted.
 - **Project-owned manifests, receipts, digests and baselines are created only
   when a real external consumer can be named.** In the baseline there is none.
