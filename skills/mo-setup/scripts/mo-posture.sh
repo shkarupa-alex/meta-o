@@ -24,7 +24,7 @@ usage() {
     'shebang and can load caller state before the script isolates profile output.' \
     'Runtime requires /bin/bash 3.2 or newer, /usr/bin/printf, /usr/bin/false' \
     'and /bin/sleep at those absolute paths. Bash matrices additionally require' \
-    '/usr/bin/env with -0 support.'
+    '/usr/bin/env with -0 support. System-utility PATH must provide mktemp and rm.'
 }
 
 requested_shell=all
@@ -190,7 +190,6 @@ cleanup() {
 }
 
 stop_active_child() {
-  local attempt
   local process_group
   local stop_status=0
   if [[ "$active_child_pid" =~ ^[0-9]+$ && "$active_child_pgid" =~ ^[0-9]+$ ]]; then
@@ -198,20 +197,13 @@ stop_active_child() {
     builtin kill -TERM -- "$process_group" 2>/dev/null || true
     /bin/sleep 0.05
     if builtin kill -0 -- "$process_group" 2>/dev/null; then
-      builtin kill -KILL -- "$process_group" 2>/dev/null || true
+      builtin kill -KILL -- "$process_group" 2>/dev/null || stop_status=1
     fi
+    # KILL cannot be resisted; give every live member time to close its capture
+    # descriptors while the unreaped leader still reserves this PGID.
+    /bin/sleep 0.05
     builtin wait "$active_child_pid" 2>/dev/null || true
-    attempt=0
-    while builtin kill -0 -- "$process_group" 2>/dev/null && [[ $attempt -lt 20 ]]; do
-      builtin kill -KILL -- "$process_group" 2>/dev/null || true
-      /bin/sleep 0.01
-      attempt=$((attempt + 1))
-    done
-    if builtin kill -0 -- "$process_group" 2>/dev/null; then
-      printf 'mo-posture: child process group survived termination: %s\n' \
-        "$active_child_pgid" >&2
-      stop_status=1
-    fi
+    # Never address the numeric PGID after wait releases its ownership anchor.
     active_child_pid=
     active_child_pgid=
   fi
@@ -354,7 +346,8 @@ run_matrix() {
   local matrix_status=0
   local baseline_kinds=()
   local baseline_paths=()
-  local mode mode_key record_file diagnostic_file stdout_file stderr_file mode_status
+  local mode mode_key record_file diagnostic_file stdout_file stderr_file completion_file
+  local mode_status completion_line completion_count
   local field field_count expected_fields malformed provider_index offset
   local name kind path
   local fields=()
@@ -384,14 +377,23 @@ run_matrix() {
     diagnostic_file="$work_directory/$shell_name-$mode_key.diagnostic"
     stdout_file="$work_directory/$shell_name-$mode_key.stdout"
     stderr_file="$work_directory/$shell_name-$mode_key.stderr"
+    completion_file="$work_directory/$shell_name-$mode_key.completion"
     : >"$record_file"
     : >"$diagnostic_file"
+    : >"$completion_file"
 
     launching_child=1
     builtin set -m
-    MO_POSTURE_RECORD_FILE="$record_file" MO_POSTURE_DIAGNOSTIC_FILE="$diagnostic_file" \
-      "$shell_path" "$mode" "$probe" mo-posture "${providers[@]}" \
-      >"$stdout_file" 2>"$stderr_file" </dev/null &
+    (
+      export MO_POSTURE_RECORD_FILE="$record_file"
+      export MO_POSTURE_DIAGNOSTIC_FILE="$diagnostic_file"
+      "$shell_path" "$mode" "$probe" mo-posture "${providers[@]}"
+      measured_shell_status=$?
+      builtin printf '%s\n' "$measured_shell_status" >"$completion_file"
+      # Exit but remain unreaped: the zombie leader reserves this PID/PGID until
+      # the parent has signaled every profile descendant in the group.
+      builtin exit "$measured_shell_status"
+    ) >"$stdout_file" 2>"$stderr_file" </dev/null &
     active_child_pid=$!
     active_child_pgid=$active_child_pid
     builtin set +m
@@ -399,11 +401,23 @@ run_matrix() {
     if [[ "$pending_signal_status" =~ ^[0-9]+$ ]]; then
       exit_on_signal "$pending_signal_status"
     fi
-    builtin wait "$active_child_pid"
-    mode_status=$?
+    while [[ ! -s "$completion_file" ]]; do
+      /bin/sleep 0.01
+    done
+    completion_count=0
+    mode_status=2
+    while IFS= read -r completion_line; do
+      completion_count=$((completion_count + 1))
+      mode_status=$completion_line
+    done <"$completion_file"
+    if [[ $completion_count -ne 1 || ! "$mode_status" =~ ^[0-9]+$ ||
+          $mode_status -gt 255 ]]; then
+      mode_status=2
+    fi
     # The shell can exit while profile-started background descendants still own
     # this process group and the capture descriptors. Quiesce the whole group
-    # before any evidence file is inspected.
+    # before any evidence file is inspected, and reap the ownership anchor only
+    # after no process can still belong to its unreusable PGID.
     stop_active_child || mode_status=2
     emit_noise_summary "$shell_name" "$mode" "$stdout_file" "$stderr_file"
     if [[ -s "$diagnostic_file" ]]; then

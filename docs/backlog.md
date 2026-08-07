@@ -285,15 +285,16 @@ child probe and again in the parent before accepting a record. Removing only the
 child copy can be an equivalent mutant: the parent still returns status 2 for the
 same forged record. Likewise, removing one reap/verification operation can be
 masked by the remaining process-group termination checks. The deterministic test
-therefore calls its 22-mutant campaign selected, not exhaustive, and does not
+therefore calls its 25-mutant campaign selected, not exhaustive, and does not
 inflate its count with mutants whose observable contract is unchanged.
 
 **Practical impact.** The shipped behavior is still covered end to end, including
 both exported-function naming schemes, option-export detection, failed or empty
-`env -0`, absolute paths, status precedence, normal-exit group quiescence, the
-launch window, repeated signal delivery and a TERM-resistant descendant. A
-future reviewer cannot infer that every duplicated internal guard has an
-independently killable black-box mutant merely from the zero-survivor summary.
+`env -0`, absolute paths, status precedence, normal-exit group quiescence before
+capture reads, unknown-on-unquiesce, the launch window, reentrant signal delivery
+and a TERM-resistant descendant. A future reviewer cannot infer that every
+duplicated internal guard has an independently killable black-box mutant merely
+from the zero-survivor summary.
 
 **Next step.** If either validation layer becomes independently observable,
 split its fixture and add layer-specific mutations. Otherwise keep equivalent

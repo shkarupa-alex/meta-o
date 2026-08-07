@@ -534,6 +534,53 @@ signals. Usage uses only Bash builtins, while the execution tool remains the
 owner of the bounded timeout. Deterministic regressions and selected mutants
 cover each of these guards.
 
+### 16. Clarification — owned process groups and behavioral shutdown guards — 2026-08-07
+
+<!-- markdownlint-disable MD013 MD029 -->
+
+> коммить, исправляй, коммить
+>
+> ### High — возможен сигнал чужой переиспользованной process group
+>
+> Evidence: лидер группы reap’ится в shared/scripts/mo-posture.sh:402, после чего stop_active_child посылает TERM сохранённому PGID в shared/scripts/mo-posture.sh:198. После reap PID/PGID уже может быть
+> переиспользован без проверки владения.
+>
+> Impact: при PID wraparound или интенсивном создании процессов read-only диагностика способна завершить чужую process group.
+>
+> Expected fix: сохранять ownership anchor до окончания quiescence либо применять механизм, который не адресует переиспользованный PGID. Если это невозможно в compatibility boundary — явно документировать и
+> экспонировать ограничение.
+>
+> ### Medium — три load-bearing shutdown-инварианта не закреплены поведением
+>
+> Evidence:
+>
+> - Удаление shutdown_started в shared/scripts/mo-posture.sh:223 оставляет весь posture suite зелёным.
+> - Замена stop_active_child || mode_status=2 на || true способна вернуть status=0 с живыми потомками. QC ломается лишь потому, что mutation helper больше не находит исходную строку, а не из-за поведенческого
+>   assertion.
+> - Перенос stop_active_child ниже чтения evidence также оставляет текущую normal-background fixture зелёной: она проверяет потомков только после возврата helper в tests/provider-posture.test.mjs:768.
+>
+> Impact: reentrant shutdown, принятие unquiesced group или возврат гонки чтения evidence могут пройти QC.
+>
+> Expected fix: добавить независимые behavioral mutants для idempotence, unknown-on-unquiesce и порядка «quiesce до первого чтения capture». Исчезновение mutation target не должно считаться доказательством
+> поведения.
+>
+> ### Low — --help всё ещё показывает неполную compatibility boundary
+>
+> Evidence: shared/scripts/mo-posture.sh:25 не упоминает mktemp и rm, используемые в строках 248 и 185. Архитектура утверждает, что usage и README описывают одинаковую границу.
+>
+> Impact: пользователь может выполнить все отображённые prerequisites и всё равно получить неподдерживаемый runtime.
+>
+> Expected fix: добавить в help mktemp и rm из system utility path.
+
+<!-- markdownlint-enable MD013 MD029 -->
+
+Editorial note, 2026-08-07: the measured shell now reports through an unreaped
+process-group leader whose PID/PGID remains owned until every group signal has
+been sent; no numeric PGID is addressed after the anchor is reaped. Independent
+behavioral fixtures and mutants cover reentrant shutdown, unknown-on-unquiesce
+and quiescence before the first capture read. Command usage now names `mktemp`
+and `rm` from the system utility path.
+
 ### What that means for the product, in the user's terms
 
 - the previous generation was **too thick** — the fault was misplaced emphasis,

@@ -124,8 +124,8 @@ function launchWindowScript(root, name, removeGuard = false) {
   const instrumented = mutant(
     root,
     `${name}-instrumented.sh`,
-    '      >"$stdout_file" 2>"$stderr_file" </dev/null &\n    active_child_pid=$!',
-    '      >"$stdout_file" 2>"$stderr_file" </dev/null &\n' +
+    '    ) >"$stdout_file" 2>"$stderr_file" </dev/null &\n    active_child_pid=$!',
+    '    ) >"$stdout_file" 2>"$stderr_file" </dev/null &\n' +
       `    /usr/bin/printf '%s\\n' "$!" >${JSON.stringify(pidFile)}\n` +
       '    builtin kill -TERM "$$"\n' +
       "    active_child_pid=$!",
@@ -142,6 +142,75 @@ function launchWindowScript(root, name, removeGuard = false) {
     ": # mutation: exit immediately inside a critical launch window",
   );
   return { pidFile, script };
+}
+
+function reentrantShutdownScript(root, name, removeGuard = false) {
+  const instrumented = mutant(
+    root,
+    `${name}-instrumented.sh`,
+    "stop_active_child() {\n  local process_group",
+    "stop_active_child() {\n" +
+      "  if [[ ${MO_POSTURE_TEST_REENTRANT:-0} -eq 1 && $shutdown_started -eq 1 ]]; then\n" +
+      "    MO_POSTURE_TEST_REENTRANT=0\n" +
+      '    builtin kill -HUP "$$"\n' +
+      "  fi\n" +
+      "  local process_group",
+  );
+  if (!removeGuard) return instrumented;
+  return mutantFrom(
+    root,
+    name,
+    instrumented,
+    "  if [[ $shutdown_started -eq 1 ]]; then\n    return\n  fi",
+    ": # mutation: allow reentrant shutdown",
+  );
+}
+
+function forcedUnquiescedScript(root, name, ignoreFailure = false) {
+  const instrumented = mutant(
+    root,
+    `${name}-instrumented.sh`,
+    '  return "$stop_status"\n}',
+    "  if [[ ${MO_POSTURE_TEST_UNQUIESCED:-0} -eq 1 ]]; then\n" +
+      "    stop_status=1\n" +
+      "  fi\n" +
+      '  return "$stop_status"\n}',
+  );
+  if (!ignoreFailure) return instrumented;
+  return mutantFrom(
+    root,
+    name,
+    instrumented,
+    "    stop_active_child || mode_status=2",
+    "    stop_active_child || true # mutation: accept unquiesced group",
+  );
+}
+
+function readOrderScript(root, name, moveQuiescence = false) {
+  const instrumented = mutant(
+    root,
+    `${name}-instrumented.sh`,
+    "    fields=()\n    field=",
+    '    : >"${record_file%.records}.reading"\n' +
+      "    /bin/sleep 0.1\n" +
+      "    fields=()\n" +
+      "    field=",
+  );
+  if (!moveQuiescence) return instrumented;
+  const removed = mutantFrom(
+    root,
+    `${name}-removed.sh`,
+    instrumented,
+    "    stop_active_child || mode_status=2",
+    ": # mutation: postpone process-group quiescence",
+  );
+  return mutantFrom(
+    root,
+    name,
+    removed,
+    '    done <"$record_file"',
+    '    done <"$record_file"\n    stop_active_child || mode_status=2',
+  );
 }
 
 function assertRecords(result, shell, expectedStatus, expectedType = /command|file/) {
@@ -255,6 +324,18 @@ test("the posture script and both child probes have valid syntax", () => {
     timeout: 10_000,
   });
   assert.equal(selfCheck.status, 0, selfCheck.stderr);
+});
+
+test("the process-group ownership anchor is reaped after every PGID operation", () => {
+  const source = readFileSync(SCRIPT, "utf8");
+  const start = source.indexOf("stop_active_child() {");
+  const end = source.indexOf("\n}\n\nexit_on_signal()", start);
+  assert.ok(start >= 0 && end > start);
+  const stopFunction = source.slice(start, end);
+  const waitOffset = stopFunction.indexOf('builtin wait "$active_child_pid"');
+  const lastGroupOperation = stopFunction.lastIndexOf('"$process_group"');
+  assert.ok(waitOffset > lastGroupOperation, stopFunction);
+  assert.doesNotMatch(stopFunction.slice(waitOffset), /builtin kill .*process_group/);
 });
 
 test("profile output is summarized as noise and lookup functions cannot shadow builtins", () => {
@@ -844,6 +925,80 @@ test("the launch-window guard captures the child before honoring TERM", () => {
   assert.deepEqual(readdirSync(scratch), []);
 });
 
+test("reentrant shutdown preserves the first signal status", async () => {
+  const { home, root } = fixture();
+  const bin = providerBin(root, "wrapper-bin");
+  const scratch = join(root, "tmp");
+  mkdirSync(scratch);
+  writeZshProfiles(home, bin, { zshenvExtra: "sleep 30" });
+  const script = reentrantShutdownScript(root, "reentrant-shutdown");
+  const child = spawn(script, ["--shell", "zsh"], {
+    cwd: ROOT,
+    env: {
+      ...process.env,
+      HOME: home,
+      MO_POSTURE_TEST_REENTRANT: "1",
+      PATH: `${bin}:/usr/bin:/bin`,
+      TMPDIR: scratch,
+      ZDOTDIR: home,
+    },
+    stdio: "ignore",
+  });
+  const deadline = Date.now() + 5_000;
+  while (!readdirSync(scratch).some((entry) => entry.startsWith("mo-posture."))) {
+    assert.ok(Date.now() < deadline, "reentrant fixture did not create its private directory");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  child.kill("SIGTERM");
+  const outcome = await waitForExit(child);
+  assert.equal(outcome.code, 143, JSON.stringify(outcome));
+  assert.deepEqual(readdirSync(scratch), []);
+});
+
+test("a reported process-group quiescence failure makes the matrix unknown", () => {
+  const { home, root } = fixture();
+  const bin = providerBin(root, "wrapper-bin");
+  writeBashProfiles(home, bin);
+  const script = forcedUnquiescedScript(root, "forced-unquiesced");
+  const result = runMatrix(
+    "bash",
+    {
+      BASH_ENV: join(home, ".bash_env"),
+      HOME: home,
+      MO_POSTURE_TEST_UNQUIESCED: "1",
+      PATH: `${bin}:/usr/bin:/bin`,
+    },
+    [],
+    script,
+  );
+  assert.equal(result.status, 2, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stdout, /MO_POSTURE_MATRIX shell=bash status=2/);
+});
+
+test("process-group quiescence happens before the first evidence read", () => {
+  const { home, root } = fixture();
+  const bin = providerBin(root, "wrapper-bin");
+  writeBashProfiles(home, bin, {
+    profileExtra:
+      '/bin/sh -c \'trap "" HUP TERM; ' +
+      'while [ ! -e "${MO_POSTURE_RECORD_FILE%.records}.reading" ]; do sleep 0.01; done; ' +
+      '/usr/bin/printf "%s\\0%s\\0%s\\0" extra file /tmp/extra >>"$MO_POSTURE_RECORD_FILE"; ' +
+      "exec sleep 30' &",
+  });
+  const script = readOrderScript(root, "read-order");
+  const result = runMatrix(
+    "bash",
+    {
+      BASH_ENV: join(home, ".bash_env"),
+      HOME: home,
+      PATH: `${bin}:/usr/bin:/bin`,
+    },
+    [],
+    script,
+  );
+  assertRecords(result, "bash", 0);
+});
+
 test("two TERM signals to only the runner keep code 143 and stop its descendant group", async () => {
   const { home, root } = fixture();
   const bin = providerBin(root, "wrapper-bin");
@@ -898,6 +1053,78 @@ test("selected mutation campaign reports every tried guard and zero survivors", 
     tried += 1;
     if (!killed) survivors.push(name);
   };
+
+  {
+    const { home, root } = fixture();
+    const bin = providerBin(root, "wrapper-bin");
+    const scratch = join(root, "tmp");
+    mkdirSync(scratch);
+    writeZshProfiles(home, bin, { zshenvExtra: "sleep 30" });
+    const script = reentrantShutdownScript(root, "ignore-shutdown-idempotence.sh", true);
+    const child = spawn(script, ["--shell", "zsh"], {
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        HOME: home,
+        MO_POSTURE_TEST_REENTRANT: "1",
+        PATH: `${bin}:/usr/bin:/bin`,
+        TMPDIR: scratch,
+        ZDOTDIR: home,
+      },
+      stdio: "ignore",
+    });
+    const deadline = Date.now() + 5_000;
+    while (!readdirSync(scratch).some((entry) => entry.startsWith("mo-posture."))) {
+      assert.ok(Date.now() < deadline, "idempotence mutant did not create its private directory");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    child.kill("SIGTERM");
+    const outcome = await waitForExit(child);
+    recordMutation("shutdown-idempotence", outcome.code !== 143);
+  }
+
+  {
+    const { home, root } = fixture();
+    const bin = providerBin(root, "wrapper-bin");
+    writeBashProfiles(home, bin);
+    const script = forcedUnquiescedScript(root, "ignore-unquiesced-status.sh", true);
+    const result = runMatrix(
+      "bash",
+      {
+        BASH_ENV: join(home, ".bash_env"),
+        HOME: home,
+        MO_POSTURE_TEST_UNQUIESCED: "1",
+        PATH: `${bin}:/usr/bin:/bin`,
+      },
+      [],
+      script,
+    );
+    recordMutation("unquiesced-status", result.status !== 2);
+  }
+
+  {
+    const { home, root } = fixture();
+    const bin = providerBin(root, "wrapper-bin");
+    writeBashProfiles(home, bin, {
+      profileExtra:
+        '/bin/sh -c \'trap "" HUP TERM; ' +
+        'while [ ! -e "${MO_POSTURE_RECORD_FILE%.records}.reading" ]; do sleep 0.01; done; ' +
+        '/usr/bin/printf "%s\\0%s\\0%s\\0" extra file /tmp/extra >>"$MO_POSTURE_RECORD_FILE"; ' +
+        "exec sleep 30' &",
+    });
+    const script = readOrderScript(root, "postpone-quiescence.sh", true);
+    const result = runMatrix(
+      "bash",
+      {
+        BASH_ENV: join(home, ".bash_env"),
+        HOME: home,
+        PATH: `${bin}:/usr/bin:/bin`,
+      },
+      [],
+      script,
+    );
+    recordMutation("quiescence-before-read", result.status !== 0);
+  }
 
   {
     const { home, root } = fixture();
@@ -1399,7 +1626,7 @@ test("selected mutation campaign reports every tried guard and zero survivors", 
     const script = mutantAll(
       root,
       "ignore-kill-escalation.sh",
-      'builtin kill -KILL -- "$process_group" 2>/dev/null || true',
+      'builtin kill -KILL -- "$process_group" 2>/dev/null || stop_status=1',
       ": # mutation: omit KILL escalation",
     );
     const child = spawn(script, ["--shell", "zsh"], {
@@ -1431,6 +1658,6 @@ test("selected mutation campaign reports every tried guard and zero survivors", 
     if (descendantSurvived) process.kill(descendantPid, "SIGKILL");
   }
 
-  assert.equal(tried, 22);
+  assert.equal(tried, 25);
   assert.deepEqual(survivors, [], `mutation sweep: tried=${tried} survived=${survivors.length}`);
 });

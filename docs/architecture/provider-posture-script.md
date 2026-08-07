@@ -59,15 +59,20 @@ failed command, an empty stream or incomplete NUL framing returns
 
 The execution tool, not the helper, supplies the bounded timeout. The helper
 disconnects stdin and removes temporary files through a path-guarded cleanup
-trap. Each measured shell starts in its own process group. After normal shell
-exit, the helper terminates and verifies that group before reading any capture,
-so profile-started background descendants cannot race evidence parsing. Signal
-handlers are installed before temporary-directory creation, cover the launch
-window, remain idempotent under repeated delivery, forward TERM to the group,
-escalate to KILL, reap the direct child and verify that the group disappeared
-before cleanup and a defined nonzero exit. This includes ordinary background
-descendants created by a profile, not only the immediate shell PID. Each
-requested shell emits its own summary status.
+trap. Each measured shell starts inside a process-group leader that reports the
+shell status and exits but remains unreaped. That zombie leader is the ownership
+anchor: its PID, and therefore its PGID, cannot be reused while the parent sends
+TERM/KILL and waits for live members to close their capture descriptors. The
+leader is reaped only after the last PGID operation, and the numeric PGID is
+never addressed afterwards.
+
+Normal completion quiesces the group before reading any capture, so
+profile-started background descendants cannot race evidence parsing. Failure to
+complete that shutdown makes the mode unknown. Signal handlers are installed
+before temporary-directory creation, cover the launch window, remain idempotent
+under repeated delivery and preserve the first signal's defined exit status.
+This includes ordinary background descendants created by a profile, not only
+the immediate shell PID. Each requested shell emits its own summary status.
 
 ## Rejected
 
