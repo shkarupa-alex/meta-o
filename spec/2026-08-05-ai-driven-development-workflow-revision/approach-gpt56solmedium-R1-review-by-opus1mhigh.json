@@ -1,0 +1,66 @@
+{
+  "target_id": "proposal-1",
+  "approval_score": 6,
+  "would_adopt": false,
+  "summary": "Architecturally the right answer and unusually disciplined about deletion: the candidate-commit rule elegantly replaces snapshot digests/attestations/receipts, the no-executor-skill decision is genuinely implemented rather than asserted, the persistent-session path is honestly labeled weaker than native /goal, and the mature-tooling choices (Import Linter, Interrogate, built-in ESLint rules) are well-founded. Its Herdr claims are verbatim-accurate against the installed 0.8.0 CLI. However I broke several load-bearing pieces by probing the route layer the proposal never examined: (1) its reviewer-output fallback — asking a reviewer to re-export its previous message 'verbatim' — is lossy regeneration, not retrieval, reproducing the exact silent-truncation defect the task forbids, when verified on-disk transcripts (~/.codex/sessions/**/rollout-*.jsonl, ~/.claude/projects/**/*.jsonl) provide an authoritative non-generative source that also unifies all three backends; (2) goal activation is verified by screen-scraping the Codex TUI on the alternate screen the proposal itself proves is unrecoverable, while ~/.codex/goals_1.sqlite:thread_goals exposes objective+status directly, answering Q24 without any new artifact; (3) the capability tables omit the mandated Claude/Codex/OpenCode route axis and therefore mark as 'unavailable' token/last-turn data that thread_goals actually provides, and present uninstalled-Paseo capabilities as 'Available' rather than 'inferred'; (4) the goal-granularity choice rejects a feature-level goal without noticing native paused status and thread_goal_continuation_deferrals; (5) the sole helper justifying architecture Level 2 duplicates the existing ~/.codex/models_cache.json and its successor rule cannot function on the real catalog (gpt-5.6-sol vs -sol-wm vs -terra vs -luna supply no lineId). Also: two-PASS-on-one-revision has no convergence rule, mo-e2e's exit-2/AGENT_REQUIRED sentinel is a re-introduced machine protocol with no named consumer and unclear mo-qc interaction, adopt-project and the nine quality/*.mjs scripts lack per-component audit verdicts, and the mandated three-level comparison is thin on its seven required dimensions. These are amendments rather than a redesign, but three touch hard requirements and must be fixed before this becomes the authoritative spec.",
+  "phase": "approach-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "complete reviewer output retrieval",
+      "description": "The Herdr fallback instructs the reviewer to export its previous message 'verbatim' to a Markdown file. An LLM regenerates rather than retrieves its own prior output, and after compaction will silently paraphrase, drop caveats and compress evidence. This is the same class of silent lossy substitution the task forbids ('Нельзя молча считать truncated tail полным результатом'), but harder to detect because it arrives as a file. Verified alternative overlooked: the harness's own on-disk transcripts (~/.codex/sessions/<Y>/<M>/<D>/rollout-*.jsonl with response_item/event_msg records; ~/.claude/projects/<slug>/<uuid>.jsonl) are authoritative and non-generative, and being route-level rather than multiplexer-level they collapse three backend-specific retrieval designs into one.",
+      "required_change": "Make the primary retrieval mechanism the route's own transcript file, resolved via session/thread identity from the backend. Add write-verdict-to-file-first as the reviewer convention so retrieval is correct by construction. Demote 'ask the agent to re-export' to a last resort and explicitly label it as lossy regeneration, not verbatim retrieval."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "goal activation verification",
+      "description": "Goal activation is confirmed by reading 'visible goal UI/status' in the Codex TUI, i.e. the alternate screen the proposal elsewhere proves cannot be reliably read; for Paseo it relies on an unverified native timeline/UI. Consequently section 21 downgrades Herdr /goal to 'needs a disposable capability test; use the weaker fallback until confirmed'. Verified: ~/.codex/goals_1.sqlite table thread_goals(thread_id, goal_id, objective, status IN active|paused|blocked|usage_limited|budget_limited|complete, token_budget, tokens_used, time_used_seconds, updated_at_ms) is queryable native state that answers Q24's exact wording without a new goal.json, FSM or proxy CLI.",
+      "required_change": "Verify and confirm goal activation from the harness's native goal store (thread_goals for Codex), not from terminal/UI scraping. Remove the unnecessary fallback downgrade for Herdr+Codex. Also note the documented 'herdr agent prompt --wait does not track turns' caveat where premature-idle detection depends on it."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "per-backend capability tables",
+      "description": "Section 4.2 of the task mandates analysis per backend AND per Claude/Codex/OpenCode route; the tables have only a backend axis. As a result 'Context fill', 'Last-turn timestamp' and consumption data are marked unavailable/inferred and the no-cache-tracker conclusion is reached from a false premise, although thread_goals supplies tokens_used, token_budget, time_used_seconds and updated_at_ms. Separately, paseo is not installed on the target machine (no version is cited for it, unlike Herdr 0.8 and Omnigent 0.6), yet its cells read 'Available' for session status, full transcript, last-turn timestamp and compaction signals; the Omnigent 'session export JSONL' primitive is likewise unconfirmed from its CLI help.",
+      "required_change": "Add the route dimension and re-label every cell honestly as available (state at which layer) | inferred (state the source) | unavailable. Mark all Paseo cells inferred (docs-only, CLI not installed) and mark Omnigent transcript export inferred until confirmed. Re-derive the cache/compaction recommendation from the corrected table."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "model helper / architecture level justification",
+      "description": "The sole surviving helper is what distinguishes architecture Level 2 from Level 1, justified as a multi-SDK dedup/lineage/cache algorithm. For the Codex route discovery is reading the existing ~/.codex/models_cache.json (fetched_at, etag, client_version, 9 models with slug/display_name/supported_reasoning_levels), so ~/.meta-o/model-catalog.json duplicates a native cache. The suggestSuccessors rule requires an explicitly set lineId plus a strictly newer release, but the real catalog supplies no lineId and contains gpt-5.6-sol, gpt-5.6-sol-wm, gpt-5.6-terra, gpt-5.6-luna alongside gpt-5.5/5.4 — so the rule either needs an unpriced hand-maintained lineage map or degrades permanently to AMBIGUOUS_LINEAGE and never fires.",
+      "required_change": "Read native model caches directly from the skill instead of re-caching them; restrict code to successor detection only. Define a lineage rule the real catalog supports (silent suggestion only for pure version increments within an identical slug suffix; user confirmation for any suffix change) and price the maintenance cost. If only that remains, state plainly that the architecture is effectively Level 1."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "review convergence and mo-qc/mo-e2e contract",
+      "description": "Two PASS on one revision plus full re-verification after each fix admits a livelock where each revision surfaces fresh findings, with no convergence rule and no bounded escalation — contrary to the human-time-over-tokens principle. Separately, e2e.json and the QC manifest are deleted for lacking a consumer, yet AGENT_REQUIRED plus exit code 2 is introduced as a machine contract with no named consumer, and the proposal never states whether mo-qc depends on mo-e2e (if it does, standard make semantics fail every QC run in agent-E2E projects).",
+      "required_change": "Add a convergence rule (after round N, non-blocking findings route to docs/todo.md and the candidate ships). State explicitly that mo-qc must not depend on an agent-required mo-e2e, and either name the consumer of the exit-2 sentinel or drop it in favour of the agent reading full output."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "tooling audit and variant comparison completeness",
+      "description": "skills/adopt-project receives no keep/replace/delete/defer verdict (only adoption-manifest.json does). 'Project QC helpers: Mostly delete' is not a per-component decision for the nine existing quality/*.mjs scripts (bootstrap, code-health, format-check, import-graph, lint, purpose-check, run-qc, run-tests, verify-e2e-metadata). The mandated three-level architectural comparison elaborates the seven required dimensions (user flow, skills/scripts, recovery, review/E2E, non-standard projects, maintenance cost, lost guarantees) only for the chosen level.",
+      "required_change": "Add explicit verdicts for adopt-project and each quality/*.mjs script, and expand the three-level comparison to cover all seven required dimensions for each level."
+    }
+  ],
+  "assumptions": [
+    "The paseo CLI being absent from this machine reflects the actual target environment rather than a temporary uninstall, so Paseo claims must be treated as documentation-only until probed.",
+    "Reading ~/.codex and ~/.claude state files is an acceptable methodology mechanism, since it consumes native harness state read-only and introduces no new artifact or protocol.",
+    "goals_1.sqlite and the rollout transcript layout are current-version implementation details that a skill must re-probe rather than hardcode; I treat them as evidence that the capability exists, not as a stable public API.",
+    "The zero-byte approach-opus1mhigh-R0-proposal.md corresponds to proposal-2, so its submitted text is a progress note rather than a truncated proposal."
+  ],
+  "round": 1,
+  "reviewer": "opus1mhigh",
+  "judge": {
+    "slug": "opus1mhigh",
+    "model": "opus[1m]",
+    "route": "claude-agent-sdk",
+    "effort": "high"
+  }
+}

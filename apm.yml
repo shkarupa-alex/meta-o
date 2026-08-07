@@ -1,0 +1,17 @@
+# Package manifest for apm. It sits at the repository root because apm validates
+# the exact directory it is given, and the root is what an install resolves:
+#
+#   apm install <owner>/meta-o
+#   apm install <owner>/meta-o --skill mo-review
+#
+# The installable tree is `skills/`, built by `make skills` from `src/skills/`
+# plus the single-owner files in `shared/`, and committed. `npx skills add` needs
+# no manifest at all; this file exists for apm.
+name: meta-o
+version: 0.2.0
+type: skill
+description: >-
+  Skills-first agentic development workflow: one feature from spec to a
+  verified candidate commit over Herdr or Omnigent sessions, with two
+  independent reviews and no workflow engine of its own.
+license: MIT

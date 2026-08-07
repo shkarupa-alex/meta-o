@@ -1,0 +1,19 @@
+// Markdown lint for a project whose product is Markdown.
+//
+// Rules are relaxed only where the default fights the content rather than the
+// quality: 100 columns instead of 80 because tables and command lines need it,
+// and duplicate headings are allowed across sections because a reference
+// document legitimately repeats "Evidence" or "Why".
+{
+  "globs": ["**/*.md"],
+  "ignores": ["node_modules/**", "skills/**", "spec/**", "docs/references/**"],
+  "config": {
+    "default": true,
+    "MD013": { "line_length": 100, "code_blocks": false, "tables": false },
+    // Makefile snippets are tab-indented by language, not by preference.
+    "MD010": { "code_blocks": false },
+    "MD024": { "siblings_only": true },
+    "MD033": false,
+    "MD041": false,
+  },
+}

@@ -1,0 +1,110 @@
+{
+  "target_id": "spec-review",
+  "approval_score": 7,
+  "would_adopt": false,
+  "summary": "Спецификация стала значительно сильнее: она действительно удаляет workflow engine, восстанавливает обязательный Herdr agent-read contract, разделяет backend releases, уточняет candidate identity, reviewer independence, knowledge sync, E2E, privacy и migration. Однако implementation-ready статус пока преждевременен. Алгоритм persistence ошибочно назван CAS, lossless handoff не доказан, Herdr scrolling не фиксирует terminal geometry, композиция mo-review/backend skills не определена, а capability fixtures рискуют стать новой custom suite. Дополнительно потеряны несколько обязательных деталей reuse, model discovery и mo-setup. После устранения этих gaps архитектуру можно принимать без возвращения к FSM или adapter layer.",
+  "phase": "spec-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Model settings persistence",
+      "description": "Read-check-rename sequence is not atomic compare-and-swap; concurrent writers can both pass the check and overwrite each other.",
+      "required_change": "Specify honest single-writer/last-writer-wins semantics or add an atomic lock/exclusive-create mechanism, and identify the component responsible for writes."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Reviewer findings transport",
+      "description": "Three marker tokens and a byte-length report do not prove that the complete Markdown payload was transferred losslessly, and one 60 KiB fixture does not establish transport capacity.",
+      "required_change": "Define byte-exact end-to-end qualification over adversarial payloads and multiple sizes up to failure; distinguish argv, API-field and context limits."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Herdr full-turn retrieval",
+      "description": "The overlap algorithm does not freeze terminal geometry or define ANSI, Unicode, wrapping and repaint normalization, so rendered windows may not form a stable sequence.",
+      "required_change": "Add fixed geometry, resize/repaint detection, row normalization and corresponding fixtures; justify or derive overlap size."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Skill architecture",
+      "description": "mo-review is said to require and delegate execution to another skill, but no skill-composition or ownership protocol defines actor creation, result retrieval and return of control.",
+      "required_change": "Define a concrete textual composition contract, preferably with the selected backend skill owning sessions and applying the mo-review protocol."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Capability qualification",
+      "description": "The proposed TypeScript fixture runner, evidence schema and matrix pipeline recreate a custom capability framework without timeout, retry, flake, cost, version-expiry or helper-proof contracts.",
+      "required_change": "Specify these operational contracts and justify automation separately, or begin with native/manual fixtures and automate only demonstrated repetition."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Original-task completeness",
+      "description": "Mandatory separate-context reuse execution, detailed registry/GitHub search semantics, model-history windows/dedup and pre-apply mo-setup diff are absent or weakened.",
+      "required_change": "Restore these requirements explicitly in the normative lifecycle and acceptance criteria."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Security boundaries",
+      "description": "Fetched URL content can reach highly permissive provider wrappers without a complete SSRF, prompt-injection and authority-separation contract.",
+      "required_change": "Specify DNS/IP validation across redirects, resource-expansion limits and that fetched content is untrusted task data that cannot override user/project authority."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Project instructions",
+      "description": "Workflow-specific spec-read-only and no-push rules are proposed as permanent AGENTS.md content, potentially affecting unrelated project work.",
+      "required_change": "Move run-specific restrictions into the goal/task envelope unless the project explicitly adopts them as permanent conventions."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Review convergence",
+      "description": "The three-round limit depends on an undefined candidate lineage and cannot be reconstructed reliably after restart without guessing or hidden state.",
+      "required_change": "Define a stateless feature-cycle identity and reconstruction rule, or make the bound explicitly session-local without claiming durable enforcement."
+    }
+  ],
+  "non_blocking_findings": [
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "Git branches",
+      "description": "Feature branch slug collision and existing-branch conflict behavior are unspecified.",
+      "required_change": "Add deterministic collision handling."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "Standalone artifacts",
+      "description": "Single-file artifact review has no size or context-admission limit.",
+      "required_change": "Add a fail-closed size/context rule."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "Python QC",
+      "description": "The Python profile lists candidates but does not select a greenfield default or minimum configuration.",
+      "required_change": "Provide a small default profile and fallback selection table."
+    }
+  ],
+  "assumptions": [
+    "The superseding addendum and the pasted Specification Under Review are authoritative where historical materials conflict.",
+    "Herdr 0.8 and Omnigent 0.6 capabilities match the version-qualified facts recorded in the specification and previously inspected local interfaces.",
+    "Backend-skill dependency currently means textual skill composition rather than a native skill RPC mechanism.",
+    "No repository or external-service modifications were authorized or performed."
+  ],
+  "round": 3,
+  "reviewer": "gpt56solmedium",
+  "judge": {
+    "slug": "gpt56solmedium",
+    "model": "gpt-5.6-sol",
+    "route": "codex-sdk",
+    "effort": "medium"
+  }
+}

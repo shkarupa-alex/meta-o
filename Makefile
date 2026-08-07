@@ -1,60 +1,60 @@
-# §M-MAKEFILE — meta-o's own quality contract.
+# meta-o's own quality contract.
 #
-# The project eats the contract it defines: `make qc` is the only authoritative
-# gate, it is non-mutating, and it aggregates every gate declared in
-# .quality/qc-manifest.json rather than a list maintained here in parallel.
+# The project eats the contract it prescribes: `make mo-qc` is the one
+# authoritative gate, it rewrites nothing, and every gate under it is a mature
+# tool or a plain shell comparison rather than a checker this project wrote.
 
-.PHONY: bootstrap build format lint typecheck test smoke e2e qc verify-e2e-metadata install clean
-.PHONY: format-check
+.PHONY: mo-qc mo-lint mo-test mo-smoke mo-e2e skills skills-check format contract
 
-# A gate runs in a fresh detached worktree, which has no node_modules and no
-# dist. This borrows the first from the checkout the gate was launched from and
-# builds the second here; both are git-ignored, so the snapshot is untouched.
-bootstrap:
-	@node quality/bootstrap.mjs
+# The authoritative gate.
+mo-qc: mo-lint contract skills-check mo-test mo-smoke
+	@echo "mo-qc ok"
 
-build: bootstrap
-	npx --no-install tsc -p tsconfig.json
+# markdownlint and prettier judge; `make format` is the half that rewrites.
+mo-lint:
+	npx --no-install markdownlint-cli2
+	npx --no-install prettier --check .
+	node --check shared/scripts/mo-models.mjs
+	node --check tools/build-skills.mjs
 
-# `format` rewrites, `format-check` judges. §40 asks for both, and only the
-# judging half may run inside `qc`.
 format:
-	npx --no-install prettier --write "src/**/*.mts" "tests/**/*.mts" "quality/*.mjs"
+	npx --no-install prettier --write .
 
-format-check:
-	node quality/format-check.mjs
+# AGENTS.md and CLAUDE.md must not drift: each provider reads its own file, so a
+# divergence means two providers silently working to different contracts.
+contract:
+	@cmp AGENTS.md CLAUDE.md && echo "project instructions identical"
 
-lint:
-	node quality/lint.mjs
+# skills/ is committed because the package managers install what the repository
+# has committed, so it has to be provably a build of src/skills/ + shared/ and
+# not hand-edited.
+skills-check:
+	node tools/build-skills.mjs --check
 
-typecheck:
-	npx --no-install tsc -p tsconfig.tests.json
+skills:
+	node tools/build-skills.mjs
 
-test: build
-	node quality/run-tests.mjs
+mo-test:
+	node --test "tests/*.test.mjs"
 
-# The cheap "does it boot" check: the CLI must load and answer.
-smoke: build
-	node dist/cli/meta-o.mjs help > /dev/null && echo "smoke ok"
+# Does the one shipped helper boot and answer? Under a throwaway HOME, because
+# this gate judges the repository: a settings file the developer happens to have
+# — or a corrupt one — must not decide whether an unmodified checkout is green.
+mo-smoke:
+	@home=$$(mktemp -d) && \
+		HOME=$$home node shared/scripts/mo-models.mjs --help > /dev/null && \
+		HOME=$$home node shared/scripts/mo-models.mjs --show > /dev/null && \
+		rm -rf $$home
+	@echo "mo-smoke ok"
 
-# meta-o's E2E entry point is its own acceptance suite, which drives the real
-# CLI against real repositories — and, for E2E-QC-TEMPLATES-01, the Python
-# starter profile against generated ones. See docs/architecture/e2e.md.
-e2e: build
-	node quality/run-tests.mjs
-
-# Proves the completion metadata commit stayed inside its permitted field.
-# Rewrites nothing; run it on the metadata commit itself.
-verify-e2e-metadata:
-	node quality/verify-e2e-metadata.mjs
-
-# The authoritative gate. Writes its machine-readable result to
-# $META_O_QC_RESULT when the orchestrator set it.
-qc: bootstrap
-	node quality/run-qc.mjs
-
-install:
-	./install.sh
-
-clean:
-	rm -rf dist
+# Agent-required E2E pretends nothing. It says what a human or an agent must run,
+# and exits 2 so no caller can mistake it for a pass. mo-qc does not depend on it.
+mo-e2e:
+	@echo "AGENT_REQUIRED: not executed"
+	@echo
+	@echo "Docs:      docs/e2e.md, docs/phase-0-fixtures.md"
+	@echo "Fixtures:  H (Herdr retrieval), O (Omnigent), G (native goal), P (PATH/wrappers),"
+	@echo "           W (watchdog), M (models), I (install), R (recovery/review), Q (profiles)"
+	@echo "Run:       work through docs/phase-0-fixtures.md and record evidence per row"
+	@echo "Cleanup:   stop every provider session you started, including on failure"
+	@exit 2

@@ -1,0 +1,10 @@
+# skills/ is generated; build-skills.mjs --check owns its correctness, and
+# reformatting a copy would break the byte-identity that check depends on.
+skills/
+node_modules/
+
+# Council transcripts and proposals are historical artefacts, kept verbatim.
+spec/
+
+# Imported reference material, kept as received.
+docs/references/
