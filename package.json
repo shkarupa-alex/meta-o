@@ -1,20 +1,23 @@
 {
   "name": "meta-o",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "AI-driven development workflow: orchestration skills plus dependency-free .mjs helpers",
-  "license": "UNLICENSED",
+  "description": "Skills-first agentic development workflow: seven mo-* skills, no workflow engine",
+  "license": "MIT",
   "engines": {
     "node": ">=22.6"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test 'tests/**/*.test.mts'"
+    "skills": "node tools/build-skills.mjs",
+    "lint": "markdownlint-cli2 && prettier --check .",
+    "format": "prettier --write .",
+    "test": "node --test \"tests/*.test.mjs\""
   },
   "devDependencies": {
-    "@types/node": "^24.10.1",
-    "typescript": "^5.9.3"
+    "js-yaml": "^4.3.1",
+    "markdown-it": "^14.3.0",
+    "markdownlint-cli2": "^0.18.1",
+    "prettier": "^3.9.6"
   }
 }

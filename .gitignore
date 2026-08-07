@@ -1,10 +1,12 @@
-# Build output and dependencies are reproducible from the sources; the install
-# scripts copy dist/ but never expect it to be committed.
-# Written without a trailing slash on purpose: `make bootstrap` borrows
-# node_modules as a *symlink* in a gate worktree, and a directory-only pattern
-# does not match one — so the isolated checkout read as dirty.
+# skills/ is deliberately NOT ignored: apm and `npx skills` install the skills from
+# what this repository has committed, so the built tree has to be present in it.
+# `make mo-qc` proves skills/ byte-matches a fresh build of src/skills/ + shared/,
+# which is what keeps a committed build artefact honest.
 node_modules
-dist
 .DS_Store
-__pycache__/
-*.pyc
+
+# Omnigent points a Codex harness at a throwaway CODEX_HOME inside the working
+# directory, so this appears during any run that uses that route and is gone when
+# the session ends. Ignored because a Phase 0 fixture run should not have to
+# remember to delete it before committing.
+.codex-tmp/

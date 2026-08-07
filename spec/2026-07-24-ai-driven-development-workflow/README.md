@@ -1,6 +1,14 @@
 # AI-driven development workflow — комплект спецификации
 
-## Authoritative documents
+> **SUPERSEDED — 2026-08-05.** Этот комплект больше не нормативен. Его заменяет
+> [`spec/2026-08-05-ai-driven-development-workflow-revision/`](../2026-08-05-ai-driven-development-workflow-revision/README.md).
+> Реализация этого комплекта (public `meta-o` CLI, FSM, state store, session
+> adapters, snapshot/attestation, installer scripts, семь `*-feature`/`*-project`
+> skills) удалена; она остаётся только в истории Git до коммита «doc: new thin
+> spec». Каталог сохранён как история решений и как источник формулировок,
+> которые новая спека переиспользует.
+
+## Authoritative documents (historical)
 
 1. [Финальная master-spec](./2026-07-24-ai-driven-development-workflow-council-brainstorm.md)
 2. [00 — Master workflow](./00-master-workflow.md)
@@ -11,8 +19,9 @@
 7. [50 — Optional multi-project watchdog](./50-watchdog.md)
 8. [Decision ledger](./decision-ledger.md)
 
-Master-spec имеет приоритет при расхождении. Шесть numbered-файлов — её
-implementation-ready decomposition.
+Внутри этого комплекта master-spec имела приоритет при расхождении, а шесть
+numbered-файлов были её implementation-ready decomposition. При расхождении с
+ревизией 2026-08-05 приоритет у ревизии.
 
 Остальные файлы каталога — исходные proposals, cross-reviews, pre-mortem,
 промежуточный synthesis и audit trail консилиума. В частности,
