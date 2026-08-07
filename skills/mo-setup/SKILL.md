@@ -86,18 +86,37 @@ its reason, its practical impact and the next step if one is known.
 
 ## 3. Provider wrappers, trust and hooks
 
-```bash
-command -v claude codex opencode
-which -a claude codex opencode
-```
+Read `references/methodology.md §2` step 4 first. It owns the shell-mode probes,
+credential-safe launch-mechanism inspection, `unknown` rules and surface-scoped
+verdict. This section owns only remediation.
 
-Check that the resolved user wrappers:
+Judge `PATH` by the executable that resolves first, never by whether a directory
+is present somewhere in the list. If a wrapper exists but loses precedence,
+inspect the actual startup order: the **last** applicable `PATH` prepend wins.
+Place the wrapper-directory prepend after every other `PATH` initializer in each
+startup file read by a planned surface. Those initializers may include
+`brew shellenv`, `mise` / `asdf` / `pyenv` initialization, an explicit
+`path_helper`, or a direct assignment. Cover every relevant shell mode; for
+example, ordinary and login zsh may require separate final prepends, and a
+`.zprofile` prepend must follow later lines such as `brew shellenv`, not merely
+follow `/etc/zprofile`. Re-run the methodology's full mode matrix and the actual
+launch surface; do not infer success from a file edit.
 
-- pass all arguments through (`"$@"` or the equivalent);
-- give Claude the intended permission mode;
-- give Codex the intended approval and sandbox flags;
-- are what actually gets invoked — no orchestrator may call an absolute provider
-  binary behind `PATH`'s back.
+If an alias or function carries required arguments, obtain only the redacted
+definition described by the methodology. Propose an executable wrapper that runs
+the real provider binary, supplies every required fixed launch behaviour named by
+the methodology and passes all caller arguments through (`"$@"` or equivalent),
+or a named provider-native configuration that supplies the same behaviour. Keep
+protected environment and prompt values in their existing secure source; never
+copy them into displayed output or a new wrapper. Name every intentional
+difference before proposing a supported verdict.
+
+The wrapper and shell profiles live outside the repository. Show a redacted but
+otherwise exact wrapper/profile diff or ready-to-run commands and ask for
+explicit confirmation before writing either one. If the user declines, make no
+personal-configuration change: keep the affected launch surfaces `unsupported`
+where failure is proven and `unknown` otherwise, and record the gap in the
+project's `docs/backlog.md` with its impact and next remediation step.
 
 The local wrappers on the author's machine live in `~/bin/claude` and
 `~/bin/codex`. They are a reference for that machine only; absolute paths never

@@ -229,31 +229,29 @@ does not pass.
 
 ## P — `PATH` and wrappers
 
-These are the only fixtures that need no live session, so they are the only ones a
-helper can close by running commands — and they say nothing about any other
-machine. The wrapper rows are **per provider**, like §H, because two routes out of
-three is not a pass in a project whose central rule is that a partial verdict is
-not a verdict.
+P1–P3 inspect local wrapper artefacts plus a non-authoritative parent-shell path.
+P4 records launch posture per provider and surface using
+`shared/references/methodology.md §2` step 4; its safety, shell-mode and `unknown`
+rules are not repeated here. Every row says nothing about another machine.
 
-| id  | Fixture                              | Passes when                                                   | Evidence                                                                                                             | Date       |
-| --- | ------------------------------------ | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------- |
-| P1  | `command -v claude codex opencode`   | all intended providers resolve                                | `/Users/alex/bin/claude`, `/Users/alex/bin/codex`, `/opt/homebrew/bin/opencode`; `herdr` and `omnigent` also resolve | 2026-08-06 |
-| P2a | Claude: the first hit is a wrapper   | `which -a claude` finds the user's script before any binary   | `~/bin/claude`, then `/opt/homebrew/bin/claude`                                                                      | 2026-08-06 |
-| P2b | Codex: the first hit is a wrapper    | `which -a codex` finds the user's script before any binary    | `~/bin/codex`, then `/opt/homebrew/bin/codex`                                                                        | 2026-08-06 |
-| P2c | OpenCode: the first hit is a wrapper | `which -a opencode` finds the user's script before any binary | **open** — the only hit is `/opt/homebrew/bin/opencode`; there is no wrapper on this machine                         |            |
-| P3a | Claude wrapper pass-through          | `"$@"` or equivalent; permission/sandbox flags intact         | `exec … --dangerously-skip-permissions --append-system-prompt … "$@"`                                                | 2026-08-06 |
-| P3b | Codex wrapper pass-through           | same                                                          | `exec … --dangerously-bypass-approvals-and-sandbox "$@"`                                                             | 2026-08-06 |
-| P3c | OpenCode wrapper pass-through        | same                                                          | **open** — blocked by P2c; there is no wrapper to inspect                                                            |            |
+| id  | Fixture                           | Passes when                                                                                                                      | Evidence                                                                                                                                                                                                                                                                                                         | Date       |
+| --- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| P1  | Parent-shell path-only diagnostic | all intended providers resolve; this row supports no surface                                                                     | safe `whence -p`: `/Users/alex/bin/claude`, `/Users/alex/bin/codex`, `/opt/homebrew/bin/opencode`; the parent already carries `~/bin`                                                                                                                                                                            | 2026-08-07 |
+| P2a | Claude wrapper file               | an executable user wrapper exists and targets the real provider; this row does not prove backend resolution                      | `~/bin/claude` targets `/opt/homebrew/bin/claude`                                                                                                                                                                                                                                                                | 2026-08-07 |
+| P2b | Codex wrapper file                | same                                                                                                                             | `~/bin/codex` targets `/opt/homebrew/bin/codex`                                                                                                                                                                                                                                                                  | 2026-08-07 |
+| P2c | OpenCode wrapper file             | same                                                                                                                             | **open** — there is no wrapper on this machine                                                                                                                                                                                                                                                                   |            |
+| P3a | Claude wrapper fixed behaviour    | real target, caller pass-through and every required fixed option/environment/prompt property, inspected without protected values | redacted structure only: `exec … --dangerously-skip-permissions --append-system-prompt [REDACTED: private prompt] … "$@"`                                                                                                                                                                                        | 2026-08-07 |
+| P3b | Codex wrapper fixed behaviour     | same                                                                                                                             | redacted structure only: `exec … --dangerously-bypass-approvals-and-sandbox "$@"`; no additional required protected value recorded                                                                                                                                                                               | 2026-08-07 |
+| P3c | OpenCode wrapper fixed behaviour  | same                                                                                                                             | **open** — blocked by P2c; there is no wrapper to inspect                                                                                                                                                                                                                                                        |            |
+| P4a | Claude surface posture            | every planned surface has its own full evidence; `unknown` keeps the row open                                                    | canonical matrix: zsh exits 1 — `-lc` finds `/opt/homebrew/bin/claude` after `~/.zprofile` runs `brew shellenv`, while `-lic` / `-c` / `-ic` find the wrapper; bash exits 0 with the wrapper in all four modes; Herdr pane, hook and backend surfaces are **unknown** because no lookup was captured inside them | 2026-08-07 |
+| P4b | Codex surface posture             | same                                                                                                                             | canonical matrix: zsh exits 1 with the same mode split as P4a; bash exits 0 with the wrapper in all four modes; Herdr pane, hook and backend surfaces are **unknown** because no lookup was captured inside them                                                                                                 | 2026-08-07 |
+| P4c | OpenCode surface posture          | same                                                                                                                             | both canonical matrices find only `/opt/homebrew/bin/opencode` in all four modes; no named native posture is verified and every actual launch surface remains **unknown**                                                                                                                                        | 2026-08-07 |
 
-P2c and P3c are **open**, not a qualified pass, so the OpenCode route stays
-unsupported for the gate these rows feed. What that means in a run: nothing in
-`PATH` carries the user's permission or sandbox posture there, so it comes from
-OpenCode's own configuration or from nowhere, and an orchestrator says the wrapper
-is absent instead of reporting "wrappers verified". Two ways to close them, both
-requiring work nobody has done: add a wrapper, or change the criterion to "a
-wrapper **or** a named native configuration" and then actually verify that
-configuration — reading `opencode.json`/`~/.config/opencode/` and recording which
-key sets the posture.
+P2a/P2b and P3a/P3b prove good wrapper files and their redacted fixed behaviour,
+not that any actual launch surface finds them first. A shell mode that resembles
+a Herdr login pane is still only diagnostic evidence; P4 stays open until the
+lookup is captured inside the pane, hook or harness itself. `mo-setup §3` owns
+remediation; declined or incomplete work is recorded in `docs/backlog.md`.
 
 The claude wrapper also injects an `--append-system-prompt`. Any executor started
 through it inherits that instruction, which is worth knowing when a reviewer

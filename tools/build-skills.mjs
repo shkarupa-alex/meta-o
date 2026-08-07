@@ -46,22 +46,28 @@ const OUTPUT = join(ROOT, "skills");
  *
  * Every entry is a deliberate decision about standalone installability:
  * `mo-review` carries the purpose contract because a direct review is its
- * headline use case and it must not depend on `mo-setup` being installed too.
+ * headline use case and it must not depend on `mo-setup` being installed too;
+ * `mo-setup` carries the methodology because provider diagnosis has one owner
+ * even though setup owns the personal-configuration remediation.
  */
 const SHARED_PLAN = {
   "mo-herdr": [
     ["references/methodology.md", "references/methodology.md"],
     ["scripts/mo-models.mjs", "scripts/mo-models.mjs"],
+    ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],
   ],
   "mo-omnigent": [
     ["references/methodology.md", "references/methodology.md"],
     ["scripts/mo-models.mjs", "scripts/mo-models.mjs"],
+    ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],
   ],
   "mo-review": [
     ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
   ],
   "mo-setup": [
+    ["references/methodology.md", "references/methodology.md"],
     ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
+    ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],
   ],
 };
 

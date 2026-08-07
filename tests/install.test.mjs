@@ -13,7 +13,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { after, test } from "node:test";
@@ -110,6 +110,11 @@ test("apm installs all seven skills with every file they reference", { skip: noA
   );
   const owner = readFileSync(join(ROOT, "shared", "references", "methodology.md"));
   assert.ok(shipped.equals(owner));
+
+  for (const skill of ["mo-herdr", "mo-omnigent", "mo-setup"]) {
+    const posture = join(installed.directory, skill, "scripts", "mo-posture.sh");
+    assert.notEqual(statSync(posture).mode & 0o111, 0, `${skill} posture probe is not executable`);
+  }
 
   // The authored tree lives under `src/`; discovering it too would install seven
   // more, incomplete skills — the failure this layout exists to prevent.

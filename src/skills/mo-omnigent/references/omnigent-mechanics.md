@@ -197,8 +197,12 @@ for list`, and `/help` lists only the REPL's own commands. Slash commands are
    "the export stopped".
 6. **Status semantics and premature idle** — confirm what "the session is idle"
    means, and that a session which merely paused is not read as finished.
-7. **Provider CLI resolution through `PATH`** — `command -v`, `which -a`; the
-   harness must come up under the user's wrapper.
+7. **Provider launch posture** — compare the shell's explicit non-interactive and
+   interactive modes, then repeat the lookup inside the actual harness. The
+   harness surface must come up under a verified executable wrapper or named
+   provider-native posture that proves all required fixed launch behaviour.
+   Neither an interactive alias/function nor mere presence of a later wrapper
+   directory in `PATH` proves that.
 
 A route that fails any of 4 or 5 is unsupported for the frozen-candidate lifecycle.
 Say so plainly rather than shipping a route that fails mid-run.

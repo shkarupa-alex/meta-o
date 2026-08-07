@@ -6,13 +6,15 @@
 ## What this project is
 
 Seven agent skills that run a whole feature from a spec to a verified candidate
-commit, using tools that already exist. There is no CLI, no daemon, no state
-store and no adapter layer, and adding one back needs a named reason recorded in
-`docs/architecture/`.
+commit, using tools that already exist. There is no orchestration or
+provider-proxy CLI, no daemon, no state store and no adapter layer, and adding
+one back needs a named reason recorded in `docs/architecture/`.
 
-Everything shipped is Markdown plus one dependency-free `.mjs` — the settings
-helper, copied into the two backend skills. The build tool and the tests are not
-shipped and do use real parsers, because this contract forbids hand-written ones.
+Everything shipped is Markdown plus two dependency-free helpers: the `.mjs`
+settings helper copied into the two backend skills, and the `.sh` provider-posture
+probe copied into both backend skills and `mo-setup`. The build tool and the tests
+are not shipped and do use real parsers, because this contract forbids
+hand-written ones.
 
 ## Desired outcomes
 

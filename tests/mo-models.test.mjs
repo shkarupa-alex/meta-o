@@ -1,5 +1,5 @@
 /**
- * Tests for the one shipped helper.
+ * Tests for the shipped settings helper.
  *
  * The pure rules — the selection grammar and the same-family upgrade rule — are
  * tested by import. Everything that touches the settings file is tested through

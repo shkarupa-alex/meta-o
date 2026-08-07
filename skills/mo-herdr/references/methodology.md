@@ -2,9 +2,10 @@
 
 This is the canonical Meta-O methodology. It has exactly one source owner —
 `shared/references/methodology.md` in the meta-o repository. The copies that
-ship inside `mo-herdr` and `mo-omnigent` are produced mechanically so that each
-skill installs on its own. **Never edit a copy.** A backend skill adds only the
-mechanics of its own backend and the traps that were actually observed there.
+ship inside `mo-herdr`, `mo-omnigent` and `mo-setup` are produced mechanically
+so that each skill installs on its own. **Never edit a copy.** A backend skill
+adds only the mechanics of its own backend and the traps that were actually
+observed there; `mo-setup` adds personal-configuration remediation.
 
 Nothing here is executed by a program. There is no router, no state machine, no
 run store and no adapter layer. Skills and reasoning are the orchestration
@@ -82,16 +83,120 @@ write it to a file, do not parse it, do not version it.
    exist and are byte-for-byte identical (`cmp -s AGENTS.md CLAUDE.md`).
 3. **Read the installed backend skill and its `--help`.** The installed
    interface wins over any command spelled out in a Meta-O document.
-4. **Resolve the provider CLIs through `PATH`:**
+4. **Verify provider launch posture per surface.** TUI, inline, hook and harness
+   launches get separate verdicts. A failure on one does not invalidate a surface
+   that has its own evidence, and a pass never transfers to another surface.
+
+   Classify commands without printing alias or function bodies. `type -a`,
+   `alias <name>`, `whence -v` and `typeset -f` can disclose credentials or a
+   private prompt into the transcript. Use the execution tool's own bounded
+   timeout — not a presumed `timeout(1)` binary — disconnect stdin, and run all
+   four modes for each installed zsh or bash that can be a launch parent. A shell
+   unused by every planned surface is `N/A`, not `unknown`.
+
+   Run the script directly from its installed skill path; it is the executable
+   owner of the matrix and accepts another provider list after `--`. As with the
+   settings helper, `<this-skill>` means this skill's own directory, not the
+   feature repository's current working directory. Do not prefix the command
+   with `bash`: direct execution applies its privileged `/bin/bash -p` shebang,
+   so an outer `BASH_ENV`, `SHELLOPTS`, `BASHOPTS` or exported function cannot
+   execute inside the diagnostic runner before capture exists.
+
+   The shipped helper intentionally requires `/bin/bash` 3.2 or newer,
+   `/usr/bin/printf`, `/usr/bin/false` and `/bin/sleep` at those absolute paths,
+   plus `mktemp` and `rm` from `command -p`. A Bash matrix additionally requires
+   `/usr/bin/env` with `-0`. If the applicable compatibility boundary is absent,
+   the affected surface is `unknown`; do not substitute a different interpreter
+   invocation, because that bypasses the privileged startup being verified.
 
    ```bash
-   command -v claude codex opencode
-   which -a claude codex opencode
+   <this-skill>/scripts/mo-posture.sh --shell zsh
+   <this-skill>/scripts/mo-posture.sh --shell bash -- claude codex opencode
    ```
 
-   Never invoke an absolute provider binary behind `PATH`'s back — the user's
-   wrapper is where permission mode, approval flags and sandbox settings live,
-   and bypassing it silently changes the executor's powers.
+   The order is deliberate: the login pair is evidence, while the non-login pair
+   also exposes inherited-parent contrast. On macOS, `zsh -lc` and `zsh -lic` are
+   mandatory even when the planned hook appears non-login, because login-only
+   startup files can re-prepend package-manager directories. Bash `-ic` is
+   independently load-bearing because `.bashrc` belongs to
+   interactive non-login shells and an interactive login shell does not
+   inherently read it. Account for `BASH_ENV`. It is preserved for measured
+   child modes. Inherited `SHELLOPTS`, `BASHOPTS` or any exported Bash function
+   make the Bash matrix `unknown`, because replaying arbitrary caller code would
+   be unsafe while dropping it would change the launch state. For another shell,
+   use an equivalent explicit mode matrix with type-only and path-only lookups;
+   if its semantics are unknown, the affected surfaces are `unknown`.
+
+   Every `MO_POSTURE` record is unambiguous: names, kinds and paths use Bash `%q`
+   encoding, so whitespace and newlines cannot create extra fields. A trailing
+   `MO_POSTURE_MATRIX shell=<name> status=<0|1|2>` gives each requested shell its
+   own verdict, including under `--shell all`. Exit 0 means that both command
+   kinds and first paths are identical across all four modes, exit 1 means at
+   least one kind or path differs, and exit 2 means a requested shell failed,
+   inherited Bash state could not be replayed safely, the Bash-only private
+   `env -0` scan failed or returned empty, a dispatch primitive was shadowed, or
+   NUL-framed evidence was malformed or incomplete. Status 2 takes precedence
+   over status 1.
+   `MO_POSTURE_ENVIRONMENT` names rejected inherited Bash state and distinguishes
+   `environment-scan-failed` from `inherited-shell-state`; `MO_POSTURE_SHADOW`
+   identifies a mode whose
+   `builtin`/`command`/`printf` dispatch cannot be trusted. A `path=missing`
+   record is structurally valid only for `type=missing`, `alias` or `function`;
+   it still fails that provider's posture even when it is consistent and the
+   matrix exits 0.
+
+   Profile stdout and stderr travel separately from the evidence channel. The
+   script never reproduces their contents; it emits only a `MO_POSTURE_NOISE`
+   presence summary on stderr, and ordinary banners or greetings do not change
+   the matrix status. The private capture is deleted on exit; to inspect a noise
+   marker, rerun that exact shell mode manually under the execution tool's
+   bounded timeout and review the output locally with credential-safe
+   redaction. A blocking profile, material initialization error or unsupported
+   lookup makes the verdict `unknown`; an unrelated stdout greeting does not.
+   Only command type, decoded first executable path and the per-shell matrix
+   status are resolution evidence.
+
+   A child inherits its parent's `PATH`, so shell probes are diagnostic rather
+   than final proof when their parent was already initialized interactively.
+   Repeat the path-only lookup inside the actual backend, hook or script
+   environment. Test which executable resolves **first**; mere membership of the
+   wrapper directory in `PATH` proves nothing.
+
+   Apply credential-safe inspection to **every** accepted mechanism — aliases,
+   functions, executable wrappers and provider-native configuration. Never dump
+   a whole definition, wrapper or config with `type -a`, `alias`, `typeset -f`,
+   `cat` or an unrestricted content search. Locate only candidate file names
+   (for example, `rg -l`), and use key-filtered or structural checks that emit
+   required key/option names, types, booleans and equality results, not protected
+   values. For a wrapper, prove its real target, fixed option names and argument
+   pass-through from a redacted excerpt or structural result. For native config,
+   query only the required keys. Compare a protected prompt or environment value
+   locally and report only match/mismatch.
+
+   When an alias or function is known to be harmless, the cheapest hand-off is
+   to ask the user to print that one definition themselves — for example,
+   `alias claude` in their terminal or `! alias claude` in Claude Code — and paste
+   or return it. Warn that the latter output enters the transcript: if the user is
+   not already certain it is safe, they inspect it outside the agent, replace
+   protected values with markers such as `[REDACTED: provider token]`, and paste
+   the redacted definition instead. Never print or migrate a live token,
+   password, private prompt or credential-bearing URL. If required behaviour
+   cannot be proven without revealing one, the verdict is `unknown`.
+
+   A launch surface is supported when the actual process resolves a verified
+   executable wrapper first, a credential-free alias/function is verified to
+   dispatch only to that wrapper, or a **named, verified provider-native
+   configuration** supplies all required fixed launch behaviour. That behaviour
+   includes permission, approval, sandbox, environment, prompt and other fixed
+   arguments where applicable, plus caller-argument pass-through. Record the
+   mechanism and evidence for each requirement. An intentional difference is
+   named in the verdict instead of receiving an unconditional `supported`.
+   Otherwise that surface is `unsupported` (or `unknown` when the full evidence
+   cannot be read). Never call an absolute provider binary behind the proven
+   mechanism.
+
+   Use `mo-setup` for remediation. If the user declines it, record the affected
+   surface, impact and next step in `docs/backlog.md`.
 
 5. **Confirm the model set** in one short line, from `mo-models.mjs --show`.
    Print the saved roles, ask to confirm or change, and move on. The full catalog
