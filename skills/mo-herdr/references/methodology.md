@@ -75,9 +75,14 @@ write it to a file, do not parse it, do not version it.
    executor.** A spec with nothing behind it is a compression whose losses nobody
    can find later, so this is fail-closed: record the framing from the user's own
    words first — that takes one message and a commit — or, if the user declines,
-   stop with `needs_attention` naming what is missing. Do not start implementation
-   and plan to write the framing afterwards; afterwards it is a reconstruction of
-   a conversation nobody kept. Do **not** copy the
+   stop with `needs_attention` naming what is missing. Before the executor starts,
+   also verify that the task/spec has a `## User intents (verbatim)` section that
+   contains every framing entry for that piece of work word for word. A summary,
+   derived requirement or link to the framing is not a substitute. If the section
+   is missing or stale,
+   synchronising it is one of the small spec edits the orchestrator owns: append
+   the missing verbatim entries and commit that spec-only change first. Do not
+   start implementation and plan to reconstruct either copy afterwards. Do **not** copy the
    project instructions into any prompt: the provider CLI loads its own
    `AGENTS.md` / `CLAUDE.md` by itself. Preflight only checks that both files
    exist and are byte-for-byte identical (`cmp -s AGENTS.md CLAUDE.md`).
@@ -216,8 +221,10 @@ four of them, and nobody notices — least of all a cross-review, because review
 given only the spec check the internal completeness of an artefact whose losses
 already happened. Several strong models will happily agree around the same hole.
 
-So the spec is **not** the only source of user intent. Kept verbatim, before the
-spec is final:
+So the spec is **not** the only source of user intent, but it is not allowed to
+drop or paraphrase that intent either. Before the spec is final, the following is
+kept verbatim in **both** the business framing and the task/spec's
+`## User intents (verbatim)` section:
 
 - the whole original request, in the user's own words;
 - every later clarification and addition;
@@ -225,23 +232,28 @@ spec is final:
 - corrections of an intent that was read wrong;
 - preferences and constraints that sounded secondary at the time.
 
-**Where it lives, resolved before the first write.** `docs/business.md`, or — in a
+**Where the independent framing lives, resolved before the first write.**
+`docs/business.md`, or — in a
 project that has outgrown one file — `docs/business/index.md` plus the per-feature
 file that index names. Look before writing: a project that already has
 `docs/business/` never gets a new monolithic `docs/business.md` beside it, because
 then two files both claim to be the framing and the reviewer reads the wrong one.
 `<BUSINESS_PATH>` is whatever that resolution produced — both paths when the
-project is split, and the index alone is never enough.
+project is split, and the index alone is never enough. The task/spec repeats the
+same entries for that piece of work under `## User intents (verbatim)` so its scope
+is lossless on its own; a link back to `<BUSINESS_PATH>` is useful provenance and
+never a replacement for the text.
 
-Who writes it: whoever takes the request from the user — the orchestrator in a
-full workflow, `mo-reuse` when a free-text task arrives there first, this session
-in a direct review. Writing it is one of the few spec-adjacent edits an
-orchestrator may make itself, because the alternative is that the only copy of the
-request stays in a session that will be compacted. The executor never writes it;
-it receives it read-only, like the spec.
+Who writes both copies: whoever takes the request from the user — the orchestrator
+in a full workflow, `mo-reuse` when a free-text task arrives there first, this
+session in a direct review. Recording a new entry in the framing and mirroring it
+verbatim into the task/spec are among the few spec-adjacent edits an orchestrator
+may make itself, because the alternative is that the only copy stays in a session
+that will be compacted. The executor never writes either; it receives both
+read-only.
 
-**Verbatim stops at secrets.** The framing is a tracked file: it is committed, it
-is pushed, and after a push a leaked credential is not undone by `git rm`. So a
+**Verbatim stops at secrets.** Both documents are tracked: they are committed and
+pushed, and after a push a leaked credential is not undone by `git rm`. So a
 token, password, key, cookie, connection string with credentials, authenticated or
 private URL, customer data or PII is **never** written down as given. The value is
 replaced by a marker that keeps its meaning — `[REDACTED: deployment token]`,
@@ -255,29 +267,37 @@ so to the user, and have it rotated.
 
 Rules that follow from that:
 
-1. the framing exists before the final spec, and before any implementation —
-   this is fail-closed, not advisory;
-2. a model-written summary may sit beside it and never replaces it;
-3. each new substantive clarification appends to it — nothing is rewritten away;
-4. the spec is reviewed **against the framing**, not only for internal coherence;
-5. the implementation and the acceptance criteria are checked against the framing
+1. the framing and its verbatim section in the task/spec exist before the final
+   spec, and before any implementation — this is fail-closed, not advisory;
+2. a model-written summary, a derived requirement or a link may sit beside the
+   verbatim text and never replaces it;
+3. each new user statement that expresses intent — including an answer, opinion,
+   correction, preference or constraint — appends to both documents; nothing is
+   rewritten away or discarded as secondary;
+4. before implementation and during review, every framing entry for that piece of
+   work is matched to a word-for-word entry in the task/spec;
+5. the spec is also reviewed **against the framing** for the meaning it derives
+   from those words, not only for internal coherence;
+6. the implementation and the acceptance criteria are checked against the framing
    too;
-6. a reviewer who has not seen the framing cannot claim that nothing was lost —
-   that is an `unknown`, not a PASS on completeness.
+7. a reviewer who has not seen the framing, or who finds a missing or paraphrased
+   intent in the task/spec, cannot claim that nothing was lost — that is an
+   `unknown` or FAIL, never a PASS on completeness.
 
 The traceability this produces:
 
 ```text
 original intent and clarifications
   → business framing in docs/business.md
-  → a requirement or criterion in the spec
+  → the same words in the spec's User intents (verbatim) section
+  → a derived requirement or criterion in the spec
   → the implementation
   → proof in a review, a test or an E2E
 ```
 
-Recording it is manual, and that is fine. What is not fine is treating a summary
-as the source: the point of the raw text is that it can be re-read after the
-compression, by someone who was not in the conversation.
+Recording and mirroring it is manual, and that is fine. What is not fine is
+treating a summary as either copy: the point of the raw text is that it can be
+re-read after the compression, by someone who was not in the conversation.
 
 ### Untrusted external content
 
@@ -303,10 +323,11 @@ If the task arrived as free text or a URL, two things are written before any
 research, in this order:
 
 1. the **business framing** — the user's message verbatim, in `docs/business.md`,
-   per §2.1. This is the only copy of the request; a session holds it until it is
-   compacted, and then nobody can tell what the spec dropped.
-2. a tracked Markdown task/spec with acceptance criteria and a `## Reuse research`
-   section, derived from it.
+   per §2.1. Until it is written, the session holds the only copy and compaction can
+   destroy it.
+2. a tracked Markdown task/spec with the same request under
+   `## User intents (verbatim)`, plus derived acceptance criteria and a
+   `## Reuse research` section.
 
 After that the researcher changes only the reuse section and finishes with a
 spec-only commit; implementation in that commit is forbidden. This rule applies

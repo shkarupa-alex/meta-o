@@ -581,6 +581,25 @@ behavioral fixtures and mutants cover reentrant shutdown, unknown-on-unquiesce
 and quiescence before the first capture read. Command usage now names `mktemp`
 and `rm` from the system utility path.
 
+### 17. Clarification — user intents and the spec — 2026-08-10
+
+<!-- markdownlint-disable MD013 -->
+
+> Такой вопросик. В My Opinion посмотри, есть ли там раздел или ещё?
+> Про то, что нужно дословно передавать интенты пользователю.
+> Смысл в том, что я неоднократно наблюдаю большую проблему, что те интенты, которые пользователь высказывает, они в финальную спеку не попадают. То есть, нужно, чтобы, если пользователь какой-то, на какой-то вопрос ответил или какое-то мнение высказал, чтобы это дословно попадало в спеку обязательно. Вот есть там такое сейчас или нет?
+
+### 18. Decision — every user intent is verbatim in the spec — 2026-08-10
+
+> давай укажем что и в спеку все интенты пользователя должны попадать дословно
+
+### 19. Decision — no agent-attribution commit trailer — 2026-08-10
+
+> я тут долго думал и понял что не нужен нам Assisted by в коммитах
+> убери упоминания этого из спеки
+
+<!-- markdownlint-enable MD013 -->
+
 ### What that means for the product, in the user's terms
 
 - the previous generation was **too thick** — the fault was misplaced emphasis,
@@ -592,6 +611,14 @@ and `rm` from the system utility path.
 ---
 
 ## Part 2 — the durable theses
+
+## A spec keeps the user's words, not only their interpreted requirements
+
+The business framing remains the independent verbatim source, but every task/spec
+also carries every user intent word for word. Summaries, derived requirements and
+links are useful additions and never replacements. A later clarification appends
+to both documents before implementation continues, so a reviewer can detect both
+transport loss and a wrong interpretation.
 
 ## A feature must be verifiably done, not plausibly done
 

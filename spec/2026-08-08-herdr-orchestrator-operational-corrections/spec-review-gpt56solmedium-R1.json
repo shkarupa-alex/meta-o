@@ -1,0 +1,82 @@
+{
+  "target_id": "spec-review",
+  "approval_score": 7,
+  "would_adopt": false,
+  "summary": "The specification now resolves the major role, topology, review-barrier, UNKNOWN, blocker, recovery, route-support, model-catalogue, backlog, and traceability problems and closely matches the original task. Adoption remains blocked because the 135,168-byte combined Goal can exceed the common Linux single-argument ceiling, unchanged state and TUI fingerprints cannot prove that an ambiguous prompt was not accepted, and the exact combined-review and adjudication framing contracts remain for the implementer to invent.",
+  "phase": "spec-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "Prompt size portability",
+      "description": "The maximum combined A+B Goal is 135,168 bytes in one argv element, exceeding the typical Linux MAX_ARG_STRLEN limit of 131,072 bytes including NUL.",
+      "required_change": "Define a portable total prompt ceiling below the minimum supported per-argument limit, reduce per-reviewer limits accordingly, or make OS/kernel part of the support key and fixture the exact argv ceiling."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Ambiguous submission",
+      "description": "Two unchanged lifecycle/process/fingerprint observations are negative evidence, not proof that asynchronous terminal input was never accepted. Retrying can duplicate a live turn.",
+      "required_change": "Do not retry ambiguous prompt or relay acceptance without a positive acknowledgement or deduplication mechanism; retain state/fingerprint observations only for diagnosis."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Transport framing",
+      "description": "The combined review wrapper is described behaviorally but has no exact grammar, delimiter collision rule, fixed overhead, candidate/source binding syntax, or normative damaged-frame response.",
+      "required_change": "Specify the complete versioned frame grammar and add independent data fixtures defined from that contract rather than extracted only from the eventual implementation."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Adjudication input",
+      "description": "Adjudication output is bounded, but the complete disputed exchange sent to the peer has no framing, selection, or total-byte contract and can exceed one safe argv element.",
+      "required_change": "Define exactly which finding, response, and dispute frames are sent for adjudication and cap their combined framed size within the portable prompt limit."
+    }
+  ],
+  "non_blocking_findings": [
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "Native Goal lifecycle",
+      "description": "Herdr idle/done denotes readiness, not native Goal completion; the fixture lacks a defined quiet-period duration proving that no automatic continuation follows.",
+      "required_change": "Specify the observation window and spontaneous-resume failure criterion for Goal-inactivity fixtures."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "Barrier semantics",
+      "description": "The reviewer-A mutating-check short circuit relays A without B despite the Purpose stating that review bodies are delivered only after both first passes.",
+      "required_change": "Add the invalidated-candidate short circuit as an explicit normative exception or relay only the dirty-tree process fact."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "Extraction contract",
+      "description": "The fingerprint algorithm and exact recent-unwrapped structured output field remain unspecified.",
+      "required_change": "Define the bytes hashed, hash algorithm, output field, and normalization rules in Herdr mechanics."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "Model fallback",
+      "description": "Canonical role order is referenced but not enumerated in this specification.",
+      "required_change": "Name the exact role order or point to one existing normative ordered schema."
+    }
+  ],
+  "assumptions": [
+    "The deployment target includes Linux or another platform where a single argv element may be limited to approximately 128 KiB.",
+    "Herdr lifecycle and boundary observations do not provide a positive non-delivery acknowledgement beyond the documented agent_prompt_stalled behavior.",
+    "No prior council artifact under spec/** was inspected or reused.",
+    "The existing native Goal mechanism may schedule an automatic continuation after a transient idle state unless a fixture proves otherwise."
+  ],
+  "round": 1,
+  "reviewer": "gpt56solmedium",
+  "judge": {
+    "slug": "gpt56solmedium",
+    "model": "gpt-5.6-sol",
+    "route": "codex-sdk",
+    "effort": "medium"
+  }
+}

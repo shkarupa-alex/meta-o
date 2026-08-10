@@ -163,36 +163,40 @@ behaviour and cite evidence for each launch surface without dumping their values
 Naming native configuration without proving it is how the qualified pass happened
 in the first place.
 
-### The business framing grows without a proven answer, and its rules have no gate
+### The verbatim framing and spec copies grow without a proven answer, and their rules have no gate
 
 **Why.** `shared/references/methodology.md §2.1` requires the user's intent to be
-kept verbatim, because a spec is a lossy compression and the loss is undetectable
-without the original. Two questions stay open. First, growth: recording every
-request verbatim in one file makes it long, and the source this rule came from
+kept verbatim in both the independent framing and the task/spec, because a spec is
+a lossy compression and the loss is undetectable without the original. Two
+questions stay open. First, growth: recording every request verbatim in two tracked
+documents makes them long, and the source this rule came from
 names the risk out loud — an encyclopedia every agent re-reads and nobody
 maintains. The answer is now specified rather than merely mentioned — the split is
 `docs/business/index.md` plus one file per piece of work, the per-feature file is
 where a framing goes once that split exists, and a second monolithic
 `docs/business.md` beside the tree is forbidden — but no project has ever run
 split, so the resolution rule is written and unexercised. Second, none of §2.1 has
-a gate: "the reviewer read the framing", "no secret was pasted verbatim" and "the
-standalone review refused to converge without a framing" are all properties of a
-session, and no `make` target sees any of them. They are fixtures R4, R5 and R6, and
-all three passed on 2026-08-06 — which is evidence about three sessions, not a gate.
+a gate: "the reviewer read the framing", "no secret was pasted verbatim", "the
+standalone review refused to converge without a framing" and "every framing entry
+appeared word for word in the spec" are all properties of a session, and no `make`
+target sees any of them. R4, R5 and R6 passed on 2026-08-06; R8 is still open. That
+is session evidence, not a gate.
 
-**Practical impact.** On a long-lived project the framing may become the document
-people skip, which is the failure it exists to prevent, only slower. A reviewer can
-still skip it with nothing noticing — the protection is that the skill tells it to
-return `UNKNOWN` on completeness and forbids convergence on that round. The secret
-rule has the sharpest consequence of the three: it is the only §2.1 rule whose
+**Practical impact.** On a long-lived project the two verbatim copies may become
+documents people skip, or they may drift, which recreates the loss they exist to
+prevent. A reviewer can still skip the comparison with nothing mechanical noticing
+— the protection is that the skill tells it to return `UNKNOWN` or FAIL on
+completeness and forbids convergence on that round. The secret rule has the
+sharpest consequence: it is the only §2.1 rule whose
 violation is irreversible, because a credential written verbatim and pushed is
 compromised no matter what the next commit removes.
 
-**Next step.** Use it on two or three features and see whether the index split is
-needed before building tooling for it. If a mechanical gate for
-secrets is ever wanted, it is `gitleaks` (or an equivalent maintained scanner) in
-CI — not a regex over Markdown written here, which the contract forbids and which
-would be exactly the kind of home-grown checker lens 8 exists to reject.
+**Next step.** Run fixture R8, then use the two-copy rule on two or three features
+and see whether the index split is needed before building tooling for it. If a
+mechanical gate for secrets is ever wanted, it is `gitleaks` (or an equivalent
+maintained scanner) in CI — not a regex over Markdown written here, which the
+contract forbids and which would be exactly the kind of home-grown checker lens 8
+exists to reject.
 
 ### The Claude catalog depends on an SDK these skills cannot install
 

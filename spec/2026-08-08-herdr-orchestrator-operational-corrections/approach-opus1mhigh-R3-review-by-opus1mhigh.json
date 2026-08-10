@@ -1,0 +1,51 @@
+{
+  "target_id": "proposal-2",
+  "approval_score": 7,
+  "would_adopt": true,
+  "summary": "The inversion is the strongest move in this council: withdrawing its own footer-and-scratch protocol, naming exactly which project rule it violated, and meeting the requirement inside the rule by making the executor — not the orchestrator — retrieve the reviewer's turn. It removes machinery rather than adding it, and its two new grounding quotes are verbatim accurate (the installed herdr skill line 185 documents precisely this file fallback; skills-first.md line 27 really does say independence is a rule, not a wall). Three problems remain. The retrieval burden now sits on the actor the architecture deliberately keeps unequipped, and the argument that the executor will notice a bad read covers truncation but not omission — which is the measured Claude failure mode and the expensive one; step 6's cross-check compares a count against a PASS/FINDINGS word and so cannot detect it either. The SHA binding the withdrawn footer provided is gone with nothing in its place, while mo-review forbids reviewers from echoing the candidate, so a stale turn from a warm multi-round session can be consumed as current. And two findings I reported last round survived untouched: upstream gap 5 still states that EventMatch has no agent-status variant when the protocol-19 schema contains pane_agent_status_changed, and §3.6 still has the orchestrator writing docs/backlog.md mid-run, dirtying the worktree its own candidate check requires to be clean.",
+  "phase": "approach-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "major",
+      "area": "retrieval moved to an unequipped actor",
+      "description": "skills-first.md states as a boundary that the executor gets no methodology skill, and herdr-mechanics.md §1 is an eleven-step retrieval discipline (upper boundary, lower boundary, continuity, max_offset_from_bottom against the 1000-row cap, non-monotonic order is unknown, cut at the LAST prompt boundary). The executor now performs that read with none of it. The measured Claude failure is a repaint collage of 716 real lines out of 900 with 184 silently missing and 270 duplicated: every dropped finding reads as a review that did not raise it. The executor can detect truncation, not omission. Step 6 compares the executor's finding count against the reviewer's one-word PASS/FINDINGS, which can only disagree on polarity, so it cannot catch omission either.",
+      "required_change": "Make omission arithmetic: require the verdict to open with 'Findings: N' and number findings 1..N (structure mo-review and herdr-mechanics §1 step 4 already require), change the orchestrator's follow-up to 'PASS, or how many findings?', and have the executor report which indices it received so a gap or a break in contiguity yields unknown. Additionally, put the exact read command plus a short boundary checklist into the handover prompt."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "stale-turn binding",
+      "description": "The withdrawn footer echoed the frozen SHA, catching a reviewer answering about the wrong commit. Now the executor is told only to 'read its last turn', mo-review explicitly forbids CANDIDATE/WORKTREE as reviewer output fields, and a warm reviewer's pane after round two holds several turns — fixture H5 exists precisely because retrieving the second turn rather than the first must be proven. A stale round-one verdict can be consumed as round-two evidence.",
+      "required_change": "Bind the read to the round: the orchestrator confirms the reviewer settled after this round's prompt (state_change_seq recorded before sending), tells the executor to read only the turn following that handover, and instructs it to report if the review it read does not concern the current tip."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "upstream issue accuracy (unfixed from prior round)",
+      "description": "Gap 5 still asserts that EventMatch 'has no agent-status variant'. herdr api schema --json (protocol 19) shows pane_agent_status_changed and pane_agent_detected in that union; the real constraint is that pane_agent_status_changed requires a single pane_id and a single agent_status, so events.wait cannot express 'either reviewer reaches any settled state'. The requested fix asks for something that already exists, and the task explicitly requires naming genuine capability gaps.",
+      "required_change": "Rewrite gap 5 to state the actual constraint (single pane_id plus single agent_status, no multi-match) and request the right thing (accept a status set and/or multiple matches, or omit pane_id), and evaluate whether three concurrent events.wait matches already remove the serial-wait cost."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "orchestrator writes during a turn (unfixed from prior round)",
+      "description": "§3.6 still has the orchestrator record a posture defect in docs/backlog.md when an actor asks for permission. That is a tracked-file edit made while the executor works: it dirties the worktree, so either the orchestrator's own clean-tree candidate check in §3.5 rejects a legitimate candidate, or the edit is swept into a commit nobody reviewed. The framing write in §2.1 has the same shape.",
+      "required_change": "State that the orchestrator makes no tracked-file edit while any actor turn is running; defects observed mid-run are held until the candidate is frozen and the tree is verified clean."
+    }
+  ],
+  "assumptions": [
+    "An agent in a Herdr-managed pane can invoke herdr agent read on a peer (HERDR_ENV and the socket are injected into managed panes); the proposal itself gates this on fixture H15, which is the right treatment.",
+    "The verbatim quotes I checked — herdr SKILL.md line 185 and skills-first.md line 27 — are the installed versions the design targets.",
+    "mo-review's requirement that findings be numbered is a structural instruction, not a completion marker, so counting them does not reopen the sentinel ban."
+  ],
+  "round": 3,
+  "reviewer": "opus1mhigh",
+  "judge": {
+    "slug": "opus1mhigh",
+    "model": "opus[1m]",
+    "route": "claude-agent-sdk",
+    "effort": "high"
+  }
+}

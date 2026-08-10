@@ -47,10 +47,11 @@ available, or ask the user which backend to launch reviewers through.
   plus the per-feature file that index names when the project is split — the index
   alone is not the framing. If the project has none, or you cannot read what it
   has, this review returns `needs_attention` naming that; it does not proceed to a
-  verdict on completeness. In direct mode the fix you just made is usually small
-  enough that writing the framing is one message and one commit — do that rather
-  than reviewing without it. **Both** reviewers get the same resolved path: two
-  reviewers judging different framings agree about nothing.
+   verdict on completeness. In direct mode the fix you just made is usually small
+   enough that recording the framing and mirroring the same words under the spec's
+   `## User intents (verbatim)` section is one message and one commit — do that
+   rather than reviewing without it. **Both** reviewers get the same resolved
+   path: two reviewers judging different framings agree about nothing.
 - **Independence.** The two first-pass reviewers must not see each other's
   findings. At least one runs on a different vendor than the coding session or
   executor. The coding session does not occupy a reviewer slot — it is the
@@ -87,9 +88,13 @@ Every one of these is mandatory in every review:
    asked, and does what was asked still make sense? The spec is a lossy
    compression of a conversation, so a reviewer reads the recorded intent at the
    resolved framing path as well and asks what the spec dropped on the way. A
-   reviewer who was given only the spec can say the change matches the spec; it
-   cannot say nothing was lost, and returns `UNKNOWN` saying exactly that, instead
-   of a PASS that reads as completeness. A framing holding a live credential —
+   reviewer first matches every framing entry for this piece of work to the spec's
+   `## User intents (verbatim)` section word for word. A missing entry or a
+   paraphrase is a blocking finding; a summary, derived requirement or link to the
+   framing is not equivalent. A reviewer who was given only the spec can say the
+   change matches the spec; it cannot say nothing was lost, and returns `UNKNOWN`
+   saying exactly that, instead of a PASS that reads as completeness. A framing
+   holding a live credential —
    token, password, key, connection string, customer data — is a finding of its
    own: the value belongs behind a marker like `[REDACTED: deployment token]`, and
    if it has already been pushed it is compromised and needs rotating, which the
@@ -185,10 +190,12 @@ entry with a reason, not a silence.
 Any change after a verdict makes that round stale. The loop ends only when all
 three hold in the _same_ round: both reviewers return PASS with no actionable
 findings, **at least one of them ran on a vendor other than the author's**, and
-**both had the business framing** so their PASS covers completeness and not only
+**both had the business framing**, and both confirmed that every intent for this
+piece of work appears verbatim in the spec, so their PASS covers completeness and not only
 spec-conformance. Anything short of that — two PASS from one vendor, a PASS from a
-reviewer that never saw the framing, a single `UNKNOWN` — is `needs_attention`,
-not a pass. Completeness that nobody could judge is not completeness that passed.
+reviewer that never saw the framing, a missing or paraphrased spec intent, a single
+`UNKNOWN` — is `needs_attention`, not a pass. Completeness that nobody could judge
+is not completeness that passed.
 
 If one prompt exceeds the backend's known limit, split the Markdown only on its
 own heading boundaries into numbered verbatim chunks, and send each after the

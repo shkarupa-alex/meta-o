@@ -42,6 +42,12 @@ then on the framing for a task goes in that task's file, never into a fresh
 `docs/business.md` beside the tree. Two files claiming to be the framing is worse
 than one long one, because a reviewer reads whichever it finds first.
 
+Every task/spec repeats all entries for that piece of work word for word under
+`## User intents (verbatim)`. The business framing remains the independent source;
+a summary or a link between the documents replaces neither copy. Whoever receives
+a later user answer, opinion, clarification, correction, preference or constraint
+appends it to both before implementation continues.
+
 One thing never goes in verbatim: a **secret**. This file is committed and pushed,
 so a token, password, key, connection string with credentials, private URL,
 customer data or PII is stored as a marker that keeps the meaning —

@@ -21,9 +21,11 @@ every later clarification, the corrections of a misread intent, and the preferen
 and constraints that sounded secondary at the time. It is not a spec and not a
 summary. A spec is a lossy compression of a conversation, and without the
 uncompressed source the loss is undetectable later — which is why the spec is never
-the only source of intent. A model-written summary may sit beside it and never
-replace it. Verbatim stops at secrets: a credential or personal datum is stored as
-a marker naming what it was, because this file is committed and pushed.
+the only source of intent. The task/spec nevertheless repeats every intent verbatim
+under `## User intents (verbatim)` before deriving requirements from it. A summary,
+derived requirement or link may sit beside the verbatim text and never replace it.
+Verbatim stops at secrets: a credential or personal datum is stored as a marker
+naming what it was, because these files are committed and pushed.
 
 **Candidate** — a full Git commit SHA with a clean worktree. Not a file, not a
 ref, not a digest. It is frozen while its gates run.

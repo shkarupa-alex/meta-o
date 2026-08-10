@@ -43,6 +43,11 @@ acceptance criteria → implementation by a separate executor session → `make 
 seeing the other's answer, at least one on a different vendor than the author →
 findings copied to the executor verbatim and whole → new SHA → every gate again.
 
+These runs predate the rule that every user intent also appears word for word in
+the task/spec. They prove that reviewers can recover an omission from the
+independent framing, not that preflight or review enforces the second verbatim
+copy; fixture R8 is the open proof for that rule.
+
 ### The Herdr route — a ru-RU budget-string parser
 
 Executor and reviewers ran on the **inline** surface (`herdr pane run` + a prompt

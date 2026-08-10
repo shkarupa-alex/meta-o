@@ -62,10 +62,12 @@ Knowledge is updated in the same change that made it new or false — not
 afterwards.
 
 **The spec is never the only source of user intent.** `docs/business.md` keeps the
-business framing verbatim — the original request and every later clarification —
-because turning a conversation into a spec is lossy compression and reviewers
-given only the spec cannot find what it dropped. A summary never replaces it, and
-each new clarification appends. See `shared/references/methodology.md §2.1`.
+business framing verbatim — the original request and every later user answer,
+opinion, clarification, correction, preference and constraint — because turning a
+conversation into a spec is lossy compression. Every task/spec also carries all of
+those intents verbatim; a summary or a link to the framing does not replace them,
+and each new intent appends to both. See
+`shared/references/methodology.md §2.1`.
 
 **Anything postponed, deliberately not done, blocked, or left unfixed for any
 reason goes into `docs/backlog.md`**, with its reason, its practical impact, and

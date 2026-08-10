@@ -36,8 +36,10 @@ it, so two writes come before any searching:
    undone by deleting a line. If you cannot tell whether a value is a secret and
    the answer changes what the user meant, stop with `needs_attention` instead of
    guessing.
-2. **Create the tracked Markdown spec** from it, with acceptance criteria and an
-   empty `## Reuse research` section, and research against that.
+2. **Create the tracked Markdown spec** from it. Copy the same request word for
+   word under `## User intents (verbatim)`; a summary or link to the framing does
+   not replace the text. Add derived acceptance criteria and an empty
+   `## Reuse research` section, and research against that.
 
 Both go in the same spec-only commit as your reuse decision. Recording what the
 user said is not implementation, and it is the one write outside the reuse section

@@ -35,13 +35,14 @@ it. Three kinds of proof appear here, and the difference matters:
 council brainstorm, so its criteria get rows of their own rather than a mention in
 the backlog.
 
-| id  | Criterion                                                                                                                | Proof                                                                                                                                         | Kind      | Status                     |
-| --- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | --------- | -------------------------- |
-| A1  | The framing exists and is kept verbatim — original request, every clarification, no summary standing in                  | `docs/business.md` Part 1 for this project; `methodology.md §2.1`; `mo-setup` creates the place it lives                                      | judgement | proven here, for this repo |
-| A2  | Framing before spec, before implementation, fail-closed; `<BUSINESS_PATH>` travels in the goal                           | `methodology.md §2` step 2, §2.1, §3, §4, §6; `mo-reuse` for the free-text entry; `mo-review` "Before the first round" for the standalone one | fixture   | closed 2026-08-06 — R4, R6 |
-| A3  | Spec, implementation and acceptance are checked against the framing, and a reviewer without it says `unknown`            | `mo-review` lens 1, the `UNKNOWN` verdict and the convergence rule; `methodology.md §2.1` rule 6                                              | fixture   | closed 2026-08-06 — R4, R6 |
-| A4  | The traceability chain is recorded                                                                                       | the section above                                                                                                                             | judgement | proven here                |
-| A5  | No secret is stored verbatim; the value becomes a marker naming what it was, and unresolvable doubt is `needs_attention` | `methodology.md §2.1`; `mo-reuse` step 1; `mo-review` lens 1; `mo-setup` §1                                                                   | fixture   | closed 2026-08-06 — R5     |
+| id  | Criterion                                                                                                                                           | Proof                                                                                                                                         | Kind      | Status                     |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------- | -------------------------- |
+| A1  | The framing exists and is kept verbatim — original request, every clarification, no summary standing in                                             | `docs/business.md` Part 1 for this project; `methodology.md §2.1`; `mo-setup` creates the place it lives                                      | judgement | proven here, for this repo |
+| A2  | Framing before spec, before implementation, fail-closed; `<BUSINESS_PATH>` travels in the goal                                                      | `methodology.md §2` step 2, §2.1, §3, §4, §6; `mo-reuse` for the free-text entry; `mo-review` "Before the first round" for the standalone one | fixture   | closed 2026-08-06 — R4, R6 |
+| A3  | Spec, implementation and acceptance are checked against the framing, and a reviewer without it says `unknown`                                       | `mo-review` lens 1, the `UNKNOWN` verdict and the convergence rule; `methodology.md §2.1` rule 7                                              | fixture   | closed 2026-08-06 — R4, R6 |
+| A4  | The traceability chain is recorded                                                                                                                  | the section above                                                                                                                             | judgement | proven here                |
+| A5  | No secret is stored verbatim; the value becomes a marker naming what it was, and unresolvable doubt is `needs_attention`                            | `methodology.md §2.1`; `mo-reuse` step 1; `mo-review` lens 1; `mo-setup` §1                                                                   | fixture   | closed 2026-08-06 — R5     |
+| A6  | Every user intent for the piece of work is also present word for word in the task/spec; summaries, derived requirements and links do not replace it | `AGENTS.md`; `methodology.md §2.1`; `mo-reuse` free-text entry; `mo-review` lens 1                                                            | fixture   | open — R8                  |
 
 A1 is marked "for this repo" deliberately: this project's own framing is verbatim
 and complete from 2026-08-06 onward, but the rule holding on _another_ project is a
@@ -110,7 +111,8 @@ asks for has one more link in front:
 ```text
 original intent and clarifications
   → business framing in docs/business.md
-  → a requirement or criterion in the spec
+  → the same words in the spec's User intents (verbatim) section
+  → a derived requirement or criterion in the spec
   → the implementation
   → proof in a review, a test or an E2E
 ```
