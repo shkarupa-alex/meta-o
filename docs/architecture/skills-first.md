@@ -108,8 +108,10 @@ named external consumer, recorded as an architecture decision.
   never becomes the provider invocation path.
 - **Herdr and Omnigent do not share an executable adapter.** Backend-neutral
   role and gate semantics are prose; public mechanics remain backend-owned.
-- **The executor receives no methodology skill.** The task/spec and project
-  contract are sufficient for its engineering role.
+- **The executor receives no methodology skill.** The task/spec, project
+  contract and fixed executor-protocol capsule in every objective are sufficient
+  for its engineering role. Removing the capsule would leave a fresh executor
+  unable to emit the exact candidate, response or blocker handoff.
 - **Generated shared helpers are leaves.** They know nothing about feature-run
   lifecycle and create no orchestration state.
 - **No artefact exists “just in case.”** A manifest, receipt, baseline or

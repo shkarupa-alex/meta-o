@@ -99,6 +99,11 @@ never an ordinary engineering or process choice. Product meaning/architecture,
 irreversible action, credentials, subscription, production E2E, external blocker,
 unresolved dispute and explicit watchdog are the permitted human boundaries.
 
+**Operational approval** — one request-bound `APPROVE`/`DENY` authorizing an
+already named production/destructive E2E action or explicitly requested
+watchdog. It is candidate-stable run control, not product intent; only its
+credential-free compact header remains in current run evidence.
+
 **Warm session** — backend-native session retained for role continuity during one
 feature run. Warmth is not persisted Meta-O state.
 

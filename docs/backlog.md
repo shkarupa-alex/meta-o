@@ -43,20 +43,37 @@ live catalogue/cleanup compatibility fixture. Remove this item only after the pl
 provider start, catalogue result, timeout, and cleanup paths all pass without numeric-PID
 snapshot signalling.
 
-### Remote installation fixtures I3-I5 have not run
+### Remote installation fixtures I3 and I5 have not run
 
 **Reason.** The post-correction candidate has not been pushed by a separately authorized
 release action, so the advertised remote locator cannot install that exact tree. Local-path
 installation tests prove a different transport and cannot be reused as remote evidence.
 
-**Practical impact.** Remote `npx skills add` discovery, its standalone `mo-review` selection,
-and remote `apm install` remain unsupported. The README may present their exact commands only as
-unproven fixtures, not as verified installation paths.
+**Practical impact.** Remote all-skill `npx skills add` discovery and remote `apm install`
+remain unsupported. The README may present their exact commands only as unproven fixtures,
+not as verified installation paths. No standalone `mo-review` runtime is advertised.
 
-**Next step.** After the final candidate is pushed on explicit authority, run I3-I5 from clean
+**Next step.** After the final candidate is pushed on explicit authority, run I3 and I5 from clean
 disposable projects, record the public full SHA, client versions and exact installed file lists in
 `docs/phase-0-fixtures.md`, then remove this item only if every row passes. Do not push solely to
 run these fixtures.
+
+### Standalone `mo-review` execution is unavailable
+
+**Reason.** The shipped `mo-review` package has no qualified executable backend interface for
+actor launch, vendor selection, complete-turn retrieval, opaque relay, finding application,
+commits, or E2E. Those capabilities exist only inside the installed `mo-herdr` and
+`mo-omnigent` feature workflows; inventing an ambient subagent or private/headless fallback
+would violate the backend surface contract.
+
+**Practical impact.** `mo-review` is a reusable protocol component only. Installing or invoking
+it alone cannot start two reviews or apply findings, so callers must enter through a qualified
+backend skill or receive review-capability attention.
+
+**Next step.** Either design and package a real executable review-backend interface and pass
+its complete-turn, vendor-diversity, lifecycle, relay, and live fixture contract, or retain the
+protocol-only boundary and continue routing executable review requests through `mo-herdr` or
+`mo-omnigent`.
 
 ### Herdr P1-P8 have not run in a real control plane
 

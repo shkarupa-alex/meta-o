@@ -75,15 +75,17 @@ limitation rather than a hidden recovery protocol.
 Every permitted handoff uses an explicit `MO_RELAY_V2` direction. At the
 first-pass barrier a PASS/PASS pair proceeds to E2E without relay; if at least
 one evaluation has findings, the complete A/B pair is released atomically.
-After a same-origin multi-ID executor `RESPONSE`, one complete origin outcome
-partitions the exact rebuttal set across disjoint `closes` and `disputes`.
+An executor `RESPONSE` is valid only when its `rebuts` equals the complete
+current open-ID set for exactly one origin. One complete origin outcome then
+partitions that exact rebuttal set across disjoint `closes` and `disputes`.
 All-close/no-new is `PASS`; close-all-plus-new is `FOLLOWUP`; mixed old-ID
 outcomes use `OUTCOMES`; all-dispute uses `DISPUTED`. Only `FOLLOWUP` uses
 `ORIGIN_FINDINGS_TO_EXECUTOR`. Different origins use separate settled turns,
 and a mixed-origin response is rejected rather than split or interpreted.
 
 Failed E2E, the A-only invalidating check, executor response, adjudication
-request, peer outcome, generic human answer, and post-human decision each bind
+request, peer outcome, repository-changing human answer, candidate-stable E2E
+approval, and post-human decision each bind
 one phase, recipient, source, candidate, and target ID/set. Executor-bound work uses one atomic native
 goal; reviewer-bound work is one ordinary prompt. The relay uses a
 collision-checked random frame, declared raw UTF-8 byte lengths and a literal
@@ -102,6 +104,17 @@ Every other permitted human answer is requester/phase-bound by
 `MO_HUMAN_ANSWER_V1`, follows `HUMAN_ANSWER_TO_EXECUTOR`, and has the same
 credential-safe ledger append, new-candidate, and gate-invalidation effect before
 any actor acts on it.
+
+Operational authorization is a different class. A candidate-bound
+`production_e2e` or `irreversible_e2e` `MO_OPERATIONAL_APPROVAL_V1` follows
+`E2E_APPROVAL_TO_E2E` back to the exact requesting E2E actor and resumes only
+the already named scenario on the unchanged SHA. `watchdog_start` follows the
+non-relay `WATCHDOG_START_TO_ORCHESTRATOR` control route. These events retain
+only their exact header and current conversation evidence: their opaque body is
+not persisted, no tracked intent ledger changes, and no new candidate is
+created. A freshly unpredictable request token binds each approval to its exact
+requester, named action, phase, and candidate and is consumed once; stale,
+replayed, or cross-actor approval fails closed.
 
 Ambiguous submission or relay delivery is never blindly retried. A changed
 public signal means the turn may be live and must be awaited; unchanged or

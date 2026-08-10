@@ -20,7 +20,23 @@ scenarios. Do not edit or commit tracked files. A new SHA invalidates this resul
 Use a unique namespace per run and scenario. Clean up on pass, fail, unknown and
 blocker. Run no production/destructive scenario until the E2E contract names its
 safety boundary and the user explicitly approves this exact run immediately
-before it.
+before it. When that boundary is reached, emit the ordinary
+`blocker=production_e2e` handoff and stop before the action. The orchestrator
+opens one fresh request token bound to this actor, scenario, phase and candidate.
+
+Resume only from one `E2E_APPROVAL_TO_E2E` relay whose first body row is exactly:
+
+```text
+MO_OPERATIONAL_APPROVAL_V1|candidate=<oid>|operation=<production_e2e|irreversible_e2e>|requester=e2e|request=<64-lower-hex>|decision=<APPROVE|DENY>
+```
+
+Candidate and request must equal the one open approval request. Consume the
+request exactly once. Reject a stale, replayed, wrong-actor, wrong-operation or
+wrong-candidate approval. `APPROVE` resumes only that already named scenario on
+the unchanged candidate; `DENY` ends it without PASS. This compact authorization
+is credential-safe run control, not product intent: never persist its opaque
+human body or mutate tracked intent ledgers. Any accompanying product preference
+returns separately through the repository-changing executor route.
 
 ## Evidence body
 

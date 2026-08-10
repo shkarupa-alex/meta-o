@@ -43,18 +43,17 @@ no impact analysis to argue with, and "the reviews passed" can never quietly mea
 
 ```bash
 apm install /path/to/meta-o                     # all seven
-apm install /path/to/meta-o --skill mo-review   # one, complete on its own
+apm install /path/to/meta-o --skill mo-review   # protocol artifact only
 ```
 
 **Not proven yet** — the remote forms. They should work identically, since apm
 clones and then resolves the same `skills/` directory, but nobody has run them
 against this repository, so they are written here as what to try rather than as
-what was verified. Fixtures I3–I5 in
+what was verified. Fixtures I3 and I5 in
 [`docs/phase-0-fixtures.md`](docs/phase-0-fixtures.md) are exactly these rows:
 
 ```bash
 npx skills add shkarupa-alex/meta-o
-npx skills add shkarupa-alex/meta-o --skill mo-review
 apm install shkarupa-alex/meta-o
 ```
 
@@ -78,29 +77,33 @@ happened before this layout.
 
 ## The skills
 
-| Skill         | Use it when                                                                                         |
-| ------------- | --------------------------------------------------------------------------------------------------- |
-| `mo-herdr`    | run a whole feature through Herdr-managed sessions                                                  |
-| `mo-omnigent` | the same lifecycle through native Omnigent sessions                                                 |
-| `mo-review`   | you just made a fix and want two independent reviews — or a full workflow needs the review protocol |
-| `mo-reuse`    | you want to know what already exists before it gets built                                           |
-| `mo-setup`    | a project has no contract yet                                                                       |
-| `mo-e2e`      | the E2E genuinely needs an agent — a benchmark or a browser suite                                   |
-| `mo-watchdog` | a long unattended run should tell you when it needs you                                             |
+| Skill         | Use it when                                                           |
+| ------------- | --------------------------------------------------------------------- |
+| `mo-herdr`    | run a whole feature through Herdr-managed sessions                    |
+| `mo-omnigent` | the same lifecycle through native Omnigent sessions                   |
+| `mo-review`   | `mo-herdr` or `mo-omnigent` needs the backend-neutral review protocol |
+| `mo-reuse`    | you want to know what already exists before it gets built             |
+| `mo-setup`    | a project has no contract yet                                         |
+| `mo-e2e`      | the E2E genuinely needs an agent — a benchmark or a browser suite     |
+| `mo-watchdog` | a long unattended run should tell you when it needs you               |
 
 The backend is part of the skill's name rather than a flag: session semantics
 differ enough between Herdr and Omnigent that one prompt covering both would be
 vague about both.
 
-`mo-review` is the one you will use most. In direct mode the coding session that
-made a small fix temporarily wears both author and executor hats: it freezes a
-clean commit, selects a fixture-proven review backend without asking for an
-ordinary routing choice, applies accepted findings, commits corrections and
-starts fresh A/B rounds until one unchanged SHA passes. Inside `mo-herdr` or
-`mo-omnigent`, it instead supplies only the backend-owned review protocol. This
-is a deliberate exception to "the executor gets no methodology skill", because
-for a small fix losing the coding context costs more than the methodology bias
-risks.
+`mo-review` is a protocol component, not a standalone review runtime. It supplies
+the lenses, compact outcomes, adjudication and convergence rules used inside
+`mo-herdr` and `mo-omnigent`; those backend skills own actor launch, vendor
+selection, complete-turn retrieval, finding application, commits and E2E. A
+single-skill install is readable protocol material only and is not advertised as
+a way to execute reviews.
+
+Human input has two distinct paths. Product meaning, architecture, credentials,
+subscription state, and other repository-changing answers return to the
+executor for credential-safe verbatim intent recording and a new candidate SHA.
+Approval for one already named production/irreversible E2E scenario returns to
+that same E2E actor on the unchanged candidate; optional watchdog approval stays
+with the orchestrator. Operational approval bodies are never persisted.
 
 ## Repository layout
 

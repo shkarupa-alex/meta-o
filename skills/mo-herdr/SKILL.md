@@ -150,8 +150,10 @@ polling, predicted SHA/cleanliness or terminal prose.
 
 ## Feature flow
 
-1. Start the executor and send the exact initial `/goal` plus its fresh current
-   prompt-boundary row from methodology §2.
+1. Start the executor and send the exact initial `/goal`, fresh current
+   prompt-boundary row and byte-identical `MO_EXECUTOR_PROTOCOL_CAPSULE_V1` from
+   methodology §2.3. Every later executor objective carries the same capsule
+   before any relay; never assume a warm executor remembers the skill.
 2. Follow direct lifecycle until a complete executor handoff settles.
 3. For a candidate, observe a ten-second non-submitting quiet period using public
    actor/process state. A spontaneous return to `working` means the goal is still
@@ -187,8 +189,9 @@ prior gates and open IDs but does not reset the feature-run ID floor. An executo
 BLOCKER is accepted only before a candidate or during resolution of that frozen
 candidate. The canonical no-progress key includes candidate, actor, phase,
 header type, status and open IDs; its second unchanged terminal occurrence stops
-the run. Executor RESPONSE IDs must all share one origin prefix; mixed A/B
-responses are rejected globally and handled in separate origin turns. The next
+the run. Executor RESPONSE `rebuts` must equal the complete current open-ID set
+for exactly one origin; subsets, supersets and mixed A/B responses are rejected
+globally and handled in separate origin turns. The next
 origin handoff accounts for every rebutted ID exactly once across disjoint
 `closes` and `disputes`. `PASS` closes them all without new IDs; `FOLLOWUP`
 closes them all and adds new IDs; `OUTCOMES` represents a mixed close/dispute
@@ -204,9 +207,20 @@ credential-safe verbatim-intent `/goal` from methodology §7. It must create a n
 candidate that invalidates all same-candidate gates and open IDs; no human
 decision goes directly to the origin. Route any other permitted human answer
 through phase/requester-bound `HUMAN_ANSWER_TO_EXECUTOR`; the executor records it
-credential-safely before acting and commits a new candidate. Each relay is bound
-to its named phase, exact recipient actor, source header, frozen candidate and
-target ID.
+credential-safely before acting and commits a new candidate.
+
+Do not send operational approvals through that repository-changing route.
+Candidate-bound `production_e2e`/`irreversible_e2e` `APPROVE|DENY` uses only
+`E2E_APPROVAL_TO_E2E` at `e2e-approval-resume`; an approved named scenario may
+then return E2E PASS on the unchanged SHA. Bind it to the exact requester actor,
+candidate, named scenario and freshly unpredictable one-shot 64-hex request
+token; reject stale, replayed and cross-actor approvals. `watchdog_start` uses the non-relay
+`WATCHDOG_START_TO_ORCHESTRATOR` control route and starts the observer only on
+`APPROVE`. These credential-free headers are run authorization, not tracked
+product intent; never persist their opaque bodies or create a docs commit.
+
+Each relay is bound to its named phase, exact recipient actor, source header,
+frozen candidate and target ID.
 Never substitute a generic prompt or resend an ambiguously accepted relay.
 
 ## Complete handoff retrieval

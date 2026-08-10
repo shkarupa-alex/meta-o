@@ -44,14 +44,17 @@ native actor launch establishes route/vendor identity.
 ## Executor objective
 
 Omnigent has no native Goal transport. Use one persistent executor session with
-the exact **Omnigent ordinary initial objective** from methodology §2, as
-ordinary prompt text. The string has no `/goal` prefix. Name this as the weaker
+the exact **Omnigent ordinary initial objective** from methodology §2 as
+ordinary prompt text, followed by the fresh prompt-boundary row and the
+byte-identical `MO_EXECUTOR_PROTOCOL_CAPSULE_V1`. The string has no `/goal`
+prefix. Name this as the weaker
 prompt-objective route; do not emulate Goal state with a registry or read a
 private store.
 
 When review or E2E returns work, send the exact **Omnigent ordinary resolution
 objective** from methodology §2 together with the versioned opaque relay in one
-new atomic ordinary prompt. Do not add `/goal`, paraphrase either objective, or
+new atomic ordinary prompt. Put the fresh prompt-boundary row and the same exact
+executor protocol capsule before the relay. Do not add `/goal`, paraphrase either objective, or
 ask the human to resume, route or select an ordinary actor.
 
 ## Flow
@@ -66,7 +69,8 @@ ask the human to resume, route or select an ordinary actor.
 6. At the completed first-pass barrier, a complete `PASS`/`PASS` pair proceeds
    directly to the applicable E2E gate without relaying either review. Release
    the complete A/B pair atomically only when at least one evaluation has
-   `FINDINGS`. After a same-origin multi-ID executor `RESPONSE`, the origin
+   `FINDINGS`. An executor `RESPONSE` is valid only when its `rebuts` equals the
+   complete current open-ID set for exactly one origin. After that response, the origin
    returns one complete outcome whose disjoint `closes` and `disputes` account
    for every rebutted ID. New IDs use a one-part `FOLLOWUP` only after all
    rebutted IDs close; it is delivered whole by
@@ -83,19 +87,32 @@ adjudication and no-progress bounds follow the methodology.
 A permitted `MO_HUMAN_DECISION_V1` uses
 `HUMAN_DECISION_TO_EXECUTOR`, never an origin-reviewer prompt. Submit the exact
 ordinary human-decision objective in the mechanics, current-turn marker and
-relay atomically. The executor appends the credential-safe human words verbatim
+exact executor protocol capsule, then relay atomically. The executor appends the
+credential-safe human words verbatim
 to business framing and every current task/spec, applies them, and commits a new
 candidate; this invalidates all prior gates and IDs.
 
 Every other permitted human answer uses `MO_HUMAN_ANSWER_V1` and
-`HUMAN_ANSWER_TO_EXECUTOR` with the phase/requester matrix in the mechanics.
-Submit its exact ordinary objective, current-turn marker and relay atomically;
+`HUMAN_ANSWER_TO_EXECUTOR` with requester `executor` and the closed repository-
+changing phase set in the mechanics.
+Submit its exact ordinary objective, current-turn marker, exact executor
+protocol capsule, and relay atomically;
 it has the same verbatim-ledger, new-candidate and full-invalidation effect.
+
+Operational approval is separate. Candidate-bound `production_e2e` or
+`irreversible_e2e` authorization returns through `E2E_APPROVAL_TO_E2E` to the
+same E2E actor and may finish on the unchanged SHA. `watchdog_start` uses the
+non-relay `WATCHDOG_START_TO_ORCHESTRATOR` control route. Keep only the exact
+approval header as run evidence; never persist its opaque body, update tracked
+intent, or create a new candidate. Bind its fresh request token to the exact
+requester/operation/phase/candidate and consume it once; reject replay.
 
 Every native objective, follow-up and opaque relay carries the exact
 `MO_PROMPT_BOUNDARY_V1|fingerprint=<64-lower-hex>` marker for that submitted
-turn. A result without the current marker is not the current turn; there is no
-marker-free fallback.
+turn. Every executor turn also carries the byte-identical
+`MO_EXECUTOR_PROTOCOL_CAPSULE_V1` from methodology §2.3 after that marker and
+before any relay. A result without the current marker is not the current turn;
+there is no marker-free fallback.
 
 ## Recovery
 

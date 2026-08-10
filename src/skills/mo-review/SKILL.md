@@ -1,48 +1,38 @@
 ---
 name: mo-review
-description: Run two independent reviews of the current change, apply the accepted findings, and repeat rounds until both reviewers pass with nothing actionable left. Use directly in the coding session that just made a small fix, or as the review protocol inside a full mo-herdr / mo-omnigent workflow.
+description: Supply the backend-neutral two-reviewer protocol inside an installed mo-herdr or mo-omnigent feature workflow — independent lenses, compact outcomes, adjudication, and same-SHA convergence. This is a protocol component, not a standalone reviewer launcher or fixing runtime.
 license: MIT
 ---
 
-# Review, fix, and review again
+# Two-reviewer protocol
 
 This skill owns reviewer judgment, prompts, findings and compact review handoffs.
 The selected backend owns actor launch, lifecycle, complete-turn retrieval and
 opaque delivery. Read `references/purpose-and-architecture.md` before judging
 purpose or architecture.
 
-## Two entry modes
+## Invocation boundary
 
-**Direct mode** is the primary standalone entry. The coding session that just
-made the change remains the author and temporarily owns executor work: it reads
-the repository and framing, creates a clean candidate commit, selects the review
-backend, applies accepted findings, answers rebuttals with evidence, commits each
-coherent correction and starts a fresh two-reviewer round after every new SHA.
-No separate executor actor is created. This is the deliberate small-fix
-exception to the rule that an executor does not receive methodology.
+Use this protocol only inside an installed `mo-herdr` or `mo-omnigent` feature
+workflow. The enclosing backend already owns the executor, actor creation,
+actual vendor selection, lifecycle waits, complete-turn retrieval, opaque relay,
+finding application, commits, E2E, and fresh-round scheduling. This skill
+supplies reviewer lenses, compact outcome semantics, and convergence rules; it
+does not launch reviewers, select a backend, inspect a worktree as author, apply
+findings, or provide a standalone fixing loop.
 
-Select the direct review backend without asking the user to make an ordinary
-routing choice. Reuse an enclosing backend when one exists. Otherwise prefer a
-fixture-proven Herdr surface when the session is inside `HERDR_ENV=1`, then a
-fixture-proven native Omnigent surface, then the current harness's native
-subagent/session surface only if it proves complete turns and the required
-actual vendor diversity. The selected surface owns launch, lifecycle, full-turn
-retrieval and opaque delivery. If none qualifies, return content-free
-`needs_attention` for review capability; do not invent headless/private capture
-or silently accept two same-vendor passes.
-
-**Backend protocol mode** is used inside `mo-herdr` or `mo-omnigent`. The
-enclosing backend already has an executor and frozen candidate and owns every
-session operation. This skill supplies only reviewer lenses, compact outcome
-semantics and convergence rules; it neither launches actors nor edits the
-repository in that mode.
+A single-skill `mo-review` installation is therefore a readable/reusable
+protocol artifact, not an executable review product. Do not improvise a direct
+mode with ambient subagents, private transcripts, headless provider commands, or
+an undeclared dependency on another installed skill. A request to run a review
+is routed through `mo-herdr` or `mo-omnigent`; if neither qualified backend is
+available, report review capability attention.
 
 ## Preconditions
 
-Review one full clean candidate SHA. In direct mode, run the applicable checks
-and commit the current change before freezing it; do not review a dirty diff as
-if it were candidate evidence. Reviewer A completes before reviewer B
-starts; B receives the same task/spec locator and candidate but no A output. Each
+Review one full clean candidate SHA supplied by the enclosing backend. Reviewer A
+completes before reviewer B starts; B receives the same task/spec locator and
+candidate but no A output. Each
 reviewer independently reads the complete task/spec, business framing, glossary,
 project knowledge and candidate. At least one reviewer vendor differs from the
 author, and A/B vendors differ. Actual launched process kinds establish vendors.
@@ -159,8 +149,10 @@ The executor verifies each claim against the repository, fixes it or emits an
 `MO_EXECUTOR_V1|type=RESPONSE` rebuttal for current origin IDs. Only the origin
 reviewer can close a finding.
 
-On the next origin turn, one complete one-part outcome accounts for the exact
-`rebuts` set: every ID is in exactly one of `closes` or `disputes`. New findings
+An executor `RESPONSE` is valid only when `rebuts` equals the complete current
+open-ID set for exactly one origin; a subset, superset, or mixed-origin set is
+invalid. On the next origin turn, one complete one-part outcome accounts for
+that exact `rebuts` set: every ID is in exactly one of `closes` or `disputes`. New findings
 receive new IDs in a `FOLLOWUP` outcome only after every rebutted ID closes. An
 all-close/no-new outcome is final `PASS`, a mixed close/dispute outcome is
 `OUTCOMES`, and an all-dispute outcome is `DISPUTED`. An existing other-vendor
@@ -180,38 +172,43 @@ and the introducing part for that target. Backend scratch reference-counts the
 shared response/outcome until every referenced adjudication delivery is
 terminal; it never deletes shared bytes after only the first target.
 
-Every permitted non-dispute human answer begins exactly:
+Every repository-changing permitted non-dispute human answer begins exactly:
 
 ```text
-MO_HUMAN_ANSWER_V1|candidate=<oid|none>|phase=<product|architecture|irreversible|credentials|subscription|production_e2e|external_blocker|watchdog>|requester=<executor|e2e|orchestrator>
+MO_HUMAN_ANSWER_V1|candidate=<oid|none>|phase=<product|architecture|irreversible|credentials|subscription|external_blocker>|requester=executor
 ```
 
-Executor may request every phase except `production_e2e` and `watchdog`; E2E may
-request `production_e2e`, `irreversible`, `credentials`, `subscription`, or
-`external_blocker`; only orchestrator may request `watchdog`. Backend protocol
-mode uses `HUMAN_ANSWER_TO_EXECUTOR`. In direct mode the current author session
-is that executor. Before acting, it appends the credential-safe human words
-verbatim to `docs/business.md` and every current task/spec, commits a new clean
-candidate and invalidates all prior gates and IDs. The dedicated
-candidate/finding-bound `MO_HUMAN_DECISION_V1` route remains for unresolved
-adjudication.
+The enclosing backend uses `HUMAN_ANSWER_TO_EXECUTOR`. Before acting, its
+executor appends the credential-safe human words verbatim to
+`docs/business.md` and every current task/spec, commits a new clean candidate,
+and invalidates all prior gates and IDs. The dedicated candidate/finding-bound
+`MO_HUMAN_DECISION_V1` route remains for unresolved adjudication.
 
-## Direct convergence loop
+Candidate-stable E2E and watchdog run authorization is not a generic human
+answer and never reaches the executor or tracked intent ledgers. The enclosing
+backend accepts only this closed operational header and its exact requester,
+candidate, and operation combinations:
 
-1. Freeze the clean candidate and run independent A, then B, through the selected
-   backend with no A bytes reaching B.
-2. If both pass, relay neither body. Run applicable E2E or accept NA only when
-   both independently declared it, then return the unchanged full SHA.
-3. If findings exist, deliver the conditional A/B pair to the direct author
-   session. Apply every accepted finding, run checks and commit a new clean
-   candidate; that SHA invalidates the round and starts again at step 1.
-4. For evidence-backed rebuttals on an unchanged SHA, use same-origin
-   `RESPONSE` and the complete outcome-set/adjudication protocol above. Any
-   accepted correction or permitted human answer is committed and restarts both
-   reviewers.
-5. Continue until one unchanged candidate has two independent PASS outcomes and
-   its applicable E2E gate. Do not stop after one pass, a partial outcome,
-   `UNKNOWN`, or a round made stale by a commit.
+```text
+MO_OPERATIONAL_APPROVAL_V1|candidate=<oid|none>|operation=<production_e2e|irreversible_e2e|watchdog_start>|requester=<e2e|orchestrator>|request=<64-lower-hex>|decision=<APPROVE|DENY>
+```
+
+An E2E approval resumes only the named scenario in the same E2E actor on the
+unchanged candidate. Watchdog approval is handled by the orchestrator without an
+actor relay. Retain only the header and current conversation evidence; never
+persist the opaque body or create a documentation commit.
+The freshly unpredictable request token is bound to the requester, named
+operation, phase, and candidate and is consumed exactly once; reject stale,
+replayed, or cross-actor approval.
+
+## Backend convergence
+
+The enclosing backend delivers a conditional findings pair to its executor.
+Any accepted correction creates a new SHA and restarts both reviewers; an
+unchanged-SHA rebuttal uses the outcome/adjudication protocol above. Continue
+until the backend has two independent PASS outcomes and applicable E2E on one
+unchanged candidate. Do not stop after one pass, a partial outcome, `UNKNOWN`,
+or a round made stale by a commit.
 
 ## Passing
 
