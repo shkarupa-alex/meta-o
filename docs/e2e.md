@@ -24,10 +24,8 @@ other-SHA evidence is `UNKNOWN`.
 
 ## Deterministic scenarios
 
-These are the required final deterministic scenarios. A row becomes current only in the
-increment that lands its named test; until then its acceptance row remains PENDING. They do
-not substitute for live provider rendering, native lifecycle, vendor diversity, or absence
-of tracked reads in a real actor run.
+These scenarios run under `make mo-qc`. They do not substitute for live provider rendering,
+native lifecycle, vendor diversity, or absence of tracked reads in a real actor run.
 
 | Scenario          | Required behavior                                                                                                  |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------ |

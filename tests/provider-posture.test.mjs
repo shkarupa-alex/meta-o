@@ -316,6 +316,14 @@ function processIsAlive(pid) {
   }
 }
 
+async function waitUntilProcessGone(pid, timeout = 2_000) {
+  const deadline = Date.now() + timeout;
+  while (processIsAlive(pid) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return !processIsAlive(pid);
+}
+
 test("the posture script and both child probes have valid syntax", () => {
   const syntax = spawnSync("bash", ["-n", SCRIPT], { encoding: "utf8" });
   assert.equal(syntax.status, 0, syntax.stderr);
@@ -1043,7 +1051,11 @@ test("two TERM signals to only the runner keep code 143 and stop its descendant 
   const outcome = await waitForExit(child);
   assert.equal(outcome.code, 143, JSON.stringify(outcome));
   assert.deepEqual(readdirSync(scratch), []);
-  assert.equal(processIsAlive(descendantPid), false, "profile descendant survived runner TERM");
+  assert.equal(
+    await waitUntilProcessGone(descendantPid),
+    true,
+    "profile descendant survived runner TERM",
+  );
 });
 
 test("selected mutation campaign reports every tried guard and zero survivors", async () => {

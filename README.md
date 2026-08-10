@@ -22,12 +22,12 @@ The current operational correction is
 ## What a run looks like
 
 ```text
-preflight — repo root, business framing, spec, Makefile, backend help,
-            PATH wrappers, model set
-  → optional reuse research, only if you ask for it
-  → executor under a native /goal, until one clean candidate commit
+pre-activation — inject project contract and opaque task/spec locator
+  → process-only orchestrator creates a visible executor and sends one native goal
+  → executor reads the repository and produces one clean candidate commit
   → freeze that SHA
-  → reviewer A + reviewer B, independent, on that SHA
+  → reviewer A completes, then independent reviewer B starts on that SHA
+  → release both first passes atomically after the barrier
   → the applicable E2E, on that SHA
   → any fix → new SHA → every applicable gate again
   → STATUS / CANDIDATE / SUMMARY
@@ -129,7 +129,8 @@ hand-edited copy of the methodology could begin.
   turn, that route is marked unsupported.
 - Accept "repeat your last answer verbatim" as retrieval. That tests obedience.
 - Summarise a reviewer's findings on the way to the author.
-- Start reuse research, an E2E tester or a watchdog you did not ask for.
+- Ask the human to choose an ordinary route, retry, fix or process step.
+- Start an optional watchdog without an explicit request.
 - Let the executor edit or delete the spec.
 - Weaken a quality gate to make a candidate green.
 - Push, tag or open a PR without being asked.
@@ -155,83 +156,19 @@ working to different contracts. Its knowledge is in
 
 ## Known limits
 
-**The loop has been driven end to end on both backends, and neither run converged.**
-On 2026-08-06 and 07 a small feature went framing → spec → executor session → QC →
-frozen SHA → two independent reviewers with at least one on another vendor → findings
-verbatim → new SHA → every gate again: seven rounds through `mo-herdr`, six through
-`mo-omnigent`. Every reviewed round returned FAIL on real findings — a parser that
-rejected the separator `ru-RU` actually emits, a range guard a reviewer disproved by
-mutating the source and watching the suite stay green, once an acceptance criterion
-that had been _deleted_ rather than satisfied, and last a mutation harness whose gate
-exited 0 after checking 1 of its own 101 mutants. So there is still **no verified
-candidate**, and what the runs established is that the gate catches what a green build
-does not, that the second vendor is load-bearing (twice one vendor passed a candidate
-the other then failed), and that reviewers which probe by mutation raise the bar every
-round. Two limits belong in the same breath: **the orchestrator was this session
-reading the authored skills, not a packaged skill installed and launched on its own**,
-so the methodology is what these runs exercise; and the Omnigent run misaddressed its
-own executor for four rounds through `omnigent run -c`, which is now fixture O9 and a
-rule in the skill. [`docs/e2e.md`](docs/e2e.md) records every round and both limits.
-
-- **Most Phase 0 fixtures now have evidence, and support is per surface, not per
-  provider.** Run on 2026-08-06/07: §H for all three providers on both surfaces, §G
-  except the trust step, §O except its open rows, §W, §M, §R in full, and the `PATH`
-  rows for Claude and Codex. **§H is not closed** — H7b is open on the TUI surface of
-  every route and N/A on the captured inline surface, so the one supported
-  configuration for the review gate is Claude or Codex, captured inline. What the
-  evidence says is sharper than "it works":
-  **`agent read` caps at 1000 rows** and there is no scroll method, so a long **TUI**
-  answer is `unknown` — and the TUI carries the review gate only on Codex, because
-  Claude Code interleaves repaint fragments above roughly 250 rows and OpenCode
-  retains no scrollback at all. The **inline** surface (`claude -p`, `codex exec`,
-  `opencode run` through `herdr pane run`) returned an 800-row answer exactly on every
-  route, keeps its own addressable session for rebuttals, and is the recommended path
-  — with its stdout captured **as a structured envelope**, which
-  [`addendum-02`](spec/2026-08-05-ai-driven-development-workflow-revision/addendum-02-orchestrator-owned-capture.md)
-  had to permit explicitly, because the shell writing that file is a different thing
-  from the reviewer-written verdict file the spec bans. The envelope, not the exit
-  status, is what proves the turn ended: `claude -p --output-format json` returns one
-  parseable object and `codex exec --json` ends in a `turn.completed` event, whereas
-  a turn cut off mid-answer exits 0 like any other and a verdict truncated below its
-  heading looks whole.
-  Its one measured failure mode is a provider that ends a turn empty: a tool-using
-  OpenCode turn produced no answer and still exited 0, and so did an Omnigent
-  `claude-sdk` review — which is `unknown`, never "no findings". That failure is why
-  **OpenCode is unsupported for the review gate on both of its surfaces**: a reviewer
-  that goes silent as soon as it uses a tool cannot hold a gate.
-  **Omnigent's REPL answers `Unknown command: /goal`** and never
-  forwards slash commands to the harness, so that route runs the lifecycle with the
-  weaker prompt-text objective. It has a second limit that is easy to miss: its
-  headless output is free text with no envelope, so the review gate there must go
-  through `session export` — which needs a full conversation id no non-interactive
-  surface yields, and a prefix is refused. **Every Omnigent review round is therefore
-  a `needs_attention`**, not something an unattended run completes.
-  Details and the rows still open are in
-  [`docs/phase-0-fixtures.md`](docs/phase-0-fixtures.md).
-- **There is no OpenCode wrapper on this machine** (rows P2c/P3c). On that route
-  nothing in `PATH` carries a permission or sandbox posture, so it comes from
-  OpenCode's own configuration — which nobody has verified — or from nowhere.
-- **The remote installs are unverified.** What is proven is a local-path `apm
-install`, by `tests/install.test.mjs`. `npx skills` and the remote form (I3–I5)
-  need this repository pushed first.
+- **The final Herdr surface is not yet adopted.** This implementation environment
+  has no `HERDR_ENV=1`; P1–P8, H7b and H13–H37 therefore remain unsupported rather
+  than borrowing old inline/headless evidence.
+- **The final Omnigent route is not yet adopted.** OM1–OM8 must prove its native
+  firewall, continuity, complete-result and gate behavior independently.
+- **A hard crash can leave private scratch until OS cleanup.** New runs do not
+  scan for or delete old directories without ownership evidence.
 - **The Claude catalogue SDK is self-contained.** The generated helper bundles
   the pinned SDK, carries its licence, uses system Claude from PATH, and needs no
   ambient runtime `node_modules`; catalogue presence still does not prove
   launchability or subscription entitlement.
-- **`/goal` works on Codex and Claude Code, and does not exist on the other two.**
-  Codex reports `Goal active` / `Pursuing goal` and survives `codex resume` with an
-  explicit status; Claude Code reports `◎ /goal active`. OpenCode answers the line as
-  ordinary text, and Omnigent's REPL rejects it outright — both get a prompt-level
-  convention that must be called weaker. The one part still unobserved is Claude's
-  first-time workspace-trust prompt, because this repository was already trusted.
-- **`mo-watchdog` stays skill-only.** Fixture W1 ran: a session performed a bounded
-  native wait (`sleep 25`) and then produced another reasoning turn in the same
-  session. No helper `.mjs` is admitted.
-- **Nothing mechanically enforces the methodology.** The previous generation could
-  refuse an illegal transition; this one can only be read and followed. The trade
-  is argued in
-  [`docs/architecture/skills-first.md`](docs/architecture/skills-first.md), and
-  the honest summary is: the enforcement covered sequencing, never judgement, and
-  it cost a control layer that had to be recovered before any feature could be.
+- **Nothing mechanically enforces reasoning.** Deterministic gates constrain
+  grammar, distribution and observable boundaries; the skills remain the
+  orchestration layer by design.
 
 Everything deferred is in [`docs/backlog.md`](docs/backlog.md).

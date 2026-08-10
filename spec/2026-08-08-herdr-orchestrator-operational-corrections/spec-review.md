@@ -377,10 +377,11 @@ Tests use `markdown-it` AST nodes for entry ownership. Reviewers own semantic co
 Before topology mutation, run:
 
 ```text
-scripts/mo-posture.sh --self-check -- <selected-providers>
+scripts/mo-posture.sh --self-check --shell all
+scripts/mo-posture.sh --shell <zsh|bash|all> -- <selected-providers>
 ```
 
-Require a complete, non-divergent provider-resolution matrix. Only fixed classification, command kind, and first resolved path enter context. Trust/permission behavior remains a separate live fixture.
+The first command validates every embedded shell probe and does not read profiles or emit provider resolution. The second command measures the selected providers under every applicable launch-parent shell mode and produces the provider-resolution matrix. Require status 0 from both commands and a complete, non-divergent matrix. Only fixed classification, command kind, and first resolved path enter context. Trust/permission behavior remains a separate live fixture.
 
 Allowed Git commands:
 
@@ -518,6 +519,7 @@ MO_EXECUTOR_V1|type=<CANDIDATE|RESPONSE|BLOCKER>|candidate=<oid|none>|branch=<na
 MO_REVIEW_V2|candidate=<oid>|reviewer=<A|B>|status=<PASS|FINDINGS|DISPUTED|UNKNOWN>|part=<positive-int>|more=<yes|no>|ids=<ids|none>|open=<ids|none>|closes=<ids|none>|qc=<PASS|FAIL|UNKNOWN>|smoke=<PASS|FAIL|UNKNOWN>|checks=<PASS|FAIL|UNKNOWN|NA>|e2e=<REQUIRED|NA|UNKNOWN>|unknown=<transport|environment|evaluation|none>
 MO_ADJUDICATION_V1|candidate=<oid>|finding=<id>|reviewer=<A|B>|outcome=<UPHOLD|WITHDRAW|UNRESOLVED>
 MO_E2E_V1|candidate=<oid>|status=<PASS|FAIL|UNKNOWN|BLOCKER>|scenarios=<positive-int|none>|not_run=<none|positive-int>|blocker=<production_e2e|credentials|subscription|external_blocker|none>
+MO_HUMAN_DECISION_V1|candidate=<oid>|finding=<id>|decision=<UPHOLD|WITHDRAW>
 ```
 
 Fields occur once in exact order. Candidate IDs equal observed `HEAD`; base IDs are lowercase hexadecimal commit objects; branch equals observed branch. Finding IDs are `A-<positive-int>` or `B-<positive-int>`, comma-separated without spaces, numerically sorted within prefix, and unique. Positive integers are canonical unsigned base-10 without sign or leading zeros.
@@ -532,11 +534,11 @@ Reviewer IDs increase monotonically for the run and are never reused after inval
 | `RESPONSE`  | frozen candidate    | feature branch   | `none`                  | `none`                  | open origin IDs | `none`          |
 | `BLOCKER`   | candidate or `none` | branch or `none` | `none`                  | `none`                  | `none`          | permitted class |
 
-Blocker classes:
+Executor blocker classes:
 
 ```text
 product_meaning | product_architecture_fork | irreversible_action | credentials |
-subscription | production_e2e | external_blocker | unresolved_dispute
+subscription | external_blocker
 ```
 
 ### Blocker routing
@@ -586,18 +588,21 @@ Role bounds including header and original newlines are:
 
 The portable combined A+B goal contains at most 122,880 body bytes plus at most 7,168 ASCII framing/goal bytes, for a maximum single argv element of 130,048 UTF-8 bytes. Including the terminating NUL this is strictly below Linux `MAX_ARG_STRLEN=131072`; the same exact boundary is tested on Linux and the supported local platform. An authored wrapper over 7,168 bytes is a build failure, not a runtime surprise.
 
-Every relay argument uses this exact versioned frame grammar after the goal line:
+Every relay argument uses this exact versioned frame grammar after the goal line
+for executor-bound directions, or directly as an ordinary reviewer prompt:
 
 ```text
-MO_RELAY_V1|kind=<REVIEW_PAIR|E2E|ADJUDICATION>|candidate=<oid>|segments=<positive-int>|frame=<32-lower-hex>
-MO_SEGMENT_V1|index=<positive-int>|source=<reviewerA|reviewerB|executor|e2e>|part=<positive-int|none>|bytes=<positive-int>
+MO_RELAY_V2|direction=<direction>|recipient=<executor|reviewerA|reviewerB>|candidate=<oid>|finding=<id|none>|segments=<positive-int>|frame=<32-lower-hex>
+MO_SEGMENT_V1|index=<positive-int>|source=<reviewerA|reviewerB|executor|e2e|human>|part=<positive-int|none>|bytes=<positive-int>
 <exactly bytes raw UTF-8 bytes>
 MO_SEGMENT_END_V1|index=<same>|frame=<same>
 ...
 MO_RELAY_END_V1|segments=<same>|frame=<same>
 ```
 
-The recipe appends one framing LF after the counted raw bytes before `MO_SEGMENT_END_V1`; that LF is outside the segment and never changes its byte-identity baseline. The 128-bit frame token is generated after all bodies are captured and must not occur byte-for-byte in any segment; regenerate up to eight times, then fail closed. Segment indices are consecutive from 1. `REVIEW_PAIR` has 2–12 segments and contains all A parts then all B parts. `E2E` has one E2E segment. `ADJUDICATION` has exactly three segments: the origin review part whose header introduced the target ID, the executor `RESPONSE`, and the origin `DISPUTED` handoff. This mechanically selected subset is at most 117,760 bytes including the same 7,168-byte framing budget. No semantic extraction is performed.
+Directions are exhaustive and phase-bound: `REVIEW_PAIR_TO_EXECUTOR`, `FAILED_E2E_TO_EXECUTOR`, `EXECUTOR_RESPONSE_TO_ORIGIN`, `ADJUDICATION_REQUEST_TO_PEER`, `ADJUDICATION_UPHOLD_TO_EXECUTOR`, `ADJUDICATION_WITHDRAW_TO_ORIGIN`, `HUMAN_DECISION_TO_ORIGIN`, and `INVALIDATED_A_CHECK_TO_EXECUTOR`. The recipe binds the canonical recipient actor, declared source and compact header, phase, frozen candidate, and target ID. Review-pair delivery requires at least one complete `FINDINGS` evaluation; failed-E2E accepts only a complete `FAIL`; the A-only route requires complete reviewer-A `FINDINGS` with `checks=FAIL` and never starts B.
+
+The recipe appends one framing LF after the counted raw bytes before `MO_SEGMENT_END_V1`; that LF is outside the segment and never changes its byte-identity baseline. The 128-bit frame token is generated after all bodies are captured and must not occur byte-for-byte in any segment; regenerate up to eight times, then fail closed. Segment indices are consecutive from 1. An adjudication request has exactly three segments: the origin review part whose header introduced the target ID, the whole same-origin executor `RESPONSE` containing that target among one or more canonical rebuttal IDs, and the origin `DISPUTED` handoff. This mechanically selected subset is at most 117,760 bytes including the same 7,168-byte framing budget. Peer `UPHOLD` returns to the executor; peer `WITHDRAW` and a permitted human decision return to the origin reviewer. No semantic extraction is performed.
 
 Reject NUL, invalid UTF-8, or newline transformation.
 
@@ -662,11 +667,20 @@ preflight
   -> reviewer_A
   -> reviewer_B
   -> first_pass_barrier
+       -> A_mutating_check -> A_only_invalidated_goal -> executor_active
        -> feedback/failure -> combined_goal -> executor_active
        -> both_pass/e2e_NA -> verified
        -> both_pass/e2e_required -> e2e
-            -> FAIL -> goal -> executor_active
+            -> FAIL -> failed_e2e_goal -> executor_active
             -> PASS -> verified
+
+resolution
+  -> executor_RESPONSE -> origin_reviewer
+       -> closes -> convergence
+       -> DISPUTED -> peer_adjudication
+            -> UPHOLD -> executor_active
+            -> WITHDRAW -> origin_reviewer
+            -> UNRESOLVED -> human_decision -> origin_reviewer
             -> BLOCKER -> permitted_boundary
             -> repeated_UNKNOWN -> needs_attention
 ```
@@ -858,7 +872,7 @@ Covers:
 - AST-level skill/glossary/recipe checks;
 - full header and blocker matrices;
 - identity, exact ID ordering/canonical integers, invalidation, multipart review accounting, role-specific sizes, and unknown classes;
-- portable 130,048-byte combined release, 7,168-byte framing allowance, Linux per-argument boundary, exact `MO_RELAY_V1` grammar/collision rules, and bounded adjudication subset;
+- portable 130,048-byte combined release, 7,168-byte framing allowance, Linux per-argument boundary, exact exhaustive `MO_RELAY_V2` direction/recipient/source/phase/candidate/ID grammar and collision rules, and bounded adjudication subset;
 - executable `shell:false` relay fixtures, body-silent failures, UTF-8/NUL/newline/length tests;
 - ambiguity decision table proving there is no retry without positive non-delivery evidence;
 - name collision handling;
@@ -990,8 +1004,8 @@ Splits must remain independently green. Generated output and newly false knowled
 | Opaque body/no Markdown parsing                                                   | adopted    | Firewall                                                                                                                         |
 | Review V2: up to six parts / 1000 rows / 60 KiB total                             | adopted    | Preserves complete findings within the user-accepted retrieval envelope while delaying all relay until the barrier               |
 | One combined A+B release goal                                                     | adopted    | Barrier remains atomic                                                                                                           |
-| `MO_RELAY_V1`, 130,048-byte argv ceiling, 7,168-byte framing budget               | adopted    | Portable below Linux single-argument limit with deterministic collision/length tests                                             |
-| Three-segment mechanical adjudication subset                                      | adopted    | Preserves the exact relevant exchange without semantic selection or oversized relay                                              |
+| `MO_RELAY_V2`, exhaustive directions, 130,048-byte argv ceiling, 7,168-byte framing budget | adopted    | Portable below Linux single-argument limit with deterministic lifecycle, collision, and length tests                              |
+| Three-segment mechanical adjudication request plus explicit resolution legs        | adopted    | Preserves exact relevant bytes and routes peer/human outcomes without semantic selection                                          |
 | Review V1 multibatch                                                              | rejected   | Replaced by explicit V2 part identity and total bounds                                                                           |
 | Any implicit V1 multibatch                                                        | rejected   | No versioned identity                                                                                                            |
 | Scratch through barrier                                                           | adopted    | Delayed delivery                                                                                                                 |
