@@ -57,9 +57,11 @@ A gate is therefore freshly proven for one full commit object or it is
 `unknown`. Any new commit invalidates every gate. A dirty worktree is never a
 candidate, and missing or unreadable evidence never becomes a partial pass.
 
-Compact scratch is transport, not durable orchestration state. It exists only
-to preserve opaque bytes until confirmed atomic delivery, is not discovered by
-future runs and is best-effort removed on controlled exit.
+Compact scratch is transport, not durable orchestration state. It preserves
+opaque bytes only through the bounded per-ID delivery, closure, adjudication and
+recovery transitions defined by the canonical methodology. Candidate
+invalidation and controlled exit delete every eligible path known to the run;
+future runs never discover or adopt residue.
 
 ## Restart semantics
 

@@ -103,7 +103,8 @@ unresolved dispute and explicit watchdog are the permitted human boundaries.
 feature run. Warmth is not persisted Meta-O state.
 
 **Scratch transport** — restrictive temporary body storage outside the repository,
-owned only for the current relay and never adopted across runs.
+owned only for bounded current-run per-ID and delivery transitions and never
+adopted across runs.
 
 **PATH wrapper** — executable file selected first by PATH resolution. An alias or
 function may be a verified launch mechanism, but it is not a PATH wrapper; see

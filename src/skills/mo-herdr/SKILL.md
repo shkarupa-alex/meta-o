@@ -119,7 +119,11 @@ is `launch_failed`; continue the finite fallback and recheck diversity.
 ## Prompt and wait
 
 Before every prompt capture settled actor status, foreground process and the
-provider input-boundary fingerprint. Submit text and Enter atomically:
+provider input-boundary fingerprint. Generate a fresh unpredictable 64-lower-hex
+value and include exactly one
+`MO_PROMPT_BOUNDARY_V1|fingerprint=<value>` row in every ordinary prompt,
+continuation, native `/goal` and relay. For a goal it immediately follows the
+`/goal` row; otherwise it is the first row. Submit text and Enter atomically:
 
 ```text
 herdr agent prompt <actor> <text> --wait --timeout <milliseconds>
@@ -146,7 +150,8 @@ polling, predicted SHA/cleanliness or terminal prose.
 
 ## Feature flow
 
-1. Start the executor and send the exact initial `/goal` from methodology §2.
+1. Start the executor and send the exact initial `/goal` plus its fresh current
+   prompt-boundary row from methodology §2.
 2. Follow direct lifecycle until a complete executor handoff settles.
 3. For a candidate, observe a ten-second non-submitting quiet period using public
    actor/process state. A spontaneous return to `working` means the goal is still
@@ -181,13 +186,20 @@ prior gates and open IDs but does not reset the feature-run ID floor. An executo
 BLOCKER is accepted only before a candidate or during resolution of that frozen
 candidate. The canonical no-progress key includes candidate, actor, phase,
 header type, status and open IDs; its second unchanged terminal occurrence stops
-the run. Each rebutted ID still open after one RESPONSE must close or become
-DISPUTED, even when new IDs appear.
+the run. Executor RESPONSE IDs must all share one origin prefix; mixed A/B
+responses are rejected globally and handled in separate origin turns. Each
+rebutted ID still open after one RESPONSE must close or become DISPUTED. A
+DISPUTED forced-outcome turn introduces no new finding; a closure-plus-new
+FINDINGS evaluation returns to the executor through
+`ORIGIN_FINDINGS_TO_EXECUTOR`.
 
 Use the exhaustive `MO_RELAY_V2` direction table in methodology §5 and the
 literal mechanics recipe. Route executor `RESPONSE` to its origin reviewer;
-route peer `UPHOLD` to the executor; route peer `WITHDRAW` and a permitted
-post-human decision to the origin reviewer. Each relay is bound to its named
+route peer `UPHOLD` to the executor and peer `WITHDRAW` to the origin reviewer.
+Route either human `UPHOLD` or `WITHDRAW` to the executor first with the exact
+credential-safe verbatim-intent `/goal` from methodology §7. It must create a new
+candidate that invalidates all same-candidate gates and open IDs; no human
+decision goes directly to the origin. Each relay is bound to its named
 phase, exact recipient actor, source header, frozen candidate and target ID.
 Never substitute a generic prompt or resend an ambiguously accepted relay.
 
@@ -195,14 +207,26 @@ Never substitute a generic prompt or resend an ambiguously accepted relay.
 
 Use only the adaptive public-TUI extraction in
 `references/herdr-mechanics.md`. A compact
-handoff is complete only when both its exact validated header and the
+handoff is complete only when the exact current unpredictable prompt-boundary
+row, its exact validated header and the
 fixture-proven provider lower boundary are present. A header alone is never proof
-that rendering finished.
+that rendering finished. A stale same-candidate marker is rejected. This route
+has no independently proven marker-free fallback.
 
 Opaque bodies stay in restrictive scratch. Print only validated headers into
 orchestrator context. For every permitted direction, build exact `MO_RELAY_V2` framing
 and use the AST-tested `spawnSync("herdr", argv, { shell: false })` recipe. Never
 print body bytes, prompt argv or raw spawn results.
+
+Retention is per file and header/ID-driven, never semantic. Keep all review parts
+until confirmed first-pass delivery, then only introducing parts still referenced
+by open IDs. Keep RESPONSE plus DISPUTED until confirmed adjudication-request
+delivery. Confirmed onward delivery, closure or invalidation deletes each file
+once its final reference is gone. Construction/non-delivery failure retains
+inputs for the bounded retry; ambiguous delivery retains them, records possibly
+delivered and stops without replay. Controlled exit deletes all files in only the
+validated current scratch directory and then the directory; cleanup failure is
+harness attention.
 
 ## Loss and attention
 

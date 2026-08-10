@@ -69,16 +69,16 @@ This session has no `HERDR_ENV=1`; therefore none of P1-P8 has been executed for
 Run H7b and H13-H37 only after deterministic QC is green and the candidate already contains
 removal of the old inline/headless path.
 
-| Group                  | Scenario IDs | What the group proves                                                                                  |
-| ---------------------- | ------------ | ------------------------------------------------------------------------------------------------------ |
-| Visible actors         | H13-H15      | Exact topology, launch posture, model activation, warm panes, and partial failure.                     |
-| Goals and retrieval    | H7b, H16-H19 | Quiet goal settlement, extraction boundaries, structural failure classification, and multipart limits. |
-| Independent review     | H20-H25      | Sequential barrier, reviewer-owned checks, byte identity, exact relay, findings, and blockers.         |
-| Candidate lifecycle    | H26-H29      | Same-SHA completion, commit invalidation, restart, and model fallback.                                 |
-| Firewall and attention | H30-H31      | Narrow human channel and test-only tracked-read canary.                                                |
-| Transport lifetime     | H32          | Scratch creation, delivery lifetime, cleanup, and lost-scratch recovery.                               |
-| Diversity and waits    | H33-H35      | Actual vendors, direct waits, retry/no-progress bounds, and non-gating badges.                         |
-| Failure edges          | H36-H37      | Missing `develop` and existing-peer adjudication.                                                      |
+| Group                  | Scenario IDs | What the group proves                                                                                    |
+| ---------------------- | ------------ | -------------------------------------------------------------------------------------------------------- |
+| Visible actors         | H13-H15      | Exact topology, launch posture, model activation, warm panes, and partial failure.                       |
+| Goals and retrieval    | H7b, H16-H19 | Quiet goal settlement, marker-bound extraction, structural failure classification, and multipart limits. |
+| Independent review     | H20-H25      | Sequential barrier, conditional pair release, origin follow-ups, byte identity, findings, and blockers.  |
+| Candidate lifecycle    | H26-H29      | Same-SHA completion, commit invalidation, restart, and model fallback.                                   |
+| Firewall and attention | H30-H31      | Narrow human channel, executor-owned decision recording, and test-only tracked-read canary.              |
+| Transport lifetime     | H32          | Per-ID/delivery scratch lifetime, ambiguity, controlled cleanup, and lost-scratch recovery.              |
+| Diversity and waits    | H33-H35      | Actual vendors, direct waits, retry/no-progress bounds, and non-gating badges.                           |
+| Failure edges          | H36-H37      | Missing `develop` and existing-peer adjudication.                                                        |
 
 The detailed expected observation and current status for every ID live in
 `docs/phase-0-fixtures.md`. No row is currently PASS.
@@ -92,11 +92,11 @@ Herdr evidence or mechanics.
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | OM1 firewall     | After activation only native process/lifecycle facts, validated headers, and narrow Git metadata enter orchestrator context. |
 | OM2 candidate    | One clean full SHA binds every applicable gate.                                                                              |
-| OM3 independence | A completes before B starts; vendors differ; B receives no A bytes before the barrier.                                       |
-| OM4 findings     | Structured opaque findings preserve origin closure and other-vendor adjudication.                                            |
+| OM3 independence | A completes before B; PASS/PASS does not relay; a findings pair releases atomically; A mutation skips B.                     |
+| OM4 findings     | Opaque findings and responses stay single-origin; DISPUTED adds no ID; human decisions return to executor and invalidate.    |
 | OM5 invalidation | A new commit invalidates every prior gate and open ID.                                                                       |
 | OM6 recovery     | Native session continuity/recovery uses no private store and invents no Herdr-style evidence.                                |
-| OM7 vocabulary   | The route states its weaker prompt objective and uses canonical terms.                                                       |
+| OM7 vocabulary   | The weaker prompt objective and exact current-turn marker bind every submitted turn.                                         |
 | OM8 attention    | Only the permitted human boundaries interrupt the user.                                                                      |
 
 No final Omnigent scenario has been executed for the post-cutover candidate.
@@ -107,7 +107,7 @@ The adoption run is one uninterrupted feature flow:
 
 ```text
 preflight -> executor -> clean candidate -> A -> B -> barrier
-  -> combined feedback -> new candidate -> all gates again
+  -> findings pair atomically -> single-origin response/follow-up turns -> new candidate -> all gates again
   -> both reviews PASS -> applicable E2E -> unchanged full SHA
 ```
 
@@ -128,9 +128,11 @@ Deterministic checks require Node.js 22 or newer, Git, Bash, and Zsh. Tests use 
 and temporary directories; they must never inspect or modify the user's real model settings.
 
 Herdr scenarios require a real interactive orchestrator pane with `HERDR_ENV=1`. Create only
-the named visible tabs and panes. Controlled exits delete only scratch paths created by that
-run. Partial topology remains visible on failure because ownership is insufficient for
-destructive cleanup.
+the named visible tabs and panes. Scratch files remain only while their mechanically tracked
+IDs and delivery/recovery states require them; invalidation and controlled exit delete all
+eligible paths known to that run. Ambiguous maybe-delivery is awaited and never resent.
+Partial topology remains visible on failure because ownership is insufficient for destructive
+cleanup; hard-crash scratch residue remains the explicit backlog limitation.
 
 E2E actors use a unique namespace per scenario and clean it even on failure.
 Production/destructive scenarios require the documented production-safe contract and explicit

@@ -61,8 +61,15 @@ ask the human to resume, route or select an ordinary actor.
 3. Validate clean candidate metadata through only allowed Git commands.
 4. Freeze the candidate and submit nothing to executor.
 5. Run A to completion, recheck candidate, then run B independently with no A
-   output.
-6. Release all A/B parts together through the native atomic prompt surface.
+   output. If A's own check mutates the candidate, relay A alone through
+   `INVALIDATED_A_CHECK_TO_EXECUTOR`; B never starts.
+6. At the completed first-pass barrier, a complete `PASS`/`PASS` pair proceeds
+   directly to the applicable E2E gate without relaying either review. Release
+   the complete A/B pair atomically only when at least one evaluation has
+   `FINDINGS`. A later origin `FINDINGS` turn that closes a rebutted ID and
+   introduces a new one uses `ORIGIN_FINDINGS_TO_EXECUTOR`; different origins
+   use separate settled resolution turns, and a mixed-origin executor
+   `RESPONSE` is invalid.
 7. Repeat after every new commit; open IDs and all gates are SHA-bound.
 8. Run a separate read-only E2E actor when required, or finish only when both
    reviewers independently say NA.
@@ -70,6 +77,18 @@ ask the human to resume, route or select an ordinary actor.
 Both reviewers run QC, smoke and applicable checks. Review bodies stay opaque;
 the orchestrator prints only validated headers. Origin closure, forced dispute,
 adjudication and no-progress bounds follow the methodology.
+
+A permitted `MO_HUMAN_DECISION_V1` uses
+`HUMAN_DECISION_TO_EXECUTOR`, never an origin-reviewer prompt. Submit the exact
+ordinary human-decision objective in the mechanics, current-turn marker and
+relay atomically. The executor appends the credential-safe human words verbatim
+to business framing and every current task/spec, applies them, and commits a new
+candidate; this invalidates all prior gates and IDs.
+
+Every native objective, follow-up and opaque relay carries the exact
+`MO_PROMPT_BOUNDARY_V1|fingerprint=<64-lower-hex>` marker for that submitted
+turn. A result without the current marker is not the current turn; there is no
+marker-free fallback.
 
 ## Recovery
 

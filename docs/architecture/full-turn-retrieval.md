@@ -47,9 +47,11 @@ The submitted-prompt neighborhood is fingerprinted before the turn. After
 settlement, Herdr reads `recent-unwrapped` adaptively through the measured
 120/200/400/800/1000-row envelope. The interval after that prompt and before the
 new structural lower boundary is accepted only when continuity, identity and
-exactly one expected header are unambiguous. If the prompt has scrolled out, an
-exactly-one-header fallback is allowed only for a
-backend/provider/version/surface key whose isolated fixture proves it.
+exactly one expected header are unambiguous. Every submitted prompt, goal and
+relay contains the exact current-turn marker
+`MO_PROMPT_BOUNDARY_V1|fingerprint=<64-lower-hex>`. The marker must be present
+in the accepted interval and match the fingerprint recorded before submission;
+there is no marker-free or exactly-one-header fallback.
 
 A glyph by itself is never a boundary. A missing, duplicate, stale,
 contradictory, oversized or unreadable boundary or header is `unknown`, as are
@@ -70,21 +72,52 @@ exits delete only the known current directory. A new run never discovers,
 adopts or deletes prior scratch; hard-crash residue is an explicit open
 limitation rather than a hidden recovery protocol.
 
-Every permitted handoff uses an explicit `MO_RELAY_V2` direction. The complete
-first-pass pair, failed E2E, A-only invalidating check, executor response,
-adjudication request, peer outcome, and post-human decision each bind one phase,
-recipient, source, candidate, and target ID. Executor-bound work uses one atomic
-native goal; reviewer-bound work is one ordinary prompt. The relay uses a
+Every permitted handoff uses an explicit `MO_RELAY_V2` direction. At the
+first-pass barrier a PASS/PASS pair proceeds to E2E without relay; if at least
+one evaluation has findings, the complete A/B pair is released atomically.
+After an executor `RESPONSE`, an origin evaluation that closes a rebutted ID and
+introduces at least one new finding uses `ORIGIN_FINDINGS_TO_EXECUTOR`; it never
+contains bytes from the other reviewer. Different origins use separate settled
+resolution turns. A mixed-origin executor `RESPONSE` is rejected rather than
+split or interpreted. A `DISPUTED` handoff carries only already-open IDs and
+cannot introduce new IDs.
+
+Failed E2E, the A-only invalidating check, executor response, adjudication
+request, peer outcome, and post-human decision each bind one phase, recipient,
+source, candidate, and target ID. Executor-bound work uses one atomic native
+goal; reviewer-bound work is one ordinary prompt. The relay uses a
 collision-checked random frame, declared raw UTF-8 byte lengths and a literal
 AST-tested Node recipe that invokes `herdr` with argument arrays and
 `shell: false`. It prints neither bodies, argv nor raw spawn results. Recipients
 validate frame lengths before treating any enclosed bytes as work.
+
+An unresolved peer outcome may reach the human, but the resulting
+`MO_HUMAN_DECISION_V1|candidate=<oid>|finding=<id>|decision=<UPHOLD|WITHDRAW>`
+is relayed only through `HUMAN_DECISION_TO_EXECUTOR`. The executor first appends
+the human's credential-safe words verbatim to `docs/business.md` and every
+current task/spec, then implements the decision. That documentation commit is a
+new candidate and therefore invalidates every old gate and finding ID; the
+origin reviewer never receives a human decision against the frozen candidate.
 
 Ambiguous submission or relay delivery is never blindly retried. A changed
 public signal means the turn may be live and must be awaited; unchanged or
 contradictory evidence is harness-capability attention unless a future public
 positive non-delivery acknowledgement or end-to-end deduplication protocol
 exists.
+
+Scratch lifetime follows mechanically tracked IDs and delivery state. Before
+confirmed pair delivery all A/B parts remain. Afterward a first-pass part
+remains only while an ID it introduced is open; a PASS or no-open part is
+deleted. The same-origin executor `RESPONSE` and origin `DISPUTED` remain
+through confirmed adjudication-request delivery and are then deleted; the
+introducing part remains only when another ID it introduced is still open. Peer
+or human outcomes remain only until confirmed onward delivery. Closing every
+introduced ID deletes its source files; candidate invalidation deletes all
+files for that candidate. Definitive failure or unknown retains files only
+through bounded recovery, after which controlled exit deletes them. Ambiguous
+maybe-delivery is never resent: retain its files until the actor settles, then
+delete or exit. Every controlled exit deletes all scratch paths known to that
+run; only a hard crash can leave the separately recorded backlog residue.
 
 ## Candidate and support consequences
 

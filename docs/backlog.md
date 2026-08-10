@@ -6,6 +6,24 @@ closed backlog entries.
 
 ## Open
 
+### Provider-posture profiles can detach descendants with `setsid`
+
+**Reason.** The posture probe owns one process-group leader through quiescence, but a shell
+profile can call `setsid` and move a descendant into a different session and process group.
+The owned-group shutdown cannot address that escaped process, and process-table discovery
+would reintroduce the descendant-race and numeric-PID-reuse hazards that the helper was
+designed to avoid.
+
+**Practical impact.** A hostile or accidentally detaching profile process can outlive the
+read-only diagnostic and continue using inherited resources after its matrix row is parsed.
+The posture result proves command resolution, not containment of arbitrary profile-launched
+processes; live provider readiness and support must continue to be established separately.
+
+**Next step.** Run each measured profile under a portable kernel-owned descendant-containment
+boundary, or reject session-changing descendants with equivalent fail-closed evidence. Add a
+`setsid` escape regression that proves no descendant remains before removing this item; do
+not add numeric-PID or process-table signalling as a workaround.
+
 ### Claude catalogue discovery is unsupported outside macOS
 
 **Reason.** Safe Claude catalogue discovery currently depends on macOS Seatbelt's

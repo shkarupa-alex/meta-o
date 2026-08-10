@@ -78,44 +78,44 @@ deterministic gates pass. Every row must name that same full SHA.
 | H13 | Exact visible topology and partial-failure remnants.                                        | PENDING / UNSUPPORTED |
 | H14 | Posture self-check, native launch, trust, and permission cycle.                             | PENDING / UNSUPPORTED |
 | H15 | Warm executor/reviewer pane continuity.                                                     | PENDING / UNSUPPORTED |
-| H16 | Native goal quiet end, re-arm, and portable combined prompt.                                | PENDING / UNSUPPORTED |
-| H17 | Extraction ladder, structural lower boundary, and H7b behavior.                             | PENDING / UNSUPPORTED |
+| H16 | Native goal quiet end, re-arm, and portable maximum relay prompt.                           | PENDING / UNSUPPORTED |
+| H17 | Current-turn-marker extraction ladder, structural boundary, and H7b behavior.               | PENDING / UNSUPPORTED |
 | H18 | Actor noncompliance versus structural surface failure classification.                       | PENDING / UNSUPPORTED |
 | H19 | Review V2 continuation and total bounds; V1 single-body failures.                           | PENDING / UNSUPPORTED |
-| H20 | Sequential A-before-B independence and candidate freeze.                                    | PENDING / UNSUPPORTED |
+| H20 | A-before-B independence, PASS/PASS progression, and conditional atomic pair release.        | PENDING / UNSUPPORTED |
 | H21 | Mutating reviewer-check handling and candidate invalidation.                                | PENDING / UNSUPPORTED |
 | H22 | Independent reviewer ownership of QC, smoke, and applicable checks.                         | PENDING / UNSUPPORTED |
 | H23 | Adversarial UTF-8 body transport remains byte-identical.                                    | PENDING / UNSUPPORTED |
-| H24 | Relay/adjudication framing, Linux argv boundary, and no-retry ambiguity behavior.           | PENDING / UNSUPPORTED |
-| H25 | Complete findings, ID floor, forced dispute, and blocker accounting.                        | PENDING / UNSUPPORTED |
+| H24 | Marker-bound relay/adjudication framing, mixed-origin rejection, argv bound, and ambiguity. | PENDING / UNSUPPORTED |
+| H25 | Findings/closures, DISPUTED no-new-ID rule, ID floor, A-only invalidation, and blockers.    | PENDING / UNSUPPORTED |
 | H26 | Same-SHA clean completion.                                                                  | PENDING / UNSUPPORTED |
 | H27 | Any new commit invalidates all gates and open IDs.                                          | PENDING / UNSUPPORTED |
 | H28 | One actor/pane restart and bounded repeated-loss attention.                                 | PENDING / UNSUPPORTED |
 | H29 | Catalogue isolation, model presence, launchability, and finite fallback.                    | PENDING / UNSUPPORTED |
-| H30 | Only the narrow human-attention channel interrupts the user.                                | PENDING / UNSUPPORTED |
+| H30 | Narrow attention and executor-owned verbatim handling of a human dispute decision.          | PENDING / UNSUPPORTED |
 | H31 | Test-only tracked-read audit with a canary.                                                 | PENDING / UNSUPPORTED |
-| H32 | Scratch permissions, lifetime, cleanup, and lost-scratch review restart.                    | PENDING / UNSUPPORTED |
+| H32 | Per-ID/delivery scratch lifetime, controlled cleanup, ambiguity, and lost-scratch restart.  | PENDING / UNSUPPORTED |
 | H33 | Actual reviewer vendor diversity and one reviewer differing from executor.                  | PENDING / UNSUPPORTED |
 | H34 | Direct waits, one waiter, bounded retries, and no-progress stop.                            | PENDING / UNSUPPORTED |
 | H35 | Metadata badges remain observable but non-gating.                                           | PENDING / UNSUPPORTED |
 | H36 | Missing or unusable `develop` fails closed with no branch fallback.                         | PENDING / UNSUPPORTED |
-| H37 | Existing-peer adjudication preserves origin-reviewer closure ownership.                     | PENDING / UNSUPPORTED |
+| H37 | Existing-peer adjudication and executor-bound human-decision invalidation.                  | PENDING / UNSUPPORTED |
 
 ## Omnigent acceptance
 
 Omnigent uses its native session model. Herdr tabs, panes, extraction glyphs, and commands
 are not evidence for this backend.
 
-| ID  | Requirement                                                                   | Status                |
-| --- | ----------------------------------------------------------------------------- | --------------------- |
-| OM1 | Post-activation tracked-content firewall.                                     | PENDING / UNSUPPORTED |
-| OM2 | Clean full-SHA candidate and candidate-bound gates.                           | PENDING / UNSUPPORTED |
-| OM3 | Two sequential independent reviews with required vendor diversity.            | PENDING / UNSUPPORTED |
-| OM4 | Structured findings, opaque relay, origin closure, and adjudication.          | PENDING / UNSUPPORTED |
-| OM5 | Commit invalidation and full gate restart.                                    | PENDING / UNSUPPORTED |
-| OM6 | Native continuity/recovery without private stores or invented Herdr evidence. | PENDING / UNSUPPORTED |
-| OM7 | Canonical vocabulary and weaker prompt-objective disclosure.                  | PENDING / UNSUPPORTED |
-| OM8 | The same narrow human-attention boundary.                                     | PENDING / UNSUPPORTED |
+| ID  | Requirement                                                                        | Status                |
+| --- | ---------------------------------------------------------------------------------- | --------------------- |
+| OM1 | Post-activation tracked-content firewall.                                          | PENDING / UNSUPPORTED |
+| OM2 | Clean full-SHA candidate and candidate-bound gates.                                | PENDING / UNSUPPORTED |
+| OM3 | Sequential reviews, PASS/PASS gate, conditional pair release, A-only invalidation. | PENDING / UNSUPPORTED |
+| OM4 | Single-origin findings/response, closure/dispute, adjudication, human decision.    | PENDING / UNSUPPORTED |
+| OM5 | Commit invalidation and full gate restart.                                         | PENDING / UNSUPPORTED |
+| OM6 | Native continuity/recovery without private stores or invented Herdr evidence.      | PENDING / UNSUPPORTED |
+| OM7 | Weaker prompt-objective disclosure and exact current-turn marker binding.          | PENDING / UNSUPPORTED |
+| OM8 | The same narrow human-attention boundary.                                          | PENDING / UNSUPPORTED |
 
 No supported Omnigent route has yet passed these rows against the post-cutover candidate.
 
