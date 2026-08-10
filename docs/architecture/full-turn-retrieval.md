@@ -49,9 +49,12 @@ settlement, Herdr reads `recent-unwrapped` adaptively through the measured
 new structural lower boundary is accepted only when continuity, identity and
 exactly one expected header are unambiguous. Every submitted prompt, goal and
 relay contains the exact current-turn marker
-`MO_PROMPT_BOUNDARY_V1|fingerprint=<64-lower-hex>`. The marker must be present
-in the accepted interval and match the fingerprint recorded before submission;
-there is no marker-free or exactly-one-header fallback.
+`MO_PROMPT_BOUNDARY_V1|fingerprint=<64-lower-hex>` as its final row, after every
+objective, capsule and inbound relay byte. Only the interval after that marker
+and before the new structural lower boundary is eligible actor output, so echoed
+inbound protocol rows cannot collide with the single-result-header check. The
+marker must match the fingerprint recorded before submission; there is no
+marker-free or exactly-one-header fallback.
 
 A glyph by itself is never a boundary. A missing, duplicate, stale,
 contradictory, oversized or unreadable boundary or header is `unknown`, as are
@@ -105,15 +108,17 @@ Every other permitted human answer is requester/phase-bound by
 credential-safe ledger append, new-candidate, and gate-invalidation effect before
 any actor acts on it.
 
-Operational authorization is a different class. A candidate-bound
-`production_e2e` or `irreversible_e2e` `MO_OPERATIONAL_APPROVAL_V1` follows
+Operational authorization is a different class. The E2E actor first emits an
+exact one-row, body-free `MO_E2E_APPROVAL_REQUEST_V1` containing the candidate,
+operation, and credential-safe scenario ID. A matching one-row, body-free
+`production_e2e` or `irreversible_e2e` `MO_OPERATIONAL_APPROVAL_V1` then follows
 `E2E_APPROVAL_TO_E2E` back to the exact requesting E2E actor and resumes only
-the already named scenario on the unchanged SHA. `watchdog_start` follows the
+that scenario on the unchanged SHA. `watchdog_start` follows the
 non-relay `WATCHDOG_START_TO_ORCHESTRATOR` control route. These events retain
-only their exact header and current conversation evidence: their opaque body is
-not persisted, no tracked intent ledger changes, and no new candidate is
-created. A freshly unpredictable request token binds each approval to its exact
-requester, named action, phase, and candidate and is consumed once; stale,
+only their exact header and current conversation evidence: no body is accepted,
+no tracked intent ledger changes, and no new candidate is created. A freshly
+unpredictable request token binds each approval to its exact requester,
+operation, safe scenario, phase, and candidate and is consumed once; stale,
 replayed, or cross-actor approval fails closed.
 
 Ambiguous submission or relay delivery is never blindly retried. A changed

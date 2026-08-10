@@ -102,7 +102,14 @@ unresolved dispute and explicit watchdog are the permitted human boundaries.
 **Operational approval** — one request-bound `APPROVE`/`DENY` authorizing an
 already named production/destructive E2E action or explicitly requested
 watchdog. It is candidate-stable run control, not product intent; only its
-credential-free compact header remains in current run evidence.
+credential-free one-row compact header remains in current run evidence. E2E
+approval exactly matches the visible request candidate, operation, safe scenario
+ID and token; watchdog approval uses `scenario=none`.
+
+**E2E approval request** — an exact one-row, body-free
+`MO_E2E_APPROVAL_REQUEST_V1` handoff with no body or final LF from the E2E actor immediately before one
+named production/irreversible scenario. Its credential-safe scenario ID makes
+the action visible to the process-only orchestrator without reading opaque prose.
 
 **Warm session** — backend-native session retained for role continuity during one
 feature run. Warmth is not persisted Meta-O state.

@@ -122,8 +122,10 @@ Before every prompt capture settled actor status, foreground process and the
 provider input-boundary fingerprint. Generate a fresh unpredictable 64-lower-hex
 value and include exactly one
 `MO_PROMPT_BOUNDARY_V1|fingerprint=<value>` row in every ordinary prompt,
-continuation, native `/goal` and relay. For a goal it immediately follows the
-`/goal` row; otherwise it is the first row. Submit text and Enter atomically:
+continuation, native `/goal` and relay. It is always the final submitted row with
+no trailing LF, after the entire objective, executor capsule and inbound relay.
+Reject/regenerate if the exact marker row occurs in an opaque segment. Submit
+text and Enter atomically:
 
 ```text
 herdr agent prompt <actor> <text> --wait --timeout <milliseconds>
@@ -150,10 +152,11 @@ polling, predicted SHA/cleanliness or terminal prose.
 
 ## Feature flow
 
-1. Start the executor and send the exact initial `/goal`, fresh current
-   prompt-boundary row and byte-identical `MO_EXECUTOR_PROTOCOL_CAPSULE_V1` from
-   methodology §2.3. Every later executor objective carries the same capsule
-   before any relay; never assume a warm executor remembers the skill.
+1. Start the executor and send the exact initial `/goal`, byte-identical
+   `MO_EXECUTOR_PROTOCOL_CAPSULE_V1` from methodology §2.3, then the fresh current
+   prompt-boundary row last. Every later executor objective carries the same
+   capsule before any relay and final marker; never assume a warm executor
+   remembers the skill.
 2. Follow direct lifecycle until a complete executor handoff settles.
 3. For a candidate, observe a ten-second non-submitting quiet period using public
    actor/process state. A spontaneous return to `working` means the goal is still
@@ -210,14 +213,21 @@ through phase/requester-bound `HUMAN_ANSWER_TO_EXECUTOR`; the executor records i
 credential-safely before acting and commits a new candidate.
 
 Do not send operational approvals through that repository-changing route.
-Candidate-bound `production_e2e`/`irreversible_e2e` `APPROVE|DENY` uses only
+An E2E actor requests approval only with the exact header-only/no-final-LF
+`MO_E2E_APPROVAL_REQUEST_V1`: `production_e2e` is a named
+production/destructive scenario; `irreversible_e2e` is a named irreversible
+action without that production claim. Validate its credential-safe scenario ID
+before deriving a fresh token/state. Candidate-bound
+`production_e2e`/`irreversible_e2e` `APPROVE|DENY` then uses only
 `E2E_APPROVAL_TO_E2E` at `e2e-approval-resume`; an approved named scenario may
 then return E2E PASS on the unchanged SHA. Bind it to the exact requester actor,
-candidate, named scenario and freshly unpredictable one-shot 64-hex request
+candidate, request-header operation/scenario and freshly unpredictable one-shot 64-hex request
 token; reject stale, replayed and cross-actor approvals. `watchdog_start` uses the non-relay
 `WATCHDOG_START_TO_ORCHESTRATOR` control route and starts the observer only on
 `APPROVE`. These credential-free headers are run authorization, not tracked
 product intent; never persist their opaque bodies or create a docs commit.
+An operational approval is exactly one header row with no final LF or suffix;
+E2E scenario must match the request and watchdog scenario is `none`.
 
 Each relay is bound to its named phase, exact recipient actor, source header,
 frozen candidate and target ID.

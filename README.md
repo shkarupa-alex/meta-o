@@ -102,8 +102,10 @@ Human input has two distinct paths. Product meaning, architecture, credentials,
 subscription state, and other repository-changing answers return to the
 executor for credential-safe verbatim intent recording and a new candidate SHA.
 Approval for one already named production/irreversible E2E scenario returns to
-that same E2E actor on the unchanged candidate; optional watchdog approval stays
-with the orchestrator. Operational approval bodies are never persisted.
+that same E2E actor on the unchanged candidate only after its visible one-row
+request names the exact operation and credential-safe scenario ID; optional
+watchdog approval stays with the orchestrator. Operational requests and approvals
+are header-only and never persist opaque human text.
 
 ## Repository layout
 

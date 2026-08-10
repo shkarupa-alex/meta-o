@@ -45,16 +45,17 @@ native actor launch establishes route/vendor identity.
 
 Omnigent has no native Goal transport. Use one persistent executor session with
 the exact **Omnigent ordinary initial objective** from methodology §2 as
-ordinary prompt text, followed by the fresh prompt-boundary row and the
-byte-identical `MO_EXECUTOR_PROTOCOL_CAPSULE_V1`. The string has no `/goal`
-prefix. Name this as the weaker
+ordinary prompt text, followed by the byte-identical
+`MO_EXECUTOR_PROTOCOL_CAPSULE_V1` and then the fresh prompt-boundary row last.
+The string has no `/goal` prefix. Name this as the weaker
 prompt-objective route; do not emulate Goal state with a registry or read a
 private store.
 
 When review or E2E returns work, send the exact **Omnigent ordinary resolution
 objective** from methodology §2 together with the versioned opaque relay in one
-new atomic ordinary prompt. Put the fresh prompt-boundary row and the same exact
-executor protocol capsule before the relay. Do not add `/goal`, paraphrase either objective, or
+new atomic ordinary prompt. Put the same exact executor protocol capsule and
+relay before the fresh prompt-boundary row, which is always last. Do not add
+`/goal`, paraphrase either objective, or
 ask the human to resume, route or select an ordinary actor.
 
 ## Flow
@@ -86,32 +87,38 @@ adjudication and no-progress bounds follow the methodology.
 
 A permitted `MO_HUMAN_DECISION_V1` uses
 `HUMAN_DECISION_TO_EXECUTOR`, never an origin-reviewer prompt. Submit the exact
-ordinary human-decision objective in the mechanics, current-turn marker and
-exact executor protocol capsule, then relay atomically. The executor appends the
-credential-safe human words verbatim
+ordinary human-decision objective in the mechanics, exact executor protocol
+capsule, relay, and then the current-turn marker last atomically. The executor
+appends the credential-safe human words verbatim
 to business framing and every current task/spec, applies them, and commits a new
 candidate; this invalidates all prior gates and IDs.
 
 Every other permitted human answer uses `MO_HUMAN_ANSWER_V1` and
 `HUMAN_ANSWER_TO_EXECUTOR` with requester `executor` and the closed repository-
 changing phase set in the mechanics.
-Submit its exact ordinary objective, current-turn marker, exact executor
-protocol capsule, and relay atomically;
+Submit its exact ordinary objective, exact executor protocol capsule, relay, and
+then the current-turn marker last atomically;
 it has the same verbatim-ledger, new-candidate and full-invalidation effect.
 
-Operational approval is separate. Candidate-bound `production_e2e` or
-`irreversible_e2e` authorization returns through `E2E_APPROVAL_TO_E2E` to the
-same E2E actor and may finish on the unchanged SHA. `watchdog_start` uses the
-non-relay `WATCHDOG_START_TO_ORCHESTRATOR` control route. Keep only the exact
-approval header as run evidence; never persist its opaque body, update tracked
-intent, or create a new candidate. Bind its fresh request token to the exact
-requester/operation/phase/candidate and consume it once; reject replay.
+Operational approval is separate. E2E first emits an exact one-row, body-free
+`MO_E2E_APPROVAL_REQUEST_V1` containing candidate, operation, and credential-safe
+scenario ID. Only then may candidate-bound `production_e2e` or
+`irreversible_e2e` authorization return through `E2E_APPROVAL_TO_E2E` to the
+same E2E actor and scenario and finish on the unchanged SHA. `watchdog_start`
+uses the non-relay `WATCHDOG_START_TO_ORCHESTRATOR` control route. Keep only the
+exact one-row approval header as run evidence; accept no body or final LF, never
+update tracked intent, and create no new candidate. Bind its fresh request token
+to the exact requester/operation/scenario/phase/candidate and consume it once;
+reject replay.
 
 Every native objective, follow-up and opaque relay carries the exact
 `MO_PROMPT_BOUNDARY_V1|fingerprint=<64-lower-hex>` marker for that submitted
 turn. Every executor turn also carries the byte-identical
-`MO_EXECUTOR_PROTOCOL_CAPSULE_V1` from methodology §2.3 after that marker and
-before any relay. A result without the current marker is not the current turn;
+`MO_EXECUTOR_PROTOCOL_CAPSULE_V1` from methodology §2.3 before any relay. Place
+the marker after the objective, capsule, and complete inbound relay as the final
+row with no trailing LF of every submitted prompt so echoed inbound protocol rows cannot enter the
+extracted result interval. A result without the current marker is not the current
+turn;
 there is no marker-free fallback.
 
 ## Recovery

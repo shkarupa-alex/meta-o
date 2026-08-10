@@ -27,26 +27,26 @@ other-SHA evidence is `UNKNOWN`.
 These scenarios run under `make mo-qc`. They do not substitute for live provider rendering,
 native lifecycle, vendor diversity, or absence of tracked reads in a real actor run.
 
-| Scenario          | Required behavior                                                                                                                     |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| Root contract     | `AGENTS.md` and `CLAUDE.md` are byte-identical and use the self-contained-helper contract.                                            |
-| Built tree        | `skills/` exactly matches the build from `src/skills/`, `shared/`, the model bundle, and mapped licences.                             |
-| Setup contract    | `mo-setup` installs the exact version-control and non-mutating-reviewer-check rules.                                                  |
-| Model bundle      | Pinned SDK/esbuild versions, size ceiling, metafile roots, notices, no externals, no runtime `node_modules`.                          |
-| Catalogue         | `catalog_unknown`, `model_missing`, and `launch_failed` remain distinct; history never becomes catalogue.                             |
-| Header protocols  | Executor, review, adjudication, E2E, human-answer, and operational-approval grammar, field order, matrices, IDs, and unknown classes. |
-| Review accounting | Consecutive parts, cumulative open IDs, complete-origin-open RESPONSE, close ownership, row/byte limits, and forced dispute.          |
-| Candidate gates   | Full object IDs, branch grammar, clean tree, same-SHA gates, commit invalidation, and missing `develop`.                              |
-| Relay             | Exact framing, collision retries, byte lengths, UTF-8/NUL handling, newline identity, and body-silent failures.                       |
-| Portable argv     | Combined 130,048-byte argument and bounded adjudication subset remain below supported limits.                                         |
-| Prompt ambiguity  | A changed signal is awaited; unchanged or contradictory evidence never causes a blind retry.                                          |
-| Topology          | Exact executor/review commands, structured `root_pane`, collision handling, and partial failure.                                      |
-| Lifecycle         | One waiter, direct wait arms, 10-second quiet period, bounded loss/retry, and no-progress key.                                        |
-| Extraction        | Golden Claude/Codex boundaries, extraction ladder, duplicate/stale/missing boundary rejection.                                        |
-| Scratch           | `0700` directory, `0600` files, content-free prefix, controlled cleanup, and no cross-run adoption.                                   |
-| Posture           | Fixed fake PATH/shell matrix and the exact consumer contract; live posture remains a separate fixture.                                |
-| Documentation     | Canonical glossary, verbatim intent consistency, open-only backlog, exact acceptance mapping, no unsolicited docs.                    |
-| Cutover           | Shipped Herdr files contain no inline/headless actor fallback, private transcript, or verdict-file path.                              |
+| Scenario          | Required behavior                                                                                                                                           |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Root contract     | `AGENTS.md` and `CLAUDE.md` are byte-identical and use the self-contained-helper contract.                                                                  |
+| Built tree        | `skills/` exactly matches the build from `src/skills/`, `shared/`, the model bundle, and mapped licences.                                                   |
+| Setup contract    | `mo-setup` installs the exact version-control and non-mutating-reviewer-check rules.                                                                        |
+| Model bundle      | Pinned SDK/esbuild versions, size ceiling, metafile roots, notices, no externals, no runtime `node_modules`.                                                |
+| Catalogue         | `catalog_unknown`, `model_missing`, and `launch_failed` remain distinct; history never becomes catalogue.                                                   |
+| Header protocols  | Executor, review, adjudication, E2E, E2E approval-request, human-answer, and operational-approval grammar, field order, matrices, IDs, and unknown classes. |
+| Review accounting | Consecutive parts, cumulative open IDs, complete-origin-open RESPONSE, close ownership, row/byte limits, and forced dispute.                                |
+| Candidate gates   | Full object IDs, branch grammar, clean tree, same-SHA gates, commit invalidation, and missing `develop`.                                                    |
+| Relay             | Exact framing, collision retries, byte lengths, UTF-8/NUL handling, newline identity, and body-silent failures.                                             |
+| Portable argv     | Combined 130,048-byte argument and bounded adjudication subset remain below supported limits.                                                               |
+| Prompt ambiguity  | A changed signal is awaited; unchanged or contradictory evidence never causes a blind retry.                                                                |
+| Topology          | Exact executor/review commands, structured `root_pane`, collision handling, and partial failure.                                                            |
+| Lifecycle         | One waiter, direct wait arms, 10-second quiet period, bounded loss/retry, and no-progress key.                                                              |
+| Extraction        | Golden Claude/Codex boundaries, extraction ladder, duplicate/stale/missing boundary rejection.                                                              |
+| Scratch           | `0700` directory, `0600` files, content-free prefix, controlled cleanup, and no cross-run adoption.                                                         |
+| Posture           | Fixed fake PATH/shell matrix and the exact consumer contract; live posture remains a separate fixture.                                                      |
+| Documentation     | Canonical glossary, verbatim intent consistency, open-only backlog, exact acceptance mapping, no unsolicited docs.                                          |
+| Cutover           | Shipped Herdr files contain no inline/headless actor fallback, private transcript, or verdict-file path.                                                    |
 
 ## Preimplementation Herdr probes
 
@@ -69,16 +69,16 @@ This session has no `HERDR_ENV=1`; therefore none of P1-P8 has been executed for
 Run H7b and H13-H37 only after deterministic QC is green and the candidate already contains
 removal of the old inline/headless path.
 
-| Group                  | Scenario IDs | What the group proves                                                                                                                  |
-| ---------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Visible actors         | H13-H15      | Exact topology, launch posture, model activation, warm panes, and partial failure.                                                     |
-| Goals and retrieval    | H7b, H16-H19 | Exact fresh-executor capsule, quiet goal settlement, marker-bound extraction, structural failure classification, and multipart limits. |
-| Independent review     | H20-H25      | Sequential barrier, conditional pair release, total multi-ID outcomes, byte identity, and blockers.                                    |
-| Candidate lifecycle    | H26-H29      | Same-SHA completion, commit invalidation, restart, and model fallback.                                                                 |
-| Firewall and attention | H30-H31      | Repository-changing intent/new-SHA routing, candidate-stable operational approval, and tracked-read canary.                            |
-| Transport lifetime     | H32          | Shared-artifact refcounts, multi-target delivery, ambiguity, controlled cleanup, and lost-scratch recovery.                            |
-| Diversity and waits    | H33-H35      | Actual vendors, direct waits, retry/no-progress bounds, and non-gating badges.                                                         |
-| Failure edges          | H36-H37      | Missing `develop` and existing-peer adjudication.                                                                                      |
+| Group                  | Scenario IDs | What the group proves                                                                                                                         |
+| ---------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Visible actors         | H13-H15      | Exact topology, launch posture, model activation, warm panes, and partial failure.                                                            |
+| Goals and retrieval    | H7b, H16-H19 | Exact fresh-executor capsule, quiet goal settlement, final-marker inbound isolation, structural failure classification, and multipart limits. |
+| Independent review     | H20-H25      | Sequential barrier, conditional pair release, total multi-ID outcomes, byte identity, and blockers.                                           |
+| Candidate lifecycle    | H26-H29      | Same-SHA completion, commit invalidation, restart, and model fallback.                                                                        |
+| Firewall and attention | H30-H31      | Repository-changing intent/new-SHA routing, visible exact-scenario candidate-stable operational approval, and tracked-read canary.            |
+| Transport lifetime     | H32          | Shared-artifact refcounts, multi-target delivery, ambiguity, controlled cleanup, and lost-scratch recovery.                                   |
+| Diversity and waits    | H33-H35      | Actual vendors, direct waits, retry/no-progress bounds, and non-gating badges.                                                                |
+| Failure edges          | H36-H37      | Missing `develop` and existing-peer adjudication.                                                                                             |
 
 The detailed expected observation and current status for every ID live in
 `docs/phase-0-fixtures.md`. No row is currently PASS.
@@ -88,16 +88,16 @@ The detailed expected observation and current status for every ID live in
 Run a supported native Omnigent route against the same candidate contract without copying
 Herdr evidence or mechanics.
 
-| Scenario         | Required behavior                                                                                                                         |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| OM1 firewall     | After activation only native process/lifecycle facts, validated headers, and narrow Git metadata enter orchestrator context.              |
-| OM2 candidate    | One clean full SHA binds every applicable gate.                                                                                           |
-| OM3 independence | A completes before B; PASS/PASS does not relay; a findings pair releases atomically; A mutation skips B.                                  |
-| OM4 findings     | RESPONSE covers the complete current origin-open set; total outcomes partition it; shared evidence survives every target adjudication.    |
-| OM5 invalidation | A new commit invalidates every prior gate and open ID.                                                                                    |
-| OM6 recovery     | Native session continuity/recovery uses no private store and invents no Herdr-style evidence.                                             |
-| OM7 vocabulary   | The weaker prompt objective, exact current-turn marker, and byte-identical protocol capsule bind every executor turn.                     |
-| OM8 attention    | Repository-changing input reaches executor ledgers/new SHA; E2E/watchdog operational approval stays candidate-stable and requester-bound. |
+| Scenario         | Required behavior                                                                                                                            |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| OM1 firewall     | After activation only native process/lifecycle facts, validated headers, and narrow Git metadata enter orchestrator context.                 |
+| OM2 candidate    | One clean full SHA binds every applicable gate.                                                                                              |
+| OM3 independence | A completes before B; PASS/PASS does not relay; a findings pair releases atomically; A mutation skips B.                                     |
+| OM4 findings     | RESPONSE covers the complete current origin-open set; total outcomes partition it; shared evidence survives every target adjudication.       |
+| OM5 invalidation | A new commit invalidates every prior gate and open ID.                                                                                       |
+| OM6 recovery     | Native session continuity/recovery uses no private store and invents no Herdr-style evidence.                                                |
+| OM7 vocabulary   | The weaker prompt objective and byte-identical capsule precede a final-row marker that excludes echoed inbound frames.                       |
+| OM8 attention    | Repository-changing input reaches executor/new SHA; one-row E2E request/approval matches the exact safe scenario and stays candidate-stable. |
 
 No final Omnigent scenario has been executed for the post-cutover candidate.
 
@@ -136,10 +136,11 @@ Partial topology remains visible on failure because ownership is insufficient fo
 cleanup; hard-crash scratch residue remains the explicit backlog limitation.
 
 E2E actors use a unique namespace per scenario and clean it even on failure.
-Production/destructive scenarios require the documented production-safe contract and
-`MO_OPERATIONAL_APPROVAL_V1` immediately before the named scenario. The approval returns only
-to the exact requesting E2E actor and authorizes that scenario on the unchanged candidate;
-its fresh requester-bound token is consumed exactly once and replay fails closed. Retain its
-header, never its opaque body. Stop every provider session started by the fixture.
+Production/destructive scenarios require the documented production-safe contract and an exact
+one-row `MO_E2E_APPROVAL_REQUEST_V1` naming the operation and credential-safe scenario ID,
+followed by a matching one-row `MO_OPERATIONAL_APPROVAL_V1` immediately before that scenario.
+The approval returns only to the exact requesting E2E actor on the unchanged candidate; its
+token is consumed once and wrong-scenario/replay fails closed. Neither row has a body or final
+LF. Stop every provider session started by the fixture.
 Do not store raw reviewer bodies, screenshots, private transcripts, or a gate registry as
 evidence.

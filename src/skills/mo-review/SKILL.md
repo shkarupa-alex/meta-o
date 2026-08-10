@@ -190,13 +190,16 @@ backend accepts only this closed operational header and its exact requester,
 candidate, and operation combinations:
 
 ```text
-MO_OPERATIONAL_APPROVAL_V1|candidate=<oid|none>|operation=<production_e2e|irreversible_e2e|watchdog_start>|requester=<e2e|orchestrator>|request=<64-lower-hex>|decision=<APPROVE|DENY>
+MO_OPERATIONAL_APPROVAL_V1|candidate=<oid|none>|operation=<production_e2e|irreversible_e2e|watchdog_start>|scenario=<safe-id|none>|requester=<e2e|orchestrator>|request=<64-lower-hex>|decision=<APPROVE|DENY>
 ```
 
-An E2E approval resumes only the named scenario in the same E2E actor on the
-unchanged candidate. Watchdog approval is handled by the orchestrator without an
-actor relay. Retain only the header and current conversation evidence; never
-persist the opaque body or create a documentation commit.
+An E2E approval exactly matches the visible
+`MO_E2E_APPROVAL_REQUEST_V1` candidate, operation, and credential-safe scenario,
+then resumes only that scenario in the same E2E actor on the unchanged candidate.
+Watchdog approval uses `scenario=none` and is handled by the orchestrator without
+an actor relay. Operational request and approval are each exactly one header row
+with no body or final LF. Retain only that row and current conversation evidence;
+never persist opaque text or create a documentation commit.
 The freshly unpredictable request token is bound to the requester, named
 operation, phase, and candidate and is consumed exactly once; reject stale,
 replayed, or cross-actor approval.

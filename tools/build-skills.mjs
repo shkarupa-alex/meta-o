@@ -61,8 +61,9 @@ const MODEL_BUNDLE_MAX_BYTES = Math.ceil(MODEL_BUNDLE_BASELINE_BYTES * 1.25);
  * Which shared file lands in which skill.
  *
  * Every entry is a deliberate decision about standalone installability:
- * `mo-review` carries the purpose contract because a direct review is its
- * headline use case and it must not depend on `mo-setup` being installed too;
+ * `mo-review` carries the purpose contract so its independently installable
+ * package remains self-contained readable protocol material for qualified
+ * backend workflows, without pretending to be a standalone executable review;
  * `mo-setup` carries the methodology because provider diagnosis has one owner
  * even though setup owns the personal-configuration remediation.
  */

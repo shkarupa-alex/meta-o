@@ -112,6 +112,10 @@ named external consumer, recorded as an architecture decision.
   contract and fixed executor-protocol capsule in every objective are sufficient
   for its engineering role. Removing the capsule would leave a fresh executor
   unable to emit the exact candidate, response or blocker handoff.
+- **Prompt identity follows inbound framing.** The unpredictable current-turn
+  marker is the final submitted row after every objective, capsule and inbound
+  relay byte. Extraction begins after it, so echoed peer protocol rows remain
+  data rather than competing result headers.
 - **Generated shared helpers are leaves.** They know nothing about feature-run
   lifecycle and create no orchestration state.
 - **No artefact exists “just in case.”** A manifest, receipt, baseline or

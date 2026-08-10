@@ -461,6 +461,16 @@ test("a name that disagrees with the directory is refused", () => {
   assert.match(result.stderr, /must match the directory/);
 });
 
+test("the mo-review build purpose describes protocol packaging, not a missing runtime", () => {
+  const builder = readFileSync(BUILDER, "utf8");
+  assert.match(
+    builder,
+    /self-contained readable protocol material for qualified\n \* backend workflows/,
+  );
+  assert.match(builder, /without pretending to be a standalone executable review/);
+  assert.doesNotMatch(builder, /direct review is its\n \* headline use case/);
+});
+
 test("an unknown argument is an error", () => {
   const result = spawnSync(process.execPath, [BUILDER, "--force"], { encoding: "utf8", cwd: ROOT });
   assert.equal(result.status, 2);
