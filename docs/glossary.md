@@ -1,124 +1,115 @@
 # Glossary
 
-One meaning per term. If a term needs two meanings, it needs two terms.
+One durable term has one meaning here. Protocol grammar, retries, byte limits and
+fixture commands live in their normative operational documents, not in this
+vocabulary.
 
-**Actor** — one agent session with one role, named `<slug>-exec`,
-`<slug>-review-a`, `<slug>-review-b` or `<slug>-e2e`. There is no registry of
-actors; the backend's own session list is the record.
+**Actor** — persistent specialist participant: a visible ordinary interactive CLI
+in Herdr or a native agent in Omnigent. Actor is a role-bearing participant, not a
+provider process invocation or fixed name.
 
-**Backend** — Herdr or Omnigent: the thing that owns agent sessions. Meta-O has
-one skill per backend and no adapter between them, because their session
-semantics differ enough that a single prompt covering both would be vague about
-both.
+**Session** — backend-owned continuity carrier for an actor. It is not a role,
+gate, registry entry or Meta-O state record.
 
-**Backlog** — `docs/backlog.md`. Everything deferred, blocked or knowingly left
-unfixed, with its reason, practical impact and next step. Not a groomed plan.
+**Orchestrator** — process-only transport and lifecycle controller. After
+activation it does not intentionally read tracked project content or form
+engineering opinions; it autonomously owns ordinary lifecycle, routing, retries,
+fallbacks and gate bookkeeping.
 
-**Business framing** — the recorded user intent behind a piece of work, kept
-verbatim in `docs/business.md` (or in `docs/business/index.md` plus the file for
-that piece of work, once one file stopped being readable): the original request,
-every later clarification, the corrections of a misread intent, and the preferences
-and constraints that sounded secondary at the time. It is not a spec and not a
-summary. A spec is a lossy compression of a conversation, and without the
-uncompressed source the loss is undetectable later — which is why the spec is never
-the only source of intent. The task/spec nevertheless repeats every intent verbatim
-under `## User intents (verbatim)` before deriving requirements from it. A summary,
-derived requirement or link may sit beside the verbatim text and never replace it.
-Verbatim stops at secrets: a credential or personal datum is stored as a marker
-naming what it was, because these files are committed and pushed.
+**Executor** — repository-reading implementation owner. It decides feasibility,
+architecture application, implementation, tests, documentation and version
+control, and produces candidate commits.
 
-**Candidate** — a full Git commit SHA with a clean worktree. Not a file, not a
-ref, not a digest. It is frozen while its gates run.
+**Reviewer** — independent read-only candidate evaluator that owns its findings,
+applicability and closure. Reviewer A finishes before reviewer B starts.
 
-**Durable knowledge** — `docs/business.md`, `docs/glossary.md` and
-`docs/architecture/`. Transferred by the executor _before_ the candidate commit,
-because knowledge written after the fact is written as ritual. `docs/business.md`
-holds two things that must not be confused: the durable theses, and the business
-framing they were derived from.
+**E2E actor** — separate read-only participant that runs applicable agent-required
+end-to-end scenarios against one frozen candidate.
 
-**Executor** — the actor that implements the whole scope. It is deliberately
-given no methodology skill: a large spec and the project contract are enough.
+**Feature run** — one uninterrupted attempt from backend activation to verified
+result or permitted attention. Restart begins a new run and adopts no prior state.
 
-**Finding** — one reviewer objection carrying `Evidence`, `Impact` and
-`Expected fix`. Copied to the author whole and verbatim. Never summarised.
+**Candidate** — full Git commit object ID equal to clean `HEAD` on the required
+feature branch.
 
-**Gate** — a check whose result belongs to exactly one SHA: project QC, the
-deterministic smoke, reviewer A, reviewer B, the applicable E2E. Any new SHA
-makes all of them stale.
+**Candidate freeze** — interval in which candidate and cleanliness must remain
+unchanged while review and E2E evidence is produced; the executor receives no
+prompt during it.
 
-**Handoff block** — the `STATUS / CANDIDATE / SUMMARY / ATTENTION` lines a full
-workflow prints for a human. A human-readable handoff, not a persisted protocol
-and not a schema.
+**Gate** — evidence bound to one candidate SHA. A missing, incomplete, unknown,
+stale or differently bound verdict does not pass.
 
-**Goal** — a provider's native persisted objective (`/goal`). In force until the
-first candidate; off while the candidate is under review. Where no native goal
-exists, the fallback is named as weaker rather than emulated. Omnigent has no goal on
-any harness — its REPL consumes slash commands — so every Omnigent run uses that
-weaker fallback and says so.
+**Verified result** — unchanged candidate whose required different-vendor
+reviews, QC, smoke, additional checks and E2E all pass.
 
-**Inline surface** — a provider's own non-interactive mode (`claude -p`, `codex
-exec`, `opencode run`, a headless `omnigent run -p`) driven inside a pane and read
-from it, as opposed to the **TUI surface** of a full-screen provider UI. The
-distinction is load-bearing rather than stylistic: a TUI repaints, so its scrollback
-can hold the same block twice and miss another, while an inline answer is written
-once in order. Support is claimed per surface, and a run states which one produced
-the verdict it is reporting.
+**Compact handoff** — bounded exact process header plus an opaque UTF-8 body.
 
-**needs_attention** — one of the two user-facing actor states. It means a user
-decision, recovery or external input is genuinely required. The other state is
-`idle`.
+**Process header** — validated first line that carries routing, candidate and
+mechanical accounting fields; it is not by itself proof of a complete turn.
 
-**Orchestrator** — the thin role that addresses work and does not do it. It reads
-the repository and runs commands; it never becomes the implementer.
+**Complete result** — valid terminal compact handoff for the expected actor,
+candidate and phase, bounded by a fixture-proven provider lower boundary.
 
-**Launch posture** — the verified way one concrete provider launch surface gets
-all required fixed invocation behaviour: permission, approval, sandbox,
-environment, prompt and other fixed arguments where applicable, plus caller
-argument pass-through. It is supplied by an executable wrapper that resolves
-first (possibly through a credential-free forwarding alias or function), or a
-named provider-native configuration proven on that surface. Any intentional
-difference is part of the verdict; a posture verdict never transfers from TUI to
-inline, hook or harness.
+**Terminal process event** — mechanical tuple of candidate, actor, phase, header
+type, status and open IDs used to detect unchanged-failure loops.
 
-**Provider-posture probe** — the shipped, read-only `mo-posture.sh` diagnostic
-that classifies provider command kinds and first executable paths across shell
-startup modes. Its per-shell 0/1/2 result means identical kinds and paths,
-divergent kinds or paths, or unreadable evidence; it neither launches a provider
-nor proves a real backend, hook or harness surface.
+**Opaque body** — actor-produced bytes transported without interpretation,
+filtering, ranking, merging, paraphrase or command execution.
 
-**`PATH` wrapper** — an executable found through `PATH` that launches a provider
-with the user's required permission, approval, sandbox and other fixed arguments,
-then passes the caller's arguments through. A shell alias or function is not
-itself a `PATH` wrapper: it can participate in a **Launch posture** only by
-forwarding to a verified wrapper, and an interactive profile may load it when a
-script, hook or orchestrator will not. A wrapper file is unavailable whenever
-another provider executable resolves before it, even if the wrapper directory is
-present later in `PATH`; support is about first resolution, not membership or
-existence.
+**Provider lower boundary** — exact surface/version fixture-proven rendered marker
+after a completed provider turn. A glyph without structural context is not one.
 
-**Project contract** — `AGENTS.md` and `CLAUDE.md`, byte-for-byte identical, plus
-`make mo-qc` and its gates. The provider CLI loads the instruction file itself,
-which is why an orchestrator never copies it into a prompt.
+**First-pass barrier** — point after complete independent A and B first passes and
+before any reviewer body reaches the executor.
 
-**Reuse decision** — `reuse | extend | build`, recorded in the spec's
-`## Reuse research` section by `mo-reuse` and only by `mo-reuse`, in a spec-only
-commit.
+**Finding** — reviewer-owned `A-*` or `B-*` issue whose full opaque body contains
+Evidence, Impact and Expected fix. Only its origin reviewer closes it.
 
-**Route** — a provider path a role runs on, written `route/model/effort`. A route
-is _supported for a named launch surface and gate_ only after their acceptance
-fixtures pass; otherwise that combination is honestly unsupported. One surface's
-failure does not erase another surface's evidence.
+**Adjudication** — one other-vendor decision on a disputed finding. It can uphold,
+recommend withdrawal or declare unresolved; it never closes the origin finding.
 
-**Shared file** — a file with exactly one source owner under `shared/`, copied
-mechanically into each skill that needs it. Editing a copy is forbidden and
-`make mo-qc` refuses it.
+**Lifecycle state** — backend-native public actor progress state used for waiting.
 
-**Smoke** — a short deterministic console check. Run by the executor or a
-reviewer; never a phase of its own and never a reason to start a tester.
+**Herdr lifecycle state** — normalized Herdr `working`, `idle`, `done`, `blocked`
+or `unknown` state. Provider prose is not lifecycle.
 
-**Spec** — the tracked Markdown task. Read-only for the executor. Changed only by
-`mo-reuse`, and only in its reuse section. Derived from the business framing and
-checked against it — never a replacement for it.
+**Route** — existing configured `route/model/effort` preference. It does not own
+fixture applicability.
 
-**unknown** — a gate whose full verdict cannot be read for the current SHA. It is
-repeated. It is never a partial pass.
+**Surface support key** — exact backend/provider/version/surface/fixture identity
+to which empirical support applies. Evidence never transfers to another key.
+
+**Catalogue availability** — whether a provider-owned listing can be read.
+
+**Model presence** — whether an ID occurs in that listing.
+
+**Launchability** — whether the configured actor can start and reach readiness.
+
+**Entitlement** — whether the current subscription/account may use that model.
+Catalogue presence proves neither launchability nor entitlement.
+
+**Gate `unknown`** — a complete passing verdict cannot be established. It is
+repeated within its bound and never averaged into a pass.
+
+**Herdr lifecycle `unknown`** — public Herdr state cannot be normalized; it is
+re-armed once and then becomes harness-capability attention.
+
+**`needs_attention`** — permitted user boundary or unavailable harness capability,
+never an ordinary engineering or process choice. Product meaning/architecture,
+irreversible action, credentials, subscription, production E2E, external blocker,
+unresolved dispute and explicit watchdog are the permitted human boundaries.
+
+**Warm session** — backend-native session retained for role continuity during one
+feature run. Warmth is not persisted Meta-O state.
+
+**Scratch transport** — restrictive temporary body storage outside the repository,
+owned only for the current relay and never adopted across runs.
+
+**PATH wrapper** — executable file selected first by PATH resolution. An alias or
+function may be a verified launch mechanism, but it is not a PATH wrapper; see
+launch posture.
+
+**Launch posture** — per-surface proof that required permission, approval,
+sandbox, environment, prompt and fixed arguments plus caller pass-through reach
+the actual provider process through a verified wrapper, credential-free forwarding
+mechanism or named provider-native configuration.

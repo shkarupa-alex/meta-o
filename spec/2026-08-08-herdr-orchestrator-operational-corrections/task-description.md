@@ -70,3 +70,18 @@ This is a design task. Produce an implementation-ready, decomposition-ready
 proposal that decides how the affected requirements should fit together, names
 any genuine Herdr capability gap that should become an upstream issue, and avoids
 inventing project documentation or bookkeeping that the user did not request.
+
+## Later user intents (verbatim)
+
+> /goal выполни разработку /Users/alex/Develop/meta-o/spec/2026-08-08-herdr-orchestrator-operational-corrections/spec-review.md и через clean-room subagent review добейся отстуствия замечаний
+
+> тебе не надо использовать скилл mo-herdr сейчас
+
+> Такой вопросик. В My Opinion посмотри, есть ли там раздел или ещё?
+> Про то, что нужно дословно передавать интенты пользователю.
+> Смысл в том, что я неоднократно наблюдаю большую проблему, что те интенты, которые пользователь высказывает, они в финальную спеку не попадают. То есть, нужно, чтобы, если пользователь какой-то, на какой-то вопрос ответил или какое-то мнение высказал, чтобы это дословно попадало в спеку обязательно. Вот есть там такое сейчас или нет?
+
+> давай укажем что и в спеку все интенты пользователя должны попадать дословно
+
+> я тут долго думал и понял что не нужен нам Assisted by в коммитах
+> убери упоминания этого из спеки

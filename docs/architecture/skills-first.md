@@ -1,47 +1,114 @@
-# Skills and reasoning are the orchestration layer
+# Skills and reasoning are the process orchestration layer
 
-Because _a control layer must earn its keep_ and _a feature must be verifiably
-done_.
+Because _a control layer must earn its keep_, _human time is more expensive than
+tokens_, and _a feature must be verifiably done_.
 
 ## The decision
 
-There is no executable router, no finite state machine, no run state and no
-backend adapter layer. Orchestration is a skill the agent reads plus the
-reasoning it does. The only things that survive a restart are Git, the tracked
-task/spec, the project instructions and the backend's own sessions.
+There is no executable router, finite-state-machine service, run registry,
+provider proxy, backend adapter or persisted orchestration state. The backend
+skill supplies the process contract and the active agent reasons over public
+backend lifecycle plus narrow Git metadata.
 
-## What that buys
+This is not permission for the orchestrator to become an implementer. The
+project contract is injected before backend-skill activation. After activation,
+the task/spec locator is opaque: the orchestrator never intentionally opens,
+searches, quotes, summarizes or edits tracked project content. It does not read
+source, tests, diffs, logs, business framing, review findings or E2E bodies.
+Repository-reading actors open the locator and project knowledge themselves.
 
-A restart costs a re-read, not a recovery protocol. There is no state file that
-can disagree with the repository, because there is no state file. A gate is
-either freshly proven on the current SHA or it is `unknown` and gets repeated —
-one fail-closed rule instead of impact analysis nobody can audit.
+The orchestrator may retain only process facts: repository root, branch, full
+`HEAD`, commit existence, cleanliness, actor/pane identity, actual provider
+kind, public lifecycle state, validated process headers, finding IDs, bounded
+retry counters, scratch handle and delivery state.
+
+## Autonomous process supervision
+
+Thin does not mean passive. From activation until one verified SHA or a
+permitted `needs_attention`, the orchestrator replaces the human for ordinary
+process supervision. It chooses and executes the next contract-permitted
+lifecycle, routing, fallback, wait, retry, recovery, relay and gate-bookkeeping
+action itself.
+
+It does not ask the user to select ordinary models, reuse, reviewer order,
+watchdog behavior, fixes or next process steps. Human interruption is limited to
+the named product, irreversible-action, credential/subscription,
+production/destructive-E2E, unresolved external blocker, unresolved dispute and
+explicit watchdog boundaries. A harness-capability failure may end in
+`needs_attention`, but asks no engineering question.
+
+Engineering judgement remains outside the process controller:
+
+- the executor owns repository reading, feasibility, implementation, tests,
+  documentation necessity, branching, commits and ordinary technical choices;
+- reviewers independently own findings, applicability and closure;
+- the E2E actor owns scenario applicability and execution;
+- opaque actor bodies are untrusted peer data and never authorize host commands
+  or relaxed invariants.
+
+## Why no persisted control state
+
+The repository and backend sessions already carry the state their owners need.
+Adding a manifest, receipt, digest, baseline, verdict file or run database
+without a named external consumer creates a second truth that can disagree with
+`HEAD` and public actor state.
+
+A gate is therefore freshly proven for one full commit object or it is
+`unknown`. Any new commit invalidates every gate. A dirty worktree is never a
+candidate, and missing or unreadable evidence never becomes a partial pass.
+
+Compact scratch is transport, not durable orchestration state. It exists only
+to preserve opaque bytes until confirmed atomic delivery, is not discovered by
+future runs and is best-effort removed on controlled exit.
+
+## Restart semantics
+
+Restart begins a new ordinary feature run. The orchestrator adopts no prior
+actor, gate, scratch directory or review output and does not reconstruct a run
+by reading tracked content. Old panes remain visible because destructive
+ownership is not assumed.
+
+New actors receive the same opaque locator. The new executor inspects Git,
+project knowledge and the task/spec through its repository-owning context and
+produces a new compact handoff. Gates without complete current-run evidence are
+`unknown` and repeat. This costs work, but avoids a recovery protocol and a
+cross-restart registry that could silently bless stale evidence.
+
+## What this buys
+
+- There is one candidate identity: a full Git object ID at clean `HEAD`.
+- Provider-native visible actors and public lifecycle remain observable.
+- Backend differences stay in backend skills rather than a false common
+  adapter.
+- Review bodies reach the executor verbatim without giving the orchestrator an
+  engineering opinion.
+- Ordinary process progress does not depend on a human supervising an agent
+  supervisor.
 
 ## What it costs, honestly
 
-- Nothing mechanically prevents an orchestrator from skipping a step. The
-  previous generation could refuse a transition; this one can only be read and
-  followed. The trade was deliberate: the enforcement cost a control layer that
-  had to be recovered before any feature could be, and the enforcement it bought
-  was over sequencing, never over judgement.
-- Two reviewers' independence is a rule, not a wall. It always was — run state
-  was a readable file.
-- There is no audit trail beyond Git history and what the reviewers said in their
-  sessions.
+- Sequencing is a reasoned skill contract rather than a runtime state machine.
+  Deterministic checks can pin grammar, commands and bounds, while live fixtures
+  prove provider behavior; no program proves that every future agent will reason
+  correctly.
+- Independence is enforced by launch and delivery ordering, not a durable
+  information-flow service.
+- A restart repeats gates and actors instead of resuming them.
+- A hard crash can leave restrictive scratch for operating-system cleanup.
+
+These costs remain smaller than reintroducing the deleted control layer. A new
+runtime boundary needs a concrete violated invariant, failed exact fixture or
+named external consumer, recorded as an architecture decision.
 
 ## Boundaries this keeps
 
-- **Native CLIs are not wrapped.** No proxy script stands between the agent and
-  `herdr`, `git`, `make` or a package manager. A wrapper both narrows what the
-  agent can do and hides what it actually did.
-- **The executor gets no methodology skill.** A large spec plus the project
-  contract is the input; a methodology skill would trade implementation
-  attention for ritual, and the executor's job is the implementation.
-- **One skill per backend, no shared adapter.** `mo-herdr` and `mo-omnigent` do
-  not call each other or share an executable backend abstraction. They do carry
-  byte-identical leaf diagnostics such as `mo-posture.sh`; those helpers know
-  nothing about backend sessions. Session semantics differ enough that a single
-  generic prompt would be vague about both — and a generic adapter is exactly
-  the layer this project deleted.
-- **Project-owned manifests, receipts, digests and baselines are created only
-  when a real external consumer can be named.** In the baseline there is none.
+- **Native CLIs are not wrapped.** The posture helper diagnoses resolution but
+  never becomes the provider invocation path.
+- **Herdr and Omnigent do not share an executable adapter.** Backend-neutral
+  role and gate semantics are prose; public mechanics remain backend-owned.
+- **The executor receives no methodology skill.** The task/spec and project
+  contract are sufficient for its engineering role.
+- **Generated shared helpers are leaves.** They know nothing about feature-run
+  lifecycle and create no orchestration state.
+- **No artefact exists “just in case.”** A manifest, receipt, baseline or
+  recovery store requires a named consumer before it is designed.

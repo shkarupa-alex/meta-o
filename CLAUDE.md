@@ -87,6 +87,25 @@ make mo-e2e         # prints what an agent must run; exits 2
 `mo-qc` must never rewrite what it judges. `prettier --write` and any other
 mutating command stay out of it.
 
+Reviewer checks are non-mutating. A diagnostic that can rewrite tracked files
+runs only in an isolated disposable location, never in the frozen candidate
+worktree.
+
+## Version control
+
+Never develop directly on `main`, `master`, `develop`, or `default`. Create each
+task branch from an up-to-date `develop` using `feature/<short-slug>` and use it for
+the whole task.
+
+Run the relevant checks before committing. Commit every coherent, independently
+verifiable increment instead of accumulating the whole task in one commit. Use
+`<type>: <what changed and why>` with `feat`, `fix`, `refactor`, `test`, `docs`, or
+`chore`. Reference an issue or specification when one exists, but neither is
+required.
+
+The final verified result is one full Git object ID. Any subsequent commit
+invalidates its review and verification gates.
+
 ## Conventions
 
 - Skill frontmatter uses only `name`, `description`, `license`, `compatibility`,

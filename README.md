@@ -16,10 +16,8 @@ original. A run does not start without one. Secrets are the one exception —
 credentials and personal data are stored as `[REDACTED: what it was]`, since that
 file gets committed and pushed.
 
-The specification is
-[`spec/2026-08-05-ai-driven-development-workflow-revision/`](spec/2026-08-05-ai-driven-development-workflow-revision/2026-08-05-ai-driven-development-workflow-revision-council-brainstorm.md).
-It replaces the 2026-07-24 spec and its implementation, which is in the Git
-history and nowhere else.
+The current operational correction is
+[`spec/2026-08-08-herdr-orchestrator-operational-corrections/`](spec/2026-08-08-herdr-orchestrator-operational-corrections/spec-review.md).
 
 ## What a run looks like
 
@@ -55,9 +53,9 @@ what was verified. Fixtures I3–I5 in
 [`docs/phase-0-fixtures.md`](docs/phase-0-fixtures.md) are exactly these rows:
 
 ```bash
-apm install shkarupa-alex/meta-o
-apm install shkarupa-alex/meta-o --skill mo-review
 npx skills add shkarupa-alex/meta-o
+npx skills add shkarupa-alex/meta-o --skill mo-review
+apm install shkarupa-alex/meta-o
 ```
 
 apm deploys to the harness it detects in the consuming project (`.claude/`,

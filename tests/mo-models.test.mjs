@@ -77,6 +77,11 @@ function sdkResolvesGlobally() {
   return existsSync(join(result.stdout.trim(), "@anthropic-ai", "claude-agent-sdk"));
 }
 
+/** True when this checkout supplies the optional peer beside the helper. */
+function sdkResolvesForHelper() {
+  return existsSync(join(ROOT, "node_modules", "@anthropic-ai", "claude-agent-sdk"));
+}
+
 test("a selection needs a route, a model and an effort", () => {
   assert.deepEqual(parseSelection("claude/claude-opus-5/high"), {
     route: "claude",
@@ -312,7 +317,10 @@ test(
 test(
   "an unresolvable optional SDK is reported as a gap, not filled from history",
   {
-    skip: sdkResolvesGlobally() ? "the Claude SDK is installed globally here" : false,
+    skip:
+      sdkResolvesGlobally() || sdkResolvesForHelper()
+        ? "the Claude SDK is installed for this helper"
+        : false,
   },
   () => {
     const home = sandbox();
@@ -394,16 +402,22 @@ test(
   },
 );
 
-test("a selection is stored with the gap named when the catalog cannot answer", () => {
-  const home = sandbox();
-  // Run from a directory with no node_modules above it, so the Claude route's
-  // optional SDK cannot resolve and the route genuinely cannot answer.
-  const result = run(home, ["--set", "executor=claude/whatever-it-is/high"], home);
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stderr, /the claude catalog is unavailable/);
-  assert.match(result.stderr, /stored unverified/);
-  assert.match(run(home, ["--show"], home).stdout, /executor=claude\/whatever-it-is\/high/);
-});
+test(
+  "a selection is stored with the gap named when the catalog cannot answer",
+  {
+    skip: sdkResolvesForHelper() ? "the Claude SDK is installed for this helper" : false,
+  },
+  () => {
+    const home = sandbox();
+    // Run from a directory with no node_modules above it, so the Claude route's
+    // optional SDK cannot resolve and the route genuinely cannot answer.
+    const result = run(home, ["--set", "executor=claude/whatever-it-is/high"], home);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stderr, /the claude catalog is unavailable/);
+    assert.match(result.stderr, /stored unverified/);
+    assert.match(run(home, ["--show"], home).stdout, /executor=claude\/whatever-it-is\/high/);
+  },
+);
 
 test("every worktree of one repository is one project", () => {
   const home = sandbox();

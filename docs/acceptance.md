@@ -1,152 +1,135 @@
 # Acceptance map
 
-The sixteen criteria of §21 of the master spec, each against what actually proves
-it. Three kinds of proof appear here, and the difference matters:
+This map belongs to
+`spec/2026-08-08-herdr-orchestrator-operational-corrections/spec-review.md`.
+It names what must prove each requirement without claiming that planned or historical evidence
+proves the post-cutover candidate.
 
-- **mechanical** — a test or a gate fails if the property is broken;
-- **fixture** — provable only by running a live session; the row names the
-  fixture and is open until its evidence is recorded;
-- **judgement** — a property of a written instruction, provable only by reading
-  it. Marking these mechanical would be the pretence this project exists to
-  avoid.
+Statuses have narrow meanings:
 
-| §21 | Criterion                                                                                                                                                                                    | Proof                                                                                                                                                         | Kind                   | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | `mo-herdr` with no argument asks a clear question or offers to continue                                                                                                                      | `src/skills/mo-herdr/SKILL.md`, `shared/references/methodology.md §1`                                                                                         | judgement              | written                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| 2   | The executor reads no methodology skill and still does the full scope                                                                                                                        | `methodology.md §4`; `tests/build-skills.test.mjs` asserts the shipped set is exactly the seven, so no executor skill can appear unnoticed                    | mechanical + judgement | written                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| 3   | A large task runs under native `/goal` where activation is proven                                                                                                                            | `methodology.md §6`                                                                                                                                           | fixture                | G1–G3a, G4, G5 closed 2026-08-06; G3b open                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| 4   | `mo-reuse` never runs unasked; its commit is spec + reuse research only                                                                                                                      | `src/skills/mo-reuse/SKILL.md`, `methodology.md §3`                                                                                                           | judgement              | written                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| 5   | `mo-reuse` shows GitHub language/Rust and registry first pages over three adaptive rounds                                                                                                    | `src/skills/mo-reuse/SKILL.md`                                                                                                                                | judgement              | written                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| 6   | Two independent reviews and E2E check one final SHA; reviewer output needs no SHA/worktree fields                                                                                            | `src/skills/mo-review/SKILL.md`, `methodology.md §5`                                                                                                          | judgement              | written                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| 7   | Any fix invalidates all gates                                                                                                                                                                | `methodology.md §5`, `src/skills/mo-*/SKILL.md` "Gates"                                                                                                       | judgement              | written                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| 8   | `mo-herdr` retrieves a long final turn through Herdr read/scroll, proving both boundaries and continuity; reads no private sessions                                                          | `src/skills/mo-herdr/references/herdr-mechanics.md` — the algorithm and the ban are written down; nothing mechanical can prove a live retrieval               | fixture                | answered per route **and per surface** 2026-08-06/07, not closed — the TUI carries only Codex; inline carries Claude and Codex **with H7b outstanding on every route**; **OpenCode is unsupported on both surfaces**, its inline mode failing H4 with an empty answer and exit 0. H6 and OpenCode's H9 also stay open. The inline path's stdout capture is permitted by `addendum-02` and is not the banned verdict file: the shell produces it, not the model |
-| 9   | A full-retrieval failure yields `unknown`, not a partial PASS                                                                                                                                | `herdr-mechanics.md §1.10`, `omnigent-mechanics.md §2`                                                                                                        | fixture                | closed 2026-08-06 — H10 on all three routes, plus OpenCode's exit-0-with-no-answer case                                                                                                                                                                                                                                                                                                                                                                        |
-| 10  | Simple smoke runs without a separate phase; browser/benchmark gets a tester                                                                                                                  | `src/skills/mo-e2e/SKILL.md`, `methodology.md §5`; `make mo-smoke` and `make mo-e2e` in this repo                                                             | mechanical + judgement | proven here                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| 11  | The methodology and shipped probe diagnose provider posture per launch surface; `mo-setup` owns remediation and asks before personal-config writes; unresolved gaps go to `docs/backlog.md`. | `shared/references/methodology.md §2`; `shared/scripts/mo-posture.sh`; `src/skills/mo-setup/SKILL.md`; `make contract` proves the instruction files identical | mechanical + judgement | written; probe semantics are covered by `tests/provider-posture.test.mjs`; live posture evidence is open in Phase 0 §P                                                                                                                                                                                                                                                                                                                                         |
-| 12  | Python and TypeScript get native typecheck/lint/test/QC contracts                                                                                                                            | `src/skills/mo-setup/references/qc-python.md`, `qc-typescript.md`                                                                                             | fixture                | open — Q1–Q3                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| 13  | A purpose reviewer rejects implementation restatement and checks overloads                                                                                                                   | `shared/references/purpose-and-architecture.md §§1–3`                                                                                                         | judgement              | written                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| 14  | A restarted orchestrator resumes from Git/spec/sessions or asks one precise question                                                                                                         | `methodology.md §8`; fixture R1 runs it                                                                                                                       | fixture                | closed 2026-08-06 — R1                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| 15  | `skills/` has no workflow CLI, installer/updater, `state.json`, manifests, receipts or proxy adapters                                                                                        | `tests/build-skills.test.mjs` — "nothing shipped mentions the deleted control layer"                                                                          | mechanical             | proven                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| 16  | Direct `mo-review` runs two reviewers, fixes in the same session, and repeats until two PASS; every finding carries `Evidence`, `Impact`, `Expected fix`                                     | `src/skills/mo-review/SKILL.md`; fixture R2 runs it                                                                                                           | fixture                | closed 2026-08-06 — R2, four rounds                                                                                                                                                                                                                                                                                                                                                                                                                            |
+- **PENDING** — the required deterministic or live evidence has not passed one named
+  post-cutover SHA.
+- **UNSUPPORTED** — the exact live surface has not passed its fixture. This is not a
+  permanent product verdict; a passing exact fixture may change it.
+- **PASS** — evidence names the unchanged full candidate SHA and satisfies the row completely.
 
-## The addendum criteria
+The deterministic implementation exists, but its final post-correction SHA and
+review gates are not frozen, so no row in this document is PASS yet. This task is
+running without `HERDR_ENV=1`, so no Herdr capability or agentic row can be
+executed honestly in the current session. Remote installation I3-I5 and native
+Omnigent OM1-OM8 likewise remain pending and unsupported in their own ledgers.
 
-`spec/2026-08-05-…/addendum-01-business-framing.md` is normative alongside the
-council brainstorm, so its criteria get rows of their own rather than a mention in
-the backlog.
+## Normative invariants
 
-| id  | Criterion                                                                                                                                           | Proof                                                                                                                                         | Kind      | Status                     |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------- | -------------------------- |
-| A1  | The framing exists and is kept verbatim — original request, every clarification, no summary standing in                                             | `docs/business.md` Part 1 for this project; `methodology.md §2.1`; `mo-setup` creates the place it lives                                      | judgement | proven here, for this repo |
-| A2  | Framing before spec, before implementation, fail-closed; `<BUSINESS_PATH>` travels in the goal                                                      | `methodology.md §2` step 2, §2.1, §3, §4, §6; `mo-reuse` for the free-text entry; `mo-review` "Before the first round" for the standalone one | fixture   | closed 2026-08-06 — R4, R6 |
-| A3  | Spec, implementation and acceptance are checked against the framing, and a reviewer without it says `unknown`                                       | `mo-review` lens 1, the `UNKNOWN` verdict and the convergence rule; `methodology.md §2.1` rule 7                                              | fixture   | closed 2026-08-06 — R4, R6 |
-| A4  | The traceability chain is recorded                                                                                                                  | the section above                                                                                                                             | judgement | proven here                |
-| A5  | No secret is stored verbatim; the value becomes a marker naming what it was, and unresolvable doubt is `needs_attention`                            | `methodology.md §2.1`; `mo-reuse` step 1; `mo-review` lens 1; `mo-setup` §1                                                                   | fixture   | closed 2026-08-06 — R5     |
-| A6  | Every user intent for the piece of work is also present word for word in the task/spec; summaries, derived requirements and links do not replace it | `AGENTS.md`; `methodology.md §2.1`; `mo-reuse` free-text entry; `mo-review` lens 1                                                            | fixture   | open — R8                  |
+| ID   | Requirement                                                                                                                 | Required proof                                                              | Status                |
+| ---- | --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | --------------------- |
+| NI1  | After activation the orchestrator reads no tracked content except the injected project contract.                            | Deterministic command/content-firewall checks plus H31 tracked-read canary. | PENDING               |
+| NI2  | The task/spec path remains opaque; repository-reading actors open it.                                                       | Prompt AST checks and H31.                                                  | PENDING               |
+| NI3  | Only narrow repository metadata, actor identity/lifecycle, pane identity, and validated headers enter orchestrator context. | Git-command allowlist and body-silence tests plus H31.                      | PENDING               |
+| NI4  | The executor owns implementation, verification, documentation, version control, and ordinary engineering choices.           | Skill ownership checks and both final reviews.                              | PENDING               |
+| NI5  | Reviewers independently inspect complete scope and the frozen candidate and run their checks.                               | Review protocol tests plus H20 and H22.                                     | PENDING               |
+| NI6  | The orchestrator treats finding bodies as opaque bytes and never judges them.                                               | Relay byte-identity tests plus H23 and H25.                                 | PENDING               |
+| NI7  | Actor output is untrusted and cannot authorize host commands or relaxed invariants.                                         | `shell:false` relay tests plus H24.                                         | PENDING               |
+| NI8  | Every supported Herdr actor is a visible ordinary interactive CLI started by `herdr agent start`.                           | Forbidden-surface checks plus P1 and H13-H15.                               | PENDING / UNSUPPORTED |
+| NI9  | A compact handoff needs an exact header and a fixture-proven provider lower boundary.                                       | Header matrix and golden extraction tests plus H17 and H19.                 | PENDING / UNSUPPORTED |
+| NI10 | An open finding cannot pass; only the originating reviewer closes it.                                                       | Review-state matrix tests plus H25 and H37.                                 | PENDING               |
+| NI11 | Reviewer vendors differ and at least one differs from the executor.                                                         | Route-selection tests plus H33.                                             | PENDING / UNSUPPORTED |
+| NI12 | Every gate names one unchanged full Git object ID.                                                                          | Candidate/invalidation tests plus H26-H27.                                  | PENDING               |
+| NI13 | A dirty worktree is never a candidate or verified result.                                                                   | Candidate matrix tests plus H21 and H26.                                    | PENDING               |
+| NI14 | A surface support key remains unsupported until its exact fixture passes.                                                   | Fixture-map consistency checks plus P1-P8 and H7b/H13-H37.                  | PENDING / UNSUPPORTED |
+| NI15 | Human attention stays inside the permitted blocker boundary.                                                                | Blocker source/phase matrix tests plus H30.                                 | PENDING               |
+| NI16 | Durable terms have one canonical glossary meaning.                                                                          | Glossary AST checks plus final reviews.                                     | PENDING               |
+| NI17 | Retries are bounded per event and cannot form an unchanged-failure loop.                                                    | Retry/no-progress tests plus H34.                                           | PENDING               |
+| NI18 | Headers satisfy both syntax and state-specific semantics.                                                                   | Complete executor/review/adjudication/E2E matrix tests.                     | PENDING               |
+| NI19 | Scope inventory and generated counterparts change in the same increment.                                                    | `make skills`/`skills-check` and built-tree tests.                          | PENDING               |
+| NI20 | Only an exact isolated fixture changes empirical surface support.                                                           | Fixture-map review plus H18.                                                | PENDING / UNSUPPORTED |
+| NI21 | Completion is impossible with missing, unknown, stale, or other-SHA evidence.                                               | Gate-convergence tests plus H26-H27.                                        | PENDING               |
+| NI22 | Architecture changes require a concrete contradiction, violated invariant, or failed exact fixture.                         | Architecture/spec review against the final diff.                            | PENDING               |
+| NI23 | The orchestrator autonomously owns ordinary lifecycle, routing, retry, fallback, and bookkeeping.                           | Choice-menu/attention tests plus H30 and H34.                               | PENDING               |
+| NI24 | Every task/spec and business framing preserve all applicable user intents verbatim with credential-safe value redaction.    | `tests/intent-contract.test.mjs` plus both final reviews.                   | PENDING               |
 
-A1 is marked "for this repo" deliberately: this project's own framing is verbatim
-and complete from 2026-08-06 onward, but the rule holding on _another_ project is a
-property of a run, and no run has happened. A2, A3 and A5 are behaviours of a
-session, which is why they are fixtures and not gates — see the backlog entry for
-why no mechanical check is attempted. A5 could in principle be gated by a secret
-scanner, and if that day comes it is `gitleaks` in CI, not a regex over Markdown
-written here: the project contract forbids the second outright.
+## Preimplementation capability probes
 
-## The §20 phase plan, item by item
+P1-P8 prove installed external behavior only. They never prove the final implementation or
+candidate.
 
-§21 is not the only normative list: §20 orders the work in three phases, and its
-items are as binding as the criteria. They get rows because a phase item recorded
-only in the backlog reads as "deferred by choice" when it is actually "not done yet".
+| ID  | Capability                                                                                     | Evidence required                                                            | Status                |
+| --- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | --------------------- |
+| P1  | Two different provider CLIs launch as ordinary visible actors through `herdr agent start`.     | Exact launch commands, actor kinds, panes, activated models, and clean stop. | PENDING / UNSUPPORTED |
+| P2  | `herdr tab create` returns structured `.result.root_pane`.                                     | Raw structured command result with a valid pane ID.                          | PENDING / UNSUPPORTED |
+| P3  | Right split, tab rename, and metadata-report commands exist with the required public behavior. | Exact command results on throwaway topology.                                 | PENDING / UNSUPPORTED |
+| P4  | `herdr agent prompt` atomically submits text and Enter and exposes public lifecycle change.    | Before/after state, process, and input-boundary evidence.                    | PENDING / UNSUPPORTED |
+| P5  | `herdr agent wait` is non-submitting and returns on the required terminal lifecycle states.    | A prompt-free wait fixture for idle, done, blocked, and unknown.             | PENDING / UNSUPPORTED |
+| P6  | `recent-unwrapped` reaches the measured 1000-row extraction envelope.                          | Long Claude and Codex captures with exact row/boundary accounting.           | PENDING / UNSUPPORTED |
+| P7  | Native goal settlement supports the required quiet observation and safe re-arm.                | Settled, spontaneous-resume, and inactive-goal cases.                        | PENDING / UNSUPPORTED |
+| P8  | One 130,048-byte UTF-8 argument launches on every supported OS.                                | Local-platform and Linux argument-boundary results.                          | PENDING / UNSUPPORTED |
 
-| §20           | Item                                               | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| ------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Phase 0.1     | Herdr long-turn fixtures, three providers          | run 2026-08-06 per surface. **Not fully closed:** H7b (host-window resize) measures Herdr rather than a provider and is open on all three, so the supported routes are Codex and Claude _with H7b outstanding_; OpenCode is unsupported on both surfaces. H6 also open — see `docs/phase-0-fixtures.md §H`                                                                                                                                                                                |
-| Phase 0.2     | Omnigent goal / resume / full-export fixtures      | O1 **fails** (no slash-command transport); O2 moot; O3–O5 pass; O6, O7 open; O8 and O9 **fail as provider properties** — an empty turn exits 0, and `-c` cannot address a role                                                                                                                                                                                                                                                                                                            |
-| Phase 0.3     | Codex and Claude `/goal`; Claude trust and hooks   | closed except G3b (needs a never-trusted workspace)                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| Phase 0.4     | Provider posture by launch surface                 | **open** — shell diagnostics find Claude/Codex wrappers in some modes and bare binaries after the login profile runs `brew shellenv`; no lookup has yet been captured inside the actual Herdr, hook or harness surfaces; OpenCode has no wrapper or verified native posture                                                                                                                                                                                                               |
-| Phase 0.5     | Watchdog next-turn spike                           | closed — W1, and the helper was therefore not admitted                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Phase 0.6     | Model catalog / history source matrix              | closed — §M                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| Phase 0.7     | apm / `npx skills` standalone install spike        | I1, I2 closed by a real `apm install` in the gate; I3–I5 need the repository pushed                                                                                                                                                                                                                                                                                                                                                                                                       |
-| Phase 0.8     | Python / TypeScript tooling spike                  | **open** — §Q needs a real project of each                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| Phase 1.1–1.4 | methodology, the seven skills, the model helper    | done, and gated by `make mo-qc`                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| Phase 1.5     | end-to-end small feature through **both** backends | **executed on both, 2026-08-06/07, and unmet on two counts.** No round reached two PASS — seven candidates on the Herdr route, six on the Omnigent one, every completed round FAIL on real findings. And the orchestrator in both runs was this coding session following the authored skills, **not a packaged `mo-herdr` / `mo-omnigent` invoked from an install**, so what is proven is the methodology, not the shipped artefact. Both gaps are in `docs/e2e.md` and `docs/backlog.md` |
-| Phase 2       | destructive simplification                         | done, out of order, on explicit instruction — recorded in `docs/backlog.md`                                                                                                                                                                                                                                                                                                                                                                                                               |
+The current environment has no Herdr control plane, so each exact Herdr support key remains
+UNSUPPORTED.
 
-## Additional properties this repository proves mechanically
+## Agent-required Herdr fixtures
 
-These are not §21 rows, but they are the rules a written methodology can
-actually be held to, so they are gated rather than trusted:
+H7b and H13-H37 run only after the candidate already contains the cutover and all
+deterministic gates pass. Every row must name that same full SHA.
 
-| Property                                                              | Proof                                                   |
-| --------------------------------------------------------------------- | ------------------------------------------------------- |
-| The methodology has exactly one source owner                          | `tests/build-skills.test.mjs`                           |
-| Shared files in `skills/` are byte-identical copies                   | `tests/build-skills.test.mjs`                           |
-| A hand-edited or stale `skills/` file is refused                      | `make skills-check`, `tests/build-skills.test.mjs`      |
-| A source skill shadowing a shared file is refused                     | `tools/build-skills.mjs`, `tests/build-skills.test.mjs` |
-| Skill frontmatter stays portable, and `name` matches the directory    | `tools/build-skills.mjs`, `tests/build-skills.test.mjs` |
-| The shipped set is exactly the seven skills, with nothing else beside | `tests/build-skills.test.mjs`                           |
-| Each skill is self-contained and points at nothing non-existent       | `tests/build-skills.test.mjs`                           |
-| A real `apm install` deploys every referenced file                    | `tests/install.test.mjs` (skipped without `apm`)        |
-| One skill installs alone with its own references                      | `tests/install.test.mjs` (skipped without `apm`)        |
-| `models.json` holds no run state                                      | `tests/mo-models.test.mjs`                              |
-| A newer `schemaVersion` is never overwritten                          | `tests/mo-models.test.mjs`                              |
-| A bad assignment persists nothing                                     | `tests/mo-models.test.mjs`                              |
-| Recent history is never presented as a catalog                        | `tests/mo-models.test.mjs`                              |
-| An unknown flag is an error, not a silent default                     | both test files                                         |
-| The helper never reads stdin                                          | `tests/mo-models.test.mjs`                              |
+| ID  | Scenario                                                                                    | Status                |
+| --- | ------------------------------------------------------------------------------------------- | --------------------- |
+| H7b | Host-window resize during extraction preserves or safely invalidates the measured boundary. | PENDING / UNSUPPORTED |
+| H13 | Exact visible topology and partial-failure remnants.                                        | PENDING / UNSUPPORTED |
+| H14 | Posture self-check, native launch, trust, and permission cycle.                             | PENDING / UNSUPPORTED |
+| H15 | Warm executor/reviewer pane continuity.                                                     | PENDING / UNSUPPORTED |
+| H16 | Native goal quiet end, re-arm, and portable combined prompt.                                | PENDING / UNSUPPORTED |
+| H17 | Extraction ladder, structural lower boundary, and H7b behavior.                             | PENDING / UNSUPPORTED |
+| H18 | Actor noncompliance versus structural surface failure classification.                       | PENDING / UNSUPPORTED |
+| H19 | Review V2 continuation and total bounds; V1 single-body failures.                           | PENDING / UNSUPPORTED |
+| H20 | Sequential A-before-B independence and candidate freeze.                                    | PENDING / UNSUPPORTED |
+| H21 | Mutating reviewer-check handling and candidate invalidation.                                | PENDING / UNSUPPORTED |
+| H22 | Independent reviewer ownership of QC, smoke, and applicable checks.                         | PENDING / UNSUPPORTED |
+| H23 | Adversarial UTF-8 body transport remains byte-identical.                                    | PENDING / UNSUPPORTED |
+| H24 | Relay/adjudication framing, Linux argv boundary, and no-retry ambiguity behavior.           | PENDING / UNSUPPORTED |
+| H25 | Complete findings, ID floor, forced dispute, and blocker accounting.                        | PENDING / UNSUPPORTED |
+| H26 | Same-SHA clean completion.                                                                  | PENDING / UNSUPPORTED |
+| H27 | Any new commit invalidates all gates and open IDs.                                          | PENDING / UNSUPPORTED |
+| H28 | One actor/pane restart and bounded repeated-loss attention.                                 | PENDING / UNSUPPORTED |
+| H29 | Catalogue isolation, model presence, launchability, and finite fallback.                    | PENDING / UNSUPPORTED |
+| H30 | Only the narrow human-attention channel interrupts the user.                                | PENDING / UNSUPPORTED |
+| H31 | Test-only tracked-read audit with a canary.                                                 | PENDING / UNSUPPORTED |
+| H32 | Scratch permissions, lifetime, cleanup, and lost-scratch review restart.                    | PENDING / UNSUPPORTED |
+| H33 | Actual reviewer vendor diversity and one reviewer differing from executor.                  | PENDING / UNSUPPORTED |
+| H34 | Direct waits, one waiter, bounded retries, and no-progress stop.                            | PENDING / UNSUPPORTED |
+| H35 | Metadata badges remain observable but non-gating.                                           | PENDING / UNSUPPORTED |
+| H36 | Missing or unusable `develop` fails closed with no branch fallback.                         | PENDING / UNSUPPORTED |
+| H37 | Existing-peer adjudication preserves origin-reviewer closure ownership.                     | PENDING / UNSUPPORTED |
 
-## What is deliberately not mechanical
+## Omnigent acceptance
 
-Nothing enforces the sequence of the lifecycle. The previous generation could
-refuse an illegal transition; this one is read and followed. That trade is argued
-in `docs/architecture/skills-first.md`, and the honest summary is that the
-enforcement covered sequencing rather than judgement, and cost a control layer
-that had to be recovered before any feature could be.
+Omnigent uses its native session model. Herdr tabs, panes, extraction glyphs, and commands
+are not evidence for this backend.
 
-## Traceability, and where this map is thin
+| ID  | Requirement                                                                   | Status                |
+| --- | ----------------------------------------------------------------------------- | --------------------- |
+| OM1 | Post-activation tracked-content firewall.                                     | PENDING / UNSUPPORTED |
+| OM2 | Clean full-SHA candidate and candidate-bound gates.                           | PENDING / UNSUPPORTED |
+| OM3 | Two sequential independent reviews with required vendor diversity.            | PENDING / UNSUPPORTED |
+| OM4 | Structured findings, opaque relay, origin closure, and adjudication.          | PENDING / UNSUPPORTED |
+| OM5 | Commit invalidation and full gate restart.                                    | PENDING / UNSUPPORTED |
+| OM6 | Native continuity/recovery without private stores or invented Herdr evidence. | PENDING / UNSUPPORTED |
+| OM7 | Canonical vocabulary and weaker prompt-objective disclosure.                  | PENDING / UNSUPPORTED |
+| OM8 | The same narrow human-attention boundary.                                     | PENDING / UNSUPPORTED |
 
-Each row above links a spec criterion to its proof. The full chain the methodology
-asks for has one more link in front:
+No supported Omnigent route has yet passed these rows against the post-cutover candidate.
 
-```text
-original intent and clarifications
-  → business framing in docs/business.md
-  → the same words in the spec's User intents (verbatim) section
-  → a derived requirement or criterion in the spec
-  → the implementation
-  → proof in a review, a test or an E2E
-```
+## Completion and cutover
 
-For this project, the first link exists only from 2026-08-06 onward:
-`docs/business.md` Part 1 records the request that produced this generation and
-the clarifications that followed, but the authoritative spec — the council
-brainstorm — was written before the rule existed and is not derived from a
-recorded framing. So a criterion below can be traced back to the spec, and from
-the spec to the framing only where the framing happens to speak to it. Closing
-that gap properly means the next feature, not a retrofitted reconstruction of a
-conversation nobody kept.
-
-**Two runs exist, one per backend, and neither converged.** On 2026-08-06 and 07 a
-small feature went through framing → spec → executor session → QC → frozen SHA → two
-independent reviewers with at least one on another vendor → findings applied verbatim
-→ new SHA → all gates re-run. **Seven candidates on the Herdr route with seven
-completed review rounds; six on the Omnigent route with five completed review rounds,
-the sixth candidate unreviewed.** Every completed round returned FAIL on real
-findings, so **no verified candidate came out of either**, and `docs/e2e.md` records
-what each round found and what the runs
-establish. The mechanical rows below say the artefacts and the build are correct; the
-runs say the loop functions on both backends and has not yet been driven to two PASS
-on one SHA. Treat this map as an inventory of evidence, not as a claim of
-acceptance.
-
-The **fixture** rows are no longer uniformly open, and the status column above is
-the authority on which is which: rows 3, 8, 9, 14, 16 and A2, A3, A5 have evidence
-recorded in `docs/phase-0-fixtures.md`; row 12 (§Q) has none. Where a row is still
-open — or where a route inside a closed row failed, as the TUI surface did on two
-providers — the route that row feeds is unsupported for its gate, and a run says so
-out loud rather than treating it as working.
-
-Rows 14 and 16 were previously marked _judgement_, on the argument that an
-instruction can only be read. That was too generous to this project: both describe a
-behaviour a session either performs or does not, so they are fixtures R1 and R2, and
-both were run on 2026-08-06.
+| ID  | Completion criterion                                                                                                       | Status                |
+| --- | -------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| C1  | P1-P8 establish required Herdr capabilities and two reviewer vendors.                                                      | PENDING / UNSUPPORTED |
+| C2  | Every planned increment, generated output, and removal of inline/headless behavior is committed with `make mo-qc` passing. | PENDING               |
+| C3  | H7b and all applicable H13-H37 rows pass one named candidate.                                                              | PENDING / UNSUPPORTED |
+| C4  | Both independent reviewers pass that same candidate with no actionable findings.                                           | PENDING               |
+| C5  | Applicable agent-required E2E passes that same candidate.                                                                  | PENDING               |
+| C6  | The candidate already contains the cutover and no old Herdr inline/headless actor path.                                    | PENDING               |
+| C7  | This acceptance map names evidence for every applicable requirement.                                                       | PENDING               |
+| C8  | Every intentionally unfinished or unsupported item is in the open backlog.                                                 | PENDING               |
+| C9  | No architecture question remains disguised as an implementation TODO.                                                      | PENDING               |
+| C10 | The returned result is the unchanged full candidate SHA.                                                                   | PENDING               |
