@@ -15,6 +15,7 @@ mo-lint:
 	npx --no-install markdownlint-cli2
 	npx --no-install prettier --check .
 	node --check shared/scripts/mo-models.mjs
+	node --check skills/mo-herdr/scripts/mo-models.mjs
 	node --check tools/build-skills.mjs
 	bash -n shared/scripts/mo-posture.sh
 	shared/scripts/mo-posture.sh --self-check --shell all
@@ -46,6 +47,9 @@ mo-smoke:
 	@home=$$(mktemp -d) && \
 		HOME=$$home node shared/scripts/mo-models.mjs --help > /dev/null && \
 		HOME=$$home node shared/scripts/mo-models.mjs --show > /dev/null && \
+		cp skills/mo-herdr/scripts/mo-models.mjs $$home/mo-models.mjs && \
+		(cd $$home && HOME=$$home node ./mo-models.mjs --help > /dev/null) && \
+		(cd $$home && HOME=$$home node ./mo-models.mjs --show > /dev/null) && \
 		rm -rf $$home
 	@echo "mo-smoke ok"
 

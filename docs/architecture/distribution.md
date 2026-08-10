@@ -1,88 +1,137 @@
-# One source owner, mechanical copies, no runtime sharing
+# One source owner, self-contained generated skills
 
 Because _a control layer must earn its keep_ and _deferred work that nobody wrote
-down does not exist_ — a divergent methodology copy is exactly the kind of debt
-nobody notices they took on.
+down does not exist_ — a divergent methodology copy or a helper that works only
+beside an ambient `node_modules` is a broken standalone skill.
 
 ## The tension
 
-Two things are both required and pull opposite ways:
+Two requirements pull in opposite directions:
 
-1. Each skill must install **on its own**. An install with `--skill mo-review`
-   copies one directory; a skill that references a file outside it is broken on
-   arrival, and a direct `mo-review` after a small fix is the single most-used
-   entry point.
-2. The methodology must have **one owner**. Seven hand-maintained copies drift,
-   and a drifted methodology is worse than none, because each reader believes
-   theirs.
+1. Each skill must install and run on its own. A single-skill install copies one
+   directory, so a reference, runtime package or licence outside that directory
+   is missing on arrival.
+2. Shared contracts and helper source must have one owner. Hand-maintained
+   copies drift, and a drifted methodology or executable protocol is worse than
+   none because every consumer believes its copy.
 
-## The decision
+## Source ownership and generated output
 
-- Source of truth lives in `shared/`: `references/methodology.md`,
-  `references/purpose-and-architecture.md`, `scripts/mo-models.mjs` and
-  `scripts/mo-posture.sh`.
-- `src/skills/<name>/` holds only what that skill owns — its `SKILL.md` and its
-  own backend or profile references.
-- `tools/build-skills.mjs` copies the shared files into each skill that declares
-  them and emits `skills/`, the installable tree.
-- `mo-herdr`, `mo-omnigent` and `mo-setup` each receive the one methodology copy;
-  setup owns remediation, but it does not restate the shared diagnostic protocol.
-- The same three skills receive `scripts/mo-posture.sh`, because the diagnostic
-  matrix is fragile executable protocol rather than prose and each skill must
-  remain independently installable.
-- `make mo-qc` runs `build-skills.mjs --check`, which refuses a `skills/` that
-  does not byte-match a fresh build.
-- The build also refuses a source skill that _shadows_ a shared file. That is the
-  only way a hand-edited copy can begin, so it is where it is stopped.
+- `shared/references/` owns canonical shared prose.
+- `shared/scripts/mo-models.mjs` owns the model settings and catalogue source.
+- `shared/scripts/mo-posture.sh` owns the provider-resolution probe.
+- `shared/licenses/` owns the notices required by packages redistributed inside
+  a generated helper.
+- `src/skills/<name>/` holds only that skill's `SKILL.md` and skill-owned
+  references.
+- `tools/build-skills.mjs` is the build-time owner of `SHARED_PLAN`, bundling,
+  licence mapping and the generated `skills/` tree.
 
-`skills/` is committed, because the package managers install what the repository
-has committed.
+Most shared entries are copied byte-for-byte. `mo-models.mjs` is deliberately
+different: the source is bundled into the runtime file placed in `mo-herdr` and
+`mo-omnigent`. Both destinations are produced by the same build operation and
+must be byte-identical to each other. Generated files are never hand-edited.
 
-**No runtime shared package and no executable router appears.** The posture
-script is a bounded diagnostic leaf: it starts no provider and stores no state.
-Its duplication is a build artefact, not an import graph.
+`make mo-qc` regenerates into a temporary tree and compares every path and byte
+with committed `skills/`. It also refuses source files that shadow a
+`SHARED_PLAN` destination. The built tree is committed because package managers
+install the repository's committed discovery tree.
 
-## Why the built tree is `skills/` and the sources are under `src/`
+## The self-contained model helper
 
-The spec spells the installable tree `dist/`. That layout does not install, and
-both halves of the failure were reproduced with apm 0.27.0 before this was
-changed:
+Claude catalogue discovery uses the Agent SDK's
+`Query.supportedModels()` surface, but an installed skill has no package-install
+step. The generated helper therefore bundles its runtime dependency instead of
+resolving a project, global or otherwise ambient `node_modules` at runtime.
 
-- `apm install ./dist` is refused — `no apm.yml, SKILL.md, or plugin.json found`.
-  apm validates the exact directory it is given, and the manifest sat one level
-  above it.
-- `apm install <path-to-repo>` succeeds and installs the **wrong** tree. Skill
-  discovery resolves `<root>/skills/<name>/SKILL.md`, which at the time was the
-  authored tree, so `mo-herdr` arrived with no `references/methodology.md` and no
-  `scripts/mo-models.mjs`. Every build check passed while the installed product
-  was broken. There is no subpath option for a Git shorthand to point discovery
-  elsewhere; `apm install --help` offers none.
+The build contract is:
 
-So the built tree took the name discovery looks for, and the authored tree moved
-under `src/` — not as a convention, but so that discovery **cannot** reach it. A
-remote install and a local-path install now resolve the same directory, and
-`tests/install.test.mjs` runs a real `apm install` and asserts the deployed file
-list, both for the whole bundle and for `--skill mo-review` alone. A build gate
-could not have caught the original defect; only an install can.
+- `esbuild` exactly `0.25.12` as a build-only development dependency;
+- `@anthropic-ai/claude-agent-sdk` exactly `0.3.191` as the bundled runtime
+  dependency;
+- Node.js 22 ESM output, with bundling enabled, no externals, no minification and
+  no source map;
+- system Claude resolved through the established `PATH` scan; no provider
+  executable is vendored;
+- macOS Claude runs under a Seatbelt profile whose kernel-enforced
+  `deny process-fork` rule is proved by a bounded negative fixture before every
+  provider start; the provider therefore cannot create either an ordinary or a
+  detached descendant during catalogue discovery;
+- a probe-owned supervisor stays outside that no-fork boundary only long enough
+  to start the one sandboxed provider. Its private lifecycle fd is the cleanup
+  capability: the still-live group leader signals its own group, and no numeric
+  PID learned from a process-table snapshot is ever signalled. Catalogue success
+  is withheld until the supervisor's close event proves cleanup completed;
+- Linux, Windows and other POSIX Claude catalogue discovery fails closed before
+  provider start until an equivalent kernel-owned descendant boundary and live
+  compatibility fixture exist. A process group or repeated `ps` snapshot is not
+  containment because a concurrently spawned process can detach and a numeric
+  PID can be reused;
+- no unresolved live package import and no runtime `node_modules` requirement;
+- byte-identical generated helper output for `mo-herdr` and `mo-omnigent`.
 
-One side effect is worth knowing: apm needs a harness marker in the consuming
-project (`.claude/`, `CLAUDE.md`, `.codex/`, `.opencode/`, …) and asks for an
-explicit `--target` in a bare directory. That is apm's behaviour, not something
-this layout can change, so the README states it instead of pretending otherwise.
+The measured bundle baseline is 999,247 bytes. The current 25% audited ceiling
+is 1,249,059 bytes. Crossing it fails the build and requires a fresh size and
+dependency audit; it is not silently accepted as ordinary generated churn.
+
+The external brain-council files cited by the specification are design
+references only. Source, build, tests, generated skills and runtime must work
+when `/Users/alex/bitrix/skills` does not exist.
+
+## Metafile and licence closure
+
+Bundling is accepted only when its dependency set is inspectable. Esbuild's
+metafile is reduced to package roots under `node_modules/` and compared exactly
+with the explicit build-owned licence plan. An unexpected package root or a
+licence-plan entry absent from the bundle fails generation.
+
+The current redistributed package root is
+`@anthropic-ai/claude-agent-sdk`, mapped to
+`shared/licenses/claude-agent-sdk-LICENSE.md`. The build copies that notice into
+each generated skill that receives the bundle. Esbuild itself runs only during
+project development and is not embedded in the installed runtime helper.
+
+This mapping is explicit metadata in `SHARED_PLAN`: adding a runtime dependency
+must update distribution and licence ownership in the same change, before a
+generated tree can exist.
+
+## Provider posture remains a copied leaf
+
+`mo-posture.sh` is copied byte-for-byte into `mo-herdr`, `mo-omnigent` and
+`mo-setup`. It is a bounded read-only diagnostic leaf: it starts no provider,
+stores no run state and knows nothing about backend sessions. Duplication makes
+each skill standalone without creating a runtime shared package or backend
+adapter.
+
+## Why the installable tree is `skills/`
+
+The authored tree cannot occupy the discovery path. With apm 0.27.0:
+
+- `apm install ./dist` was refused because the exact directory contained no
+  accepted manifest;
+- `apm install <repo>` discovered `<root>/skills/<name>/SKILL.md` and therefore
+  installed an authored tree that lacked generated shared files.
+
+The installable tree consequently owns `skills/` and authored sources live under
+`src/skills/` so discovery cannot reach them. Local and remote installation now
+resolve the same layout, and install tests assert both the whole bundle and
+single-skill shape.
 
 ## Frontmatter
 
-Only the canonical keys — `name`, `description`, `license`, `compatibility`,
-`metadata`, `allowed-tools`. Claude Code accepts roughly eighteen more and
-packaging for the Skills API fails hard on any of them; apm additionally requires
-`name` to match the directory and silently resolves a mismatch in the
-directory's favour. The build checks both, so portability is a gate rather than a
-habit.
+Only `name`, `description`, `license`, `compatibility`, `metadata` and
+`allowed-tools` are portable here. The build also requires `name` to match the
+directory. Packaging portability is a deterministic gate rather than a
+maintainer habit.
 
 ## Rejected
 
-- **`install.sh` / `update.sh`.** Two package managers already do this, and a
-  hand-rolled installer is a second thing to keep correct on every platform.
-- **A runtime shared package.** It would make single-skill installation
-  impossible, which is the requirement this whole design exists to satisfy.
-- **Hand-maintained duplicate references.** See the tension above.
+- **A runtime shared package.** It breaks standalone skill installation.
+- **Ambient SDK resolution.** It makes catalogue behavior depend on the feature
+  repository or global machine state.
+- **Vendored provider executables or unresolved runtime imports.** They expand
+  the shipped trust and compatibility boundary.
+- **Unmapped bundle dependencies.** Redistribution without an explicit notice
+  owner is not auditable.
+- **Hand-maintained generated copies or installer scripts.** Existing package
+  managers and mechanical generation already own those responsibilities.

@@ -25,6 +25,17 @@ Read the installed `herdr` skill and `herdr --help` before issuing commands.
 The commands here are examples; the installed interface is the source of truth.
 Take agent names and pane IDs from Herdr's JSON responses, never from memory.
 
+Before actor creation, run these two commands from this installed skill:
+
+```text
+scripts/mo-posture.sh --self-check --shell all
+scripts/mo-posture.sh --shell <zsh|bash|all> -- <selected-providers>
+```
+
+Require status 0, a complete non-divergent applicable matrix, and no selected
+provider with `type=missing` or `path=missing`. Status 1 or 2 and every missing
+selected provider stop actor creation.
+
 ## The shape of a run
 
 ```text

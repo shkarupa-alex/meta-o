@@ -10,11 +10,11 @@ commit, using tools that already exist. There is no orchestration or
 provider-proxy CLI, no daemon, no state store and no adapter layer, and adding
 one back needs a named reason recorded in `docs/architecture/`.
 
-Everything shipped is Markdown plus two dependency-free helpers: the `.mjs`
-settings helper copied into the two backend skills, and the `.sh` provider-posture
-probe copied into both backend skills and `mo-setup`. The build tool and the tests
-are not shipped and do use real parsers, because this contract forbids
-hand-written ones.
+Everything shipped is Markdown plus two self-contained runtime helpers: the
+bundled `.mjs` settings helper copied into the two backend skills, and the `.sh`
+provider-posture probe copied into both backend skills and `mo-setup`. The build
+tool and the tests are not shipped and do use real parsers, because this contract
+forbids hand-written ones.
 
 ## Desired outcomes
 

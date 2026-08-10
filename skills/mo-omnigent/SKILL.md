@@ -33,6 +33,17 @@ Before declaring any Omnigent route supported, close the Phase 0 checks in
 `references/omnigent-mechanics.md §3`. A route with an unproven full export is
 honestly marked unsupported for the review gate.
 
+Before actor creation, run these two commands from this installed skill:
+
+```text
+scripts/mo-posture.sh --self-check --shell all
+scripts/mo-posture.sh --shell <zsh|bash|all> -- <selected-providers>
+```
+
+Reject status 1 or 2, an incomplete or divergent applicable matrix, and every
+selected-provider record whose `type` or `path` is `missing`. Only status 0 with
+complete non-divergent evidence permits actor creation.
+
 ## There is no native goal on this route — say so before you start
 
 Measured 2026-08-06 on Omnigent 0.6.0: `/goal` typed into the Omnigent REPL is

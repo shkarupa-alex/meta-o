@@ -21,6 +21,7 @@
  */
 
 import {
+  chmodSync,
   cpSync,
   existsSync,
   mkdirSync,
@@ -30,16 +31,31 @@ import {
   realpathSync,
   rmSync,
 } from "node:fs";
+import { isBuiltin } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import yaml from "js-yaml";
+import { buildSync } from "esbuild";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SKILLS_SRC = join(ROOT, "src", "skills");
 const SHARED_SRC = join(ROOT, "shared");
 const OUTPUT = join(ROOT, "skills");
+
+/**
+ * The runtime package in the settings bundle and the licence that makes its
+ * redistribution terms inspectable. Any new metafile package root must acquire
+ * an explicit entry here or the build fails before a generated tree can exist.
+ */
+const BUNDLE_LICENSE_PLAN = {
+  "@anthropic-ai/claude-agent-sdk": "licenses/claude-agent-sdk-LICENSE.md",
+};
+
+/** The measured first bundle plus 25%; growth beyond it needs a fresh audit. */
+const MODEL_BUNDLE_BASELINE_BYTES = 999_247;
+const MODEL_BUNDLE_MAX_BYTES = Math.ceil(MODEL_BUNDLE_BASELINE_BYTES * 1.25);
 
 /**
  * Which shared file lands in which skill.
@@ -53,13 +69,15 @@ const OUTPUT = join(ROOT, "skills");
 const SHARED_PLAN = {
   "mo-herdr": [
     ["references/methodology.md", "references/methodology.md"],
-    ["scripts/mo-models.mjs", "scripts/mo-models.mjs"],
+    ["scripts/mo-models.mjs", "scripts/mo-models.mjs", { bundleLicenses: BUNDLE_LICENSE_PLAN }],
     ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],
+    ["licenses/claude-agent-sdk-LICENSE.md", "licenses/claude-agent-sdk-LICENSE.md"],
   ],
   "mo-omnigent": [
     ["references/methodology.md", "references/methodology.md"],
-    ["scripts/mo-models.mjs", "scripts/mo-models.mjs"],
+    ["scripts/mo-models.mjs", "scripts/mo-models.mjs", { bundleLicenses: BUNDLE_LICENSE_PLAN }],
     ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],
+    ["licenses/claude-agent-sdk-LICENSE.md", "licenses/claude-agent-sdk-LICENSE.md"],
   ],
   "mo-review": [
     ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
@@ -70,6 +88,59 @@ const SHARED_PLAN = {
     ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],
   ],
 };
+
+/** Return the package root represented by an esbuild metafile input path. */
+function packageRoot(input) {
+  const marker = "node_modules/";
+  const offset = input.lastIndexOf(marker);
+  if (offset < 0) return null;
+  const parts = input.slice(offset + marker.length).split("/");
+  return parts[0]?.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0];
+}
+
+/**
+ * Produce the self-contained helper whose absence would make Claude catalogue
+ * discovery depend on whichever node_modules happens to surround an install.
+ */
+function bundleModels(destination) {
+  mkdirSync(dirname(destination), { recursive: true });
+  const result = buildSync({
+    entryPoints: [join(SHARED_SRC, "scripts", "mo-models.mjs")],
+    outfile: destination,
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    target: "node22",
+    minify: false,
+    sourcemap: false,
+    metafile: true,
+    logLevel: "silent",
+  });
+  chmodSync(destination, 0o755);
+  const roots = [
+    ...new Set(Object.keys(result.metafile.inputs).map(packageRoot).filter(Boolean)),
+  ].sort();
+  const licensed = Object.keys(BUNDLE_LICENSE_PLAN).sort();
+  if (JSON.stringify(roots) !== JSON.stringify(licensed)) {
+    throw new Error(
+      `mo-models bundle packages ${roots.join(", ") || "none"}; licence plan names ` +
+        `${licensed.join(", ") || "none"}`,
+    );
+  }
+  const unresolved = Object.values(result.metafile.outputs)
+    .flatMap((output) => output.imports ?? [])
+    .filter((entry) => entry.external && !isBuiltin(entry.path))
+    .map((entry) => entry.path);
+  if (unresolved.length > 0) {
+    throw new Error(`mo-models bundle has unresolved runtime imports: ${unresolved.join(", ")}`);
+  }
+  const bytes = readFileSync(destination).byteLength;
+  if (bytes > MODEL_BUNDLE_MAX_BYTES) {
+    throw new Error(
+      `mo-models bundle is ${bytes} bytes; measured ceiling is ${MODEL_BUNDLE_MAX_BYTES}`,
+    );
+  }
+}
 
 /**
  * The only frontmatter keys the target skill managers agree on.
@@ -237,6 +308,28 @@ function build(outputRoot) {
     }
   }
 
+  for (const consumer of ["mo-herdr", "mo-omnigent"]) {
+    const plan = SHARED_PLAN[consumer];
+    const helper = plan.find(([source]) => source === "scripts/mo-models.mjs");
+    const declared = Object.keys(helper?.[2]?.bundleLicenses ?? {}).sort();
+    const expected = Object.keys(BUNDLE_LICENSE_PLAN).sort();
+    if (JSON.stringify(declared) !== JSON.stringify(expected)) {
+      throw new Error(`${consumer} mo-models SHARED_PLAN licence mapping is incomplete`);
+    }
+    for (const [packageName, licensePath] of Object.entries(BUNDLE_LICENSE_PLAN)) {
+      if (
+        !plan.some(([source, destination]) => source === licensePath && destination === licensePath)
+      ) {
+        throw new Error(`${consumer} does not ship the ${packageName} licence ${licensePath}`);
+      }
+      const installed = join(ROOT, "node_modules", ...packageName.split("/"), "LICENSE.md");
+      const shared = join(SHARED_SRC, licensePath);
+      if (!existsSync(installed) || !readFileSync(installed).equals(readFileSync(shared))) {
+        throw new Error(`shared/${licensePath} is not the installed ${packageName} licence`);
+      }
+    }
+  }
+
   rmSync(outputRoot, { recursive: true, force: true });
   mkdirSync(outputRoot, { recursive: true });
 
@@ -247,7 +340,8 @@ function build(outputRoot) {
       if (!existsSync(from)) throw new Error(`shared/${source} does not exist`);
       const to = join(outputRoot, name, destination);
       mkdirSync(dirname(to), { recursive: true });
-      cpSync(from, to);
+      if (source === "scripts/mo-models.mjs") bundleModels(to);
+      else cpSync(from, to);
     }
   }
 
@@ -326,4 +420,16 @@ function invokedDirectly() {
 
 if (invokedDirectly()) main();
 
-export { ALLOWED_FRONTMATTER, REQUIRED_AT_ROOT, SHARED_PLAN, build, diffTrees, frontmatter, walk };
+export {
+  ALLOWED_FRONTMATTER,
+  BUNDLE_LICENSE_PLAN,
+  MODEL_BUNDLE_BASELINE_BYTES,
+  MODEL_BUNDLE_MAX_BYTES,
+  REQUIRED_AT_ROOT,
+  SHARED_PLAN,
+  build,
+  diffTrees,
+  frontmatter,
+  packageRoot,
+  walk,
+};

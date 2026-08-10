@@ -8,8 +8,17 @@
  */
 
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { after, test } from "node:test";
@@ -42,11 +51,11 @@ function sandbox() {
  * a live catalog: `--force` is what keeps them hermetic. The catalog check itself
  * is tested separately, and against a real catalog.
  */
-function run(home, args, cwd = ROOT) {
+function run(home, args, cwd = ROOT, extraEnv = {}) {
   return spawnSync(process.execPath, [HELPER, ...args], {
     encoding: "utf8",
     cwd,
-    env: { ...process.env, HOME: home },
+    env: { ...process.env, ...extraEnv, HOME: home },
   });
 }
 
@@ -70,16 +79,108 @@ function commandMissing(command) {
     : false;
 }
 
-/** True when the optional SDK resolves globally, which defeats the gap test. */
-function sdkResolvesGlobally() {
-  const result = spawnSync("npm", ["root", "-g"], { encoding: "utf8" });
-  if (result.status !== 0) return false;
-  return existsSync(join(result.stdout.trim(), "@anthropic-ai", "claude-agent-sdk"));
+/** A system-Claude fixture that speaks only the SDK initialize control request. */
+function fakeClaude(home, mode = "success") {
+  const bin = join(home, "bin");
+  const executable = join(bin, "claude");
+  const log = join(home, "claude-input.jsonl");
+  const pids = join(home, "claude-pids.json");
+  mkdirSync(bin, { recursive: true });
+  const source = `#!${process.execPath}
+import { spawn } from "node:child_process";
+import { appendFileSync, renameSync, writeFileSync } from "node:fs";
+const mode = process.env.FAKE_CLAUDE_MODE;
+const pids = { parent: process.pid, attempts: 0, denied: 0, descendants: [] };
+const persistPids = () => {
+  const temporary = process.env.FAKE_CLAUDE_PIDS + "." + process.pid + ".tmp";
+  writeFileSync(temporary, JSON.stringify(pids));
+  renameSync(temporary, process.env.FAKE_CLAUDE_PIDS);
+};
+const spawnDetached = () => {
+  pids.attempts += 1;
+  try {
+    const child = spawn("/bin/sleep", ["30"], { detached: true, stdio: "ignore" });
+    child.on("error", () => {
+      pids.denied += 1;
+      persistPids();
+    });
+    if (Number.isSafeInteger(child.pid)) pids.descendants.push(child.pid);
+    child.unref();
+  } catch {
+    pids.denied += 1;
+  } finally {
+    persistPids();
+  }
+};
+if (mode === "success-with-descendant" || mode === "continuous-detached") {
+  spawnDetached();
+}
+if (mode === "continuous-detached") {
+  setInterval(spawnDetached, 2);
+}
+persistPids();
+appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ args: process.argv.slice(2) }) + "\\n");
+let buffered = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => {
+  buffered += chunk;
+  for (;;) {
+    const newline = buffered.indexOf("\\n");
+    if (newline < 0) break;
+    const line = buffered.slice(0, newline);
+    buffered = buffered.slice(newline + 1);
+    if (!line) continue;
+    appendFileSync(process.env.FAKE_CLAUDE_LOG, line + "\\n");
+    const request = JSON.parse(line);
+    if (mode !== "never" && request.type === "control_request" && request.request?.subtype === "initialize") {
+      process.stdout.write(JSON.stringify({
+        type: "control_response",
+        response: {
+          subtype: "success",
+          request_id: request.request_id,
+          response: {
+            commands: [],
+            agents: [],
+            models: [{ value: "fake-opus", displayName: "Fake Opus", description: "fixture", supportedEffortLevels: ["low", "high"] }]
+          }
+        }
+      }) + "\\n");
+      if (mode === "success-exit") setImmediate(() => process.exit(0));
+    }
+  }
+});
+`;
+  writeFileSync(executable, source);
+  chmodSync(executable, 0o755);
+  return {
+    env: {
+      FAKE_CLAUDE_LOG: log,
+      FAKE_CLAUDE_MODE: mode,
+      FAKE_CLAUDE_PIDS: pids,
+      MO_MODELS_CATALOG_TIMEOUT_MS: mode === "never" ? "200" : "2000",
+      PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin`,
+    },
+    executable,
+    log,
+    pids,
+  };
 }
 
-/** True when this checkout supplies the optional peer beside the helper. */
-function sdkResolvesForHelper() {
-  return existsSync(join(ROOT, "node_modules", "@anthropic-ai", "claude-agent-sdk"));
+function processIsAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function waitUntilGone(pid) {
+  const view = new Int32Array(new SharedArrayBuffer(4));
+  for (let attempt = 0; attempt < 25 && processIsAlive(pid); attempt += 1) {
+    Atomics.wait(view, 0, 0, 20);
+  }
+  return !processIsAlive(pid);
 }
 
 test("a selection needs a route, a model and an effort", () => {
@@ -257,7 +358,7 @@ test("a catalog probe is never a provider's interactive entry point", () => {
     (match) => `${match[1]} ${match[2].replace(/["']/g, "").replace(/,\s*/g, " ")}`,
   );
   assert.deepEqual(commands.sort(), ["codex debug models", "opencode models"]);
-  assert.match(source, /kind:\s*"claude-sdk",\s*package:\s*"@anthropic-ai\/claude-agent-sdk"/);
+  assert.match(source, /import \{ query as claudeQuery \} from "@anthropic-ai\/claude-agent-sdk"/);
 
   // Only the Claude route may be non-exhaustive: it answers with aliases while
   // the CLI also accepts versioned ids, so an unlisted model there is a warning.
@@ -314,29 +415,187 @@ test(
   },
 );
 
-test(
-  "an unresolvable optional SDK is reported as a gap, not filled from history",
-  {
-    skip:
-      sdkResolvesGlobally() || sdkResolvesForHelper()
-        ? "the Claude SDK is installed for this helper"
-        : false,
-  },
-  () => {
-    const home = sandbox();
-    // A cwd with no node_modules above it, so the peer SDK cannot resolve.
-    const result = run(home, ["--catalog", "--route", "claude", "--json"], home);
+test("the bundled Claude SDK reads supported models without sending a user turn", () => {
+  const home = sandbox();
+  const fixture = fakeClaude(home, "success");
+  const result = run(home, ["--catalog", "--route", "claude", "--json"], home, fixture.env);
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout).claude;
+  if (process.platform !== "darwin") {
+    assert.equal(report.catalog, null);
+    assert.match(report.catalogUnavailableReason, /kernel-owned Claude descendant containment/);
+    assert.equal(existsSync(fixture.pids), false, "unsupported platforms must fail before spawn");
+    return;
+  }
+  assert.deepEqual(report.catalog, ["fake-opus"], JSON.stringify(report));
+  assert.deepEqual(report.efforts, { "fake-opus": ["low", "high"] });
+  const records = readFileSync(fixture.log, "utf8").trim().split("\n").map(JSON.parse);
+  assert.ok(records[0].args.includes("--input-format"));
+  assert.ok(records[0].args.includes("stream-json"));
+  const requests = records.slice(1);
+  assert.equal(requests[0].request.subtype, "initialize");
+  assert.equal(
+    requests.some((entry) => entry.type === "user" || entry.message?.role === "user"),
+    false,
+    "catalogue discovery must never send a prompt",
+  );
+});
+
+test("the kernel boundary prevents detached descendants before catalogue success", () => {
+  const home = sandbox();
+  const fixture = fakeClaude(home, "success-with-descendant");
+  const result = run(home, ["--catalog", "--route", "claude", "--json"], home, fixture.env);
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout).claude;
+  if (process.platform !== "darwin") {
+    assert.equal(report.catalog, null);
+    assert.equal(existsSync(fixture.pids), false, "unsupported platforms must fail before spawn");
+    return;
+  }
+  assert.deepEqual(report.catalog, ["fake-opus"], JSON.stringify(report));
+  const pids = JSON.parse(readFileSync(fixture.pids, "utf8"));
+  assert.ok(pids.attempts > 0, "fixture did not attempt to detach");
+  assert.ok(pids.denied > 0, "Seatbelt did not reject the attempted child");
+  assert.deepEqual(pids.descendants, [], "Seatbelt allowed a provider child to escape");
+  assert.equal(waitUntilGone(pids.parent), true, `provider ${pids.parent} leaked`);
+});
+
+test("cleanup is capability-addressed even when Claude exits before it", () => {
+  const home = sandbox();
+  const fixture = fakeClaude(home, "success-exit");
+  const bystander = spawn("/bin/sleep", ["30"], { detached: true, stdio: "ignore" });
+  bystander.unref();
+  try {
+    const result = run(home, ["--catalog", "--route", "claude", "--json"], home, fixture.env);
     assert.equal(result.status, 0, result.stderr);
-    const report = JSON.parse(result.stdout);
-    assert.equal(report.claude.source, "claude-sdk");
-    assert.equal(report.claude.catalog, null);
-    assert.match(report.claude.catalogUnavailableReason, /@anthropic-ai\/claude-agent-sdk/);
-    assert.ok(
-      Array.isArray(report.claude.recentlyUsed),
-      "history stays a separate, labelled field",
+    const report = JSON.parse(result.stdout).claude;
+    if (process.platform !== "darwin") {
+      assert.equal(report.catalog, null);
+      assert.equal(existsSync(fixture.pids), false, "unsupported platforms must fail before spawn");
+      return;
+    }
+    assert.deepEqual(report.catalog, ["fake-opus"]);
+    const pids = JSON.parse(readFileSync(fixture.pids, "utf8"));
+    assert.equal(waitUntilGone(pids.parent), true, `exited provider ${pids.parent} was not reaped`);
+    assert.equal(processIsAlive(bystander.pid), true, "cleanup signalled an unrelated process");
+
+    const source = readFileSync(HELPER, "utf8");
+    assert.match(source, /stdio: \["pipe", "pipe", "ignore", "pipe"\]/);
+    assert.match(source, /child\.stdio\[3\]\.write\("START\\n"\)/);
+    assert.match(source, /owned\.control\.write\("STOP\\n",/);
+    assert.match(source, /owned\.child\.once\("close",/);
+    assert.match(source, /await stopOwnedClaudeProcesses\(\)/);
+    assert.match(source, /const stopGroup = \(\) => process\.kill\(-process\.pid, "SIGKILL"\)/);
+    assert.match(source, /control\.on\("end", stopGroup\)/);
+    assert.doesNotMatch(source, /function processTable\(/);
+    assert.deepEqual(
+      [...source.matchAll(/process\.kill\(([^,\n]+)/g)].map((match) => match[1]),
+      ["-process.pid"],
+      "only the live supervisor may address its own process group",
     );
+  } finally {
+    try {
+      process.kill(-bystander.pid, "SIGKILL");
+    } catch {
+      /* already gone */
+    }
+  }
+});
+
+test("continuous concurrent spawning cannot cross the kernel boundary", () => {
+  const home = sandbox();
+  const fixture = fakeClaude(home, "continuous-detached");
+  const started = Date.now();
+  const result = run(home, ["--catalog", "--route", "claude", "--json"], home, fixture.env);
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(Date.now() - started < 4_000, "adversarial cleanup exceeded its bound");
+  const report = JSON.parse(result.stdout).claude;
+  if (process.platform !== "darwin") {
+    assert.equal(report.catalog, null);
+    assert.equal(existsSync(fixture.pids), false, "unsupported platforms must fail before spawn");
+    return;
+  }
+  assert.deepEqual(report.catalog, ["fake-opus"], JSON.stringify(report));
+  const pids = JSON.parse(readFileSync(fixture.pids, "utf8"));
+  assert.ok(pids.attempts > 0, "fixture did not exercise concurrent spawning");
+  assert.ok(pids.denied > 0, "Seatbelt did not reject concurrent child creation");
+  assert.deepEqual(pids.descendants, [], "a concurrent child escaped Seatbelt");
+  assert.equal(waitUntilGone(pids.parent), true, `provider ${pids.parent} leaked`);
+});
+
+test("Claude containment support is decided before provider start", () => {
+  const home = sandbox();
+  const fixture = fakeClaude(home, "success");
+  const result = run(home, ["--catalog", "--route", "claude", "--json"], home, fixture.env);
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout).claude;
+  if (process.platform === "darwin") {
+    assert.deepEqual(report.catalog, ["fake-opus"]);
+  } else {
+    assert.equal(report.catalog, null);
+    assert.match(report.catalogUnavailableReason, /kernel-owned Claude descendant containment/);
+    assert.equal(existsSync(fixture.pids), false, "Claude must not start without containment");
+  }
+});
+
+test(
+  "a hard helper exit closes the capability and reaps the provider group",
+  { skip: process.platform !== "darwin" ? "Seatbelt containment is macOS-only" : false },
+  async () => {
+    const home = sandbox();
+    const fixture = fakeClaude(home, "never");
+    const helper = spawn(process.execPath, [HELPER, "--catalog", "--route", "claude", "--json"], {
+      cwd: home,
+      env: { ...process.env, ...fixture.env, HOME: home, MO_MODELS_CATALOG_TIMEOUT_MS: "2000" },
+      stdio: "ignore",
+    });
+    const deadline = Date.now() + 2_000;
+    while (!existsSync(fixture.pids) && helper.exitCode === null && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.ok(
+      existsSync(fixture.pids),
+      "provider did not start before the hard-exit fixture bound",
+    );
+    const { parent } = JSON.parse(readFileSync(fixture.pids, "utf8"));
+    assert.equal(processIsAlive(parent), true, "provider was not alive before helper termination");
+
+    const closed = new Promise((resolve) => helper.once("close", resolve));
+    helper.kill("SIGKILL");
+    await closed;
+    assert.equal(waitUntilGone(parent), true, `provider ${parent} survived lifecycle-fd closure`);
   },
 );
+
+test("a Claude catalogue timeout is bounded and leaves no provider child", () => {
+  const home = sandbox();
+  const fixture = fakeClaude(home, "never");
+  const started = Date.now();
+  const result = run(home, ["--catalog", "--route", "claude", "--json"], home, fixture.env);
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(Date.now() - started < 2_500, "catalogue timeout exceeded its cleanup bound");
+  const report = JSON.parse(result.stdout).claude;
+  assert.equal(report.catalog, null);
+  assert.match(report.catalogUnavailableReason, /no answer within 200ms/);
+  if (existsSync(fixture.pids)) {
+    const pids = JSON.parse(readFileSync(fixture.pids, "utf8"));
+    assert.equal(waitUntilGone(pids.parent), true, `timed-out provider ${pids.parent} leaked`);
+  }
+});
+
+test("an isolated generated helper needs no ambient node_modules", () => {
+  const home = sandbox();
+  const fixture = fakeClaude(home, "success");
+  const isolated = join(home, "isolated-mo-models.mjs");
+  copyFileSync(join(ROOT, "skills", "mo-herdr", "scripts", "mo-models.mjs"), isolated);
+  const result = spawnSync(
+    process.execPath,
+    [isolated, "--catalog", "--route", "claude", "--json"],
+    { cwd: home, encoding: "utf8", env: { ...process.env, ...fixture.env, HOME: home } },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout).claude.catalog, ["fake-opus"]);
+});
 
 test("roles are scoped to the Git root, so any subdirectory is the same project", () => {
   const home = sandbox();
@@ -402,22 +661,17 @@ test(
   },
 );
 
-test(
-  "a selection is stored with the gap named when the catalog cannot answer",
-  {
-    skip: sdkResolvesForHelper() ? "the Claude SDK is installed for this helper" : false,
-  },
-  () => {
-    const home = sandbox();
-    // Run from a directory with no node_modules above it, so the Claude route's
-    // optional SDK cannot resolve and the route genuinely cannot answer.
-    const result = run(home, ["--set", "executor=claude/whatever-it-is/high"], home);
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stderr, /the claude catalog is unavailable/);
-    assert.match(result.stderr, /stored unverified/);
-    assert.match(run(home, ["--show"], home).stdout, /executor=claude\/whatever-it-is\/high/);
-  },
-);
+test("a selection is stored with the gap named when the catalog cannot answer", () => {
+  const home = sandbox();
+  // The SDK is bundled, so the honest hermetic gap is a missing system Claude.
+  const result = run(home, ["--set", "executor=claude/whatever-it-is/high"], home, {
+    PATH: "/nonexistent",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stderr, /the claude catalog is unavailable/);
+  assert.match(result.stderr, /stored unverified/);
+  assert.match(run(home, ["--show"], home).stdout, /executor=claude\/whatever-it-is\/high/);
+});
 
 test("every worktree of one repository is one project", () => {
   const home = sandbox();

@@ -101,9 +101,9 @@ coding context costs more than the methodology bias risks.
 
 ```text
 src/skills/      the authored skills — SKILL.md plus what only that skill owns
-shared/          source owner: methodology, purpose contract, mo-models.mjs, mo-posture.sh
+shared/          source owner: methodology, licences, mo-models.mjs, mo-posture.sh
 skills/          the installable tree, built from the two above and committed
-tools/           build-skills.mjs — copies shared files in, and verifies identity
+tools/           build-skills.mjs — copies prose, bundles the SDK helper, verifies identity
 docs/            this project's own contract, knowledge and fixtures
 spec/            the council specs, kept verbatim as history
 ```
@@ -214,12 +214,10 @@ rule in the skill. [`docs/e2e.md`](docs/e2e.md) records every round and both lim
 - **The remote installs are unverified.** What is proven is a local-path `apm
 install`, by `tests/install.test.mjs`. `npx skills` and the remote form (I3–I5)
   need this repository pushed first.
-- **The Claude model catalog needs an optional peer SDK.** The Claude CLI has no
-  listing subcommand, so the authoritative list comes from
-  `@anthropic-ai/claude-agent-sdk`'s `supportedModels()`. These skills install by
-  directory copy with no `npm install`, so the SDK is resolved at runtime and its
-  absence is reported as a gap rather than filled in from session history. Codex
-  and OpenCode need no SDK.
+- **The Claude catalogue SDK is self-contained.** The generated helper bundles
+  the pinned SDK, carries its licence, uses system Claude from PATH, and needs no
+  ambient runtime `node_modules`; catalogue presence still does not prove
+  launchability or subscription entitlement.
 - **`/goal` works on Codex and Claude Code, and does not exist on the other two.**
   Codex reports `Goal active` / `Pursuing goal` and survives `codex resume` with an
   explicit status; Claude Code reports `◎ /goal active`. OpenCode answers the line as

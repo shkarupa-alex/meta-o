@@ -6,6 +6,25 @@ closed backlog entries.
 
 ## Open
 
+### Claude catalogue discovery is unsupported outside macOS
+
+**Reason.** Safe Claude catalogue discovery currently depends on macOS Seatbelt's
+kernel-enforced `deny process-fork` boundary. Linux, Windows, and other POSIX systems have
+no implemented equivalent with a passing live compatibility fixture; process groups and
+process-table snapshots cannot safely contain detached descendants or prevent PID-reuse
+races.
+
+**Practical impact.** On those platforms the Claude catalogue probe fails closed before
+starting the provider. Configured-model fallback can report `catalog_unknown`, but cannot
+use a live Claude catalogue to distinguish model absence or select a compatible catalogue
+pair.
+
+**Next step.** Implement a kernel-owned descendant-containment boundary for each target
+platform, prove that ordinary and detached descendant creation cannot escape it, and run a
+live catalogue/cleanup compatibility fixture. Remove this item only after the platform's
+provider start, catalogue result, timeout, and cleanup paths all pass without numeric-PID
+snapshot signalling.
+
 ### Remote installation fixtures I3-I5 have not run
 
 **Reason.** The post-correction candidate has not been pushed by a separately authorized
