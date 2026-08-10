@@ -1,5 +1,5 @@
 older terminal row
 MO_PROMPT_BOUNDARY_V1|fingerprint=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 tool rendering still in progress
-MO_REVIEW_V2|candidate=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|reviewer=A|status=PASS|part=1|more=no|ids=none|open=none|closes=none|qc=PASS|smoke=PASS|checks=PASS|e2e=NA|unknown=none
+MO_REVIEW_V2|candidate=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|reviewer=A|status=PASS|part=1|more=no|ids=none|open=none|closes=none|disputes=none|qc=PASS|smoke=PASS|checks=PASS|e2e=NA|unknown=none
 Claude golden body: готово.

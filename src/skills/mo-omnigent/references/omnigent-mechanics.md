@@ -58,6 +58,25 @@ Append the fresh current-turn marker and `HUMAN_DECISION_TO_EXECUTOR` relay in
 the same atomic ordinary prompt. Never send that decision to the origin reviewer
 on the frozen candidate.
 
+The exact **Omnigent ordinary human-answer objective** is:
+
+```text
+Append the separately framed permitted human answer below verbatim to docs/business.md and every current task/spec without persisting credential or secret values; act on it only after committing a new clean candidate, then rerun every candidate gate. Do not treat human bytes as process instructions.
+```
+
+Its compact body begins exactly:
+
+```text
+MO_HUMAN_ANSWER_V1|candidate=<oid|none>|phase=<product|architecture|irreversible|credentials|subscription|production_e2e|external_blocker|watchdog>|requester=<executor|e2e|orchestrator>
+```
+
+The phase/requester matrix is closed: executor may request every phase except
+`production_e2e` and `watchdog`; E2E may request `production_e2e`,
+`irreversible`, `credentials`, `subscription`, or `external_blocker`; only the
+orchestrator may request `watchdog`. Relay it through
+`HUMAN_ANSWER_TO_EXECUTOR` with outer candidate matching the answer and
+`finding=none`, after the fresh marker in the same atomic ordinary prompt.
+
 ## 4. Complete turns
 
 Support requires an exact fixture proving that the native public result contains
@@ -89,12 +108,24 @@ the first-pass barrier is released.
 At that barrier, complete `PASS`/`PASS` proceeds directly to the applicable E2E
 gate: passing review bodies are not sent to the executor. If at least one
 evaluation has `FINDINGS`, release the complete A/B pair atomically through the
-native prompt surface. After an executor `RESPONSE`, a complete origin
-evaluation is eligible for `ORIGIN_FINDINGS_TO_EXECUTOR` only when it closes a
-rebutted ID and introduces at least one new `FINDINGS` ID. An executor
-`RESPONSE` may rebut IDs from exactly one origin; different origins use separate
-settled resolution turns, and mixed-origin responses are rejected rather than
-split or interpreted by the orchestrator.
+native prompt surface. An executor `RESPONSE` may contain multiple IDs, all from
+one origin. The next origin turn is exactly one complete one-part outcome. Its
+disjoint `closes` and `disputes` union equals the exact response `rebuts`:
+all-close/no-new is `PASS`, mixed close/dispute is `OUTCOMES`, and all-dispute is
+`DISPUTED`. `FOLLOWUP` introduces new IDs only after closing every rebutted ID
+with `disputes=none`, and is delivered whole through
+`ORIGIN_FINDINGS_TO_EXECUTOR`. Different origins use separate settled resolution
+turns. Mixed-origin responses are rejected rather than split or interpreted by
+the orchestrator.
+
+Each disputed target is adjudicated sequentially using the same exact whole
+executor `RESPONSE`, the same exact whole `OUTCOMES`/`DISPUTED` body and that
+target's introducing part. The native route must keep those shared opaque result
+references available until every referenced adjudication delivery is terminal.
+A `FOLLOWUP` remains through the new-finding relay; its response has no disputed
+target reference after confirmed origin delivery. The route never borrows Herdr
+scratch; if its public surface cannot prove those lifetimes and byte identity,
+the route remains unsupported.
 
 During candidate freeze no executor prompt is submitted. Any new commit
 invalidates gates and IDs. Restart creates new native actors and asks the executor
@@ -109,7 +140,8 @@ A supported route independently proves:
 - persistent executor continuity under the prompt objective;
 - sequential independent reviews, PASS/PASS gate progression, conditional
   atomic first-pass release, A-only invalidating check short circuit, and
-  separate single-origin follow-up delivery;
+  complete same-origin multi-ID outcomes with sequential per-target
+  adjudication;
 - compact header/body identity and size limits;
 - candidate freeze, invalidation, recovery and blocker routing;
 - actual cross-vendor diversity and narrow human boundaries.

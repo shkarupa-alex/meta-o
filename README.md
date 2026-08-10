@@ -27,7 +27,7 @@ pre-activation — inject project contract and opaque task/spec locator
   → executor reads the repository and produces one clean candidate commit
   → freeze that SHA
   → reviewer A completes, then independent reviewer B starts on that SHA
-  → release both first passes atomically after the barrier
+  → PASS/PASS proceeds without relay; a FINDINGS barrier releases both first passes atomically
   → the applicable E2E, on that SHA
   → any fix → new SHA → every applicable gate again
   → STATUS / CANDIDATE / SUMMARY
@@ -92,10 +92,15 @@ The backend is part of the skill's name rather than a flag: session semantics
 differ enough between Herdr and Omnigent that one prompt covering both would be
 vague about both.
 
-`mo-review` is the one you will use most. It runs directly in the coding session
-that made the change, which temporarily wears both hats — a deliberate exception
-to "the executor gets no methodology skill", because for a small fix losing the
-coding context costs more than the methodology bias risks.
+`mo-review` is the one you will use most. In direct mode the coding session that
+made a small fix temporarily wears both author and executor hats: it freezes a
+clean commit, selects a fixture-proven review backend without asking for an
+ordinary routing choice, applies accepted findings, commits corrections and
+starts fresh A/B rounds until one unchanged SHA passes. Inside `mo-herdr` or
+`mo-omnigent`, it instead supplies only the backend-owned review protocol. This
+is a deliberate exception to "the executor gets no methodology skill", because
+for a small fix losing the coding context costs more than the methodology bias
+risks.
 
 ## Repository layout
 
@@ -163,6 +168,10 @@ working to different contracts. Its knowledge is in
   firewall, continuity, complete-result and gate behavior independently.
 - **A hard crash can leave private scratch until OS cleanup.** New runs do not
   scan for or delete old directories without ownership evidence.
+- **A provider profile can detach a posture descendant with `setsid`.** The
+  diagnostic quiesces only its owned process group; portable kernel containment
+  remains an explicit backlog item, so posture proves resolution rather than
+  arbitrary descendant containment.
 - **The Claude catalogue SDK is self-contained.** The generated helper bundles
   the pinned SDK, carries its licence, uses system Claude from PATH, and needs no
   ambient runtime `node_modules`; catalogue presence still does not prove

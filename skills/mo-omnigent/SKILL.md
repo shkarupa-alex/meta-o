@@ -66,10 +66,12 @@ ask the human to resume, route or select an ordinary actor.
 6. At the completed first-pass barrier, a complete `PASS`/`PASS` pair proceeds
    directly to the applicable E2E gate without relaying either review. Release
    the complete A/B pair atomically only when at least one evaluation has
-   `FINDINGS`. A later origin `FINDINGS` turn that closes a rebutted ID and
-   introduces a new one uses `ORIGIN_FINDINGS_TO_EXECUTOR`; different origins
-   use separate settled resolution turns, and a mixed-origin executor
-   `RESPONSE` is invalid.
+   `FINDINGS`. After a same-origin multi-ID executor `RESPONSE`, the origin
+   returns one complete outcome whose disjoint `closes` and `disputes` account
+   for every rebutted ID. New IDs use a one-part `FOLLOWUP` only after all
+   rebutted IDs close; it is delivered whole by
+   `ORIGIN_FINDINGS_TO_EXECUTOR`. Different origins use separate settled
+   resolution turns, and a mixed-origin executor `RESPONSE` is invalid.
 7. Repeat after every new commit; open IDs and all gates are SHA-bound.
 8. Run a separate read-only E2E actor when required, or finish only when both
    reviewers independently say NA.
@@ -84,6 +86,11 @@ ordinary human-decision objective in the mechanics, current-turn marker and
 relay atomically. The executor appends the credential-safe human words verbatim
 to business framing and every current task/spec, applies them, and commits a new
 candidate; this invalidates all prior gates and IDs.
+
+Every other permitted human answer uses `MO_HUMAN_ANSWER_V1` and
+`HUMAN_ANSWER_TO_EXECUTOR` with the phase/requester matrix in the mechanics.
+Submit its exact ordinary objective, current-turn marker and relay atomically;
+it has the same verbatim-ledger, new-candidate and full-invalidation effect.
 
 Every native objective, follow-up and opaque relay carries the exact
 `MO_PROMPT_BOUNDARY_V1|fingerprint=<64-lower-hex>` marker for that submitted

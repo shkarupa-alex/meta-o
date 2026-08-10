@@ -4,16 +4,44 @@ description: Run two independent reviews of the current change, apply the accept
 license: MIT
 ---
 
-# Review a frozen candidate
+# Review, fix, and review again
 
 This skill owns reviewer judgment, prompts, findings and compact review handoffs.
 The selected backend owns actor launch, lifecycle, complete-turn retrieval and
 opaque delivery. Read `references/purpose-and-architecture.md` before judging
 purpose or architecture.
 
+## Two entry modes
+
+**Direct mode** is the primary standalone entry. The coding session that just
+made the change remains the author and temporarily owns executor work: it reads
+the repository and framing, creates a clean candidate commit, selects the review
+backend, applies accepted findings, answers rebuttals with evidence, commits each
+coherent correction and starts a fresh two-reviewer round after every new SHA.
+No separate executor actor is created. This is the deliberate small-fix
+exception to the rule that an executor does not receive methodology.
+
+Select the direct review backend without asking the user to make an ordinary
+routing choice. Reuse an enclosing backend when one exists. Otherwise prefer a
+fixture-proven Herdr surface when the session is inside `HERDR_ENV=1`, then a
+fixture-proven native Omnigent surface, then the current harness's native
+subagent/session surface only if it proves complete turns and the required
+actual vendor diversity. The selected surface owns launch, lifecycle, full-turn
+retrieval and opaque delivery. If none qualifies, return content-free
+`needs_attention` for review capability; do not invent headless/private capture
+or silently accept two same-vendor passes.
+
+**Backend protocol mode** is used inside `mo-herdr` or `mo-omnigent`. The
+enclosing backend already has an executor and frozen candidate and owns every
+session operation. This skill supplies only reviewer lenses, compact outcome
+semantics and convergence rules; it neither launches actors nor edits the
+repository in that mode.
+
 ## Preconditions
 
-Review one full clean candidate SHA. Reviewer A completes before reviewer B
+Review one full clean candidate SHA. In direct mode, run the applicable checks
+and commit the current change before freezing it; do not review a dirty diff as
+if it were candidate evidence. Reviewer A completes before reviewer B
 starts; B receives the same task/spec locator and candidate but no A output. Each
 reviewer independently reads the complete task/spec, business framing, glossary,
 project knowledge and candidate. At least one reviewer vendor differs from the
@@ -71,7 +99,7 @@ paraphrased or semantically shortened in transport.
 The first line of every part is exactly:
 
 ```text
-MO_REVIEW_V2|candidate=<oid>|reviewer=<A|B>|status=<PASS|FINDINGS|DISPUTED|UNKNOWN>|part=<positive-int>|more=<yes|no>|ids=<ids|none>|open=<ids|none>|closes=<ids|none>|qc=<PASS|FAIL|UNKNOWN>|smoke=<PASS|FAIL|UNKNOWN>|checks=<PASS|FAIL|UNKNOWN|NA>|e2e=<REQUIRED|NA|UNKNOWN>|unknown=<transport|environment|evaluation|none>
+MO_REVIEW_V2|candidate=<oid>|reviewer=<A|B>|status=<PASS|FINDINGS|FOLLOWUP|OUTCOMES|DISPUTED|UNKNOWN>|part=<positive-int>|more=<yes|no>|ids=<ids|none>|open=<ids|none>|closes=<ids|none>|disputes=<ids|none>|qc=<PASS|FAIL|UNKNOWN>|smoke=<PASS|FAIL|UNKNOWN>|checks=<PASS|FAIL|UNKNOWN|NA>|e2e=<REQUIRED|NA|UNKNOWN>|unknown=<transport|environment|evaluation|none>
 ```
 
 Fields occur once in that order. Candidate equals observed `HEAD`. IDs are unique,
@@ -81,12 +109,30 @@ sign or leading zero.
 State rules:
 
 - `PASS`: `ids=none`, `open=none`, QC/smoke PASS, checks PASS/NA, E2E
-  REQUIRED/NA, unknown none; `closes` is none or every origin-open ID.
+  REQUIRED/NA, unknown none; `closes` is none or every origin-open ID and
+  `disputes=none`.
 - `FINDINGS`: introduce at least one new ID across the complete evaluation,
-  preserve the cumulative open set and actual check fields.
-- `DISPUTED`: one part, no new IDs/closes, disputed origin IDs remain open.
-- `UNKNOWN`: one part, no new IDs/closes and exactly one unknown class. Transport
-  may retain completed PASS check fields; that does not turn the review into PASS.
+  preserve the cumulative open set and actual check fields; this is the
+  first-pass, potentially multipart state.
+- `FOLLOWUP`: one part after an executor response, with nonempty new `ids`, every
+  rebutted ID closed, and `disputes=none`.
+- `OUTCOMES`: one part with `ids=none` and both nonempty `closes` and
+  `disputes`; it reports a mixed old-ID outcome.
+- `DISPUTED`: one part with `ids=none`, `closes=none`, and nonempty `disputes`;
+  every disputed origin ID remains open.
+- `UNKNOWN`: one part, no new IDs/closes/disputes and exactly one unknown class.
+  Transport may retain completed PASS check fields; that does not turn the
+  review into PASS.
+
+`closes` and `disputes` are disjoint. For the one complete origin outcome after
+an executor `RESPONSE`, their union equals that response's exact same-origin
+`rebuts` set. Closing removes an ID from `open`, disputing retains it, and each
+new `ids` entry is added. A `FOLLOWUP` cannot dispute: it closes the whole
+rebuttal set before introducing new IDs. Only `FINDINGS` is multipart;
+`OUTCOMES`, `DISPUTED`,
+`FOLLOWUP`, `PASS`, and `UNKNOWN` are one part. A complete `FINDINGS` evaluation
+is at most 61,440 bytes; each one-part response outcome (`FOLLOWUP`, `OUTCOMES`,
+or `DISPUTED`) is at most 24,576 bytes.
 
 Only FINDINGS may continue. Parts start at 1, are consecutive, keep
 candidate/reviewer/status/check fields identical, and carry cumulative `open`.
@@ -102,9 +148,10 @@ UNKNOWN rather than dropping a finding.
 
 A emits all parts before B starts. Candidate `HEAD` and cleanliness are rechecked
 after A. Except when A's check already dirtied/invalidated the candidate, complete
-both first passes before any body reaches the executor. After the barrier all A
-parts followed by all B parts are released together as separately framed opaque
-segments.
+both first passes before any body reaches the executor. A complete PASS/PASS pair
+proceeds to the applicable E2E gate without relaying either body. Only when at
+least one first pass has `FINDINGS` are all A parts followed by all B parts
+released together as separately framed opaque segments.
 
 ## Resolution and disputes
 
@@ -112,9 +159,12 @@ The executor verifies each claim against the repository, fixes it or emits an
 `MO_EXECUTOR_V1|type=RESPONSE` rebuttal for current origin IDs. Only the origin
 reviewer can close a finding.
 
-On the next origin turn, every rebutted ID still open must close or be returned
-as `DISPUTED`; new findings receive new IDs and do not defer this. An existing
-other-vendor reviewer may issue one `MO_ADJUDICATION_V1` on one disputed ID:
+On the next origin turn, one complete one-part outcome accounts for the exact
+`rebuts` set: every ID is in exactly one of `closes` or `disputes`. New findings
+receive new IDs in a `FOLLOWUP` outcome only after every rebutted ID closes. An
+all-close/no-new outcome is final `PASS`, a mixed close/dispute outcome is
+`OUTCOMES`, and an all-dispute outcome is `DISPUTED`. An existing other-vendor
+reviewer may issue one `MO_ADJUDICATION_V1` on one disputed ID:
 
 ```text
 MO_ADJUDICATION_V1|candidate=<oid>|finding=<id>|reviewer=<A|B>|outcome=<UPHOLD|WITHDRAW|UNRESOLVED>
@@ -123,6 +173,45 @@ MO_ADJUDICATION_V1|candidate=<oid>|finding=<id>|reviewer=<A|B>|outcome=<UPHOLD|W
 Adjudication does not close the origin finding. UPHOLD returns work. WITHDRAW
 still requires final origin closure/PASS. UNRESOLVED or repeated refusal after
 withdrawal is the only technical dispute boundary sent to the human.
+
+For multiple disputes from one outcome, adjudicate targets sequentially. Every
+request reuses the exact whole executor `RESPONSE`, exact whole origin outcome,
+and the introducing part for that target. Backend scratch reference-counts the
+shared response/outcome until every referenced adjudication delivery is
+terminal; it never deletes shared bytes after only the first target.
+
+Every permitted non-dispute human answer begins exactly:
+
+```text
+MO_HUMAN_ANSWER_V1|candidate=<oid|none>|phase=<product|architecture|irreversible|credentials|subscription|production_e2e|external_blocker|watchdog>|requester=<executor|e2e|orchestrator>
+```
+
+Executor may request every phase except `production_e2e` and `watchdog`; E2E may
+request `production_e2e`, `irreversible`, `credentials`, `subscription`, or
+`external_blocker`; only orchestrator may request `watchdog`. Backend protocol
+mode uses `HUMAN_ANSWER_TO_EXECUTOR`. In direct mode the current author session
+is that executor. Before acting, it appends the credential-safe human words
+verbatim to `docs/business.md` and every current task/spec, commits a new clean
+candidate and invalidates all prior gates and IDs. The dedicated
+candidate/finding-bound `MO_HUMAN_DECISION_V1` route remains for unresolved
+adjudication.
+
+## Direct convergence loop
+
+1. Freeze the clean candidate and run independent A, then B, through the selected
+   backend with no A bytes reaching B.
+2. If both pass, relay neither body. Run applicable E2E or accept NA only when
+   both independently declared it, then return the unchanged full SHA.
+3. If findings exist, deliver the conditional A/B pair to the direct author
+   session. Apply every accepted finding, run checks and commit a new clean
+   candidate; that SHA invalidates the round and starts again at step 1.
+4. For evidence-backed rebuttals on an unchanged SHA, use same-origin
+   `RESPONSE` and the complete outcome-set/adjudication protocol above. Any
+   accepted correction or permitted human answer is committed and restarts both
+   reviewers.
+5. Continue until one unchanged candidate has two independent PASS outcomes and
+   its applicable E2E gate. Do not stop after one pass, a partial outcome,
+   `UNKNOWN`, or a round made stale by a commit.
 
 ## Passing
 

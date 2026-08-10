@@ -75,16 +75,16 @@ limitation rather than a hidden recovery protocol.
 Every permitted handoff uses an explicit `MO_RELAY_V2` direction. At the
 first-pass barrier a PASS/PASS pair proceeds to E2E without relay; if at least
 one evaluation has findings, the complete A/B pair is released atomically.
-After an executor `RESPONSE`, an origin evaluation that closes a rebutted ID and
-introduces at least one new finding uses `ORIGIN_FINDINGS_TO_EXECUTOR`; it never
-contains bytes from the other reviewer. Different origins use separate settled
-resolution turns. A mixed-origin executor `RESPONSE` is rejected rather than
-split or interpreted. A `DISPUTED` handoff carries only already-open IDs and
-cannot introduce new IDs.
+After a same-origin multi-ID executor `RESPONSE`, one complete origin outcome
+partitions the exact rebuttal set across disjoint `closes` and `disputes`.
+All-close/no-new is `PASS`; close-all-plus-new is `FOLLOWUP`; mixed old-ID
+outcomes use `OUTCOMES`; all-dispute uses `DISPUTED`. Only `FOLLOWUP` uses
+`ORIGIN_FINDINGS_TO_EXECUTOR`. Different origins use separate settled turns,
+and a mixed-origin response is rejected rather than split or interpreted.
 
 Failed E2E, the A-only invalidating check, executor response, adjudication
-request, peer outcome, and post-human decision each bind one phase, recipient,
-source, candidate, and target ID. Executor-bound work uses one atomic native
+request, peer outcome, generic human answer, and post-human decision each bind
+one phase, recipient, source, candidate, and target ID/set. Executor-bound work uses one atomic native
 goal; reviewer-bound work is one ordinary prompt. The relay uses a
 collision-checked random frame, declared raw UTF-8 byte lengths and a literal
 AST-tested Node recipe that invokes `herdr` with argument arrays and
@@ -98,6 +98,10 @@ the human's credential-safe words verbatim to `docs/business.md` and every
 current task/spec, then implements the decision. That documentation commit is a
 new candidate and therefore invalidates every old gate and finding ID; the
 origin reviewer never receives a human decision against the frozen candidate.
+Every other permitted human answer is requester/phase-bound by
+`MO_HUMAN_ANSWER_V1`, follows `HUMAN_ANSWER_TO_EXECUTOR`, and has the same
+credential-safe ledger append, new-candidate, and gate-invalidation effect before
+any actor acts on it.
 
 Ambiguous submission or relay delivery is never blindly retried. A changed
 public signal means the turn may be live and must be awaited; unchanged or
@@ -108,10 +112,12 @@ exists.
 Scratch lifetime follows mechanically tracked IDs and delivery state. Before
 confirmed pair delivery all A/B parts remain. Afterward a first-pass part
 remains only while an ID it introduced is open; a PASS or no-open part is
-deleted. The same-origin executor `RESPONSE` and origin `DISPUTED` remain
-through confirmed adjudication-request delivery and are then deleted; the
-introducing part remains only when another ID it introduced is still open. Peer
-or human outcomes remain only until confirmed onward delivery. Closing every
+deleted. A shared same-origin executor `RESPONSE` and its exact
+`OUTCOMES`/`DISPUTED` body carry one pending-direction reference per disputed
+target. Each survives earlier requests and is deleted only after the final
+target's adjudication-request delivery becomes terminal. The target introducing
+part remains while its ID is open. A `FOLLOWUP` remains through confirmed
+new-finding delivery. Peer or human outcomes remain only until confirmed onward delivery. Closing every
 introduced ID deletes its source files; candidate invalidation deletes all
 files for that candidate. Definitive failure or unknown retains files only
 through bounded recovery, after which controlled exit deletes them. Ambiguous

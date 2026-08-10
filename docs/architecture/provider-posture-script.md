@@ -78,9 +78,13 @@ aliases or dispatch shadows from forging accepted records.
 
 Each measured shell runs under a process-group ownership anchor. Normal
 completion quiesces the group before captures are read; signal and failure paths
-terminate its members before the anchor is reaped. A descendant that cannot be
-quiesced makes the result unknown. The private directory is removed through
-path-guarded cleanup.
+terminate members that remain in that owned process group before the anchor is
+reaped. An owned-group member that cannot be quiesced makes the result unknown.
+This is not containment of arbitrary profile descendants: a profile can call
+`setsid` and escape into another session before cleanup. That deliberately open
+limitation, its impact, and the required kernel-owned next step are recorded in
+[`docs/backlog.md`](../backlog.md#provider-posture-profiles-can-detach-descendants-with-setsid).
+The private directory is removed through path-guarded cleanup.
 
 ## Verification split
 

@@ -46,6 +46,7 @@ const FIELDS = {
     "ids",
     "open",
     "closes",
+    "disputes",
     "qc",
     "smoke",
     "checks",
@@ -55,6 +56,7 @@ const FIELDS = {
   MO_ADJUDICATION_V1: ["candidate", "finding", "reviewer", "outcome"],
   MO_E2E_V1: ["candidate", "status", "scenarios", "not_run", "blocker"],
   MO_HUMAN_DECISION_V1: ["candidate", "finding", "decision"],
+  MO_HUMAN_ANSWER_V1: ["candidate", "phase", "requester"],
 };
 
 function parseHeader(line) {
@@ -104,14 +106,21 @@ function validateReview(line) {
   assert.equal(header.protocol, "MO_REVIEW_V2");
   assert.match(header.candidate, /^[0-9a-f]{40,64}$/);
   assert.match(header.reviewer, /^[AB]$/);
-  assert.match(header.status, /^(PASS|FINDINGS|DISPUTED|UNKNOWN)$/);
+  assert.match(header.status, /^(PASS|FINDINGS|FOLLOWUP|OUTCOMES|DISPUTED|UNKNOWN)$/);
   assert.match(header.more, /^(yes|no)$/);
   assert.match(header.qc, /^(PASS|FAIL|UNKNOWN)$/);
   assert.match(header.smoke, /^(PASS|FAIL|UNKNOWN)$/);
   assert.match(header.checks, /^(PASS|FAIL|UNKNOWN|NA)$/);
   assert.match(header.e2e, /^(REQUIRED|NA|UNKNOWN)$/);
   assert.ok(canonicalPositive(header.part));
-  for (const field of ["ids", "open", "closes"]) ids(header[field], header.reviewer);
+  for (const field of ["ids", "open", "closes", "disputes"]) ids(header[field], header.reviewer);
+  const closes = ids(header.closes, header.reviewer);
+  const disputes = ids(header.disputes, header.reviewer);
+  assert.equal(
+    closes.some((id) => disputes.includes(id)),
+    false,
+    "one finding cannot close and dispute",
+  );
   if (header.status !== "FINDINGS") {
     assert.equal(header.part, "1");
     assert.equal(header.more, "no");
@@ -119,23 +128,41 @@ function validateReview(line) {
   if (header.status === "PASS") {
     assert.equal(header.ids, "none");
     assert.equal(header.open, "none");
+    assert.equal(header.disputes, "none");
     assert.equal(header.qc, "PASS");
     assert.equal(header.smoke, "PASS");
     assert.match(header.checks, /^(PASS|NA)$/);
     assert.match(header.e2e, /^(REQUIRED|NA)$/);
     assert.equal(header.unknown, "none");
   } else if (header.status === "FINDINGS") {
+    assert.notEqual(header.ids, "none");
     assert.notEqual(header.open, "none");
+    assert.equal(header.disputes, "none");
+    assert.equal(header.unknown, "none");
+  } else if (header.status === "FOLLOWUP") {
+    assert.notEqual(header.ids, "none");
+    assert.notEqual(header.open, "none");
+    assert.notEqual(header.closes, "none");
+    assert.equal(header.disputes, "none");
+    assert.equal(header.more, "no");
+    assert.equal(header.unknown, "none");
+  } else if (header.status === "OUTCOMES") {
+    assert.equal(header.ids, "none");
+    assert.notEqual(header.closes, "none");
+    assert.notEqual(header.disputes, "none");
+    assert.equal(header.more, "no");
     assert.equal(header.unknown, "none");
   } else if (header.status === "DISPUTED") {
     assert.equal(header.ids, "none");
     assert.notEqual(header.open, "none");
     assert.equal(header.closes, "none");
+    assert.notEqual(header.disputes, "none");
     assert.equal(header.more, "no");
     assert.equal(header.unknown, "none");
   } else if (header.status === "UNKNOWN") {
     assert.equal(header.ids, "none");
     assert.equal(header.closes, "none");
+    assert.equal(header.disputes, "none");
     assert.match(header.unknown, /^(transport|environment|evaluation)$/);
     assert.equal(header.more, "no");
     if (header.unknown !== "transport") {
@@ -228,6 +255,31 @@ function validateAdjudication(line, actualReviewer) {
   return header;
 }
 
+function validateHumanAnswer(line) {
+  const header = parseHeader(line);
+  assert.equal(header.protocol, "MO_HUMAN_ANSWER_V1");
+  assert.match(header.candidate, /^(none|[0-9a-f]{40,64})$/);
+  assert.match(
+    header.phase,
+    /^(product|architecture|irreversible|credentials|subscription|production_e2e|external_blocker|watchdog)$/,
+  );
+  assert.match(header.requester, /^(executor|e2e|orchestrator)$/);
+  const allowed = {
+    executor: [
+      "product",
+      "architecture",
+      "irreversible",
+      "credentials",
+      "subscription",
+      "external_blocker",
+    ],
+    e2e: ["production_e2e", "irreversible", "credentials", "subscription", "external_blocker"],
+    orchestrator: ["watchdog"],
+  };
+  assert.ok(allowed[header.requester].includes(header.phase), "human answer source/phase mismatch");
+  return header;
+}
+
 function review(overrides = {}) {
   const data = {
     candidate: OID,
@@ -238,6 +290,7 @@ function review(overrides = {}) {
     ids: "none",
     open: "none",
     closes: "none",
+    disputes: "none",
     qc: "PASS",
     smoke: "PASS",
     checks: "PASS",
@@ -304,10 +357,13 @@ class ReviewEvaluation {
     for (const finding of ids(header.closes, this.reviewer)) {
       assert.ok(this.open.delete(finding), `closed ID ${finding} was not open`);
     }
+    for (const finding of ids(header.disputes, this.reviewer)) {
+      assert.ok(this.open.has(finding), `disputed ID ${finding} was not open`);
+    }
     assert.deepEqual(ids(header.open, this.reviewer), [...this.open], "open set is not cumulative");
     this.complete = header.more === "no";
-    if (this.complete && header.status === "FINDINGS") {
-      assert.ok(this.introduced.size > 0, "FINDINGS evaluation introduced no ID");
+    if (this.complete && /^(FINDINGS|FOLLOWUP)$/.test(header.status)) {
+      assert.ok(this.introduced.size > 0, `${header.status} evaluation introduced no ID`);
     }
     return header;
   }
@@ -516,15 +572,34 @@ test("review states fail closed, including UNKNOWN with retained PASS checks", (
   validateReview(
     review({ status: "FINDINGS", ids: "A-1", open: "A-1", qc: "FAIL", e2e: "REQUIRED" }),
   );
-  validateReview(review({ status: "DISPUTED", open: "A-1", e2e: "UNKNOWN" }));
+  validateReview(review({ status: "OUTCOMES", open: "A-2", closes: "A-1", disputes: "A-2" }));
+  validateReview(review({ status: "DISPUTED", open: "A-1", disputes: "A-1", e2e: "UNKNOWN" }));
   const unknown = validateReview(review({ status: "UNKNOWN", unknown: "transport" }));
   assert.equal(unknown.qc, "PASS");
   assert.notEqual(unknown.status, "PASS", "retained check evidence cannot satisfy review");
   assert.throws(() => validateReview(review({ open: "A-1" })));
   assert.throws(() => validateReview(review({ status: "UNKNOWN", unknown: "none" })));
   assert.throws(() => validateReview(review({ status: "UNKNOWN", unknown: "evaluation" })));
-  assert.throws(() => validateReview(review({ status: "DISPUTED", open: "A-1", more: "yes" })));
-  assert.throws(() => validateReview(review({ status: "DISPUTED", ids: "A-2", open: "A-1,A-2" })));
+  assert.throws(() =>
+    validateReview(review({ status: "DISPUTED", open: "A-1", disputes: "A-1", more: "yes" })),
+  );
+  assert.throws(() =>
+    validateReview(review({ status: "DISPUTED", ids: "A-2", open: "A-1,A-2", disputes: "A-1" })),
+  );
+  assert.throws(() =>
+    validateReview(review({ status: "OUTCOMES", open: "A-1", closes: "A-1", disputes: "A-1" })),
+  );
+  assert.throws(() =>
+    validateReview(
+      review({
+        status: "FOLLOWUP",
+        ids: "A-2",
+        open: "A-1,A-2",
+        closes: "A-1",
+        disputes: "A-1",
+      }),
+    ),
+  );
 });
 
 test("multipart accounting is header-inclusive and preserves cross-part identity and open sets", () => {
@@ -594,10 +669,14 @@ test("multipart accounting is header-inclusive and preserves cross-part identity
 
   const closurePlusNew = new ReviewEvaluation("A", OID, ["A-1"]);
   closurePlusNew.accept(
-    review({ status: "FINDINGS", ids: "A-2", open: "A-2", closes: "A-1", qc: "FAIL" }),
+    review({ status: "FOLLOWUP", ids: "A-2", open: "A-2", closes: "A-1", qc: "FAIL" }),
     "closed rebuttal and found a new issue\n",
   );
   assert.deepEqual([...closurePlusNew.open], ["A-2"]);
+
+  const allClosed = new ReviewEvaluation("A", OID, ["A-1", "A-2"]);
+  allClosed.accept(review({ closes: "A-1,A-2" }), "all rebutted findings closed\n");
+  assert.deepEqual([...allClosed.open], []);
 });
 
 test("feature-run state invalidates gates but never reuses IDs or adjudications", () => {
@@ -653,6 +732,20 @@ test("either human decision returns work and only a new candidate resumes gates"
     assert.equal(run.gates.size, 0);
     assert.equal(run.open.size, 0);
   }
+
+  for (const line of [
+    `MO_HUMAN_ANSWER_V1|candidate=${OID}|phase=product|requester=executor`,
+    `MO_HUMAN_ANSWER_V1|candidate=${OID}|phase=production_e2e|requester=e2e`,
+    "MO_HUMAN_ANSWER_V1|candidate=none|phase=watchdog|requester=orchestrator",
+  ]) {
+    const answer = validateHumanAnswer(line);
+    assert.match(answer.candidate, /^(none|[0-9a-f]{40,64})$/);
+  }
+  assert.throws(() =>
+    validateHumanAnswer(
+      `MO_HUMAN_ANSWER_V1|candidate=${OID}|phase=production_e2e|requester=executor`,
+    ),
+  );
 });
 
 test("candidate freeze rejects dirty, stale, non-commit and missing-develop metadata", () => {
@@ -758,23 +851,33 @@ test("scratch retention is per-file, ID-driven and bounded by delivery outcomes"
   assert.deepEqual([...scratch.files.keys()], ["a-introducing", "b-introducing"]);
 
   scratch.capture("response");
-  scratch.capture("disputed");
-  scratch.prepare("adjudication-request", ["a-introducing", "response", "disputed"]);
+  scratch.capture("origin-outcome");
+  scratch.prepare("origin-findings", ["origin-outcome"]);
+  scratch.prepare("adjudication:A-1", ["a-introducing", "response", "origin-outcome"]);
+  scratch.prepare("adjudication:A-2", ["a-introducing", "response", "origin-outcome"]);
   scratch.settle(
-    "adjudication-request",
-    ["a-introducing", "response", "disputed"],
+    "adjudication:A-1",
+    ["a-introducing", "response", "origin-outcome"],
     "construction_failed",
   );
-  assert.ok(scratch.files.has("response") && scratch.files.has("disputed"));
-  scratch.settle("adjudication-request", ["a-introducing", "response", "disputed"], "confirmed");
+  assert.ok(scratch.files.has("response") && scratch.files.has("origin-outcome"));
+  scratch.settle("origin-findings", ["origin-outcome"], "confirmed");
+  scratch.settle("adjudication:A-1", ["a-introducing", "response", "origin-outcome"], "confirmed");
+  assert.ok(
+    scratch.files.has("response") && scratch.files.has("origin-outcome"),
+    "shared multi-ID artifacts survive the first target delivery",
+  );
+  scratch.settle("adjudication:A-2", ["a-introducing", "response", "origin-outcome"], "confirmed");
   assert.equal(scratch.files.has("response"), false);
-  assert.equal(scratch.files.has("disputed"), false);
+  assert.equal(scratch.files.has("origin-outcome"), false);
   scratch.close("A-1");
   assert.equal(
     scratch.files.has("a-introducing"),
     true,
     "A-2 still references its introducing part",
   );
+  scratch.close("A-2");
+  assert.equal(scratch.files.has("a-introducing"), false);
 
   scratch.capture("failed-e2e");
   scratch.prepare("failed-e2e", ["failed-e2e"]);
@@ -917,6 +1020,7 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
     "ADJUDICATION_UPHOLD_TO_EXECUTOR",
     "ADJUDICATION_WITHDRAW_TO_ORIGIN",
     "HUMAN_DECISION_TO_EXECUTOR",
+    "HUMAN_ANSWER_TO_EXECUTOR",
     "INVALIDATED_A_CHECK_TO_EXECUTOR",
   ]) {
     assert.ok(relay.includes(direction), `mechanics omits ${direction}`);
@@ -928,17 +1032,25 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
     relay,
     /Every payload carries the exact\ncurrent `MO_PROMPT_BOUNDARY_V1\|fingerprint=<64-lower-hex>` row/,
   );
-  assert.match(relay, /sends either decision\nto the executor, never to an origin reviewer/);
+  assert.match(
+    relay,
+    /send either a\nfinding decision or another permitted phase\/requester-bound answer to the\nexecutor before action/,
+  );
   assert.match(
     flow,
     /new candidate invalidates all\nprior gates and open IDs but does not reset the feature-run ID floor/,
   );
   assert.match(
     flow,
-    /Each\nrebutted ID still open after one RESPONSE must close or become DISPUTED/,
+    /accounts for every rebutted ID exactly once across disjoint\n`closes` and `disputes`/,
   );
   assert.match(flow, /mixed A\/B\nresponses are rejected globally/);
-  assert.match(flow, /DISPUTED forced-outcome turn introduces no new finding/);
+  assert.match(flow, /`FOLLOWUP`\ncloses them all and adds new IDs/);
+  assert.match(
+    flow,
+    /Relay each disputed\ntarget sequentially with the shared exact response\/outcome bytes/,
+  );
+  assert.match(flow, /phase\/requester-bound `HUMAN_ANSWER_TO_EXECUTOR`/);
   assert.match(
     flow,
     /One finding receives at most one\nadjudication, keyed by its single canonical ID/,
@@ -1039,15 +1151,22 @@ test("authored Herdr mutation guards kill acceptance, reviewer barrier and byte-
       skill.replace("does not reset the feature-run ID floor", "resets the feature-run ID floor"),
       mechanics,
     ],
-    [skill.replace("must close or become DISPUTED", "may remain open"), mechanics],
+    [
+      skill.replace(
+        "accounts for every rebutted ID exactly once",
+        "may leave a rebutted ID unaccounted",
+      ),
+      mechanics,
+    ],
     [
       skill.replace("mixed A/B\nresponses are rejected globally", "mixed responses are accepted"),
       mechanics,
     ],
+    [skill.replace("`FOLLOWUP`\ncloses them all", "`FOLLOWUP` may defer rebutted IDs"), mechanics],
     [
       skill.replace(
-        "DISPUTED forced-outcome turn introduces no new finding",
-        "DISPUTED may add new findings",
+        "Relay each disputed\ntarget sequentially with the shared exact response/outcome bytes",
+        "Relay only the first disputed target",
       ),
       mechanics,
     ],
@@ -1073,6 +1192,7 @@ test("authored Herdr mutation guards kill acceptance, reviewer barrier and byte-
     ],
     [skill, mechanics.replace("EXECUTOR_RESPONSE_TO_ORIGIN", "GENERIC_FORWARD"), methodology],
     [skill, mechanics.replace("ORIGIN_FINDINGS_TO_EXECUTOR", "GENERIC_FORWARD"), methodology],
+    [skill, mechanics.replace("HUMAN_ANSWER_TO_EXECUTOR", "GENERIC_FORWARD"), methodology],
     [
       skill,
       mechanics,
@@ -1089,9 +1209,18 @@ test("authored Herdr mutation guards kill acceptance, reviewer barrier and byte-
     [skill, mechanics.replace("stops and never replays", "may replay immediately"), methodology],
     [skill, mechanics.replace("never accepts reviewer B", "may include reviewer B"), methodology],
   ];
-  for (const [mutantSkill, mutantMechanics, mutantMethodology = methodology] of mutants) {
-    assert.throws(() =>
-      assertAuthoredHerdrContract(mutantSkill, mutantMechanics, mutantMethodology),
+  for (const [
+    index,
+    [mutantSkill, mutantMechanics, mutantMethodology = methodology],
+  ] of mutants.entries()) {
+    assert.notEqual(
+      `${mutantSkill}\0${mutantMechanics}\0${mutantMethodology}`,
+      `${skill}\0${mechanics}\0${methodology}`,
+      `mutation ${index + 1} must alter an authored contract`,
+    );
+    assert.throws(
+      () => assertAuthoredHerdrContract(mutantSkill, mutantMechanics, mutantMethodology),
+      `mutation ${index + 1} must be rejected`,
     );
   }
 });
@@ -1114,6 +1243,63 @@ test("every posture consumer runs syntax and selected-provider matrices fail clo
     readFileSync(join(ROOT, "src", "skills", "mo-setup", "SKILL.md"), "utf8"),
     /Read `references\/methodology\.md §9` first/,
   );
+});
+
+test("standalone review lifecycle and PASS/PASS barrier agree across every consumer", () => {
+  const reviewSkill = readFileSync(join(ROOT, "src", "skills", "mo-review", "SKILL.md"), "utf8");
+  const direct = sectionText(reviewSkill, "Two entry modes");
+  for (const invariant of [
+    "**Direct mode** is the primary standalone entry",
+    "No separate executor actor is created",
+    "without asking the user to make an ordinary\nrouting choice",
+    "creates a clean candidate commit",
+  ]) {
+    assert.ok(direct.includes(invariant), `standalone review omits ${invariant}`);
+  }
+  const loop = sectionText(reviewSkill, "Direct convergence loop");
+  assert.match(loop, /Apply every accepted finding, run checks and commit a new clean\ncandidate/);
+  assert.match(loop, /starts again at step 1/);
+  assert.match(loop, /Continue until one unchanged candidate has two independent PASS outcomes/);
+
+  const sources = [
+    [join(ROOT, "README.md"), /PASS\/PASS proceeds without relay/],
+    [
+      join(ROOT, "shared", "references", "methodology.md"),
+      /PASS\/PASS proceeds to its applicable gate without\nrelaying either body/,
+    ],
+    [
+      join(ROOT, "src", "skills", "mo-review", "SKILL.md"),
+      /PASS\/PASS pair\nproceeds[\s\S]{0,80}without relaying either body/,
+    ],
+    [join(ROOT, "src", "skills", "mo-herdr", "SKILL.md"), /PASS\/PASS pair relays neither body/],
+    [
+      join(ROOT, "src", "skills", "mo-omnigent", "SKILL.md"),
+      /`PASS`\/`PASS` pair proceeds[\s\S]{0,80}without relaying either review/,
+    ],
+    [
+      join(ROOT, "docs", "architecture", "full-turn-retrieval.md"),
+      /PASS\/PASS pair proceeds to E2E without relay/,
+    ],
+  ];
+  for (const [path, expected] of sources) {
+    const source = readFileSync(path, "utf8");
+    assert.match(source, expected, `${path} disagrees on PASS/PASS release`);
+    assert.doesNotMatch(source, /PASS\/PASS (?:releases|relays) (?:all|both)/i);
+  }
+});
+
+test("posture architecture scopes quiescence to the owned process group", () => {
+  const architecture = readFileSync(
+    join(ROOT, "docs", "architecture", "provider-posture-script.md"),
+    "utf8",
+  );
+  assert.match(architecture, /members that remain in that owned process group/);
+  assert.match(architecture, /a profile can call\n`setsid` and escape into another session/);
+  assert.match(
+    architecture,
+    /(?:\.\.\/)?backlog\.md#provider-posture-profiles-can-detach-descendants-with-setsid/,
+  );
+  assert.doesNotMatch(architecture, /every unquiesced descendant makes the result unknown/i);
 });
 
 test("shipped Herdr has no old headless, private or manual fallback command", () => {
@@ -1631,7 +1817,7 @@ test("AST relay rejects multipart, ordering, byte, encoding, mode and collision 
   });
 });
 
-test("AST relay admits one singular adjudication chain and one E2E segment", () => {
+test("AST relay admits complete multi-ID adjudication chains and one E2E segment", () => {
   const mechanics = join(ROOT, "src", "skills", "mo-herdr", "references", "herdr-mechanics.md");
   const source = recipeFence(mechanics, "relay-recipe");
   const directory = scratchDirectory();
@@ -1656,7 +1842,7 @@ test("AST relay admits one singular adjudication chain and one E2E segment", () 
   const disputed = privateFile(
     directory,
     "disputed.txt",
-    `${review({ status: "DISPUTED", open: "A-1", e2e: "UNKNOWN" })}\ndisputed\n`,
+    `${review({ status: "DISPUTED", open: "A-1", disputes: "A-1", e2e: "UNKNOWN" })}\ndisputed\n`,
   );
   const adjudicationArgs = [
     recipe,
@@ -1688,6 +1874,16 @@ test("AST relay admits one singular adjudication chain and one E2E segment", () 
     "multiple-response.txt",
     `MO_EXECUTOR_V1|type=RESPONSE|candidate=${OID}|branch=feature/x|base=none|fixes=none|rebuts=A-1,A-2|blocker=none\nresponse\n`,
   );
+  const introducedA2 = privateFile(
+    directory,
+    "introduced-a2.txt",
+    `${review({ status: "FINDINGS", ids: "A-2", open: "A-2", qc: "FAIL", e2e: "REQUIRED" })}\norigin A-2\n`,
+  );
+  const multipleDisputed = privateFile(
+    directory,
+    "multiple-disputed.txt",
+    `${review({ status: "DISPUTED", open: "A-1,A-2", disputes: "A-1,A-2", e2e: "UNKNOWN" })}\nboth disputed\n`,
+  );
   const multipleTarget = spawnSync(
     process.execPath,
     [
@@ -1709,13 +1905,15 @@ test("AST relay admits one singular adjudication chain and one E2E segment", () 
       multiple,
       "reviewerA",
       "none",
-      disputed,
+      multipleDisputed,
     ],
     { encoding: "utf8", env: { ...env, RELAY_ARGV_LOG: log } },
   );
   assert.equal(multipleTarget.status, 0);
   assert.equal(multipleTarget.stdout + multipleTarget.stderr, "");
-  const adjudicationPrompt = JSON.parse(readFileSync(log, "utf8"))[3];
+  const adjudicationTransport = JSON.parse(readFileSync(log, "utf8"));
+  const adjudicationPrompt = adjudicationTransport[3];
+  assert.deepEqual(adjudicationTransport.slice(4), ["--wait", "--timeout", "300000"]);
   assert.match(
     adjudicationPrompt,
     new RegExp(
@@ -1723,6 +1921,77 @@ test("AST relay admits one singular adjudication chain and one E2E segment", () 
     ),
   );
   assert.ok(adjudicationPrompt.includes(readFileSync(multiple, "utf8")));
+  assert.ok(adjudicationPrompt.includes(readFileSync(multipleDisputed, "utf8")));
+  const secondTarget = spawnSync(
+    process.execPath,
+    [
+      recipe,
+      "m-task-reviewerb-abc123",
+      "adjudication-request",
+      "adjudication-request",
+      "/opaque/spec.md",
+      PROMPT_FINGERPRINT,
+      OID,
+      "A-2",
+      "B",
+      directory,
+      "reviewerA",
+      "1",
+      introducedA2,
+      "executor",
+      "none",
+      multiple,
+      "reviewerA",
+      "none",
+      multipleDisputed,
+    ],
+    { encoding: "utf8", env },
+  );
+  assert.equal(secondTarget.status, 0, secondTarget.stderr);
+
+  const mixedOutcome = privateFile(
+    directory,
+    "mixed-outcome.txt",
+    `${review({ status: "OUTCOMES", open: "A-2", closes: "A-1", disputes: "A-2", e2e: "UNKNOWN" })}\nA-1 closed, A-2 disputed\n`,
+  );
+  const mixedTarget = spawnSync(
+    process.execPath,
+    [
+      recipe,
+      "m-task-reviewerb-abc123",
+      "adjudication-request",
+      "adjudication-request",
+      "/opaque/spec.md",
+      PROMPT_FINGERPRINT,
+      OID,
+      "A-2",
+      "B",
+      directory,
+      "reviewerA",
+      "1",
+      introducedA2,
+      "executor",
+      "none",
+      multiple,
+      "reviewerA",
+      "none",
+      mixedOutcome,
+    ],
+    { encoding: "utf8", env },
+  );
+  assert.equal(mixedTarget.status, 0, mixedTarget.stderr);
+
+  const incompleteOutcome = privateFile(
+    directory,
+    "incomplete-outcome.txt",
+    `${review({ status: "DISPUTED", open: "A-1,A-2", disputes: "A-1", e2e: "UNKNOWN" })}\nA-2 omitted\n`,
+  );
+  const incompleteTarget = spawnSync(
+    process.execPath,
+    [...adjudicationArgs.slice(0, 15), multiple, "reviewerA", "none", incompleteOutcome],
+    { encoding: "utf8", env },
+  );
+  assert.equal(incompleteTarget.status, 1);
 
   const mixed = privateFile(
     directory,
@@ -1739,7 +2008,7 @@ test("AST relay admits one singular adjudication chain and one E2E segment", () 
   const disputedWithNew = privateFile(
     directory,
     "disputed-with-new.txt",
-    `${review({ status: "DISPUTED", ids: "A-2", open: "A-1,A-2", e2e: "UNKNOWN" })}\ndispute plus new finding\n`,
+    `${review({ status: "DISPUTED", ids: "A-2", open: "A-1,A-2", disputes: "A-1", e2e: "UNKNOWN" })}\ndispute plus new finding\n`,
   );
   const disputedAndNew = spawnSync(process.execPath, adjudicationArgs.with(18, disputedWithNew), {
     encoding: "utf8",
@@ -1789,7 +2058,9 @@ test("AST relay admits one singular adjudication chain and one E2E segment", () 
   });
   assert.equal(e2eRun.status, 0, e2eRun.stderr);
   assert.equal(e2eRun.stdout + e2eRun.stderr, "");
-  const e2ePrompt = JSON.parse(readFileSync(log, "utf8"))[3];
+  const e2eTransport = JSON.parse(readFileSync(log, "utf8"));
+  const e2ePrompt = e2eTransport[3];
+  assert.deepEqual(e2eTransport.slice(4), ["--wait", "--timeout", "600000"]);
   assert.match(
     e2ePrompt,
     new RegExp(
@@ -1831,7 +2102,16 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
   );
   chmodSync(join(directory, "herdr"), 0o755);
   const env = { ...process.env, PATH: `${directory}:${process.env.PATH}`, RELAY_ARGV_LOG: log };
-  const invoke = ({ actor, purpose, phase, finding, reviewer, triples, status = 0 }) => {
+  const invoke = ({
+    actor,
+    purpose,
+    phase,
+    finding,
+    reviewer,
+    triples,
+    candidate = OID,
+    status = 0,
+  }) => {
     const args = [
       recipe,
       actor,
@@ -1839,7 +2119,7 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
       phase,
       "/opaque/spec.md",
       PROMPT_FINGERPRINT,
-      OID,
+      candidate,
       finding,
       reviewer,
       directory,
@@ -1848,7 +2128,12 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
     const run = spawnSync(process.execPath, args, { encoding: "utf8", env });
     assert.equal(run.status, status);
     assert.equal(run.stdout + run.stderr, "", "relay disclosed an opaque body");
-    return { args, prompt: status === 0 ? JSON.parse(readFileSync(log, "utf8"))[3] : undefined };
+    const transport = status === 0 ? JSON.parse(readFileSync(log, "utf8")) : undefined;
+    if (transport) {
+      const expectedTimeout = actor.includes("-executor-") ? "600000" : "300000";
+      assert.deepEqual(transport.slice(4), ["--wait", "--timeout", expectedTimeout]);
+    }
+    return { args, prompt: transport?.[3], transport };
   };
   const responseBody = `MO_EXECUTOR_V1|type=RESPONSE|candidate=${OID}|branch=feature/x|base=none|fixes=none|rebuts=A-1,A-2|blocker=none\nopaque $(touch ${marker}) 🛡️`;
   const response = privateFile(directory, "whole-response.txt", responseBody);
@@ -1869,19 +2154,19 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
   assert.equal(responseBody.endsWith("\n"), false);
   assert.notEqual(Buffer.from(responseLeg.prompt).indexOf(Buffer.from(responseBody)), -1);
 
-  const originFindingsBody = `${review({ status: "FINDINGS", ids: "A-3", open: "A-3", closes: "A-2", qc: "FAIL" })}\nclosed A-2 and introduced A-3`;
+  const originFindingsBody = `${review({ status: "FOLLOWUP", ids: "A-3", open: "A-3", closes: "A-1,A-2", qc: "FAIL" })}\nclosed A-1/A-2 and introduced A-3`;
   const originFindings = privateFile(directory, "origin-findings.txt", originFindingsBody);
   const originFindingsLeg = invoke({
     actor: "m-task-executor-abc123",
     purpose: "origin-findings",
     phase: "origin-followup-resolution",
-    finding: "A-2",
+    finding: "A-1,A-2",
     reviewer: "none",
     triples: [["reviewerA", "1", originFindings]],
   });
   assert.match(
     originFindingsLeg.prompt,
-    /MO_RELAY_V2\|direction=ORIGIN_FINDINGS_TO_EXECUTOR\|recipient=executor\|candidate=/,
+    /MO_RELAY_V2\|direction=ORIGIN_FINDINGS_TO_EXECUTOR\|recipient=executor\|candidate=[^|]+\|finding=A-1,A-2\|/,
   );
   assert.ok(originFindingsLeg.prompt.includes(originFindingsBody));
 
@@ -1948,6 +2233,43 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
     finding: "A-1",
     reviewer: "A",
     triples: [["human", "none", humanWithdraw]],
+    status: 1,
+  });
+
+  for (const [phase, requester, candidate] of [
+    ["product", "executor", OID],
+    ["production_e2e", "e2e", OID],
+    ["watchdog", "orchestrator", "none"],
+  ]) {
+    const answerBody = `MO_HUMAN_ANSWER_V1|candidate=${candidate}|phase=${phase}|requester=${requester}\nhuman answer`;
+    const answer = privateFile(directory, `human-answer-${phase}.txt`, answerBody);
+    const answerLeg = invoke({
+      actor: "m-task-executor-abc123",
+      purpose: "human-answer",
+      phase: "human-answer-resolution",
+      finding: "none",
+      reviewer: "none",
+      candidate,
+      triples: [["human", "none", answer]],
+    });
+    assert.match(
+      answerLeg.prompt,
+      /MO_RELAY_V2\|direction=HUMAN_ANSWER_TO_EXECUTOR\|recipient=executor\|/,
+    );
+    assert.ok(answerLeg.prompt.includes(answerBody));
+  }
+  const wrongHumanSource = privateFile(
+    directory,
+    "wrong-human-source.txt",
+    `MO_HUMAN_ANSWER_V1|candidate=${OID}|phase=production_e2e|requester=executor\nhuman answer`,
+  );
+  invoke({
+    actor: "m-task-executor-abc123",
+    purpose: "human-answer",
+    phase: "human-answer-resolution",
+    finding: "none",
+    reviewer: "none",
+    triples: [["human", "none", wrongHumanSource]],
     status: 1,
   });
 

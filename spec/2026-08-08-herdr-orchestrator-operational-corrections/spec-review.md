@@ -311,10 +311,19 @@ Each independently:
 - runs `make mo-qc`, `make mo-smoke`, and applicable checks;
 - assigns stable reviewer-owned IDs;
 - determines E2E applicability;
-- emits one to six consecutive `MO_REVIEW_V2` parts, each at most 180 rows, with at most 1000 rows and 61,440 bytes total for the complete evaluation;
+- emits one to six first-pass `FINDINGS` parts, each at most 180 rows, with at most 1000 rows and 61,440 bytes total; every other state is exactly one bounded part;
 - accounts for all open IDs before `PASS`.
 
-A completes all parts before B starts. B receives the same locator/candidate and no A output. After the barrier, all separately framed A and B parts are delivered together in one atomic executor goal prompt. Nothing reaches the executor early.
+A completes all parts before B starts. B receives the same locator/candidate and no A output. After the barrier, PASS/PASS proceeds without relay. Only when at least one evaluation has `FINDINGS` are all separately framed A and B parts delivered together in one atomic executor goal prompt. Nothing reaches the executor early.
+
+Standalone `mo-review` has a direct mode for a small fix: the coding session is
+the author/executor, creates a clean candidate, selects a fixture-proven backend
+without asking the user for an ordinary route, applies accepted findings,
+commits corrections, and starts a new A/B round after every SHA. If no surface
+can prove complete turns and actual reviewer-vendor diversity, it returns review
+capability attention. Inside `mo-herdr` or `mo-omnigent`, `mo-review` instead
+supplies only lenses, compact outcomes, and convergence rules; the enclosing
+backend owns actors and transport.
 
 ### E2E actor
 
@@ -518,10 +527,11 @@ A failed E2E uses the analogous single goal. The executor receives no prompt dur
 
 ```text
 MO_EXECUTOR_V1|type=<CANDIDATE|RESPONSE|BLOCKER>|candidate=<oid|none>|branch=<name|none>|base=<oid|none>|fixes=<ids|none>|rebuts=<ids|none>|blocker=<class|none>
-MO_REVIEW_V2|candidate=<oid>|reviewer=<A|B>|status=<PASS|FINDINGS|DISPUTED|UNKNOWN>|part=<positive-int>|more=<yes|no>|ids=<ids|none>|open=<ids|none>|closes=<ids|none>|qc=<PASS|FAIL|UNKNOWN>|smoke=<PASS|FAIL|UNKNOWN>|checks=<PASS|FAIL|UNKNOWN|NA>|e2e=<REQUIRED|NA|UNKNOWN>|unknown=<transport|environment|evaluation|none>
+MO_REVIEW_V2|candidate=<oid>|reviewer=<A|B>|status=<PASS|FINDINGS|FOLLOWUP|OUTCOMES|DISPUTED|UNKNOWN>|part=<positive-int>|more=<yes|no>|ids=<ids|none>|open=<ids|none>|closes=<ids|none>|disputes=<ids|none>|qc=<PASS|FAIL|UNKNOWN>|smoke=<PASS|FAIL|UNKNOWN>|checks=<PASS|FAIL|UNKNOWN|NA>|e2e=<REQUIRED|NA|UNKNOWN>|unknown=<transport|environment|evaluation|none>
 MO_ADJUDICATION_V1|candidate=<oid>|finding=<id>|reviewer=<A|B>|outcome=<UPHOLD|WITHDRAW|UNRESOLVED>
 MO_E2E_V1|candidate=<oid>|status=<PASS|FAIL|UNKNOWN|BLOCKER>|scenarios=<positive-int|none>|not_run=<none|positive-int>|blocker=<production_e2e|credentials|subscription|external_blocker|none>
 MO_HUMAN_DECISION_V1|candidate=<oid>|finding=<id>|decision=<UPHOLD|WITHDRAW>
+MO_HUMAN_ANSWER_V1|candidate=<oid|none>|phase=<product|architecture|irreversible|credentials|subscription|production_e2e|external_blocker|watchdog>|requester=<executor|e2e|orchestrator>
 ```
 
 Fields occur once in exact order. Candidate IDs equal observed `HEAD`; base IDs are lowercase hexadecimal commit objects; branch equals observed branch. Finding IDs are `A-<positive-int>` or `B-<positive-int>`, comma-separated without spaces, numerically sorted within prefix, and unique. Positive integers are canonical unsigned base-10 without sign or leading zeros.
@@ -556,14 +566,29 @@ subscription | external_blocker
 
 The orchestrator reports only tab, pane, role, class, candidate, finding/scenario identifier where applicable. It never reads or paraphrases blocker prose.
 
+Every permitted non-dispute human answer returns to the executor as
+`MO_HUMAN_ANSWER_V1` through `HUMAN_ANSWER_TO_EXECUTOR`, even when E2E or the
+orchestrator requested it. The phase/requester matrix is exhaustive: executor
+may request every phase except `production_e2e` and `watchdog`; E2E may request
+`production_e2e`, `irreversible`, `credentials`, `subscription`, or
+`external_blocker`; only the orchestrator may request `watchdog`. Before acting,
+the executor appends the credential-safe human words verbatim to
+`docs/business.md` and every current task/spec, commits a new candidate, and
+invalidates all prior gates and IDs. `MO_HUMAN_DECISION_V1` remains the dedicated
+candidate/finding-bound envelope for an unresolved adjudication.
+
 ### Review matrix
 
-- `PASS`: `ids=none`, `open=none`, QC/smoke pass, checks pass/NA, E2E required/NA, unknown none; `closes` is none or all origin-open IDs.
-- `FINDINGS`: nonempty new IDs across the evaluation, cumulative open set, explicit closes or none, actual gate fields.
-- `DISPUTED`: `ids=none`, disputed IDs remain in `open`, no closes, actual gate fields; it cannot introduce a new finding.
-- `UNKNOWN`: no new IDs/closes and exactly one unknown class. Transport retains already completed gate values; environment/evaluation marks at least one affected gate unknown.
+- `PASS`: `ids=none`, `open=none`, QC/smoke pass, checks pass/NA, E2E required/NA, unknown none; `closes` is none or all origin-open IDs and `disputes=none`.
+- `FINDINGS`: first-pass evaluation with nonempty new IDs, cumulative open set, `disputes=none`, and actual gate fields.
+- `FOLLOWUP`: one-part origin response outcome with nonempty new IDs, every rebutted ID in `closes`, and `disputes=none`.
+- `OUTCOMES`: one-part mixed origin response outcome with `ids=none` and both nonempty `closes` and `disputes`.
+- `DISPUTED`: one-part origin response outcome with `ids=none`, `closes=none`, nonempty `disputes`, and every disputed ID retained in `open`.
+- `UNKNOWN`: no new IDs/closes/disputes and exactly one unknown class. Transport retains already completed gate values; environment/evaluation marks at least one affected gate unknown.
 
-Parts start at 1, are consecutive, keep candidate/reviewer/status/gate fields identical, and carry cumulative `open`; only the last has `more=no`. `PASS`, `DISPUTED`, and `UNKNOWN` are exactly one part. Only `FINDINGS` may continue, for at most six parts, 1000 rows, and 61,440 bytes total. Each part's `ids` lists only findings introduced in that part, so the orchestrator can later select the exact introducing part for adjudication without reading semantics.
+Parts start at 1, are consecutive, keep candidate/reviewer/status/gate fields identical, and carry cumulative `open`; only the last has `more=no`. `PASS`, `FOLLOWUP`, `OUTCOMES`, `DISPUTED`, and `UNKNOWN` are exactly one part. Only first-pass `FINDINGS` may continue, for at most six parts, 1000 rows, and 61,440 bytes total. Each part's `ids` lists only findings introduced in that part, so the orchestrator can later select the exact introducing part for adjudication without reading semantics.
+
+After one same-origin executor `RESPONSE`, exactly one complete outcome accounts for every ID in its `rebuts`. `closes` and `disputes` are disjoint and their union equals that exact set. Closing removes an ID from `open`, disputing retains it, and a `FOLLOWUP` adds its new `ids` only after closing the whole rebuttal set. All-close/no-new is `PASS`, mixed close/dispute is `OUTCOMES`, and all-dispute is `DISPUTED`. `FOLLOWUP`, `OUTCOMES`, and `DISPUTED` are each at most 24,576 bytes.
 
 ### Adjudication and E2E
 
@@ -585,7 +610,7 @@ Executor, adjudication, and E2E V1 handoffs are single-body. Review V2 is the on
 Role bounds including header and original newlines are:
 
 - one review part: 180 rows; one complete reviewer evaluation: six parts, 1000 rows, and 61,440 bytes total;
-- executor `RESPONSE` and reviewer `DISPUTED`: 24,576 bytes each;
+- executor `RESPONSE` and reviewer `FOLLOWUP`/`OUTCOMES`/`DISPUTED`: 24,576 bytes each;
 - executor candidate/blocker, adjudication output, and E2E: one body of at most 65,536 bytes.
 
 The portable combined A+B goal contains at most 122,880 body bytes plus at most 7,168 ASCII framing/goal bytes, for a maximum single argv element of 130,048 UTF-8 bytes. Including the terminating NUL this is strictly below Linux `MAX_ARG_STRLEN=131072`; the same exact boundary is tested on Linux and the supported local platform. An authored wrapper over 7,168 bytes is a build failure, not a runtime surprise.
@@ -596,7 +621,7 @@ this exact versioned frame grammar after the goal line and marker for
 executor-bound directions, or after the marker in an ordinary reviewer prompt:
 
 ```text
-MO_RELAY_V2|direction=<direction>|recipient=<executor|reviewerA|reviewerB>|candidate=<oid>|finding=<id|none>|segments=<positive-int>|frame=<32-lower-hex>
+MO_RELAY_V2|direction=<direction>|recipient=<executor|reviewerA|reviewerB>|candidate=<oid|none>|finding=<id|ids|none>|segments=<positive-int>|frame=<32-lower-hex>
 MO_SEGMENT_V1|index=<positive-int>|source=<reviewerA|reviewerB|executor|e2e|human>|part=<positive-int|none>|bytes=<positive-int>
 <exactly bytes raw UTF-8 bytes>
 MO_SEGMENT_END_V1|index=<same>|frame=<same>
@@ -604,9 +629,9 @@ MO_SEGMENT_END_V1|index=<same>|frame=<same>
 MO_RELAY_END_V1|segments=<same>|frame=<same>
 ```
 
-Directions are exhaustive and phase-bound: `REVIEW_PAIR_TO_EXECUTOR`, `FAILED_E2E_TO_EXECUTOR`, `EXECUTOR_RESPONSE_TO_ORIGIN`, `ORIGIN_FINDINGS_TO_EXECUTOR`, `ADJUDICATION_REQUEST_TO_PEER`, `ADJUDICATION_UPHOLD_TO_EXECUTOR`, `ADJUDICATION_WITHDRAW_TO_ORIGIN`, `HUMAN_DECISION_TO_EXECUTOR`, and `INVALIDATED_A_CHECK_TO_EXECUTOR`. The recipe binds the canonical recipient actor, declared source and compact header, phase, frozen candidate, target ID, and current-turn marker. Review-pair delivery requires at least one complete `FINDINGS` evaluation; PASS/PASS is not relayed. Origin-findings delivery accepts exactly one complete origin evaluation that closes the rebutted target and introduces at least one new `FINDINGS` ID. Failed-E2E accepts only a complete `FAIL`; the A-only route requires complete reviewer-A `FINDINGS` with `checks=FAIL` and never starts B.
+Directions are exhaustive and phase-bound: `REVIEW_PAIR_TO_EXECUTOR`, `FAILED_E2E_TO_EXECUTOR`, `EXECUTOR_RESPONSE_TO_ORIGIN`, `ORIGIN_FINDINGS_TO_EXECUTOR`, `ADJUDICATION_REQUEST_TO_PEER`, `ADJUDICATION_UPHOLD_TO_EXECUTOR`, `ADJUDICATION_WITHDRAW_TO_ORIGIN`, `HUMAN_DECISION_TO_EXECUTOR`, `HUMAN_ANSWER_TO_EXECUTOR`, and `INVALIDATED_A_CHECK_TO_EXECUTOR`. The recipe binds the canonical recipient actor, declared source and compact header, phase, candidate, target ID/set, and current-turn marker. Review-pair delivery requires at least one complete `FINDINGS` evaluation; PASS/PASS is not relayed. Origin-findings delivery accepts exactly one complete one-part `FOLLOWUP` whose new IDs are nonempty, whose `closes` equals the exact same-origin `RESPONSE` set, whose `disputes=none`, and whose outer `finding` is that same-origin ID list. Failed-E2E accepts only a complete `FAIL`; the A-only route requires complete reviewer-A `FINDINGS` with `checks=FAIL` and never starts B. Only `HUMAN_ANSWER_TO_EXECUTOR` may use outer `candidate=none`, matching its human-answer header, and it always has `finding=none`.
 
-The recipe appends one framing LF after the counted raw bytes before `MO_SEGMENT_END_V1`; that LF is outside the segment and never changes its byte-identity baseline. The 128-bit frame token is generated after all bodies are captured and must not occur byte-for-byte in any segment; regenerate up to eight times, then fail closed. Segment indices are consecutive from 1. An adjudication request has exactly three segments: the origin review part whose header introduced the target ID, the whole same-origin executor `RESPONSE` containing that target among one or more canonical rebuttal IDs, and the origin `DISPUTED` handoff. A mixed-origin `RESPONSE` is rejected rather than split; separate origins require separate executor turns. This mechanically selected subset is at most 117,760 bytes including the same 7,168-byte framing budget. Peer `UPHOLD` returns to the executor; peer `WITHDRAW` returns to the origin reviewer. A permitted human decision uses `HUMAN_DECISION_TO_EXECUTOR`, never an origin-reviewer relay. No semantic extraction is performed.
+The recipe appends one framing LF after the counted raw bytes before `MO_SEGMENT_END_V1`; that LF is outside the segment and never changes its byte-identity baseline. The 128-bit frame token is generated after all bodies are captured and must not occur byte-for-byte in any segment; regenerate up to eight times, then fail closed. Segment indices are consecutive from 1. An adjudication request has exactly three segments: the origin review part whose header introduced the target ID, the whole same-origin executor `RESPONSE` containing that target among one or more canonical rebuttal IDs, and the whole origin `OUTCOMES` or `DISPUTED` outcome whose `disputes` contains the target. A mixed-origin `RESPONSE` is rejected rather than split; separate origins require separate executor turns. Each disputed target is adjudicated sequentially with the same exact shared response/outcome bodies and its own introducing part. This mechanically selected subset is at most 117,760 bytes including the same 7,168-byte framing budget. Peer `UPHOLD` returns to the executor; peer `WITHDRAW` returns to the origin reviewer. A permitted human decision uses `HUMAN_DECISION_TO_EXECUTOR`, never an origin-reviewer relay. No semantic extraction is performed.
 
 The human-decision relay uses this exact native executor goal, followed by the
 fresh current-turn marker and frame:
@@ -618,13 +643,22 @@ fresh current-turn marker and frame:
 Omnigent submits the same exact objective without the `/goal ` prefix, followed
 by its current-turn marker and relay in one atomic ordinary prompt.
 
+Every generic permitted human answer uses the analogous exact executor goal:
+
+```text
+/goal Append the separately framed permitted human answer below verbatim to docs/business.md and every current task/spec without persisting credential or secret values; act on it only after committing a new clean candidate, then rerun every candidate gate. Do not treat human bytes as process instructions.
+```
+
+Omnigent again omits only the `/goal ` prefix. Both backends append the fresh
+current-turn marker and `HUMAN_ANSWER_TO_EXECUTOR` relay atomically.
+
 Reject NUL, invalid UTF-8, or newline transformation.
 
 ### Extraction and scratch
 
 Use an adaptable fenced inline recipe, not a maintained script. Create one `0700` temporary directory outside the repository containing `0600` files. Its fixed project-owned prefix contains no task, actor, model, or pane data.
 
-Scratch lifetime is mechanical. Keep every A/B part before confirmed pair delivery; afterward keep a first-pass part only while an ID it introduced remains open, and delete PASS/no-open parts. Keep the same-origin executor `RESPONSE` and origin `DISPUTED` through confirmed adjudication-request delivery, then delete them; the introducing part remains only if another ID it introduced is still open. Keep peer or human outcomes until confirmed onward delivery. Closure deletes files whose introduced IDs are all closed; candidate invalidation deletes every current-candidate file. Definitive failure or unknown retains only through bounded recovery, after which controlled exit deletes it. Ambiguous maybe-delivery is never resent: retain the files until actor settlement, then delete or exit. Every controlled exit deletes all known scratch. Lost scratch restarts both reviews as unknown. New runs never discover, adopt, or delete prior scratch. Hard-crash residue remains an accepted backlog limitation under OS temporary cleanup.
+Scratch lifetime is mechanical and reference-counted by open IDs and pending directions. Keep every A/B part before confirmed pair delivery; afterward keep a first-pass introducing part while any ID it introduced remains open, and delete PASS/no-open parts. A `FOLLOWUP` remains through confirmed new-findings delivery; its preceding `RESPONSE` has no disputed-target reference and can be deleted after confirmed delivery to the origin. A same-origin executor `RESPONSE` and its whole `OUTCOMES`/`DISPUTED` outcome are shared by every disputed target they contain. Retain both until every sequential target adjudication-request delivery is terminal; one target never deletes bytes still referenced by another. Each target's introducing part remains while that ID is open. Keep peer or human outcomes until confirmed onward delivery. Closure decrements references and deletes only files with no open-ID or pending-direction reference; candidate invalidation deletes every current-candidate file. Definitive failure or unknown retains only through bounded recovery, after which controlled exit deletes it. Ambiguous maybe-delivery is never resent: retain the files until actor settlement, then delete or exit. Every controlled exit deletes all known scratch. Lost scratch restarts both reviews as unknown. New runs never discover, adopt, or delete prior scratch. Hard-crash residue remains an accepted backlog limitation under OS temporary cleanup.
 
 Extraction:
 
@@ -667,7 +701,7 @@ No headless, inline, verdict-file, private-transcript, or executor-pane-reading 
 
 The canonical no-progress key is `<candidate, actor, phase, header-type, status, open-ids>`. `status` is the header status when present and otherwise the event kind; `open-ids` is the orchestrator's mechanically tracked open-ID set at event time for every header type. Repeating the key twice without a new complete result produces attention.
 
-After one executor `RESPONSE`, every rebutted ID still open in the origin reviewer's next handoff must be closed or returned as `DISPUTED`; newly introduced IDs do not reset that per-ID counter. The exact continuation prompt is: `For each rebutted ID still open, return closure or DISPUTED now. A DISPUTED forced-outcome turn cannot introduce new findings; return any new finding only in a separate FINDINGS turn after this outcome.` Refusal is actor noncompliance. This bounds response loops before adjudication.
+After one executor `RESPONSE`, the origin reviewer's next handoff is one complete one-part outcome over the exact rebutted set. The continuation requires: `Account for every rebutted ID now: put each one in exactly one of closes or disputes. If all close and there is no new finding, use PASS with those closes. If any ID is disputed, introduce no new finding; use OUTCOMES for a mixed close/dispute result or DISPUTED when all are disputed. To introduce new findings, close every rebutted ID and use one FOLLOWUP turn.` Refusal is actor noncompliance. New IDs do not reset the old IDs' accounting, and every disputed target proceeds to sequential adjudication. This bounds response loops before adjudication.
 
 Restart creates new ordinary sessions, adopts nothing, leaves old panes visible, and relies on executor repository inspection.
 
@@ -690,9 +724,11 @@ preflight
 
 resolution
   -> executor_RESPONSE -> origin_reviewer
-       -> closes -> convergence
-       -> closes_plus_new_FINDINGS -> executor_active
-       -> DISPUTED -> peer_adjudication
+       -> PASS -> all_rebutted_closed
+       -> FOLLOWUP -> new_findings_to_executor
+       -> OUTCOMES -> closures + disputed_targets
+       -> DISPUTED -> disputed_targets
+       -> each_disputed_target -> peer_adjudication
             -> UPHOLD -> executor_active
             -> WITHDRAW -> origin_reviewer
             -> UNRESOLVED -> human_decision -> executor_intent_append -> new_candidate
@@ -721,7 +757,7 @@ Checks must be documented non-mutating in the injected contract. If A dirties th
 
 A finishes, candidate is rechecked, then B starts with no A output. Scheduling is always sequential.
 
-The deterministic-review gate passes only when both complete reviews have `status=PASS`, `unknown=none`, QC/smoke pass, and additional checks pass/NA for the frozen candidate. A transport-`UNKNOWN` handoff carrying known PASS check fields remains unknown and never satisfies the gate. `PASS`/`PASS` proceeds to the applicable E2E gate without relaying review bodies. Except for A's explicitly normative invalidated-candidate mutating-check short circuit, first-pass release requires complete A and B outcomes and at least one `FINDINGS` evaluation. Later origin findings/closure follow-ups use separate settled executor turns.
+The deterministic-review gate passes only when both complete reviews have `status=PASS`, `unknown=none`, QC/smoke pass, and additional checks pass/NA for the frozen candidate. A transport-`UNKNOWN` handoff carrying known PASS check fields remains unknown and never satisfies the gate. `PASS`/`PASS` proceeds to the applicable E2E gate without relaying review bodies. Except for A's explicitly normative invalidated-candidate mutating-check short circuit, first-pass release requires complete A and B outcomes and at least one `FINDINGS` evaluation. Later same-origin `FOLLOWUP`/`OUTCOMES`/`DISPUTED` outcomes use separate settled turns.
 
 Transport unknown uses compact-handoff recovery. Environment/evaluation unknown retries once in the same warm session. Repeated unknown is attention and does not open mutation.
 
@@ -730,10 +766,15 @@ Transport unknown uses compact-handoff recovery. Environment/evaluation unknown 
 - New commit invalidates all gates and open IDs on the old candidate.
 - IDs are never reused.
 - Rebuttal reaches only the origin reviewer.
-- Origin closes, keeps open, disputes, or returns unknown.
-- `DISPUTED` carries no new IDs; new findings require a `FINDINGS` evaluation.
+- Origin returns one total same-origin outcome: every rebutted ID closes or
+  disputes, and any new IDs use `FOLLOWUP`.
+- All-close/no-new returns `PASS`; `FOLLOWUP` closes all before introducing new
+  IDs; only `OUTCOMES`/`DISPUTED` carry disputes.
+- `FOLLOWUP`, `OUTCOMES`, and `DISPUTED` are one-part, 24,576-byte outcomes;
+  first-pass `FINDINGS` alone is multipart.
 - One executor `RESPONSE` contains IDs from exactly one origin; mixed-origin responses are invalid.
-- Existing other-vendor reviewer adjudicates once.
+- Existing other-vendor reviewer adjudicates each disputed target once,
+  sequentially, from the same shared response/outcome evidence.
 - Uphold returns work; withdraw requires origin final pass; unresolved reaches human.
 - A human decision returns to the executor. The executor appends the human's
   credential-safe wording verbatim to business framing and every current
@@ -892,12 +933,12 @@ Covers:
 - catalogue outcome distinctions;
 - AST-level skill/glossary/recipe checks;
 - full header and blocker matrices;
-- identity, exact ID ordering/canonical integers, invalidation, multipart review accounting, role-specific sizes, and unknown classes;
-- portable 130,048-byte conditional combined release, 7,168-byte framing allowance, Linux per-argument boundary, exact exhaustive `MO_RELAY_V2` direction/recipient/source/phase/candidate/ID/current-turn-marker grammar, single-origin response/follow-up rules, collision rules, and bounded adjudication subset;
+- identity, exact ID ordering/canonical integers, invalidation, multipart first-pass accounting, one-part outcome partitions, role-specific sizes, and unknown classes;
+- portable 130,048-byte conditional combined release, 7,168-byte framing allowance, Linux per-argument boundary, exact exhaustive `MO_RELAY_V2` direction/recipient/source/phase/candidate/ID/current-turn-marker grammar, single-origin multi-ID outcome and generic human-answer rules, collision rules, and bounded adjudication subsets;
 - executable `shell:false` relay fixtures, body-silent failures, UTF-8/NUL/newline/length tests;
 - ambiguity decision table proving there is no retry without positive non-delivery evidence;
 - name collision handling;
-- per-ID/delivery scratch ownership, deterministic cleanup, and open crash limitation;
+- open-ID/pending-direction scratch refcounts, shared multi-target artifact lifetime, deterministic cleanup, and open crash limitation;
 - open-only backlog;
 - branch regex and non-mutating-check rule;
 - exact topology commands, 10-second goal quiet period, ID floors, per-ID forced dispute, and per-header no-progress keys;
@@ -921,25 +962,25 @@ H13–H37 map one-to-one to:
 4. native goal 10-second quiet end/re-arm and portable maximum relay prompt;
 5. exact current-turn-marker extraction ladder and H7b;
 6. actor versus structural failure classification;
-7. review V2 continuation/total bounds and single-body V1 failure;
-8. sequential independence/freeze, PASS/PASS progression, conditional pair release, and separate origin follow-ups;
+7. multipart first-pass and one-part response-outcome bounds;
+8. sequential independence/freeze, PASS/PASS progression, conditional pair release, and total origin outcomes;
 9. mutating-check handling;
 10. reviewer check ownership;
 11. adversarial byte identity;
 12. exact marker-bound relay/adjudication framing, mixed-origin rejection, Linux argv boundary, and no-retry ambiguity behavior;
-13. complete finding/closure content, DISPUTED no-new-ID rule, ID-floor, A-only invalidation, and blocker accounting;
+13. total same-origin close/dispute/new-ID outcomes, ID-floor, A-only invalidation, and blocker accounting;
 14. same-SHA completion;
 15. commit invalidation;
 16. restart;
 17. catalogue isolation/launchability;
-18. narrow human channel and executor-owned verbatim decision recording with candidate invalidation;
+18. narrow human channel and executor-owned verbatim answer/decision recording with candidate invalidation;
 19. test-only tracked-read audit with canary;
-20. per-ID, delivery, ambiguity, recovery, invalidation, and controlled-exit scratch lifecycle;
+20. per-ID/pending-direction refcounts, shared multi-target delivery, ambiguity, recovery, invalidation, and controlled-exit scratch lifecycle;
 21. actual vendor diversity;
 22. direct no-sleep waits, one waiter, retry/no-progress bounds;
 23. non-gating badges;
 24. missing-`develop` failure;
-25. existing-peer adjudication and executor-bound human decision.
+25. sequential multi-target existing-peer adjudication and executor-bound human answer/decision.
 
 H7b remains separate. The 1000-row limit is fixture-measured, not a claimed public guarantee.
 
@@ -947,7 +988,7 @@ A surface remains unsupported until required exact fixtures pass. Fewer than two
 
 ### Omnigent acceptance
 
-A supported Omnigent route independently proves the backend-neutral firewall; candidate binding; sequential independence; PASS/PASS progression without review relay; conditional atomic A/B findings release; A-only invalidating-check short circuit; separate single-origin response/follow-up turns; DISPUTED no-new-ID semantics; origin closure, existing-peer adjudication, and executor-owned human-decision recording; invalidation; native recovery; exact current-turn marker; weaker prompt objective; and narrow human boundaries. It does not reuse Herdr layout or extraction. Unsupported status is recorded without invented Herdr-style evidence.
+A supported Omnigent route independently proves the backend-neutral firewall; candidate binding; sequential independence; PASS/PASS progression without review relay; conditional atomic A/B findings release; A-only invalidating-check short circuit; total same-origin multi-ID `PASS`/`FOLLOWUP`/`OUTCOMES`/`DISPUTED` partitions; sequential shared-evidence adjudication; origin closure; executor-owned generic human-answer and dispute-decision recording; invalidation; native recovery; exact current-turn marker; weaker prompt objective; and narrow human boundaries. It does not reuse Herdr layout or extraction. Unsupported status is recorded without invented Herdr-style evidence.
 
 ### Completion and cutover criteria
 
@@ -1023,10 +1064,10 @@ Splits must remain independently green. Generated output and newly false knowled
 | Blind ambiguous retry                                                             | rejected   | Duplication risk                                                                                                                 |
 | Retry from unchanged negative observations                                        | rejected   | Unchanged UI/lifecycle cannot positively prove non-delivery                                                                      |
 | Opaque body/no Markdown parsing                                                   | adopted    | Firewall                                                                                                                         |
-| Review V2: up to six parts / 1000 rows / 60 KiB total                             | adopted    | Preserves complete findings within the user-accepted retrieval envelope while delaying first-pass relay until the barrier          |
-| Conditional combined first-pass release plus origin follow-up directions          | adopted    | PASS/PASS needs no relay; single-origin responses/follow-ups keep closure and adjudication mechanical                              |
+| First-pass Review V2: up to six parts / 1000 rows / 60 KiB total                  | adopted    | Preserves complete findings within the user-accepted retrieval envelope while delaying first-pass relay until the barrier          |
+| Conditional combined first-pass release plus total origin outcomes                | adopted    | PASS/PASS needs no relay; `PASS`/`FOLLOWUP`/`OUTCOMES`/`DISPUTED` account for every same-origin multi-ID response mechanically     |
 | `MO_RELAY_V2`, exhaustive directions, 130,048-byte argv ceiling, 7,168-byte framing budget | adopted    | Portable below Linux single-argument limit with deterministic lifecycle, collision, and length tests                              |
-| Three-segment mechanical adjudication request plus explicit resolution legs        | adopted    | Preserves exact relevant bytes; peer outcomes route mechanically and human decisions return to the executor                       |
+| Refcounted three-segment adjudication per disputed target                          | adopted    | Reuses exact response/outcome bytes until every target is terminal; human decisions return to the executor                         |
 | Review V1 multibatch                                                              | rejected   | Replaced by explicit V2 part identity and total bounds                                                                           |
 | Any implicit V1 multibatch                                                        | rejected   | No versioned identity                                                                                                            |
 | Scratch retained only through mechanically required delivery                      | adopted    | Per-ID closure, adjudication, ambiguity, invalidation, recovery, and controlled-exit cleanup stay bounded                         |
@@ -1039,19 +1080,20 @@ Splits must remain independently green. Generated output and newly false knowled
 | Both reviewers run QC/smoke                                                       | adopted    | Independent evidence                                                                                                             |
 | Orchestrator runs inferred commands                                               | rejected   | Outside role                                                                                                                     |
 | Internal TUI exit status evidence                                                 | rejected   | Public surface lacks it                                                                                                          |
-| Stable finding IDs/closure                                                        | adopted    | Mechanical accounting                                                                                                            |
+| Stable IDs with disjoint close/dispute partitions                                | adopted    | Every same-origin multi-ID response has one total mechanical outcome                                                             |
 | Candidate/reviewer/check fields                                                   | adopted    | Gate binding                                                                                                                     |
 | Withdrawal requires origin PASS                                                   | adopted    | Origin owns closure                                                                                                              |
 | Existing peer adjudicates after barrier                                           | adopted    | Exact topology; ordering trade-off accepted                                                                                      |
 | Reviewer unknown retries once                                                     | adopted    | Incomplete evidence                                                                                                              |
 | E2E after reviews/every commit                                                    | adopted    | Candidate-bound                                                                                                                  |
 | Phase/source blocker routing                                                      | adopted    | Narrow human boundary                                                                                                            |
+| Generic permitted human answer returns through executor                          | adopted    | Credential-safe verbatim ledgers create a new candidate before action                                                            |
 | Lifecycle rather than SHA waits                                                   | adopted    | Correct predicate                                                                                                                |
 | 10/5-minute wait arms                                                             | adopted    | Responsive                                                                                                                       |
 | Healthy work re-arms                                                              | adopted    | No artificial runtime cap                                                                                                        |
 | Sleep/polling loops or multiple waiters                                           | rejected   | Direct lifecycle waits are the completion predicate                                                                              |
 | Event/no-progress guards                                                          | adopted    | Prevent livelock                                                                                                                 |
-| Forced dispute after the first rebutted ID remains open                           | adopted    | New IDs cannot evade the per-ID executable bound                                                                                 |
+| One complete origin outcome after an executor response                            | adopted    | New IDs cannot evade total close/dispute accounting                                                                              |
 | Fixture-proven approval pane                                                      | adopted    | Exact human channel                                                                                                              |
 | Generic provider question wakes human                                             | rejected   | Must use valid blocker                                                                                                           |
 | Labels remain                                                                     | adopted    | Visible history                                                                                                                  |
