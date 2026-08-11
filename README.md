@@ -37,6 +37,16 @@ One verified result is one full Git SHA. Any new SHA invalidates every gate —
 no impact analysis to argue with, and "the reviews passed" can never quietly mean
 "the reviews passed on something else".
 
+Tracked fixture, E2E and acceptance documents define scenarios, proof mappings
+and current reusable support posture; they are never candidate PASS receipts. A
+run returns live evidence only through its backend public surface and final
+answer. Its verified final-result record has exactly `candidate`, `worktree`,
+`reviews`, and `scenarios`: the unchanged full SHA, clean worktree, two A/B
+reviewer-actor-provider PASS facts, and one scenario-actor-provider PASS fact per
+applicable scenario, all content-safe and public-surface observed. An empty
+scenario list requires E2E NA. It never commits that evidence or creates a
+manifest, registry, receipt or external sink.
+
 ## Install
 
 **Proven here** — a local checkout, run from the project you want the skills in:

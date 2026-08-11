@@ -697,6 +697,16 @@ cleanliness around each review/E2E actor. Every mismatch invalidates applicable
 evidence. A transport UNKNOWN that retains PASS check fields remains unknown and
 cannot satisfy the deterministic-review gate.
 
+Hold candidate-bound gate evidence only in ephemeral current-run state. The
+final-result record has exactly `candidate`, `worktree`, `reviews` and
+`scenarios`; its review and scenario entries each carry the named actor,
+provider, PASS status and a content-safe evidence fact retrieved from the public
+backend surface. Require the same full candidate SHA and `worktree=clean`
+immediately before return. A dirty tree, changed SHA, absent scenario entry or
+missing/unreadable evidence invalidates the record and cannot produce PASS.
+Never turn these facts into a tracked edit or commit, manifest, receipt, verdict
+file or external evidence sink.
+
 ## 7. Failure and restart bounds
 
 Track the exact terminal process key
@@ -739,3 +749,9 @@ P1–P8 establish only installed external capabilities before implementation.
 H7b and H13–H37 establish the post-cutover behavior on one named unchanged SHA.
 No prose, incidental failure or old inline fixture transfers support to a new
 backend/provider/version/surface key.
+
+`docs/phase-0-fixtures.md` is only the durable fixture-definition and
+support-posture map. `SUPPORTED`, `PENDING` and `UNSUPPORTED` describe a surface
+key, never a candidate PASS receipt. Do not put a candidate SHA, scenario
+verdict, actor/provider run fact or live evidence into that tracked file. Carry
+the observation in current-run state and the final-result record only.

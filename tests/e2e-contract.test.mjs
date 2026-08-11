@@ -19,7 +19,13 @@ import MarkdownIt from "markdown-it";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const LEDGER = join(ROOT, "docs", "phase-0-fixtures.md");
 const markdown = new MarkdownIt();
-const LIVE_TABLE_HEADER = ["ID", "Exact fixture", "Expected observation", "Run status", "Support"];
+const FIXTURE_DEFINITION_HEADER = [
+  "ID",
+  "Exact fixture",
+  "Expected observation",
+  "Fixture posture",
+  "Support",
+];
 
 /** Read one Markdown table from AST tokens without interpreting source lines. */
 function tableRows(tokens, start) {
@@ -45,8 +51,8 @@ function tableRows(tokens, start) {
   return { rows, end: index };
 }
 
-/** Derive every live h2 fixture group and its ordered row IDs from the ledger AST. */
-function liveFixtureGroups(source) {
+/** Derive every h2 definition/support-posture group and its row IDs from the ledger AST. */
+function fixtureDefinitionGroups(source) {
   const tokens = markdown.parse(source, {});
   const groups = [];
   let current = null;
@@ -61,8 +67,8 @@ function liveFixtureGroups(source) {
     index = parsed.end;
     if (!parsed.rows[0]) continue;
     if (
-      parsed.rows[0].length !== LIVE_TABLE_HEADER.length ||
-      parsed.rows[0].some((value, column) => value !== LIVE_TABLE_HEADER[column])
+      parsed.rows[0].length !== FIXTURE_DEFINITION_HEADER.length ||
+      parsed.rows[0].some((value, column) => value !== FIXTURE_DEFINITION_HEADER[column])
     ) {
       continue;
     }
@@ -94,9 +100,21 @@ function fixtureLabel(group) {
   return `${compactIds(group.ids)} — ${description}`;
 }
 
+/** Reject instructions that would invalidate the candidate merely to log E2E evidence. */
+function assertCandidatePreservingOutput(output) {
+  assert.doesNotMatch(output, /record evidence per row/i);
+  assert.doesNotMatch(
+    output,
+    /(?:edit|write|update|append|record)[^\n]*docs\/(?:e2e|phase-0-fixtures)\.md/i,
+  );
+  assert.match(output, /exact SHA and per-scenario actor\/provider facts/);
+  assert.match(output, /current run\/final result/);
+  assert.match(output, /do not edit tracked docs for run evidence/);
+}
+
 test("make mo-e2e names exactly the live ledger groups and cannot report PASS", () => {
-  const fixtures = liveFixtureGroups(readFileSync(LEDGER, "utf8")).map(fixtureLabel);
-  assert.ok(fixtures.length > 0, "fixture ledger has no live tables");
+  const fixtures = fixtureDefinitionGroups(readFileSync(LEDGER, "utf8")).map(fixtureLabel);
+  assert.ok(fixtures.length > 0, "fixture ledger has no definition/support-posture tables");
 
   const result = spawnSync("make", ["mo-e2e"], { cwd: ROOT, encoding: "utf8" });
   assert.equal(result.status, 2, `${result.stdout}${result.stderr}`);
@@ -109,9 +127,17 @@ test("make mo-e2e names exactly the live ledger groups and cannot report PASS", 
       ...fixtures.map(
         (fixture, index) => `${index === 0 ? "Fixtures:  " : "           "}${fixture}`,
       ),
-      "Run:       work through docs/phase-0-fixtures.md and record evidence per row",
+      "Run:       execute the applicable scenarios without changing the frozen candidate",
+      "Evidence:  keep exact SHA and per-scenario actor/provider facts in the current run/final result",
+      "Ledger:    scenario definitions and support posture only; do not edit tracked docs for run evidence",
       "Cleanup:   stop every provider session you started, including on failure",
       "",
     ].join("\n"),
+  );
+  assertCandidatePreservingOutput(result.stdout);
+  assert.throws(() =>
+    assertCandidatePreservingOutput(
+      `${result.stdout}Run: edit docs/phase-0-fixtures.md to record evidence per row\n`,
+    ),
   );
 });

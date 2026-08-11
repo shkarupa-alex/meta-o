@@ -275,3 +275,11 @@ The review gate passes only when both complete reviews on the unchanged candidat
 are `status=PASS`, `unknown=none`, QC/smoke PASS, checks PASS/NA, no IDs remain
 open, vendors differ, and both reviewers evaluated full intent. Any commit makes
 the round stale and restarts both reviews.
+
+Review evidence is ephemeral current-run data from the backend public surface.
+The enclosing backend's verified final-result record has exactly `candidate`,
+`worktree`, `reviews`, and `scenarios`; `reviews` contains exactly A and B with
+reviewer, exact actor, provider, PASS, and one content-safe public-surface
+evidence fact. It requires the unchanged full SHA and `worktree=clean`. Never
+write or commit candidate-bound evidence into fixture, acceptance or E2E
+documents, and create no manifest, receipt, registry or external evidence sink.

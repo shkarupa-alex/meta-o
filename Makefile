@@ -64,6 +64,8 @@ mo-e2e:
 	@echo "           H7b — host-window resize"
 	@echo "           H13-H37 — post-cutover Herdr acceptance"
 	@echo "           OM1-OM8 — Omnigent final fixtures"
-	@echo "Run:       work through docs/phase-0-fixtures.md and record evidence per row"
+	@echo "Run:       execute the applicable scenarios without changing the frozen candidate"
+	@echo "Evidence:  keep exact SHA and per-scenario actor/provider facts in the current run/final result"
+	@echo "Ledger:    scenario definitions and support posture only; do not edit tracked docs for run evidence"
 	@echo "Cleanup:   stop every provider session you started, including on failure"
 	@exit 2

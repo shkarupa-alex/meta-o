@@ -245,6 +245,18 @@ to inspect the repository; no previous session is adopted.
 
 ## 6. Support fixtures
 
+Tracked fixture and acceptance documents define repeatable scenarios, map
+requirements, and state current reusable support posture only. They never store
+candidate-bound PASS evidence. Live facts come from the native public surface
+and remain in ephemeral current-run state and the final answer. The verified
+final-result record has exactly `candidate`, `worktree`, `reviews`, and
+`scenarios`: unchanged full SHA, `worktree=clean`, exactly two A/B
+reviewer/actor/provider/PASS/content-safe-evidence entries, and one equivalent
+entry for every applicable scenario. Empty `scenarios` requires independently
+established E2E NA. Never edit or commit tracked documentation after a gate or
+create a manifest, registry, receipt or external evidence sink. Dirty state,
+changed SHA, missing entry, or unreadable evidence invalidates every PASS.
+
 A supported route independently proves:
 
 - backend-neutral tracked-content firewall;

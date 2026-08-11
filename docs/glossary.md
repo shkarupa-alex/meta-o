@@ -39,6 +39,16 @@ prompt during it.
 **Gate** — evidence bound to one candidate SHA. A missing, incomplete, unknown,
 stale or differently bound verdict does not pass.
 
+**Live result** — ephemeral current-run/final response from backend public
+surfaces with exactly `candidate`, `worktree`, `reviews`, and `scenarios`. It
+binds one full SHA and clean worktree to exact review/scenario actor, provider,
+status and content-safe evidence. `scenarios=[]` requires independent E2E NA;
+missing/unreadable evidence cannot PASS. It is not written to a tracked document
+or external receipt sink.
+
+**Fixture map** — tracked definitions, requirement mappings and current reusable
+support posture. It never stores candidate-bound PASS evidence.
+
 **Verified result** — unchanged candidate whose required different-vendor
 reviews, QC, smoke, additional checks and E2E all pass.
 

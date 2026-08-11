@@ -57,6 +57,17 @@ A gate is therefore freshly proven for one full commit object or it is
 `unknown`. Any new commit invalidates every gate. A dirty worktree is never a
 candidate, and missing or unreadable evidence never becomes a partial pass.
 
+Tracked fixture, E2E and acceptance documents are durable definitions, proof
+maps and current reusable support posture—not candidate-bound receipts. Live
+gate facts stay in the backend's current run and final result: unchanged full
+SHA, clean worktree, and a record with exactly `candidate`, `worktree`,
+`reviews`, and `scenarios`. Review/scenario entries carry the exact actor,
+provider, status and content-safe public-surface evidence; `scenarios=[]`
+requires independently established E2E NA. Writing or committing those facts
+after a gate would create a new SHA and invalidate the very result it tried to
+preserve; an external sink, manifest or receipt would also create the forbidden
+second truth.
+
 Compact scratch is transport, not durable orchestration state. It preserves
 opaque bytes only through the bounded per-ID delivery, closure, adjudication and
 recovery transitions defined by the canonical methodology. Candidate

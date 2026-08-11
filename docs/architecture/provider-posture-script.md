@@ -93,9 +93,11 @@ malformed framing, inherited-state cases, dispatch shadows, process-group
 shutdown and status precedence. `make mo-lint` also runs the first self-check.
 
 Those tests prove the consumer and parser contract, not a real subscription
-surface. The live posture fixture separately records the exact provider,
+surface. The live posture fixture separately returns the exact provider,
 version, backend launch parent, trust/permission cycle and first executable
-actually used. Neither kind of evidence inherits the other's conclusion.
+actually used through the current backend run/final result. Those facts are not
+written into the tracked fixture map or another receipt. Neither kind of
+evidence inherits the other's conclusion.
 
 ## Rejected
 

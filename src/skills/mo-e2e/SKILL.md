@@ -59,12 +59,24 @@ product intent: never persist opaque human text or mutate tracked intent ledgers
 Any accompanying product preference returns separately through the repository-
 changing executor route.
 
-## Evidence body
+## Ephemeral evidence body
 
-For each selected scenario record a short checkable body with scenario identity,
-environment, action, observed result and PASS/FAIL/UNKNOWN. Do not include model
-reasoning, secrets, raw logs or artifact dumps. A retry is not proof of flakiness;
-name evidence that separates test/environment failure from candidate behavior.
+For each selected scenario return a short checkable body through the backend
+public surface with scenario identity, this exact actor, provider, environment,
+action, observed result and PASS/FAIL/UNKNOWN. Do not include model reasoning,
+secrets, raw logs or artifact dumps. A retry is not proof of flakiness; name
+evidence that separates test/environment failure from candidate behavior.
+
+This body is current-run evidence only. Do not write or commit it into the
+project's fixture, acceptance or E2E documents, and do not create a manifest,
+receipt, registry or external evidence sink. The orchestrator's final result
+record has exactly `candidate`, `worktree`, `reviews`, and `scenarios`. Every
+applicable scenario entry carries scenario, this exact actor, provider, PASS,
+and one content-safe public-surface evidence fact; an empty list requires
+independently established E2E NA. The record also requires the unchanged full
+candidate SHA, `worktree=clean`, and exactly two A/B PASS review entries. A dirty
+tree, changed SHA, missing entry, or unreadable evidence invalidates every
+candidate-bound PASS.
 
 The complete body including header is at most 65,536 UTF-8 bytes, contains no NUL
 and preserves original newlines.

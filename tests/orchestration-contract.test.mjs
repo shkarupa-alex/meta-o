@@ -1041,6 +1041,114 @@ test("candidate freeze rejects dirty, stale, non-commit and missing-develop meta
   assert.throws(() => freeze({ branch: "develop" }));
 });
 
+function validateFinalResult(result, { head = OID, clean = true, applicableScenarios = [] } = {}) {
+  assert.deepEqual(Object.keys(result), ["candidate", "worktree", "reviews", "scenarios"]);
+  assert.equal(clean, true);
+  assert.equal(result.candidate, head);
+  assert.match(result.candidate, /^[0-9a-f]{40,64}$/);
+  assert.equal(result.worktree, "clean");
+  assert.equal(result.reviews.length, 2);
+  assert.deepEqual(
+    result.reviews.map((entry) => entry.reviewer),
+    ["A", "B"],
+  );
+  for (const entry of result.reviews) {
+    assert.deepEqual(Object.keys(entry), ["reviewer", "actor", "provider", "status", "evidence"]);
+    assert.match(entry.actor, /^m-[a-z0-9._-]+$/);
+    assert.match(entry.provider, /^[a-z][a-z0-9._-]*$/);
+    assert.equal(entry.status, "PASS");
+    assert.match(entry.evidence, /^backend-public-surface:.+/);
+  }
+  assert.deepEqual(
+    result.scenarios.map((entry) => entry.scenario),
+    applicableScenarios,
+  );
+  for (const entry of result.scenarios) {
+    assert.deepEqual(Object.keys(entry), ["scenario", "actor", "provider", "status", "evidence"]);
+    assert.match(entry.actor, /^m-[a-z0-9._-]+$/);
+    assert.match(entry.provider, /^[a-z][a-z0-9._-]*$/);
+    assert.equal(entry.status, "PASS");
+    assert.match(entry.evidence, /^backend-public-surface:.+/);
+  }
+  return result.candidate;
+}
+
+test("candidate evidence remains ephemeral and final PASS binds exact clean SHA and scenarios", () => {
+  const finalResult = {
+    candidate: OID,
+    worktree: "clean",
+    reviews: [
+      {
+        reviewer: "A",
+        actor: "m-review-a",
+        provider: "claude",
+        status: "PASS",
+        evidence: "backend-public-surface:complete-v2-pass",
+      },
+      {
+        reviewer: "B",
+        actor: "m-review-b",
+        provider: "codex",
+        status: "PASS",
+        evidence: "backend-public-surface:complete-v2-pass",
+      },
+    ],
+    scenarios: [
+      {
+        scenario: "production-smoke",
+        actor: "m-e2e",
+        provider: "codex",
+        status: "PASS",
+        evidence: "backend-public-surface:complete-e2e-pass",
+      },
+    ],
+  };
+  assert.equal(
+    validateFinalResult(finalResult, { applicableScenarios: ["production-smoke"] }),
+    OID,
+  );
+  assert.throws(() => validateFinalResult(finalResult, { clean: false }));
+  assert.throws(() => validateFinalResult(finalResult, { head: "b".repeat(40) }));
+  assert.throws(() => validateFinalResult(finalResult, { applicableScenarios: [] }));
+  assert.throws(() =>
+    validateFinalResult(
+      {
+        ...finalResult,
+        scenarios: [{ ...finalResult.scenarios[0], evidence: "" }],
+      },
+      { applicableScenarios: ["production-smoke"] },
+    ),
+  );
+  assert.throws(() =>
+    validateFinalResult(
+      {
+        ...finalResult,
+        reviews: [finalResult.reviews[0], { ...finalResult.reviews[1], status: "UNKNOWN" }],
+      },
+      { applicableScenarios: ["production-smoke"] },
+    ),
+  );
+
+  const validateEvidenceInstruction = (instruction) => {
+    assert.equal(
+      instruction,
+      "carry candidate-bound evidence in current-run state and final answer only",
+    );
+  };
+  validateEvidenceInstruction(
+    "carry candidate-bound evidence in current-run state and final answer only",
+  );
+  for (const forbidden of [
+    "edit docs/phase-0-fixtures.md with candidate PASS evidence",
+    "append the candidate SHA and scenario result to a tracked document",
+    "commit a PASS receipt",
+    "record live actor/provider facts in docs/phase-0-fixtures.md",
+    "persist the verdict in an external evidence sink",
+  ]) {
+    assert.throws(() => validateEvidenceInstruction(forbidden));
+  }
+});
+
 test("blocker phase, ambiguity, forced dispute and no-progress rules fail closed", () => {
   assert.equal(acceptanceDecision({}), "attention_no_retry");
   assert.equal(acceptanceDecision({ contradictory: true }), "attention_no_retry");
@@ -1450,6 +1558,29 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
     /global list contains the complete A block before the\ncomplete B block/,
   );
   assert.match(methodologySource, /Never serialize raw set iteration or caller order/);
+  const candidate = sectionText(methodologySource, "3. Candidate and gates");
+  assert.match(candidate, /final-result record has exactly `candidate`, `worktree`,/);
+  assert.match(candidate, /Missing or unreadable evidence is\s+unknown, never PASS/);
+  assert.match(candidate, /Do not write, append, record or commit that live evidence/);
+  assert.match(
+    candidate,
+    /Do not create a manifest, receipt, verdict file or\s+external evidence sink/,
+  );
+  const finalAnswer = sectionText(skillSource, "Final answer");
+  assert.match(finalAnswer, /ephemeral current-run final-result record/);
+  assert.match(finalAnswer, /Recheck the same clean `HEAD` immediately before return/);
+  assert.match(
+    finalAnswer,
+    /Keep candidate-bound live evidence only in current-run state and the final\s+answer/,
+  );
+  assert.match(finalAnswer, /Never edit or commit `docs\/phase-0-fixtures\.md`/);
+  const freeze = sectionText(mechanicsSource, "6. Candidate freeze and waits");
+  assert.match(freeze, /final-result record has exactly `candidate`, `worktree`, `reviews` and/);
+  assert.match(
+    freeze,
+    /dirty tree, changed SHA, absent scenario entry or\s+missing\/unreadable evidence invalidates the record/,
+  );
+  assert.match(freeze, /Never turn these facts into a tracked edit or commit/);
   const attention = sectionText(methodologySource, "7. Blockers and human attention");
   assert.match(
     attention,
@@ -1490,6 +1621,11 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
   const loss = sectionText(skillSource, "Loss and attention");
   assert.match(loss, /`catalog_unknown`, `model_missing` and `launch_failed`/);
   const route = sectionText(methodologySource, "9. Route discovery and support");
+  assert.match(route, /durable definition and support-posture map only/);
+  assert.match(route, /none is a\s+candidate-bound PASS receipt/);
+  const fixture = sectionText(mechanicsSource, "8. Fixture boundary");
+  assert.match(fixture, /only the durable fixture-definition and\s+support-posture map/);
+  assert.match(fixture, /never a candidate PASS receipt/);
   const routePhrases = [
     "configured selection",
     "configured ID once when catalogue is unknown",
@@ -1729,6 +1865,38 @@ test("authored Herdr mutation guards kill acceptance, reviewer barrier and byte-
       ),
       methodology,
     ],
+    [
+      skill,
+      mechanics,
+      methodology.replace(
+        "durable definition and support-posture map only",
+        "candidate PASS receipt store",
+      ),
+    ],
+    [
+      skill.replace(
+        "Keep candidate-bound live evidence only in current-run state and the final\nanswer",
+        "Commit candidate-bound live evidence to a tracked report",
+      ),
+      mechanics,
+      methodology,
+    ],
+    [
+      skill,
+      mechanics.replace(
+        "Never turn these facts into a tracked edit or commit",
+        "Commit these facts to a tracked file",
+      ),
+      methodology,
+    ],
+    [
+      skill,
+      mechanics,
+      methodology.replace(
+        "Missing or unreadable evidence is\nunknown, never PASS",
+        "Missing evidence may PASS",
+      ),
+    ],
   ];
   for (const [
     index,
@@ -1741,7 +1909,7 @@ test("authored Herdr mutation guards kill acceptance, reviewer barrier and byte-
     );
     assert.throws(
       () => assertAuthoredHerdrContract(mutantSkill, mutantMechanics, mutantMethodology),
-      `mutation ${index + 1} must be rejected`,
+      `mutation ${index + 1} must be rejected (skill=${mutantSkill !== skill}, mechanics=${mutantMechanics !== mechanics}, methodology=${mutantMethodology !== methodology})`,
     );
   }
 });

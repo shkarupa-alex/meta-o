@@ -40,6 +40,8 @@ Require status 0 for every applicable shell, a complete non-divergent matrix and
 no selected provider whose record is `type=missing` or `path=missing` before
 topology mutation. Only fixed classification, command kind and first path enter context.
 Trust, permission, model activation and entitlement stay live fixture gates.
+`docs/phase-0-fixtures.md` defines fixture keys and durable support posture only;
+never record this candidate's SHA, PASS verdict or live evidence there.
 
 Use the bundled `scripts/mo-models.mjs` for preferences/catalogues. It is
 self-contained; missing ambient `node_modules` is not a reason to search the
@@ -315,6 +317,18 @@ wake the user.
 
 ## Final answer
 
-Return only the verified unchanged full SHA and a short summary, or a permitted
-`needs_attention` naming content-free topology/role/class/candidate identifiers.
-Do not create a report, finding archive, screenshot, raw log or completion file.
+Return the verified unchanged full SHA and a short summary backed by the
+ephemeral current-run final-result record. That record has exactly `candidate`,
+`worktree`, `reviews` and `scenarios`: require `worktree=clean`; include two
+reviewer/actor/provider/PASS/evidence entries; and include one
+scenario/actor/provider/PASS/evidence entry per applicable E2E scenario, all from
+the backend public surface. An empty scenario list requires the independently
+established E2E-NA case. Recheck the same clean `HEAD` immediately before return;
+a dirty tree, new SHA, missing evidence or unreadable evidence invalidates PASS.
+
+Keep candidate-bound live evidence only in current-run state and the final
+answer. Never edit or commit `docs/phase-0-fixtures.md` or another tracked file
+to record it, and never create a report, manifest, receipt, verdict file,
+external evidence sink, finding archive, screenshot, raw log or completion file.
+Otherwise return a permitted `needs_attention` naming only content-free
+topology/role/class/candidate identifiers.

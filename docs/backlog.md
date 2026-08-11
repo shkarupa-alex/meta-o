@@ -54,9 +54,10 @@ remain unsupported. The README may present their exact commands only as unproven
 not as verified installation paths. No standalone `mo-review` runtime is advertised.
 
 **Next step.** After the final candidate is pushed on explicit authority, run I3 and I5 from clean
-disposable projects, record the public full SHA, client versions and exact installed file lists in
-`docs/phase-0-fixtures.md`, then remove this item only if every row passes. Do not push solely to
-run these fixtures.
+disposable projects. Return the public full SHA, client versions, exact installed file lists,
+cleanup and statuses through the current backend run/final result; do not append them to tracked
+fixture docs or another receipt sink. Remove this item in a later independently verified change
+only after reusable remote support posture is established. Do not push solely to run the fixtures.
 
 ### Standalone `mo-review` execution is unavailable
 
@@ -86,9 +87,11 @@ Herdr actor surface cannot be adopted, and fewer than two proven reviewer vendor
 the Herdr-specific cutover.
 
 **Next step.** From a real interactive Herdr orchestrator pane, run P1-P8 in a scratch
-repository and record the exact support key, commands, observations, cleanup, and outcome in
-`docs/phase-0-fixtures.md`. A failure stays fail-closed and does not authorize inline,
-headless, SDK, or private-transcript fallback.
+repository. Return the exact support key, commands, observations, cleanup and outcome through
+the current backend run/final result; never write a candidate-bound receipt into the fixture map.
+A later independently verified documentation change may update reusable support posture. A
+failure stays fail-closed and does not authorize inline, headless, SDK or private-transcript
+fallback.
 
 ### H7b and H13-H37 have not run against the post-cutover candidate
 

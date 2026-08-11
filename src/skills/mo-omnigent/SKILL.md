@@ -149,6 +149,16 @@ extracted result interval. A result without the current marker is not the curren
 turn;
 there is no marker-free fallback.
 
+Candidate evidence remains only in ephemeral native-run state and the final
+answer. Return a verified final-result record with exactly `candidate`,
+`worktree`, `reviews`, and `scenarios`: the unchanged full SHA,
+`worktree=clean`, exactly two A/B reviewer/actor/provider/PASS/content-safe
+public-surface evidence entries, and one equivalent entry for every applicable
+scenario. An empty scenario list requires independently established E2E NA.
+Never edit or commit tracked fixture, acceptance or E2E documents as a PASS
+receipt, and create no manifest, registry, receipt or external evidence sink. A
+dirty tree, changed SHA, missing entry, or unreadable evidence invalidates PASS.
+
 ## Recovery
 
 Restart creates a new run and new native actors. Adopt no old session, gate,

@@ -201,6 +201,8 @@ Generated `skills/` counterparts change in the same increment and are never edit
 
 This change adds no orchestration CLI, provider proxy, daemon, adapter layer, state store, run registry, recovery protocol, verdict file, completion sentinel, receipt, manifest, digest, or baseline. Headless actor execution is not a fallback.
 
+Tracked fixture, E2E and acceptance documents are durable definitions, proof mappings and current reusable support posture only; they never become candidate-bound PASS receipts. Live candidate evidence remains ephemeral in current backend-run state and the final answer. Its final-result record has exactly `candidate`, `worktree`, `reviews`, and `scenarios`: `candidate` is the unchanged full SHA; `worktree=clean`; exactly two A/B review entries carry reviewer/actor/provider/PASS/content-safe public-surface evidence; and every applicable scenario entry carries scenario/actor/provider/PASS/content-safe public-surface evidence. An empty scenario list is valid only for independently established E2E NA. Missing or unreadable evidence is unknown, never PASS. Never edit or commit tracked docs after a gate and never create a manifest, receipt, verdict file or external evidence sink. A dirty tree or changed SHA invalidates every candidate-bound PASS.
+
 ## Implementation authority and change control
 
 The user-approved topology, roles, review ordering, human boundaries, candidate semantics, and fail-closed policy are stable. Final council review may still correct a concrete internal contradiction before publication. Implementation does not reopen an approved boundary merely because a local detail is inconvenient.
@@ -895,7 +897,7 @@ Claude bundle:
 - the brain-council paths are design references only: generated skills, tests, build, and runtime must not depend on `/Users/alex/bitrix/skills` being present;
 - system Claude resolved through established PATH scan;
 - Node 22 ESM bundle, no externals/minification;
-- measured first-build size plus 25% tolerance recorded in fixtures;
+- measured first-build size plus 25% tolerance enforced by deterministic coverage and named in the fixture definition, never appended as a candidate receipt;
 - no vendored executable or unresolved runtime import;
 - byte-identical Herdr/Omnigent output;
 - esbuild metafile package roots exactly match explicit `SHARED_PLAN` licence mappings;
@@ -1073,7 +1075,7 @@ Implementation may be presented for adoption only when:
 4. both reviewers pass that same SHA;
 5. applicable E2E passes that SHA;
 6. the named candidate being proved already contains the cutover and no old inline/headless actor path;
-7. acceptance mapping names the evidence for every criterion;
+7. acceptance mapping names every proof source while the ephemeral final result carries the exact candidate-bound facts without a tracked receipt;
 8. all intentionally unfinished or unsupported work is present in open backlog;
 9. no architecture question remains disguised as an implementation TODO;
 10. the returned result is the unchanged full SHA.
@@ -1107,7 +1109,7 @@ Splits must remain independently green. Generated output and newly false knowled
 | Backlog/docs discipline            | contracts, setup, backlog, methodology                                              |
 | Human boundaries/watchdog          | methodology, backend/watchdog skills                                                |
 | Impact inventory                   | Scope, distribution architecture, build-tree test                                   |
-| Implementation adoption threshold  | completion/cutover criteria, acceptance mapping, named candidate evidence           |
+| Implementation adoption threshold  | completion/cutover criteria, acceptance mapping, ephemeral named-candidate final result |
 
 `docs/references/my-opinion.md` is non-normative source framing. Later verbatim business clarification and methodology prevail.
 

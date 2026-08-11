@@ -2,22 +2,31 @@
 
 This map belongs to
 `spec/2026-08-08-herdr-orchestrator-operational-corrections/spec-review.md`.
-It names what must prove each requirement without claiming that planned or historical evidence
-proves the post-cutover candidate.
+It maps each requirement to its proof source and records current implementation/support posture.
+It is never a candidate-bound PASS receipt. Planned, historical, or tracked status cannot prove
+the post-cutover candidate.
 
 Statuses have narrow meanings:
 
-- **PENDING** — the required deterministic or live evidence has not passed one named
-  post-cutover SHA.
-- **UNSUPPORTED** — the exact live surface has not passed its fixture. This is not a
-  permanent product verdict; a passing exact fixture may change it.
-- **PASS** — evidence names the unchanged full candidate SHA and satisfies the row completely.
+- **PENDING** — the mapped requirement still needs current-run proof or an implementation step.
+- **UNSUPPORTED** — the exact live surface has no supported current posture. A repeatable exact
+  fixture may change this posture, but cannot prove a feature candidate.
+- **SUPPORTED** — the reusable surface posture is supported for its exact key. It is not a
+  candidate gate verdict.
 
-The deterministic implementation exists, but its final post-correction SHA and
-review gates are not frozen, so no row in this document is PASS yet. This task is
-running without `HERDR_ENV=1`, so no Herdr capability or agentic row can be
-executed honestly in the current session. Remote installation I3/I5 and native
-Omnigent OM1-OM8 likewise remain pending and unsupported in their own ledgers.
+The deterministic implementation exists, but its final post-correction SHA and review gates are
+not frozen, so completion rows remain PENDING. This task is running without `HERDR_ENV=1`, so no
+Herdr capability or agentic support posture can be established honestly in the current session.
+Remote installation I3/I5 and native Omnigent OM1-OM8 likewise remain PENDING/UNSUPPORTED in
+their fixture map.
+
+Live candidate proof stays in ephemeral backend-run state and the final answer. Its verified
+final-result record has exactly `candidate`, `worktree`, `reviews`, and `scenarios`: one unchanged
+full SHA; `worktree=clean`; exactly A/B reviewer, actor, provider, PASS, and content-safe
+public-surface evidence facts; and one such PASS entry for every applicable scenario. An empty
+scenario list requires independently established E2E NA. Never edit or commit this map after a
+gate, and create no receipt, manifest, or external evidence sink. A dirty tree, changed SHA,
+missing entry, or unreadable evidence invalidates every candidate PASS.
 
 ## Normative invariants
 
@@ -69,8 +78,8 @@ UNSUPPORTED.
 
 ## Agent-required Herdr fixtures
 
-H7b and H13-H37 run only after the candidate already contains the cutover and all
-deterministic gates pass. Every row must name that same full SHA.
+H7b and H13-H37 run only after the candidate already contains the cutover and all deterministic
+gates pass. The current run and final result, not these rows, name that same full SHA.
 
 | ID  | Scenario                                                                                                               | Status                |
 | --- | ---------------------------------------------------------------------------------------------------------------------- | --------------------- |
@@ -117,19 +126,20 @@ are not evidence for this backend.
 | OM7 | Weaker prompt-objective disclosure, final-row current-turn marker, inbound-frame isolation, and byte-identical fresh-executor capsule. | PENDING / UNSUPPORTED |
 | OM8 | Repository-changing answer/new-SHA route and independent operation/actor-bound, body-free operational approval.                        | PENDING / UNSUPPORTED |
 
-No supported Omnigent route has yet passed these rows against the post-cutover candidate.
+No current native Omnigent run has returned complete OM1-OM8 evidence for the post-cutover
+candidate; the tracked rows remain definitions and PENDING/UNSUPPORTED posture.
 
 ## Completion and cutover
 
-| ID  | Completion criterion                                                                                                       | Status                |
-| --- | -------------------------------------------------------------------------------------------------------------------------- | --------------------- |
-| C1  | P1-P8 establish required Herdr capabilities and two reviewer vendors.                                                      | PENDING / UNSUPPORTED |
-| C2  | Every planned increment, generated output, and removal of inline/headless behavior is committed with `make mo-qc` passing. | PENDING               |
-| C3  | H7b and all applicable H13-H37 rows pass one named candidate.                                                              | PENDING / UNSUPPORTED |
-| C4  | Both independent reviewers pass that same candidate with no actionable findings.                                           | PENDING               |
-| C5  | Applicable agent-required E2E passes that same candidate.                                                                  | PENDING               |
-| C6  | The candidate already contains the cutover and no old Herdr inline/headless actor path.                                    | PENDING               |
-| C7  | This acceptance map names evidence for every applicable requirement.                                                       | PENDING               |
-| C8  | Every intentionally unfinished or unsupported item is in the open backlog.                                                 | PENDING               |
-| C9  | No architecture question remains disguised as an implementation TODO.                                                      | PENDING               |
-| C10 | The returned result is the unchanged full candidate SHA.                                                                   | PENDING               |
+| ID  | Completion criterion                                                                                                         | Status                |
+| --- | ---------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| C1  | P1-P8 establish required Herdr capabilities and two reviewer vendors.                                                        | PENDING / UNSUPPORTED |
+| C2  | Every planned increment, generated output, and removal of inline/headless behavior is committed with `make mo-qc` passing.   | PENDING               |
+| C3  | H7b and all applicable H13-H37 rows pass one named candidate.                                                                | PENDING / UNSUPPORTED |
+| C4  | Both independent reviewers pass that same candidate with no actionable findings.                                             | PENDING               |
+| C5  | Applicable agent-required E2E passes that same candidate.                                                                    | PENDING               |
+| C6  | The candidate already contains the cutover and no old Herdr inline/headless actor path.                                      | PENDING               |
+| C7  | This map names every proof source; the ephemeral final result carries exact candidate-bound facts without a tracked receipt. | PENDING               |
+| C8  | Every intentionally unfinished or unsupported item is in the open backlog.                                                   | PENDING               |
+| C9  | No architecture question remains disguised as an implementation TODO.                                                        | PENDING               |
+| C10 | The returned result is the unchanged full candidate SHA.                                                                     | PENDING               |

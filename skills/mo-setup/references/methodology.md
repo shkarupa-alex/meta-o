@@ -227,6 +227,22 @@ One object ID is verified only when:
 - E2E passes, or both reviewers independently say NA;
 - every applicable backend surface fixture supports the exact surface key.
 
+Candidate-bound evidence exists only in ephemeral current-run state and the
+final answer. Its final-result record has exactly `candidate`, `worktree`,
+`reviews` and `scenarios`: `candidate` is the unchanged full SHA; `worktree` is
+`clean`; the two review entries each carry reviewer, actor, provider, PASS status
+and a content-safe evidence fact observed on the backend's public surface; and
+each applicable scenario has its own scenario, actor, provider, PASS status and
+content-safe public-surface evidence fact. An empty scenario list is valid only
+for the independently established E2E-NA case. Missing or unreadable evidence is
+unknown, never PASS. A dirty worktree or different `HEAD` invalidates the whole
+record.
+
+Do not write, append, record or commit that live evidence, candidate SHA or PASS
+verdict to a tracked document. Do not create a manifest, receipt, verdict file or
+external evidence sink. The final answer itself carries the record; it never
+points to a newly persisted receipt.
+
 ## 4. Compact handoffs
 
 The first line is an exact process header. Fields occur once and in the shown
@@ -729,6 +745,14 @@ activation, entitlement, workspace trust, and permission behavior through the
 separate exact live fixture. Mere membership of a directory in `PATH` proves
 nothing. A surface support key is
 backend/provider/version/surface/fixture; support never transfers between keys.
+
+`docs/phase-0-fixtures.md` is a durable definition and support-posture map only.
+Its posture may be `SUPPORTED`, `PENDING` or `UNSUPPORTED`; none is a
+candidate-bound PASS receipt. Exact candidate SHA, live scenario verdicts,
+actor/provider facts and run evidence never enter that file. An exact isolated
+fixture can change the durable support posture, while the current candidate's
+fixture observation remains only in current-run state and the final-result
+record.
 
 The settings helper remains the only writer of model preferences. Its catalogues
 are authoritative listings, not entitlement claims. Finite fallback is:

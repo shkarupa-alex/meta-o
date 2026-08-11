@@ -201,6 +201,15 @@ changing during review invalidates the affected evidence, and any new commit
 invalidates every gate and open finding ID. A transport-`UNKNOWN` handoff remains
 unknown even if check fields retained from a readable prefix say `PASS`.
 
+Complete-turn evidence remains ephemeral in the backend run and final result.
+That record has exactly `candidate`, `worktree`, `reviews`, and `scenarios`, and
+binds one unchanged full SHA and clean worktree to exact review/scenario actor,
+provider, status and content-safe public-surface facts. `scenarios=[]` requires
+independently established E2E NA. Tracked fixture, E2E and acceptance documents
+remain definitions/maps/support posture and are never edited or committed as
+candidate PASS receipts; no manifest, registry, receipt or external sink is
+introduced.
+
 Support belongs to the exact backend/provider/version/surface fixture key.
 Actor prose or an incidental live failure cannot grant or revoke it. P1-P8 prove
 installed external capability only; H7b and H13-H37 prove the implemented

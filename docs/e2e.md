@@ -2,25 +2,38 @@
 
 `make mo-qc` is the deterministic product gate. `make mo-e2e` deliberately runs no agentic
 scenario: it prints this document's entry point and exits 2. A live actor must name one full
-post-cutover candidate SHA and record per-scenario evidence.
+post-cutover candidate SHA and return per-scenario evidence through the backend public surface.
 
 Historical inline/headless runs do not prove the current Herdr route. The current route
 supports only visible ordinary interactive actors started through `herdr agent start`.
 
 ## Evidence contract
 
-Every live result records:
+Intermediate E2E handoffs may be PASS, FAIL, or UNKNOWN. A verified final-result
+record in the final answer has exactly `candidate`, `worktree`, `reviews`, and
+`scenarios`:
 
-- the unchanged full candidate SHA;
-- backend, provider, provider version, Herdr/Omnigent version, OS, and exact surface support key;
-- the scenario ID and exact public commands or actor prompts used;
-- observed public lifecycle, pane, header, and Git metadata facts;
-- cleanup performed, including cleanup after failure;
-- `PASS`, `FAIL`, or `UNKNOWN`, with no partial pass.
+- `candidate`: the unchanged full SHA;
+- `worktree`: exactly `clean`;
+- `reviews[]`: exactly A and B, each with reviewer, exact actor, provider, PASS, and one
+  content-safe public-surface evidence fact;
+- `scenarios[]`: every applicable scenario, each with scenario, exact actor, provider, PASS, and
+  one content-safe public-surface evidence fact; it may be empty only for independently
+  established E2E NA;
+- no missing or unreadable entry; there is no partial pass.
+
+Each content-safe `evidence` fact may name relevant versions, OS, command/prompt,
+observed public fact, and cleanup with secrets omitted; these do not add
+top-level record fields.
 
 `PASS` is valid only when the complete expected result can be read and the final `HEAD` still
 equals the named candidate with a clean worktree. Missing, truncated, ambiguous, stale, or
 other-SHA evidence is `UNKNOWN`.
+
+This result remains in the current run and final response. Never write or commit it into
+`docs/phase-0-fixtures.md`, `docs/acceptance.md`, or another tracked file, and create no
+manifest, receipt, registry, or external evidence sink. Those documents define fixtures, map
+requirements, and state current reusable support posture only.
 
 ## Deterministic scenarios
 
@@ -53,8 +66,9 @@ native lifecycle, vendor diversity, or absence of tracked reads in a real actor 
 Run I3 and I5 from `docs/phase-0-fixtures.md` only after a separately authorized action has
 pushed the exact candidate. They prove that both advertised remote clients discover the
 committed generated tree; local-path installation is deterministic coverage, not remote
-evidence. Until both rows carry their own public SHA, client version, installed file list, and
-cleanup record, the remote installation paths remain unsupported.
+evidence. Until a current run returns its public SHA, client version, installed file list, and
+cleanup facts, the remote installation paths remain unsupported; those facts are not appended
+to the fixture map.
 
 ## Preimplementation Herdr probes
 
@@ -88,8 +102,9 @@ removal of the old inline/headless path.
 | Diversity and waits    | H33-H35      | Actual vendors, direct waits, retry/no-progress bounds, and non-gating badges.                                                                |
 | Failure edges          | H36-H37      | Missing `develop` and total existing-peer adjudication.                                                                                       |
 
-The detailed expected observation and current status for every ID live in
-`docs/phase-0-fixtures.md`. No row is currently PASS.
+The detailed expected observation and current support posture for every ID live in
+`docs/phase-0-fixtures.md`. Candidate PASS exists only in the live run/final result; current
+fixture rows remain PENDING/UNSUPPORTED.
 
 ## Omnigent scenarios
 
@@ -119,7 +134,7 @@ preflight -> executor -> clean candidate -> A -> B -> barrier
   -> both reviews PASS -> applicable E2E -> unchanged full SHA
 ```
 
-Required evidence:
+Required current-run evidence:
 
 1. P1-P8 already support the exact Herdr keys used.
 2. `make mo-qc` passes the candidate and rewrites nothing.
@@ -129,6 +144,8 @@ Required evidence:
 6. Final `HEAD` equals the candidate and the worktree remains clean.
 
 Any new commit restarts items 2-6.
+The final result returns all six facts with exact actor/provider and per-scenario details; it
+does not update or commit a tracked evidence document.
 
 ## Environment and cleanup
 
