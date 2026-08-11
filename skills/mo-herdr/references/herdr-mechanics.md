@@ -116,9 +116,12 @@ const idList = (value, reviewer) => {
   const list = value.split(",");
   die(new Set(list).size === list.length);
   const last = { A: 0n, B: 0n };
+  let lastPrefix = "A";
   for (const id of list) {
     const match = id.match(/^([AB])-([1-9][0-9]*)$/);
     die(match && (!reviewer || match[1] === reviewer));
+    die(lastPrefix <= match[1]);
+    lastPrefix = match[1];
     const suffix = BigInt(match[2]);
     die(suffix > last[match[1]]);
     last[match[1]] = suffix;
@@ -337,9 +340,12 @@ const list = (value, reviewer) => {
   if (value === "none") return [];
   const found = value.split(","), last = { A: 0n, B: 0n };
   ok(new Set(found).size === found.length);
+  let lastPrefix = "A";
   for (const id of found) {
     const match = id.match(/^([AB])-([1-9][0-9]*)$/);
     ok(match && (!reviewer || match[1] === reviewer));
+    ok(lastPrefix <= match[1]);
+    lastPrefix = match[1];
     const suffix = BigInt(match[2]);
     ok(suffix > last[match[1]]);
     last[match[1]] = suffix;
@@ -357,7 +363,7 @@ SCHEMA MO_EXECUTOR_V1|type=<CANDIDATE|RESPONSE|BLOCKER>|candidate=<oid|none>|bra
 CANDIDATE candidate=full clean HEAD oid; branch=feature/<slug>; base=develop commit oid; fixes=sorted fixed IDs or none; rebuts=none; blocker=none
 RESPONSE candidate=frozen oid; branch=current feature branch; base=none; fixes=none; rebuts=exact complete current open-ID set for exactly one origin; blocker=none
 BLOCKER candidate=current oid or none; branch=current feature branch or none; base=none; fixes=none; rebuts=none; blocker=product_meaning|product_architecture_fork|irreversible_action|credentials|subscription|external_blocker
-EMIT exactly one header as the first output row; IDs are unique canonical numerically sorted A-<positive-int> or B-<positive-int>; never mix origins in RESPONSE
+EMIT exactly one header as the first output row; IDs are unique canonical A-<positive-int> or B-<positive-int>, ordered all A then all B and strictly increasing by unbounded BigInt suffix inside each prefix; never mix origins in RESPONSE
 MO_EXECUTOR_PROTOCOL_CAPSULE_END_V1
 `;
 try {
@@ -694,8 +700,11 @@ cannot satisfy the deterministic-review gate.
 ## 7. Failure and restart bounds
 
 Track the exact terminal process key
-`<candidate, actor, phase, header-type, status, open-ids>`. Two identical terminal
-events without a new complete result stop the run. Newly introduced IDs do not
+`<candidate, actor, phase, header-type, status, open-ids>`. Derive its final field
+from the internal global open-ID set by validating unique canonical IDs, sorting
+A before B and each prefix by unbounded `BigInt` suffix, then joining or using
+`none` when empty. Never use raw set/caller order. Two identical terminal events
+without a new complete result stop the run. Newly introduced IDs do not
 reset the per-ID forced-dispute counter.
 
 On actor exit, recreate the same kind/pane once and include the current ID floor.

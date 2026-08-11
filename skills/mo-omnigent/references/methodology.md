@@ -159,7 +159,7 @@ SCHEMA MO_EXECUTOR_V1|type=<CANDIDATE|RESPONSE|BLOCKER>|candidate=<oid|none>|bra
 CANDIDATE candidate=full clean HEAD oid; branch=feature/<slug>; base=develop commit oid; fixes=sorted fixed IDs or none; rebuts=none; blocker=none
 RESPONSE candidate=frozen oid; branch=current feature branch; base=none; fixes=none; rebuts=exact complete current open-ID set for exactly one origin; blocker=none
 BLOCKER candidate=current oid or none; branch=current feature branch or none; base=none; fixes=none; rebuts=none; blocker=product_meaning|product_architecture_fork|irreversible_action|credentials|subscription|external_blocker
-EMIT exactly one header as the first output row; IDs are unique canonical numerically sorted A-<positive-int> or B-<positive-int>; never mix origins in RESPONSE
+EMIT exactly one header as the first output row; IDs are unique canonical A-<positive-int> or B-<positive-int>, ordered all A then all B and strictly increasing by unbounded BigInt suffix inside each prefix; never mix origins in RESPONSE
 MO_EXECUTOR_PROTOCOL_CAPSULE_END_V1
 ```
 
@@ -292,7 +292,9 @@ IDs introduced there.
 
 Finding suffixes are unbounded canonical positive decimals: no leading zero and
 no maximum. Every parser and lifecycle comparison uses exact `BigInt` ordering
-inside each A/B prefix; floating-point `Number`, unary numeric coercion and
+inside each A/B prefix. A global list contains the complete A block before the
+complete B block; interleaving such as `A-1,B-1,A-2` is invalid. Reviewer-origin
+lists remain single-prefix. Floating-point `Number`, unary numeric coercion and
 lexicographic suffix ordering are invalid.
 
 E2E semantics:
@@ -639,8 +641,12 @@ prose. Healthy work re-arms a bounded direct wait and has no artificial total
 runtime cap.
 
 The canonical no-progress key is
-`<candidate, actor, phase, header-type, status, open-ids>`. Repeating the same key
-twice without a new complete result produces attention. Lifecycle unknown re-arms
+`<candidate, actor, phase, header-type, status, open-ids>`. Before serialization,
+validate the internal global open-ID set, remove no entries, sort it by A-before-B
+then unbounded `BigInt` suffix, and join that canonical list; `none` represents
+the empty set. Never serialize raw set iteration or caller order. Equivalent
+permutations therefore produce the same key. Repeating the same key twice
+without a new complete result produces attention. Lifecycle unknown re-arms
 once. Actor or pane loss recreates the same kind/role once with the current
 finding-ID floor; a second loss is attention. Old panes remain visible.
 

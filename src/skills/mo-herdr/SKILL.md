@@ -191,8 +191,11 @@ goes to A. A new candidate invalidates all
 prior gates and open IDs but does not reset the feature-run ID floor. An executor
 BLOCKER is accepted only before a candidate or during resolution of that frozen
 candidate. The canonical no-progress key includes candidate, actor, phase,
-header type, status and open IDs; its second unchanged terminal occurrence stops
-the run. Executor RESPONSE `rebuts` must equal the complete current open-ID set
+header type, status and open IDs; canonicalize its internal global open-ID set by
+A-before-B and unbounded-`BigInt` suffix order before serialization, never raw
+set/caller order, so equivalent permutations share one key. Its second unchanged
+terminal occurrence stops the run. Executor RESPONSE `rebuts` must equal the
+complete current open-ID set
 for exactly one origin; subsets, supersets and mixed A/B responses are rejected
 globally and handled in separate origin turns. The next
 origin handoff accounts for every rebutted ID exactly once across disjoint
@@ -202,7 +205,9 @@ result without new IDs, with canonical `open` exactly equal to canonical
 `disputes` after closes; reject retained closed, missing-dispute or extra open
 IDs. `DISPUTED` represents all-dispute. Treat every canonical positive-decimal
 finding suffix as unbounded and compare it only with `BigInt`, never `Number`,
-unary coercion or lexicographic ordering. Keep the full exact
+unary coercion or lexicographic ordering. In every global ID list put the entire
+A block before the entire B block; reject any interleaving, while reviewer-origin
+lists stay single-prefix. Keep the full exact
 `RESPONSE.rebuts` set as `expectedOpen`, derive separate canonical
 `aggregateTargets` byte-for-byte from the validated outcome's `disputes`, and
 never include its closed IDs. Relay each `aggregateTargets` ID sequentially with

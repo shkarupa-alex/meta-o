@@ -51,7 +51,10 @@ mechanical accounting fields; it is not by itself proof of a complete turn.
 candidate and phase, bounded by a fixture-proven provider lower boundary.
 
 **Terminal process event** — mechanical tuple of candidate, actor, phase, header
-type, status and open IDs used to detect unchanged-failure loops.
+type, status and open IDs used to detect unchanged-failure loops. Its open-ID
+component canonicalizes the internal set as the complete A block followed by the
+complete B block before serialization; raw set/caller order is invalid, so
+equivalent permutations produce one key.
 
 **Opaque body** — actor-produced bytes transported without interpretation,
 filtering, ranking, merging, paraphrase or command execution.
@@ -64,9 +67,10 @@ before any reviewer body reaches the executor.
 
 **Finding** — reviewer-owned `A-*` or `B-*` issue whose full opaque body contains
 Evidence, Impact and Expected fix. Its suffix is an unbounded canonical positive
-decimal, ordered exactly as a `BigInt` within its prefix; `Number`, unary numeric
-coercion, and lexicographic suffix ordering are invalid. Only its origin reviewer
-closes it.
+decimal, ordered exactly as a `BigInt` within its prefix. A canonical mixed ID
+list is every A ID first and every B ID second; reviewer-origin lists have one
+prefix. `Number`, unary numeric coercion, and lexicographic suffix ordering are
+invalid. Only its origin reviewer closes it.
 
 **Adjudication** — one other-vendor decision on a disputed finding. Requests for
 a same-origin outcome's exact validated `disputes` set run sequentially; closed

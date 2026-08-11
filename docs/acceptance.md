@@ -81,7 +81,7 @@ deterministic gates pass. Every row must name that same full SHA.
 | H16 | Native goal capsule, quiet end, re-arm, and portable maximum relay prompt.                                             | PENDING / UNSUPPORTED |
 | H17 | Final-row current-turn-marker extraction ladder, inbound-frame isolation, structural boundary, and H7b behavior.       | PENDING / UNSUPPORTED |
 | H18 | Actor noncompliance versus structural surface failure classification.                                                  | PENDING / UNSUPPORTED |
-| H19 | Multipart bounds, one-part outcomes, and unbounded exact numeric ID ordering.                                          | PENDING / UNSUPPORTED |
+| H19 | Multipart bounds, one-part outcomes, and exact A-then-B unbounded numeric ID ordering.                                 | PENDING / UNSUPPORTED |
 | H20 | A-before-B independence, PASS/PASS progression, and conditional atomic pair release.                                   | PENDING / UNSUPPORTED |
 | H21 | Mutating reviewer-check handling and candidate invalidation.                                                           | PENDING / UNSUPPORTED |
 | H22 | Independent reviewer ownership of QC, smoke, and applicable checks.                                                    | PENDING / UNSUPPORTED |
@@ -96,7 +96,7 @@ deterministic gates pass. Every row must name that same full SHA.
 | H31 | Test-only tracked-read audit with a canary.                                                                            | PENDING / UNSUPPORTED |
 | H32 | Disputes-only peer-envelope projection, outcome budget, refcounts, cleanup, ambiguity, and scratch restart.            | PENDING / UNSUPPORTED |
 | H33 | Actual reviewer vendor diversity and one reviewer differing from executor.                                             | PENDING / UNSUPPORTED |
-| H34 | Direct waits, one waiter, bounded retries, and no-progress stop.                                                       | PENDING / UNSUPPORTED |
+| H34 | Direct waits, one waiter, bounded retries, and canonicalized no-progress-key stop.                                     | PENDING / UNSUPPORTED |
 | H35 | Metadata badges remain observable but non-gating.                                                                      | PENDING / UNSUPPORTED |
 | H36 | Missing or unusable `develop` fails closed with no branch fallback.                                                    | PENDING / UNSUPPORTED |
 | H37 | Exact disputes-target adjudication, projection/budget bounds, and human-decision invalidation.                         | PENDING / UNSUPPORTED |
@@ -111,7 +111,7 @@ are not evidence for this backend.
 | OM1 | Post-activation tracked-content firewall.                                                                                              | PENDING / UNSUPPORTED |
 | OM2 | Clean full-SHA candidate and candidate-bound gates.                                                                                    | PENDING / UNSUPPORTED |
 | OM3 | Sequential reviews, PASS/PASS gate, conditional pair release, A-only invalidation.                                                     | PENDING / UNSUPPORTED |
-| OM4 | Exact outcome-open accounting, unbounded numeric IDs, disputes-only aggregate adjudication, and repository-changing input.             | PENDING / UNSUPPORTED |
+| OM4 | Exact outcome-open accounting, canonical A-then-B BigInt IDs, disputes-only adjudication, and repository-changing input.               | PENDING / UNSUPPORTED |
 | OM5 | Commit invalidation and full gate restart.                                                                                             | PENDING / UNSUPPORTED |
 | OM6 | Native continuity/recovery without private stores or invented Herdr evidence.                                                          | PENDING / UNSUPPORTED |
 | OM7 | Weaker prompt-objective disclosure, final-row current-turn marker, inbound-frame isolation, and byte-identical fresh-executor capsule. | PENDING / UNSUPPORTED |

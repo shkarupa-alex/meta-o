@@ -90,9 +90,13 @@ settled turns, and a mixed-origin response is rejected rather than split or
 interpreted.
 
 Finding suffixes are unbounded canonical positive decimals. Protocol consumers
-group IDs by prefix and require strictly increasing exact `BigInt` suffix order;
-`Number`, unary numeric coercion, and lexicographic suffix comparison cannot
-preserve this invariant and are forbidden.
+require one complete A block followed by one complete B block, with strictly
+increasing exact `BigInt` suffix order inside each block. Reviewer-origin lists
+have one prefix only. `Number`, unary numeric coercion, and lexicographic suffix
+comparison cannot preserve this invariant and are forbidden.
+No-progress-key construction canonicalizes its internal global open-ID set this
+way before serialization. Raw set iteration and caller order are forbidden, so
+equivalent permutations produce one key.
 
 Multi-ID adjudication requests remain sequential, but terminal delivery is
 total and atomic. The canonical target set is the validated origin outcome's

@@ -55,7 +55,7 @@ SCHEMA MO_EXECUTOR_V1|type=<CANDIDATE|RESPONSE|BLOCKER>|candidate=<oid|none>|bra
 CANDIDATE candidate=full clean HEAD oid; branch=feature/<slug>; base=develop commit oid; fixes=sorted fixed IDs or none; rebuts=none; blocker=none
 RESPONSE candidate=frozen oid; branch=current feature branch; base=none; fixes=none; rebuts=exact complete current open-ID set for exactly one origin; blocker=none
 BLOCKER candidate=current oid or none; branch=current feature branch or none; base=none; fixes=none; rebuts=none; blocker=product_meaning|product_architecture_fork|irreversible_action|credentials|subscription|external_blocker
-EMIT exactly one header as the first output row; IDs are unique canonical numerically sorted A-<positive-int> or B-<positive-int>; never mix origins in RESPONSE
+EMIT exactly one header as the first output row; IDs are unique canonical A-<positive-int> or B-<positive-int>, ordered all A then all B and strictly increasing by unbounded BigInt suffix inside each prefix; never mix origins in RESPONSE
 MO_EXECUTOR_PROTOCOL_CAPSULE_END_V1
 ```
 
@@ -159,8 +159,14 @@ Herdr-style extraction fallback.
 
 Finding IDs match `^([AB])-([1-9][0-9]*)$`; their positive decimal suffix has no
 cap. Reject duplicates, group by prefix, and require strictly increasing exact
-`BigInt` suffix order within each prefix. Never compare suffixes through
-`Number`, unary numeric coercion, or lexicographic order.
+`BigInt` suffix order within each prefix. A mixed list is canonical only when
+all A IDs form the first block and all B IDs form the second; origin-reviewer
+lists contain exactly one prefix. Never compare suffixes through `Number`, unary
+numeric coercion, or lexicographic order.
+
+Before serializing the no-progress key, canonicalize its internal global open-ID
+set into that A-then-B, within-prefix `BigInt` order. Never preserve raw set
+iteration or caller order; equivalent permutations produce one identical key.
 
 ## 5. Independence and freeze
 

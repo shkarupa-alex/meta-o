@@ -96,8 +96,10 @@ Fields occur once in that order. Candidate equals observed `HEAD`. Finding IDs
 match `^([AB])-([1-9][0-9]*)$`, are unique and comma-separated with no spaces,
 and have no numeric cap. Group by prefix and compare each unbounded decimal
 suffix exactly as a `BigInt`; suffixes must be strictly increasing within their
-prefix. Never use `Number`, unary numeric coercion, or lexicographic suffix
-comparison. Positive integers have no sign or leading zero.
+prefix. A mixed list contains the complete A block first and the complete B
+block second; an origin-reviewer list has only its own prefix. Never use
+`Number`, unary numeric coercion, or lexicographic suffix comparison. Positive
+integers have no sign or leading zero.
 
 State rules:
 

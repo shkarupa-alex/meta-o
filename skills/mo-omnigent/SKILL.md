@@ -79,8 +79,9 @@ ask the human to resume, route or select an ordinary actor.
    by `ORIGIN_FINDINGS_TO_EXECUTOR`. Different origins use separate settled
    resolution turns, and a mixed-origin executor `RESPONSE` is invalid.
    Finding suffixes are unbounded canonical positive decimals and are ordered
-   with exact `BigInt` comparison within each prefix, never `Number`, unary
-   coercion, or lexicographic comparison.
+   with exact `BigInt` comparison within each prefix. A mixed list puts every A
+   ID first and every B ID second; origin-reviewer lists contain one prefix.
+   Never use `Number`, unary coercion, or lexicographic comparison.
    Resolve every target in the validated outcome's exact canonical `disputes`
    set before relaying any terminal peer outcome. Full `rebuts` remains the
    close/dispute accounting set but never expands the aggregate target set.

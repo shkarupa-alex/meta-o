@@ -33,7 +33,7 @@ SCHEMA MO_EXECUTOR_V1|type=<CANDIDATE|RESPONSE|BLOCKER>|candidate=<oid|none>|bra
 CANDIDATE candidate=full clean HEAD oid; branch=feature/<slug>; base=develop commit oid; fixes=sorted fixed IDs or none; rebuts=none; blocker=none
 RESPONSE candidate=frozen oid; branch=current feature branch; base=none; fixes=none; rebuts=exact complete current open-ID set for exactly one origin; blocker=none
 BLOCKER candidate=current oid or none; branch=current feature branch or none; base=none; fixes=none; rebuts=none; blocker=product_meaning|product_architecture_fork|irreversible_action|credentials|subscription|external_blocker
-EMIT exactly one header as the first output row; IDs are unique canonical numerically sorted A-<positive-int> or B-<positive-int>; never mix origins in RESPONSE
+EMIT exactly one header as the first output row; IDs are unique canonical A-<positive-int> or B-<positive-int>, ordered all A then all B and strictly increasing by unbounded BigInt suffix inside each prefix; never mix origins in RESPONSE
 MO_EXECUTOR_PROTOCOL_CAPSULE_END_V1
 `;
 const markdown = new MarkdownIt();
@@ -102,10 +102,13 @@ function ids(value, prefix) {
   const found = value.split(",");
   assert.equal(new Set(found).size, found.length, "duplicate finding ID");
   const byPrefix = { A: [], B: [] };
+  let lastPrefix = "A";
   for (const id of found) {
     const match = id.match(/^([AB])-([1-9][0-9]*)$/);
     assert.ok(match, `non-canonical finding ID ${id}`);
     if (prefix) assert.equal(match[1], prefix);
+    assert.ok(lastPrefix <= match[1], "finding ID prefixes are interleaved");
+    lastPrefix = match[1];
     byPrefix[match[1]].push(BigInt(match[2]));
   }
   for (const numbers of Object.values(byPrefix)) {
@@ -116,6 +119,29 @@ function ids(value, prefix) {
     );
   }
   return found;
+}
+
+function canonicalOpenIds(value) {
+  if (value === "none") return "none";
+  const found = typeof value === "string" ? value.split(",") : [...value];
+  assert.equal(new Set(found).size, found.length, "duplicate open ID");
+  const parsed = found.map((id) => {
+    const match = id.match(/^([AB])-([1-9][0-9]*)$/);
+    assert.ok(match, `non-canonical open ID ${id}`);
+    return { id, prefix: match[1], suffix: BigInt(match[2]) };
+  });
+  parsed.sort((left, right) =>
+    left.prefix === right.prefix
+      ? left.suffix < right.suffix
+        ? -1
+        : left.suffix > right.suffix
+          ? 1
+          : 0
+      : left.prefix < right.prefix
+        ? -1
+        : 1,
+  );
+  return parsed.length ? parsed.map(({ id }) => id).join(",") : "none";
 }
 
 function validateReview(line) {
@@ -426,7 +452,7 @@ class ReviewEvaluation {
  * and no-progress bounds so lifecycle transitions are not prose-only claims.
  */
 class FeatureRun {
-  constructor() {
+  constructor(openKey = canonicalOpenIds) {
     this.candidate = undefined;
     this.idFloor = { A: 0n, B: 0n };
     this.gates = new Map();
@@ -434,6 +460,7 @@ class FeatureRun {
     this.adjudicated = new Set();
     this.noProgress = new Map();
     this.phase = "execution";
+    this.openKey = openKey;
   }
 
   freeze(candidate) {
@@ -487,7 +514,14 @@ class FeatureRun {
 
   terminal(actor, phase, headerType, status, openIds, complete = false) {
     if (complete) this.noProgress.clear();
-    const key = [this.candidate ?? "none", actor, phase, headerType, status, openIds].join("|");
+    const key = [
+      this.candidate ?? "none",
+      actor,
+      phase,
+      headerType,
+      status,
+      this.openKey(openIds),
+    ].join("|");
     const count = (this.noProgress.get(key) ?? 0) + 1;
     this.noProgress.set(key, count);
     assert.ok(count < 2, "second identical terminal key is no progress");
@@ -628,6 +662,14 @@ test("all compact headers have exact field order and canonical identities", () =
   assert.throws(() => ids("A-9007199254740993,A-9007199254740992", "A"));
   assert.throws(() => ids("A-9007199254740992,A-9007199254740992", "A"));
   assert.throws(() => ids("A-09007199254740992", "A"));
+  const hugeGrouped = `${hugeAdjacent},B-9007199254740992,B-9007199254740993`;
+  assert.deepEqual(ids(hugeGrouped), hugeGrouped.split(","));
+  assert.throws(() => ids("A-1,B-1,A-2"));
+  assert.throws(() => ids("B-1,A-1"));
+  assert.equal(
+    canonicalOpenIds("B-9007199254740993,A-9007199254740993,B-9007199254740992,A-9007199254740992"),
+    hugeGrouped,
+  );
 });
 
 test("executor and E2E state matrices reject contradictory compact headers", () => {
@@ -1057,6 +1099,43 @@ test("blocker phase, ambiguity, forced dispute and no-progress rules fail closed
   run.terminal("reviewer-a", "origin", "MO_REVIEW_V2", "DISPUTED", "A-1");
   assert.throws(() => run.terminal("reviewer-a", "origin", "MO_REVIEW_V2", "DISPUTED", "A-1"));
 
+  const equivalentOpenSets = new FeatureRun();
+  equivalentOpenSets.freeze(OID);
+  equivalentOpenSets.terminal(
+    "orchestrator",
+    "resolution",
+    "MO_REVIEW_V2",
+    "UNKNOWN",
+    "B-9007199254740993,A-9007199254740993,B-9007199254740992,A-9007199254740992",
+  );
+  assert.throws(() =>
+    equivalentOpenSets.terminal(
+      "orchestrator",
+      "resolution",
+      "MO_REVIEW_V2",
+      "UNKNOWN",
+      "A-9007199254740992,A-9007199254740993,B-9007199254740992,B-9007199254740993",
+    ),
+  );
+  const rawSerializationMutant = new FeatureRun((openIds) => openIds);
+  rawSerializationMutant.freeze(OID);
+  rawSerializationMutant.terminal(
+    "orchestrator",
+    "resolution",
+    "MO_REVIEW_V2",
+    "UNKNOWN",
+    "B-1,A-1",
+  );
+  assert.doesNotThrow(() =>
+    rawSerializationMutant.terminal(
+      "orchestrator",
+      "resolution",
+      "MO_REVIEW_V2",
+      "UNKNOWN",
+      "A-1,B-1",
+    ),
+  );
+
   const forcedOutcome = (rebuts, next) => {
     for (const id of rebuts) {
       assert.ok(next.closes.includes(id) || next.disputed.includes(id), `${id} was deferred`);
@@ -1317,11 +1396,13 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
   assert.ok(relay.includes("count = aggregateTargetIds.length"));
   assert.ok(relay.includes("h.disputes === aggregateTargets"));
   assert.ok(relay.includes("const suffix = BigInt(match[2]);"));
+  assert.ok(relay.includes("ok(lastPrefix <= match[1]);"));
   assert.ok(relay.includes("const leftNumber = BigInt(leftSuffix)"));
   assert.ok(relay.includes('h.status === "OUTCOMES"') && relay.includes("h.open === h.disputes"));
   const extraction = sectionText(mechanicsSource, "3. Adaptive extraction");
   assert.ok(extraction.includes("Math.min(65_536, +peerOutcomeRemaining)"));
   assert.ok(extraction.includes("const suffix = BigInt(match[2]);"));
+  assert.ok(extraction.includes("die(lastPrefix <= match[1]);"));
   assert.ok(extraction.includes("h.open === h.disputes"));
   assert.ok(
     relay.includes(
@@ -1343,6 +1424,8 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
   );
   assert.match(flow, /derive separate canonical\n`aggregateTargets` byte-for-byte/);
   assert.match(flow, /suffix as unbounded and compare it only with `BigInt`/);
+  assert.match(flow, /global ID list put the entire\nA block before the entire B block/);
+  assert.match(flow, /canonicalize its internal global open-ID set by\nA-before-B/);
   assert.match(flow, /subsets, supersets and mixed A\/B responses are rejected\nglobally/);
   assert.match(flow, /`FOLLOWUP`\ncloses them all and adds new IDs/);
   assert.match(
@@ -1362,6 +1445,11 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
     /canonical `open` is\n  byte-for-byte equal to canonical `disputes`/,
   );
   assert.match(methodologySource, /Finding suffixes are unbounded canonical positive decimals/);
+  assert.match(
+    methodologySource,
+    /global list contains the complete A block before the\ncomplete B block/,
+  );
+  assert.match(methodologySource, /Never serialize raw set iteration or caller order/);
   const attention = sectionText(methodologySource, "7. Blockers and human attention");
   assert.match(
     attention,
@@ -1391,7 +1479,7 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
   assert.match(failure, /<candidate, actor, phase, header-type, status, open-ids>/);
   assert.match(
     failure,
-    /Two identical terminal\nevents without a new complete result stop the run/,
+    /Two identical terminal events\nwithout a new complete result stop the run/,
   );
   assert.match(failure, /no cross-restart adoption or destructive cleanup is assumed/);
   assert.match(
@@ -1608,6 +1696,15 @@ test("authored Herdr mutation guards kill acceptance, reviewer barrier and byte-
       methodology,
     ],
     [skill, mechanics.replaceAll("h.open === h.disputes", "true"), methodology],
+    [skill, mechanics.replaceAll("lastPrefix <= match[1]", "true"), methodology],
+    [
+      skill.replace(
+        "canonicalize its internal global open-ID set by\nA-before-B",
+        "serialize its raw internal global open-ID set",
+      ),
+      mechanics,
+      methodology,
+    ],
     [
       skill,
       mechanics.replace(
@@ -2051,6 +2148,47 @@ test("literal extraction enforces OUTCOMES open state and unbounded BigInt ID or
   const openStateMutant = source.replace("h.open === h.disputes", "true");
   assert.notEqual(openStateMutant, source);
   assert.equal(run(invalidOutcomes[0], "open-state-mutant", openStateMutant).status, 0);
+});
+
+test("literal extraction and relay list parsers enforce whole-list A-before-B order", () => {
+  const mechanics = join(ROOT, "src", "skills", "mo-herdr", "references", "herdr-mechanics.md");
+  const directory = scratchDirectory();
+  const grouped = "A-9007199254740992,A-9007199254740993,B-9007199254740992,B-9007199254740993";
+  const interleaved = "A-9007199254740992,B-9007199254740992,A-9007199254740993";
+  const cases = [
+    {
+      label: "extraction",
+      source: recipeFence(mechanics, "extraction-recipe"),
+      call: "idList(process.argv[2]);",
+      guard: "die(lastPrefix <= match[1]);",
+      weakened: "die(true);",
+    },
+    {
+      label: "relay",
+      source: recipeFence(mechanics, "relay-recipe"),
+      call: "list(process.argv[2]);",
+      guard: "ok(lastPrefix <= match[1]);",
+      weakened: "ok(true);",
+    },
+  ];
+  for (const { label, source, call, guard, weakened } of cases) {
+    const instrument = (recipeSource) =>
+      recipeSource.replace("try {", `try { ${call} process.exit(0);`);
+    const recipe = installRecipe(directory, `${label}-list.mjs`, instrument(source));
+    assert.equal(spawnSync(process.execPath, [recipe, grouped], { encoding: "utf8" }).status, 0);
+    assert.equal(
+      spawnSync(process.execPath, [recipe, interleaved], { encoding: "utf8" }).status,
+      1,
+    );
+    const mutant = source.replace(guard, weakened);
+    assert.notEqual(mutant, source);
+    const mutantRecipe = installRecipe(directory, `${label}-list-mutant.mjs`, instrument(mutant));
+    assert.equal(
+      spawnSync(process.execPath, [mutantRecipe, interleaved], { encoding: "utf8" }).status,
+      0,
+      `${label} prefix-order mutation must be observable`,
+    );
+  }
 });
 
 test("AST extraction recipe rejects adversarial boundaries, encoding, modes, identity and limits", () => {

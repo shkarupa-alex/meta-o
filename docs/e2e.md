@@ -27,26 +27,26 @@ other-SHA evidence is `UNKNOWN`.
 These scenarios run under `make mo-qc`. They do not substitute for live provider rendering,
 native lifecycle, vendor diversity, or absence of tracked reads in a real actor run.
 
-| Scenario          | Required behavior                                                                                                                                           |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Root contract     | `AGENTS.md` and `CLAUDE.md` are byte-identical and use the self-contained-helper contract.                                                                  |
-| Built tree        | `skills/` exactly matches the build from `src/skills/`, `shared/`, the model bundle, and mapped licences.                                                   |
-| Setup contract    | `mo-setup` installs the exact version-control and non-mutating-reviewer-check rules.                                                                        |
-| Model bundle      | Pinned SDK/esbuild versions, size ceiling, metafile roots, notices, no externals, no runtime `node_modules`.                                                |
-| Catalogue         | `catalog_unknown`, `model_missing`, and `launch_failed` remain distinct; history never becomes catalogue.                                                   |
-| Header protocols  | Executor, review, adjudication, E2E, E2E approval-request, human-answer, and operational-approval grammar, field order, matrices, IDs, and unknown classes. |
-| Review accounting | Full-rebuts origin outcomes plus disputes-only target projection, remaining budgets, and aggregate adjudication.                                            |
-| Candidate gates   | Full object IDs, branch grammar, clean tree, same-SHA gates, commit invalidation, and missing `develop`.                                                    |
-| Relay             | Exact framing, marker-last human returns, aggregate peer outcomes, independent approval operation/actor binding, and body-silent failures.                  |
-| Portable argv     | First-pass and both projected aggregate envelopes keep framing/body totals within 7,168/130,048 bytes.                                                      |
-| Prompt ambiguity  | A changed signal is awaited; unchanged or contradictory evidence never causes a blind retry.                                                                |
-| Topology          | Exact executor/review commands, structured `root_pane`, collision handling, and partial failure.                                                            |
-| Lifecycle         | One waiter, direct wait arms, 10-second quiet period, bounded loss/retry, and no-progress key.                                                              |
-| Extraction        | Golden Claude/Codex boundaries, extraction ladder, duplicate/stale/missing boundary rejection.                                                              |
-| Scratch           | `0700` directory, `0600` files, content-free prefix, controlled cleanup, and no cross-run adoption.                                                         |
-| Posture           | Fixed fake PATH/shell matrix and the exact consumer contract; live posture remains a separate fixture.                                                      |
-| Documentation     | Canonical glossary, verbatim intent consistency, open-only backlog, exact acceptance mapping, no unsolicited docs.                                          |
-| Cutover           | Shipped Herdr files contain no inline/headless actor fallback, private transcript, or verdict-file path.                                                    |
+| Scenario          | Required behavior                                                                                                                           |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Root contract     | `AGENTS.md` and `CLAUDE.md` are byte-identical and use the self-contained-helper contract.                                                  |
+| Built tree        | `skills/` exactly matches the build from `src/skills/`, `shared/`, the model bundle, and mapped licences.                                   |
+| Setup contract    | `mo-setup` installs the exact version-control and non-mutating-reviewer-check rules.                                                        |
+| Model bundle      | Pinned SDK/esbuild versions, size ceiling, metafile roots, notices, no externals, no runtime `node_modules`.                                |
+| Catalogue         | `catalog_unknown`, `model_missing`, and `launch_failed` remain distinct; history never becomes catalogue.                                   |
+| Header protocols  | Exact fields/matrices, A-then-B unbounded BigInt ID-list order, origin single-prefix lists, and unknown classes for every compact protocol. |
+| Review accounting | Full-rebuts origin outcomes plus disputes-only target projection, remaining budgets, and aggregate adjudication.                            |
+| Candidate gates   | Full object IDs, branch grammar, clean tree, same-SHA gates, commit invalidation, and missing `develop`.                                    |
+| Relay             | Exact framing, marker-last human returns, aggregate peer outcomes, independent approval operation/actor binding, and body-silent failures.  |
+| Portable argv     | First-pass and both projected aggregate envelopes keep framing/body totals within 7,168/130,048 bytes.                                      |
+| Prompt ambiguity  | A changed signal is awaited; unchanged or contradictory evidence never causes a blind retry.                                                |
+| Topology          | Exact executor/review commands, structured `root_pane`, collision handling, and partial failure.                                            |
+| Lifecycle         | One waiter, direct waits, bounded loss/retry, and a no-progress key that canonicalizes open-ID permutations into one A-then-B order.        |
+| Extraction        | Golden Claude/Codex boundaries, extraction ladder, duplicate/stale/missing boundary rejection.                                              |
+| Scratch           | `0700` directory, `0600` files, content-free prefix, controlled cleanup, and no cross-run adoption.                                         |
+| Posture           | Fixed fake PATH/shell matrix and the exact consumer contract; live posture remains a separate fixture.                                      |
+| Documentation     | Canonical glossary, verbatim intent consistency, open-only backlog, exact acceptance mapping, no unsolicited docs.                          |
+| Cutover           | Shipped Herdr files contain no inline/headless actor fallback, private transcript, or verdict-file path.                                    |
 
 ## Remote installation scenarios
 
@@ -96,16 +96,16 @@ The detailed expected observation and current status for every ID live in
 Run a supported native Omnigent route against the same candidate contract without copying
 Herdr evidence or mechanics.
 
-| Scenario         | Required behavior                                                                                                               |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| OM1 firewall     | After activation only native process/lifecycle facts, validated headers, and narrow Git metadata enter orchestrator context.    |
-| OM2 candidate    | One clean full SHA binds every applicable gate.                                                                                 |
-| OM3 independence | A completes before B; PASS/PASS does not relay; a findings pair releases atomically; A mutation skips B.                        |
-| OM4 findings     | RESPONSE accounts for full origin-open rebuts; only validated disputes enter projection, requests, and atomic delivery.         |
-| OM5 invalidation | A new commit invalidates every prior gate and open ID.                                                                          |
-| OM6 recovery     | Native session continuity/recovery uses no private store and invents no Herdr-style evidence.                                   |
-| OM7 vocabulary   | The weaker prompt objective and byte-identical capsule precede a final-row marker that excludes echoed inbound frames.          |
-| OM8 attention    | Repository-changing input reaches executor/new SHA; approval matches independently stored operation and exact native E2E actor. |
+| Scenario         | Required behavior                                                                                                                |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| OM1 firewall     | After activation only native process/lifecycle facts, validated headers, and narrow Git metadata enter orchestrator context.     |
+| OM2 candidate    | One clean full SHA binds every applicable gate.                                                                                  |
+| OM3 independence | A completes before B; PASS/PASS does not relay; a findings pair releases atomically; A mutation skips B.                         |
+| OM4 findings     | RESPONSE accounts for full rebuts; canonical A-then-B BigInt lists feed exact outcome state, while only disputes enter delivery. |
+| OM5 invalidation | A new commit invalidates every prior gate and open ID.                                                                           |
+| OM6 recovery     | Native session continuity/recovery uses no private store and invents no Herdr-style evidence.                                    |
+| OM7 vocabulary   | The weaker prompt objective and byte-identical capsule precede a final-row marker that excludes echoed inbound frames.           |
+| OM8 attention    | Repository-changing input reaches executor/new SHA; approval matches independently stored operation and exact native E2E actor.  |
 
 No final Omnigent scenario has been executed for the post-cutover candidate.
 

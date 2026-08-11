@@ -345,7 +345,7 @@ When required, a separate visible interactive actor runs `mo-e2e`, reads the E2E
 - **compact handoff** — bounded header plus opaque body;
 - **process header** — validated routing/accounting line;
 - **complete result** — valid terminal handoff for expected actor, candidate, and phase;
-- **terminal process event** — `<candidate, actor, phase, header-type, status, open-ids>`;
+- **terminal process event** — `<candidate, actor, phase, header-type, status, open-ids>`, with internal open IDs canonicalized A-block-then-B-block before serialization;
 - **opaque body** — actor bytes transported without interpretation;
 - **provider lower boundary** — fixture-proven rendered completion boundary;
 - **first-pass barrier** — point after complete independent A/B first passes;
@@ -526,7 +526,7 @@ SCHEMA MO_EXECUTOR_V1|type=<CANDIDATE|RESPONSE|BLOCKER>|candidate=<oid|none>|bra
 CANDIDATE candidate=full clean HEAD oid; branch=feature/<slug>; base=develop commit oid; fixes=sorted fixed IDs or none; rebuts=none; blocker=none
 RESPONSE candidate=frozen oid; branch=current feature branch; base=none; fixes=none; rebuts=exact complete current open-ID set for exactly one origin; blocker=none
 BLOCKER candidate=current oid or none; branch=current feature branch or none; base=none; fixes=none; rebuts=none; blocker=product_meaning|product_architecture_fork|irreversible_action|credentials|subscription|external_blocker
-EMIT exactly one header as the first output row; IDs are unique canonical numerically sorted A-<positive-int> or B-<positive-int>; never mix origins in RESPONSE
+EMIT exactly one header as the first output row; IDs are unique canonical A-<positive-int> or B-<positive-int>, ordered all A then all B and strictly increasing by unbounded BigInt suffix inside each prefix; never mix origins in RESPONSE
 MO_EXECUTOR_PROTOCOL_CAPSULE_END_V1
 ```
 
@@ -552,7 +552,7 @@ MO_HUMAN_ANSWER_V1|candidate=<oid|none>|phase=<product|architecture|irreversible
 MO_OPERATIONAL_APPROVAL_V1|candidate=<oid|none>|operation=<production_e2e|irreversible_e2e|watchdog_start>|scenario=<safe-id|none>|requester=<e2e|orchestrator>|request=<64-lower-hex>|decision=<APPROVE|DENY>
 ```
 
-Fields occur once in exact order. Candidate IDs equal observed `HEAD`; base IDs are lowercase hexadecimal commit objects; branch equals observed branch. Finding IDs match `^([AB])-([1-9][0-9]*)$`, are comma-separated without spaces, and are unique. Their positive decimal suffix has no cap. Canonical ordering groups by prefix and requires strictly increasing exact `BigInt(suffix)` order within each prefix; `Number`, unary numeric coercion, and lexicographic suffix comparison are forbidden. Positive integers are canonical unsigned base-10 without sign or leading zeros.
+Fields occur once in exact order. Candidate IDs equal observed `HEAD`; base IDs are lowercase hexadecimal commit objects; branch equals observed branch. Finding IDs match `^([AB])-([1-9][0-9]*)$`, are comma-separated without spaces, and are unique. Their positive decimal suffix has no cap. A canonical mixed list is the complete A block followed by the complete B block, with strictly increasing exact `BigInt(suffix)` order inside each block; reviewer-origin lists contain exactly one prefix. `Number`, unary numeric coercion, and lexicographic suffix comparison are forbidden. Positive integers are canonical unsigned base-10 without sign or leading zeros.
 
 Reviewer IDs increase monotonically for the run and are never reused after invalidation.
 
@@ -762,7 +762,7 @@ No headless, inline, verdict-file, private-transcript, or executor-pane-reading 
 | pane missing                 | Recreate with same ID floor                   | Gate restart; second loss is attention                 |
 | wrong UI                     | One supported fallback                        | Recheck diversity                                      |
 
-The canonical no-progress key is `<candidate, actor, phase, header-type, status, open-ids>`. `status` is the header status when present and otherwise the event kind; `open-ids` is the orchestrator's mechanically tracked open-ID set at event time for every header type. Repeating the key twice without a new complete result produces attention.
+The canonical no-progress key is `<candidate, actor, phase, header-type, status, open-ids>`. `status` is the header status when present and otherwise the event kind; `open-ids` is the orchestrator's mechanically tracked internal open-ID set at event time for every header type. Canonicalize that set before serialization as the complete increasing-`BigInt` A block followed by the complete increasing-`BigInt` B block; never preserve raw set iteration or caller order, so equivalent permutations produce one key. Repeating the key twice without a new complete result produces attention.
 
 After one executor `RESPONSE`, the origin reviewer's next handoff is one complete one-part outcome over the exact rebutted set. The continuation requires: `Account for every rebutted ID now: put each one in exactly one of closes or disputes. If all close and there is no new finding, use PASS with those closes. If any ID is disputed, introduce no new finding; use OUTCOMES for a mixed close/dispute result or DISPUTED when all are disputed. To introduce new findings, close every rebutted ID and use one FOLLOWUP turn.` Refusal is actor noncompliance. New IDs do not reset the old IDs' accounting, and every disputed target proceeds to sequential adjudication. This bounds response loops before adjudication.
 
@@ -835,9 +835,10 @@ Transport unknown uses compact-handoff recovery. Environment/evaluation unknown 
 - All-close/no-new returns `PASS`; `FOLLOWUP` closes all before introducing new
   IDs; only `OUTCOMES`/`DISPUTED` carry disputes. Mixed `OUTCOMES` has exact
   post-outcome `open=disputes` after canonical validation.
-- Finding suffixes are unbounded canonical positive decimals, ordered exactly
-  with `BigInt` inside each prefix and never with floating-point or
-  lexicographic coercion.
+- Finding suffixes are unbounded canonical positive decimals. Mixed lists put
+  the increasing-`BigInt` A block before the increasing-`BigInt` B block;
+  reviewer-origin lists have one prefix. Floating-point and lexicographic
+  coercion are forbidden.
 - `FOLLOWUP`, `OUTCOMES`, and `DISPUTED` are one-part, 24,576-byte outcomes;
   first-pass `FINDINGS` alone is multipart.
 - One executor `RESPONSE` contains IDs from exactly one origin; mixed-origin responses are invalid.
@@ -1005,7 +1006,7 @@ Covers:
 - catalogue outcome distinctions;
 - AST-level skill/glossary/recipe checks;
 - full header, approval-request, operational-approval, and blocker matrices;
-- identity, unbounded BigInt ID ordering/canonical integers, invalidation, multipart first-pass accounting, exact `OUTCOMES.open=disputes`, one-part outcome partitions, role-specific sizes, and unknown classes;
+- identity, exact A-block-then-B-block unbounded BigInt ID ordering/canonical integers, invalidation, multipart first-pass accounting, exact `OUTCOMES.open=disputes`, one-part outcome partitions, role-specific sizes, and unknown classes;
 - portable 130,048-byte conditional/aggregate releases, disputes-only dual 7,168-byte aggregate-envelope projection, Linux per-argument boundary, exact exhaustive `MO_RELAY_V2` direction/recipient/source/phase/candidate/ID/final-marker grammar, full-rebuts outcome accounting versus exact disputes-only aggregate targets, cumulative peer budgets and exact remaining-budget prompts, repository-changing human-answer rules, independently operation/actor-bound one-row approval, collision rules, and bounded adjudication requests;
 - executable `shell:false` relay fixtures, body-silent failures, UTF-8/NUL/newline/length tests;
 - ambiguity decision table proving there is no retry without positive non-delivery evidence;
@@ -1049,7 +1050,7 @@ H13–H37 map one-to-one to:
 19. test-only tracked-read audit with canary;
 20. per-ID/pending-direction refcounts, disputes-only projected envelopes, cumulative peer-budget delivery, ambiguity, recovery, invalidation, and cleanup lifecycle;
 21. actual vendor diversity;
-22. direct no-sleep waits, one waiter, retry/no-progress bounds;
+22. direct no-sleep waits, one waiter, retry bounds, and canonicalized permutation-stable no-progress keys;
 23. non-gating badges;
 24. missing-`develop` failure;
 25. exact disputes-target/remaining-budget requests, total atomic existing-peer adjudication, and executor-bound human answer/decision.
@@ -1060,7 +1061,7 @@ A surface remains unsupported until required exact fixtures pass. Fewer than two
 
 ### Omnigent acceptance
 
-A supported Omnigent route independently proves the backend-neutral firewall; candidate binding; sequential independence; PASS/PASS progression without review relay; conditional atomic A/B findings release; A-only invalidating-check short circuit; exact complete-origin-open executor RESPONSE; unbounded BigInt finding-ID order; total same-origin multi-ID `PASS`/`FOLLOWUP`/`OUTCOMES`/`DISPUTED` partitions over full rebuts including exact mixed-outcome `open=disputes`; disputes-only aggregate target derivation and both projected envelopes; sequential exact-remaining-budget shared-evidence requests followed by one total atomic adjudication result set over exactly those disputes; origin closure; executor-owned repository-changing human-answer and dispute-decision recording; exact one-row E2E approval request and matching body-free independent operation/scenario/token/lifecycle-actor authorization; candidate-stable watchdog approval; invalidation; native recovery; final current-turn marker after all inbound bytes; weaker prompt objective; and byte-identical fresh-executor capsule. It does not reuse Herdr layout or extraction. Unsupported status is recorded without invented Herdr-style evidence.
+A supported Omnigent route independently proves the backend-neutral firewall; candidate binding; sequential independence; PASS/PASS progression without review relay; conditional atomic A/B findings release; A-only invalidating-check short circuit; exact complete-origin-open executor RESPONSE; canonical A-block-then-B-block unbounded BigInt finding-ID order and single-prefix reviewer lists; total same-origin multi-ID `PASS`/`FOLLOWUP`/`OUTCOMES`/`DISPUTED` partitions over full rebuts including exact mixed-outcome `open=disputes`; disputes-only aggregate target derivation and both projected envelopes; sequential exact-remaining-budget shared-evidence requests followed by one total atomic adjudication result set over exactly those disputes; origin closure; executor-owned repository-changing human-answer and dispute-decision recording; exact one-row E2E approval request and matching body-free independent operation/scenario/token/lifecycle-actor authorization; candidate-stable watchdog approval; invalidation; native recovery; final current-turn marker after all inbound bytes; weaker prompt objective; and byte-identical fresh-executor capsule. It does not reuse Herdr layout or extraction. Unsupported status is recorded without invented Herdr-style evidence.
 
 ### Completion and cutover criteria
 
