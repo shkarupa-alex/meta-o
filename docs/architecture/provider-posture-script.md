@@ -99,10 +99,10 @@ actually used through the current backend run/final result. Those facts are not
 written into the tracked fixture map or another receipt. Neither kind of
 evidence inherits the other's conclusion.
 
-The closed final result turns only exact fixture-backed posture into 1..16
+The closed final result turns only exact fixture-backed posture into 1..67
 canonical support entries. Each uses the ordered seven-field key
 `backend,provider,provider-version,backend-version,surface,os,fixture`, SUPPORTED
-status, and a sorted unique scenario list of at most 32 safe IDs; together the
+status, and an empty or singleton safe scenario-ID list; together the
 facts cover every provider in the selected topology. A posture diagnostic record
 alone cannot manufacture that support fact or a default E2E scenario. Final
 review/scenario records refer to a matched fact by the exact slash-join of these

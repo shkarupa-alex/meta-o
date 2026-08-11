@@ -251,32 +251,37 @@ each status is `PASS` or `NA`. Missing, extra, `FAIL` or `UNKNOWN` gate state is
 invalid. Each A-then-B status pair must equal the correspondingly named fields
 in the two review records.
 
-`support` has 1..16 unique records in ascending canonical-key order. Each has
+`support` has 1..67 unique records in ascending canonical-key order. Each has
 only `key`, `status`, `scenarios`; `status` is `SUPPORTED`; and `key` has exactly
 `backend`, `provider`, `provider-version`, `backend-version`, `surface`, `os`,
 `fixture` in that order. Those seven values are lower-case safe IDs of 1..64
 bytes and form the reusable support key for the selected topology. Each fact's
-`scenarios` is an ascending unique list of at most 32 lower-case safe IDs. The
+`scenarios` is either empty or a singleton lower-case safe ID list. The
 canonical reference is those seven values slash-joined in order. The facts must
 cover every exact surface used by a final review or scenario actor on the
 selected backend.
 
 `reviews` has exactly A then B. Each record has only `reviewer`, `actor`,
-`provider`, `support-key`, `status`, `qc`, `smoke`, `checks`, `e2e`, `evidence`;
+`provider`, `support-key`, `status`, `qc`, `smoke`, `checks`, `e2e`, `scenarios`,
+`evidence`;
 status, QC and smoke are `PASS`; checks is `PASS` or `NA`; E2E is `REQUIRED` or
-`NA`; reviewer providers differ. These gate fields come from the validated
-review header and bind the top-level gate pairs. `support-key` must resolve to
+`NA`; reviewer providers differ. `scenarios` is the exact canonical list from
+the validated review header: nonempty for REQUIRED and empty for NA. These gate
+fields and scenario names come from that header and bind the top-level gate
+pairs. `support-key` must resolve to
 the exact selected fact with the selected backend, the same provider, surface
 `review`, fixture `review-turn` and no scenarios. Evidence has only `source`,
 `protocol`, `parts`, `rows`, `bytes`: source is `backend-public-surface`, protocol
 is `MO_REVIEW_V2`, and positive bounds are respectively 6, 1,000 and 61,440.
 Arbitrary prose or a generic evidence label is invalid.
 
-The two E2E dispositions must agree. Both `NA` means `scenarios` is exactly
-empty. Both `REQUIRED` derives the required scenario names solely as the sorted
-unique union of `support[].scenarios`; that union must be nonempty and the final
-scenario list must equal it. One `NA`, an out-of-band default or an omitted
-support fact is invalid. Each scenario record has only `scenario`, `actor`,
+The two E2E dispositions must agree. Both `NA` means every review and top-level
+`scenarios` list is exactly empty. Both `REQUIRED` derives the required scenario
+names solely as the sorted unique union of the two independently validated
+review `scenarios` lists; that union must be nonempty, contain at most 64 names,
+and the final scenario list must equal it. `support` proves each derived name but
+never defines the required set. One `NA`, an out-of-band default, an omitted
+review name or an omitted support fact is invalid. Each scenario record has only `scenario`, `actor`,
 `provider`, `support-key`, `status`, `evidence`, appears in derived-name order
 and has `PASS`. `support-key` must resolve to the selected backend, the same provider,
 surface `e2e`, fixture equal to the scenario name and fact scenarios exactly
@@ -286,10 +291,11 @@ equal to that one name. Its evidence has only `source`, `protocol`, `ordinal`,
 count, and positive row/byte bounds are 1,000 and 65,536.
 
 For `REQUIRED/REQUIRED`, the validated `MO_E2E_V1` PASS header's positive
-`scenarios` integer must equal both the derived scenario-list length and every
-scenario evidence `total`; its `not_run` is `none`. This comparison happens
-before final-result construction. A smaller self-selected support/result set,
-or any count mismatch, is incomplete evidence and cannot PASS.
+`scenarios` integer equals the derived scenario-list length and every scenario
+evidence `total`; its canonical `ids` list byte-equals the complete derived list
+and `not_run` is `none`. This comparison happens before final-result
+construction. A smaller, repeated, reordered or different same-sized result, or
+any count mismatch, is incomplete evidence and cannot PASS.
 
 Missing or unreadable evidence is unknown, never PASS. A dirty worktree or
 different `HEAD` invalidates the whole record.
@@ -306,9 +312,9 @@ order:
 
 ```text
 MO_EXECUTOR_V1|type=<CANDIDATE|RESPONSE|BLOCKER>|candidate=<oid|none>|branch=<name|none>|base=<oid|none>|fixes=<ids|none>|rebuts=<ids|none>|blocker=<class|none>
-MO_REVIEW_V2|candidate=<oid>|reviewer=<A|B>|status=<PASS|FINDINGS|FOLLOWUP|OUTCOMES|DISPUTED|UNKNOWN>|part=<positive-int>|more=<yes|no>|ids=<ids|none>|open=<ids|none>|closes=<ids|none>|disputes=<ids|none>|qc=<PASS|FAIL|UNKNOWN>|smoke=<PASS|FAIL|UNKNOWN>|checks=<PASS|FAIL|UNKNOWN|NA>|e2e=<REQUIRED|NA|UNKNOWN>|unknown=<transport|environment|evaluation|none>
+MO_REVIEW_V2|candidate=<oid>|reviewer=<A|B>|status=<PASS|FINDINGS|FOLLOWUP|OUTCOMES|DISPUTED|UNKNOWN>|part=<positive-int>|more=<yes|no>|ids=<ids|none>|open=<ids|none>|closes=<ids|none>|disputes=<ids|none>|qc=<PASS|FAIL|UNKNOWN>|smoke=<PASS|FAIL|UNKNOWN>|checks=<PASS|FAIL|UNKNOWN|NA>|e2e=<REQUIRED|NA|UNKNOWN>|scenarios=<safe-id-list|none>|unknown=<transport|environment|evaluation|none>
 MO_ADJUDICATION_V1|candidate=<oid>|finding=<id>|reviewer=<A|B>|outcome=<UPHOLD|WITHDRAW|UNRESOLVED>
-MO_E2E_V1|candidate=<oid>|status=<PASS|FAIL|UNKNOWN|BLOCKER>|scenarios=<positive-int|none>|not_run=<none|positive-int>|blocker=<credentials|subscription|external_blocker|none>
+MO_E2E_V1|candidate=<oid>|status=<PASS|FAIL|UNKNOWN|BLOCKER>|scenarios=<positive-int|none>|ids=<safe-id-list|none>|not_run=<none|positive-int>|blocker=<credentials|subscription|external_blocker|none>
 MO_E2E_APPROVAL_REQUEST_V1|candidate=<oid>|operation=<production_e2e|irreversible_e2e>|scenario=<safe-id>
 MO_HUMAN_ANSWER_V1|candidate=<oid|none>|phase=<product|architecture|irreversible|credentials|subscription|external_blocker>|requester=executor
 MO_OPERATIONAL_APPROVAL_V1|candidate=<oid|none>|operation=<production_e2e|irreversible_e2e|watchdog_start>|scenario=<safe-id|none>|requester=<e2e|orchestrator>|request=<64-lower-hex>|decision=<APPROVE|DENY>
@@ -318,6 +324,9 @@ Finding IDs are `A-<positive-int>` or `B-<positive-int>`, comma-separated withou
 spaces, unique and numerically sorted within prefix. Positive integers are
 canonical unsigned base 10 without leading zeroes. IDs increase monotonically for
 the feature run and are never reused after invalidation.
+
+Scenario lists contain 1..64 unique lower-case safe IDs, comma-separated without
+spaces in ascending byte order. `none` is the empty list.
 
 Executor semantics:
 
@@ -335,7 +344,8 @@ Review semantics:
 
 - `PASS`: no new/open/disputed IDs; `closes` is none on first pass or exactly
   every previously open origin ID on a final closure turn; QC/smoke PASS;
-  checks PASS/NA; E2E REQUIRED/NA; unknown none.
+  checks PASS/NA; E2E REQUIRED with a nonempty canonical scenario list or E2E NA
+  with `scenarios=none`; unknown none.
 - `FINDINGS`: at least one new ID across the evaluation; cumulative open set;
   no disputed IDs; actual gate fields.
 - `FOLLOWUP`: one origin turn after an executor response; at least one new ID,
@@ -371,10 +381,13 @@ lexicographic suffix ordering are invalid.
 
 E2E semantics:
 
-- PASS: positive scenarios and nothing omitted;
-- FAIL: positive scenarios and omitted count none or positive;
-- UNKNOWN: scenarios none or positive; zero run requires positive `not_run`;
-- BLOCKER: no scenarios/count and one permitted E2E blocker;
+- PASS: positive scenarios, `ids` is the exact same-sized canonical scenario
+  list, and nothing is omitted;
+- FAIL: positive scenarios, `ids` is the exact same-sized canonical attempted
+  list, and omitted count is none or positive;
+- UNKNOWN: scenarios none or positive; `ids` is respectively none or the exact
+  same-sized canonical attempted list; zero run requires positive `not_run`;
+- BLOCKER: no scenarios/IDs/count and one permitted E2E blocker;
 - every non-blocker state uses `blocker=none` and the frozen candidate.
 
 An approval request is not an E2E blocker. `MO_E2E_APPROVAL_REQUEST_V1` is the
@@ -815,7 +828,10 @@ candidate-bound PASS receipt. Exact candidate SHA, live scenario verdicts,
 actor/provider facts and run evidence never enter that file. An exact isolated
 fixture can change the durable support posture, while the current candidate's
 fixture observation remains only in current-run state and the final-result
-record.
+record. Resolve this map before either backend activates, retain its explicit
+selected-backend scope and at most 64 canonical safe scenario definitions, and
+reject missing, malformed, unreadable, or wrong-backend input before closing the
+tracked-content firewall.
 
 The settings helper remains the only writer of model preferences. Its catalogues
 are authoritative listings, not entitlement claims. Finite fallback is:

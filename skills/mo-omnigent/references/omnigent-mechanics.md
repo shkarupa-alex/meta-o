@@ -245,6 +245,11 @@ to inspect the repository; no previous session is adopted.
 
 ## 6. Support fixtures
 
+Before activation the backend retains the exact seven-field keys, reusable
+posture, explicit Omnigent backend scope, and at most 64 canonical safe scenario
+definitions from the explicit fixture-map input. It rejects missing, malformed,
+or wrong-backend input before the firewall closes.
+
 Tracked fixture and acceptance documents define repeatable scenarios, map
 requirements, and state current reusable support posture only. They never store
 candidate-bound PASS evidence. Live facts come from the native public surface
@@ -256,15 +261,16 @@ final-result record has exact top-level order
 - `gates` is exactly ordered entries with keys `gate,statuses` for QC, smoke and
   checks. Each status array is reviewer A then B; QC/smoke are PASS/PASS and
   checks are each PASS|NA.
-- `support` has 1..16 unique entries, canonically sorted by the exact key tuple
+- `support` has 1..67 unique entries, canonically sorted by the exact key tuple
   `backend,provider,provider-version,backend-version,surface,os,fixture`. Each has
-  exact keys `key,status,scenarios`, status SUPPORTED, and a sorted unique list
-  of at most 32 scenario IDs. Every safe identifier matches
+  exact keys `key,status,scenarios`, status SUPPORTED, and an empty or singleton
+  scenario list. Every safe identifier matches
   `[a-z0-9][a-z0-9._-]{0,63}`; facts cover every selected-topology provider.
 - `reviews` is exactly A then B. Exact keys are
-  `reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,evidence`;
+  `reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,scenarios,evidence`;
   status, qc and smoke are PASS, checks is PASS|NA, providers differ, and
-  disposition is REQUIRED|NA. Top-level gate arrays byte-equal the corresponding
+  disposition is REQUIRED|NA. The scenario list is nonempty/canonical for
+  REQUIRED and empty for NA. Top-level gate arrays byte-equal the corresponding
   A/B review fields. `support-key` is the exact
   slash-join of its matched support fact's seven safe-ID values. It resolves to
   `backend=omnigent`, the same provider, `surface=review`, `fixture=review-turn`, and
@@ -273,7 +279,8 @@ final-result record has exact top-level order
   `MO_REVIEW_V2`, and bounds 6 parts/1000 rows/61,440 bytes.
 - Both review dispositions agree. Both NA requires `scenarios=[]`; one NA is
   invalid. Both REQUIRED derives a nonempty scenario set exactly as the sorted
-  unique union of `support[].scenarios`; no default/external list is allowed.
+  unique union of the two review scenario lists; support proves each name but
+  never defines the required set. No default/external list is allowed.
 - Scenario records follow that exact order and have exact keys
   `scenario,actor,provider,support-key,status,evidence`, status PASS, and a
   support key resolving to `backend=omnigent`, the same provider, `surface=e2e`,
@@ -283,8 +290,9 @@ final-result record has exact top-level order
   `backend-public-surface`, protocol `MO_E2E_V1`, ordinal is 1..total with one
   consistent total, and bounds are 1000 rows/65,536 bytes. The validated PASS
   header's positive `scenarios` count equals the derived list length and every
-  evidence `total`, with `not_run=none`; a smaller self-selected set is
-  incomplete.
+  evidence `total`, its canonical `ids` byte-equals the complete derived list,
+  and `not_run=none`; a smaller, repeated, reordered or different same-sized set
+  is incomplete.
 
 Never edit or commit tracked documentation after a gate or create a manifest,
 registry, receipt or external evidence sink. Extra keys, generic prose evidence,

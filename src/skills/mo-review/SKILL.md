@@ -89,7 +89,7 @@ paraphrased or semantically shortened in transport.
 The first line of every part is exactly:
 
 ```text
-MO_REVIEW_V2|candidate=<oid>|reviewer=<A|B>|status=<PASS|FINDINGS|FOLLOWUP|OUTCOMES|DISPUTED|UNKNOWN>|part=<positive-int>|more=<yes|no>|ids=<ids|none>|open=<ids|none>|closes=<ids|none>|disputes=<ids|none>|qc=<PASS|FAIL|UNKNOWN>|smoke=<PASS|FAIL|UNKNOWN>|checks=<PASS|FAIL|UNKNOWN|NA>|e2e=<REQUIRED|NA|UNKNOWN>|unknown=<transport|environment|evaluation|none>
+MO_REVIEW_V2|candidate=<oid>|reviewer=<A|B>|status=<PASS|FINDINGS|FOLLOWUP|OUTCOMES|DISPUTED|UNKNOWN>|part=<positive-int>|more=<yes|no>|ids=<ids|none>|open=<ids|none>|closes=<ids|none>|disputes=<ids|none>|qc=<PASS|FAIL|UNKNOWN>|smoke=<PASS|FAIL|UNKNOWN>|checks=<PASS|FAIL|UNKNOWN|NA>|e2e=<REQUIRED|NA|UNKNOWN>|scenarios=<safe-id-list|none>|unknown=<transport|environment|evaluation|none>
 ```
 
 Fields occur once in that order. Candidate equals observed `HEAD`. Finding IDs
@@ -101,10 +101,14 @@ block second; an origin-reviewer list has only its own prefix. Never use
 `Number`, unary numeric coercion, or lexicographic suffix comparison. Positive
 integers have no sign or leading zero.
 
+`scenarios` is `none` for E2E NA/UNKNOWN and a nonempty canonical ascending list
+of at most 64 safe IDs for REQUIRED. It is identical across every part.
+
 State rules:
 
 - `PASS`: `ids=none`, `open=none`, QC/smoke PASS, checks PASS/NA, E2E
-  REQUIRED/NA, unknown none; `closes` is none or every origin-open ID and
+  REQUIRED with a nonempty scenario list or NA with `scenarios=none`, unknown
+  none; `closes` is none or every origin-open ID and
   `disputes=none`.
 - `FINDINGS`: introduce at least one new ID across the complete evaluation,
   preserve the cumulative open set and actual check fields; this is the
@@ -281,8 +285,8 @@ The enclosing backend's closed final-result record has exact top-level order
 `candidate,worktree,gates,support,reviews,scenarios`, unchanged full SHA, and
 `worktree=clean`. `gates` is exactly ordered QC, smoke and checks entries with
 A/B `statuses`; QC/smoke are PASS/PASS and checks are independently PASS|NA.
-`support` contains 1..16 unique canonically sorted exact seven-field keys,
-`status=SUPPORTED`, and sorted unique scenario lists of at most 32 safe IDs. Its
+`support` contains 1..67 unique canonically sorted exact seven-field keys,
+`status=SUPPORTED`, and empty or singleton scenario lists. Its
 facts cover every provider in the selected topology.
 The support key order is exactly
 `backend,provider,provider-version,backend-version,surface,os,fixture`; each outer
@@ -290,9 +294,10 @@ entry is exactly `key,status,scenarios`, and safe IDs match
 `[a-z0-9][a-z0-9._-]{0,63}`.
 
 `reviews` is exactly A then B with exact keys
-`reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,evidence`; status,
+`reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,scenarios,evidence`; status,
 qc and smoke are PASS, checks is PASS|NA, providers differ, and the E2E
-disposition is REQUIRED|NA. Top-level gate arrays byte-equal these A/B review
+disposition is REQUIRED|NA. `scenarios` is a nonempty canonical list of at most
+64 safe IDs for REQUIRED and empty for NA. Top-level gate arrays byte-equal these A/B review
 fields. `support-key` is the
 exact slash-join of the matched support fact's seven safe-ID values and resolves
 to the enclosing backend, the same provider, `surface=review`,
@@ -300,7 +305,8 @@ to the enclosing backend, the same provider, `surface=review`,
 `source,protocol,parts,rows,bytes`, with source `backend-public-surface`, protocol
 `MO_REVIEW_V2`, and maxima 6/1000/61,440. Both dispositions must agree: both NA
 requires no scenarios; both REQUIRED derives a nonempty sorted scenario set only
-from the exact union of support scenario lists. Scenario records are structurally
+from the exact union of the two review scenario lists. Support proves every
+derived scenario but never defines the required set. Scenario records are structurally
 bound `MO_E2E_V1` PASS entries in that order with exact keys
 `scenario,actor,provider,support-key,status,evidence`. Their support key resolves
 to the enclosing backend, the same provider, `surface=e2e`,

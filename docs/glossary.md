@@ -42,9 +42,10 @@ stale or differently bound verdict does not pass.
 **Live result** — ephemeral current-run/final response from backend public
 surfaces with closed ordered fields `candidate`, `worktree`, `gates`, `support`,
 `reviews`, `scenarios`. It binds one full SHA and clean worktree to exact gate
-arrays, support facts, A/B review dispositions/evidence, and the support-derived
-ordered scenario evidence. Each review/scenario resolves an exact route-specific
-support key, and the top gate arrays byte-equal the A/B review gate fields.
+arrays, support facts, A/B review dispositions/evidence with exact scenario
+lists, and the review-derived, support-proven ordered scenario evidence. Each
+review/scenario resolves an exact route-specific support key, and the top gate
+arrays byte-equal the A/B review gate fields.
 Extra/missing/generic evidence, dirty/new HEAD,
 FAIL/UNKNOWN, or a one-NA disposition cannot PASS. It is not written to a tracked
 document or external receipt sink.
@@ -53,9 +54,9 @@ document or external receipt sink.
 Each has A/B statuses byte-equal to the corresponding ordered review fields;
 QC/smoke are PASS/PASS and checks are each PASS or NA.
 
-**Support fact** — one of 1..16 canonically sorted reusable surface facts with
+**Support fact** — one of 1..67 canonically sorted reusable surface facts with
 exact `backend,provider,provider-version,backend-version,surface,os,fixture` key,
-SUPPORTED status, and a sorted unique list of at most 32 safe scenario IDs. Safe
+SUPPORTED status, and an empty or singleton safe scenario-ID list. Safe
 IDs match `[a-z0-9][a-z0-9._-]{0,63}`. Facts cover all providers selected by the
 final topology.
 
@@ -64,9 +65,10 @@ key values in canonical order. Each final review and scenario record carries a
 `support-key`; it must resolve to the exact route-specific surface and fixture,
 not merely to another fact with the same provider.
 
-**E2E disposition** — each final A/B review's REQUIRED or NA decision. Both must
-agree: NA/NA alone permits no scenarios; REQUIRED/REQUIRED derives the nonempty
-ordered scenario set exactly from the union of support facts. A mixed first pass
+**E2E disposition** — each final A/B review's REQUIRED or NA decision plus its
+exact canonical scenario list. Both must agree: NA/NA alone permits no scenarios;
+REQUIRED/REQUIRED derives the nonempty ordered scenario set exactly from the
+union of both review lists; support proves rather than defines those names. A mixed first pass
 gets one same-candidate re-evaluation by the NA reviewer; persistent disagreement
 is `needs_attention:e2e_disposition_dispute`.
 

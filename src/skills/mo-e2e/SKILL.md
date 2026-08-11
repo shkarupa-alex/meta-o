@@ -74,12 +74,12 @@ receipt, registry or external evidence sink.
 The orchestrator's closed final-result record has exact top-level order
 `candidate,worktree,gates,support,reviews,scenarios`. It requires the unchanged
 full SHA and `worktree=clean`; ordered A/B gate statuses for QC, smoke and checks;
-1..16 canonically sorted exact support-key facts with `status=SUPPORTED` and
-sorted unique scenario lists of at most 32 safe IDs; and exactly A/B PASS review
+1..67 canonically sorted exact support-key facts with `status=SUPPORTED` and
+empty or singleton scenario lists; and exactly A/B PASS review
 entries from different providers. Review entries carry `e2e=REQUIRED|NA` and
 exact structural `MO_REVIEW_V2` public-surface evidence bounded by 6 parts, 1000
 rows and 61,440 bytes. Each review's exact fields include
-`reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,evidence`; status,
+`reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,scenarios,evidence`; status,
 qc and smoke are PASS, checks is PASS|NA, and the top-level gate arrays
 byte-equal the corresponding A/B review fields. Each review `support-key` is the
 slash-join of the matched support fact's seven safe-ID values and resolves to the
@@ -93,7 +93,9 @@ provider selected in the final topology.
 
 Both review dispositions must agree. Both NA yields no scenario records. Both
 REQUIRED derives the nonempty scenario set only as the exact sorted unique union
-of `support[].scenarios`; one NA, a default list or an external list is invalid.
+of the two independently validated review `scenarios` lists; one NA, a default
+list or an external list is invalid. The set has at most 64 names. Support proves
+each derived name but never defines the required set.
 The final scenario records follow that order. Each exact
 `scenario,actor,provider,support-key,status,evidence` entry has PASS.
 `support-key` is the slash-join of the matched support fact's seven safe-ID values
@@ -113,21 +115,23 @@ and preserves original newlines.
 The first line is exactly:
 
 ```text
-MO_E2E_V1|candidate=<oid>|status=<PASS|FAIL|UNKNOWN|BLOCKER>|scenarios=<positive-int|none>|not_run=<none|positive-int>|blocker=<credentials|subscription|external_blocker|none>
+MO_E2E_V1|candidate=<oid>|status=<PASS|FAIL|UNKNOWN|BLOCKER>|scenarios=<positive-int|none>|ids=<safe-id-list|none>|not_run=<none|positive-int>|blocker=<credentials|subscription|external_blocker|none>
 ```
 
 Fields occur once in that order and candidate equals the observed frozen `HEAD`.
 Positive integers are canonical unsigned base 10 without leading zeroes.
 
 - PASS: positive scenarios, every selected scenario passed, `not_run=none`,
-  `blocker=none`. The count must equal the backend's support-derived required
-  scenario-list length and every final scenario evidence `total`; a smaller
-  self-selected result is incomplete rather than PASS.
-- FAIL: positive scenarios, at least one candidate-relevant failure,
-  `not_run=none` or a positive omitted count, `blocker=none`.
-- UNKNOWN: scenarios none or positive; if none ran, `not_run` is positive; no
-  blocker.
-- BLOCKER: scenarios/not_run none and exactly one permitted E2E blocker.
+  `blocker=none`. `ids` is the exact canonical list selected from the two review
+  headers; it byte-equals the required list, while the count equals its length
+  and every final scenario evidence `total`. A smaller, repeated, reordered or
+  different same-sized result is incomplete rather than PASS.
+- FAIL: positive scenarios with an exact same-sized canonical `ids` list, at
+  least one candidate-relevant failure, `not_run=none` or a positive omitted
+  count, `blocker=none`.
+- UNKNOWN: scenarios none or positive; `ids` is respectively none or the exact
+  same-sized canonical attempted list; if none ran, `not_run` is positive; no blocker.
+- BLOCKER: scenarios/ids/not_run none and exactly one permitted E2E blocker.
 
 Credentials and subscription blockers mean external state is required and never
 authorize inspecting credentials. Production/irreversible approval uses only

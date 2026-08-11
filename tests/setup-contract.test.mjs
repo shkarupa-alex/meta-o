@@ -27,6 +27,10 @@ test("setup creates the backend fixture-map input without making it a receipt", 
     source,
     /backend\/provider\/provider-version\/backend-version\/\s*surface\/os\/fixture keys/,
   );
+  assert.match(source, /explicit backend scope/);
+  assert.match(source, /canonical safe scenario-ID\s+definitions \(at most 64 per route\)/);
+  assert.match(source, /Review fixtures have no scenarios/);
+  assert.match(source, /each E2E fixture names\s+exactly one scenario/);
   assert.match(source, /never a candidate receipt/);
   assert.match(source, /pass its locator explicitly instead of creating a duplicate/);
 });

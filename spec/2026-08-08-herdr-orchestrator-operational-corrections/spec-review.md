@@ -297,11 +297,11 @@ This change adds no orchestration CLI, provider proxy, daemon, adapter layer, st
 
 Tracked fixture, E2E and acceptance documents are durable definitions, proof mappings and current reusable support posture only; they never become candidate-bound PASS receipts. Live candidate evidence remains ephemeral in current backend-run state and the final answer. Its closed final-result record has exact top-level order `candidate`, `worktree`, `gates`, `support`, `reviews`, `scenarios`. Candidate is the unchanged full SHA and worktree is `clean`.
 
-`gates` is exactly `[{gate:"qc",statuses:[A,B]},{gate:"smoke",statuses:[A,B]},{gate:"checks",statuses:[A,B]}]`; QC/smoke are PASS/PASS and checks are each PASS|NA. `support` contains 1..16 unique entries sorted by the exact key tuple `backend,provider,provider-version,backend-version,surface,os,fixture`; each outer entry is exactly `key,status,scenarios`, has `status=SUPPORTED`, and has a sorted unique list of at most 32 safe lowercase IDs matching `[a-z0-9][a-z0-9._-]{0,63}`. The facts cover every provider in the selected topology.
+`gates` is exactly `[{gate:"qc",statuses:[A,B]},{gate:"smoke",statuses:[A,B]},{gate:"checks",statuses:[A,B]}]`; QC/smoke are PASS/PASS and checks are each PASS|NA. `support` contains 1..67 unique entries sorted by the exact key tuple `backend,provider,provider-version,backend-version,surface,os,fixture`; each outer entry is exactly `key,status,scenarios`, has `status=SUPPORTED`, and has either an empty list or one safe lowercase scenario ID matching `[a-z0-9][a-z0-9._-]{0,63}`. The bound covers two review facts, up to 64 scenario facts, and one distinct executor fact. The facts cover every provider and exact final-result surface in the selected topology.
 
-`reviews` is exactly A then B. Each entry is exactly `reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,evidence`; providers differ, status/qc/smoke are PASS, checks is PASS|NA, and E2E is REQUIRED|NA. The top-level gate arrays byte-equal the corresponding A/B review qc, smoke, and checks fields. `support-key` is the exact slash-join of the matched fact's seven safe-ID values and resolves to a fact with the selected route's backend, the same provider, `surface=review`, `fixture=review-turn`, and `scenarios=[]`. Evidence is exactly `source,protocol,parts,rows,bytes` with `source=backend-public-surface`, `protocol=MO_REVIEW_V2`, and maxima 6 parts, 1000 rows, 61,440 bytes. Both dispositions must agree: NA/NA is equivalent to an empty scenario list; REQUIRED/REQUIRED derives a nonempty scenario set exactly as the sorted unique union of `support[].scenarios`, never from a default/external list. A mixed first pass re-prompts exactly the NA reviewer once on the unchanged candidate without peer output; a change to REQUIRED settles the pair, while repeated NA is terminal `needs_attention:e2e_disposition_dispute`.
+`reviews` is exactly A then B. Each entry is exactly `reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,scenarios,evidence`; providers differ, status/qc/smoke are PASS, checks is PASS|NA, and E2E is REQUIRED|NA. Each review header and final review record independently names the exact canonical scenario list: REQUIRED has 1..64 unique safe IDs sorted bytewise; NA has none. The top-level gate arrays byte-equal the corresponding A/B review qc, smoke, and checks fields. `support-key` is the exact slash-join of the matched fact's seven safe-ID values and resolves to a fact with the selected route's backend, the same provider, `surface=review`, `fixture=review-turn`, and `scenarios=[]`. Evidence is exactly `source,protocol,parts,rows,bytes` with `source=backend-public-surface`, `protocol=MO_REVIEW_V2`, and maxima 6 parts, 1000 rows, 61,440 bytes. Both dispositions must agree: NA/NA is equivalent to an empty scenario list; REQUIRED/REQUIRED derives the required nonempty scenario set exactly as the sorted unique union of both validated review lists. Support facts prove every derived name but never define applicability. A mixed first pass re-prompts exactly the NA reviewer once on the unchanged candidate without peer output; a change to REQUIRED settles the pair, while repeated NA is terminal `needs_attention:e2e_disposition_dispute`.
 
-Scenario records follow that exact order. Each entry is exactly `scenario,actor,provider,support-key,status,evidence`, status PASS. Its support key resolves to a fact with the selected route's backend, the same provider, `surface=e2e`, `fixture=scenario`, and `scenarios=[scenario]`; a merely same-provider fact is invalid. Evidence is exactly `source,protocol,ordinal,total,rows,bytes`, source `backend-public-surface`, protocol `MO_E2E_V1`, ordinal 1..total, consistent total, and maxima 1000 rows/65,536 bytes. For REQUIRED/REQUIRED, the validated PASS header's positive `scenarios` count equals the derived scenario-list length and every evidence `total`, with `not_run=none`. Extra keys, prose/generic evidence, missing support/gates/evidence, count mismatch, FAIL/UNKNOWN, dirty state or a changed SHA invalidates PASS. Never edit or commit tracked docs after a gate and never create a manifest, receipt, verdict file or external evidence sink.
+Scenario records follow that exact order. Each entry is exactly `scenario,actor,provider,support-key,status,evidence`, status PASS. Its support key resolves to a fact with the selected route's backend, the same provider, `surface=e2e`, `fixture=scenario`, and `scenarios=[scenario]`; a merely same-provider fact is invalid. Evidence is exactly `source,protocol,ordinal,total,rows,bytes`, source `backend-public-surface`, protocol `MO_E2E_V1`, ordinal 1..total, consistent total, and maxima 1000 rows/65,536 bytes. For REQUIRED/REQUIRED, the validated PASS header's positive `scenarios` count and exact canonical `ids` list equal the derived scenario-list length and identities and every evidence `total`, with `not_run=none`. A smaller, repeated, reordered, or same-size different list is incomplete. Extra keys, prose/generic evidence, missing support/gates/evidence, count or identity mismatch, FAIL/UNKNOWN, dirty state or a changed SHA invalidates PASS. Never edit or commit tracked docs after a gate and never create a manifest, receipt, verdict file or external evidence sink.
 
 ## Implementation authority and change control
 
@@ -486,9 +486,12 @@ Tests use `markdown-it` AST nodes for entry ownership. Reviewers own semantic co
 Before activation, resolve an explicit fixture-map input from a caller-supplied
 locator or the project-contract default `docs/phase-0-fixtures.md`. Read it
 before the tracked-content firewall closes and retain only exact seven-field
-support keys and reusable posture. A missing, unreadable or malformed map is
-setup attention and prevents activation; candidate evidence is never part of
-this input and the orchestrator never repairs it with a later tracked read.
+support keys, reusable posture, explicit selected-backend scope, and at most 64
+canonical safe fixture scenario definitions. The same pre-activation input
+contract applies independently to Herdr and Omnigent. A missing, unreadable,
+malformed, or wrong-backend map is setup attention and prevents activation;
+candidate evidence is never part of this input and the orchestrator never
+repairs it with a later tracked read.
 
 Before topology mutation, run:
 
@@ -654,9 +657,9 @@ with no trailing LF. The executor receives no prompt during freeze.
 
 ```text
 MO_EXECUTOR_V1|type=<CANDIDATE|RESPONSE|BLOCKER>|candidate=<oid|none>|branch=<name|none>|base=<oid|none>|fixes=<ids|none>|rebuts=<ids|none>|blocker=<class|none>
-MO_REVIEW_V2|candidate=<oid>|reviewer=<A|B>|status=<PASS|FINDINGS|FOLLOWUP|OUTCOMES|DISPUTED|UNKNOWN>|part=<positive-int>|more=<yes|no>|ids=<ids|none>|open=<ids|none>|closes=<ids|none>|disputes=<ids|none>|qc=<PASS|FAIL|UNKNOWN>|smoke=<PASS|FAIL|UNKNOWN>|checks=<PASS|FAIL|UNKNOWN|NA>|e2e=<REQUIRED|NA|UNKNOWN>|unknown=<transport|environment|evaluation|none>
+MO_REVIEW_V2|candidate=<oid>|reviewer=<A|B>|status=<PASS|FINDINGS|FOLLOWUP|OUTCOMES|DISPUTED|UNKNOWN>|part=<positive-int>|more=<yes|no>|ids=<ids|none>|open=<ids|none>|closes=<ids|none>|disputes=<ids|none>|qc=<PASS|FAIL|UNKNOWN>|smoke=<PASS|FAIL|UNKNOWN>|checks=<PASS|FAIL|UNKNOWN|NA>|e2e=<REQUIRED|NA|UNKNOWN>|scenarios=<safe-id-list|none>|unknown=<transport|environment|evaluation|none>
 MO_ADJUDICATION_V1|candidate=<oid>|finding=<id>|reviewer=<A|B>|outcome=<UPHOLD|WITHDRAW|UNRESOLVED>
-MO_E2E_V1|candidate=<oid>|status=<PASS|FAIL|UNKNOWN|BLOCKER>|scenarios=<positive-int|none>|not_run=<none|positive-int>|blocker=<credentials|subscription|external_blocker|none>
+MO_E2E_V1|candidate=<oid>|status=<PASS|FAIL|UNKNOWN|BLOCKER>|scenarios=<positive-int|none>|ids=<safe-id-list|none>|not_run=<none|positive-int>|blocker=<credentials|subscription|external_blocker|none>
 MO_E2E_APPROVAL_REQUEST_V1|candidate=<oid>|operation=<production_e2e|irreversible_e2e>|scenario=<safe-id>
 MO_HUMAN_DECISION_V1|candidate=<oid>|finding=<id>|decision=<UPHOLD|WITHDRAW>
 MO_HUMAN_ANSWER_V1|candidate=<oid|none>|phase=<product|architecture|irreversible|credentials|subscription|external_blocker>|requester=executor
@@ -743,12 +746,16 @@ An executor `RESPONSE` is valid only when `rebuts` equals the complete current o
 
 Adjudication applies to one current disputed ID and comes from the existing other-vendor reviewer. It does not close the origin review.
 
+Review `scenarios` is `none` unless `e2e=REQUIRED`; REQUIRED carries 1..64
+unique safe IDs, comma-separated without spaces and sorted bytewise. The list is
+stable across all parts of one review.
+
 E2E:
 
-- `PASS`: positive scenarios, none omitted;
-- `FAIL`: positive scenarios, omitted count none or positive;
-- `UNKNOWN`: scenarios none or positive; when scenarios are none, `not_run` is positive;
-- `BLOCKER`: scenarios/not-run none and one of credentials, subscription, or external blocker;
+- `PASS`: positive scenarios, `ids` has exactly that many canonical identities, none omitted;
+- `FAIL`: positive scenarios, the same exact `ids` identities, omitted count none or positive;
+- `UNKNOWN`: scenarios/ids both none or both present with equal cardinality; when scenarios are none, `not_run` is positive;
+- `BLOCKER`: scenarios/ids/not-run none and one of credentials, subscription, or external blocker;
 - non-blocker states use `blocker=none`;
 - candidate equals frozen candidate.
 
@@ -995,8 +1002,9 @@ Return one full SHA only when:
 - at least one differs from executor;
 - both reviews pass with no open IDs, QC/smoke pass, and checks pass/NA;
 - every finding is closed or invalidated;
-- for required E2E, the PASS-header scenario count equals the derived final
-  scenario count and every evidence total, with none omitted; or both reviewers
+- for required E2E, the PASS-header scenario count and exact canonical IDs equal
+  the reviewer-derived final scenario list and every evidence total, with none
+  omitted; or both reviewers
   say NA;
 - final `HEAD` equals candidate.
 

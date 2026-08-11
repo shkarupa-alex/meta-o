@@ -105,9 +105,9 @@ const fail = () => process.exit(1);
 const die = (ok) => { if (!ok) throw new Error("invalid"); };
 const fields = {
   MO_EXECUTOR_V1: ["type", "candidate", "branch", "base", "fixes", "rebuts", "blocker"],
-  MO_REVIEW_V2: ["candidate", "reviewer", "status", "part", "more", "ids", "open", "closes", "disputes", "qc", "smoke", "checks", "e2e", "unknown"],
+  MO_REVIEW_V2: ["candidate", "reviewer", "status", "part", "more", "ids", "open", "closes", "disputes", "qc", "smoke", "checks", "e2e", "scenarios", "unknown"],
   MO_ADJUDICATION_V1: ["candidate", "finding", "reviewer", "outcome"],
-  MO_E2E_V1: ["candidate", "status", "scenarios", "not_run", "blocker"],
+  MO_E2E_V1: ["candidate", "status", "scenarios", "ids", "not_run", "blocker"],
   MO_E2E_APPROVAL_REQUEST_V1: ["candidate", "operation", "scenario"],
 };
 const oid = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
@@ -127,6 +127,14 @@ const idList = (value, reviewer) => {
     die(suffix > last[match[1]]);
     last[match[1]] = suffix;
   }
+  return list;
+};
+const scenarioList = (value) => {
+  if (value === "none") return [];
+  const list = value.split(",");
+  die(list.length <= 64 && new Set(list).size === list.length);
+  die(list.every((id) => /^[a-z0-9][a-z0-9._-]{0,63}$/.test(id)));
+  die(list.join(",") === [...list].sort().join(","));
   return list;
 };
 const parse = (line) => {
@@ -155,6 +163,8 @@ const valid = (header, protocol, candidate, reviewer, expectedOpen, expectedFind
     die(!idList(h.closes, reviewer).some((id) => idList(h.disputes, reviewer).includes(id)));
     die(/^(PASS|FAIL|UNKNOWN)$/.test(h.qc) && /^(PASS|FAIL|UNKNOWN)$/.test(h.smoke));
     die(/^(PASS|FAIL|UNKNOWN|NA)$/.test(h.checks) && /^(REQUIRED|NA|UNKNOWN)$/.test(h.e2e));
+    const selectedScenarios = scenarioList(h.scenarios);
+    die(h.e2e === "REQUIRED" ? selectedScenarios.length > 0 : h.scenarios === "none");
     if (h.status !== "FINDINGS") die(h.part === "1" && h.more === "no");
     if (h.status === "PASS") die(h.ids === "none" && h.open === "none" && h.disputes === "none" && h.qc === "PASS" && h.smoke === "PASS" && /^(PASS|NA)$/.test(h.checks) && /^(REQUIRED|NA)$/.test(h.e2e) && h.unknown === "none");
     if (h.status === "FINDINGS") die(h.ids !== "none" && h.open !== "none" && h.disputes === "none" && h.unknown === "none");
@@ -185,10 +195,12 @@ const valid = (header, protocol, candidate, reviewer, expectedOpen, expectedFind
   } else if (protocol === "MO_E2E_V1") {
     die(oid.test(candidate));
     die(/^(PASS|FAIL|UNKNOWN|BLOCKER)$/.test(h.status));
-    if (h.status === "PASS") die(pos.test(h.scenarios) && h.not_run === "none" && h.blocker === "none");
-    if (h.status === "FAIL") die(pos.test(h.scenarios) && /^(none|[1-9][0-9]*)$/.test(h.not_run) && h.blocker === "none");
+    const selectedScenarios = scenarioList(h.ids);
+    die(h.scenarios === "none" ? h.ids === "none" : pos.test(h.scenarios) && +h.scenarios === selectedScenarios.length);
+    if (h.status === "PASS") die(pos.test(h.scenarios) && selectedScenarios.length > 0 && h.not_run === "none" && h.blocker === "none");
+    if (h.status === "FAIL") die(pos.test(h.scenarios) && selectedScenarios.length > 0 && /^(none|[1-9][0-9]*)$/.test(h.not_run) && h.blocker === "none");
     if (h.status === "UNKNOWN") die(/^(none|[1-9][0-9]*)$/.test(h.scenarios) && /^(none|[1-9][0-9]*)$/.test(h.not_run) && (h.scenarios !== "none" || pos.test(h.not_run)) && h.blocker === "none");
-    if (h.status === "BLOCKER") die(h.scenarios === "none" && h.not_run === "none" && /^(credentials|subscription|external_blocker)$/.test(h.blocker));
+    if (h.status === "BLOCKER") die(h.scenarios === "none" && h.ids === "none" && h.not_run === "none" && /^(credentials|subscription|external_blocker)$/.test(h.blocker));
   } else {
     die(protocol === "MO_E2E_APPROVAL_REQUEST_V1" && oid.test(candidate) && reviewer === "none");
     die(/^(production_e2e|irreversible_e2e)$/.test(h.operation));
@@ -325,9 +337,9 @@ const parse = (body) => {
   const [protocol, ...raw] = line.split("|");
   const names = {
     MO_EXECUTOR_V1: ["type", "candidate", "branch", "base", "fixes", "rebuts", "blocker"],
-    MO_REVIEW_V2: ["candidate", "reviewer", "status", "part", "more", "ids", "open", "closes", "disputes", "qc", "smoke", "checks", "e2e", "unknown"],
+    MO_REVIEW_V2: ["candidate", "reviewer", "status", "part", "more", "ids", "open", "closes", "disputes", "qc", "smoke", "checks", "e2e", "scenarios", "unknown"],
     MO_ADJUDICATION_V1: ["candidate", "finding", "reviewer", "outcome"],
-    MO_E2E_V1: ["candidate", "status", "scenarios", "not_run", "blocker"],
+    MO_E2E_V1: ["candidate", "status", "scenarios", "ids", "not_run", "blocker"],
     MO_HUMAN_DECISION_V1: ["candidate", "finding", "decision"],
     MO_HUMAN_ANSWER_V1: ["candidate", "phase", "requester"],
     MO_OPERATIONAL_APPROVAL_V1: ["candidate", "operation", "scenario", "requester", "request", "decision"],
@@ -355,6 +367,14 @@ const list = (value, reviewer) => {
     ok(suffix > last[match[1]]);
     last[match[1]] = suffix;
   }
+  return found;
+};
+const scenarioList = (value) => {
+  if (value === "none") return [];
+  const found = value.split(",");
+  ok(found.length <= 64 && new Set(found).size === found.length);
+  ok(found.every((id) => /^[a-z0-9][a-z0-9._-]{0,63}$/.test(id)));
+  ok(found.join(",") === [...found].sort().join(","));
   return found;
 };
 const compareIds = (left, right) => {
@@ -477,7 +497,9 @@ try {
       ok(!current.complete && h.protocol === "MO_REVIEW_V2" && h.reviewer === reviewer && h.part === segment.part);
       ok((priorOpen.length ? /^(FOLLOWUP|OUTCOMES|DISPUTED)$/ : /^(PASS|FINDINGS)$/).test(h.status) && /^(yes|no)$/.test(h.more));
       ok(/^(PASS|FAIL|UNKNOWN)$/.test(h.qc) && /^(PASS|FAIL|UNKNOWN)$/.test(h.smoke) && /^(PASS|FAIL|UNKNOWN|NA)$/.test(h.checks) && /^(REQUIRED|NA|UNKNOWN)$/.test(h.e2e));
-      const identity = [h.candidate, h.reviewer, h.status, h.qc, h.smoke, h.checks, h.e2e, h.unknown].join("|");
+      const selectedScenarios = scenarioList(h.scenarios);
+      ok(h.e2e === "REQUIRED" ? selectedScenarios.length > 0 : h.scenarios === "none");
+      const identity = [h.candidate, h.reviewer, h.status, h.qc, h.smoke, h.checks, h.e2e, h.scenarios, h.unknown].join("|");
       if (current.identity) ok(current.identity === identity); else { current.identity = identity; current.status = h.status; }
       const introduced = list(h.ids, reviewer), closes = list(h.closes, reviewer), disputes = list(h.disputes, reviewer);
       ok(!closes.some((id) => disputes.includes(id)));
@@ -536,7 +558,8 @@ try {
   } else if (purpose === "failed-e2e") {
     ok(segments.length === 1 && segments[0].source === "e2e" && segments[0].part === "none");
     const h = segments[0].header;
-    ok(h.protocol === "MO_E2E_V1" && h.status === "FAIL" && positive.test(h.scenarios));
+    const selectedScenarios = scenarioList(h.ids);
+    ok(h.protocol === "MO_E2E_V1" && h.status === "FAIL" && positive.test(h.scenarios) && +h.scenarios === selectedScenarios.length && selectedScenarios.length > 0);
     ok(/^(none|[1-9][0-9]*)$/.test(h.not_run) && h.blocker === "none" && segments[0].body.length <= 65_536);
   } else if (purpose === "executor-response") {
     ok(segments.length === 1); validateResponse(segments[0]);
@@ -553,11 +576,13 @@ try {
     const introducing = introduced.header;
     ok(introducing.protocol === "MO_REVIEW_V2" && introducing.reviewer === origin && introducing.status === "FINDINGS" && introducing.part === introduced.part && /^(yes|no)$/.test(introducing.more) && list(introducing.ids, origin).includes(finding) && introducing.disputes === "none" && introducing.unknown === "none" && introduced.rows <= 180 && introduced.body.length <= 61_440);
     ok(/^(PASS|FAIL|UNKNOWN)$/.test(introducing.qc) && /^(PASS|FAIL|UNKNOWN)$/.test(introducing.smoke) && /^(PASS|FAIL|UNKNOWN|NA)$/.test(introducing.checks) && /^(REQUIRED|NA|UNKNOWN)$/.test(introducing.e2e));
+    ok(introducing.e2e === "REQUIRED" ? scenarioList(introducing.scenarios).length > 0 : introducing.scenarios === "none");
     validateResponse(response);
     const h = disputed.header;
     const rebuts = list(response.header.rebuts, origin), closes = list(h.closes, origin), disputes = list(h.disputes, origin);
     ok(disputed.source === source && disputed.part === "none" && h.protocol === "MO_REVIEW_V2" && h.reviewer === origin && /^(OUTCOMES|DISPUTED)$/.test(h.status) && h.part === "1" && h.more === "no" && h.ids === "none" && h.unknown === "none" && disputes.includes(finding) && disputed.body.length <= 24_576);
     ok(/^(PASS|FAIL|UNKNOWN)$/.test(h.qc) && /^(PASS|FAIL|UNKNOWN)$/.test(h.smoke) && /^(PASS|FAIL|UNKNOWN|NA)$/.test(h.checks) && /^(REQUIRED|NA|UNKNOWN)$/.test(h.e2e));
+    ok(h.e2e === "REQUIRED" ? scenarioList(h.scenarios).length > 0 : h.scenarios === "none");
     ok(!closes.some((id) => disputes.includes(id)) && [...closes, ...disputes].sort(compareIds).join(",") === [...rebuts].sort(compareIds).join(",") && h.disputes === aggregateTargets);
     ok(h.open === h.disputes);
     if (h.status === "OUTCOMES") ok(closes.length > 0 && disputes.length > 0);
@@ -713,7 +738,7 @@ Herdr final-result output has exactly `candidate`, `worktree`, `gates`,
 `support`, `reviews`, `scenarios` in that order and the closed nested field order
 from methodology §3. Render it as exactly one JSON object followed only by the
 short human summary. Gates are exactly QC, smoke, checks with A-then-B statuses;
-support is 1..16 canonical facts keyed by the exact seven selected-topology
+support is 1..67 canonical facts keyed by the exact seven selected-topology
 fields; reviews are exactly A then B; and scenario records are canonical.
 Take each gate status from the same validated A/B review header field, copy it
 into that review record and require the top-level pair to equal those two values.
@@ -731,12 +756,14 @@ retrieval metadata. The structural evidence objects and their 6/1,000/61,440 and
 1,000/65,536 bounds reject arbitrary body prose or a generic evidence label.
 Derive E2E names without reading opaque bodies: both reviewer dispositions NA
 means exactly no scenarios; both REQUIRED means exactly the nonempty sorted
-unique union of selected support-fact scenario names. A mixed first pass follows
+unique union of the two validated review-header scenario lists. Support facts
+prove each name but never define applicability. A mixed first pass follows
 the one-shot NA-reviewer reconciliation before construction; persistent mixed
 dispositions are invalid and end in `needs_attention:e2e_disposition_dispute`.
 Before final construction, require the validated E2E PASS header's positive
-`scenarios` count to equal that derived list length and every scenario evidence
-`total`, with `not_run=none`; a smaller self-selected result is incomplete.
+`scenarios` count and exact canonical `ids` list to equal that derived list and
+every scenario evidence `total`, with `not_run=none`; a smaller, repeated,
+reordered, or same-size different result is incomplete.
 
 Require the same full candidate SHA, `worktree=clean`, complete deterministic
 gates and support coverage immediately before return. A dirty tree, changed SHA,

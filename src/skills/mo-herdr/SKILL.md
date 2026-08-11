@@ -18,8 +18,9 @@ Do not fabricate Herdr state and do not use this skill outside Herdr.
 Before activation, resolve the fixture map as an explicit input: use a
 caller-supplied locator when present, otherwise the project-contract path
 `docs/phase-0-fixtures.md`. Read it before the firewall closes and retain only
-the exact seven-field support keys and their reusable posture. A missing,
-unreadable or malformed map is setup attention and prevents activation; it is
+the exact seven-field support keys, reusable posture, explicit Herdr backend
+scope, and up to 64 canonical fixture scenario IDs. A missing,
+unreadable, malformed, or wrong-backend map is setup attention and prevents activation; it is
 never repaired by reading tracked content later. Candidate SHA, verdicts and
 live run evidence are not part of this input.
 
@@ -342,29 +343,33 @@ unchanged full SHA and `worktree=clean`.
 Emit gates exactly in `qc`, `smoke`, `checks` order with A-then-B `statuses`;
 require PASS for both QC/smoke and PASS or NA for each applicable-check status.
 Require each pair to equal the two reviews' correspondingly named header fields.
-Emit 1..16 canonical sorted support facts, each exactly `key`, `status`,
+Emit 1..67 canonical sorted support facts, each exactly `key`, `status`,
 `scenarios`: its key is exactly backend, provider, provider-version,
 backend-version, surface, os, fixture; status is SUPPORTED; all IDs are lower safe
-IDs of at most 64 bytes; and each sorted unique scenario-name list has at most
-32 entries. Slash-join those seven values as its canonical reference. Cover
+IDs of at most 64 bytes; and each scenario-name list is empty or a singleton.
+Slash-join those seven values as its canonical reference. Cover
 every exact actor surface on the selected Herdr topology.
 
 Emit exactly A then B review records with reviewer, actor, provider, exact
-`support-key`, PASS status, QC, smoke, checks, E2E disposition and evidence in
+`support-key`, PASS status, QC, smoke, checks, E2E disposition, exact scenario
+list and evidence in
 that order. QC/smoke are PASS and checks is PASS or NA. Bind that reference to
 the same provider's Herdr `review`/`review-turn` fact with no scenarios. Both
-dispositions must be REQUIRED or both NA; reject one NA. Review evidence is
+dispositions must be REQUIRED or both NA; reject one NA. A REQUIRED review has
+a nonempty canonical list of at most 64 safe scenario IDs; NA has none. Review evidence is
 exactly source `backend-public-surface`, protocol `MO_REVIEW_V2`, and positive
 parts/rows/bytes bounded by 6/1,000/61,440. Different reviewer providers remain
 mandatory. Both NA requires an empty scenario list. Both REQUIRED derives the
-nonempty scenario list only as the sorted unique union of support-fact scenarios;
-no default or out-of-band name is accepted. Each derived scenario record is
+nonempty scenario list only as the sorted unique union of both review scenario
+lists; support proves every derived name but never defines the required set. No
+default or out-of-band name is accepted. Each derived scenario record is
 ordered by name and carries actor, provider, PASS, exact `support-key` and exact
 structural evidence. Bind its reference to the same provider's Herdr `e2e` fact
 whose fixture and sole scenario both equal the record name. Evidence source is
 `backend-public-surface`, protocol is `MO_E2E_V1`, ordinal/total is exact, and
 the validated PASS header's `scenarios` count equals both the derived list
-length and every evidence `total`, with `not_run=none`. Positive rows/bytes are
+length and every evidence `total`, its `ids` byte-equals the complete derived
+list, and `not_run=none`. Positive rows/bytes are
 bounded by 1,000/65,536. Reject missing or unrelated
 support keys, gates/dispositions, extra fields, FAIL/UNKNOWN or arbitrary
 prose/generic evidence.

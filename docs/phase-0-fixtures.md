@@ -32,9 +32,9 @@ from the backend public surface. Its verified final-result record has exactly:
 candidate: <full SHA>
 worktree: clean
 gates[]: <qc/smoke/checks; reviewer-A then reviewer-B statuses>
-support[]: <1..16 canonical exact-key SUPPORTED facts with scenario lists>
-reviews[]: <exactly A then B; actor/provider/support-key/PASS/qc/smoke/checks/e2e/evidence>
-scenarios[]: <exact support-derived order; actor/provider/support-key/PASS/structural evidence>
+support[]: <1..67 canonical exact-key SUPPORTED facts with empty/singleton scenario lists>
+reviews[]: <exactly A then B; actor/provider/support-key/PASS/qc/smoke/checks/e2e/scenarios/evidence>
+scenarios[]: <exact review-derived, support-proven order; actor/provider/support-key/PASS/structural evidence>
 ```
 
 Never edit or commit this map after a candidate gate, and never create a manifest, external sink,
@@ -123,12 +123,12 @@ or private-transcript fallback.
 
 ### Candidate lifecycle
 
-| ID  | Exact fixture                                                                                                                                                       | Expected observation                                                                                                                             | Fixture posture | Support     |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------- | ----------- |
-| H26 | Build the closed final-result record, then mutate field order/keys, clean SHA, gates, support, review evidence, scenario derivation/order/ordinals and limits.      | Exact six-field schema passes only for clean unchanged HEAD; every extra/missing/generic/FAIL/UNKNOWN or non-derived scenario fact fails closed. | PENDING         | UNSUPPORTED |
-| H27 | Create a new commit after at least one passing gate.                                                                                                                | Every old gate and old-candidate open ID is invalidated before further completion.                                                               | PENDING         | UNSUPPORTED |
-| H28 | Lose an actor once, lose a pane once, then repeat the same loss.                                                                                                    | New ordinary sessions start in visible panes with the ID floor; first loss restarts the gate and repeated loss reaches attention.                | PENDING         | UNSUPPORTED |
-| H29 | Test fallback outcomes and 1..16 exact seven-field support facts, including unsafe IDs, duplicates, key misordering, >32 scenarios, and missing topology providers. | Fallback outcomes remain distinct; only canonical SUPPORTED facts cover the selected topology and may derive final scenarios.                    | PENDING         | UNSUPPORTED |
+| ID  | Exact fixture                                                                                                                                                                                        | Expected observation                                                                                                                             | Fixture posture | Support     |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------- | ----------- |
+| H26 | Build the closed final-result record, then mutate field order/keys, clean SHA, gates, support, review evidence, scenario derivation/order/ordinals and limits.                                       | Exact six-field schema passes only for clean unchanged HEAD; every extra/missing/generic/FAIL/UNKNOWN or non-derived scenario fact fails closed. | PENDING         | UNSUPPORTED |
+| H27 | Create a new commit after at least one passing gate.                                                                                                                                                 | Every old gate and old-candidate open ID is invalidated before further completion.                                                               | PENDING         | UNSUPPORTED |
+| H28 | Lose an actor once, lose a pane once, then repeat the same loss.                                                                                                                                     | New ordinary sessions start in visible panes with the ID floor; first loss restarts the gate and repeated loss reaches attention.                | PENDING         | UNSUPPORTED |
+| H29 | Test fallback outcomes and 1..67 exact seven-field support facts, including unsafe IDs, duplicates, key misordering, non-singleton facts, 64/65 scenario boundaries, and missing topology providers. | Fallback outcomes remain distinct; only canonical SUPPORTED facts cover the selected topology and prove the exact reviewer-derived scenario set. | PENDING         | UNSUPPORTED |
 
 ### Firewall, attention, and scratch
 

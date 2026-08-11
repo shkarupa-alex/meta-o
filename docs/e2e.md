@@ -20,16 +20,17 @@ candidate, worktree, gates, support, reviews, scenarios
 - `gates` is exactly the ordered array `qc`, `smoke`, `checks`. Each entry has
   exactly `gate,statuses`; statuses are reviewer-A then reviewer-B. QC and smoke
   are `PASS,PASS`; each checks status is `PASS|NA`.
-- `support` has 1..16 unique entries, sorted by the exact seven-field key tuple
+- `support` has 1..67 unique entries, sorted by the exact seven-field key tuple
   `backend,provider,provider-version,backend-version,surface,os,fixture`. Each entry
-  has exactly `key,status,scenarios`; `status=SUPPORTED`; `scenarios` is a sorted
-  unique list of at most 32 safe IDs. Every safe lowercase identifier matches
+  has exactly `key,status,scenarios`; `status=SUPPORTED`; `scenarios` is empty or
+  a singleton safe ID list. Every safe lowercase identifier matches
   `[a-z0-9][a-z0-9._-]{0,63}`, and support facts cover every provider in the
   selected topology.
 - `reviews` is exactly A then B. Each entry has exactly
-  `reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,evidence`;
+  `reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,scenarios,evidence`;
   status, qc and smoke are PASS, checks is `PASS|NA`, providers differ, and
-  `e2e` is `REQUIRED|NA`. The top-level gate status arrays byte-equal the A/B
+  `e2e` is `REQUIRED|NA`. Its exact canonical scenario list has 1..64 IDs for
+  REQUIRED and is empty for NA. The top-level gate status arrays byte-equal the A/B
   review `qc`, `smoke`, and `checks` fields. `support-key` is the exact
   slash-join of its matched support fact's seven safe-ID values in key order.
   That fact has the selected route's backend, the same provider, `surface=review`,
@@ -38,9 +39,10 @@ candidate, worktree, gates, support, reviews, scenarios
   `MO_REVIEW_V2`, and maxima 6 parts, 1000 rows, 61,440 bytes.
 - The two final review E2E dispositions agree. Both `NA` requires
   `scenarios=[]`. Both `REQUIRED` derives a nonempty `scenarios` list exactly as
-  the sorted unique union of `support[].scenarios`; no default or external list
-  is permitted. A mixed first pass re-prompts exactly the NA reviewer once on
-  the unchanged candidate without peer output; a change to REQUIRED proceeds,
+  the sorted unique union of both validated review lists; support facts prove
+  each identity but never define applicability. A mixed first pass re-prompts
+  exactly the NA reviewer once on the unchanged candidate without peer output;
+  a change to REQUIRED proceeds,
   while repeated NA is terminal `needs_attention:e2e_disposition_dispute`.
 - Scenario records follow that exact sorted order. Each has exactly
   `scenario,actor,provider,support-key,status,evidence`; status is PASS.
@@ -51,8 +53,9 @@ candidate, worktree, gates, support, reviews, scenarios
   protocol `MO_E2E_V1`, ordinal 1..total, the same total on every entry, and
   maxima 1000 rows and 65,536 bytes.
 - For REQUIRED/REQUIRED, the validated E2E PASS header's positive `scenarios`
-  count equals the derived scenario-list length and every evidence `total`, with
-  `not_run=none`. A self-selected smaller support/result set cannot prove
+  count and exact canonical `ids` list equal the derived scenario identities and
+  every evidence `total`, with `not_run=none`. A smaller, repeated, reordered,
+  same-size different, or self-selected support/result set cannot prove
   completeness.
 
 Extra keys, prose/generic evidence, missing support/gates/evidence, FAIL/UNKNOWN,

@@ -59,10 +59,11 @@ const FIELDS = {
     "smoke",
     "checks",
     "e2e",
+    "scenarios",
     "unknown",
   ],
   MO_ADJUDICATION_V1: ["candidate", "finding", "reviewer", "outcome"],
-  MO_E2E_V1: ["candidate", "status", "scenarios", "not_run", "blocker"],
+  MO_E2E_V1: ["candidate", "status", "scenarios", "ids", "not_run", "blocker"],
   MO_E2E_APPROVAL_REQUEST_V1: ["candidate", "operation", "scenario"],
   MO_HUMAN_DECISION_V1: ["candidate", "finding", "decision"],
   MO_HUMAN_ANSWER_V1: ["candidate", "phase", "requester"],
@@ -95,6 +96,16 @@ function parseHeader(line) {
 
 function canonicalPositive(value) {
   return /^[1-9][0-9]*$/.test(value);
+}
+
+function scenarioIds(value) {
+  if (value === "none") return [];
+  const found = value.split(",");
+  assert.equal(found.length <= 64, true, "too many scenario IDs");
+  assert.equal(new Set(found).size, found.length, "duplicate scenario ID");
+  for (const id of found) assert.match(id, /^[a-z0-9][a-z0-9._-]{0,63}$/);
+  assert.deepEqual(found, [...found].sort(), "scenario IDs are not canonical");
+  return found;
 }
 
 function ids(value, prefix) {
@@ -155,6 +166,9 @@ function validateReview(line) {
   assert.match(header.smoke, /^(PASS|FAIL|UNKNOWN)$/);
   assert.match(header.checks, /^(PASS|FAIL|UNKNOWN|NA)$/);
   assert.match(header.e2e, /^(REQUIRED|NA|UNKNOWN)$/);
+  const selectedScenarios = scenarioIds(header.scenarios);
+  if (header.e2e === "REQUIRED") assert.ok(selectedScenarios.length > 0);
+  else assert.equal(header.scenarios, "none");
   assert.ok(canonicalPositive(header.part));
   for (const field of ["ids", "open", "closes", "disputes"]) ids(header[field], header.reviewer);
   const closes = ids(header.closes, header.reviewer);
@@ -265,12 +279,20 @@ function validateE2E(line) {
   const header = parseHeader(line);
   assert.equal(header.protocol, "MO_E2E_V1");
   assert.match(header.candidate, /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
+  const selectedScenarios = scenarioIds(header.ids);
+  if (header.scenarios === "none") assert.equal(header.ids, "none");
+  else {
+    assert.ok(canonicalPositive(header.scenarios));
+    assert.equal(Number(header.scenarios), selectedScenarios.length);
+  }
   if (header.status === "PASS") {
     assert.ok(canonicalPositive(header.scenarios));
+    assert.ok(selectedScenarios.length > 0);
     assert.equal(header.not_run, "none");
     assert.equal(header.blocker, "none");
   } else if (header.status === "FAIL") {
     assert.ok(canonicalPositive(header.scenarios));
+    assert.ok(selectedScenarios.length > 0);
     assert.match(header.not_run, /^(none|[1-9][0-9]*)$/);
     assert.equal(header.blocker, "none");
   } else if (header.status === "UNKNOWN") {
@@ -280,6 +302,7 @@ function validateE2E(line) {
     assert.equal(header.blocker, "none");
   } else if (header.status === "BLOCKER") {
     assert.equal(header.scenarios, "none");
+    assert.equal(header.ids, "none");
     assert.equal(header.not_run, "none");
     assert.match(header.blocker, /^(credentials|subscription|external_blocker)$/);
   } else {
@@ -373,9 +396,13 @@ function review(overrides = {}) {
     smoke: "PASS",
     checks: "PASS",
     e2e: "NA",
+    scenarios: "none",
     unknown: "none",
     ...overrides,
   };
+  if (!Object.hasOwn(overrides, "scenarios")) {
+    data.scenarios = data.e2e === "REQUIRED" ? "production-smoke" : "none";
+  }
   return `MO_REVIEW_V2|${FIELDS.MO_REVIEW_V2.map((name) => `${name}=${data[name]}`).join("|")}`;
 }
 
@@ -652,7 +679,26 @@ test("all compact headers have exact field order and canonical identities", () =
       `MO_ADJUDICATION_V1|candidate=${OID}|finding=A-1,A-2|reviewer=B|outcome=UPHOLD`,
     ),
   );
-  validateE2E(`MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=1|not_run=none|blocker=none`);
+  validateE2E(
+    `MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=1|ids=production-smoke|not_run=none|blocker=none`,
+  );
+  const maximumScenarioList = Array.from(
+    { length: 64 },
+    (_, index) => `scenario-${String(index).padStart(2, "0")}`,
+  ).join(",");
+  validateReview(review({ e2e: "REQUIRED", scenarios: maximumScenarioList }));
+  validateE2E(
+    `MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=64|ids=${maximumScenarioList}|not_run=none|blocker=none`,
+  );
+  const overMaximumScenarioList = `${maximumScenarioList},scenario-64`;
+  assert.throws(() =>
+    validateReview(review({ e2e: "REQUIRED", scenarios: overMaximumScenarioList })),
+  );
+  assert.throws(() =>
+    validateE2E(
+      `MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=65|ids=${overMaximumScenarioList}|not_run=none|blocker=none`,
+    ),
+  );
   const oid64 = "b".repeat(64);
   validateExecutor(
     `MO_EXECUTOR_V1|type=CANDIDATE|candidate=${oid64}|branch=feature/x|base=${oid64}|fixes=none|rebuts=none|blocker=none`,
@@ -717,22 +763,28 @@ test("executor and E2E state matrices reject contradictory compact headers", () 
     ),
   );
 
-  validateE2E(`MO_E2E_V1|candidate=${OID}|status=FAIL|scenarios=2|not_run=1|blocker=none`);
-  validateE2E(`MO_E2E_V1|candidate=${OID}|status=UNKNOWN|scenarios=none|not_run=2|blocker=none`);
   validateE2E(
-    `MO_E2E_V1|candidate=${OID}|status=BLOCKER|scenarios=none|not_run=none|blocker=credentials`,
+    `MO_E2E_V1|candidate=${OID}|status=FAIL|scenarios=2|ids=alpha,beta|not_run=1|blocker=none`,
+  );
+  validateE2E(
+    `MO_E2E_V1|candidate=${OID}|status=UNKNOWN|scenarios=none|ids=none|not_run=2|blocker=none`,
+  );
+  validateE2E(
+    `MO_E2E_V1|candidate=${OID}|status=BLOCKER|scenarios=none|ids=none|not_run=none|blocker=credentials`,
   );
   assert.throws(() =>
     validateE2E(
-      `MO_E2E_V1|candidate=${OID}|status=BLOCKER|scenarios=none|not_run=none|blocker=production_e2e`,
+      `MO_E2E_V1|candidate=${OID}|status=BLOCKER|scenarios=none|ids=none|not_run=none|blocker=production_e2e`,
     ),
   );
   assert.throws(() =>
-    validateE2E(`MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=1|not_run=1|blocker=none`),
+    validateE2E(
+      `MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=1|ids=production-smoke|not_run=1|blocker=none`,
+    ),
   );
   assert.throws(() =>
     validateE2E(
-      `MO_E2E_V1|candidate=${OID}|status=BLOCKER|scenarios=none|not_run=none|blocker=none`,
+      `MO_E2E_V1|candidate=${OID}|status=BLOCKER|scenarios=none|ids=none|not_run=none|blocker=none`,
     ),
   );
 });
@@ -988,7 +1040,7 @@ test("operational approval is one-shot and candidate-stable through E2E PASS or 
   });
   assert.equal(
     e2e.acceptE2E(
-      `MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=1|not_run=none|blocker=none`,
+      `MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=1|ids=production-smoke|not_run=none|blocker=none`,
       resume.candidate,
     ),
     OID,
@@ -1081,10 +1133,9 @@ function validateFinalResult(result, { head = OID, clean = true, backend = "herd
     gate.statuses.forEach((status) => assert.match(status, allowed));
   }
 
-  assert.equal(result.support.length >= 1 && result.support.length <= 16, true);
+  assert.equal(result.support.length >= 1 && result.support.length <= 67, true);
   const supportKeys = [];
   const supportFacts = new Map();
-  const derivedScenarios = new Set();
   for (const fact of result.support) {
     exactKeys(fact, ["key", "status", "scenarios"]);
     exactKeys(fact.key, [
@@ -1103,10 +1154,9 @@ function validateFinalResult(result, { head = OID, clean = true, backend = "herd
     assert.equal(supportKeys.includes(canonicalKey), false);
     supportKeys.push(canonicalKey);
     supportFacts.set(canonicalKey, fact);
-    assert.equal(fact.scenarios.length <= 32, true);
+    assert.equal(fact.scenarios.length <= 1, true);
     const names = fact.scenarios.map(safeId);
     assert.deepEqual(names, [...new Set(names)].sort());
-    names.forEach((name) => derivedScenarios.add(name));
   }
   assert.deepEqual(supportKeys, [...supportKeys].sort());
 
@@ -1126,6 +1176,7 @@ function validateFinalResult(result, { head = OID, clean = true, backend = "herd
       "smoke",
       "checks",
       "e2e",
+      "scenarios",
       "evidence",
     ]);
     assert.match(entry.actor, /^m-[a-z0-9][a-z0-9._-]{0,125}$/);
@@ -1142,6 +1193,11 @@ function validateFinalResult(result, { head = OID, clean = true, backend = "herd
     assert.equal(entry.smoke, "PASS");
     assert.match(entry.checks, /^(PASS|NA)$/);
     assert.match(entry.e2e, /^(REQUIRED|NA)$/);
+    const selected = entry.scenarios.map(safeId);
+    assert.equal(selected.length <= 64, true);
+    assert.deepEqual(selected, [...new Set(selected)].sort());
+    if (entry.e2e === "REQUIRED") assert.ok(selected.length > 0);
+    else assert.deepEqual(selected, []);
     exactKeys(entry.evidence, ["source", "protocol", "parts", "rows", "bytes"]);
     assert.equal(entry.evidence.source, "backend-public-surface");
     assert.equal(entry.evidence.protocol, "MO_REVIEW_V2");
@@ -1159,7 +1215,10 @@ function validateFinalResult(result, { head = OID, clean = true, backend = "herd
   }
   assert.equal(result.reviews[0].e2e, result.reviews[1].e2e);
 
-  const requiredScenarios = result.reviews[0].e2e === "NA" ? [] : [...derivedScenarios].sort();
+  const requiredScenarios =
+    result.reviews[0].e2e === "NA"
+      ? []
+      : [...new Set(result.reviews.flatMap((entry) => entry.scenarios))].sort();
   if (result.reviews[0].e2e === "REQUIRED") assert.ok(requiredScenarios.length > 0);
   assert.deepEqual(
     result.scenarios.map((entry) => entry.scenario),
@@ -1205,6 +1264,10 @@ function bindE2EPassToFinal(headerLine, finalResult) {
   const count = Number(header.scenarios);
   assert.equal(Number.isSafeInteger(count), true);
   assert.equal(count, finalResult.scenarios.length);
+  assert.deepEqual(
+    header.ids.split(","),
+    finalResult.scenarios.map((entry) => entry.scenario),
+  );
   for (const scenario of finalResult.scenarios) assert.equal(scenario.evidence.total, count);
   return count;
 }
@@ -1218,10 +1281,15 @@ test("mixed E2E dispositions get one bounded NA-side recheck", () => {
   assert.equal(reconcileE2EDispositions("REQUIRED", "NA", "NA"), "NEEDS_ATTENTION");
 });
 
-test("closed ephemeral final result derives scenarios from dispositions and support facts", () => {
+test("closed ephemeral final result derives scenarios from exact reviewer lists", () => {
   const supportKey = (provider, surface, fixture, backend = "herdr") =>
     `${backend}/${provider}/v1/v1/${surface}/darwin-arm64/${fixture}`;
-  const reviewRecord = (reviewer, provider, e2e = "REQUIRED") => ({
+  const reviewRecord = (
+    reviewer,
+    provider,
+    e2e = "REQUIRED",
+    scenarios = ["production-smoke"],
+  ) => ({
     reviewer,
     actor: `m-review-${reviewer.toLowerCase()}`,
     provider,
@@ -1231,6 +1299,7 @@ test("closed ephemeral final result derives scenarios from dispositions and supp
     smoke: "PASS",
     checks: reviewer === "A" ? "PASS" : "NA",
     e2e,
+    scenarios: e2e === "REQUIRED" ? scenarios : [],
     evidence: {
       source: "backend-public-surface",
       protocol: "MO_REVIEW_V2",
@@ -1310,17 +1379,91 @@ test("closed ephemeral final result derives scenarios from dispositions and supp
   assert.equal(validateFinalResult(finalResult), OID);
   assert.equal(
     bindE2EPassToFinal(
-      `MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=1|not_run=none|blocker=none`,
+      `MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=1|ids=production-smoke|not_run=none|blocker=none`,
       finalResult,
     ),
     1,
   );
   assert.throws(() =>
     bindE2EPassToFinal(
-      `MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=2|not_run=none|blocker=none`,
+      `MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=2|ids=alpha,beta|not_run=none|blocker=none`,
       finalResult,
     ),
   );
+  for (const ids of ["other-smoke", "production-smoke,production-smoke", "zeta,alpha"]) {
+    assert.throws(() =>
+      bindE2EPassToFinal(
+        `MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=${ids.split(",").length}|ids=${ids}|not_run=none|blocker=none`,
+        finalResult,
+      ),
+    );
+  }
+  const maximumScenarios = Array.from(
+    { length: 64 },
+    (_, index) => `scenario-${String(index).padStart(2, "0")}`,
+  );
+  const fact = (provider, surface, fixture, scenarios = []) => ({
+    key: {
+      backend: "herdr",
+      provider,
+      "provider-version": "v1",
+      "backend-version": "v1",
+      surface,
+      os: "darwin-arm64",
+      fixture,
+    },
+    status: "SUPPORTED",
+    scenarios,
+  });
+  const maximumSupport = [
+    fact("claude", "review", "review-turn"),
+    fact("codex", "executor", "executor-turn"),
+    fact("codex", "review", "review-turn"),
+    ...maximumScenarios.map((scenario) => fact("codex", "e2e", scenario, [scenario])),
+  ].sort((left, right) =>
+    Object.values(left.key).join("/").localeCompare(Object.values(right.key).join("/")),
+  );
+  const maximumResult = {
+    ...finalResult,
+    support: maximumSupport,
+    reviews: [
+      reviewRecord("A", "claude", "REQUIRED", maximumScenarios),
+      reviewRecord("B", "codex", "REQUIRED", maximumScenarios),
+    ],
+    scenarios: maximumScenarios.map((scenario, index) => ({
+      scenario,
+      actor: "m-e2e",
+      provider: "codex",
+      "support-key": supportKey("codex", "e2e", scenario),
+      status: "PASS",
+      evidence: {
+        source: "backend-public-surface",
+        protocol: "MO_E2E_V1",
+        ordinal: index + 1,
+        total: 64,
+        rows: 1_000,
+        bytes: 65_536,
+      },
+    })),
+  };
+  assert.equal(maximumResult.support.length, 67);
+  assert.equal(validateFinalResult(maximumResult), OID);
+  assert.equal(
+    bindE2EPassToFinal(
+      `MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=64|ids=${maximumScenarios.join(",")}|not_run=none|blocker=none`,
+      maximumResult,
+    ),
+    64,
+  );
+  const overMaximumSupport = {
+    ...maximumResult,
+    support: [...maximumSupport, fact("codex", "executor", "second-executor-turn")].sort(
+      (left, right) =>
+        Object.values(left.key).join("/").localeCompare(Object.values(right.key).join("/")),
+    ),
+  };
+  assert.equal(overMaximumSupport.support.length, 68);
+  assert.throws(() => validateFinalResult(overMaximumSupport));
   const omnigentResult = {
     ...finalResult,
     support: finalResult.support.map((fact) => ({
@@ -1365,6 +1508,7 @@ test("closed ephemeral final result derives scenarios from dispositions and supp
       ...finalResult,
       support: finalResult.support.map((fact) => ({ ...fact, scenarios: [] })),
     },
+    { ...finalResult, support: finalResult.support.filter((fact) => fact.key.surface !== "e2e") },
     {
       ...finalResult,
       reviews: [reviewRecord("A", "claude", "NA"), reviewRecord("B", "codex")],
@@ -1550,14 +1694,14 @@ test("blocker phase, ambiguity, forced dispute and no-progress rules fail closed
   assert.throws(() =>
     run.blocker(
       "e2e",
-      `MO_E2E_V1|candidate=${OID}|status=BLOCKER|scenarios=none|not_run=none|blocker=production_e2e`,
+      `MO_E2E_V1|candidate=${OID}|status=BLOCKER|scenarios=none|ids=none|not_run=none|blocker=production_e2e`,
     ),
   );
   run.phase = "resolution";
   assert.throws(() =>
     run.blocker(
       "e2e",
-      `MO_E2E_V1|candidate=${OID}|status=BLOCKER|scenarios=none|not_run=none|blocker=external_blocker`,
+      `MO_E2E_V1|candidate=${OID}|status=BLOCKER|scenarios=none|ids=none|not_run=none|blocker=external_blocker`,
     ),
   );
   run.phase = "adjudication";
@@ -1957,7 +2101,7 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
   assert.match(candidate, /`reviews` has exactly A then B/);
   assert.match(
     candidate,
-    /`provider`, `support-key`, `status`, `qc`, `smoke`, `checks`, `e2e`, `evidence`/,
+    /`provider`, `support-key`, `status`, `qc`, `smoke`, `checks`, `e2e`, `scenarios`,\s+`evidence`/,
   );
   assert.match(candidate, /canonical reference is those seven values slash-joined in order/);
   assert.match(candidate, /exact selected fact with the selected backend/);
@@ -1967,9 +2111,13 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
     /surface `e2e`, fixture equal to the scenario name and fact scenarios exactly\s+equal to that one name/,
   );
   assert.match(candidate, /The two E2E dispositions must agree/);
-  assert.match(candidate, /sorted\s+unique union of `support\[\]\.scenarios`/);
+  assert.match(
+    candidate,
+    /sorted unique union of the two independently validated\s+review `scenarios` lists/,
+  );
   assert.match(candidate, /positive row\/byte\s+bounds are 1,000 and 65,536/);
-  assert.match(candidate, /PASS header's positive\s+`scenarios` integer must equal/);
+  assert.match(candidate, /PASS header's positive\s+`scenarios` integer equals/);
+  assert.match(candidate, /canonical `ids` list byte-equals the complete derived list/);
   assert.match(candidate, /Missing or unreadable evidence is\s+unknown, never PASS/);
   assert.match(candidate, /Do not write, append, record or commit that live evidence/);
   assert.match(
@@ -1983,7 +2131,7 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
   assert.match(finalAnswer, /Both\s+dispositions must be REQUIRED or both NA/);
   assert.match(
     finalAnswer,
-    /PASS status, QC, smoke, checks, E2E disposition and evidence in\s+that order/,
+    /PASS status, QC, smoke, checks, E2E disposition, exact scenario\s+list and evidence in\s+that order/,
   );
   assert.match(finalAnswer, /exact `support-key`/);
   assert.match(finalAnswer, /same provider's Herdr `review`\/`review-turn` fact/);
@@ -2405,7 +2553,7 @@ test("authored Herdr mutation guards kill acceptance, reviewer barrier and byte-
     ],
     [
       skill.replace(
-        "PASS status, QC, smoke, checks, E2E disposition and evidence in\nthat order",
+        "PASS status, QC, smoke, checks, E2E disposition, exact scenario\nlist and evidence in",
         "PASS status and generic evidence",
       ),
       mechanics,
@@ -3988,7 +4136,7 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
   const e2e = privateFile(
     directory,
     "e2e.txt",
-    `MO_E2E_V1|candidate=${OID}|status=FAIL|scenarios=1|not_run=none|blocker=none\nevidence\n`,
+    `MO_E2E_V1|candidate=${OID}|status=FAIL|scenarios=1|ids=production-smoke|not_run=none|blocker=none\nevidence\n`,
   );
   const e2eArgs = [
     recipe,
@@ -4035,11 +4183,11 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
   );
 
   for (const invalidState of [
-    "status=PASS|scenarios=1|not_run=none|blocker=none",
-    "status=UNKNOWN|scenarios=none|not_run=1|blocker=none",
-    "status=BLOCKER|scenarios=none|not_run=none|blocker=production_e2e",
-    "status=FAIL|scenarios=none|not_run=1|blocker=none",
-    "status=FAIL|scenarios=1|not_run=none|blocker=credentials",
+    "status=PASS|scenarios=1|ids=production-smoke|not_run=none|blocker=none",
+    "status=UNKNOWN|scenarios=none|ids=none|not_run=1|blocker=none",
+    "status=BLOCKER|scenarios=none|ids=none|not_run=none|blocker=production_e2e",
+    "status=FAIL|scenarios=none|ids=none|not_run=1|blocker=none",
+    "status=FAIL|scenarios=1|ids=production-smoke|not_run=none|blocker=credentials",
   ]) {
     const invalidE2E = privateFile(
       directory,
@@ -4805,7 +4953,7 @@ test("literal relay and extraction recipes round-trip provider renders for every
   );
   const failedE2E = file(
     "rt-e2e.txt",
-    `MO_E2E_V1|candidate=${OID}|status=FAIL|scenarios=1|not_run=none|blocker=none\nevidence`,
+    `MO_E2E_V1|candidate=${OID}|status=FAIL|scenarios=1|ids=production-smoke|not_run=none|blocker=none\nevidence`,
   );
   const responseA = file(
     "rt-response-a.txt",
@@ -5036,7 +5184,7 @@ test("literal relay and extraction recipes round-trip provider renders for every
       output = `MO_ADJUDICATION_V1|candidate=${OID}|finding=A-1|reviewer=B|outcome=UPHOLD`;
     } else if (actor.includes("-e2e-")) {
       protocol = "MO_E2E_V1";
-      output = `MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=1|not_run=none|blocker=none`;
+      output = `MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=1|ids=production-smoke|not_run=none|blocker=none`;
     }
     const extractionRemaining = protocol === "MO_ADJUDICATION_V1" ? "122880" : "none";
     const extractionFinding = protocol === "MO_ADJUDICATION_V1" ? "A-1" : "none";
@@ -5203,6 +5351,8 @@ test("support identity, provisional extraction, and backend smoke stay explicit"
     join(ROOT, "src", "skills", "mo-herdr", "references", "herdr-mechanics.md"),
     "utf8",
   );
+  const herdr = readFileSync(join(ROOT, "src", "skills", "mo-herdr", "SKILL.md"), "utf8");
+  const omnigent = readFileSync(join(ROOT, "src", "skills", "mo-omnigent", "SKILL.md"), "utf8");
   const fixtureReadme = readFileSync(
     join(ROOT, "tests", "fixtures", "herdr-extraction", "README.md"),
     "utf8",
@@ -5212,6 +5362,16 @@ test("support identity, provisional extraction, and backend smoke stay explicit"
   assert.match(glossary, seven);
   assert.match(methodology, seven);
   assert.match(mechanics, seven);
+  for (const [backend, source] of [
+    ["Herdr", herdr],
+    ["Omnigent", omnigent],
+  ]) {
+    assert.match(source, /caller-supplied locator/);
+    assert.match(source, /docs\/phase-0-fixtures\.md/);
+    assert.match(source, new RegExp(`explicit ${backend} backend\\s+scope`, "i"));
+    assert.match(source, /up to\s+64 canonical fixture scenario IDs/);
+    assert.match(source, /wrong-backend map is setup attention and prevents\s+activation/);
+  }
   assert.match(fixtureReadme, /authored deterministic cases, not recordings/);
   assert.match(fixtureReadme, /P6\/H17 must measure/);
   assert.match(backlog, /lower-boundary literals[\s\S]*synthetic provisional/);

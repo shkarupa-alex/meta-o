@@ -31,8 +31,10 @@ CLAUDE.md
 
 `docs/phase-0-fixtures.md` is the conventional pre-activation input for backend
 skills. Create it with exact backend/provider/provider-version/backend-version/
-surface/os/fixture keys and default unknown surfaces to `PENDING` or
-`UNSUPPORTED`; only an isolated exact fixture may establish `SUPPORTED`. It is
+surface/os/fixture keys, explicit backend scope, and canonical safe scenario-ID
+definitions (at most 64 per route); default unknown surfaces to `PENDING` or
+`UNSUPPORTED`. Review fixtures have no scenarios and each E2E fixture names
+exactly one scenario; only an isolated exact fixture may establish `SUPPORTED`. It is
 never a candidate receipt and never stores a candidate SHA, review verdict or
 live run evidence. If the project already owns an equivalent fixture map, keep
 that file and pass its locator explicitly instead of creating a duplicate.
