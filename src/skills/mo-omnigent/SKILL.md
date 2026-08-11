@@ -53,6 +53,18 @@ creation. Use the bundled self-contained model helper and the finite automatic
 fallback in methodology §9. Catalogue availability is not entitlement; actual
 native actor launch establishes route/vendor identity.
 
+Before actor creation, acquire topology identity independently of the map. Run
+the exact Omnigent executable and each posture-resolved provider executable only
+through the documented noninteractive version action found in installed public
+help. Require status zero, at most 256 bytes of single-line ASCII, and exactly
+one unambiguous version token that lowercases to a safe ID. Normalize only
+`uname -s`/`uname -m` pairs `Darwin/arm64`, `Linux/x86_64`, and
+`Linux/aarch64` to the methodology values. Retain these credential-free process
+facts ephemerally. After each native actor starts, its public kind/process
+identity must match the measured provider and exact executable path. Missing or
+ambiguous version output, mismatch, or unknown OS leaves that surface
+unsupported; map values never supply live topology identity.
+
 ## Executor objective
 
 Omnigent has no native Goal transport. Use one persistent executor session with

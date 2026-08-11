@@ -100,11 +100,27 @@ copies opaque bodies, tracks finding IDs, invalidates gates after repository
 metadata changes, and returns a verified object ID or a permitted
 `needs_attention`.
 
-Its ephemeral summary contains only actor/pane IDs, provider/vendor, candidate,
-phase, retry counters, finding IDs, scratch handle and delivery status. It never
-copies reviewer prose into control context. Opaque scratch bodies survive only
+Its ephemeral summary contains only actor/pane IDs, provider/vendor, measured
+backend/provider version IDs, normalized OS identity, verified executable
+identity, candidate, phase, retry counters, finding IDs, scratch handle and
+delivery status. It never copies reviewer prose into control context. Opaque scratch bodies survive only
 for the bounded per-ID and delivery states defined in §7; closure, candidate
 invalidation and controlled exit delete the eligible files.
+
+Before support selection, acquire topology identity from credential-safe public
+process observations rather than from the fixture map. Resolve the backend and
+each selected provider to the exact executable that will launch, use only its
+documented noninteractive version surface, require status zero and one bounded
+single-line ASCII output with exactly one unambiguous lower-case safe version
+token, and retain that token with the absolute executable identity. Normalize OS
+only from the public kernel system/architecture pair: `Darwin/arm64` becomes
+`darwin-arm64`, `Linux/x86_64` becomes `linux-x86_64`, and `Linux/aarch64`
+becomes `linux-aarch64`; every other pair is unsupported until an exact fixture
+adds it. After each actor starts, its public kind/process identity must match the
+measured provider and executable. A missing/ambiguous version surface, changed
+path, process mismatch, multiline/NUL/non-ASCII output or unknown OS fails before
+that surface can select a `SUPPORTED` row. The map never supplies or overrides
+these observed values.
 
 ### 2.3 Executor
 
@@ -845,6 +861,11 @@ separate exact live fixture. Mere membership of a directory in `PATH` proves
 nothing. A surface support key is exactly
 backend/provider/provider-version/backend-version/surface/os/fixture; support
 never transfers between keys.
+
+Backend/provider versions and OS in that key come only from the bounded public
+topology observations in §2.2. They are not copied from a map row. The selected
+map row must independently byte-match those observed values plus backend,
+provider, surface and fixture before its `SUPPORTED` posture is usable.
 
 The pre-activation fixture-map input exposes exact fenced records:
 

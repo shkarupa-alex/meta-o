@@ -19,8 +19,11 @@ Repository-reading actors open the locator and project knowledge themselves.
 
 The orchestrator may retain only process facts: repository root, branch, full
 `HEAD`, commit existence, cleanliness, actor/pane identity, actual provider
-kind, public lifecycle state, validated process headers, finding IDs, bounded
-retry counters, scratch handle and delivery state.
+kind/executable, bounded public backend/provider version tokens, normalized OS
+identity, public lifecycle state, validated process headers, finding IDs,
+bounded retry counters, scratch handle and delivery state. Version and OS facts
+are measured independently of the fixture map and exist only to prevent support
+from transferring across topology keys.
 
 ## Autonomous process supervision
 

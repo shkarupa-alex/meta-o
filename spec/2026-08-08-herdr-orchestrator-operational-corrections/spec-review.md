@@ -497,11 +497,25 @@ The input contains exact fenced `MO_FIXTURE_MAP_V1` rows in
 `backend,provider,provider-version,backend-version,surface,os,fixture,scenarios,posture`
 order and exactly one `MO_FIXTURE_SCENARIOS_V1|backend=<backend>|ids=<safe-id-list>`
 row per included backend. Read the Markdown and validate the records exactly;
-any automated Markdown parser uses a real AST, never regex. For the selected backend require executor, two
-review-provider, and E2E definitions plus one unique byte-sorted 1..64 scenario
-set. Other-backend scopes may coexist. Only actual exact-key `SUPPORTED` rows
-can enter final support; structurally valid `unproven-*` defaults remain
-fail-closed.
+every nonempty row uses one declared protocol, `surface` is exactly
+executor|review|e2e, and duplicate canonical seven-field keys or scenario-set
+rows fail closed regardless of posture/scenario metadata. Any automated Markdown
+parser uses a real AST, never regex. For the selected backend require executor,
+two review-provider, and E2E definitions plus one unique byte-sorted non-`none`
+1..64 scenario set. Other-backend scopes may coexist. Only actual exact-key
+`SUPPORTED` rows can enter final support; structurally valid `unproven-*`
+defaults remain fail-closed.
+
+Before selecting any such row, acquire backend version, provider version and OS
+from bounded credential-safe public process observations, never from the map.
+Use the exact resolved backend/provider executable's documented noninteractive
+version surface; require status zero, one bounded ASCII line and exactly one
+unambiguous safe version token. Normalize only supported public kernel
+system/architecture pairs. After launch, the actor's public kind/process identity
+must match the measured provider/executable. Missing or ambiguous version output,
+path/process mismatch, unknown OS, or any map value that differs from these live
+facts leaves the surface unsupported. Retaining these process facts is explicitly
+permitted ephemeral lifecycle state.
 
 Before topology mutation, run:
 

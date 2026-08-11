@@ -46,6 +46,7 @@ review-freeze state, or candidate PASS/FAIL/PENDING assertion belongs in this ma
 | NI24 | Every task/spec and business framing preserve all repository-changing user intents verbatim with credential-safe value redaction; candidate-stable operational approvals are header-only run evidence. | Intent/approval tests and final-review definition.                            |
 | NI25 | The shipped model-helper bundle is byte-reproducible across ordinary and symlinked dependency layouts without embedding local absolute paths.                                                          | Isolated symlink-layout build and byte-identity tests.                        |
 | NI26 | Mixed review E2E dispositions have one bounded transition, and required E2E PASS counts exactly bind to the derived final scenario set.                                                                | Disposition/state and final-result count-binding tests; H22 definition.       |
+| NI27 | Support never borrows provider/backend versions or OS from the fixture map; exact topology identity comes from bounded public process observations.                                                    | Topology-acquisition mismatch tests and H29/OM2 definitions.                  |
 
 ## Preimplementation capability probes
 

@@ -59,6 +59,18 @@ The resolved pre-activation fixture map defines fixture keys and durable support
 posture only; never record this candidate's SHA, PASS verdict or live evidence
 there.
 
+Before actor creation, acquire topology identity independently of that map.
+Run the exact Herdr executable and each posture-resolved provider executable only
+through the documented noninteractive version action found in installed public
+help. Require status zero, at most 256 bytes of single-line ASCII, and exactly
+one unambiguous version token that lowercases to a safe ID. Normalize only
+`uname -s`/`uname -m` pairs `Darwin/arm64`, `Linux/x86_64`, and
+`Linux/aarch64` to the methodology values. Retain these credential-free process
+facts ephemerally. After every `agent start`, require public kind/foreground
+process identity to match the measured provider and exact executable path. A
+missing/ambiguous version, path/process mismatch, or unknown OS leaves that
+surface unsupported; never copy identity from the fixture map.
+
 Use the bundled `scripts/mo-models.mjs` for preferences/catalogues. It is
 self-contained; missing ambient `node_modules` is not a reason to search the
 feature repository. Apply the finite fallback in methodology §9 without asking

@@ -30,7 +30,7 @@ pre-activation — inject project contract and opaque task/spec locator
   → PASS/PASS proceeds without relay; a FINDINGS barrier releases both first passes atomically
   → the applicable E2E, on that SHA
   → any fix → new SHA → every applicable gate again
-  → STATUS / CANDIDATE / SUMMARY
+  → exact final-result JSON / short human summary
 ```
 
 One verified result is one full Git SHA. Any new SHA invalidates every gate —

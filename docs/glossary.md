@@ -133,6 +133,12 @@ body-excluded framing budget, and the completed payload must fit 130,048 bytes.
 **Herdr lifecycle state** — normalized Herdr `working`, `idle`, `done`, `blocked`
 or `unknown` state. Provider prose is not lifecycle.
 
+**Topology identity** — ephemeral credential-safe public observation of the
+exact backend/provider executable, its bounded unambiguous version token, and
+normalized OS system/architecture. Each launched actor must match the measured
+provider executable/kind before a retained fixture-map row can support it; map
+values never manufacture topology identity.
+
 **Route** — existing configured `route/model/effort` preference. It does not own
 fixture applicability.
 

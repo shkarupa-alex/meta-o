@@ -254,6 +254,11 @@ the Markdown; any automated Markdown parser is a real AST, never regex. Require
 selected-backend executor, two-review-provider and E2E definitions plus one
 unique sorted scenario-set row.
 
+Acquire backend/provider version tokens and normalized OS independently through
+methodology §2.2's bounded public process observations. Require each native
+actor's public kind/process executable to match the measured provider path, then
+select only map rows whose seven key fields byte-match those observed facts.
+
 Tracked fixture and acceptance documents define repeatable scenarios, map
 requirements, and state current reusable support posture only. They never store
 candidate-bound PASS evidence. Live facts come from the native public surface

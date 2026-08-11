@@ -91,7 +91,12 @@ function validateDefaultFixtureMap(source) {
     .map((line) => parse(line, "MO_FIXTURE_SCENARIOS_V1", ["backend", "ids"]));
   assert.equal(facts.length + scenarioSets.length, lines.length);
   const safe = /^[a-z0-9][a-z0-9._-]{0,63}$/;
-  const factKeys = facts.map((fact) => factFields.map((field) => fact[field]).join("/"));
+  const factKeys = facts.map((fact) =>
+    factFields
+      .slice(0, 7)
+      .map((field) => fact[field])
+      .join("/"),
+  );
   assert.equal(new Set(factKeys).size, factKeys.length);
   assert.deepEqual(scenarioSets.map((entry) => entry.backend).sort(), ["herdr", "omnigent"]);
   for (const backend of ["herdr", "omnigent"]) {
@@ -116,9 +121,16 @@ function validateDefaultFixtureMap(source) {
     );
     for (const fact of scoped) {
       for (const key of factFields.slice(0, 7)) assert.match(fact[key], safe);
+      assert.match(fact.surface, /^(executor|review|e2e)$/);
       assert.match(fact.posture, /^(SUPPORTED|PENDING|UNSUPPORTED)$/);
       assert.equal(fact.posture, "UNSUPPORTED");
-      if (fact.surface === "e2e" && fact.scenarios !== "none") {
+      if (fact.surface === "executor") {
+        assert.equal(fact.fixture, "executor-turn");
+        assert.equal(fact.scenarios, "none");
+      } else if (fact.surface === "review") {
+        assert.equal(fact.fixture, "review-turn");
+        assert.equal(fact.scenarios, "none");
+      } else if (fact.scenarios !== "none") {
         assert.equal(fact.scenarios, fact.fixture);
       } else {
         assert.equal(fact.scenarios, "none");
@@ -160,6 +172,11 @@ test("the default pre-activation map is structurally consumable for both backend
       "MO_FIXTURE_SCENARIOS_V1|backend=omnigent|ids=om1",
       "MO_FIXTURE_SCENARIOS_V1|backend=omnigent|ids=om1,om2,om3,om4,om5,om6,om7,om8\nMO_FIXTURE_SCENARIOS_V1|backend=omnigent|ids=om1",
     ),
+    source.replace(
+      "MO_FIXTURE_MAP_V1|backend=herdr|provider=unproven-e2e|provider-version=unproven|backend-version=unproven|surface=e2e|os=unproven|fixture=h13|scenarios=h13|posture=UNSUPPORTED",
+      "MO_FIXTURE_MAP_V1|backend=herdr|provider=unproven-e2e|provider-version=unproven|backend-version=unproven|surface=e2e|os=unproven|fixture=h13|scenarios=h13|posture=UNSUPPORTED\nMO_FIXTURE_MAP_V1|backend=herdr|provider=unproven-e2e|provider-version=unproven|backend-version=unproven|surface=e2e|os=unproven|fixture=h13|scenarios=none|posture=UNSUPPORTED",
+    ),
+    source.replace("|surface=e2e|", "|surface=unknown|"),
   ]) {
     assert.notEqual(mutant, source);
     assert.throws(() => validateDefaultFixtureMap(mutant));

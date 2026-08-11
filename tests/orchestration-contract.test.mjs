@@ -1105,16 +1105,134 @@ test("candidate freeze rejects dirty, stale, non-commit and missing-develop meta
   assert.throws(() => freeze({ branch: "develop" }));
 });
 
-const FINAL_LIFECYCLE = {
-  "backend-version": "v1",
-  os: "darwin-arm64",
-  executor: { actor: "m-executor", provider: "codex", "provider-version": "v1" },
-  reviewers: {
-    A: { actor: "m-review-a", provider: "claude", "provider-version": "v1" },
-    B: { actor: "m-review-b", provider: "codex", "provider-version": "v1" },
+function acquireTopologyIdentity(observation) {
+  const safeId = (value) => {
+    assert.match(value, /^[a-z0-9][a-z0-9._-]{0,63}$/);
+    return value;
+  };
+  const versionFrom = (probe, actualExecutable) => {
+    assert.deepEqual(Object.keys(probe), ["executable", "status", "stdout"]);
+    assert.match(probe.executable, /^\//);
+    assert.equal(probe.executable, actualExecutable);
+    assert.equal(probe.status, 0);
+    assert.equal(Buffer.byteLength(probe.stdout) <= 256, true);
+    assert.equal(probe.stdout.includes("\0"), false);
+    assert.match(probe.stdout, /^[\x20-\x7e]+\n?$/);
+    const line = probe.stdout.endsWith("\n") ? probe.stdout.slice(0, -1) : probe.stdout;
+    assert.equal(line.includes("\n"), false);
+    const versions = line
+      .toLowerCase()
+      .split(/[^a-z0-9._-]+/)
+      .filter((token) => /^v?[0-9]+(?:[._-][0-9a-z]+)*$/.test(token));
+    assert.equal(versions.length, 1);
+    return safeId(versions[0]);
+  };
+  const os = new Map([
+    ["Darwin/arm64", "darwin-arm64"],
+    ["Linux/x86_64", "linux-x86_64"],
+    ["Linux/aarch64", "linux-aarch64"],
+  ]).get(`${observation.os.system}/${observation.os.arch}`);
+  assert.ok(os);
+  assert.match(observation.backend.actualExecutable, /^\//);
+  const backendVersion = versionFrom(
+    observation.backend.versionProbe,
+    observation.backend.actualExecutable,
+  );
+  const actor = (entry) => {
+    assert.match(entry.actualExecutable, /^\//);
+    return {
+      actor: safeId(entry.actor),
+      provider: safeId(entry.provider),
+      "provider-version": versionFrom(entry.versionProbe, entry.actualExecutable),
+    };
+  };
+  return {
+    "backend-version": backendVersion,
+    os,
+    executor: actor(observation.actors.executor),
+    reviewers: {
+      A: actor(observation.actors.reviewA),
+      B: actor(observation.actors.reviewB),
+    },
+    e2e: actor(observation.actors.e2e),
+  };
+}
+
+const FINAL_TOPOLOGY_OBSERVATION = {
+  backend: {
+    actualExecutable: "/opt/herdr/bin/herdr",
+    versionProbe: { executable: "/opt/herdr/bin/herdr", status: 0, stdout: "herdr v1\n" },
   },
-  e2e: { actor: "m-e2e", provider: "codex", "provider-version": "v1" },
+  os: { system: "Darwin", arch: "arm64" },
+  actors: {
+    executor: {
+      actor: "m-executor",
+      provider: "codex",
+      actualExecutable: "/opt/providers/bin/codex",
+      versionProbe: { executable: "/opt/providers/bin/codex", status: 0, stdout: "codex v1\n" },
+    },
+    reviewA: {
+      actor: "m-review-a",
+      provider: "claude",
+      actualExecutable: "/opt/providers/bin/claude",
+      versionProbe: {
+        executable: "/opt/providers/bin/claude",
+        status: 0,
+        stdout: "claude v1\n",
+      },
+    },
+    reviewB: {
+      actor: "m-review-b",
+      provider: "codex",
+      actualExecutable: "/opt/providers/bin/codex",
+      versionProbe: { executable: "/opt/providers/bin/codex", status: 0, stdout: "codex v1\n" },
+    },
+    e2e: {
+      actor: "m-e2e",
+      provider: "codex",
+      actualExecutable: "/opt/providers/bin/codex",
+      versionProbe: { executable: "/opt/providers/bin/codex", status: 0, stdout: "codex v1\n" },
+    },
+  },
 };
+
+const FINAL_LIFECYCLE = acquireTopologyIdentity(FINAL_TOPOLOGY_OBSERVATION);
+
+test("topology support identity comes from bounded public process observations", () => {
+  assert.deepEqual(FINAL_LIFECYCLE, {
+    "backend-version": "v1",
+    os: "darwin-arm64",
+    executor: { actor: "m-executor", provider: "codex", "provider-version": "v1" },
+    reviewers: {
+      A: { actor: "m-review-a", provider: "claude", "provider-version": "v1" },
+      B: { actor: "m-review-b", provider: "codex", "provider-version": "v1" },
+    },
+    e2e: { actor: "m-e2e", provider: "codex", "provider-version": "v1" },
+  });
+  const mutate = (change) => {
+    const observation = structuredClone(FINAL_TOPOLOGY_OBSERVATION);
+    change(observation);
+    assert.throws(() => acquireTopologyIdentity(observation));
+  };
+  mutate((observation) => {
+    observation.actors.executor.versionProbe.executable = "/opt/providers/bin/other-codex";
+  });
+  mutate((observation) => {
+    observation.backend.versionProbe.stdout = "herdr v1 v2\n";
+  });
+  mutate((observation) => {
+    observation.actors.reviewA.versionProbe.stdout = "claude unknown\n";
+  });
+  mutate((observation) => {
+    observation.actors.e2e.versionProbe.status = 1;
+  });
+  mutate((observation) => {
+    observation.os = { system: "UnknownOS", arch: "mystery" };
+  });
+  mutate((observation) => {
+    observation.backend.actualExecutable = "relative/herdr";
+  });
+});
 
 function trustedFixtureMap(support, posture = "SUPPORTED") {
   return support.map((fact) => ({
@@ -5648,6 +5766,9 @@ test("support identity, provisional extraction, and backend smoke stay explicit"
     join(ROOT, "tests", "fixtures", "herdr-extraction", "README.md"),
     "utf8",
   );
+  const projectE2E = readFileSync(join(ROOT, "docs", "e2e.md"), "utf8");
+  const phase0 = readFileSync(join(ROOT, "docs", "phase-0-fixtures.md"), "utf8");
+  const readme = readFileSync(join(ROOT, "README.md"), "utf8");
   const backlog = readFileSync(join(ROOT, "docs", "backlog.md"), "utf8");
   const makefile = readFileSync(join(ROOT, "Makefile"), "utf8");
   assert.match(glossary, seven);
@@ -5664,7 +5785,15 @@ test("support identity, provisional extraction, and backend smoke stay explicit"
     assert.match(source, /wrong-backend map is setup attention and prevents\s+activation/);
     assert.match(source, /MO_FIXTURE_MAP_V1/);
     assert.match(source, /MO_FIXTURE_SCENARIOS_V1/);
+    assert.match(source, /documented noninteractive version action/);
+    assert.match(source, /exact executable path/);
+    assert.match(
+      source,
+      /(?:never copy identity from the fixture map|map values never supply live topology identity)/i,
+    );
   }
+  assert.match(methodology, /Before support selection, acquire topology identity/);
+  assert.match(methodology, /The map never supplies or overrides\s+these observed values/);
   const assignment =
     /MO_E2E_ASSIGNMENT_V1\|candidate=<oid>\|scenarios=<positive-int>\|ids=<safe-id-list>/;
   for (const source of [methodology, herdr, mechanics, omnigent, omnigentMechanics, e2e]) {
@@ -5694,6 +5823,13 @@ test("support identity, provisional extraction, and backend smoke stay explicit"
   assert.match(fixtureReadme, /P6\/H17 must measure/);
   assert.match(backlog, /lower-boundary literals[\s\S]*synthetic provisional/);
   assert.match(makefile, /for backend in mo-herdr mo-omnigent/);
+  assert.match(phase0, /Exact seven-top-level-field schema/);
+  assert.match(phase0, /exact seven-top-level-field final-result record/);
+  assert.doesNotMatch(phase0, /six-field/);
+  assert.match(projectE2E, /all seven top-level facts/);
+  assert.doesNotMatch(projectE2E, /all six facts/);
+  assert.match(readme, /exact final-result JSON \/ short human summary/);
+  assert.doesNotMatch(readme, /STATUS \/ CANDIDATE \/ SUMMARY/);
 });
 
 test("root intent and E2E contracts keep one-shot operational approval candidate-stable", () => {

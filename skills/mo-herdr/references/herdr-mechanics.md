@@ -825,6 +825,10 @@ P1–P8 establish only installed external capabilities before implementation.
 H7b and H13–H37 establish the post-cutover behavior on one named unchanged SHA.
 No prose, incidental failure or old inline fixture transfers support to a new
 backend/provider/provider-version/backend-version/surface/os/fixture key.
+Acquire backend/provider version tokens and normalized OS through the bounded
+public process observations in methodology §2.2. The actor's public kind and
+foreground executable must match that measured provider path; otherwise the
+surface is unsupported before map selection.
 
 `docs/phase-0-fixtures.md` is only the durable fixture-definition and
 support-posture map. `SUPPORTED`, `PENDING` and `UNSUPPORTED` describe a surface
@@ -834,4 +838,5 @@ the observation in current-run state and the final-result record only.
 Resolve its exact `MO_FIXTURE_MAP_V1` and `MO_FIXTURE_SCENARIOS_V1` fenced
 records while reading the Markdown; any automated Markdown parser is a real
 AST, never regex. Require selected-backend executor, two-review-provider and E2E
-definitions plus one unique sorted scenario-set row.
+definitions plus one unique sorted scenario-set row. Select only rows whose
+seven fields byte-match the independently observed topology identity.

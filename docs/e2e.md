@@ -193,8 +193,8 @@ Required current-run evidence:
 6. Final `HEAD` equals the candidate and the worktree remains clean.
 
 Any new commit restarts items 2-6.
-The final result returns all six facts with exact actor/provider and per-scenario details; it
-does not update or commit a tracked evidence document.
+The final result returns all seven top-level facts with exact actor/provider and
+per-scenario details; it does not update or commit a tracked evidence document.
 
 ## Environment and cleanup
 
