@@ -1041,7 +1041,7 @@ test("candidate freeze rejects dirty, stale, non-commit and missing-develop meta
   assert.throws(() => freeze({ branch: "develop" }));
 });
 
-function validateFinalResult(result, { head = OID, clean = true } = {}) {
+function validateFinalResult(result, { head = OID, clean = true, backend = "herdr" } = {}) {
   const exactKeys = (value, keys) => assert.deepEqual(Object.keys(value), keys);
   const safeId = (value) => {
     assert.match(value, /^[a-z0-9][a-z0-9._-]{0,63}$/);
@@ -1051,6 +1051,7 @@ function validateFinalResult(result, { head = OID, clean = true } = {}) {
     assert.equal(Number.isInteger(value) && value > 0 && value <= max, true);
   };
   exactKeys(result, ["candidate", "worktree", "gates", "support", "reviews", "scenarios"]);
+  safeId(backend);
   assert.equal(clean, true);
   assert.equal(result.candidate, head);
   assert.match(result.candidate, /^[0-9a-f]{40,64}$/);
@@ -1084,7 +1085,7 @@ function validateFinalResult(result, { head = OID, clean = true } = {}) {
       "fixture",
     ]);
     const keyValues = Object.values(fact.key).map(safeId);
-    assert.equal(fact.key.backend, "herdr");
+    assert.equal(fact.key.backend, backend);
     assert.equal(fact.status, "SUPPORTED");
     const canonicalKey = keyValues.join("/");
     assert.equal(supportKeys.includes(canonicalKey), false);
@@ -1119,7 +1120,7 @@ function validateFinalResult(result, { head = OID, clean = true } = {}) {
     safeId(entry.provider);
     const support = supportFacts.get(entry["support-key"]);
     assert.ok(support);
-    assert.equal(support.key.backend, "herdr");
+    assert.equal(support.key.backend, backend);
     assert.equal(support.key.provider, entry.provider);
     assert.equal(support.key.surface, "review");
     assert.equal(support.key.fixture, "review-turn");
@@ -1159,7 +1160,7 @@ function validateFinalResult(result, { head = OID, clean = true } = {}) {
     safeId(entry.provider);
     const support = supportFacts.get(entry["support-key"]);
     assert.ok(support);
-    assert.equal(support.key.backend, "herdr");
+    assert.equal(support.key.backend, backend);
     assert.equal(support.key.provider, entry.provider);
     assert.equal(support.key.surface, "e2e");
     assert.equal(support.key.fixture, entry.scenario);
@@ -1177,8 +1178,8 @@ function validateFinalResult(result, { head = OID, clean = true } = {}) {
 }
 
 test("closed ephemeral final result derives scenarios from dispositions and support facts", () => {
-  const supportKey = (provider, surface, fixture) =>
-    `herdr/${provider}/v1/v1/${surface}/darwin-arm64/${fixture}`;
+  const supportKey = (provider, surface, fixture, backend = "herdr") =>
+    `${backend}/${provider}/v1/v1/${surface}/darwin-arm64/${fixture}`;
   const reviewRecord = (reviewer, provider, e2e = "REQUIRED") => ({
     reviewer,
     actor: `m-review-${reviewer.toLowerCase()}`,
@@ -1266,6 +1267,24 @@ test("closed ephemeral final result derives scenarios from dispositions and supp
     ],
   };
   assert.equal(validateFinalResult(finalResult), OID);
+  const omnigentResult = {
+    ...finalResult,
+    support: finalResult.support.map((fact) => ({
+      ...fact,
+      key: { ...fact.key, backend: "omnigent" },
+    })),
+    reviews: finalResult.reviews.map((review) => ({
+      ...review,
+      "support-key": review["support-key"].replace(/^herdr\//, "omnigent/"),
+    })),
+    scenarios: finalResult.scenarios.map((scenario) => ({
+      ...scenario,
+      "support-key": scenario["support-key"].replace(/^herdr\//, "omnigent/"),
+    })),
+  };
+  assert.equal(validateFinalResult(omnigentResult, { backend: "omnigent" }), OID);
+  assert.throws(() => validateFinalResult(omnigentResult));
+  assert.throws(() => validateFinalResult(finalResult, { backend: "omnigent" }));
   const bothNa = {
     ...finalResult,
     reviews: [reviewRecord("A", "claude", "NA"), reviewRecord("B", "codex", "NA")],
@@ -1887,6 +1906,7 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
     /`provider`, `support-key`, `status`, `qc`, `smoke`, `checks`, `e2e`, `evidence`/,
   );
   assert.match(candidate, /canonical reference is those seven values slash-joined in order/);
+  assert.match(candidate, /exact selected fact with the selected backend/);
   assert.match(candidate, /surface\s+`review`, fixture `review-turn` and no scenarios/);
   assert.match(
     candidate,

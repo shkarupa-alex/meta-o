@@ -256,7 +256,7 @@ selected backend.
 status, QC and smoke are `PASS`; checks is `PASS` or `NA`; E2E is `REQUIRED` or
 `NA`; reviewer providers differ. These gate fields come from the validated
 review header and bind the top-level gate pairs. `support-key` must resolve to
-the exact selected fact with backend `herdr`, the same provider, surface
+the exact selected fact with the selected backend, the same provider, surface
 `review`, fixture `review-turn` and no scenarios. Evidence has only `source`,
 `protocol`, `parts`, `rows`, `bytes`: source is `backend-public-surface`, protocol
 is `MO_REVIEW_V2`, and positive bounds are respectively 6, 1,000 and 61,440.
@@ -268,7 +268,7 @@ unique union of `support[].scenarios`; that union must be nonempty and the final
 scenario list must equal it. One `NA`, an out-of-band default or an omitted
 support fact is invalid. Each scenario record has only `scenario`, `actor`,
 `provider`, `support-key`, `status`, `evidence`, appears in derived-name order
-and has `PASS`. `support-key` must resolve to backend `herdr`, the same provider,
+and has `PASS`. `support-key` must resolve to the selected backend, the same provider,
 surface `e2e`, fixture equal to the scenario name and fact scenarios exactly
 equal to that one name. Its evidence has only `source`, `protocol`, `ordinal`,
 `total`, `rows`, `bytes`: source is `backend-public-surface`, protocol is

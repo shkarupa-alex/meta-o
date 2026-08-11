@@ -32,7 +32,7 @@ candidate, worktree, gates, support, reviews, scenarios
   `e2e` is `REQUIRED|NA`. The top-level gate status arrays byte-equal the A/B
   review `qc`, `smoke`, and `checks` fields. `support-key` is the exact
   slash-join of its matched support fact's seven safe-ID values in key order.
-  That fact has `backend=herdr`, the same provider, `surface=review`,
+  That fact has the selected route's backend, the same provider, `surface=review`,
   `fixture=review-turn`, and `scenarios=[]`. Evidence has exactly
   `source,protocol,parts,rows,bytes`: source `backend-public-surface`, protocol
   `MO_REVIEW_V2`, and maxima 6 parts, 1000 rows, 61,440 bytes.
@@ -42,7 +42,7 @@ candidate, worktree, gates, support, reviews, scenarios
   is permitted.
 - Scenario records follow that exact sorted order. Each has exactly
   `scenario,actor,provider,support-key,status,evidence`; status is PASS.
-  `support-key` resolves to a fact with `backend=herdr`, the same provider,
+  `support-key` resolves to a fact with the selected route's backend, the same provider,
   `surface=e2e`, `fixture=scenario`, and `scenarios=[scenario]`; a merely
   same-provider fact is insufficient. Evidence has exactly
   `source,protocol,ordinal,total,rows,bytes`: source `backend-public-surface`,
