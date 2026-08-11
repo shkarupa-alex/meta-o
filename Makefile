@@ -59,8 +59,11 @@ mo-e2e:
 	@echo "AGENT_REQUIRED: not executed"
 	@echo
 	@echo "Docs:      docs/e2e.md, docs/phase-0-fixtures.md"
-	@echo "Fixtures:  H (Herdr retrieval), O (Omnigent), G (native goal), P (PATH/wrappers),"
-	@echo "           W (watchdog), M (models), I (install), R (recovery/review), Q (profiles)"
+	@echo "Fixtures:  I3/I5 — remote installation"
+	@echo "           P1-P8 — preimplementation external capability probes"
+	@echo "           H7b — host-window resize"
+	@echo "           H13-H37 — post-cutover Herdr acceptance"
+	@echo "           OM1-OM8 — Omnigent final fixtures"
 	@echo "Run:       work through docs/phase-0-fixtures.md and record evidence per row"
 	@echo "Cleanup:   stop every provider session you started, including on failure"
 	@exit 2

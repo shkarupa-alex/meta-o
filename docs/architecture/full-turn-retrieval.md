@@ -82,9 +82,17 @@ An executor `RESPONSE` is valid only when its `rebuts` equals the complete
 current open-ID set for exactly one origin. One complete origin outcome then
 partitions that exact rebuttal set across disjoint `closes` and `disputes`.
 All-close/no-new is `PASS`; close-all-plus-new is `FOLLOWUP`; mixed old-ID
-outcomes use `OUTCOMES`; all-dispute uses `DISPUTED`. Only `FOLLOWUP` uses
-`ORIGIN_FINDINGS_TO_EXECUTOR`. Different origins use separate settled turns,
-and a mixed-origin response is rejected rather than split or interpreted.
+outcomes use `OUTCOMES`; all-dispute uses `DISPUTED`. After canonical validation,
+an `OUTCOMES` header's post-outcome `open` is byte-identical to `disputes`, so it
+cannot retain a closed ID, omit a disputed ID, or add an unrelated open ID. Only
+`FOLLOWUP` uses `ORIGIN_FINDINGS_TO_EXECUTOR`. Different origins use separate
+settled turns, and a mixed-origin response is rejected rather than split or
+interpreted.
+
+Finding suffixes are unbounded canonical positive decimals. Protocol consumers
+group IDs by prefix and require strictly increasing exact `BigInt` suffix order;
+`Number`, unary numeric coercion, and lexicographic suffix comparison cannot
+preserve this invariant and are forbidden.
 
 Multi-ID adjudication requests remain sequential, but terminal delivery is
 total and atomic. The canonical target set is the validated origin outcome's

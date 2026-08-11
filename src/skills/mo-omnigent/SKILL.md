@@ -71,12 +71,16 @@ ask the human to resume, route or select an ordinary actor.
    directly to the applicable E2E gate without relaying either review. Release
    the complete A/B pair atomically only when at least one evaluation has
    `FINDINGS`. An executor `RESPONSE` is valid only when its `rebuts` equals the
-   complete current open-ID set for exactly one origin. After that response, the origin
-   returns one complete outcome whose disjoint `closes` and `disputes` account
-   for every rebutted ID. New IDs use a one-part `FOLLOWUP` only after all
-   rebutted IDs close; it is delivered whole by
-   `ORIGIN_FINDINGS_TO_EXECUTOR`. Different origins use separate settled
+   complete current open-ID set for exactly one origin. After that response, the
+   origin returns one complete outcome whose disjoint `closes` and `disputes`
+   account for every rebutted ID. A mixed `OUTCOMES` turn has post-outcome
+   `open=disputes` byte-for-byte after canonical validation. New IDs use a
+   one-part `FOLLOWUP` only after all rebutted IDs close; it is delivered whole
+   by `ORIGIN_FINDINGS_TO_EXECUTOR`. Different origins use separate settled
    resolution turns, and a mixed-origin executor `RESPONSE` is invalid.
+   Finding suffixes are unbounded canonical positive decimals and are ordered
+   with exact `BigInt` comparison within each prefix, never `Number`, unary
+   coercion, or lexicographic comparison.
    Resolve every target in the validated outcome's exact canonical `disputes`
    set before relaying any terminal peer outcome. Full `rebuts` remains the
    close/dispute accounting set but never expands the aggregate target set.

@@ -269,7 +269,9 @@ Review semantics:
 - `FOLLOWUP`: one origin turn after an executor response; at least one new ID,
   every rebutted ID closed, no disputes, one part and at most 24,576 bytes.
 - `OUTCOMES`: one origin turn with no new IDs; at least one rebutted ID closes
-  and at least one is disputed, one part and at most 24,576 bytes.
+  and at least one is disputed; after applying closes, canonical `open` is
+  byte-for-byte equal to canonical `disputes`—no closed, missing-dispute or extra
+  ID remains; one part and at most 24,576 bytes.
 - `DISPUTED`: one origin turn with no new IDs or closes; every rebutted ID is in
   `disputes` and remains open, one part and at most 24,576 bytes.
 - `UNKNOWN`: no new/closed/disputed IDs and exactly one unknown class. Transport
@@ -287,6 +289,11 @@ status and gate fields, and carry cumulative `open`. Only the last has `more=no`
 Only `FINDINGS` is multipart: one to six parts, at most 180 rows per part, at most
 1000 rows and 61,440 UTF-8 bytes for the evaluation. Each part's `ids` lists only
 IDs introduced there.
+
+Finding suffixes are unbounded canonical positive decimals: no leading zero and
+no maximum. Every parser and lifecycle comparison uses exact `BigInt` ordering
+inside each A/B prefix; floating-point `Number`, unary numeric coercion and
+lexicographic suffix ordering are invalid.
 
 E2E semantics:
 

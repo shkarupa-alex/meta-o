@@ -92,9 +92,12 @@ The first line of every part is exactly:
 MO_REVIEW_V2|candidate=<oid>|reviewer=<A|B>|status=<PASS|FINDINGS|FOLLOWUP|OUTCOMES|DISPUTED|UNKNOWN>|part=<positive-int>|more=<yes|no>|ids=<ids|none>|open=<ids|none>|closes=<ids|none>|disputes=<ids|none>|qc=<PASS|FAIL|UNKNOWN>|smoke=<PASS|FAIL|UNKNOWN>|checks=<PASS|FAIL|UNKNOWN|NA>|e2e=<REQUIRED|NA|UNKNOWN>|unknown=<transport|environment|evaluation|none>
 ```
 
-Fields occur once in that order. Candidate equals observed `HEAD`. IDs are unique,
-numerically sorted, comma-separated with no spaces. Positive integers have no
-sign or leading zero.
+Fields occur once in that order. Candidate equals observed `HEAD`. Finding IDs
+match `^([AB])-([1-9][0-9]*)$`, are unique and comma-separated with no spaces,
+and have no numeric cap. Group by prefix and compare each unbounded decimal
+suffix exactly as a `BigInt`; suffixes must be strictly increasing within their
+prefix. Never use `Number`, unary numeric coercion, or lexicographic suffix
+comparison. Positive integers have no sign or leading zero.
 
 State rules:
 
@@ -107,7 +110,8 @@ State rules:
 - `FOLLOWUP`: one part after an executor response, with nonempty new `ids`, every
   rebutted ID closed, and `disputes=none`.
 - `OUTCOMES`: one part with `ids=none` and both nonempty `closes` and
-  `disputes`; it reports a mixed old-ID outcome.
+  `disputes`; it reports a mixed old-ID outcome and, after canonical validation,
+  `open` equals `disputes` byte-for-byte.
 - `DISPUTED`: one part with `ids=none`, `closes=none`, and nonempty `disputes`;
   every disputed origin ID remains open.
 - `UNKNOWN`: one part, no new IDs/closes/disputes and exactly one unknown class.

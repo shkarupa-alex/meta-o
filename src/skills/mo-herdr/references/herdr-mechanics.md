@@ -115,11 +115,13 @@ const idList = (value, reviewer) => {
   if (value === "none") return [];
   const list = value.split(",");
   die(new Set(list).size === list.length);
-  const last = { A: 0, B: 0 };
+  const last = { A: 0n, B: 0n };
   for (const id of list) {
     const match = id.match(/^([AB])-([1-9][0-9]*)$/);
-    die(match && (!reviewer || match[1] === reviewer) && +match[2] > last[match[1]]);
-    last[match[1]] = +match[2];
+    die(match && (!reviewer || match[1] === reviewer));
+    const suffix = BigInt(match[2]);
+    die(suffix > last[match[1]]);
+    last[match[1]] = suffix;
   }
   return list;
 };
@@ -153,7 +155,7 @@ const valid = (header, protocol, candidate, reviewer, expectedOpen) => {
     if (h.status === "PASS") die(h.ids === "none" && h.open === "none" && h.disputes === "none" && h.qc === "PASS" && h.smoke === "PASS" && /^(PASS|NA)$/.test(h.checks) && /^(REQUIRED|NA)$/.test(h.e2e) && h.unknown === "none");
     if (h.status === "FINDINGS") die(h.ids !== "none" && h.open !== "none" && h.disputes === "none" && h.unknown === "none");
     if (h.status === "FOLLOWUP") die(h.ids !== "none" && h.open !== "none" && h.closes !== "none" && h.disputes === "none" && h.unknown === "none");
-    if (h.status === "OUTCOMES") die(h.ids === "none" && h.closes !== "none" && h.disputes !== "none" && h.unknown === "none");
+    if (h.status === "OUTCOMES") die(h.ids === "none" && h.closes !== "none" && h.disputes !== "none" && h.open === h.disputes && h.unknown === "none");
     if (h.status === "DISPUTED") die(h.ids === "none" && h.open !== "none" && h.closes === "none" && h.disputes !== "none" && h.unknown === "none");
     if (h.status === "UNKNOWN") {
       die(h.ids === "none" && h.closes === "none" && h.disputes === "none" && /^(transport|environment|evaluation)$/.test(h.unknown));
@@ -277,6 +279,8 @@ adjudication-request and either aggregate adjudication-result route, and `none`
 otherwise. Aggregate-target is the exact canonical `disputes` set derived from
 the validated origin outcome for adjudication-request and either aggregate
 result route, and `none` otherwise; it never includes IDs closed by that outcome.
+Every finding-ID suffix is an unbounded canonical positive decimal and both
+recipes compare it with `BigInt`; there is no maximum suffix.
 Peer-outcome remaining bytes is canonical `1..122880` only for an adjudication
 request and `none` otherwise. Approval-request
 is the exact one-shot 64-hex E2E request token for E2E approval and `none`
@@ -331,14 +335,22 @@ const parse = (body) => {
 };
 const list = (value, reviewer) => {
   if (value === "none") return [];
-  const found = value.split(","), last = { A: 0, B: 0 };
+  const found = value.split(","), last = { A: 0n, B: 0n };
   ok(new Set(found).size === found.length);
   for (const id of found) {
     const match = id.match(/^([AB])-([1-9][0-9]*)$/);
-    ok(match && (!reviewer || match[1] === reviewer) && +match[2] > last[match[1]]);
-    last[match[1]] = +match[2];
+    ok(match && (!reviewer || match[1] === reviewer));
+    const suffix = BigInt(match[2]);
+    ok(suffix > last[match[1]]);
+    last[match[1]] = suffix;
   }
   return found;
+};
+const compareIds = (left, right) => {
+  const [leftPrefix, leftSuffix] = left.split("-"), [rightPrefix, rightSuffix] = right.split("-");
+  if (leftPrefix !== rightPrefix) return leftPrefix < rightPrefix ? -1 : 1;
+  const leftNumber = BigInt(leftSuffix), rightNumber = BigInt(rightSuffix);
+  return leftNumber < rightNumber ? -1 : leftNumber > rightNumber ? 1 : 0;
 };
 const executorCapsule = `MO_EXECUTOR_PROTOCOL_CAPSULE_V1
 SCHEMA MO_EXECUTOR_V1|type=<CANDIDATE|RESPONSE|BLOCKER>|candidate=<oid|none>|branch=<name|none>|base=<oid|none>|fixes=<ids|none>|rebuts=<ids|none>|blocker=<class|none>
@@ -465,7 +477,7 @@ try {
       if (h.status === "PASS") ok(segment.part === "1" && h.more === "no" && h.ids === "none" && h.open === "none" && h.disputes === "none" && h.qc === "PASS" && h.smoke === "PASS" && /^(PASS|NA)$/.test(h.checks) && /^(REQUIRED|NA)$/.test(h.e2e) && h.unknown === "none");
       if (h.status === "FINDINGS") ok(h.ids !== "none" && h.open !== "none" && h.disputes === "none" && h.unknown === "none");
       if (h.status === "FOLLOWUP") ok(h.ids !== "none" && h.closes !== "none" && h.disputes === "none" && h.more === "no" && h.unknown === "none");
-      if (h.status === "OUTCOMES") ok(h.ids === "none" && h.closes !== "none" && h.disputes !== "none" && h.more === "no" && h.unknown === "none");
+      if (h.status === "OUTCOMES") ok(h.ids === "none" && h.closes !== "none" && h.disputes !== "none" && h.open === h.disputes && h.more === "no" && h.unknown === "none");
       if (h.status === "DISPUTED") ok(h.ids === "none" && h.closes === "none" && h.disputes !== "none" && h.more === "no" && h.unknown === "none");
       current.complete = h.more === "no";
       ok(segment.rows <= 180);
@@ -535,8 +547,8 @@ try {
     const rebuts = list(response.header.rebuts, origin), closes = list(h.closes, origin), disputes = list(h.disputes, origin);
     ok(disputed.source === source && disputed.part === "none" && h.protocol === "MO_REVIEW_V2" && h.reviewer === origin && /^(OUTCOMES|DISPUTED)$/.test(h.status) && h.part === "1" && h.more === "no" && h.ids === "none" && h.unknown === "none" && disputes.includes(finding) && disputed.body.length <= 24_576);
     ok(/^(PASS|FAIL|UNKNOWN)$/.test(h.qc) && /^(PASS|FAIL|UNKNOWN)$/.test(h.smoke) && /^(PASS|FAIL|UNKNOWN|NA)$/.test(h.checks) && /^(REQUIRED|NA|UNKNOWN)$/.test(h.e2e));
-    ok(!closes.some((id) => disputes.includes(id)) && [...closes, ...disputes].sort().join(",") === [...rebuts].sort().join(",") && h.disputes === aggregateTargets);
-    ok(disputes.every((id) => list(h.open, origin).includes(id)));
+    ok(!closes.some((id) => disputes.includes(id)) && [...closes, ...disputes].sort(compareIds).join(",") === [...rebuts].sort(compareIds).join(",") && h.disputes === aggregateTargets);
+    ok(h.open === h.disputes);
     if (h.status === "OUTCOMES") ok(closes.length > 0 && disputes.length > 0);
     if (h.status === "DISPUTED") ok(closes.length === 0 && disputes.length === rebuts.length);
   } else if (purpose === "adjudication-uphold") {

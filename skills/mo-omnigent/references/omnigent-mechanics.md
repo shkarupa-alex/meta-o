@@ -157,6 +157,11 @@ Malformed or incomplete output is transport UNKNOWN and retries once. Missing
 public completeness proof makes the surface unsupported rather than authorizing a
 Herdr-style extraction fallback.
 
+Finding IDs match `^([AB])-([1-9][0-9]*)$`; their positive decimal suffix has no
+cap. Reject duplicates, group by prefix, and require strictly increasing exact
+`BigInt` suffix order within each prefix. Never compare suffixes through
+`Number`, unary numeric coercion, or lexicographic order.
+
 ## 5. Independence and freeze
 
 A completes all V2 parts before B starts. B receives no A bytes. Recheck only
@@ -174,8 +179,10 @@ subset, superset, or mixed-origin set is invalid. The next origin turn is exactl
 one complete one-part outcome. Its
 disjoint `closes` and `disputes` union equals the exact response `rebuts`:
 all-close/no-new is `PASS`, mixed close/dispute is `OUTCOMES`, and all-dispute is
-`DISPUTED`. `FOLLOWUP` introduces new IDs only after closing every rebutted ID
-with `disputes=none`, and is delivered whole through
+`DISPUTED`. After canonical validation an `OUTCOMES` header additionally has
+`open` exactly byte-equal to `disputes`; retained closed, missing-dispute, and
+extra open IDs are invalid. `FOLLOWUP` introduces new IDs only after closing
+every rebutted ID with `disputes=none`, and is delivered whole through
 `ORIGIN_FINDINGS_TO_EXECUTOR`. Different origins use separate settled resolution
 turns. Mixed-origin responses are rejected rather than split or interpreted by
 the orchestrator.

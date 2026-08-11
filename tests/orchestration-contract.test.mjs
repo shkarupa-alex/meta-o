@@ -106,12 +106,12 @@ function ids(value, prefix) {
     const match = id.match(/^([AB])-([1-9][0-9]*)$/);
     assert.ok(match, `non-canonical finding ID ${id}`);
     if (prefix) assert.equal(match[1], prefix);
-    byPrefix[match[1]].push(Number(match[2]));
+    byPrefix[match[1]].push(BigInt(match[2]));
   }
   for (const numbers of Object.values(byPrefix)) {
     assert.deepEqual(
       numbers,
-      [...numbers].sort((a, b) => a - b),
+      [...numbers].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
       "finding IDs are unsorted within prefix",
     );
   }
@@ -167,6 +167,7 @@ function validateReview(line) {
     assert.equal(header.ids, "none");
     assert.notEqual(header.closes, "none");
     assert.notEqual(header.disputes, "none");
+    assert.equal(header.open, header.disputes);
     assert.equal(header.more, "no");
     assert.equal(header.unknown, "none");
   } else if (header.status === "DISPUTED") {
@@ -427,7 +428,7 @@ class ReviewEvaluation {
 class FeatureRun {
   constructor() {
     this.candidate = undefined;
-    this.idFloor = { A: 0, B: 0 };
+    this.idFloor = { A: 0n, B: 0n };
     this.gates = new Map();
     this.open = new Set();
     this.adjudicated = new Set();
@@ -449,7 +450,7 @@ class FeatureRun {
   recordFinding(id) {
     const match = id.match(/^([AB])-([1-9][0-9]*)$/);
     assert.ok(match);
-    const number = Number(match[2]);
+    const number = BigInt(match[2]);
     assert.ok(number > this.idFloor[match[1]], "finding ID reused in one feature run");
     this.idFloor[match[1]] = number;
     this.open.add(id);
@@ -622,6 +623,11 @@ test("all compact headers have exact field order and canonical identities", () =
   assert.throws(() => parseHeader(review().replace("|part=1", "|more=no|part=1")));
   assert.throws(() => validateReview(review({ part: "01" })));
   assert.throws(() => validateReview(review({ ids: "A-2,A-1", status: "FINDINGS", open: "A-1" })));
+  const hugeAdjacent = "A-9007199254740992,A-9007199254740993";
+  assert.deepEqual(ids(hugeAdjacent, "A"), hugeAdjacent.split(","));
+  assert.throws(() => ids("A-9007199254740993,A-9007199254740992", "A"));
+  assert.throws(() => ids("A-9007199254740992,A-9007199254740992", "A"));
+  assert.throws(() => ids("A-09007199254740992", "A"));
 });
 
 test("executor and E2E state matrices reject contradictory compact headers", () => {
@@ -683,6 +689,11 @@ test("review states fail closed, including UNKNOWN with retained PASS checks", (
     review({ status: "FINDINGS", ids: "A-1", open: "A-1", qc: "FAIL", e2e: "REQUIRED" }),
   );
   validateReview(review({ status: "OUTCOMES", open: "A-2", closes: "A-1", disputes: "A-2" }));
+  for (const open of ["A-1,A-2", "none", "A-2,A-3"]) {
+    assert.throws(() =>
+      validateReview(review({ status: "OUTCOMES", open, closes: "A-1", disputes: "A-2" })),
+    );
+  }
   validateReview(review({ status: "DISPUTED", open: "A-1", disputes: "A-1", e2e: "UNKNOWN" }));
   const unknown = validateReview(review({ status: "UNKNOWN", unknown: "transport" }));
   assert.equal(unknown.qc, "PASS");
@@ -823,6 +834,11 @@ test("feature-run state invalidates gates but never reuses IDs or adjudications"
   assert.equal(run.open.size, 0);
   assert.throws(() => run.recordFinding("A-1"));
   run.recordFinding("A-2");
+  const huge = new FeatureRun();
+  huge.freeze(OID);
+  huge.recordFinding("A-9007199254740992");
+  huge.recordFinding("A-9007199254740993");
+  assert.throws(() => huge.recordFinding("A-9007199254740992"));
 });
 
 test("multi-ID adjudication converges only after a total ordered peer history", () => {
@@ -1300,8 +1316,13 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
   assert.ok(relay.includes("projectedAggregateOverhead"));
   assert.ok(relay.includes("count = aggregateTargetIds.length"));
   assert.ok(relay.includes("h.disputes === aggregateTargets"));
+  assert.ok(relay.includes("const suffix = BigInt(match[2]);"));
+  assert.ok(relay.includes("const leftNumber = BigInt(leftSuffix)"));
+  assert.ok(relay.includes('h.status === "OUTCOMES"') && relay.includes("h.open === h.disputes"));
   const extraction = sectionText(mechanicsSource, "3. Adaptive extraction");
   assert.ok(extraction.includes("Math.min(65_536, +peerOutcomeRemaining)"));
+  assert.ok(extraction.includes("const suffix = BigInt(match[2]);"));
+  assert.ok(extraction.includes("h.open === h.disputes"));
   assert.ok(
     relay.includes(
       'segment.source === "human" && segment.part === "none" && h.protocol === "MO_HUMAN_DECISION_V1"',
@@ -1321,6 +1342,7 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
     /accounts for every rebutted ID exactly once across disjoint\n`closes` and `disputes`/,
   );
   assert.match(flow, /derive separate canonical\n`aggregateTargets` byte-for-byte/);
+  assert.match(flow, /suffix as unbounded and compare it only with `BigInt`/);
   assert.match(flow, /subsets, supersets and mixed A\/B responses are rejected\nglobally/);
   assert.match(flow, /`FOLLOWUP`\ncloses them all and adds new IDs/);
   assert.match(
@@ -1335,6 +1357,11 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
   assert.match(methodRelay, /`HUMAN_ANSWER_TO_EXECUTOR`\n`human-answer-resolution`\nexecutor\n/);
   assert.match(methodRelay, /larger projected body-excluded\nenvelope must be at most 7,168 bytes/);
   assert.match(methodRelay, /remaining = 122880 - retained/);
+  assert.match(
+    methodologySource,
+    /canonical `open` is\n  byte-for-byte equal to canonical `disputes`/,
+  );
+  assert.match(methodologySource, /Finding suffixes are unbounded canonical positive decimals/);
   const attention = sectionText(methodologySource, "7. Blockers and human attention");
   assert.match(
     attention,
@@ -1567,6 +1594,20 @@ test("authored Herdr mutation guards kill acceptance, reviewer barrier and byte-
       mechanics.replace("h.disputes === aggregateTargets", "disputes.includes(finding)"),
       methodology,
     ],
+    [
+      skill,
+      mechanics.replaceAll("const suffix = BigInt(match[2]);", "const suffix = Number(match[2]);"),
+      methodology,
+    ],
+    [
+      skill,
+      mechanics.replace(
+        "const leftNumber = BigInt(leftSuffix)",
+        "const leftNumber = Number(leftSuffix)",
+      ),
+      methodology,
+    ],
+    [skill, mechanics.replaceAll("h.open === h.disputes", "true"), methodology],
     [
       skill,
       mechanics.replace(
@@ -1956,6 +1997,60 @@ test("literal adjudication extraction enforces the trusted aggregate remaining b
     0,
     "remaining-budget mutation must be observable",
   );
+});
+
+test("literal extraction enforces OUTCOMES open state and unbounded BigInt ID order", () => {
+  const mechanics = join(ROOT, "src", "skills", "mo-herdr", "references", "herdr-mechanics.md");
+  const source = recipeFence(mechanics, "extraction-recipe");
+  const run = (header, name, recipeSource = source) => {
+    const directory = scratchDirectory();
+    const recipe = installRecipe(directory, `${name}.mjs`, recipeSource);
+    const rendered = `MO_PROMPT_BOUNDARY_V1|fingerprint=${PROMPT_FINGERPRINT}\n${header}\nbody\n╭─ input ❯ ─╮\n`;
+    const captures = [120, 200, 400, 800, 1000].map((rows) =>
+      privateFile(directory, `${name}-${rows}.txt`, rendered),
+    );
+    return spawnSync(
+      process.execPath,
+      [
+        recipe,
+        "claude",
+        PROMPT_FINGERPRINT,
+        directory,
+        "review.txt",
+        "MO_REVIEW_V2",
+        OID,
+        "A",
+        "none",
+        "none",
+        ...captures,
+      ],
+      { encoding: "utf8" },
+    );
+  };
+  const hugeAdjacent = "A-9007199254740992,A-9007199254740993";
+  const hugeHeader = review({
+    status: "FINDINGS",
+    ids: hugeAdjacent,
+    open: hugeAdjacent,
+    qc: "FAIL",
+  });
+  assert.equal(run(hugeHeader, "huge-adjacent").status, 0);
+  const numberMutant = source.replace(
+    "const suffix = BigInt(match[2]);",
+    "const suffix = Number(match[2]);",
+  );
+  assert.notEqual(numberMutant, source);
+  assert.equal(run(hugeHeader, "huge-number-mutant", numberMutant).status, 1);
+
+  const invalidOutcomes = ["A-1,A-2", "none", "A-2,A-3"].map((open) =>
+    review({ status: "OUTCOMES", open, closes: "A-1", disputes: "A-2", e2e: "UNKNOWN" }),
+  );
+  for (const [index, header] of invalidOutcomes.entries()) {
+    assert.equal(run(header, `invalid-outcomes-${index}`).status, 1);
+  }
+  const openStateMutant = source.replace("h.open === h.disputes", "true");
+  assert.notEqual(openStateMutant, source);
+  assert.equal(run(invalidOutcomes[0], "open-state-mutant", openStateMutant).status, 0);
 });
 
 test("AST extraction recipe rejects adversarial boundaries, encoding, modes, identity and limits", () => {
@@ -2841,6 +2936,95 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
     { encoding: "utf8", env },
   );
   assert.equal(mixedTarget.status, 0, mixedTarget.stderr);
+
+  const mixedArgsWithOutcome = (outcomePath, recipePath = recipe) =>
+    adjudicationArgs
+      .with(0, recipePath)
+      .with(7, "A-2")
+      .with(9, "A-1,A-2")
+      .with(10, "A-2")
+      .with(19, introducedA2)
+      .with(22, multiple)
+      .with(25, outcomePath);
+  const invalidOutcomeOpen = ["A-1,A-2", "none", "A-2,A-3"].map((open, index) =>
+    privateFile(
+      directory,
+      `invalid-outcome-open-${index}.txt`,
+      `${review({ status: "OUTCOMES", open, closes: "A-1", disputes: "A-2", e2e: "UNKNOWN" })}\ninvalid open state\n`,
+    ),
+  );
+  for (const path of invalidOutcomeOpen) {
+    assert.equal(
+      spawnSync(process.execPath, mixedArgsWithOutcome(path), { encoding: "utf8", env }).status,
+      1,
+    );
+  }
+  const outcomeOpenMutant = source.replaceAll("h.open === h.disputes", "true");
+  assert.notEqual(outcomeOpenMutant, source);
+  assert.equal(
+    spawnSync(
+      process.execPath,
+      mixedArgsWithOutcome(
+        invalidOutcomeOpen[0],
+        installRecipe(directory, "relay-outcome-open-mutant.mjs", outcomeOpenMutant),
+      ),
+      { encoding: "utf8", env },
+    ).status,
+    0,
+  );
+
+  const hugeLow = "A-9007199254740992",
+    hugeHigh = "A-9007199254740993";
+  const hugeAdjacent = `${hugeLow},${hugeHigh}`;
+  const hugeIntroducing = privateFile(
+    directory,
+    "huge-introducing.txt",
+    `${review({ status: "FINDINGS", ids: hugeLow, open: hugeLow, qc: "FAIL", e2e: "REQUIRED" })}\nhuge finding\n`,
+  );
+  const hugeResponse = privateFile(
+    directory,
+    "huge-response.txt",
+    `MO_EXECUTOR_V1|type=RESPONSE|candidate=${OID}|branch=feature/x|base=none|fixes=none|rebuts=${hugeAdjacent}|blocker=none\nresponse\n`,
+  );
+  const hugeOutcome = privateFile(
+    directory,
+    "huge-outcome.txt",
+    `${review({ status: "OUTCOMES", open: hugeLow, closes: hugeHigh, disputes: hugeLow, e2e: "UNKNOWN" })}\nhuge adjacent outcome\n`,
+  );
+  const hugeArgs = adjudicationArgs
+    .with(7, hugeLow)
+    .with(9, hugeAdjacent)
+    .with(10, hugeLow)
+    .with(19, hugeIntroducing)
+    .with(22, hugeResponse)
+    .with(25, hugeOutcome);
+  assert.equal(spawnSync(process.execPath, hugeArgs, { encoding: "utf8", env }).status, 0);
+  const listNumberMutant = source.replace(
+    "const suffix = BigInt(match[2]);",
+    "const suffix = Number(match[2]);",
+  );
+  assert.notEqual(listNumberMutant, source);
+  assert.equal(
+    spawnSync(
+      process.execPath,
+      hugeArgs.with(0, installRecipe(directory, "relay-list-number-mutant.mjs", listNumberMutant)),
+      { encoding: "utf8", env },
+    ).status,
+    1,
+  );
+  const sortNumberMutant = source.replace(
+    "const leftNumber = BigInt(leftSuffix), rightNumber = BigInt(rightSuffix);",
+    "const leftNumber = Number(leftSuffix), rightNumber = Number(rightSuffix);",
+  );
+  assert.notEqual(sortNumberMutant, source);
+  assert.equal(
+    spawnSync(
+      process.execPath,
+      hugeArgs.with(0, installRecipe(directory, "relay-sort-number-mutant.mjs", sortNumberMutant)),
+      { encoding: "utf8", env },
+    ).status,
+    1,
+  );
 
   const incompleteOutcome = privateFile(
     directory,

@@ -63,7 +63,10 @@ after a completed provider turn. A glyph without structural context is not one.
 before any reviewer body reaches the executor.
 
 **Finding** — reviewer-owned `A-*` or `B-*` issue whose full opaque body contains
-Evidence, Impact and Expected fix. Only its origin reviewer closes it.
+Evidence, Impact and Expected fix. Its suffix is an unbounded canonical positive
+decimal, ordered exactly as a `BigInt` within its prefix; `Number`, unary numeric
+coercion, and lexicographic suffix ordering are invalid. Only its origin reviewer
+closes it.
 
 **Adjudication** — one other-vendor decision on a disputed finding. Requests for
 a same-origin outcome's exact validated `disputes` set run sequentially; closed

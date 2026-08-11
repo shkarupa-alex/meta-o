@@ -48,6 +48,14 @@ native lifecycle, vendor diversity, or absence of tracked reads in a real actor 
 | Documentation     | Canonical glossary, verbatim intent consistency, open-only backlog, exact acceptance mapping, no unsolicited docs.                                          |
 | Cutover           | Shipped Herdr files contain no inline/headless actor fallback, private transcript, or verdict-file path.                                                    |
 
+## Remote installation scenarios
+
+Run I3 and I5 from `docs/phase-0-fixtures.md` only after a separately authorized action has
+pushed the exact candidate. They prove that both advertised remote clients discover the
+committed generated tree; local-path installation is deterministic coverage, not remote
+evidence. Until both rows carry their own public SHA, client version, installed file list, and
+cleanup record, the remote installation paths remain unsupported.
+
 ## Preimplementation Herdr probes
 
 Run P1-P8 from `docs/phase-0-fixtures.md` before treating the Herdr actor surface as

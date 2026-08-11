@@ -552,7 +552,7 @@ MO_HUMAN_ANSWER_V1|candidate=<oid|none>|phase=<product|architecture|irreversible
 MO_OPERATIONAL_APPROVAL_V1|candidate=<oid|none>|operation=<production_e2e|irreversible_e2e|watchdog_start>|scenario=<safe-id|none>|requester=<e2e|orchestrator>|request=<64-lower-hex>|decision=<APPROVE|DENY>
 ```
 
-Fields occur once in exact order. Candidate IDs equal observed `HEAD`; base IDs are lowercase hexadecimal commit objects; branch equals observed branch. Finding IDs are `A-<positive-int>` or `B-<positive-int>`, comma-separated without spaces, numerically sorted within prefix, and unique. Positive integers are canonical unsigned base-10 without sign or leading zeros.
+Fields occur once in exact order. Candidate IDs equal observed `HEAD`; base IDs are lowercase hexadecimal commit objects; branch equals observed branch. Finding IDs match `^([AB])-([1-9][0-9]*)$`, are comma-separated without spaces, and are unique. Their positive decimal suffix has no cap. Canonical ordering groups by prefix and requires strictly increasing exact `BigInt(suffix)` order within each prefix; `Number`, unary numeric coercion, and lexicographic suffix comparison are forbidden. Positive integers are canonical unsigned base-10 without sign or leading zeros.
 
 Reviewer IDs increase monotonically for the run and are never reused after invalidation.
 
@@ -620,13 +620,13 @@ approval is invalid.
 - `PASS`: `ids=none`, `open=none`, QC/smoke pass, checks pass/NA, E2E required/NA, unknown none; `closes` is none or all origin-open IDs and `disputes=none`.
 - `FINDINGS`: first-pass evaluation with nonempty new IDs, cumulative open set, `disputes=none`, and actual gate fields.
 - `FOLLOWUP`: one-part origin response outcome with nonempty new IDs, every rebutted ID in `closes`, and `disputes=none`.
-- `OUTCOMES`: one-part mixed origin response outcome with `ids=none` and both nonempty `closes` and `disputes`.
+- `OUTCOMES`: one-part mixed origin response outcome with `ids=none`, both nonempty `closes` and `disputes`, and post-outcome `open` byte-identical to `disputes` after canonical validation.
 - `DISPUTED`: one-part origin response outcome with `ids=none`, `closes=none`, nonempty `disputes`, and every disputed ID retained in `open`.
 - `UNKNOWN`: no new IDs/closes/disputes and exactly one unknown class. Transport retains already completed gate values; environment/evaluation marks at least one affected gate unknown.
 
 Parts start at 1, are consecutive, keep candidate/reviewer/status/gate fields identical, and carry cumulative `open`; only the last has `more=no`. `PASS`, `FOLLOWUP`, `OUTCOMES`, `DISPUTED`, and `UNKNOWN` are exactly one part. Only first-pass `FINDINGS` may continue, for at most six parts, 1000 rows, and 61,440 bytes total. Each part's `ids` lists only findings introduced in that part, so the orchestrator can later select the exact introducing part for adjudication without reading semantics.
 
-An executor `RESPONSE` is valid only when `rebuts` equals the complete current open-ID set for exactly one origin; subsets, supersets, and mixed origins are invalid. Exactly one complete outcome then accounts for every ID in its `rebuts`. `closes` and `disputes` are disjoint and their union equals that exact set. Closing removes an ID from `open`, disputing retains it, and a `FOLLOWUP` adds its new `ids` only after closing the whole rebuttal set. All-close/no-new is `PASS`, mixed close/dispute is `OUTCOMES`, and all-dispute is `DISPUTED`. `FOLLOWUP`, `OUTCOMES`, and `DISPUTED` are each at most 24,576 bytes.
+An executor `RESPONSE` is valid only when `rebuts` equals the complete current open-ID set for exactly one origin; subsets, supersets, and mixed origins are invalid. Exactly one complete outcome then accounts for every ID in its `rebuts`. `closes` and `disputes` are disjoint and their union equals that exact set. Closing removes an ID from `open`, disputing retains it, and a `FOLLOWUP` adds its new `ids` only after closing the whole rebuttal set. All-close/no-new is `PASS`, mixed close/dispute is `OUTCOMES`, and all-dispute is `DISPUTED`. After canonical validation, `OUTCOMES.open` equals `OUTCOMES.disputes` byte-for-byte; retained closed IDs, missing disputed IDs, and unrelated extra open IDs are invalid. `FOLLOWUP`, `OUTCOMES`, and `DISPUTED` are each at most 24,576 bytes.
 
 ### Adjudication and E2E
 
@@ -833,7 +833,11 @@ Transport unknown uses compact-handoff recovery. Environment/evaluation unknown 
 - Origin returns one total same-origin outcome: every rebutted ID closes or
   disputes, and any new IDs use `FOLLOWUP`.
 - All-close/no-new returns `PASS`; `FOLLOWUP` closes all before introducing new
-  IDs; only `OUTCOMES`/`DISPUTED` carry disputes.
+  IDs; only `OUTCOMES`/`DISPUTED` carry disputes. Mixed `OUTCOMES` has exact
+  post-outcome `open=disputes` after canonical validation.
+- Finding suffixes are unbounded canonical positive decimals, ordered exactly
+  with `BigInt` inside each prefix and never with floating-point or
+  lexicographic coercion.
 - `FOLLOWUP`, `OUTCOMES`, and `DISPUTED` are one-part, 24,576-byte outcomes;
   first-pass `FINDINGS` alone is multipart.
 - One executor `RESPONSE` contains IDs from exactly one origin; mixed-origin responses are invalid.
@@ -1001,7 +1005,7 @@ Covers:
 - catalogue outcome distinctions;
 - AST-level skill/glossary/recipe checks;
 - full header, approval-request, operational-approval, and blocker matrices;
-- identity, exact ID ordering/canonical integers, invalidation, multipart first-pass accounting, one-part outcome partitions, role-specific sizes, and unknown classes;
+- identity, unbounded BigInt ID ordering/canonical integers, invalidation, multipart first-pass accounting, exact `OUTCOMES.open=disputes`, one-part outcome partitions, role-specific sizes, and unknown classes;
 - portable 130,048-byte conditional/aggregate releases, disputes-only dual 7,168-byte aggregate-envelope projection, Linux per-argument boundary, exact exhaustive `MO_RELAY_V2` direction/recipient/source/phase/candidate/ID/final-marker grammar, full-rebuts outcome accounting versus exact disputes-only aggregate targets, cumulative peer budgets and exact remaining-budget prompts, repository-changing human-answer rules, independently operation/actor-bound one-row approval, collision rules, and bounded adjudication requests;
 - executable `shell:false` relay fixtures, body-silent failures, UTF-8/NUL/newline/length tests;
 - ambiguity decision table proving there is no retry without positive non-delivery evidence;
@@ -1056,7 +1060,7 @@ A surface remains unsupported until required exact fixtures pass. Fewer than two
 
 ### Omnigent acceptance
 
-A supported Omnigent route independently proves the backend-neutral firewall; candidate binding; sequential independence; PASS/PASS progression without review relay; conditional atomic A/B findings release; A-only invalidating-check short circuit; exact complete-origin-open executor RESPONSE; total same-origin multi-ID `PASS`/`FOLLOWUP`/`OUTCOMES`/`DISPUTED` partitions over full rebuts; disputes-only aggregate target derivation and both projected envelopes; sequential exact-remaining-budget shared-evidence requests followed by one total atomic adjudication result set over exactly those disputes; origin closure; executor-owned repository-changing human-answer and dispute-decision recording; exact one-row E2E approval request and matching body-free independent operation/scenario/token/lifecycle-actor authorization; candidate-stable watchdog approval; invalidation; native recovery; final current-turn marker after all inbound bytes; weaker prompt objective; and byte-identical fresh-executor capsule. It does not reuse Herdr layout or extraction. Unsupported status is recorded without invented Herdr-style evidence.
+A supported Omnigent route independently proves the backend-neutral firewall; candidate binding; sequential independence; PASS/PASS progression without review relay; conditional atomic A/B findings release; A-only invalidating-check short circuit; exact complete-origin-open executor RESPONSE; unbounded BigInt finding-ID order; total same-origin multi-ID `PASS`/`FOLLOWUP`/`OUTCOMES`/`DISPUTED` partitions over full rebuts including exact mixed-outcome `open=disputes`; disputes-only aggregate target derivation and both projected envelopes; sequential exact-remaining-budget shared-evidence requests followed by one total atomic adjudication result set over exactly those disputes; origin closure; executor-owned repository-changing human-answer and dispute-decision recording; exact one-row E2E approval request and matching body-free independent operation/scenario/token/lifecycle-actor authorization; candidate-stable watchdog approval; invalidation; native recovery; final current-turn marker after all inbound bytes; weaker prompt objective; and byte-identical fresh-executor capsule. It does not reuse Herdr layout or extraction. Unsupported status is recorded without invented Herdr-style evidence.
 
 ### Completion and cutover criteria
 
@@ -1133,7 +1137,7 @@ Splits must remain independently green. Generated output and newly false knowled
 | Retry from unchanged negative observations                                        | rejected   | Unchanged UI/lifecycle cannot positively prove non-delivery                                                                      |
 | Opaque body/no Markdown parsing                                                   | adopted    | Firewall                                                                                                                         |
 | First-pass Review V2: up to six parts / 1000 rows / 60 KiB total                  | adopted    | Preserves complete findings within the user-accepted retrieval envelope while delaying first-pass relay until the barrier          |
-| Conditional combined first-pass release plus total origin outcomes                | adopted    | PASS/PASS needs no relay; `PASS`/`FOLLOWUP`/`OUTCOMES`/`DISPUTED` account for every same-origin multi-ID response mechanically     |
+| Conditional combined first-pass release plus total origin outcomes                | adopted    | PASS/PASS needs no relay; total outcomes account for every rebuttal and mixed `OUTCOMES` retains exactly its disputes                |
 | `MO_RELAY_V2`, exhaustive directions, 130,048-byte argv ceiling, 7,168-byte framing budget | adopted    | Portable below Linux single-argument limit with deterministic lifecycle, collision, and length tests                              |
 | Disputes-only dual aggregate projection and cumulative 122,880-byte peer budget  | adopted    | Full rebuts stays accounting; only validated disputes determine target count, framing projection and final ordered result set      |
 | Refcounted three-segment request per disputed target and one aggregate result set | adopted    | Reuses exact evidence and retains peer outcomes until total atomic delivery; human decisions return to the executor                |

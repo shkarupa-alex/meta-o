@@ -198,7 +198,11 @@ globally and handled in separate origin turns. The next
 origin handoff accounts for every rebutted ID exactly once across disjoint
 `closes` and `disputes`. `PASS` closes them all without new IDs; `FOLLOWUP`
 closes them all and adds new IDs; `OUTCOMES` represents a mixed close/dispute
-result without new IDs; `DISPUTED` represents all-dispute. Keep the full exact
+result without new IDs, with canonical `open` exactly equal to canonical
+`disputes` after closes; reject retained closed, missing-dispute or extra open
+IDs. `DISPUTED` represents all-dispute. Treat every canonical positive-decimal
+finding suffix as unbounded and compare it only with `BigInt`, never `Number`,
+unary coercion or lexicographic ordering. Keep the full exact
 `RESPONSE.rebuts` set as `expectedOpen`, derive separate canonical
 `aggregateTargets` byte-for-byte from the validated outcome's `disputes`, and
 never include its closed IDs. Relay each `aggregateTargets` ID sequentially with
