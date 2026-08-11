@@ -1,0 +1,13 @@
+{
+  "target_id": "spec-review",
+  "error_type": "missing_json",
+  "attempts": 3,
+  "last_error": "no fenced `council-verdict` block found",
+  "session_ref": "spec-reviewer:opus1mhigh",
+  "judge": {
+    "slug": "opus1mhigh",
+    "model": "opus[1m]",
+    "route": "claude-agent-sdk",
+    "effort": "high"
+  }
+}

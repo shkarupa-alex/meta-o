@@ -1,0 +1,7 @@
+older terminal row
+╭─ input ❯ ─╮
+MO_PROMPT_BOUNDARY_V1|fingerprint=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+tool rendering discarded
+MO_REVIEW_V2|candidate=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|reviewer=A|status=PASS|part=1|more=no|ids=none|open=none|closes=none|disputes=none|qc=PASS|smoke=PASS|checks=PASS|e2e=NA|scenarios=none|unknown=none
+Claude golden body: готово.
+╭─ input ❯ ─╮

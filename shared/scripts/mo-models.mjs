@@ -12,9 +12,8 @@
  * It never starts an agent and never reads stdin. It is a settings editor.
  */
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createRequire } from "node:module";
 import {
   existsSync,
   mkdirSync,
@@ -27,8 +26,10 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, isAbsolute, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { basename, delimiter, dirname, isAbsolute, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { query as claudeQuery } from "@anthropic-ai/claude-agent-sdk";
 
 /** The role names a run addresses. Anything else is a typo, not a new role. */
 const ROLES = ["executor", "researcher", "reviewerA", "reviewerB", "e2eTester"];
@@ -42,15 +43,67 @@ const HISTORY_MAX_AGE_DAYS = 31;
 /** Ten recent sessions is a hint, never a catalog. */
 const HISTORY_MAX_SESSIONS = 10;
 
-/** A catalog probe runs while a human waits for the preflight line. */
-const CATALOG_TIMEOUT_MS = 20_000;
-
 /** Resolving the project is one local `git` call; it may never be the slow part. */
 const GIT_TIMEOUT_MS = 5_000;
+
+/** A catalog probe runs while a human waits; the override keeps fixtures fast. */
+const configuredCatalogTimeout = Number(process.env.MO_MODELS_CATALOG_TIMEOUT_MS);
+const CATALOG_TIMEOUT_MS =
+  Number.isSafeInteger(configuredCatalogTimeout) &&
+  configuredCatalogTimeout >= 100 &&
+  configuredCatalogTimeout <= 20_000
+    ? configuredCatalogTimeout
+    : 20_000;
 
 const HOME = homedir();
 const SETTINGS_DIR = join(HOME, ".meta-o");
 const SETTINGS_FILE = join(SETTINGS_DIR, "models.json");
+
+/** SDK processes owned by the one in-flight Claude catalogue query. */
+const ACTIVE_CLAUDE_PROCESSES = new Set();
+
+/** macOS Seatbelt is the only audited descendant boundary in this helper. */
+const SANDBOX_EXECUTABLE = "/usr/bin/sandbox-exec";
+const CLAUDE_SANDBOX_PROFILE = "(version 1)(allow default)(deny process-fork)";
+
+/**
+ * Hold the process-group identity and apply the kernel no-fork boundary.
+ *
+ * The supervisor itself is outside Seatbelt so it can start exactly one
+ * provider. `sandbox-exec` then applies `deny process-fork` before Claude runs.
+ * Consequently Claude cannot create any child, detached or otherwise. Cleanup
+ * is requested over fd 3; the still-live group leader signals its own group, so
+ * no inspected numeric PID is ever promoted into a signalling capability.
+ */
+const CLAUDE_SUPERVISOR_SOURCE = String.raw`
+import { spawn } from "node:child_process";
+import { createReadStream } from "node:fs";
+
+const [sandbox, profile, command, ...args] = process.argv.slice(1);
+const control = createReadStream(null, { fd: 3, autoClose: false });
+let provider;
+let buffered = "";
+const stopGroup = () => process.kill(-process.pid, "SIGKILL");
+control.setEncoding("utf8");
+control.on("data", (chunk) => {
+  buffered += chunk;
+  if (buffered.includes("STOP\n")) {
+    stopGroup();
+    return;
+  }
+  if (!provider && buffered.includes("START\n")) {
+    provider = spawn(sandbox, ["-p", profile, command, ...args], {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: ["inherit", "inherit", "ignore"],
+    });
+    provider.on("error", () => process.stdout.end());
+    provider.on("exit", () => process.stdout.end());
+  }
+});
+control.on("end", stopGroup);
+control.on("error", stopGroup);
+`;
 
 /**
  * Where each route's authoritative catalog comes from.
@@ -67,11 +120,10 @@ const SETTINGS_FILE = join(SETTINGS_DIR, "models.json");
  *   visibility and API-support flags. That is the authoritative catalog.
  * - `lines` — `opencode models` prints one `provider/model` per line.
  * - `claude-sdk` — the Claude CLI has no listing subcommand at all. The
- *   authoritative surface is the Agent SDK's `query(...).supportedModels()`,
- *   which is answered from the control-protocol handshake. The SDK is an
- *   optional peer: it is resolved at runtime and its absence is reported, never
- *   worked around, because these skills install by directory copy and cannot
- *   assume an `npm install`.
+ *   authoritative surface is the bundled Agent SDK's
+ *   `query(...).supportedModels()`, which is answered from the control-protocol
+ *   handshake. Generated helpers inline the pinned SDK, so a copied skill never
+ *   depends on ambient `node_modules`.
  *
  * Unavailable is never backfilled from history: presenting ten recently used ids
  * as "the available models" is exactly the lie that makes a user believe a newer
@@ -85,7 +137,7 @@ const SETTINGS_FILE = join(SETTINGS_DIR, "models.json");
  */
 const ROUTES = {
   claude: {
-    catalog: { kind: "claude-sdk", package: "@anthropic-ai/claude-agent-sdk", exhaustive: false },
+    catalog: { kind: "claude-sdk", exhaustive: false },
     historyDir: join(HOME, ".claude", "projects"),
   },
   codex: {
@@ -318,37 +370,131 @@ function codexJsonListing(descriptor) {
 }
 
 /**
- * Resolve an optional peer SDK from wherever this machine actually keeps it.
+ * Resolve the system Claude executable without consulting package-local bins.
  *
- * A skill installed by directory copy has no `node_modules` of its own, so a
- * bare `import` only works when the SDK happens to sit above the install path.
- * The project's own tree and the global npm root are the two other places it
- * realistically lives. Each miss is reported; none is worked around.
+ * The bundled SDK contains JavaScript only. Pointing it at the launch posture
+ * already selected through PATH prevents its package's optional native Claude
+ * payload from becoming a second provider installation with different trust or
+ * permission behavior.
  */
-async function loadOptionalPackage(name) {
-  const attempts = [];
-  try {
-    return { module: await import(name), from: "module resolution" };
-  } catch (error) {
-    attempts.push(`module resolution: ${error.code ?? error.message}`);
-  }
-  const bases = [join(process.cwd(), "package.json")];
-  const globalRoot = spawnSync("npm", ["root", "-g"], {
-    encoding: "utf8",
-    timeout: CATALOG_TIMEOUT_MS,
-  });
-  if (!globalRoot.error && globalRoot.status === 0) {
-    bases.push(join(String(globalRoot.stdout).trim(), ".placeholder"));
-  }
-  for (const base of bases) {
-    try {
-      const resolved = createRequire(base).resolve(name);
-      return { module: await import(pathToFileURL(resolved).href), from: base };
-    } catch (error) {
-      attempts.push(`${base}: ${error.code ?? error.message}`);
+function resolveSystemClaude() {
+  const extensions = process.platform === "win32" ? [".exe", ".cmd", ".bat", ""] : [""];
+  for (const directory of String(process.env.PATH ?? "").split(delimiter)) {
+    if (!directory) continue;
+    for (const extension of extensions) {
+      const candidate = join(directory, `claude${extension}`);
+      try {
+        if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
+      } catch {
+        /* an unreadable PATH entry is not a usable provider */
+      }
     }
   }
-  return { module: null, from: null, attempts };
+  return null;
+}
+
+/** Prove that the kernel rejects a child fork before allowing Claude to start. */
+function claudeContainment() {
+  if (process.platform !== "darwin" || !existsSync(SANDBOX_EXECUTABLE)) {
+    return unavailable(
+      `kernel-owned Claude descendant containment is unavailable on ${process.platform}`,
+    );
+  }
+  const proof = spawnSync(
+    SANDBOX_EXECUTABLE,
+    [
+      "-p",
+      CLAUDE_SANDBOX_PROFILE,
+      process.execPath,
+      "-e",
+      'const {spawnSync}=require("node:child_process");const r=spawnSync("/usr/bin/true");process.exit(r.error?.code==="EPERM"?0:71)',
+    ],
+    { stdio: "ignore", timeout: 1_000 },
+  );
+  return proof.status === 0
+    ? { available: true }
+    : unavailable("macOS Seatbelt did not prove deny process-fork");
+}
+
+/** Start the one no-fork provider below a capability-held group supervisor. */
+function spawnOwnedClaude(options) {
+  const child = spawn(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      CLAUDE_SUPERVISOR_SOURCE,
+      SANDBOX_EXECUTABLE,
+      CLAUDE_SANDBOX_PROFILE,
+      options.command,
+      ...options.args,
+    ],
+    {
+      cwd: options.cwd,
+      env: options.env,
+      detached: true,
+      stdio: ["pipe", "pipe", "ignore", "pipe"],
+    },
+  );
+  child.stdio[3].write("START\n");
+  const owned = {
+    child,
+    control: child.stdio[3],
+    stopped: false,
+    cleanup: null,
+    pid: child.pid,
+    stdin: child.stdin,
+    stdout: child.stdout,
+    get killed() {
+      return child.killed;
+    },
+    get exitCode() {
+      return child.exitCode;
+    },
+    kill: () => {
+      void stopOwnedClaudeProcess(owned);
+      return true;
+    },
+    on: (...args) => child.on(...args),
+    once: (...args) => child.once(...args),
+    off: (...args) => child.off(...args),
+  };
+  ACTIVE_CLAUDE_PROCESSES.add(owned);
+  options.signal.addEventListener("abort", () => stopOwnedClaudeProcess(owned), {
+    once: true,
+  });
+  return owned;
+}
+
+/** Ask the live owner to stop its group, then prove the owner actually closed. */
+function stopOwnedClaudeProcess(owned) {
+  if (owned.cleanup) return owned.cleanup;
+  if (owned.control.destroyed || !owned.control.writable) return Promise.resolve(false);
+  owned.stopped = true;
+  owned.cleanup = new Promise((resolve) => {
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve(result);
+    };
+    const timeout = setTimeout(() => finish(false), 1_000);
+    owned.child.once("close", () => finish(true));
+    owned.control.write("STOP\n", (error) => {
+      if (error) finish(false);
+    });
+  });
+  return owned.cleanup;
+}
+
+/** Stop every owned group without ever signalling an inspected numeric PID. */
+async function stopOwnedClaudeProcesses() {
+  const stopped = await Promise.all(
+    [...ACTIVE_CLAUDE_PROCESSES].map((owned) => stopOwnedClaudeProcess(owned)),
+  );
+  ACTIVE_CLAUDE_PROCESSES.clear();
+  return stopped.every(Boolean);
 }
 
 /**
@@ -359,21 +505,29 @@ async function loadOptionalPackage(name) {
  * query is then interrupted and returned. This is the one place the helper
  * starts a provider process, and it must stay incapable of spending a token.
  */
-async function claudeSdkListing(descriptor) {
-  const { module: sdk, attempts } = await loadOptionalPackage(descriptor.package);
-  if (!sdk?.query) {
-    return unavailable(
-      `${descriptor.package} not installed (${attempts?.join("; ") ?? "no query export"})`,
-    );
-  }
+async function claudeSdkListing() {
+  const claudeExecutable = resolveSystemClaude();
+  if (!claudeExecutable) return unavailable("system claude executable not found on PATH");
+  const containment = claudeContainment();
+  if (!containment.available) return containment;
+  const abortController = new AbortController();
   const neverPrompts = async function* () {
     await new Promise(() => {});
     yield undefined;
   };
-  const query = sdk.query({
+  const query = claudeQuery({
     prompt: neverPrompts(),
-    options: { permissionMode: "bypassPermissions", maxTurns: 1 },
+    options: {
+      permissionMode: "bypassPermissions",
+      maxTurns: 1,
+      pathToClaudeCodeExecutable: claudeExecutable,
+      abortController,
+      spawnClaudeCodeProcess: spawnOwnedClaude,
+    },
   });
+  let listing;
+  let listingFailure = null;
+  let cleanupFailure = null;
   try {
     // The prompt never yields on purpose, so a handshake that never answers would
     // hang this process forever. Preflight calls this while a human waits.
@@ -392,15 +546,28 @@ async function claudeSdkListing(descriptor) {
       if (levels.length > 0) efforts[model.value] = levels;
     }
     const models = dedupe(supported.map((model) => model.value).filter(Boolean));
-    return models.length > 0
-      ? { available: true, models, efforts, reason: null }
-      : unavailable("SDK reported no supported models");
+    listing =
+      models.length > 0
+        ? { available: true, models, efforts, reason: null }
+        : unavailable("SDK reported no supported models");
   } catch (error) {
-    return unavailable(`supportedModels() failed: ${error.message}`);
+    listingFailure = error;
   } finally {
-    await query.interrupt?.().catch(() => undefined);
-    await query.return?.(undefined).catch(() => undefined);
+    cleanupFailure = !(await stopOwnedClaudeProcesses());
+    abortController.abort();
+    const cleanup = [query.interrupt?.(), query.return?.(undefined)].filter(Boolean);
+    await Promise.race([
+      Promise.allSettled(cleanup),
+      new Promise((resolve) => setTimeout(resolve, 1_000)),
+    ]);
   }
+  if (cleanupFailure) {
+    return unavailable("safe Claude cleanup failed: supervisor capability was lost");
+  }
+  if (listingFailure) {
+    return unavailable(`supportedModels() failed: ${listingFailure.message}`);
+  }
+  return listing;
 }
 
 /**
@@ -419,7 +586,7 @@ async function routeCatalog(route) {
     case "codex-json":
       return codexJsonListing(descriptor);
     case "claude-sdk":
-      return claudeSdkListing(descriptor);
+      return claudeSdkListing();
     default:
       return unavailable(`unknown catalog kind "${descriptor.kind}"`);
   }
@@ -784,9 +951,8 @@ Catalog sources, in the routes' own words:
   codex     codex debug models          (JSON; listable, API-supported rows only)
   opencode  opencode models
   claude    @anthropic-ai/claude-agent-sdk -> query(...).supportedModels()
-            Optional peer dependency. Resolved from this module, then the current
-            project, then the global npm root; if it is absent the gap is
-            reported. No turn is ever sent: the prompt never yields.
+            The pinned SDK is bundled into generated skills and drives the first
+            system claude on PATH. No turn is ever sent: the prompt never yields.
 
 This tool sends no prompt, runs no agent turn, and reads no stdin.
 `;

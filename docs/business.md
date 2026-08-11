@@ -581,6 +581,256 @@ behavioral fixtures and mutants cover reentrant shutdown, unknown-on-unquiesce
 and quiescence before the first capture read. Command usage now names `mktemp`
 and `rm` from the system utility path.
 
+<!-- markdownlint-disable MD013 -->
+
+<!-- meta-o-later-user-intents-v1:start -->
+
+### 17. Implementation and clean-room convergence request — 2026-08-10
+
+> /goal выполни разработку /Users/alex/Develop/meta-o/spec/2026-08-08-herdr-orchestrator-operational-corrections/spec-review.md и через clean-room subagent review добейся отстуствия замечаний
+
+### 18. Execution-route clarification — 2026-08-10
+
+> тебе не надо использовать скилл mo-herdr сейчас
+
+### 19. Clarification — user intents and the spec — 2026-08-10
+
+> Такой вопросик. В My Opinion посмотри, есть ли там раздел или ещё?
+> Про то, что нужно дословно передавать интенты пользователю.
+> Смысл в том, что я неоднократно наблюдаю большую проблему, что те интенты, которые пользователь высказывает, они в финальную спеку не попадают. То есть, нужно, чтобы, если пользователь какой-то, на какой-то вопрос ответил или какое-то мнение высказал, чтобы это дословно попадало в спеку обязательно. Вот есть там такое сейчас или нет?
+
+### 20. Decision — every user intent is verbatim in the spec — 2026-08-10
+
+> давай укажем что и в спеку все интенты пользователя должны попадать дословно
+
+### 21. Decision — no agent-attribution commit trailer — 2026-08-10
+
+> я тут долго думал и понял что не нужен нам Assisted by в коммитах
+> убери упоминания этого из спеки
+
+### Questions and pause request — 2026-08-10
+
+> объясни что мы так долго делаем? в смысле почему так долго?
+> и давай пока сделаем паузу
+
+<!-- separate verbatim turn -->
+
+> а почему у нас образовалось несколько веток herd-orchestrator-candidate-*** ?
+
+<!-- separate verbatim turn -->
+
+> а ты сейчас пока делаешь эту работу и запускаешь тесты при этом используешь клод/кодекс/опенкод? подписки тратятся?
+
+<!-- separate verbatim turn -->
+
+> какой объем работы по спеке еще остался? как-то подозрительно долго делаем
+> мы же все еще делаем тонкий оркестратор на скилах (+может небольших скриптах в них) без кучи обвеса?
+
+<!-- separate verbatim turn -->
+
+> лишние ветки поудаляй что ли
+> а то висят/шумят
+
+<!-- separate verbatim turn -->
+
+> в нашей спеке есть что-то что подразумевает правки omnigent-скила или его тестирование?
+
+### Two supplied reviews — 2026-08-11
+
+> ниже 2 ревью
+
+```text
+  1. Сборка бандла не воспроизводима вне «обычного» node_modules (главное)
+
+  tools/build-skills.mjs:106 вызывает esbuild без preserveSymlinks, поэтому esbuild резолвит входы через realpath и вписывает их в бандл как комментарии относительно рабочего каталога. Если node_modules — не
+  настоящий каталог внутри корня репозитория (git worktree с общими зависимостями, pnpm-раскладка, чекаут под симлинком, восстановленный из кеша CI), байты бандла меняются.
+
+  Воспроизвёл: в worktree с симлинком на node_modules HEAD тоже падает на make skills-check (входит в mo-qc) с «skills/ is out of date. Run make skills». А предписанное лечение — make skills — перезаписывает два
+  поставляемых бандла, вбивая в них абсолютный путь разработчика:
+
+  // ../../../../../../../Users/alex/Develop/meta-o/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs
+
+  То есть гейт даёт ложный отказ, а «исправление» молча меняет shipped-артефакт и утаскивает локальный путь в репозиторий. Текущие тесты этого не поймают, потому что все они собирают в одной и той же раскладке.
+
+  Проверил и починку: с preserveSymlinks: true сборка в том же worktree побайтово совпадает с закоммиченным бандлом и абсолютных путей не содержит. Предлагаю добавить preserveSymlinks: true в bundleModels и
+  детерминированную проверку в build-skills.test.mjs: в выходе не должно быть ни абсолютного пути, ни входного комментария с ... Это ровно то место, где спека требует «byte-identical Herdr/Omnigent output» — сейчас
+  идентичность гарантирована только внутри одной машины и одной раскладки.
+
+  2. Легальный исход ревью REQUIRED/NA не имеет определённого следующего шага
+
+  Состояние достижимо: оба ревью status=PASS, у A e2e=REQUIRED, у B e2e=NA (грамматика это разрешает, применимость E2E принадлежит каждому ревьюеру отдельно). Дальше:
+
+  - methodology.md:200 (§2.5) запускает E2E, когда «either reviewer says E2E is required or unknown» — то есть E2E пойдёт и может дать PASS;
+  - methodology.md:265 и все прочие дома («one NA is invalid», docs/e2e.md:39, docs/glossary.md:67, mo-herdr/SKILL.md:343) запрещают выдать финальную запись;
+  - ни одна граница §7 этот случай не покрывает, это не actor noncompliance, и ключ no-progress не повторяется.
+
+  Итог — прогон fail-closed, но встаёт без разрешённого перехода, что противоречит NI23 и исходному интенту пользователя («оркестратор должен меня заменять»). H22 в docs/phase-0-fixtures.md:119 проверяет только,
+  что one-NA невалидна, но не что делать. Нужно назвать переход в §6 (например: переспросить именно NA-ревьюера о финальной диспозиции на неизменённом кандидате; устойчивое расхождение — ограниченный
+  needs_attention) и дописать это в H22.
+
+  3. Полнота E2E самоподтверждающаяся: счётчик хода не сверяется с выведенным набором
+
+  Финальная запись выводит требуемые сценарии как объединение support[].scenarios, а support-факты существуют только для того, что прошло. Значит недопокрытый прогон E2E даёт внутренне согласованный PASS: чего не
+  запускали — того нет и в объединении. Единственное утверждение о полноте — собственное not_run=none актора, а его scenarios=<n> нигде не сравнивается ни с total, ни с числом записей сценариев (проверил: такого
+  правила нет ни в methodology.md, ни в mo-herdr/mo-e2e). Оба числа уже лежат в валидированном состоянии — сверка стоит одну строку в §3 и в разделах Final answer, плюс детерминированный кейс.
+
+  4. Структурные литералы нижней границы зашиты, но не измерены
+
+  herdr-mechanics.md:211 жёстко задаёт ╭─ input ❯ ─╮ и ╭─ input › ─╮, а голдены авторские, не снятые (Claude golden body: готово.). Если реальный рендер отличается на байт — или строка промпта приходит с
+  префиксом/переносом, так что line === marker не совпадёт, — каждое извлечение станет UNKNOWN и маршрут будет нерабочим целиком. На уровне постуры это честно: P6/H17 — PENDING/UNSUPPORTED, беклог пишет, что P1–P8
+  не запускались. Но ни в рецепте, ни в tests/fixtures/herdr-extraction/ не сказано, что эти два литерала — временные заглушки, ожидающие измерения P6. Достаточно комментария в рецепте, заголовка/README у фикстур и
+  строки в беклоге, привязывающей литерал к измеренному значению P6.
+
+  5. Код возврата рецепта релея смешивает «не отправлено» и «отправлено, но истёк wait»
+
+  herdr-mechanics.md:620-621: и отказ валидации до spawnSync, и таймаут herdr agent prompt --wait дают один и тот же молчаливый exit 1. Правило «никогда не пересылать возможно доставленный ход» держится целиком на
+  внешнем захвате сигналов оркестратором. Учитывая, что исходная жалоба пользователя была именно про потерянные/повторные отправки, отдельный код возврата после spawnSync сделал бы «уже отправлено» механически
+  различимым, а не выводимым.
+
+  6. Мелочи
+
+  - mo-smoke поднимает только копию mo-herdr, хотя спека говорит про «isolated generated helpers»; побайтовая идентичность копий проверяется тестом, так что покрытие транзитивное — но mo-lint/mo-smoke читаются как
+  неполные.
+  - oid-регексп ^[0-9a-f]{40,64}$ принимает длины 41–63, невозможные для Git. Практически не эксплуатируется (кандидат всегда из git rev-parse), но слабее формулировки «full Git object ID».
+  - Гигиена VCS: локальный (непушнутый) develop указывает на 5738907, а этот коммит правит src/skills/mo-review|mo-setup|mo-reuse/SKILL.md — то есть работа делалась прямо на develop, что запрещено собственным
+  правилом проекта. Сгенерированные копии в том же коммите присутствуют, так что дерево осталось согласованным.
+```
+
+```text
+• Нашёл 3 блокирующих замечания.
+
+- [P1] Канонический формат surface support key противоречив. Финальная схема требует 7 компонентов — backend, provider, provider-version, backend-version, surface, os, fixture (shared/references/
+  methodology.md:244), но канонический glossary и нижележащие инструкции определяют 5-компонентный ключ backend/provider/version/surface/fixture (docs/glossary.md:126, shared/references/methodology.md:792, src/
+  skills/mo-herdr/references/herdr-mechanics.md:770). Это допускает перенос evidence между разными версиями backend и OS, хотя контракт его запрещает. Нужно везде оставить одну точную семикомпонентную форму.
+
+- [P1] Установленный mo-herdr зависит от недоступной ему карты fixtures. Skill ссылается на docs/phase-0-fixtures.md как источник ключей и support posture (src/skills/mo-herdr/SKILL.md:43), но этот файл не входит
+  в пакет mo-herdr, а mo-setup не создаёт его в целевом проекте (src/skills/mo-setup/SKILL.md:19). После activation читать tracked project content дополнительно запрещено. В результате отдельно установленный
+  skill не может определить, какие exact fixtures имеют SUPPORTED, и честно сформировать финальные support facts. Нужен самодостаточный packaged reference либо явно определённый pre-activation input.
+
+- [P1] Реализация пока не удовлетворяет собственным completion criteria. Все P1–P8, H7b/H13–H37 и OM1–OM8 остаются PENDING/UNSUPPORTED (docs/acceptance.md:53, docs/acceptance.md:67, docs/acceptance.md:102), тогда
+  как спека разрешает представлять реализацию к adoption только после этих прогонов на одном SHA (spec/2026-08-08-herdr-orchestrator-operational-corrections/spec-review.md:1074). Это честно отражено в
+  документации, но означает, что сейчас можно принять только детерминированную часть, не работоспособность Herdr/Omnigent маршрутов.
+```
+
+### Local-only correction request — 2026-08-11
+
+> давай уже без своих сабагентов когда исправишь все найденное
+> дальше я буду тебе скидывать замечания
+
+### Review corrections — 2026-08-11
+
+> A. §1 методологии не знает о новом обязательном pre-activation входе. Раздел, который владеет границей активации, по-прежнему перечисляет только контракт проекта, opaque-локатор и §2.1-append: «Activation cannot
+> proceed while those copies differ or an applicable intent is absent». Про карту фикстур сказано только в §9 и в двух backend-скилах, хотя она блокирующая. Тот, кто следует §1, активируется без неё. Правка — одно
+> предложение в §1.
+>
+> B. Перечисление «exact layout» промпта не допускает строку задания. methodology.md:175 («…after the whole goal/objective, executor capsule when applicable, and inbound relay when present») и spec-review.md:693
+> («goal/objective, capsule when executor-bound, inbound relay when present, and one fresh MO_PROMPT_BOUNDARY_V1») перечисляют состав промпта как исчерпывающий, а §2.5, механика и docs/e2e.md требуют четвёртый
+> элемент — MO_E2E_ASSIGNMENT_V1 предпоследней строкой. Правка — по одной оговорке в каждом месте.
+>
+> Рекомендация (не дефект): контракт проекта требует, чтобы новая граница фиксировалась в docs/architecture/. Про новый входной формат там пока только сквозные упоминания «pre-activation row»; причина живёт в спеке
+> и §9. Двух строк в архитектуре хватит, чтобы правило соблюдалось буквально.
+
+<!-- meta-o-later-user-intents-v1:end -->
+
+### 22. Recovered original task description — 2026-08-10
+
+The complete task-description payload is retained as one accountable unit so
+that no report item, clarification, or project constraint can disappear through
+selection or re-heading. A sentence expressly superseded later inside this
+payload remains historical intent and has no normative force.
+
+````meta-o-user-intents-v1 task-description.md
+# Task description
+
+The following is the user's problem statement, preserved without choosing a
+solution in advance.
+
+## Initial report
+
+- когда в herdr создаем исполнителя/ревьюреов хочу чтобы исполнитель запускался в соседней вертикальной панели, а ревьюеры в отдельной вкладке в двух вертикальных панелях
+- оркестратор стал сам читать спеку и проверять можно ли ее выполнить - так не надо, это должен делать исполнитель
+- а потом когда оркестратор забрал замечания от ревьюера - стал их проверять по коду сам // так не надо, он только копипастить должен в исполнителя
+- herdr оркестратор вместо запуска клода/кодекса для ревью внутри новых herdr-панелей запустил их как-то иначе что я их в herdr не вижу (видимо силами своего shell exec) - это неправильно. даже если мы можем прочитать только 1000 строк этого достаточно. весь смысл в экономии кеша - повторный запрос в ту же интерактивную сессию сильно дешевле чем новый инстанс. если есть еще проблемы - давай обсуждать. и опять же ui/визуальную наблюадемость - об этом яявно написано в бизнес-требованиях. а если в herdr нас что-то не устраивает - надо понять что и создать issues
+- еще заметил что часто агент когда в herdr что-то отправляет забывает отправить <enter>
+- оркестратор ведет сейчас себя как исполнитель: он постоянно меня спрашивает, выдает диалог с вариантами - это плохо. оркестратор долежен меня заменять, я не хочу быть ему нянькой. пусть принимает ответственность и управляет процессом
+- агент в беклог пишет и сделанное и не сделанное, а надо только несделанное ("Инструкции такой нет — раздел «Закрытые» я придумал сам")
+- агент создал changelog.md хотя я его не просил - по идее не нужен этот файл
+- оркестратор не смог определить доступные модели
+
+  > Про модели честно: codex/gpt-5.6-sol/medium проверен по каталогу codex, а claude/opus/high записан непроверенным — @anthropic-ai/claude-agent-sdk не установлен, каталог claude недоступен, так что это пробел в листинге, а не подтверждённый id.
+
+  надо делать также как сделано в нашем скиле брейншторма - там все sdk бандлятся нормально /Users/alex/bitrix/skills/src/brain-council
+- агент в docs/ начал создавать кучу ненужного: например в одном проекте я заменял 4 readme в подпапках на 1 корневой - он и про это доку создал
+- когда мы в herdr запускаем скилл оркестратора хочу чтобы он переименовывал вкладку?
+- похоже надо в оркестраторе когда он запустил исполнителя первый раз в работу чтоб оркестратор сам советовал пользователю каким (коротким) промптом с `/goal` надо его заставлять делать задачу (возможно это сократит количество вопросов к пользователю), или вообще стартовый промпт какой-то придумать и им запускать оркестратор в работу
+- вот такое я бы добавил в правила, вероятно в agents.md/claude.md поскольку исполнитель работает у нас без скилов
+
+  ```text
+  ## Version control
+
+  Never develop directly on `main`, `master`, `develop`, or `default`. Create each task branch from an up-to-date `develop` using `feature/<short-slug>` and use it for the whole task.
+  Run the relevant checks before committing. Commit every coherent, independently verifiable increment instead of accumulating the whole task in one commit. Use `<type>: <what changed and why>` with `feat`, `fix`, `refactor`, `test`, `docs`, or `chore`. Reference an issue or specification when one exists, but neither is required. End every agent-authored commit with new line and executor harness model: `Assisted-by: {model}`
+  The final verified result is one full Git SHA. Any subsequent commit invalidates its review and verification gates.
+  ```
+
+- надо продумать правильные рекоммендации как оркестратору ждать исполнителя/ревьюреов чтобы он по часу не тупил (думаю если нужны интервалы то адекватные - 5-10 минут)
+
+  > Что я сделал не так. Я взвёл ожидание в 20:06 с условием из трёх частей: исполнитель не working, дерево чистое и HEAD != 216eb7b. Последнее условие было невыполнимым уже в момент постановки: коммит 216eb7b датирован 20:05:11, и он же оказался финальным кандидатом, а не промежуточным. Я прочитал в панели «11 из 14» и сделал вывод, что впереди ещё один коммит, — экран был устаревшим на момент чтения. Дальше цикл честно ждал события, которого не могло произойти. Сколько бы я ждал. Цикл — 55 итераций по 60 секунд, то есть до 21:01. Там он напечатал бы TIMEOUT и разбудил меня принудительно. Так что да, я бы сам увидел — но примерно на 47 минут позже, чем следовало, и увидел бы через отчёт о неудачном ожидании, а не через нормальное срабатывание. Почему это вообще произошло. Я ждал производный признак (появление нового SHA) вместо прямого (исполнитель остановился и дерево чистое). Два из трёх моих условий выполнились почти сразу; я сам добавил третье, ложное, и оно всё заблокировало. Правильное условие здесь — «состояние не working и дерево чистое», а какой при этом SHA — я и так вижу, когда просыпаюсь.
+
+The relevant existing business framing is in
+`docs/references/my-opinion.md`, especially the sections about the thin
+orchestrator, persistent visible sessions, meta-harness requirements, review
+handoff, and human involvement.
+
+## Clarifications
+
+The user previously launched ordinary Claude or Codex CLI processes in Herdr
+panes and asked the orchestrator to manage them. The desired result is ordinary
+subscription-backed CLI sessions that remain visible and directly accessible to
+the user; the design must not assume that a particular current Herdr command is
+itself the requirement.
+
+The orchestrator must not read specifications. It manages the process only, and
+its context must not be filled with large documents. It must not read code or
+independently assess implementation feasibility or review findings.
+
+Latest user clarification, superseding the commit-attribution sentence in the
+initial report:
+
+> я тут долго думал и понял что не нужен нам Assisted by в коммитах
+> убери упоминания этого из спеки
+
+## Project constraints
+
+Follow the repository contract in `AGENTS.md`. In particular, skills and
+reasoning are the orchestration layer; no new orchestration CLI, daemon, state
+store, adapter layer, manifest, receipt, digest, or baseline is introduced
+without a named external consumer and a recorded architecture reason. Authored
+skill sources live under `src/skills/`; `skills/` is built and never edited.
+
+This is a design task. Produce an implementation-ready, decomposition-ready
+proposal that decides how the affected requirements should fit together, names
+any genuine Herdr capability gap that should become an upstream issue, and avoids
+inventing project documentation or bookkeeping that the user did not request.
+
+## Later user intents (verbatim)
+
+> /goal выполни разработку /Users/alex/Develop/meta-o/spec/2026-08-08-herdr-orchestrator-operational-corrections/spec-review.md и через clean-room subagent review добейся отстуствия замечаний
+
+> тебе не надо использовать скилл mo-herdr сейчас
+
+> Такой вопросик. В My Opinion посмотри, есть ли там раздел или ещё?
+> Про то, что нужно дословно передавать интенты пользователю.
+> Смысл в том, что я неоднократно наблюдаю большую проблему, что те интенты, которые пользователь высказывает, они в финальную спеку не попадают. То есть, нужно, чтобы, если пользователь какой-то, на какой-то вопрос ответил или какое-то мнение высказал, чтобы это дословно попадало в спеку обязательно. Вот есть там такое сейчас или нет?
+
+> давай укажем что и в спеку все интенты пользователя должны попадать дословно
+
+> я тут долго думал и понял что не нужен нам Assisted by в коммитах
+> убери упоминания этого из спеки
+````
+
+<!-- markdownlint-enable MD013 -->
+
 ### What that means for the product, in the user's terms
 
 - the previous generation was **too thick** — the fault was misplaced emphasis,
@@ -592,6 +842,14 @@ and `rm` from the system utility path.
 ---
 
 ## Part 2 — the durable theses
+
+## A spec keeps the user's words, not only their interpreted requirements
+
+The business framing remains the independent verbatim source, but every task/spec
+also carries every user intent word for word. Summaries, derived requirements and
+links are useful additions and never replacements. A later clarification appends
+to both documents before implementation continues, so a reviewer can detect both
+transport loss and a wrong interpretation.
 
 ## A feature must be verifiably done, not plausibly done
 

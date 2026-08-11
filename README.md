@@ -16,28 +16,43 @@ original. A run does not start without one. Secrets are the one exception —
 credentials and personal data are stored as `[REDACTED: what it was]`, since that
 file gets committed and pushed.
 
-The specification is
-[`spec/2026-08-05-ai-driven-development-workflow-revision/`](spec/2026-08-05-ai-driven-development-workflow-revision/2026-08-05-ai-driven-development-workflow-revision-council-brainstorm.md).
-It replaces the 2026-07-24 spec and its implementation, which is in the Git
-history and nowhere else.
+The current operational correction is
+[`spec/2026-08-08-herdr-orchestrator-operational-corrections/`](spec/2026-08-08-herdr-orchestrator-operational-corrections/spec-review.md).
 
 ## What a run looks like
 
 ```text
-preflight — repo root, business framing, spec, Makefile, backend help,
-            PATH wrappers, model set
-  → optional reuse research, only if you ask for it
-  → executor under a native /goal, until one clean candidate commit
+pre-activation — inject project contract and opaque task/spec locator
+  → process-only orchestrator creates a visible executor and sends one native goal
+  → executor reads the repository and produces one clean candidate commit
   → freeze that SHA
-  → reviewer A + reviewer B, independent, on that SHA
+  → reviewer A completes, then independent reviewer B starts on that SHA
+  → PASS/PASS proceeds without relay; a FINDINGS barrier releases both first passes atomically
   → the applicable E2E, on that SHA
   → any fix → new SHA → every applicable gate again
-  → STATUS / CANDIDATE / SUMMARY
+  → exact final-result JSON / short human summary
 ```
 
 One verified result is one full Git SHA. Any new SHA invalidates every gate —
 no impact analysis to argue with, and "the reviews passed" can never quietly mean
 "the reviews passed on something else".
+
+Tracked fixture, E2E and acceptance documents define scenarios, proof mappings
+and current reusable support posture; they are never candidate PASS receipts. A
+run returns live evidence only through its backend public surface and final
+answer. Its verified final-result record has exactly `candidate`, `worktree`,
+`executor`, `gates`, `support`, `reviews`, and `scenarios` in that order. It closes over the
+unchanged full SHA/clean worktree; ordered A/B QC, smoke and checks facts; 3..67
+canonical exact-key SUPPORTED surface facts consisting of one lifecycle-bound
+executor fact, two review facts, and one fact per derived scenario; two different-provider A/B PASS
+reviews with agreeing REQUIRED|NA dispositions and structural public-surface
+evidence, each bound by `support-key` to its exact review surface fact; and the
+exact reviewer-derived, support-proven ordered scenario PASS set, each likewise
+bound to its exact E2E surface fact. The top-level gate arrays byte-equal the corresponding A/B review
+fields. Both reviewers saying NA is the only empty-scenario case. Missing facts,
+generic prose evidence, extra
+keys, dirty/new `HEAD`, FAIL or UNKNOWN cannot verify. The run never commits this
+evidence or creates a manifest, registry, receipt or external sink.
 
 ## Install
 
@@ -45,19 +60,18 @@ no impact analysis to argue with, and "the reviews passed" can never quietly mea
 
 ```bash
 apm install /path/to/meta-o                     # all seven
-apm install /path/to/meta-o --skill mo-review   # one, complete on its own
+apm install /path/to/meta-o --skill mo-review   # protocol artifact only
 ```
 
 **Not proven yet** — the remote forms. They should work identically, since apm
 clones and then resolves the same `skills/` directory, but nobody has run them
 against this repository, so they are written here as what to try rather than as
-what was verified. Fixtures I3–I5 in
+what was verified. Fixtures I3 and I5 in
 [`docs/phase-0-fixtures.md`](docs/phase-0-fixtures.md) are exactly these rows:
 
 ```bash
-apm install shkarupa-alex/meta-o
-apm install shkarupa-alex/meta-o --skill mo-review
 npx skills add shkarupa-alex/meta-o
+apm install shkarupa-alex/meta-o
 ```
 
 apm deploys to the harness it detects in the consuming project (`.claude/`,
@@ -69,8 +83,11 @@ standard `mktemp` and `rm` found by `command -p`. A Bash matrix additionally
 requires `/usr/bin/env` with `-0`; a requested Zsh matrix needs Zsh.
 NixOS/Alpine-style layouts without these absolute paths are outside this helper's
 compatibility contract. Building and installing this repository also needs Node
-≥ 22 and Git, and its full `make mo-qc` needs Zsh. Nothing is compiled and nothing
-is written into the projects the skills work on.
+≥ 22 and Git, and its full `make mo-qc` needs Zsh. The repository installs no
+orchestration engine, provider proxy or daemon. Its build bundles the
+self-contained `.mjs` helper; installation writes the selected skill directories
+into the target harness, and a feature workflow then edits and commits the target
+project it was asked to develop.
 
 The installed unit is a directory: `SKILL.md` plus the `references/` and
 `scripts/` that skill owns. `tests/install.test.mjs` runs a real local `apm
@@ -80,32 +97,50 @@ happened before this layout.
 
 ## The skills
 
-| Skill         | Use it when                                                                                         |
-| ------------- | --------------------------------------------------------------------------------------------------- |
-| `mo-herdr`    | run a whole feature through Herdr-managed sessions                                                  |
-| `mo-omnigent` | the same lifecycle through native Omnigent sessions                                                 |
-| `mo-review`   | you just made a fix and want two independent reviews — or a full workflow needs the review protocol |
-| `mo-reuse`    | you want to know what already exists before it gets built                                           |
-| `mo-setup`    | a project has no contract yet                                                                       |
-| `mo-e2e`      | the E2E genuinely needs an agent — a benchmark or a browser suite                                   |
-| `mo-watchdog` | a long unattended run should tell you when it needs you                                             |
+| Skill         | Use it when                                                           |
+| ------------- | --------------------------------------------------------------------- |
+| `mo-herdr`    | run a whole feature through Herdr-managed sessions                    |
+| `mo-omnigent` | the same lifecycle through native Omnigent sessions                   |
+| `mo-review`   | `mo-herdr` or `mo-omnigent` needs the backend-neutral review protocol |
+| `mo-reuse`    | you want to know what already exists before it gets built             |
+| `mo-setup`    | a project has no contract yet                                         |
+| `mo-e2e`      | the E2E genuinely needs an agent — a benchmark or a browser suite     |
+| `mo-watchdog` | a long unattended run should tell you when it needs you               |
 
 The backend is part of the skill's name rather than a flag: session semantics
 differ enough between Herdr and Omnigent that one prompt covering both would be
 vague about both.
 
-`mo-review` is the one you will use most. It runs directly in the coding session
-that made the change, which temporarily wears both hats — a deliberate exception
-to "the executor gets no methodology skill", because for a small fix losing the
-coding context costs more than the methodology bias risks.
+`mo-review` is a protocol component, not a standalone review runtime. It supplies
+the lenses, compact outcomes, adjudication and convergence rules used inside
+`mo-herdr` and `mo-omnigent`; those backend skills own actor launch, vendor
+selection, complete-turn retrieval, finding application, commits and E2E. A
+single-skill install is readable protocol material only and is not advertised as
+a way to execute reviews.
+
+Human input has two distinct paths. Product meaning, architecture, credentials,
+subscription state, and other repository-changing answers return to the
+executor for credential-safe verbatim intent recording and a new candidate SHA.
+Approval for one already named production/irreversible E2E scenario returns to
+that same lifecycle-recorded E2E actor on the unchanged candidate only after its
+visible one-row request names the exact operation and credential-safe scenario
+ID; an approval addressed to any other native actor fails closed. Optional
+watchdog approval stays with the orchestrator. Operational requests and
+approvals are header-only and never persist opaque human text.
+
+Only IDs in the validated origin outcome's `disputes` set are requested from the
+peer. They run sequentially, but their terminal results are delivered only after
+every such target resolves: one ordered atomic set goes to the executor if any
+finding is upheld, or to the origin reviewer if all are withdrawn. Closed-only
+rebuttal IDs never enter that set, and a partial per-ID history is never released.
 
 ## Repository layout
 
 ```text
 src/skills/      the authored skills — SKILL.md plus what only that skill owns
-shared/          source owner: methodology, purpose contract, mo-models.mjs, mo-posture.sh
+shared/          source owner: methodology, licences, mo-models.mjs, mo-posture.sh
 skills/          the installable tree, built from the two above and committed
-tools/           build-skills.mjs — copies shared files in, and verifies identity
+tools/           build-skills.mjs — copies prose, bundles the SDK helper, verifies identity
 docs/            this project's own contract, knowledge and fixtures
 spec/            the council specs, kept verbatim as history
 ```
@@ -131,8 +166,11 @@ hand-edited copy of the methodology could begin.
   turn, that route is marked unsupported.
 - Accept "repeat your last answer verbatim" as retrieval. That tests obedience.
 - Summarise a reviewer's findings on the way to the author.
-- Start reuse research, an E2E tester or a watchdog you did not ask for.
-- Let the executor edit or delete the spec.
+- Ask the human to choose an ordinary route, retry, fix or process step.
+- Start an optional watchdog without an explicit request.
+- Let the executor arbitrarily rewrite or delete the spec. The one explicit
+  exception is the required credential-safe §2.1 verbatim append of each
+  repository-changing human intent to every current task/spec before acting.
 - Weaken a quality gate to make a candidate green.
 - Push, tag or open a PR without being asked.
 - Keep run state, gate receipts, digests, manifests or baselines anywhere. The
@@ -157,85 +195,23 @@ working to different contracts. Its knowledge is in
 
 ## Known limits
 
-**The loop has been driven end to end on both backends, and neither run converged.**
-On 2026-08-06 and 07 a small feature went framing → spec → executor session → QC →
-frozen SHA → two independent reviewers with at least one on another vendor → findings
-verbatim → new SHA → every gate again: seven rounds through `mo-herdr`, six through
-`mo-omnigent`. Every reviewed round returned FAIL on real findings — a parser that
-rejected the separator `ru-RU` actually emits, a range guard a reviewer disproved by
-mutating the source and watching the suite stay green, once an acceptance criterion
-that had been _deleted_ rather than satisfied, and last a mutation harness whose gate
-exited 0 after checking 1 of its own 101 mutants. So there is still **no verified
-candidate**, and what the runs established is that the gate catches what a green build
-does not, that the second vendor is load-bearing (twice one vendor passed a candidate
-the other then failed), and that reviewers which probe by mutation raise the bar every
-round. Two limits belong in the same breath: **the orchestrator was this session
-reading the authored skills, not a packaged skill installed and launched on its own**,
-so the methodology is what these runs exercise; and the Omnigent run misaddressed its
-own executor for four rounds through `omnigent run -c`, which is now fixture O9 and a
-rule in the skill. [`docs/e2e.md`](docs/e2e.md) records every round and both limits.
-
-- **Most Phase 0 fixtures now have evidence, and support is per surface, not per
-  provider.** Run on 2026-08-06/07: §H for all three providers on both surfaces, §G
-  except the trust step, §O except its open rows, §W, §M, §R in full, and the `PATH`
-  rows for Claude and Codex. **§H is not closed** — H7b is open on the TUI surface of
-  every route and N/A on the captured inline surface, so the one supported
-  configuration for the review gate is Claude or Codex, captured inline. What the
-  evidence says is sharper than "it works":
-  **`agent read` caps at 1000 rows** and there is no scroll method, so a long **TUI**
-  answer is `unknown` — and the TUI carries the review gate only on Codex, because
-  Claude Code interleaves repaint fragments above roughly 250 rows and OpenCode
-  retains no scrollback at all. The **inline** surface (`claude -p`, `codex exec`,
-  `opencode run` through `herdr pane run`) returned an 800-row answer exactly on every
-  route, keeps its own addressable session for rebuttals, and is the recommended path
-  — with its stdout captured **as a structured envelope**, which
-  [`addendum-02`](spec/2026-08-05-ai-driven-development-workflow-revision/addendum-02-orchestrator-owned-capture.md)
-  had to permit explicitly, because the shell writing that file is a different thing
-  from the reviewer-written verdict file the spec bans. The envelope, not the exit
-  status, is what proves the turn ended: `claude -p --output-format json` returns one
-  parseable object and `codex exec --json` ends in a `turn.completed` event, whereas
-  a turn cut off mid-answer exits 0 like any other and a verdict truncated below its
-  heading looks whole.
-  Its one measured failure mode is a provider that ends a turn empty: a tool-using
-  OpenCode turn produced no answer and still exited 0, and so did an Omnigent
-  `claude-sdk` review — which is `unknown`, never "no findings". That failure is why
-  **OpenCode is unsupported for the review gate on both of its surfaces**: a reviewer
-  that goes silent as soon as it uses a tool cannot hold a gate.
-  **Omnigent's REPL answers `Unknown command: /goal`** and never
-  forwards slash commands to the harness, so that route runs the lifecycle with the
-  weaker prompt-text objective. It has a second limit that is easy to miss: its
-  headless output is free text with no envelope, so the review gate there must go
-  through `session export` — which needs a full conversation id no non-interactive
-  surface yields, and a prefix is refused. **Every Omnigent review round is therefore
-  a `needs_attention`**, not something an unattended run completes.
-  Details and the rows still open are in
-  [`docs/phase-0-fixtures.md`](docs/phase-0-fixtures.md).
-- **There is no OpenCode wrapper on this machine** (rows P2c/P3c). On that route
-  nothing in `PATH` carries a permission or sandbox posture, so it comes from
-  OpenCode's own configuration — which nobody has verified — or from nowhere.
-- **The remote installs are unverified.** What is proven is a local-path `apm
-install`, by `tests/install.test.mjs`. `npx skills` and the remote form (I3–I5)
-  need this repository pushed first.
-- **The Claude model catalog needs an optional peer SDK.** The Claude CLI has no
-  listing subcommand, so the authoritative list comes from
-  `@anthropic-ai/claude-agent-sdk`'s `supportedModels()`. These skills install by
-  directory copy with no `npm install`, so the SDK is resolved at runtime and its
-  absence is reported as a gap rather than filled in from session history. Codex
-  and OpenCode need no SDK.
-- **`/goal` works on Codex and Claude Code, and does not exist on the other two.**
-  Codex reports `Goal active` / `Pursuing goal` and survives `codex resume` with an
-  explicit status; Claude Code reports `◎ /goal active`. OpenCode answers the line as
-  ordinary text, and Omnigent's REPL rejects it outright — both get a prompt-level
-  convention that must be called weaker. The one part still unobserved is Claude's
-  first-time workspace-trust prompt, because this repository was already trusted.
-- **`mo-watchdog` stays skill-only.** Fixture W1 ran: a session performed a bounded
-  native wait (`sleep 25`) and then produced another reasoning turn in the same
-  session. No helper `.mjs` is admitted.
-- **Nothing mechanically enforces the methodology.** The previous generation could
-  refuse an illegal transition; this one can only be read and followed. The trade
-  is argued in
-  [`docs/architecture/skills-first.md`](docs/architecture/skills-first.md), and
-  the honest summary is: the enforcement covered sequencing, never judgement, and
-  it cost a control layer that had to be recovered before any feature could be.
+- **The final Herdr surface is not yet adopted.** This implementation environment
+  has no `HERDR_ENV=1`; P1–P8, H7b and H13–H37 therefore remain unsupported rather
+  than borrowing old inline/headless evidence.
+- **The final Omnigent route is not yet adopted.** OM1–OM8 must prove its native
+  firewall, continuity, complete-result and gate behavior independently.
+- **A hard crash can leave private scratch until OS cleanup.** New runs do not
+  scan for or delete old directories without ownership evidence.
+- **A provider profile can detach a posture descendant with `setsid`.** The
+  diagnostic quiesces only its owned process group; portable kernel containment
+  remains an explicit backlog item, so posture proves resolution rather than
+  arbitrary descendant containment.
+- **The Claude catalogue SDK is self-contained.** The generated helper bundles
+  the pinned SDK, carries its licence, uses system Claude from PATH, and needs no
+  ambient runtime `node_modules`; catalogue presence still does not prove
+  launchability or subscription entitlement.
+- **Nothing mechanically enforces reasoning.** Deterministic gates constrain
+  grammar, distribution and observable boundaries; the skills remain the
+  orchestration layer by design.
 
 Everything deferred is in [`docs/backlog.md`](docs/backlog.md).

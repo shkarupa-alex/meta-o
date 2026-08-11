@@ -1,192 +1,230 @@
-# End-to-end verification of meta-o itself
+# End-to-end verification
 
-This project ships Markdown and two dependency-free helpers (`.mjs` and `.sh`). Most of what
-would be an E2E suite elsewhere is a deterministic console check here, so it runs
-inside `make mo-qc` and needs no separate tester.
+`make mo-qc` is the deterministic product gate. `make mo-e2e` deliberately runs no agentic
+scenario: it prints this document's entry point and exits 2. A live actor must name one full
+post-cutover candidate SHA and return per-scenario evidence through the backend public surface.
 
-The set is small, so it lives in this one file rather than under
-`docs/e2e/index.md` + groups.
+Historical inline/headless runs do not prove the current Herdr route. The current route
+supports only visible ordinary interactive actors started through `herdr agent start`.
 
-## Deterministic, in `mo-qc` — no agent required
+## Evidence contract
 
-| Scenario                      | Command                                       | Asserts                                                                                                                                                                                                                                                                                                                                                    |
-| ----------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The helper runs               | `make mo-smoke`                               | `--help` and `--show` answer and exit 0, under a throwaway `HOME`                                                                                                                                                                                                                                                                                          |
-| Posture matrices are readable | `node --test tests/provider-posture.test.mjs` | both shells cover kind/path divergence, framing, malformed evidence, inherited state and scan failure, dispatch shadows, ownership-anchored group shutdown before capture reads, unknown-on-unquiesce, launch/temporary-directory races, reentrant signals, and 0/1/2 precedence; the selected campaign tries 25 named guard mutations with zero survivors |
-| The built tree is in sync     | `node tools/build-skills.mjs --check`         | `skills/` byte-matches a fresh build from `src/skills/` + `shared/`                                                                                                                                                                                                                                                                                        |
-| The contract has not diverged | `cmp -s AGENTS.md CLAUDE.md`                  | the two project-instruction files are byte-identical                                                                                                                                                                                                                                                                                                       |
-| Unit behaviour                | `make mo-test`                                | selection grammar, upgrade rule, settings I/O, build validation                                                                                                                                                                                                                                                                                            |
-| Settings stay untouched       | `make mo-test`                                | `--show` writes nothing; a bad `--set` persists nothing                                                                                                                                                                                                                                                                                                    |
-| A real apm install            | `make mo-test`                                | seven complete skills, and `--skill mo-review` alone with its reference                                                                                                                                                                                                                                                                                    |
+Intermediate E2E handoffs may be PASS, FAIL, or UNKNOWN. The verified final-result
+record is closed: top-level keys occur exactly in this order:
 
-## Agent-required — not executed by `make`
+```text
+candidate, worktree, executor, gates, support, reviews, scenarios
+```
 
-| Scenario                                                        | Where                         |
-| --------------------------------------------------------------- | ----------------------------- |
-| Full-turn retrieval per Herdr provider route                    | `docs/phase-0-fixtures.md` §H |
-| Omnigent goal, resume and full export                           | `docs/phase-0-fixtures.md` §O |
-| Native `/goal` activation and survival                          | `docs/phase-0-fixtures.md` §G |
-| Watchdog next-turn spike                                        | `docs/phase-0-fixtures.md` §W |
-| Installation through `npx skills`, and from a remote repository | `docs/phase-0-fixtures.md` §I |
-| A small feature driven end-to-end through `mo-herdr`            | run 2026-08-06/07 — see below |
-| The same through `mo-omnigent`                                  | run 2026-08-07 — see below    |
+- `candidate` is the unchanged full SHA and `worktree` is exactly `clean`.
+- `executor` has exactly `actor,provider,support-key`, byte-equals the
+  lifecycle-selected identity, and references the exact retained pre-activation
+  `SUPPORTED` seven-field `executor`/`executor-turn` fact with no scenarios.
+- `gates` is exactly the ordered array `qc`, `smoke`, `checks`. Each entry has
+  exactly `gate,statuses`; statuses are reviewer-A then reviewer-B. QC and smoke
+  are `PASS,PASS`; each checks status is `PASS|NA`.
+- `support` has 3..67 unique entries, sorted by the exact seven-field key tuple
+  `backend,provider,provider-version,backend-version,surface,os,fixture`. Each entry
+  has exactly `key,status,scenarios`; `status=SUPPORTED`; `scenarios` is empty or
+  a singleton safe ID list. Every safe lowercase identifier matches
+  `[a-z0-9][a-z0-9._-]{0,63}`. The facts are exactly one lifecycle-selected
+  fact referenced by `executor`, the two review-referenced facts, and one
+  scenario-referenced fact per derived name; no unused fact is allowed.
+  Every fact byte-matches a retained pre-activation `SUPPORTED` row across all
+  seven fields/scenario identity and the lifecycle-selected versions/OS. Every
+  nonempty E2E fact scenario belongs to the retained selected-backend scenario
+  set; a declared scenario without an exact fact remains unsupported.
+- `reviews` is exactly A then B. Each entry has exactly
+  `reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,scenarios,evidence`;
+  status, qc and smoke are PASS, checks is `PASS|NA`, actor/provider identities
+  equal lifecycle state, providers differ, at least one reviewer provider
+  differs from the executor, and
+  `e2e` is `REQUIRED|NA`. Its exact canonical scenario list has 1..64 IDs for
+  REQUIRED and is empty for NA. The top-level gate status arrays byte-equal the A/B
+  review `qc`, `smoke`, and `checks` fields. `support-key` is the exact
+  slash-join of its matched support fact's seven safe-ID values in key order.
+  That fact has the selected route's backend, the same provider, `surface=review`,
+  `fixture=review-turn`, and `scenarios=[]`. Evidence has exactly
+  `source,protocol,parts,rows,bytes`: source `backend-public-surface`, protocol
+  `MO_REVIEW_V2`, and maxima 6 parts, 1000 rows, 61,440 bytes. It byte-equals
+  trusted retrieval metadata retained under exact
+  candidate/reviewer/actor/provider identity; in-range invented values are
+  invalid.
+- The two final review E2E dispositions agree. Both `NA` requires
+  `scenarios=[]`. Both `REQUIRED` derives a nonempty `scenarios` list exactly as
+  the sorted unique union of both validated review lists; support facts prove
+  each identity but never define applicability. A mixed first pass re-prompts
+  exactly the NA reviewer once on the unchanged candidate without peer output;
+  a change to REQUIRED proceeds,
+  while repeated NA is terminal `needs_attention:e2e_disposition_dispute`.
+  For REQUIRED/REQUIRED the initial E2E prompt places exact
+  `MO_E2E_ASSIGNMENT_V1|candidate=<oid>|scenarios=<positive-int>|ids=<safe-id-list>`
+  for that union immediately before the final prompt boundary; E2E executes
+  exactly the assignment rather than selecting applicability.
+- Scenario records follow that exact sorted order. Each has exactly
+  `scenario,actor,provider,support-key,status,evidence`; status is PASS.
+  `support-key` resolves to a fact with the selected route's backend, the same provider,
+  `surface=e2e`, `fixture=scenario`, and `scenarios=[scenario]`; a merely
+  same-provider fact is insufficient. Evidence has exactly
+  `source,protocol,ordinal,total,rows,bytes`: source `backend-public-surface`,
+  protocol `MO_E2E_V1`, ordinal 1..total, the same total on every entry, and
+  maxima 1000 rows and 65,536 bytes. It byte-equals trusted metadata retained
+  under exact candidate/scenario/actor/provider identity; missing, duplicate or
+  substituted captures are invalid.
+- For REQUIRED/REQUIRED, the validated E2E PASS header's positive `scenarios`
+  count and exact canonical `ids` list equal the derived scenario identities and
+  every evidence `total`, with `not_run=none`. A smaller, repeated, reordered,
+  same-size different, or self-selected support/result set cannot prove
+  completeness.
 
-## The end-to-end runs, 2026-08-06 and 07 — one per backend
+Extra keys, prose/generic evidence, missing support/gates/evidence, FAIL/UNKNOWN,
+a dirty tree, or a changed SHA cannot produce the verified record.
 
-Phase 1 item 5 of the spec asks for a small feature driven end to end through **both**
-backend skills. Both were run, each in its own purpose-built scratch project rather
-than in a production repository, with this session as the orchestrator.
+`PASS` is valid only when the complete expected result can be read and the final `HEAD` still
+equals the named candidate with a clean worktree. Missing, truncated, ambiguous, stale, or
+other-SHA evidence is `UNKNOWN`.
 
-**What both runs shared.** Framing recorded verbatim from a request → spec with
-acceptance criteria → implementation by a separate executor session → `make qc` green
-→ **candidate frozen as a full SHA** → two independent reviewers on that SHA, neither
-seeing the other's answer, at least one on a different vendor than the author →
-findings copied to the executor verbatim and whole → new SHA → every gate again.
+This result remains in the current run and final response. Never write or commit it into
+`docs/phase-0-fixtures.md`, `docs/acceptance.md`, or another tracked file, and create no
+manifest, receipt, registry, or external evidence sink. Those documents define fixtures, map
+requirements, and state current reusable support posture only.
 
-### The Herdr route — a ru-RU budget-string parser
+## Deterministic scenarios
 
-Executor and reviewers ran on the **inline** surface (`herdr pane run` + a prompt
-file, stdout captured), which §H had just proved exact where the TUI was not.
-Reviewer A on Codex, reviewer B on Claude.
+These scenarios run under `make mo-qc`. They do not substitute for live provider rendering,
+native lifecycle, vendor diversity, or absence of tracked reads in a real actor run.
 
-| Round | Candidate | What the reviewers found                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| ----- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1     | `836cade` | an amount past `MAX_SAFE_INTEGER` silently rounded; `qc` not `.PHONY`, so a stray file would make the gate a no-op; **the parser rejected the separator `ru-RU` actually emits** (U+00A0), i.e. the pipeline's own input; non-string input reported as "empty"; a catch-all test that could not tell one refusal from another                                                                                                                                                                                                                                               |
-| 2     | `bd13275` | currency classification depended on the amount already parsing, so a foreign currency — the recorded incident — surfaced as a shape error; the range guard was asserted four orders of magnitude away from its real edge, and a mutant returning `NaN` passed the suite green; errors distinguishable only by matching English prose; leading-zero groups silently normalised                                                                                                                                                                                               |
-| 3     | `a8e1403` | the error classes the spec names (`TypeError`, `RangeError`) had been replaced by one `BudgetError`, breaking a stated criterion; the round-trip refusal the commit is named for had no isolating test; comments restating syntax                                                                                                                                                                                                                                                                                                                                           |
-| 4     | `2a6cc96` | the range guard accepted a value that had silently lost a kopeck — the exact thing it existed to prevent — proved by walking the top of the safe range; four mutants of the error contract survived the suite; diagnostics pinned for one currency and one input type only                                                                                                                                                                                                                                                                                                  |
-| 5     | `0b19b11` | the public error-code contract unpinned; the rejection grammar under-constrained; a short thousands group accepted by a mutant that returns a wrong number with the suite green; the separator set not pinned as closed                                                                                                                                                                                                                                                                                                                                                     |
-| 6     | `7bb3370` | both FAIL, and **both found the same defect independently**: a prose budget cell refused as a _currency_ error naming a word that is not a currency. B added that `make qc` cannot run from a checkout whose path contains a space; A added that the documented exactness boundary rejects a uniquely representable amount. Getting A's verdict took three attempts — the first died on `stream disconnected before completion`, the second was cut silently after 60k tokens, and both left `unknown` rather than a verdict                                                |
-| 7     | `0bd707b` | the fix round shipped a mutation harness of its own — **101 mutants tried, 4 surviving**, each survivor recorded in the fixture's backlog with the reason it is kept. Both FAIL, and both found the same defect independently: **`make qc` exits 0 after checking 1 of the 101 mutations**, so the harness that was supposed to raise the bar had lowered it. B added an unpinned leading-whitespace fence whose test does not cover it, and a range refusal that may drop the row it refused; A added that the bespoke checker is excessive and incomplete by construction |
+| Scenario          | Required behavior                                                                                                                           |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Root contract     | `AGENTS.md` and `CLAUDE.md` are byte-identical and use the self-contained-helper contract.                                                  |
+| Built tree        | `skills/` exactly matches the build from `src/skills/`, `shared/`, the model bundle, and mapped licences.                                   |
+| Setup contract    | `mo-setup` installs the exact version-control and non-mutating-reviewer-check rules.                                                        |
+| Model bundle      | Pinned SDK/esbuild versions, size ceiling, metafile roots, notices, no externals, no runtime `node_modules`.                                |
+| Catalogue         | `catalog_unknown`, `model_missing`, and `launch_failed` remain distinct; history never becomes catalogue.                                   |
+| Header protocols  | Exact fields/matrices, A-then-B unbounded BigInt ID-list order, origin single-prefix lists, and unknown classes for every compact protocol. |
+| Review accounting | Full-rebuts origin outcomes plus disputes-only target projection, remaining budgets, and aggregate adjudication.                            |
+| Candidate gates   | Full object IDs, branch grammar, clean tree, same-SHA gates, commit invalidation, and missing `develop`.                                    |
+| Relay             | Exact framing, marker-last human returns, aggregate peer outcomes, independent approval operation/actor binding, and body-silent failures.  |
+| Portable argv     | First-pass and both projected aggregate envelopes keep framing/body totals within 7,168/130,048 bytes.                                      |
+| Prompt ambiguity  | A changed signal is awaited; unchanged or contradictory evidence never causes a blind retry.                                                |
+| Topology          | Exact executor/review commands, structured `root_pane`, collision handling, and partial failure.                                            |
+| Lifecycle         | One waiter, direct waits, bounded loss/retry, and a no-progress key that canonicalizes open-ID permutations into one A-then-B order.        |
+| Extraction        | Golden Claude/Codex boundaries, extraction ladder, duplicate/stale/missing boundary rejection.                                              |
+| Scratch           | `0700` directory, `0600` files, content-free prefix, controlled cleanup, and no cross-run adoption.                                         |
+| Posture           | Fixed fake PATH/shell matrix and the exact consumer contract; live posture remains a separate fixture.                                      |
+| Documentation     | Canonical glossary, verbatim intent consistency, open-only backlog, exact acceptance mapping, no unsolicited docs.                          |
+| Cutover           | Shipped Herdr files contain no inline/headless actor fallback, private transcript, or verdict-file path.                                    |
 
-### The Omnigent route — the same lifecycle without a goal
+## Remote installation scenarios
 
-This route cannot carry a native goal at all: its REPL answers `Unknown command:
-/goal`. So the run used the fallback `methodology.md §6` defines — the objective as
-prompt text, the conversation continued with `omnigent run -c`, and the weakness said
-out loud. Retrieval was the headless surface: each role is one `-p` invocation whose
-stdout is the complete turn. Reviewer A ran on the `codex` harness, reviewer B on
-`claude-sdk`.
+Run I3 and I5 from `docs/phase-0-fixtures.md` only after a separately authorized action has
+pushed the exact candidate. They prove that both advertised remote clients discover the
+committed generated tree; local-path installation is deterministic coverage, not remote
+evidence. Until a current run returns its public SHA, client version, installed file list, and
+cleanup facts, the remote installation paths remain unsupported; those facts are not appended
+to the fixture map.
 
-**Two corrections, both against this run rather than against the route.**
+## Preimplementation Herdr probes
 
-_First, its reviews were retrieved through a surface §8 does not sanction._ Each
-reviewer's plain stdout was captured to a file and read. §8 requires the native
-`session export`, and `addendum-02` — which permits orchestrator-owned capture — amends
-§7.2 only and explicitly does not license swapping a native export for free text. The
-export was skipped because it needs a full conversation id that no non-interactive
-surface prints and that a prefix cannot stand in for (fixture O10, measured after this
-run). The correct handling was a `needs_attention` asking the user for the id; instead
-the run continued on captured text. Nothing here suggests the verdicts were wrong —
-they were detailed, mutually consistent and repeatedly confirmed by the executor's
-own fixes — but they were obtained off-contract, and a verdict off-contract is not a
-gate result. `mo-omnigent` now states the `needs_attention` outright.
+Run P1-P8 from `docs/phase-0-fixtures.md` before treating the Herdr actor surface as
+implementable. They use a throwaway repository and prove only installed external capabilities:
 
-_Second, this run misaddressed its own executor, and the evidence below is qualified
-by it._
-The executor also ran on `codex`, so from round 3 on every `omnigent run --harness
-codex -c` continued whichever codex conversation was most recent — which, after each
-review round, was **reviewer A's**. A probe on 2026-08-07 confirmed it directly: asked
-to quote its own first user message with no tools, the `-c` conversation answered
-`ROLE: reviewer`. Nothing errored and nothing warned. The rounds still did the work,
-because the objective and the findings travel in full in each prompt on this route —
-that is the whole point of the prompt-text fallback — but the claim "the executor
-continued its own session" is false for rounds 3–6, and any conclusion resting on
-executor continuity here is not supported. It is fixture O9, and `mo-omnigent` now
-requires the executor to hold a harness no reviewer uses.
+1. two provider CLIs launch visibly through `agent start`;
+2. tab creation returns a structured root pane;
+3. right split, rename, and metadata surfaces work;
+4. prompt submission supplies Enter and observable lifecycle change;
+5. non-submitting direct wait returns the required states;
+6. the rendered retrieval surface reaches the measured extraction envelope;
+7. native goal settlement has the required quiet behavior;
+8. the maximum portable relay argument launches on every supported OS.
 
-| Round | Candidate | Verdicts and what they found                                                                                                                                                                                                                                                                                                                                                                             |
-| ----- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1     | `bae30e2` | A PASS, B FAIL — negative amounts designed in code and frozen by tests while the framing records them as undecided; the round-trip proven against a parser the change itself shipped; eight of eighteen guard mutations surviving                                                                                                                                                                        |
-| 2     | `78781e2` | both FAIL — a leading-zero grouped string accepted as a different number (found independently by both); a reuse of `Intl.NumberFormat('ru-RU')` reverted and recorded nowhere; an unconstrained decimal-parts guard                                                                                                                                                                                      |
-| 3     | `4b89539` | A PASS, B FAIL — **an acceptance criterion had been deleted rather than satisfied**, which is the single most valuable finding either run produced; the mirror parser exported as production API; error-code values unpinned                                                                                                                                                                             |
-| 4     | `c86aa09` | A FAIL — the public `parseBudget` export dropped, which contradicts B's round-3 finding that exporting it was itself the defect; the orchestrator ruled on that dispute and the ruling travelled into the next round. B's first answer was **empty with exit status 0** — `unknown`, repeated — and the repeat returned FAIL on a deleted `-0,00 RUB` guard and on criterion 3 loosened without a record |
-| 5     | `27af9b2` | A PASS with no findings, for the second round running; B FAIL — the "groups of three" guard unconstrained by the suite, the `Intl.NumberFormat` reuse reversal still unrecorded, a guard and the assertions proving it deleted in one commit, and — the finding that matters — **the business symptom the framing actually raised is still live and written down nowhere**                               |
-| 6     | `d59a303` | the fix round: `make qc` green, the executor's own sweep reporting 15 mutants killed and 0 surviving. **Not reviewed.** The round-6 reviewers were not launched, because the `-c` defect above was found first and reviewing a candidate produced through a misaddressed executor session would have added a verdict without adding evidence                                                             |
+P1-P8 remain PENDING/UNSUPPORTED in the durable fixture map until their exact
+reusable surface keys are established.
 
-### What the two runs establish
+## Post-cutover Herdr scenarios
 
-1. **The gate is not ceremonial.** Every round on both routes found something a green
-   `make qc` did not — including a defect that would have failed on real `ru-RU` data,
-   a guard that had quietly stopped guarding, and a deleted acceptance criterion.
-2. **A fix earns its own round.** Round 2's currency fix created round 3's error-class
-   regression; the Omnigent route's round 3 fix deleted a criterion. That is exactly
-   why a new SHA invalidates every gate rather than inheriting the previous verdict.
-3. **Cross-vendor is not a formality.** Twice a reviewer returned PASS with no findings
-   on a candidate the other vendor then failed on a real defect. A same-vendor pair
-   would have converged on a defective candidate both times.
-4. **Reviewers that mutate set a moving bar.** Once a reviewer deletes each guard in
-   turn, PASS requires the suite to pin every branch, and each round surfaces the next
-   unpinned one. The severity fell round over round — blocking defects, then contract
-   holes, then unpinned guards — which is what convergence looks like here, and it is
-   slower than "two rounds and done".
-5. **Invisible characters do not survive tooling.** A literal U+00A0 in the source
-   degraded into a plain space between two edits; the fix was `\u00a0` escapes, and a
-   reviewer had predicted the class of failure.
-6. **The 1000-row cap bites in real rounds, not just in fixtures.** In round 4 a
-   reviewer's own mutation campaign pushed the command echo out of the readable
-   window, so a complete-looking verdict had no provable upper boundary. Under this
-   project's own rule that is `unknown`; the retrieval was repeated with stdout
-   captured to a file, which is now what the mechanics recommend and what
-   `addendum-02` had to be written to permit.
-7. **Provider failures are a normal event in a long round, and only one of them is
-   recoverable.** Round 6's executor died on `API Error: … (ENOTFOUND)` with a
-   half-edited worktree; resuming by the uuid the orchestrator had chosen finished the
-   same work — fixture R7. Reviewer A's round-6 turn then died **twice** before
-   succeeding on the third attempt: first `stream disconnected before completion`,
-   then a silent cut mid-output after 60k tokens. A reviewer cannot be resumed the way
-   an executor can, because its output _is_ the deliverable: each failed attempt left
-   an empty file, which is `unknown` and is repeated from the start. Long
-   mutation-driven review turns are where this surfaces, and a run should expect to
-   pay for a retry or two rather than treat the first failure as a route defect.
-8. **The worst session defect makes no noise at all.** Every failure above announced
-   itself — a stack trace, an empty file, a missing boundary. The `-c` misaddressing
-   did not: it produced plausible work, in the wrong conversation, for four rounds,
-   and was found only by asking a session what its own first message had been. Route
-   knowledge that cannot be checked from the outside has to be checked deliberately,
-   before the run, and turned into a rule the skill enforces rather than a caution
-   the operator is expected to remember.
-9. **"The process exited" is not "the turn finished", and the gap is where a partial
-   PASS gets in.** Both runs bounded a captured answer with a shell sentinel and an
-   exit status. That catches a crash and an empty answer; it cannot catch a turn cut
-   off mid-answer, which exits 0 like any other — and because a verdict template puts
-   `## Verdict` near the top, such a capture would read as a complete FAIL with its
-   later findings silently missing. That case has **not** been observed here — the
-   round-6 failures left empty captures — so it is a hazard designed against rather
-   than one caught, and fixture H12 says so instead of implying otherwise. The
-   answer is not a marker asked of the model, which is what the spec bans and what
-   `omnigent-mechanics.md` had drifted into recommending, but a provider-authored
-   envelope: `claude -p --output-format json` parses whole or not at all, and `codex
-exec --json` closes with `turn.completed` (fixture H11). Omnigent offers neither,
-   which is what makes its review gate a `needs_attention` rather than a job a run
-   can finish alone.
+Run H7b and H13-H37 only after deterministic QC is green and the candidate already contains
+removal of the old inline/headless path.
 
-**Scope, stated plainly — what these runs do not prove.** Both ran in scratch
-projects, and **the orchestrator in both was this coding session reading the authored
-skills, not a packaged `mo-herdr` / `mo-omnigent` launched from an install.** So the
-methodology has been exercised and the shipped artefact has not: nothing here shows a
-fresh agent, given only the installed skill, reaching the same behaviour. Neither run
-reached two PASS on one SHA, so there is no verified candidate on either route.
-Together those are what still stands between "the loop demonstrably works, on both
-backends" and "the workflow is proven", and they are carried in `docs/backlog.md`
-rather than counted as done.
+| Group                  | Scenario IDs | What the group proves                                                                                                                         |
+| ---------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Visible actors         | H13-H15      | Exact topology, launch posture, model activation, warm panes, and partial failure.                                                            |
+| Goals and retrieval    | H7b, H16-H19 | Exact fresh-executor capsule, quiet goal settlement, final-marker inbound isolation, structural failure classification, and multipart limits. |
+| Independent review     | H20-H25      | Sequential barrier, conditional pair release, total multi-ID outcomes, byte identity, and blockers.                                           |
+| Candidate lifecycle    | H26-H29      | Same-SHA completion, commit invalidation, restart, and model fallback.                                                                        |
+| Firewall and attention | H30-H31      | Repository-changing intent/new-SHA routing, visible exact-scenario candidate-stable operational approval, and tracked-read canary.            |
+| Transport lifetime     | H32          | Both aggregate-envelope projections, cumulative peer budget, refcounts, cleanup, and lost-scratch recovery.                                   |
+| Diversity and waits    | H33-H35      | Actual vendors, direct waits, retry/no-progress bounds, and non-gating badges.                                                                |
+| Failure edges          | H36-H37      | Missing `develop` and total existing-peer adjudication.                                                                                       |
 
-`make mo-e2e` prints the help for these and exits 2. It does not pretend to have
-run anything, and `mo-qc` does not depend on it.
+The detailed expected observation and current support posture for every ID live in
+`docs/phase-0-fixtures.md`. Candidate PASS exists only in the live run/final result; current
+fixture rows remain PENDING/UNSUPPORTED.
+
+## Omnigent scenarios
+
+Run a supported native Omnigent route against the same candidate contract without copying
+Herdr evidence or mechanics.
+
+| Scenario         | Required behavior                                                                                                                |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| OM1 firewall     | After activation only native process/lifecycle facts, validated headers, and narrow Git metadata enter orchestrator context.     |
+| OM2 candidate    | One clean full SHA binds the exact closed gates/support/reviews/derived-scenarios final-result schema.                           |
+| OM3 independence | A completes before B; PASS/PASS does not relay; a findings pair releases atomically; A mutation skips B.                         |
+| OM4 findings     | RESPONSE accounts for full rebuts; canonical A-then-B BigInt lists feed exact outcome state, while only disputes enter delivery. |
+| OM5 invalidation | A new commit invalidates every prior gate and open ID.                                                                           |
+| OM6 recovery     | Native session continuity/recovery uses no private store and invents no Herdr-style evidence.                                    |
+| OM7 vocabulary   | The weaker prompt objective and byte-identical capsule precede a final-row marker that excludes echoed inbound frames.           |
+| OM8 attention    | Repository-changing input reaches executor/new SHA; approval matches independently stored operation and exact native E2E actor.  |
+
+OM1-OM8 remain PENDING/UNSUPPORTED reusable posture in the fixture map; a
+candidate verdict exists only in the ephemeral closed final result.
+
+## Final workflow scenario
+
+The adoption run is one uninterrupted feature flow:
+
+```text
+preflight -> executor -> clean candidate -> A -> B -> barrier
+  -> findings pair atomically -> total same-origin outcomes -> sequential requests -> atomic adjudication set -> new candidate -> all gates again
+  -> both reviews PASS -> applicable E2E -> unchanged full SHA
+```
+
+Required current-run evidence:
+
+1. P1-P8 already support the exact Herdr keys used.
+2. `make mo-qc` passes the candidate and rewrites nothing.
+3. H7b and every applicable H13-H37 scenario pass that candidate.
+4. Both independent reviewers return complete PASS handoffs for that candidate.
+5. `mo-e2e` returns `MO_E2E_V1` PASS, or both reviewers independently declare E2E NA.
+6. Final `HEAD` equals the candidate and the worktree remains clean.
+
+Any new commit restarts items 2-6.
+The final result returns all seven top-level facts with exact actor/provider and
+per-scenario details; it does not update or commit a tracked evidence document.
 
 ## Environment and cleanup
 
-The deterministic scenarios need Node ≥ 22, Git, Bash and Zsh, and touch nothing
-outside the repository. `mo-models.mjs` writes only `~/.meta-o/models.json`; the tests and
-`make mo-smoke` both point `HOME` at a temporary directory, so the real settings
-file is never read or written by the gate — and a corrupt one cannot make an
-unmodified checkout fail.
+Deterministic checks require Node.js 22 or newer, Git, Bash, and Zsh. Tests use throwaway HOME
+and temporary directories; they must never inspect or modify the user's real model settings.
 
-The install scenario needs `apm` on `PATH` and is **skipped** without it, which is
-reported as a skip rather than a pass. It builds a copy of the repository holding
-only the tracked files, installs into a temporary project, and deletes both. It
-writes nothing to `~/.apm` and needs no network.
+Herdr scenarios require a real interactive orchestrator pane with `HERDR_ENV=1`. Create only
+the named visible tabs and panes. Scratch files remain only while their mechanically tracked
+open IDs, shared-artifact reference counts and delivery/recovery states require them; one
+target cannot delete evidence still referenced by another. Invalidation and controlled exit
+delete all eligible paths known to that run. Ambiguous maybe-delivery is awaited and never resent.
+Partial topology remains visible on failure because ownership is insufficient for destructive
+cleanup; hard-crash scratch residue remains the explicit backlog limitation.
 
-The agent-required scenarios run against live provider sessions. Whoever runs
-them stops the sessions they started, even on failure, and records the evidence
-in the fixture table rather than in a log file.
+E2E actors use a unique namespace per scenario and clean it even on failure.
+Production/destructive scenarios require the documented production-safe contract and an exact
+one-row `MO_E2E_APPROVAL_REQUEST_V1` naming the operation and credential-safe scenario ID,
+followed by a matching one-row `MO_OPERATIONAL_APPROVAL_V1` immediately before that scenario.
+The approval returns only to the exact lifecycle-stored requesting E2E actor on
+the unchanged candidate; that actor must equal the native recipient even though
+the compact header says `requester=e2e`. The operation is stored independently
+and must equal the returned header. Its token is consumed once, and a wrong
+actor, operation, scenario, or replay fails closed. Neither row has a body or
+final LF. Stop every provider session started by the fixture.
+Do not store raw reviewer bodies, screenshots, private transcripts, or a gate registry as
+evidence.

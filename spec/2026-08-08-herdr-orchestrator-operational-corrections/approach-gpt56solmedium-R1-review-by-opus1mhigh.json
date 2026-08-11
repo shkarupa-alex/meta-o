@@ -1,0 +1,58 @@
+{
+  "target_id": "proposal-1",
+  "approval_score": 4,
+  "would_adopt": false,
+  "summary": "Correct diagnosis (role firewall, executor-owned feasibility, wait-on-lifecycle, dispute protocol) with several well-written sub-sections, but the two mechanisms it invents contradict measured facts in this repository and in the reference project. It bans the only surface measured to deliver a complete turn (inline JSON envelope) and then requires reading a 700-rendered-line verdict out of a Claude Code TUI that docs/phase-0-fixtures.md §H shows is unassemblable above ~250 rows, so the review gate on one mandated vendor can never be satisfied without an unshipped Herdr feature the design depends on. Its SDK 'bundle like brain-council' section describes the opposite of what brain-council does (that build keeps the SDKs external and vendors them into dist/<skill>/node_modules precisely because they resolve platform-native siblings at runtime), so the proposed single-file esbuild inline plus a byte-identical mo-qc gate is likely to break outright. It also keeps full verdicts transiting the orchestrator context (undercutting the cache-economy purpose the user named), makes origin/develop a hard blocker with no fallback, and leaves methodology §2.1 business-framing ownership contradictory.",
+  "phase": "approach-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "reviewer verdict retrieval",
+      "description": "A 700-rendered-line verdict read via 'agent read --lines 1000' from an interactive TUI contradicts the repository's own measured fixtures: Claude Code above ~250 rows returns a repaint collage (716 distinct of 900 lines, 270 duplicated, upper boundary lost) and OpenCode retains nothing past a viewport. With inline capture banned, the Claude route yields a permanent 'unknown' loop with no retry bound and no fallback, and the design's only escape is an upstream 'agent read-turn' feature that does not exist.",
+      "required_change": "Either keep an inline/envelope path as a bounded fallback for the verdict emission (e.g. via the provider session id Herdr already exposes, run in a visible pane), or move the long verdict off the terminal entirely (file or per-finding chunking) and cap the terminal read at a length the fixtures actually support. State a retry bound and what happens when it is exhausted."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "model catalogue build",
+      "description": "brain-council does not inline the provider SDKs: src/build.ts lists them in EXTERNAL_SDKS and vendors them into dist/<skill>/node_modules because they resolve platform-native sub-packages and sibling CLI entrypoints at runtime. Inlining @anthropic-ai/claude-agent-sdk into one .mjs will likely break its resolution of its own vendored cli.js, and a byte-identical rebuild gate in mo-qc makes esbuild-version and platform differences a hard failure.",
+      "required_change": "Replace the inline-bundle design with vendoring the SDK into the built skill directory at make skills time, and record the required docs/architecture/distribution.md amendment (the shipped tree stops being 'Markdown plus two dependency-free helpers') with its named reason."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "orchestrator context / findings handoff",
+      "description": "Keeping 'copy the whole verdict verbatim into the executor prompt' routes every reviewer verdict through the orchestrator's context each round. That is both the cache cost the user objects to and the raw material that produced complaint 3; the proposal closes complaint 3 only by prohibition, in the context most likely to be compacted.",
+      "required_change": "Move findings handoff to a transport the orchestrator does not ingest (path handoff or equivalent), or justify explicitly why the orchestrator must hold the verdict text given the user's stated cache-economy purpose."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "version control clause",
+      "description": "Declaring origin/develop mandatory with no fallback turns any repository without a develop branch into needs_attention, which is not on the user's allowed interrupt list and reintroduces the nanny prompts the whole proposal exists to remove.",
+      "required_change": "Add a defined fallback (branch from the default branch and record that in the first commit message) instead of a policy blocker."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "business framing ownership",
+      "description": "The orchestrator is forbidden to open the business framing, while methodology §2.1 makes the orchestrator its author and forbids the executor from writing it; §10 still assigns docs/business.md updates without saying who may append to a file nobody may open.",
+      "required_change": "State the write-only carve-out explicitly (the orchestrator may append the user's own words without reading the document), or reassign ownership and amend §2.1 accordingly."
+    }
+  ],
+  "assumptions": [
+    "The measured §H fixtures in docs/phase-0-fixtures.md and herdr-mechanics.md remain valid for the installed Herdr/provider versions; I did not re-run them.",
+    "brain-council's src/build.ts (EXTERNAL_SDKS + vendorExternalSdks) is the mechanism the user meant by 'sdk бандлятся нормально'.",
+    "'Interrupt the human only for the six named conditions' takes precedence over a literal reading of the user's version-control text."
+  ],
+  "round": 1,
+  "reviewer": "opus1mhigh",
+  "judge": {
+    "slug": "opus1mhigh",
+    "model": "opus[1m]",
+    "route": "claude-agent-sdk",
+    "effort": "high"
+  }
+}

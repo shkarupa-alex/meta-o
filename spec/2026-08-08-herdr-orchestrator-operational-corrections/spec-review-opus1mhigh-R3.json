@@ -1,0 +1,134 @@
+{
+  "target_id": "spec-review",
+  "approval_score": 7,
+  "would_adopt": false,
+  "summary": "The architecture continues to hold under direct attack. I re-attacked extraction anchoring, the argv relay, identity binding, finding accounting, and support classification and found no correctness hole: a prior turn cannot be captured, a body cannot escape argv framing, a candidate cannot be spoofed, IDs cannot drift, and support cannot be talked up or down. This revision closes the file-inventory family properly and generalizes the fix with new invariant 19, so the omission class is now gated rather than reviewer-dependent; src/skills/mo-setup/SKILL.md, docs/architecture/provider-posture-script.md, tools/build-skills.mjs, and the dependency records are named, with matching ledger, traceability, decomposition, and QC entries. Reading the unchanged prose harder surfaced three new majors. First, 'concurrency requires explicit tracked project instructions declaring exact checks safe' directly contradicts invariant 1: acting on it means the orchestrator opens a tracked file, and invariant 1's only exception is the contract injected before activation, not a file the orchestrator reads. Second, two of four executor header types have no routing anywhere in the flow, state table, error contract, or 25 acceptance cases; READY is merely unused, but BLOCKER is the transport for all eight permitted human-boundary classes, so the mechanism by which invariant 15 is honoured for the executor is entirely unspecified, and the error table's 'blocked' row is about Herdr lifecycle state instead. Third, the flow asserts that the executor Goal suspends during frozen review and is re-armed afterwards, and that suspension is what stops the executor committing mid-review and invalidating every gate, yet the spec gives verbatim text for the start and executor goals and no form at all for suspend or re-arm while mandating that all prompting go through agent prompt. Four majors persist. The global no-progress guard depends on 'terminal process event' and 'complete result', neither defined nor in the canonical vocabulary; under the narrow reading the FINDINGS/RESPONSE rebuttal exchange stays unbounded because nothing forces DISPUTED and every round is a complete handoff, so the design's only livelock protection is decided by an undefined phrase. Ambiguous prompt or delivery still escalates to needs_attention, spending the user's central autonomy requirement; I now credit the spec for filing state_change_seq freshness as upstream candidate 4, but the pre-prompt input-line fingerprint of extraction step 1 is project-owned, fixture-proven, needs no upstream change, and is not what the ledger's 'may duplicate accepted turn' rejects. Five mo-qc bullets still assert deterministic proof of the relay while the ledger rejects a maintained script, with no stated mechanism reaching the recipe. And mo-posture.sh is now an orphan: the posture precondition remains absent, the probe ships per distribution.md, and nothing invokes it or maps it to an acceptance case, though the runtime path is fail-closed so the cost is autonomy rather than a false pass. New minors: shared/licenses/ needs a SHARED_PLAN directory capability the byte-for-byte file-pair build tool lacks and 'the dependency audit' is named as if it existed; the 4 MiB bundle ceiling is the only limit in the spec with no recorded measurement; the command for discovering the orchestrator's own tab ID is never named though tab rename requires it; and the backlog rule forbids a 'Closed' section while the heading that actually exists in docs/backlog.md is '## Resolved'. Carried minors: recipe output discipline, the feature/<short-slug> pattern, the single-review barrier exception, the false 'fresh independent passes' and 'contamination bounded to old candidate' rationales, invariant 15 versus eight error-table escalations, unreproduced observations versus the AGENTS.md backlog rule, the non-mutating-check document owner for target projects, the compressed pane split form, item 1's gating scope, Node absent from preconditions, and two residual 'route support' phrases that invariant 16 forbids. Every finding is a local text change; none invalidates the design.",
+  "phase": "spec-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Concurrency clause contradicts invariant 1",
+      "description": "'Concurrency requires explicit tracked project instructions declaring exact checks safe.' Concurrent reviewer scheduling is an orchestrator decision, so acting on that sentence requires the orchestrator to open a tracked project file, which invariant 1 forbids ('never intentionally opens, searches, quotes, summarizes, or edits a tracked project file'). Invariant 1's sole exception is the project contract injected before activation, not a file the orchestrator reads. This puts the spec's central firewall in conflict with a scheduling affordance that V1 never exercises, and the resolution an implementer reaches under pressure is to relax the firewall for 'one small file'.",
+      "required_change": "Delete the sentence (sequential review is the adopted decision), or state that the permission may come only from the pre-injected project contract (AGENTS.md/CLAUDE.md) and never from any other tracked file, and add a QC case asserting no other tracked path is read for this decision."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "BLOCKER and READY executor types have no routing",
+      "description": "The grammar and executor matrix define READY and BLOCKER, but neither appears in the flow diagram, the state table, the error contract, or the 25 acceptance cases. READY is unused, which is a YAGNI question. BLOCKER is load-bearing: it transports all eight permitted human-boundary classes (product_meaning, product_architecture_fork, irreversible_action, credentials, subscription, production_e2e, external_blocker, unresolved_dispute) and is therefore how invariant 15 is honoured for the executor, yet the spec never states what the orchestrator does when one arrives, whether the class is validated against the current phase (production_e2e before any candidate exists is nonsense), what the human is shown, or whether the run can resume. The error table's 'blocked' row is about Herdr lifecycle state, a different condition.",
+      "required_change": "Add BLOCKER rows to the error contract: which classes are valid in which phase, the terminal outcome per class, what the human sees (pane, role, class, never a paraphrase), and whether and how the run resumes after the boundary is answered. Add at least one acceptance case. Either name READY's consumer in the flow or remove it from the grammar and matrix."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Goal suspension has no mechanism",
+      "description": "The flow and the Goal paragraph assert three transitions: active through candidate creation, suspended during frozen review/E2E, re-armed when repository work returns. Suspension is load-bearing, because a live persisted objective during a frozen candidate lets the executor commit and invalidate every gate, which is the failure the freeze exists to prevent. The spec supplies verbatim text for the start goal and the executor goal and mandates that every prompt including Enter go through agent prompt, but supplies no text or command for suspend and none for re-arm; docs/glossary.md treats suspension as an existing concept without a mechanism either. An implementer must invent it, and inventing it wrongly fails silently.",
+      "required_change": "Specify suspension and re-arm as ordinary atomic agent prompt turns with verbatim text (a hold instruction naming the frozen candidate and forbidding repository modification until re-armed; re-arm as the executor goal resent verbatim), and add an acceptance case asserting no commit occurs between freeze and re-arm."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "No-progress guard depends on undefined terms; rebuttal cycle bound is therefore undecided",
+      "description": "'The same candidate producing the same terminal process event twice without a complete result triggers needs_attention' is the design's only livelock protection and the substance of the ledger row 'Event counters and global no-progress guard'. Neither 'terminal process event' nor 'complete result' is defined, and neither appears in the Canonical vocabulary list. Two readings are available: under the narrow one ('complete result' = a well-formed handoff) the FINDINGS/RESPONSE exchange is unbounded, because a reviewer may keep A-1 open in FINDINGS, the executor may rebut with a no-commit RESPONSE, the reviewer may re-emit FINDINGS with A-1 still open, nothing obliges either party to declare DISPUTED, and every round is a complete handoff so the guard never fires; under the broad one it is bounded. Whether the design terminates depends on which reading an implementer picks.",
+      "required_change": "Define both terms in the canonical vocabulary, enumerate the counted terminal process events and the comparison key (candidate plus event kind plus actor), and state explicitly that a repeated identical FINDINGS/RESPONSE exchange on the same candidate counts. Independently, make escalation mechanical: a second RESPONSE naming an already-rebutted ID converts it to DISPUTED and enters the bounded adjudication path. Add an acceptance case."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Escalation on ambiguous prompt or delivery",
+      "description": "A prompt is issued once; agent_prompt_stalled, transport loss before acknowledgement, or ambiguous acceptance is needs_attention and never retried, and ambiguous delivery likewise. Upstream issue candidate 4 ('documented state_change_seq freshness semantics') legitimately blocks the state_change_seq half of the alternative, which I credit. It does not cover the other signal: extraction step 1 already fingerprints the provider input-line neighbourhood before prompting, and step 4 defines the Claude and Codex boundaries with fixtures, so an unchanged fingerprint plus unchanged agent_status is project-owned positive evidence that nothing was submitted, requires no upstream change, and is not the blind retry the ledger row rejects. As written, a dropped socket reply during an unattended run wakes the human, against the user's explicit requirement not to be a nanny.",
+      "required_change": "Define fingerprint-based disambiguation that needs no upstream change: if both the pre-prompt input-line fingerprint and agent_status are unchanged, the submission did not land and the identical prompt may be reissued once; if either changed, the turn is live and is never resubmitted, only re-armed; escalate only on contradictory evidence. Apply to relay delivery, update the two error-table rows, and narrow the ledger row to blind retry."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "mo-qc asserts tests for a recipe with no artifact",
+      "description": "The QC list requires deterministic proof of 'shell:false argv relay, random framing delimiter, NUL/UTF-8 handling, trailing-newline preservation, and no ambiguous retry', while the ledger rejects a maintained extraction script with the rationale 'Adaptable recipe plus tests/fixtures'. How a test reaches the recipe is unstated; duplicating the one-liner inside the test guarantees drift between the tested copy and the shipped prose, and that drift is a silent relay-safety regression.",
+      "required_change": "State that the deterministic test extracts the fenced recipe from the skill Markdown via the markdown-it AST (the mechanism already mandated for glossary checks), writes it to a temporary file, and executes it against byte fixtures (NUL, invalid UTF-8, preserved trailing newline, delimiter-like body bytes, the 65,536-byte boundary), or ship the relay as a tested helper and record the reversal in the ledger."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "shared/licenses/ needs a build capability the tool lacks; the dependency audit is unnamed",
+      "description": "tools/build-skills.mjs maps explicit [source, destination] pairs and copies them byte-for-byte; it has no directory or glob form. The spec requires transitive licences and notices 'audited under shared/licenses/' and copied to each generated scripts/licenses/ — a set that grows with any dependency bump — while saying only that SHARED_PLAN 'marks transformed output'. Because --check compares against a fresh build, a licence file introduced by a bump but not added to SHARED_PLAN either fails the gate cryptically or is silently omitted from the shipped tree. Separately, 'the dependency audit' is named as if it existed: no tool, no criterion for 'required', no statement of whether it runs per build or once, yet a QC bullet asserts licences/notices are covered.",
+      "required_change": "Give SHARED_PLAN an explicit licence-directory mapping form and specify the audit concretely (enumerate the bundled production graph, one licence file per package, gate on the enumerated set with a failure when an unlisted package appears), then have the QC bullet reference that procedure."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "4 MiB bundle ceiling has no measurement; tab-ID command unnamed; backlog heading wrong",
+      "description": "Every other limit in the spec is fixture-derived (180 rows, 65,536 bytes, eight batches), but the 4 MiB generated-helper ceiling records no measurement from the brain-council precedent it cites, and mo-qc enforces it, so increment 3 can stall on an invented number. herdr tab rename <TAB_ID> <LABEL> requires the orchestrator's own tab ID, but tab list and tab get appear nowhere, so the precondition 'all named public Herdr commands' does not cover the command the step needs. The backlog rule says 'There is no Closed section' while the section that actually exists in docs/backlog.md is '## Resolved', so a literal implementer can satisfy the sentence and leave the section in place.",
+      "required_change": "Replace the 4 MiB ceiling with a measured baseline plus tolerance recorded in docs/phase-0-fixtures.md; name the command used to obtain the current tab ID and add it to the precondition list; and state that completed-work sections are removed regardless of heading, naming the existing '## Resolved' heading explicitly, with a QC test that forbids the pattern rather than the word."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "Relay output discipline and feature-branch pattern",
+      "description": "Step 10 describes a Node one-liner that reads scratch and calls spawnSync but never forbids it from printing the body; the natural failure mode of a hand-written one-liner is to dump its arguments or the spawn result on error, placing reviewer prose into orchestrator context against invariant 6 and 'retain reviewer prose after confirmed delivery', and E2E case 19's canary would not catch it because the body is actor output rather than tracked content. Separately, 'branch equals the handoff and matches feature/<short-slug>' does not say whether the slug is free-form or must equal the orchestrator's derived <slug> (locator basename capped at 12); under the strict reading a reasonable executor branch name fails the freeze permanently, and a weak model implementing the check will guess.",
+      "required_change": "Give the recipe an output contract (on success print only the herdr result status; on failure print only a classification and a byte count, never the body, argv, or spawn result) with a QC case asserting no body bytes appear on the failure path. State the exact accepted branch pattern and whether it is independent of the topology slug, with boundary data cases."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "Barrier exception and two false rationales",
+      "description": "'The barrier opens only after complete terminal outcomes from both reviewers' is normative, yet when reviewer A's check dirties the tree the recheck fails before B is prompted, so 'any peer settles' resolves to none and A's result alone reaches the executor — a safe but unstated single-review exception. Separately, the adjudication justification is factually wrong in both places: the body says each new candidate 'still receives two fresh independent first passes' and the ledger says contamination is 'bounded to old candidate', but in a warm reviewer session A's finding and the executor's rebuttal persist in B's context into every later candidate, so the bound is on ordering, not scope. The trade-off is defensible on warm-cache economics; the stated reason is not.",
+      "required_change": "State the mutating-check short-circuit as the one case where the barrier opens with a single completed review, with its reason (no peer remains to protect). Restate the adjudication trade as ordering-only independence justified by warm-session cache economics, and correct the ledger rationale."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "Posture probe orphaned; invariant 15 versus the error table; backlog rule",
+      "description": "The provider-posture precondition an earlier revision carried is still absent and shared/scripts/mo-posture.sh is still not in the named-files list, while docs/architecture/provider-posture-script.md is listed only for the helper-description wording. Per docs/architecture/distribution.md the probe ships inside mo-herdr because 'the diagnostic matrix is fragile executable protocol rather than prose', so this design ships a read-only probe nothing invokes, no precondition mentions, and no acceptance case maps — unearned machinery in a contract that forbids it without a named consumer. Correctness is preserved because a posture-blocked provider surfaces as lifecycle blocked and the surface is disabled, so the cost is autonomy and four wasted panes. Separately, invariant 15 does not describe eight error-table escalations (command unavailable, name collision, layout failure, prompt ambiguity, persistent lifecycle unknown, second same-gate actor loss, relay ambiguity, no-progress) unless 'external blockers actors cannot resolve' absorbs harness capability failure; and 'unreproduced observations enter neither backlog nor issue tracker' conflicts with AGENTS.md's rule that anything knowingly left unfixed enters docs/backlog.md with reason, impact, and next step, as does accepting hard-crash scratch leftovers containing reviewer prose without a backlog entry.",
+      "required_change": "Either add a measurable posture precondition (zero ordinary permission or trust dialogs across one scripted read, write, and command-run cycle per vendor) with mo-posture.sh in the named-files list and an acceptance case, or state in the ledger that the probe is not part of this route's preflight and why. Add a harness-capability-failure class to invariant 15 or scope it to actor-initiated boundaries. Record the accepted crash-leftover exposure in backlog and distinguish unrecorded speculation from a known gap whose next step is reproduction."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "Residual executable and terminology gaps",
+      "description": "The verified command form 'herdr pane split --direction right --no-focus' is now the prose 'created by splitting the current pane right with --no-focus'. 'Reviewers run only documented non-mutating checks' names an owning document for meta-o itself (AGENTS.md's 'mo-qc must never rewrite what it judges') but nothing for target projects, and mo-setup installs no such statement. Whether herdr tab create's structured result carries the new root pane ID is assumed rather than fixtured, so if it does not, the design silently needs tab get or pane list. Item 1's 'stop route implementation' does not enumerate which of items 2-8 qualify, and items 2-4 answer user complaints independent of TUI capability. Node is absent from preconditions although the generated helper is ESM targeting node22. And 'without changing fixture-proven route support' and 'actor prose cannot downgrade route support' use route in the sense invariant 16 and the glossary section assign to surface support key.",
+      "required_change": "Restore the exact pane split form; have mo-setup install a non-mutating-check statement into target contracts; add a fixture assertion that tab create returns the root pane ID with a named fallback; enumerate which decomposition items item 1 gates; add the Node runtime requirement to preconditions; and replace the two support-sense uses of route with surface support key."
+    }
+  ],
+  "non_blocking_findings": [
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "Wrapper length field has no consumer contract",
+      "description": "'Wrapper, delimiter, and length are trusted framing' implies the executor can detect truncation, but nothing states what the executor does when the length disagrees with the bytes received.",
+      "required_change": "State the executor's obligation on a length mismatch (treat the relay as damaged, report it as a process fact, do not act on partial feedback) and cover it in the adversarial transport acceptance case."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "Missing ledger rows",
+      "description": "Pane badges via pane report-metadata --token, the checks= gate field, and the fixed claude/codex/opencode fallback order appear in the body with no ledger row, and the removal of the earlier provider-posture precondition has none either.",
+      "required_change": "Add ledger rows for pane badges, the checks field, the fixed fallback order, and whatever is decided about the posture precondition."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "E2E case 19 mechanism unnamed; manual gate size",
+      "description": "'Instrumented tracked-content firewall with canary' names no mechanism, and two of the obvious implementations are restricted by this contract. The agentic gate remains 25 cases plus H7b plus per-provider 180-row fixtures for one human observer, though correctly sequenced with capability proof first and cutover last.",
+      "required_change": "Name the permitted instrumentation mechanism, and convert every case a golden recent-unwrapped capture can cover into a deterministic test with per-fixture evidence recorded in docs/phase-0-fixtures.md."
+    }
+  ],
+  "assumptions": [
+    "I treated the herdr 0.8.0 surface established earlier in this session as ground truth: agent start/prompt/get/wait flags and the five lifecycle states, tab create --cwd --label --no-focus, tab rename, absence of tab move, pane split --direction right --no-focus, pane process-info, pane report-metadata --token as display-only, the [a-z][a-z0-9_-]{0,31} name regex, the documented five-second submission window and agent_prompt_stalled, AgentInfo.state_change_seq as a JSON field with no CLI flag, and no documented --lines maximum. HERDR_ENV is not set here, so no live behaviour was exercised.",
+    "I re-read docs/glossary.md, docs/architecture/full-turn-retrieval.md, and docs/architecture/distribution.md in full this pass, and relied on earlier reads of docs/acceptance.md, docs/phase-0-fixtures.md, docs/backlog.md (including its existing '## Resolved' heading), the Makefile, tools/build-skills.mjs and its SHARED_PLAN file-pair form, and shared/scripts/mo-models.mjs.",
+    "I compared this revision against the immediately preceding one to separate genuine closures from compression, and treated the three new majors as defects in unchanged text that earlier passes did not reach rather than as regressions.",
+    "I assumed 'stop route implementation' scopes the halt to route work without naming which numbered items qualify, so the ambiguity is the finding rather than a sweeping halt.",
+    "I assumed the shipped generated helper makes Node an existing de facto prerequisite of mo-herdr, which makes the missing Node precondition an undeclared rather than a new dependency.",
+    "I assumed AGENTS.md's backlog rule applies to this feature's own knowingly accepted gaps, and that 'mo-qc must never rewrite what it judges' supplies the non-mutating-check guarantee for meta-o itself but not for target projects.",
+    "I did not inspect any prior council artifact under spec/**, per instructions, beyond file paths cited by tracked documents."
+  ],
+  "round": 3,
+  "reviewer": "opus1mhigh",
+  "judge": {
+    "slug": "opus1mhigh",
+    "model": "opus[1m]",
+    "route": "claude-agent-sdk",
+    "effort": "high"
+  }
+}

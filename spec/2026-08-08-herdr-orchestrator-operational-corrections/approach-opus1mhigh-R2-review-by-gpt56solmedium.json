@@ -1,0 +1,88 @@
+{
+  "target_id": "proposal-2",
+  "approval_score": 2,
+  "would_adopt": false,
+  "summary": "The revision improves topology details and schema grounding, but it doubles down on the wrong architectural core. Findings-by-path contradicts the user's explicit copy-paste requirement and cannot prove completeness; same-user chmod directories do not isolate reviewers; inline fallback, default-branch fallback, ambient global SDK installation, orchestrator-owned technical decisions, and orchestrator backlog writes all conflict with the clarified task. Several concrete CLI and layout contracts are also wrong, so this proposal requires redesign rather than refinement.",
+  "phase": "approach-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "review transport",
+      "description": "The primary findings file plus footer is cooperative model output and does not prove that every finding was written. A non-empty partial file and valid footer can silently omit a blocker, while the executor has no way to detect missing content.",
+      "required_change": "Remove file-first review transport and restore complete verbatim verdict routing through a Herdr surface with independently proven boundaries and continuity."
+    },
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "requirements compliance",
+      "description": "Path handoff replaces the explicitly requested orchestrator copy-paste behavior, and inline remains a fallback despite the requirement for ordinary visible persistent interactive reviewer sessions.",
+      "required_change": "Use interactive Herdr agents exclusively for executor and reviewers, and have the orchestrator relay their complete textual verdicts without semantic processing."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "review independence",
+      "description": "Separate chmod 700 directories do not isolate reviewers running as the same operating-system user with the same full filesystem authority; unguessable names provide obscurity only.",
+      "required_change": "Do not claim filesystem isolation or gate independence on H17. Preserve independence through prompts, parallel first-pass scheduling, and the existing rule boundary, or introduce a real sandbox only if separately authorized and architecturally justified."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "orchestrator role",
+      "description": "The routing table tells the orchestrator to decide technical implementations and write posture defects to docs/backlog.md, contradicting the clarification that it manages process only and does not make technical decisions or implementation documentation changes.",
+      "required_change": "Route technical choices to the executor or independent reviewer and prohibit repository writes by the orchestrator outside explicitly authorized business-framing capture."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "model discovery",
+      "description": "Ambient or global SDK installation rejects the user's explicit brain-council-style bundling request and preserves the original machine-dependent failure mode.",
+      "required_change": "Bundle the pinned Claude SDK JavaScript into the generated dependency-free helper while using the system subscription-backed Claude executable."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "version control",
+      "description": "The default-branch fallback still contradicts the requested mandatory develop-base policy.",
+      "required_change": "Treat a missing develop branch as a concrete repository-policy blocker; do not silently branch from main or another default."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "Herdr mechanics",
+      "description": "The example uses agent start --timeout-ms although the installed CLI exposes --timeout, and it silently substitutes a down split when the user explicitly requested vertical side-by-side panes.",
+      "required_change": "Use installed CLI syntax and fail closed or apply an explicitly designed vertical-layout recovery when width is insufficient."
+    }
+  ],
+  "non_blocking_findings": [
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "documentation scope",
+      "description": "A new orchestrator-read-budget architecture document is unnecessary when the revised boundary fits the existing skills-first decision.",
+      "required_change": "Amend existing methodology and skills-first architecture sources instead of creating another document."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "code comments",
+      "description": "Requiring a code comment at every declined finding creates ritual prose and can preserve obsolete review arguments beside otherwise clear code.",
+      "required_change": "Record rationale only for non-obvious accepted risks whose reason future maintainers would otherwise lose."
+    }
+  ],
+  "assumptions": [
+    "All reviewer sessions run with the same ordinary user authority, so chmod cannot create isolation between them.",
+    "The clarification requiring copy-paste excludes filesystem-path substitution.",
+    "The exact requested develop policy takes precedence over a generalized default-branch convention."
+  ],
+  "round": 2,
+  "reviewer": "gpt56solmedium",
+  "judge": {
+    "slug": "gpt56solmedium",
+    "model": "gpt-5.6-sol",
+    "route": "codex-sdk",
+    "effort": "medium"
+  }
+}

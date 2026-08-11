@@ -29,6 +29,9 @@ import MarkdownIt from "markdown-it";
 
 import {
   ALLOWED_FRONTMATTER,
+  BUNDLE_LICENSE_PLAN,
+  MODEL_BUNDLE_BASELINE_BYTES,
+  MODEL_BUNDLE_MAX_BYTES,
   REQUIRED_AT_ROOT,
   SHARED_PLAN,
   frontmatter,
@@ -148,11 +151,78 @@ test("the frontmatter reader is a YAML parser, not a line reader", () => {
 test("the shared files are byte-identical copies in every skill that declares them", () => {
   for (const [skill, pairs] of Object.entries(SHARED_PLAN)) {
     for (const [source, destination] of pairs) {
+      if (source === "scripts/mo-models.mjs") continue;
       const original = readFileSync(join(SHARED, source));
       const copy = readFileSync(join(OUTPUT, skill, destination));
       assert.ok(original.equals(copy), `skills/${skill}/${destination} is not a copy`);
     }
   }
+});
+
+test("the model helper is one self-contained byte-identical backend bundle", () => {
+  const herdr = readFileSync(join(OUTPUT, "mo-herdr", "scripts", "mo-models.mjs"));
+  const omnigent = readFileSync(join(OUTPUT, "mo-omnigent", "scripts", "mo-models.mjs"));
+  assert.ok(herdr.equals(omnigent), "backend helpers differ");
+  assert.equal(herdr.byteLength, MODEL_BUNDLE_BASELINE_BYTES);
+  assert.ok(herdr.byteLength <= MODEL_BUNDLE_MAX_BYTES);
+  const text = herdr.toString("utf8");
+  assert.match(text, /supportedModels/);
+  assert.doesNotMatch(text, /import\s*\(\s*["']@anthropic-ai\/claude-agent-sdk/);
+  assert.doesNotMatch(text, /from\s*["']@anthropic-ai\/claude-agent-sdk/);
+  for (const skill of ["mo-herdr", "mo-omnigent"]) {
+    assert.equal(existsSync(join(OUTPUT, skill, "node_modules")), false);
+  }
+});
+
+test("the model bundle is independent of a symlinked node_modules layout", () => {
+  const root = clone();
+  const result = build(root);
+  assert.equal(result.status, 0, `${result.stdout}${result.stderr}`);
+  const rebuilt = readFileSync(join(root, "skills", "mo-herdr", "scripts", "mo-models.mjs"));
+  const committed = readFileSync(join(OUTPUT, "mo-herdr", "scripts", "mo-models.mjs"));
+  assert.ok(rebuilt.equals(committed), "a symlinked dependency tree changed bundle bytes");
+  const text = rebuilt.toString("utf8");
+  assert.equal(text.includes(ROOT), false, "bundle disclosed the source checkout path");
+  assert.equal(text.includes(root), false, "bundle disclosed the disposable checkout path");
+});
+
+test("every bundled package has its exact installed licence in every consumer", () => {
+  assert.deepEqual(Object.keys(BUNDLE_LICENSE_PLAN), ["@anthropic-ai/claude-agent-sdk"]);
+  for (const [packageName, licensePath] of Object.entries(BUNDLE_LICENSE_PLAN)) {
+    const installed = readFileSync(
+      join(ROOT, "node_modules", ...packageName.split("/"), "LICENSE.md"),
+    );
+    const shared = readFileSync(join(SHARED, licensePath));
+    assert.ok(shared.equals(installed), `${packageName} shared licence drifted`);
+    for (const skill of ["mo-herdr", "mo-omnigent"]) {
+      assert.ok(
+        shared.equals(readFileSync(join(OUTPUT, skill, licensePath))),
+        `${skill} lacks exact ${packageName} licence`,
+      );
+    }
+  }
+});
+
+test("bundle licensing fails closed on drift", () => {
+  const root = clone();
+  const license = join(root, "shared", "licenses", "claude-agent-sdk-LICENSE.md");
+  writeFileSync(license, "wrong licence\n");
+  const result = build(root);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /is not the installed @anthropic-ai\/claude-agent-sdk licence/);
+});
+
+test("bundle licensing fails closed when an unplanned package enters the metafile", () => {
+  const root = clone();
+  const helper = join(root, "shared", "scripts", "mo-models.mjs");
+  const source = readFileSync(helper, "utf8");
+  writeFileSync(
+    helper,
+    `${source}\nimport yaml from "js-yaml";\nif (process.env.MO_BUILD_MUTATION) console.error(yaml);\n`,
+  );
+  const result = build(root);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /mo-models bundle packages .*js-yaml.*licence plan names/);
 });
 
 test("the posture diagnostic stays executable in every built consumer", () => {
@@ -177,11 +247,16 @@ test("the methodology has exactly one source owner", () => {
 /**
  * The layout of the *project being worked on*, which exists on a user's machine
  * and not here. `mo-setup` defines this layout and the other skills rely on it.
- * Both entries are documented *alternatives* to a single file — `docs/e2e.md` and
- * `docs/business.md` — so a repository that has one will not have the other, and
- * this one has neither split.
+ * The two index entries are documented *alternatives* to `docs/e2e.md` and
+ * `docs/business.md`, so a repository that has one will not have the other.
+ * The fixture map is instead a required conventional pre-activation input
+ * installed by `mo-setup` unless an equivalent locator is supplied explicitly.
  */
-const PROJECT_LAYOUT = new Set(["docs/e2e/index.md", "docs/business/index.md"]);
+const PROJECT_LAYOUT = new Set([
+  "docs/e2e/index.md",
+  "docs/business/index.md",
+  "docs/phase-0-fixtures.md",
+]);
 
 /**
  * Paths that appear inside a worked example and are not references at all.
@@ -401,6 +476,16 @@ test("a name that disagrees with the directory is refused", () => {
   const result = build(root);
   assert.equal(result.status, 1);
   assert.match(result.stderr, /must match the directory/);
+});
+
+test("the mo-review build purpose describes protocol packaging, not a missing runtime", () => {
+  const builder = readFileSync(BUILDER, "utf8");
+  assert.match(
+    builder,
+    /self-contained readable protocol material for qualified\n \* backend workflows/,
+  );
+  assert.match(builder, /without pretending to be a standalone executable review/);
+  assert.doesNotMatch(builder, /direct review is its\n \* headline use case/);
 });
 
 test("an unknown argument is an error", () => {
