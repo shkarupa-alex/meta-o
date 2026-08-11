@@ -1,0 +1,81 @@
+{
+  "target_id": "proposal-2",
+  "approval_score": 3,
+  "would_adopt": false,
+  "summary": "The proposal diagnoses orchestrator overreach and waiting failures well, and its visible pane topology is close to the requested UX. However, its central findings-file/footer protocol contradicts both the explicit copy-paste requirement and the repository's fail-closed full-turn architecture, while its inline fallback, default-branch fallback, global SDK installation, invented code-comment rule, command example defect, and unresolved load-bearing fixtures make it unsuitable as an implementation-ready design.",
+  "phase": "approach-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "review handoff",
+      "description": "Findings-path handoff replaces the explicitly requested verbatim orchestrator-to-executor copy and relies on a model-written file plus footer that cannot prove completeness.",
+      "required_change": "Restore verbatim whole-message routing through the orchestrator and use only a transport whose upper boundary, lower boundary, and continuity are independently provable."
+    },
+    {
+      "id": "",
+      "severity": "critical",
+      "area": "interactive sessions",
+      "description": "Retaining inline review as a fallback contradicts the clarified requirement that reviewers run as ordinary visible, persistent, subscription-backed CLI sessions in Herdr.",
+      "required_change": "Remove inline/headless actor fallback; unsupported interactive retrieval must yield UNKNOWN or needs_attention until Herdr supplies a complete-turn surface."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "version control",
+      "description": "Branching from the default branch when develop is absent directly changes the user's requested policy.",
+      "required_change": "Require an up-to-date develop branch and classify its absence as a concrete policy blocker."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "model discovery",
+      "description": "A setup-time global SDK install rejects the requested bundled mechanism, couples capability to personal machine state, and reintroduces a user decision path.",
+      "required_change": "Bundle the pinned Claude SDK into the generated dependency-free helper and verify it through deterministic build tests plus a live catalogue fixture."
+    },
+    {
+      "id": "",
+      "severity": "major",
+      "area": "implementation readiness",
+      "description": "State-change semantics, topology behavior, provider footer behavior, and continued use of inline mode are left as open questions or fixtures.",
+      "required_change": "Resolve all load-bearing decisions and measurements in the design before decomposition."
+    }
+  ],
+  "non_blocking_findings": [
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "Herdr commands",
+      "description": "The topology example invokes tab create twice despite requiring tab and root pane IDs from one response.",
+      "required_change": "Parse both identifiers from one tab-create response."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "documentation discipline",
+      "description": "The mandatory code comment for every declined finding is ritual text and can create inaccurate durable documentation.",
+      "required_change": "Require durable rationale only when a future maintainer would otherwise lose a non-obvious accepted risk."
+    },
+    {
+      "id": "",
+      "severity": "minor",
+      "area": "architecture documentation",
+      "description": "A new orchestrator-read-budget architecture document appears unnecessary because the boundary can be recorded in existing skills-first and methodology sources.",
+      "required_change": "Amend existing architecture documents unless a genuinely distinct long-lived boundary cannot be expressed there."
+    }
+  ],
+  "assumptions": [
+    "The phrase that the orchestrator should only copy-paste findings means a filesystem-path handoff is not an acceptable substitute.",
+    "The exact user-supplied develop-branch policy should be preserved rather than generalized.",
+    "A model-authored footer or file is cooperative evidence and cannot replace mechanical completeness proof."
+  ],
+  "round": 1,
+  "reviewer": "gpt56solmedium",
+  "judge": {
+    "slug": "gpt56solmedium",
+    "model": "gpt-5.6-sol",
+    "route": "codex-sdk",
+    "effort": "medium"
+  }
+}

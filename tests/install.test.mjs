@@ -129,6 +129,37 @@ test("apm installs one skill on its own, with its references", { skip: noApm }, 
   ]);
 });
 
+test(
+  "apm installs each backend skill with its fixture-map contract and helpers",
+  { skip: noApm },
+  () => {
+    for (const [skill, mechanics] of [
+      ["mo-herdr", "herdr-mechanics.md"],
+      ["mo-omnigent", "omnigent-mechanics.md"],
+    ]) {
+      const installed = install(packageCopy(), `--skill ${skill}`);
+      const expected = walk(join(OUTPUT, skill)).map((path) => `${skill}/${path}`);
+      assert.deepEqual(installed.files.sort(), expected.sort());
+
+      const skillSource = readFileSync(join(installed.directory, skill, "SKILL.md"), "utf8");
+      const methodology = readFileSync(
+        join(installed.directory, skill, "references", "methodology.md"),
+        "utf8",
+      );
+      const backendMechanics = readFileSync(
+        join(installed.directory, skill, "references", mechanics),
+        "utf8",
+      );
+      assert.match(skillSource, /caller-supplied locator/);
+      assert.match(skillSource, /docs\/phase-0-fixtures\.md/);
+      assert.match(methodology, /MO_FIXTURE_MAP_V1\|backend=<herdr\|omnigent>/);
+      assert.match(methodology, /MO_FIXTURE_SCENARIOS_V1\|backend=<herdr\|omnigent>/);
+      assert.match(backendMechanics, /MO_FIXTURE_MAP_V1/);
+      assert.match(backendMechanics, /MO_FIXTURE_SCENARIOS_V1/);
+    }
+  },
+);
+
 test("the README's first install block is the one these tests actually run", () => {
   // Deliberately only the *first* block. The README separates "proven here" from
   // "not proven yet"; this test speaks for the first and must not be read as

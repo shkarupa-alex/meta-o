@@ -15,6 +15,7 @@ mo-lint:
 	npx --no-install markdownlint-cli2
 	npx --no-install prettier --check .
 	node --check shared/scripts/mo-models.mjs
+	node --check skills/mo-herdr/scripts/mo-models.mjs
 	node --check tools/build-skills.mjs
 	bash -n shared/scripts/mo-posture.sh
 	shared/scripts/mo-posture.sh --self-check --shell all
@@ -39,14 +40,18 @@ skills:
 mo-test:
 	node --test "tests/*.test.mjs"
 
-# Does the shipped settings helper boot and answer? Under a throwaway HOME, because
+# Do the source helper and both shipped backend copies boot and answer? Under a throwaway HOME, because
 # this gate judges the repository: a settings file the developer happens to have
 # — or a corrupt one — must not decide whether an unmodified checkout is green.
 mo-smoke:
-	@home=$$(mktemp -d) && \
-		HOME=$$home node shared/scripts/mo-models.mjs --help > /dev/null && \
-		HOME=$$home node shared/scripts/mo-models.mjs --show > /dev/null && \
-		rm -rf $$home
+	@set -e; smoke_dir=$$(mktemp -d); trap 'rm -rf "$$smoke_dir"' 0 HUP INT TERM; \
+		HOME=$$smoke_dir node shared/scripts/mo-models.mjs --help > /dev/null; \
+		HOME=$$smoke_dir node shared/scripts/mo-models.mjs --show > /dev/null; \
+		for backend in mo-herdr mo-omnigent; do \
+			cp skills/$$backend/scripts/mo-models.mjs $$smoke_dir/$$backend.mjs; \
+			(cd $$smoke_dir && HOME=$$smoke_dir node ./$$backend.mjs --help > /dev/null); \
+			(cd $$smoke_dir && HOME=$$smoke_dir node ./$$backend.mjs --show > /dev/null); \
+		done
 	@echo "mo-smoke ok"
 
 # Agent-required E2E pretends nothing. It says what a human or an agent must run,
@@ -55,8 +60,13 @@ mo-e2e:
 	@echo "AGENT_REQUIRED: not executed"
 	@echo
 	@echo "Docs:      docs/e2e.md, docs/phase-0-fixtures.md"
-	@echo "Fixtures:  H (Herdr retrieval), O (Omnigent), G (native goal), P (PATH/wrappers),"
-	@echo "           W (watchdog), M (models), I (install), R (recovery/review), Q (profiles)"
-	@echo "Run:       work through docs/phase-0-fixtures.md and record evidence per row"
+	@echo "Fixtures:  I3/I5 — remote installation"
+	@echo "           P1-P8 — preimplementation external capability probes"
+	@echo "           H7b — host-window resize"
+	@echo "           H13-H37 — post-cutover Herdr acceptance"
+	@echo "           OM1-OM8 — Omnigent final fixtures"
+	@echo "Run:       execute the applicable scenarios without changing the frozen candidate"
+	@echo "Evidence:  keep exact SHA and per-scenario actor/provider facts in the current run/final result"
+	@echo "Ledger:    scenario definitions and support posture only; do not edit tracked docs for run evidence"
 	@echo "Cleanup:   stop every provider session you started, including on failure"
 	@exit 2

@@ -10,11 +10,11 @@ commit, using tools that already exist. There is no orchestration or
 provider-proxy CLI, no daemon, no state store and no adapter layer, and adding
 one back needs a named reason recorded in `docs/architecture/`.
 
-Everything shipped is Markdown plus two dependency-free helpers: the `.mjs`
-settings helper copied into the two backend skills, and the `.sh` provider-posture
-probe copied into both backend skills and `mo-setup`. The build tool and the tests
-are not shipped and do use real parsers, because this contract forbids
-hand-written ones.
+Everything shipped is Markdown plus two self-contained runtime helpers: the
+bundled `.mjs` settings helper copied into the two backend skills, and the `.sh`
+provider-posture probe copied into both backend skills and `mo-setup`. The build
+tool and the tests are not shipped and do use real parsers, because this contract
+forbids hand-written ones.
 
 ## Desired outcomes
 
@@ -62,10 +62,21 @@ Knowledge is updated in the same change that made it new or false — not
 afterwards.
 
 **The spec is never the only source of user intent.** `docs/business.md` keeps the
-business framing verbatim — the original request and every later clarification —
-because turning a conversation into a spec is lossy compression and reviewers
-given only the spec cannot find what it dropped. A summary never replaces it, and
-each new clarification appends. See `shared/references/methodology.md §2.1`.
+business framing verbatim — the original request and every later user answer,
+opinion, clarification, correction, preference and constraint — because turning a
+conversation into a spec is lossy compression. Every task/spec also carries all of
+those intents verbatim; a summary or a link to the framing does not replace them,
+and each new intent appends to both. See
+`shared/references/methodology.md §2.1`.
+
+A one-shot `APPROVE`/`DENY` that only authorizes an already named
+production/destructive E2E action or starts an explicitly requested watchdog is
+run control, not product or deliverable intent. Keep only its credential-free,
+request-bound compact header in current run evidence; never persist its opaque
+body or mutate tracked intent ledgers, because that would invalidate the exact
+candidate the action authorizes. Any accompanying preference, correction or
+scope change is a separate user intent and still appends verbatim to both
+ledgers. See `shared/references/methodology.md §2.1` and §7.
 
 **Anything postponed, deliberately not done, blocked, or left unfixed for any
 reason goes into `docs/backlog.md`**, with its reason, its practical impact, and
@@ -84,6 +95,25 @@ make mo-e2e         # prints what an agent must run; exits 2
 
 `mo-qc` must never rewrite what it judges. `prettier --write` and any other
 mutating command stay out of it.
+
+Reviewer checks are non-mutating. A diagnostic that can rewrite tracked files
+runs only in an isolated disposable location, never in the frozen candidate
+worktree.
+
+## Version control
+
+Never develop directly on `main`, `master`, `develop`, or `default`. Create each
+task branch from an up-to-date `develop` using `feature/<short-slug>` and use it for
+the whole task.
+
+Run the relevant checks before committing. Commit every coherent, independently
+verifiable increment instead of accumulating the whole task in one commit. Use
+`<type>: <what changed and why>` with `feat`, `fix`, `refactor`, `test`, `docs`, or
+`chore`. Reference an issue or specification when one exists, but neither is
+required.
+
+The final verified result is one full Git object ID. Any subsequent commit
+invalidates its review and verification gates.
 
 ## Conventions
 
