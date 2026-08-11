@@ -13,10 +13,13 @@ Intermediate E2E handoffs may be PASS, FAIL, or UNKNOWN. The verified final-resu
 record is closed: top-level keys occur exactly in this order:
 
 ```text
-candidate, worktree, gates, support, reviews, scenarios
+candidate, worktree, executor, gates, support, reviews, scenarios
 ```
 
 - `candidate` is the unchanged full SHA and `worktree` is exactly `clean`.
+- `executor` has exactly `actor,provider,support-key`, byte-equals the
+  lifecycle-selected identity, and references the exact retained pre-activation
+  `SUPPORTED` seven-field `executor`/`executor-turn` fact with no scenarios.
 - `gates` is exactly the ordered array `qc`, `smoke`, `checks`. Each entry has
   exactly `gate,statuses`; statuses are reviewer-A then reviewer-B. QC and smoke
   are `PASS,PASS`; each checks status is `PASS|NA`.
@@ -25,8 +28,10 @@ candidate, worktree, gates, support, reviews, scenarios
   has exactly `key,status,scenarios`; `status=SUPPORTED`; `scenarios` is empty or
   a singleton safe ID list. Every safe lowercase identifier matches
   `[a-z0-9][a-z0-9._-]{0,63}`. The facts are exactly one lifecycle-selected
-  `executor`/`executor-turn` fact, the two review-referenced facts, and one
+  fact referenced by `executor`, the two review-referenced facts, and one
   scenario-referenced fact per derived name; no unused fact is allowed.
+  Every fact byte-matches a retained pre-activation `SUPPORTED` row across all
+  seven fields/scenario identity and the lifecycle-selected versions/OS.
 - `reviews` is exactly A then B. Each entry has exactly
   `reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,scenarios,evidence`;
   status, qc and smoke are PASS, checks is `PASS|NA`, actor/provider identities

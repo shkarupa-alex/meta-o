@@ -1106,17 +1106,27 @@ test("candidate freeze rejects dirty, stale, non-commit and missing-develop meta
 });
 
 const FINAL_LIFECYCLE = {
-  executor: { provider: "codex" },
+  "backend-version": "v1",
+  os: "darwin-arm64",
+  executor: { actor: "m-executor", provider: "codex", "provider-version": "v1" },
   reviewers: {
-    A: { actor: "m-review-a", provider: "claude" },
-    B: { actor: "m-review-b", provider: "codex" },
+    A: { actor: "m-review-a", provider: "claude", "provider-version": "v1" },
+    B: { actor: "m-review-b", provider: "codex", "provider-version": "v1" },
   },
-  e2e: { actor: "m-e2e", provider: "codex" },
+  e2e: { actor: "m-e2e", provider: "codex", "provider-version": "v1" },
 };
+
+function trustedFixtureMap(support, posture = "SUPPORTED") {
+  return support.map((fact) => ({
+    ...fact.key,
+    scenarios: fact.scenarios[0] ?? "none",
+    posture,
+  }));
+}
 
 function validateFinalResult(
   result,
-  { head = OID, clean = true, backend = "herdr", lifecycle } = {},
+  { head = OID, clean = true, backend = "herdr", lifecycle, fixtureMap } = {},
 ) {
   const exactKeys = (value, keys) => assert.deepEqual(Object.keys(value), keys);
   const safeId = (value) => {
@@ -1126,13 +1136,51 @@ function validateFinalResult(
   const positiveBounded = (value, max) => {
     assert.equal(Number.isInteger(value) && value > 0 && value <= max, true);
   };
-  exactKeys(result, ["candidate", "worktree", "gates", "support", "reviews", "scenarios"]);
+  exactKeys(result, [
+    "candidate",
+    "worktree",
+    "executor",
+    "gates",
+    "support",
+    "reviews",
+    "scenarios",
+  ]);
   assert.ok(lifecycle, "lifecycle identities are mandatory");
+  assert.ok(fixtureMap, "trusted pre-activation fixture map is mandatory");
   safeId(backend);
   assert.equal(clean, true);
   assert.equal(result.candidate, head);
   assert.match(result.candidate, /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
   assert.equal(result.worktree, "clean");
+
+  const fixtureFacts = new Map();
+  for (const fact of fixtureMap) {
+    exactKeys(fact, [
+      "backend",
+      "provider",
+      "provider-version",
+      "backend-version",
+      "surface",
+      "os",
+      "fixture",
+      "scenarios",
+      "posture",
+    ]);
+    const keyValues = [
+      fact.backend,
+      fact.provider,
+      fact["provider-version"],
+      fact["backend-version"],
+      fact.surface,
+      fact.os,
+      fact.fixture,
+    ].map(safeId);
+    const canonicalKey = keyValues.join("/");
+    assert.equal(fixtureFacts.has(canonicalKey), false);
+    assert.match(fact.posture, /^(SUPPORTED|PENDING|UNSUPPORTED)$/);
+    if (fact.scenarios !== "none") safeId(fact.scenarios);
+    fixtureFacts.set(canonicalKey, fact);
+  }
 
   assert.equal(result.gates.length, 3);
   assert.deepEqual(
@@ -1167,6 +1215,10 @@ function validateFinalResult(
     assert.equal(supportKeys.includes(canonicalKey), false);
     supportKeys.push(canonicalKey);
     supportFacts.set(canonicalKey, fact);
+    const trusted = fixtureFacts.get(canonicalKey);
+    assert.ok(trusted);
+    assert.equal(trusted.posture, "SUPPORTED");
+    assert.equal(trusted.scenarios, fact.scenarios[0] ?? "none");
     assert.equal(fact.scenarios.length <= 1, true);
     const names = fact.scenarios.map(safeId);
     assert.deepEqual(names, [...new Set(names)].sort());
@@ -1177,8 +1229,15 @@ function validateFinalResult(
   );
   assert.equal(executorFacts.length, 1);
   assert.equal(executorFacts[0].key.provider, lifecycle.executor.provider);
+  assert.equal(executorFacts[0].key["provider-version"], lifecycle.executor["provider-version"]);
+  assert.equal(executorFacts[0].key["backend-version"], lifecycle["backend-version"]);
+  assert.equal(executorFacts[0].key.os, lifecycle.os);
   assert.deepEqual(executorFacts[0].scenarios, []);
   const usedSupportKeys = new Set([Object.values(executorFacts[0].key).join("/")]);
+  exactKeys(result.executor, ["actor", "provider", "support-key"]);
+  assert.equal(result.executor.actor, lifecycle.executor.actor);
+  assert.equal(result.executor.provider, lifecycle.executor.provider);
+  assert.equal(result.executor["support-key"], [...usedSupportKeys][0]);
 
   assert.equal(result.reviews.length, 2);
   assert.deepEqual(
@@ -1206,6 +1265,12 @@ function validateFinalResult(
     assert.ok(support);
     assert.equal(support.key.backend, backend);
     assert.equal(support.key.provider, entry.provider);
+    assert.equal(
+      support.key["provider-version"],
+      lifecycle.reviewers[entry.reviewer]["provider-version"],
+    );
+    assert.equal(support.key["backend-version"], lifecycle["backend-version"]);
+    assert.equal(support.key.os, lifecycle.os);
     assert.equal(support.key.surface, "review");
     assert.equal(support.key.fixture, "review-turn");
     assert.deepEqual(support.scenarios, []);
@@ -1260,6 +1325,9 @@ function validateFinalResult(
     assert.ok(support);
     assert.equal(support.key.backend, backend);
     assert.equal(support.key.provider, entry.provider);
+    assert.equal(support.key["provider-version"], lifecycle.e2e["provider-version"]);
+    assert.equal(support.key["backend-version"], lifecycle["backend-version"]);
+    assert.equal(support.key.os, lifecycle.os);
     assert.equal(support.key.surface, "e2e");
     assert.equal(support.key.fixture, entry.scenario);
     assert.deepEqual(support.scenarios, [entry.scenario]);
@@ -1291,6 +1359,27 @@ function e2eAssignment(candidate, reviews) {
   assert.equal(selected.length > 0 && selected.length <= 64, true);
   selected.forEach((scenario) => assert.match(scenario, /^[a-z0-9][a-z0-9._-]{0,63}$/));
   return `MO_E2E_ASSIGNMENT_V1|candidate=${candidate}|scenarios=${selected.length}|ids=${selected.join(",")}`;
+}
+
+function e2eInitialPrompt({ backend, actor, candidate, reviews, fingerprint }) {
+  assert.match(backend, /^(herdr|omnigent)$/);
+  assert.match(actor, /^[a-z0-9][a-z0-9._-]{0,63}$/);
+  assert.match(fingerprint, /^[0-9a-f]{64}$/);
+  const assignment = e2eAssignment(candidate, reviews);
+  return [
+    `Run the E2E role on backend=${backend} as actor=${actor} for candidate=${candidate}.`,
+    assignment,
+    `MO_PROMPT_BOUNDARY_V1|fingerprint=${fingerprint}`,
+  ].join("\n");
+}
+
+function validateE2EInitialPrompt(prompt, expected) {
+  assert.equal(prompt, e2eInitialPrompt(expected));
+  assert.equal(prompt.endsWith("\n"), false);
+  const lines = prompt.split("\n");
+  assert.equal(lines.at(-2), e2eAssignment(expected.candidate, expected.reviews));
+  assert.equal(lines.at(-1), `MO_PROMPT_BOUNDARY_V1|fingerprint=${expected.fingerprint}`);
+  return prompt;
 }
 
 function reconcileE2EDispositions(a, b, recheckedNa) {
@@ -1327,8 +1416,6 @@ test("mixed E2E dispositions get one bounded NA-side recheck", () => {
 });
 
 test("closed ephemeral final result derives scenarios from exact reviewer lists", () => {
-  const validate = (result, options = {}) =>
-    validateFinalResult(result, { ...options, lifecycle: FINAL_LIFECYCLE });
   const supportKey = (provider, surface, fixture, backend = "herdr") =>
     `${backend}/${provider}/v1/v1/${surface}/darwin-arm64/${fixture}`;
   const reviewRecord = (
@@ -1358,6 +1445,11 @@ test("closed ephemeral final result derives scenarios from exact reviewer lists"
   const finalResult = {
     candidate: OID,
     worktree: "clean",
+    executor: {
+      actor: "m-executor",
+      provider: "codex",
+      "support-key": supportKey("codex", "executor", "executor-turn"),
+    },
     gates: [
       { gate: "qc", statuses: ["PASS", "PASS"] },
       { gate: "smoke", statuses: ["PASS", "PASS"] },
@@ -1436,12 +1528,77 @@ test("closed ephemeral final result derives scenarios from exact reviewer lists"
       },
     ],
   };
+  const selectedFixtureMap = trustedFixtureMap(finalResult.support);
+  const validate = (result, options = {}) =>
+    validateFinalResult(result, {
+      fixtureMap: selectedFixtureMap,
+      lifecycle: FINAL_LIFECYCLE,
+      ...options,
+    });
   assert.equal(validate(finalResult), OID);
   assert.throws(() => validateFinalResult(finalResult));
+  assert.throws(() => validateFinalResult(finalResult, { lifecycle: FINAL_LIFECYCLE }));
+  assert.throws(() =>
+    validate(finalResult, {
+      fixtureMap: selectedFixtureMap.map((fact, index) =>
+        index === 0 ? { ...fact, posture: "UNSUPPORTED" } : fact,
+      ),
+    }),
+  );
+  assert.throws(() => validate(finalResult, { fixtureMap: selectedFixtureMap.slice(1) }));
+  const substituteEverySupportField = (field, value) => {
+    const substituted = structuredClone(finalResult);
+    const references = new Map();
+    for (const fact of substituted.support) {
+      const before = Object.values(fact.key).join("/");
+      fact.key[field] = value;
+      references.set(before, Object.values(fact.key).join("/"));
+    }
+    substituted.executor["support-key"] = references.get(substituted.executor["support-key"]);
+    for (const entry of [...substituted.reviews, ...substituted.scenarios]) {
+      entry["support-key"] = references.get(entry["support-key"]);
+    }
+    return substituted;
+  };
+  for (const [field, value] of [
+    ["provider-version", "v2"],
+    ["backend-version", "v2"],
+    ["os", "linux-x64"],
+  ]) {
+    const substituted = substituteEverySupportField(field, value);
+    assert.throws(() => validate(substituted));
+    assert.throws(() =>
+      validate(substituted, { fixtureMap: trustedFixtureMap(substituted.support) }),
+    );
+  }
   assert.equal(
     e2eAssignment(OID, finalResult.reviews),
     `MO_E2E_ASSIGNMENT_V1|candidate=${OID}|scenarios=1|ids=production-smoke`,
   );
+  for (const backend of ["herdr", "omnigent"]) {
+    const expectedPrompt = {
+      backend,
+      actor: FINAL_LIFECYCLE.e2e.actor,
+      candidate: OID,
+      reviews: finalResult.reviews,
+      fingerprint: "f".repeat(64),
+    };
+    const prompt = e2eInitialPrompt(expectedPrompt);
+    assert.equal(validateE2EInitialPrompt(prompt, expectedPrompt), prompt);
+    const lines = prompt.split("\n");
+    for (const mutant of [
+      `${prompt}\n`,
+      [lines[0], lines[2], lines[1]].join("\n"),
+      prompt.replace("actor=m-e2e", "actor=m-review-a"),
+      prompt.replace(OID, "b".repeat(40)),
+      prompt.replace("scenarios=1", "scenarios=2"),
+      prompt.replace("ids=production-smoke", "ids=other-smoke"),
+      prompt.replace("f".repeat(64), "e".repeat(64)),
+    ]) {
+      assert.notEqual(mutant, prompt);
+      assert.throws(() => validateE2EInitialPrompt(mutant, expectedPrompt));
+    }
+  }
   assert.equal(
     bindE2EPassToFinal(
       `MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=1|ids=production-smoke|not_run=none|blocker=none`,
@@ -1512,7 +1669,7 @@ test("closed ephemeral final result derives scenarios from exact reviewer lists"
     })),
   };
   assert.equal(maximumResult.support.length, 67);
-  assert.equal(validate(maximumResult), OID);
+  assert.equal(validate(maximumResult, { fixtureMap: trustedFixtureMap(maximumSupport) }), OID);
   assert.equal(
     bindE2EPassToFinal(
       `MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=64|ids=${maximumScenarios.join(",")}|not_run=none|blocker=none`,
@@ -1528,9 +1685,17 @@ test("closed ephemeral final result derives scenarios from exact reviewer lists"
     ),
   };
   assert.equal(overMaximumSupport.support.length, 68);
-  assert.throws(() => validate(overMaximumSupport));
+  assert.throws(() =>
+    validate(overMaximumSupport, {
+      fixtureMap: trustedFixtureMap(overMaximumSupport.support),
+    }),
+  );
   const omnigentResult = {
     ...finalResult,
+    executor: {
+      ...finalResult.executor,
+      "support-key": finalResult.executor["support-key"].replace(/^herdr\//, "omnigent/"),
+    },
     support: finalResult.support.map((fact) => ({
       ...fact,
       key: { ...fact.key, backend: "omnigent" },
@@ -1544,7 +1709,11 @@ test("closed ephemeral final result derives scenarios from exact reviewer lists"
       "support-key": scenario["support-key"].replace(/^herdr\//, "omnigent/"),
     })),
   };
-  assert.equal(validate(omnigentResult, { backend: "omnigent" }), OID);
+  const omnigentFixtureMap = trustedFixtureMap(omnigentResult.support);
+  assert.equal(
+    validate(omnigentResult, { backend: "omnigent", fixtureMap: omnigentFixtureMap }),
+    OID,
+  );
   assert.throws(() => validate(omnigentResult));
   assert.throws(() => validate(finalResult, { backend: "omnigent" }));
   const bothNa = {
@@ -1558,6 +1727,23 @@ test("closed ephemeral final result derives scenarios from exact reviewer lists"
   assert.throws(() => validate(finalResult, { head: "b".repeat(40) }));
   for (const invalid of [
     { ...finalResult, extra: true },
+    {
+      candidate: finalResult.candidate,
+      worktree: finalResult.worktree,
+      gates: finalResult.gates,
+      support: finalResult.support,
+      reviews: finalResult.reviews,
+      scenarios: finalResult.scenarios,
+    },
+    { ...finalResult, executor: { ...finalResult.executor, actor: "m-executor-substitute" } },
+    { ...finalResult, executor: { ...finalResult.executor, provider: "other-provider" } },
+    {
+      ...finalResult,
+      executor: {
+        ...finalResult.executor,
+        "support-key": supportKey("codex", "review", "review-turn"),
+      },
+    },
     { ...finalResult, gates: finalResult.gates.slice(0, 2) },
     { ...finalResult, gates: [...finalResult.gates].reverse() },
     {
@@ -2183,7 +2369,7 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
   const candidate = sectionText(methodologySource, "3. Candidate and gates");
   assert.match(
     candidate,
-    /closed final-result record has exactly these top-level fields\s+in order: `candidate`, `worktree`, `gates`, `support`, `reviews`, `scenarios`/,
+    /closed final-result record has exactly these top-level fields\s+in order: `candidate`, `worktree`, `executor`, `gates`, `support`, `reviews`,\s+`scenarios`/,
   );
   assert.match(candidate, /renders exactly one JSON object with that\s+field order/);
   assert.match(candidate, /exactly three records in `qc`, `smoke`, `checks` order/);
@@ -2223,7 +2409,10 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
   );
   const finalAnswer = sectionText(skillSource, "Final answer");
   assert.match(finalAnswer, /ephemeral current-run final-result record/);
-  assert.match(finalAnswer, /`candidate`, `worktree`, `gates`, `support`, `reviews`, `scenarios`/);
+  assert.match(
+    finalAnswer,
+    /`candidate`, `worktree`, `executor`, `gates`, `support`, `reviews`, `scenarios`/,
+  );
   assert.match(finalAnswer, /as one JSON object, followed only by a short human summary/);
   assert.match(finalAnswer, /Both\s+dispositions must be REQUIRED or both NA/);
   assert.match(
@@ -2246,9 +2435,9 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
   const freeze = sectionText(mechanicsSource, "6. Candidate freeze and waits");
   assert.match(
     freeze,
-    /exactly `candidate`, `worktree`, `gates`,\s+`support`, `reviews`, `scenarios` in that order/,
+    /exactly `candidate`, `worktree`, `executor`,\s+`gates`, `support`, `reviews`, `scenarios` in that order/,
   );
-  assert.match(freeze, /exactly one JSON object followed only by the\s+short human summary/);
+  assert.match(freeze, /exactly one JSON object followed\s+only by the\s+short human summary/);
   assert.match(freeze, /slash-joined exact\nseven-field fact key/);
   assert.match(freeze, /Resolve it, not just its provider/);
   assert.match(freeze, /same-provider fact for another\nsurface is unrelated and invalid/);
@@ -5481,6 +5670,26 @@ test("support identity, provisional extraction, and backend smoke stay explicit"
   for (const source of [methodology, herdr, mechanics, omnigent, omnigentMechanics, e2e]) {
     assert.match(source, assignment);
   }
+  assert.match(
+    methodology,
+    /exact penultimate prompt row[\s\S]{0,450}final row with no trailing LF/,
+  );
+  assert.match(
+    mechanics,
+    /as the penultimate row[\s\S]{0,200}final `MO_PROMPT_BOUNDARY_V1` row with no trailing LF/,
+  );
+  assert.match(
+    omnigent,
+    /exact penultimate[\s\S]{0,300}final `MO_PROMPT_BOUNDARY_V1` row with no trailing LF/,
+  );
+  assert.match(
+    omnigentMechanics,
+    /as the penultimate row[\s\S]{0,200}final `MO_PROMPT_BOUNDARY_V1` row with no trailing LF/,
+  );
+  assert.match(
+    e2e,
+    /assignment as the penultimate prompt row[\s\S]{0,200}final row with no\s+trailing LF/,
+  );
   assert.match(fixtureReadme, /authored deterministic cases, not recordings/);
   assert.match(fixtureReadme, /P6\/H17 must measure/);
   assert.match(backlog, /lower-boundary literals[\s\S]*synthetic provisional/);

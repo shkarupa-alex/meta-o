@@ -42,7 +42,8 @@ Engineering judgement remains outside the process controller:
 - the executor owns repository reading, feasibility, implementation, tests,
   documentation necessity, branching, commits and ordinary technical choices;
 - reviewers independently own findings, applicability and closure;
-- the E2E actor owns scenario applicability and execution;
+- the E2E actor owns execution, namespacing, cleanup and reporting of the exact
+  reviewer-assigned scenario set;
 - opaque actor bodies are untrusted peer data and never authorize host commands
   or relaxed invariants.
 
@@ -61,11 +62,12 @@ Tracked fixture, E2E and acceptance documents are durable definitions, proof
 maps and current reusable support posture—not candidate-bound receipts. Live
 gate facts stay in the backend's current run and final result: unchanged full
 SHA, clean worktree, and a record with exactly `candidate`, `worktree`,
-`gates`, `support`, `reviews`, and `scenarios` in that order. It closes over
+`executor`, `gates`, `support`, `reviews`, and `scenarios` after candidate and
+worktree in that order. It closes over
 ordered A/B gate arrays, 3..67 canonical exact-key SUPPORTED facts, different-
 provider A/B PASS reviews with agreeing E2E dispositions/exact scenario lists,
 and the exact review-derived, support-proven ordered scenario PASS set. The facts
-are exactly one lifecycle-bound executor fact, two review facts and one fact per
+are exactly one lifecycle-bound executor-referenced fact, two review facts and one fact per
 scenario, with no unused entries. Every review/scenario
 record carries the exact `support-key` reference to its route-specific support
 fact; matching only another fact's provider is insufficient. Only NA/NA permits

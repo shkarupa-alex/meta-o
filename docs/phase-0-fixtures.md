@@ -29,8 +29,10 @@ MO_FIXTURE_MAP_V1|backend=<herdr|omnigent>|provider=<safe-id>|provider-version=<
 MO_FIXTURE_SCENARIOS_V1|backend=<herdr|omnigent>|ids=<safe-id-list>
 ```
 
-There is exactly one scenario-set row per backend. Its 1..64 IDs are unique and sorted bytewise.
-Fixture rows use the seven key fields in their canonical order; review/executor rows have
+There is exactly one non-`none` scenario-set row per backend. Its 1..64 IDs are unique and
+sorted bytewise. Every nonempty row in this fence is one of the two declared protocols;
+unknown/malformed rows, duplicate fact keys, and duplicate scenario sets invalidate the whole
+input. Fixture rows use the seven key fields in their canonical order; review/executor rows have
 `scenarios=none`, while an E2E row has either `none` or the same singleton ID as its fixture.
 Only a row with actual exact provider/backend versions and OS plus `posture=SUPPORTED` may become
 a final support fact. The `unproven-*` rows below are structurally valid fail-closed defaults:
@@ -61,6 +63,7 @@ from the backend public surface. Its verified final-result record has exactly:
 ```text
 candidate: <full SHA>
 worktree: clean
+executor: <lifecycle actor/provider/exact retained support-key>
 gates[]: <qc/smoke/checks; reviewer-A then reviewer-B statuses>
 support[]: <3..67 exact used SUPPORTED facts: executor, two reviews, then one per scenario>
 reviews[]: <exactly A then B; actor/provider/support-key/PASS/qc/smoke/checks/e2e/scenarios/evidence>
@@ -75,7 +78,8 @@ The closed schema and structural limits are defined in `docs/e2e.md`. Both revie
 must agree: only both NA permits `scenarios=[]`; both REQUIRED derives the exact sorted unique
 scenario union solely from both validated review headers. Support facts prove every derived
 identity but never define applicability. No external/default scenario list is accepted.
-The executor fact binds the lifecycle-selected provider to `executor`/`executor-turn`; every
+The executor record binds the lifecycle-selected actor/provider to its exact retained
+pre-activation `SUPPORTED` `executor`/`executor-turn` support fact; every
 review/scenario actor and provider equals lifecycle state, reviewer providers differ, and at
 least one differs from the executor. Unused facts are invalid.
 The top-level qc/smoke/checks A/B status arrays byte-equal the corresponding review fields.

@@ -259,8 +259,12 @@ requirements, and state current reusable support posture only. They never store
 candidate-bound PASS evidence. Live facts come from the native public surface
 and remain in ephemeral current-run state and the final answer. The verified
 final-result record has exact top-level order
-`candidate,worktree,gates,support,reviews,scenarios`: unchanged full SHA and
-`worktree=clean`; then:
+`candidate,worktree,executor,gates,support,reviews,scenarios`: unchanged full SHA
+and `worktree=clean`; then:
+
+- `executor` has exact `actor,provider,support-key`; it binds the lifecycle actor
+  and provider to the retained pre-activation `SUPPORTED` Omnigent
+  executor/executor-turn fact.
 
 - `gates` is exactly ordered entries with keys `gate,statuses` for QC, smoke and
   checks. Each status array is reviewer A then B; QC/smoke are PASS/PASS and
@@ -272,7 +276,10 @@ final-result record has exact top-level order
   `[a-z0-9][a-z0-9._-]{0,63}`. The facts are exactly one lifecycle-selected
   executor fact, two review-referenced facts and one fact per derived scenario;
   unused facts are invalid. Actor/provider identities equal lifecycle state and
-  at least one reviewer provider differs from the executor.
+  at least one reviewer provider differs from the executor. Every used fact
+  byte-matches a retained pre-activation `SUPPORTED` row across all seven key
+  fields and scenario identity; its provider/backend versions and OS equal
+  lifecycle state.
 - `reviews` is exactly A then B. Exact keys are
   `reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,scenarios,evidence`;
   status, qc and smoke are PASS, checks is PASS|NA, providers differ, and
@@ -288,9 +295,11 @@ final-result record has exact top-level order
   invalid. Both REQUIRED derives a nonempty scenario set exactly as the sorted
   unique union of the two review scenario lists; support proves each name but
   never defines the required set. No default/external list is allowed. The
-  initial E2E prompt ends with exact
+  initial E2E prompt places exact
   `MO_E2E_ASSIGNMENT_V1|candidate=<oid>|scenarios=<positive-int>|ids=<safe-id-list>`
-  using that candidate/count/list; E2E runs it without selecting another set.
+  using that candidate/count/list as the penultimate row, immediately before a
+  fresh final `MO_PROMPT_BOUNDARY_V1` row with no trailing LF; E2E runs it
+  without selecting another set.
 - Scenario records follow that exact order and have exact keys
   `scenario,actor,provider,support-key,status,evidence`, status PASS, and a
   support key resolving to `backend=omnigent`, the same provider, `surface=e2e`,

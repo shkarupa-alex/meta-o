@@ -282,8 +282,11 @@ the round stale and restarts both reviews.
 
 Review evidence is ephemeral current-run data from the backend public surface.
 The enclosing backend's closed final-result record has exact top-level order
-`candidate,worktree,gates,support,reviews,scenarios`, unchanged full SHA, and
-`worktree=clean`. `gates` is exactly ordered QC, smoke and checks entries with
+`candidate,worktree,executor,gates,support,reviews,scenarios`, unchanged full SHA,
+and `worktree=clean`. `executor` is exactly `actor,provider,support-key`; all
+three values bind the lifecycle-selected executor and its exact retained
+pre-activation `SUPPORTED` executor/executor-turn fact. `gates` is exactly
+ordered QC, smoke and checks entries with
 A/B `statuses`; QC/smoke are PASS/PASS and checks are independently PASS|NA.
 `support` contains 3..67 unique canonically sorted exact seven-field keys,
 `status=SUPPORTED`, and empty or singleton scenario lists. Its
@@ -295,6 +298,9 @@ The support key order is exactly
 `backend,provider,provider-version,backend-version,surface,os,fixture`; each outer
 entry is exactly `key,status,scenarios`, and safe IDs match
 `[a-z0-9][a-z0-9._-]{0,63}`.
+Every used fact byte-matches a retained pre-activation `SUPPORTED` row across
+provider version, backend version, OS, the other four key fields and scenario
+identity; invented, unsupported or stale-topology rows cannot pass.
 
 `reviews` is exactly A then B with exact keys
 `reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,scenarios,evidence`; status,

@@ -14,7 +14,7 @@ reviewers.
 ## Inputs and freeze
 
 Receive the opaque task/spec locator, one full frozen candidate SHA, role,
-`MO_E2E_V1` limits, and exactly one final assignment row:
+`MO_E2E_V1` limits, and exactly one assignment row:
 
 ```text
 MO_E2E_ASSIGNMENT_V1|candidate=<oid>|scenarios=<positive-int>|ids=<safe-id-list>
@@ -24,6 +24,9 @@ Validate that its candidate is frozen, its count equals 1..64 unique safe IDs,
 and its IDs are sorted bytewise. Read the project's E2E contract and run exactly
 that assigned list; never select a different applicability set. Do not edit or
 commit tracked files. A new SHA invalidates this result.
+The orchestrator places the assignment as the penultimate prompt row and a fresh
+`MO_PROMPT_BOUNDARY_V1|fingerprint=<64-lower-hex>` as the final row with no
+trailing LF. Reject a stale, reordered or unbounded assignment.
 
 Use a unique namespace per run and scenario. Clean up on pass, fail, unknown and
 blocker. Run no production/destructive scenario until the E2E contract names its
@@ -80,8 +83,10 @@ project's fixture, acceptance or E2E documents, and do not create a manifest,
 receipt, registry or external evidence sink.
 
 The orchestrator's closed final-result record has exact top-level order
-`candidate,worktree,gates,support,reviews,scenarios`. It requires the unchanged
-full SHA and `worktree=clean`; ordered A/B gate statuses for QC, smoke and checks;
+`candidate,worktree,executor,gates,support,reviews,scenarios`. It requires the
+unchanged full SHA and `worktree=clean`; exact executor actor/provider/support-key
+bound to lifecycle state and the retained pre-activation `SUPPORTED`
+executor/executor-turn fact; ordered A/B gate statuses for QC, smoke and checks;
 3..67 canonically sorted exact support-key facts with `status=SUPPORTED` and
 empty or singleton scenario lists; and exactly A/B PASS review
 entries from different providers. Review entries carry `e2e=REQUIRED|NA` and
@@ -98,6 +103,9 @@ Each support fact key is exactly
 `backend,provider,provider-version,backend-version,surface,os,fixture`; every safe
 identifier matches `[a-z0-9][a-z0-9._-]{0,63}`, and the support facts cover every
 provider selected in the final topology.
+Every used fact byte-matches its retained pre-activation `SUPPORTED` row across
+all seven fields and scenario identity; provider/backend versions and OS also
+equal the selected lifecycle state.
 
 Both review dispositions must agree. Both NA yields no scenario records. Both
 REQUIRED derives the nonempty scenario set only as the exact sorted unique union

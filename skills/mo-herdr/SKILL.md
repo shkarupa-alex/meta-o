@@ -26,7 +26,9 @@ live run evidence are not part of this input.
 Validate the exact fenced `MO_FIXTURE_MAP_V1` and
 `MO_FIXTURE_SCENARIOS_V1` records from methodology §9 while reading the input.
 If automating Markdown parsing, use an available real AST and never regex-parse
-Markdown. Other-backend rows may coexist; the Herdr scope itself is mandatory.
+Markdown. Reject unknown/malformed rows, duplicate fact keys, duplicate
+scenario-set rows, `ids=none`, and noncanonical IDs. Other-backend rows may
+coexist; the Herdr scope itself is mandatory.
 
 The project contract is injected before activation. After activation, treat the
 task/spec locator as opaque and enforce the methodology firewall. Never open a
@@ -344,9 +346,11 @@ wake the user.
 
 Return the verified unchanged full SHA and a short summary backed by the
 ephemeral current-run final-result record. Emit its exact top-level order
-`candidate`, `worktree`, `gates`, `support`, `reviews`, `scenarios` and no other
-fields as one JSON object, followed only by a short human summary. Require the
-unchanged full SHA and `worktree=clean`.
+`candidate`, `worktree`, `executor`, `gates`, `support`, `reviews`, `scenarios`
+and no other fields as one JSON object, followed only by a short human summary.
+Require the unchanged full SHA and `worktree=clean`. Emit `executor` with exact
+keys `actor,provider,support-key`; bind them to the lifecycle-selected executor
+and its retained pre-activation `SUPPORTED` Herdr executor/executor-turn fact.
 
 Emit gates exactly in `qc`, `smoke`, `checks` order with A-then-B `statuses`;
 require PASS for both QC/smoke and PASS or NA for each applicable-check status.
@@ -357,10 +361,13 @@ backend-version, surface, os, fixture; status is SUPPORTED; all IDs are lower sa
 IDs of at most 64 bytes; and each scenario-name list is empty or a singleton.
 Slash-join those seven values as its canonical reference. Cover
 every exact actor surface on the selected Herdr topology. Require exactly one
-lifecycle-selected `executor`/`executor-turn` fact with no scenarios, exactly the
-two review-referenced facts, and one scenario-referenced fact per derived name;
-reject unused facts. Bind every actor/provider to lifecycle state and require at
-least one reviewer provider to differ from the executor.
+lifecycle-selected, executor-referenced `executor`/`executor-turn` fact with no
+scenarios, exactly the two review-referenced facts, and one scenario-referenced
+fact per derived name; reject unused facts. Every used fact byte-matches a
+retained pre-activation `SUPPORTED` row across all seven key fields and scenario
+identity; its provider/backend versions and OS equal lifecycle state. Bind every
+actor/provider to lifecycle state and require at least one reviewer provider to
+differ from the executor.
 
 Emit exactly A then B review records with reviewer, actor, provider, exact
 `support-key`, PASS status, QC, smoke, checks, E2E disposition, exact scenario

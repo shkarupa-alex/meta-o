@@ -46,6 +46,17 @@ function validateDefaultFixtureMap(source) {
     .filter((content) => content.startsWith("MO_FIXTURE_MAP_V1|backend=herdr"));
   assert.equal(blocks.length, 1);
   const lines = blocks[0].split("\n");
+  assert.equal(
+    lines.every((line) => line.length > 0),
+    true,
+  );
+  assert.equal(
+    lines.every(
+      (line) =>
+        line.startsWith("MO_FIXTURE_MAP_V1|") || line.startsWith("MO_FIXTURE_SCENARIOS_V1|"),
+    ),
+    true,
+  );
   const parse = (line, protocol, fields) => {
     const parts = line.split("|");
     assert.equal(parts.shift(), protocol);
@@ -78,7 +89,11 @@ function validateDefaultFixtureMap(source) {
   const scenarioSets = lines
     .filter((line) => line.startsWith("MO_FIXTURE_SCENARIOS_V1|"))
     .map((line) => parse(line, "MO_FIXTURE_SCENARIOS_V1", ["backend", "ids"]));
+  assert.equal(facts.length + scenarioSets.length, lines.length);
   const safe = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+  const factKeys = facts.map((fact) => factFields.map((field) => fact[field]).join("/"));
+  assert.equal(new Set(factKeys).size, factKeys.length);
+  assert.deepEqual(scenarioSets.map((entry) => entry.backend).sort(), ["herdr", "omnigent"]);
   for (const backend of ["herdr", "omnigent"]) {
     const scoped = facts.filter((fact) => fact.backend === backend);
     assert.equal(scoped.length >= 4, true);
@@ -111,6 +126,7 @@ function validateDefaultFixtureMap(source) {
     }
     const matchingSets = scenarioSets.filter((entry) => entry.backend === backend);
     assert.equal(matchingSets.length, 1);
+    assert.notEqual(matchingSets[0].ids, "none");
     const ids = matchingSets[0].ids.split(",");
     assert.equal(ids.length >= 1 && ids.length <= 64, true);
     ids.forEach((id) => assert.match(id, safe));
@@ -131,6 +147,19 @@ test("the default pre-activation map is structurally consumable for both backend
     source.replace("|provider-version=unproven", ""),
     source.replace("MO_FIXTURE_SCENARIOS_V1|backend=omnigent", "BROKEN|backend=omnigent"),
     source.replace("ids=om1,om2,om3,om4,om5,om6,om7,om8", "ids=om2,om1"),
+    source.replace("```\n\nNo exact live", "UNKNOWN_RECORD|value=x\n```\n\nNo exact live"),
+    source.replace(
+      "MO_FIXTURE_SCENARIOS_V1|backend=herdr|ids=",
+      "MO_FIXTURE_SCENARIOS_V1|backend=herdr|ids=none\nMO_FIXTURE_SCENARIOS_V1|backend=herdr|ids=",
+    ),
+    source.replace(
+      "MO_FIXTURE_MAP_V1|backend=herdr|provider=unproven-executor",
+      "MO_FIXTURE_MAP_V1|backend=herdr|provider=unproven-executor|provider-version=unproven|backend-version=unproven|surface=executor|os=unproven|fixture=executor-turn|scenarios=none|posture=UNSUPPORTED\nMO_FIXTURE_MAP_V1|backend=herdr|provider=unproven-executor",
+    ),
+    source.replace(
+      "MO_FIXTURE_SCENARIOS_V1|backend=omnigent|ids=om1",
+      "MO_FIXTURE_SCENARIOS_V1|backend=omnigent|ids=om1,om2,om3,om4,om5,om6,om7,om8\nMO_FIXTURE_SCENARIOS_V1|backend=omnigent|ids=om1",
+    ),
   ]) {
     assert.notEqual(mutant, source);
     assert.throws(() => validateDefaultFixtureMap(mutant));

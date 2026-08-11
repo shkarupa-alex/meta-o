@@ -41,7 +41,7 @@ Tracked fixture, E2E and acceptance documents define scenarios, proof mappings
 and current reusable support posture; they are never candidate PASS receipts. A
 run returns live evidence only through its backend public surface and final
 answer. Its verified final-result record has exactly `candidate`, `worktree`,
-`gates`, `support`, `reviews`, and `scenarios` in that order. It closes over the
+`executor`, `gates`, `support`, `reviews`, and `scenarios` in that order. It closes over the
 unchanged full SHA/clean worktree; ordered A/B QC, smoke and checks facts; 3..67
 canonical exact-key SUPPORTED surface facts consisting of one lifecycle-bound
 executor fact, two review facts, and one fact per derived scenario; two different-provider A/B PASS

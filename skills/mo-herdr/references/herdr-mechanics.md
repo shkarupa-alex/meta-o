@@ -734,14 +734,18 @@ evidence. A transport UNKNOWN that retains PASS check fields remains unknown and
 cannot satisfy the deterministic-review gate.
 
 Hold candidate-bound gate evidence only in ephemeral current-run state. The
-Herdr final-result output has exactly `candidate`, `worktree`, `gates`,
-`support`, `reviews`, `scenarios` in that order and the closed nested field order
-from methodology §3. Render it as exactly one JSON object followed only by the
-short human summary. Gates are exactly QC, smoke, checks with A-then-B statuses;
+Herdr final-result output has exactly `candidate`, `worktree`, `executor`,
+`gates`, `support`, `reviews`, `scenarios` in that order and the closed nested
+field order from methodology §3. Render it as exactly one JSON object followed
+only by the short human summary. `executor` exactly binds the lifecycle actor,
+provider and retained pre-activation `SUPPORTED` executor/executor-turn
+support-key. Gates are exactly QC, smoke, checks with A-then-B statuses;
 support is 3..67 canonical facts keyed by the exact seven selected-topology
-fields: one lifecycle-selected executor fact, the two review-referenced facts,
-and one scenario-referenced fact per derived name, with no unused facts; reviews
-are exactly A then B; and scenario records are canonical.
+fields: one lifecycle-selected executor-referenced fact, the two review-referenced
+facts, and one scenario-referenced fact per derived name, with no unused facts;
+every fact byte-matches a retained pre-activation `SUPPORTED` row including its
+scenario identity, and its versions/OS equal lifecycle state; reviews are exactly
+A then B; and scenario records are canonical.
 Take each gate status from the same validated A/B review header field, copy it
 into that review record and require the top-level pair to equal those two values.
 
@@ -764,9 +768,10 @@ the one-shot NA-reviewer reconciliation before construction; persistent mixed
 dispositions are invalid and end in `needs_attention:e2e_disposition_dispute`.
 For REQUIRED/REQUIRED, put exactly
 `MO_E2E_ASSIGNMENT_V1|candidate=<oid>|scenarios=<positive-int>|ids=<safe-id-list>`
-as the final row of the initial E2E prompt before the ordinary fresh prompt
-boundary. Its candidate/count/IDs equal that derived union; the E2E actor runs
-that list rather than selecting applicability.
+as the penultimate row of the initial E2E prompt, immediately before the fresh
+final `MO_PROMPT_BOUNDARY_V1` row with no trailing LF. Its candidate/count/IDs
+equal that derived union; the E2E actor runs that list rather than selecting
+applicability.
 Before final construction, require the validated E2E PASS header's positive
 `scenarios` count and exact canonical `ids` list to equal that derived list and
 every scenario evidence `total`, with `not_run=none`; a smaller, repeated,

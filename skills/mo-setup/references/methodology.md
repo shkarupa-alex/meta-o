@@ -207,7 +207,7 @@ normalized, sent to E2E, retried again, or turned into an ordinary user choice.
 
 After disposition reconciliation, a `REQUIRED/REQUIRED` pair produces the exact
 sorted unique union of the two validated review scenario lists. The orchestrator
-starts a separate read-only actor with this exact final prompt row:
+starts a separate read-only actor with this exact penultimate prompt row:
 
 ```text
 MO_E2E_ASSIGNMENT_V1|candidate=<oid>|scenarios=<positive-int>|ids=<safe-id-list>
@@ -215,8 +215,11 @@ MO_E2E_ASSIGNMENT_V1|candidate=<oid>|scenarios=<positive-int>|ids=<safe-id-list>
 
 The actor runs exactly that assigned list through `mo-e2e`, owns namespacing and
 cleanup, and returns one E2E handoff. It never selects another applicability set
-or edits or commits tracked files. An unreadable or `UNKNOWN` review is resolved
-by the review retry contract before applicability is considered.
+or edits or commits tracked files. A fresh
+`MO_PROMPT_BOUNDARY_V1|fingerprint=<64-lower-hex>` row follows the assignment as
+the final row with no trailing LF, so the assignment is bound to the submitted
+turn. An unreadable or `UNKNOWN` review is resolved by the review retry contract
+before applicability is considered.
 
 ## 3. Candidate and gates
 
@@ -246,10 +249,17 @@ One object ID is verified only when:
 
 Candidate-bound evidence exists only in ephemeral current-run state and the
 final answer. Its closed final-result record has exactly these top-level fields
-in order: `candidate`, `worktree`, `gates`, `support`, `reviews`, `scenarios`.
+in order: `candidate`, `worktree`, `executor`, `gates`, `support`, `reviews`,
+`scenarios`.
 `candidate` is the unchanged full SHA and `worktree` is exactly `clean`.
 The successful backend final answer renders exactly one JSON object with that
 field order, followed only by a short human summary.
+
+`executor` has exactly `actor`, `provider`, `support-key`. Actor/provider equal
+the lifecycle-selected executor identity. Its support key resolves to the exact
+retained pre-activation `SUPPORTED` fact for the selected backend/provider,
+provider version, backend version and OS, surface `executor`, fixture
+`executor-turn`, and no scenarios.
 
 `gates` is exactly three records in `qc`, `smoke`, `checks` order. Each has only
 `gate` and `statuses`, whose two entries are reviewer A then B. QC and smoke are
@@ -266,11 +276,14 @@ bytes and form the reusable support key for the selected topology. Each fact's
 `scenarios` is either empty or a singleton lower-case safe ID list. The
 canonical reference is those seven values slash-joined in order. The facts must
 cover every exact selected surface and contain no unused facts. Exactly one fact
-has the lifecycle-selected executor provider, surface `executor`, fixture
-`executor-turn`, and no scenarios. Exactly two facts are referenced by the A/B
+is referenced by `executor`, has its lifecycle-selected provider, surface
+`executor`, fixture `executor-turn`, and no scenarios. Exactly two facts are referenced by the A/B
 reviews, and exactly one fact is referenced by each derived scenario record.
 The selected reviewer providers differ, at least one differs from the executor,
 and every actor/provider value equals its lifecycle-stored identity.
+Every used fact byte-matches a retained pre-activation `SUPPORTED` row across
+all seven key fields and scenario identity; invented, unsupported, stale-version
+or other-OS rows are invalid.
 
 `reviews` has exactly A then B. Each record has only `reviewer`, `actor`,
 `provider`, `support-key`, `status`, `qc`, `smoke`, `checks`, `e2e`, `scenarios`,
@@ -841,14 +854,16 @@ MO_FIXTURE_SCENARIOS_V1|backend=<herdr|omnigent>|ids=<safe-id-list>
 ```
 
 Read the Markdown before activation and validate the fenced record fields
-exactly. If automating Markdown parsing, use an available real AST; never
-regex-parse Markdown. Require one unique sorted 1..64
-scenario-set row and at least executor, two review-provider, and E2E definitions
-for the selected backend. Executor/review scenarios are `none`; an E2E scenario
-is `none` or a singleton equal to its fixture. Other-backend rows may coexist,
-but a missing selected-backend scope is wrong-backend input. Only actual exact
-key values with `posture=SUPPORTED` can enter final support; fail-closed
-`unproven-*` records define no support.
+exactly. Every nonempty row in the selected fence is one of those two protocols;
+unknown, malformed, duplicate fact-key or duplicate scenario-set rows fail
+closed. If automating Markdown parsing, use an available real AST; never
+regex-parse Markdown. Require exactly one non-`none`, unique, sorted 1..64
+scenario-set row per represented backend and at least executor, two
+review-provider, and E2E definitions for the selected backend. Executor/review
+scenarios are `none`; an E2E scenario is `none` or a singleton equal to its
+fixture. Other-backend rows may coexist, but a missing selected-backend scope is
+wrong-backend input. Only actual exact key values with `posture=SUPPORTED` can
+enter final support; fail-closed `unproven-*` records define no support.
 
 `docs/phase-0-fixtures.md` is a durable definition and support-posture map only.
 Its posture may be `SUPPORTED`, `PENDING` or `UNSUPPORTED`; none is a

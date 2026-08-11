@@ -212,15 +212,18 @@ unknown even if check fields retained from a readable prefix say `PASS`.
 
 Complete-turn evidence remains ephemeral in the backend run and final result.
 That closed record has exact top-level order
-`candidate,worktree,gates,support,reviews,scenarios` and binds one unchanged full
+`candidate,worktree,executor,gates,support,reviews,scenarios` and binds one unchanged full
 SHA/clean worktree to:
 
+- exact lifecycle-selected executor actor/provider and its retained
+  pre-activation `SUPPORTED` seven-field support key;
 - ordered QC, smoke and checks A/B status arrays;
 - 3..67 unique facts sorted by the exact seven-field support-key tuple, each
   with outer keys `key,status,scenarios`, SUPPORTED status, an empty or singleton
   safe scenario-ID list; exactly one lifecycle-selected executor fact, two
   review-referenced facts and one scenario-referenced fact per derived name,
-  with no unused facts;
+  with no unused facts; every used fact byte-matches the retained
+  pre-activation row and lifecycle versions/OS;
 - exact A-then-B different-provider PASS reviews with REQUIRED|NA dispositions
   and exact
   `reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,scenarios,evidence` keys;

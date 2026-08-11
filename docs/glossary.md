@@ -40,8 +40,8 @@ prompt during it.
 stale or differently bound verdict does not pass.
 
 **Live result** — ephemeral current-run/final response from backend public
-surfaces with closed ordered fields `candidate`, `worktree`, `gates`, `support`,
-`reviews`, `scenarios`. It binds one full SHA and clean worktree to exact gate
+surfaces with closed ordered fields `candidate`, `worktree`, `executor`, `gates`,
+`support`, `reviews`, `scenarios`. It binds one full SHA and clean worktree to exact gate
 arrays, support facts, A/B review dispositions/evidence with exact scenario
 lists, and the review-derived, support-proven ordered scenario evidence. Each
 review/scenario resolves an exact route-specific support key, and the top gate
@@ -54,12 +54,18 @@ document or external receipt sink.
 Each has A/B statuses byte-equal to the corresponding ordered review fields;
 QC/smoke are PASS/PASS and checks are each PASS or NA.
 
+**Executor fact** — exact final `actor,provider,support-key` identity for the
+lifecycle-selected executor. Its key resolves to the retained pre-activation
+`SUPPORTED` seven-field `executor`/`executor-turn` row with no scenarios.
+
 **Support fact** — one of 3..67 canonically sorted reusable surface facts with
 exact `backend,provider,provider-version,backend-version,surface,os,fixture` key,
 SUPPORTED status, and an empty or singleton safe scenario-ID list. Safe
 IDs match `[a-z0-9][a-z0-9._-]{0,63}`. The closed result contains exactly one
-lifecycle-selected executor fact, two review-referenced facts and one
-scenario-referenced fact per derived name; unused facts are invalid.
+lifecycle-selected executor-referenced fact, two review-referenced facts and one
+scenario-referenced fact per derived name; unused facts are invalid. Every used
+fact byte-matches a retained pre-activation `SUPPORTED` row across all seven key
+fields and scenario identity, including lifecycle-selected versions and OS.
 
 **Support key reference** — exact slash-join of one support fact's seven safe-ID
 key values in canonical order. Each final review and scenario record carries a
