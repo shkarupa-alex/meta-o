@@ -150,14 +150,36 @@ turn;
 there is no marker-free fallback.
 
 Candidate evidence remains only in ephemeral native-run state and the final
-answer. Return a verified final-result record with exactly `candidate`,
-`worktree`, `reviews`, and `scenarios`: the unchanged full SHA,
-`worktree=clean`, exactly two A/B reviewer/actor/provider/PASS/content-safe
-public-surface evidence entries, and one equivalent entry for every applicable
-scenario. An empty scenario list requires independently established E2E NA.
-Never edit or commit tracked fixture, acceptance or E2E documents as a PASS
-receipt, and create no manifest, registry, receipt or external evidence sink. A
-dirty tree, changed SHA, missing entry, or unreadable evidence invalidates PASS.
+answer. Return a closed final-result record with exact top-level order
+`candidate,worktree,gates,support,reviews,scenarios`, the unchanged full SHA, and
+`worktree=clean`. Gates are exactly QC/smoke/checks with A/B status arrays;
+QC/smoke are PASS/PASS and checks PASS|NA. Support has 1..16 unique entries
+canonically sorted by exact key
+`backend,provider,provider-version,backend-version,surface,os,fixture`, each
+SUPPORTED with a sorted unique list of at most 32 safe scenario IDs; facts cover
+every provider in the selected topology.
+Each support entry is exactly `key,status,scenarios`, and safe IDs match
+`[a-z0-9][a-z0-9._-]{0,63}`.
+
+Reviews are exactly A then B, PASS, different-provider, and have exact keys
+`reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,evidence`.
+Status, qc and smoke are PASS, checks is PASS|NA, and the top-level gate arrays
+byte-equal the corresponding A/B review fields. Each support key is
+the slash-join of the matched fact's seven safe-ID values and resolves to
+`backend=omnigent`, the same provider, `surface=review`, `fixture=review-turn`, and
+`scenarios=[]`. Reviews have agreeing
+`e2e=REQUIRED|NA` dispositions plus exact structural `MO_REVIEW_V2`
+public-surface evidence bounded by 6 parts, 1000 rows and 61,440 bytes. Both NA
+requires no scenarios; both REQUIRED derives the nonempty sorted scenario set
+only from the exact union of support scenario lists. Scenario PASS records have
+exact keys `scenario,actor,provider,support-key,status,evidence`, follow that
+order, and resolve their support key to `backend=omnigent`, the same provider,
+`surface=e2e`, `fixture=scenario`, and `scenarios=[scenario]`; a merely
+same-provider fact is invalid. They carry structural `MO_E2E_V1` evidence with
+consistent ordinal/total, at most 1000 rows and 65,536 bytes. Extra keys, generic prose
+evidence, dirty/new `HEAD`, missing gates/support/evidence, FAIL or UNKNOWN
+invalidate PASS. Never edit or commit tracked fixture, acceptance or E2E docs as
+a receipt, and create no manifest, registry, receipt or external evidence sink.
 
 ## Recovery
 

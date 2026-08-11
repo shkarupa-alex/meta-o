@@ -40,11 +40,33 @@ prompt during it.
 stale or differently bound verdict does not pass.
 
 **Live result** — ephemeral current-run/final response from backend public
-surfaces with exactly `candidate`, `worktree`, `reviews`, and `scenarios`. It
-binds one full SHA and clean worktree to exact review/scenario actor, provider,
-status and content-safe evidence. `scenarios=[]` requires independent E2E NA;
-missing/unreadable evidence cannot PASS. It is not written to a tracked document
-or external receipt sink.
+surfaces with closed ordered fields `candidate`, `worktree`, `gates`, `support`,
+`reviews`, `scenarios`. It binds one full SHA and clean worktree to exact gate
+arrays, support facts, A/B review dispositions/evidence, and the support-derived
+ordered scenario evidence. Each review/scenario resolves an exact route-specific
+support key, and the top gate arrays byte-equal the A/B review gate fields.
+Extra/missing/generic evidence, dirty/new HEAD,
+FAIL/UNKNOWN, or a one-NA disposition cannot PASS. It is not written to a tracked
+document or external receipt sink.
+
+**Gate facts** — the live result's exact ordered QC, smoke, and checks entries.
+Each has A/B statuses byte-equal to the corresponding ordered review fields;
+QC/smoke are PASS/PASS and checks are each PASS or NA.
+
+**Support fact** — one of 1..16 canonically sorted reusable surface facts with
+exact `backend,provider,provider-version,backend-version,surface,os,fixture` key,
+SUPPORTED status, and a sorted unique list of at most 32 safe scenario IDs. Safe
+IDs match `[a-z0-9][a-z0-9._-]{0,63}`. Facts cover all providers selected by the
+final topology.
+
+**Support key reference** — exact slash-join of one support fact's seven safe-ID
+key values in canonical order. Each final review and scenario record carries a
+`support-key`; it must resolve to the exact route-specific surface and fixture,
+not merely to another fact with the same provider.
+
+**E2E disposition** — each final A/B review's REQUIRED or NA decision. Both must
+agree: NA/NA alone permits no scenarios; REQUIRED/REQUIRED derives the nonempty
+ordered scenario set exactly from the union of support facts.
 
 **Fixture map** — tracked definitions, requirement mappings and current reusable
 support posture. It never stores candidate-bound PASS evidence.

@@ -202,13 +202,38 @@ invalidates every gate and open finding ID. A transport-`UNKNOWN` handoff remain
 unknown even if check fields retained from a readable prefix say `PASS`.
 
 Complete-turn evidence remains ephemeral in the backend run and final result.
-That record has exactly `candidate`, `worktree`, `reviews`, and `scenarios`, and
-binds one unchanged full SHA and clean worktree to exact review/scenario actor,
-provider, status and content-safe public-surface facts. `scenarios=[]` requires
-independently established E2E NA. Tracked fixture, E2E and acceptance documents
-remain definitions/maps/support posture and are never edited or committed as
-candidate PASS receipts; no manifest, registry, receipt or external sink is
-introduced.
+That closed record has exact top-level order
+`candidate,worktree,gates,support,reviews,scenarios` and binds one unchanged full
+SHA/clean worktree to:
+
+- ordered QC, smoke and checks A/B status arrays;
+- 1..16 unique facts sorted by the exact seven-field support-key tuple, each
+  with outer keys `key,status,scenarios`, SUPPORTED status, at most 32 sorted
+  unique safe scenario IDs and together covering every selected-topology
+  provider;
+- exact A-then-B different-provider PASS reviews with REQUIRED|NA dispositions
+  and exact
+  `reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,evidence` keys;
+  status, qc and smoke are PASS, checks is PASS|NA, and top-level gate arrays
+  byte-equal the corresponding A/B review fields;
+  `support-key` is the slash-join of the matched fact's seven safe-ID values and
+  resolves to backend Herdr, the same provider, review surface, `review-turn`
+  fixture and no scenarios; structural evidence is
+  `source,protocol,parts,rows,bytes`, `MO_REVIEW_V2`, and bounded by 6 parts, 1000
+  rows and 61,440 bytes; and
+- when both reviews require E2E, the nonempty exact sorted union of support
+  scenarios, with exact `scenario,actor,provider,support-key,status,evidence`
+  keys. The support key resolves to backend Herdr, the same provider, E2E
+  surface, scenario fixture and exactly that scenario; a merely same-provider
+  fact is invalid. Structural `source,protocol,ordinal,total,rows,bytes`
+  `MO_E2E_V1` evidence is bounded by 1000 rows and 65,536 bytes. Ordinals are
+  1..one consistent total; NA/NA alone permits an empty list and one NA is invalid.
+
+Every nested key/order is closed; extra prose/generic evidence, missing facts,
+FAIL/UNKNOWN, dirty state or a changed SHA cannot pass. Tracked fixture, E2E and
+acceptance documents remain definitions/maps/support posture and are never
+edited or committed as candidate PASS receipts; no manifest, registry, receipt
+or external sink is introduced.
 
 Support belongs to the exact backend/provider/version/surface fixture key.
 Actor prose or an incidental live failure cannot grant or revoke it. P1-P8 prove

@@ -19,8 +19,8 @@ surface never change a support key. Historical inline/headless captures are deli
 absent: that Herdr route is removed by the cutover and cannot prove the visible interactive
 actor surface.
 
-The current implementation session does not have `HERDR_ENV=1`. All Herdr fixture definitions
-therefore remain PENDING and their current surface support is UNSUPPORTED. No live candidate
+No exact live Herdr fixture has established a reusable supported surface key. All Herdr fixture
+definitions remain PENDING and their current surface support is UNSUPPORTED. No live candidate
 result is stored or claimed below.
 
 ## Live result boundary
@@ -31,15 +31,24 @@ from the backend public surface. Its verified final-result record has exactly:
 ```text
 candidate: <full SHA>
 worktree: clean
-reviews[]: <exactly A and B; reviewer, actor, provider, PASS, content-safe evidence fact>
-scenarios[]: <every applicable scenario; scenario, actor, provider, PASS, content-safe evidence fact>
+gates[]: <qc/smoke/checks; reviewer-A then reviewer-B statuses>
+support[]: <1..16 canonical exact-key SUPPORTED facts with scenario lists>
+reviews[]: <exactly A then B; actor/provider/support-key/PASS/qc/smoke/checks/e2e/evidence>
+scenarios[]: <exact support-derived order; actor/provider/support-key/PASS/structural evidence>
 ```
 
 Never edit or commit this map after a candidate gate, and never create a manifest, external sink,
 or receipt for those facts. A dirty tree, changed SHA, missing full result, or unreadable public
 surface invalidates every candidate-bound PASS. H7b and H13-H37 still run against one unchanged
 full post-cutover SHA, but their evidence returns in that run rather than this file.
-An empty `scenarios` list is valid only when both reviewers independently established E2E NA.
+The closed schema and structural limits are defined in `docs/e2e.md`. Both reviewer dispositions
+must agree: only both NA permits `scenarios=[]`; both REQUIRED derives the exact sorted unique
+scenario union from support facts. No external/default scenario list is accepted.
+The top-level qc/smoke/checks A/B status arrays byte-equal the corresponding review fields.
+Every `support-key` is the exact slash-join of the matched fact's seven safe-ID key values. A
+review key resolves to backend Herdr, the same provider, review surface, `review-turn` fixture,
+and no scenarios; a scenario key resolves to backend Herdr, the same provider, E2E surface,
+the scenario fixture, and exactly that scenario. Same-provider facts do not substitute.
 
 ## I3 and I5 — remote installation
 
@@ -47,10 +56,10 @@ These rows verify the advertised repository locator after the candidate has been
 pushed by a separately authorized release action. Local-path I1/I2 coverage does
 not prove that a remote client discovers the committed generated tree.
 
-| ID  | Exact fixture                                                | Expected observation                                                                   | Fixture posture                   | Support     |
-| --- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------- | --------------------------------- | ----------- |
-| I3  | `npx skills add shkarupa-alex/meta-o`                        | All seven generated skills are discovered and installed with their owned files.        | PENDING — candidate is not remote | UNSUPPORTED |
-| I5  | `apm install shkarupa-alex/meta-o` from a disposable project | The clone resolves committed `skills/`, never authored `src/`, and installs all seven. | PENDING — candidate is not remote | UNSUPPORTED |
+| ID  | Exact fixture                                                | Expected observation                                                                   | Fixture posture | Support     |
+| --- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------- | --------------- | ----------- |
+| I3  | `npx skills add shkarupa-alex/meta-o`                        | All seven generated skills are discovered and installed with their owned files.        | PENDING         | UNSUPPORTED |
+| I5  | `apm install shkarupa-alex/meta-o` from a disposable project | The clone resolves committed `skills/`, never authored `src/`, and installs all seven. | PENDING         | UNSUPPORTED |
 
 The current-run result reports the public commit SHA, client/version, disposable target, exact
 installed file list, cleanup, and status from the public client surface. It does not write those
@@ -61,16 +70,16 @@ facts into this map. Do not publish or change a remote merely to make a fixture 
 These probes run in a scratch Git repository before Herdr topology implementation is treated
 as supported. They prove installed external capabilities only.
 
-| ID  | Exact fixture                                                                                                                                                       | Expected observation                                                                                                                             | Fixture posture                | Support     |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------ | ----------- |
-| P1  | Launch Claude and Codex through `herdr agent start` in visible panes with explicit model/effort arguments.                                                          | Both actors become ready; actual kind/process establishes different vendors; model activation is observable; direct provider launch is not used. | PENDING — no Herdr environment | UNSUPPORTED |
-| P2  | Create a review tab with `herdr tab create --cwd <repo> --label <label> --no-focus`.                                                                                | Structured output contains exactly one valid `.result.root_pane`.                                                                                | PENDING — no Herdr environment | UNSUPPORTED |
-| P3  | Split the returned root pane right, rename the injected tab, and report metadata.                                                                                   | Public right split and rename succeed without focus theft; metadata is available or cleanly non-gating.                                          | PENDING — no Herdr environment | UNSUPPORTED |
-| P4  | Capture settled state/process/input fingerprint, then submit one prompt through `herdr agent prompt --wait`.                                                        | Text and Enter are delivered atomically and at least one documented acceptance signal changes within five seconds.                               | PENDING — no Herdr environment | UNSUPPORTED |
-| P5  | Arm `herdr agent wait` without submitting input for actors that settle idle, done, blocked, and unknown.                                                            | The command returns directly on every requested state; no prompt, sleep, or polling loop is used.                                                | PENDING — no Herdr environment | UNSUPPORTED |
-| P6  | Produce long Claude and Codex interactive turns whose final submitted row is the current marker, then read `recent-unwrapped` at 120, 200, 400, 800, and 1000 rows. | Exact final marker and provider lower boundary remain structurally identifiable inside the measured envelope; no marker-free fallback is needed. | PENDING — no Herdr environment | UNSUPPORTED |
-| P7  | End a native executor goal, observe ten seconds without input, and separately trigger a spontaneous resume.                                                         | A quiet settled goal remains inactive; a resume returns to working and is never frozen as a candidate.                                           | PENDING — no Herdr environment | UNSUPPORTED |
-| P8  | Launch a process with one 130,048-byte UTF-8 argument on the supported local platform and Linux.                                                                    | The complete single argument arrives byte-identically; the next-over-boundary control fails where expected.                                      | PENDING — no Herdr environment | UNSUPPORTED |
+| ID  | Exact fixture                                                                                                                                                       | Expected observation                                                                                                                             | Fixture posture | Support     |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------- | ----------- |
+| P1  | Launch Claude and Codex through `herdr agent start` in visible panes with explicit model/effort arguments.                                                          | Both actors become ready; actual kind/process establishes different vendors; model activation is observable; direct provider launch is not used. | PENDING         | UNSUPPORTED |
+| P2  | Create a review tab with `herdr tab create --cwd <repo> --label <label> --no-focus`.                                                                                | Structured output contains exactly one valid `.result.root_pane`.                                                                                | PENDING         | UNSUPPORTED |
+| P3  | Split the returned root pane right, rename the injected tab, and report metadata.                                                                                   | Public right split and rename succeed without focus theft; metadata is available or cleanly non-gating.                                          | PENDING         | UNSUPPORTED |
+| P4  | Capture settled state/process/input fingerprint, then submit one prompt through `herdr agent prompt --wait`.                                                        | Text and Enter are delivered atomically and at least one documented acceptance signal changes within five seconds.                               | PENDING         | UNSUPPORTED |
+| P5  | Arm `herdr agent wait` without submitting input for actors that settle idle, done, blocked, and unknown.                                                            | The command returns directly on every requested state; no prompt, sleep, or polling loop is used.                                                | PENDING         | UNSUPPORTED |
+| P6  | Produce long Claude and Codex interactive turns whose final submitted row is the current marker, then read `recent-unwrapped` at 120, 200, 400, 800, and 1000 rows. | Exact final marker and provider lower boundary remain structurally identifiable inside the measured envelope; no marker-free fallback is needed. | PENDING         | UNSUPPORTED |
+| P7  | End a native executor goal, observe ten seconds without input, and separately trigger a spontaneous resume.                                                         | A quiet settled goal remains inactive; a resume returns to working and is never frozen as a candidate.                                           | PENDING         | UNSUPPORTED |
+| P8  | Launch a process with one 130,048-byte UTF-8 argument on the supported local platform and Linux.                                                                    | The complete single argument arrives byte-identically; the next-over-boundary control fails where expected.                                      | PENDING         | UNSUPPORTED |
 
 Fewer than two passing P1 vendors, a missing P2 root pane, or any other required failed probe
 stops adoption of the Herdr actor surface. It does not authorize an inline, headless, SDK-turn,
@@ -78,9 +87,9 @@ or private-transcript fallback.
 
 ## H7b — host-window resize
 
-| ID  | Exact fixture                                                                                                         | Expected observation                                                                                                                               | Fixture posture                             | Support     |
-| --- | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ----------- |
-| H7b | Resize the host window while a post-cutover interactive extraction is being assembled, then repeat at fixed geometry. | The implementation either preserves proven row/boundary identity or invalidates the assembly to UNKNOWN; it never emits a partial complete result. | PENDING — no Herdr environment or candidate | UNSUPPORTED |
+| ID  | Exact fixture                                                                                                         | Expected observation                                                                                                                               | Fixture posture | Support     |
+| --- | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- | ----------- |
+| H7b | Resize the host window while a post-cutover interactive extraction is being assembled, then repeat at fixed geometry. | The implementation either preserves proven row/boundary identity or invalidates the assembly to UNKNOWN; it never emits a partial complete result. | PENDING         | UNSUPPORTED |
 
 ## H13-H37 — post-cutover Herdr acceptance
 
@@ -107,19 +116,19 @@ or private-transcript fallback.
 | --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- | ----------- |
 | H20 | Complete all A parts, recheck candidate, then start B with no A bytes; run PASS/PASS and at-least-one-FINDINGS barriers.                                                                                                           | A-before-B independence holds; PASS/PASS proceeds without relay, while a findings barrier atomically releases the complete A/B pair.                                       | PENDING         | UNSUPPORTED |
 | H21 | Have A mutate the worktree in a check, and separately have B mutate it.                                                                                                                                                            | A reports finding/check failure and short-circuits before B; B preserves both complete results; dirt never becomes a candidate.                                            | PENDING         | UNSUPPORTED |
-| H22 | Make both reviewers run QC, smoke, and applicable additional checks.                                                                                                                                                               | Each complete PASS independently carries actual PASS/NA fields for the frozen candidate.                                                                                   | PENDING         | UNSUPPORTED |
+| H22 | Make both reviewers run QC, smoke and checks; exercise agreeing REQUIRED and NA dispositions plus a one-NA mismatch.                                                                                                               | Ordered gate arrays and A/B structural review evidence obey 6/1000/61,440 limits; only agreeing dispositions are valid.                                                    | PENDING         | UNSUPPORTED |
 | H23 | Relay bodies containing Unicode, repeated frame-like lines, leading/trailing whitespace, and no final newline.                                                                                                                     | Executor receives every raw UTF-8 byte unchanged; NUL and invalid UTF-8 are rejected.                                                                                      | PENDING         | UNSUPPORTED |
 | H24 | Exercise every relay direction, final current-turn marker, multi-target adjudication, repository-changing human answer, one-row E2E approval request/approval, mixed-origin rejection, collisions, argv limit, and ambiguity.      | Human marker is last; independent approval operation and actor equal the returned header/native recipient; wrong-operation/actor/scenario/replay fails closed.             | PENDING         | UNSUPPORTED |
 | H25 | For one complete-open-set RESPONSE, exercise subset/superset rejection, mixed close/dispute with retained-closed, missing-dispute and extra-open variants, all-dispute, all-close, close-all-plus-new, invalidation, and blockers. | RESPONSE equals full origin-open rebuts; mixed OUTCOMES has byte-exact `open=disputes`; only validated disputes become targets, and every divergent open set fails closed. | PENDING         | UNSUPPORTED |
 
 ### Candidate lifecycle
 
-| ID  | Exact fixture                                                                                                                            | Expected observation                                                                                                              | Fixture posture | Support     |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | --------------- | ----------- |
-| H26 | Drive both reviews and applicable E2E to PASS on one clean candidate.                                                                    | Final `HEAD`, every header candidate, and every gate equal the same full object ID.                                               | PENDING         | UNSUPPORTED |
-| H27 | Create a new commit after at least one passing gate.                                                                                     | Every old gate and old-candidate open ID is invalidated before further completion.                                                | PENDING         | UNSUPPORTED |
-| H28 | Lose an actor once, lose a pane once, then repeat the same loss.                                                                         | New ordinary sessions start in visible panes with the ID floor; first loss restarts the gate and repeated loss reaches attention. | PENDING         | UNSUPPORTED |
-| H29 | Test configured, same-route role, first catalogue, and cross-route fallbacks under catalogue unknown, missing model, and launch failure. | Fallback order is finite, failed pairs are skipped, actual launches recheck diversity, and outcome classes remain distinct.       | PENDING         | UNSUPPORTED |
+| ID  | Exact fixture                                                                                                                                                       | Expected observation                                                                                                                             | Fixture posture | Support     |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------- | ----------- |
+| H26 | Build the closed final-result record, then mutate field order/keys, clean SHA, gates, support, review evidence, scenario derivation/order/ordinals and limits.      | Exact six-field schema passes only for clean unchanged HEAD; every extra/missing/generic/FAIL/UNKNOWN or non-derived scenario fact fails closed. | PENDING         | UNSUPPORTED |
+| H27 | Create a new commit after at least one passing gate.                                                                                                                | Every old gate and old-candidate open ID is invalidated before further completion.                                                               | PENDING         | UNSUPPORTED |
+| H28 | Lose an actor once, lose a pane once, then repeat the same loss.                                                                                                    | New ordinary sessions start in visible panes with the ID floor; first loss restarts the gate and repeated loss reaches attention.                | PENDING         | UNSUPPORTED |
+| H29 | Test fallback outcomes and 1..16 exact seven-field support facts, including unsafe IDs, duplicates, key misordering, >32 scenarios, and missing topology providers. | Fallback outcomes remain distinct; only canonical SUPPORTED facts cover the selected topology and may derive final scenarios.                    | PENDING         | UNSUPPORTED |
 
 ### Firewall, attention, and scratch
 
@@ -147,7 +156,7 @@ satisfy them.
 | ID  | Exact fixture                                                                                                                                                                        | Expected observation                                                                                                                             | Fixture posture | Support     |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------- | ----------- |
 | OM1 | Run with tracked canaries after backend activation.                                                                                                                                  | Orchestrator context obeys the same tracked-content firewall.                                                                                    | PENDING         | UNSUPPORTED |
-| OM2 | Produce and freeze a clean full-SHA candidate.                                                                                                                                       | All native results and Git metadata bind to that candidate.                                                                                      | PENDING         | UNSUPPORTED |
+| OM2 | Produce a clean full-SHA candidate and assemble the exact six-field final-result record with gates, support, reviews and derived scenarios.                                          | Native public facts obey all closed keys/orders/limits; dirty/new HEAD, missing support/evidence, generic prose, FAIL or UNKNOWN is invalid.     | PENDING         | UNSUPPORTED |
 | OM3 | Run sequential different-vendor A and B first passes, PASS/PASS, findings-barrier, and A-mutating-check cases.                                                                       | B sees no A bytes; PASS/PASS proceeds without relay; a findings pair releases atomically; A invalidation never starts B.                         | PENDING         | UNSUPPORTED |
 | OM4 | Relay A-then-B unbounded adjacent numeric IDs through a mixed complete-origin-open outcome and disputes-only adjudication; reject interleaved/reversed-prefix lists.                 | Mixed OUTCOMES has exact `open=disputes`; global A-block/B-block and within-block BigInt ordering are exact; only disputes enter atomic routing. | PENDING         | UNSUPPORTED |
 | OM5 | Commit a fix after a gate.                                                                                                                                                           | Every gate and old-candidate ID is invalidated.                                                                                                  | PENDING         | UNSUPPORTED |

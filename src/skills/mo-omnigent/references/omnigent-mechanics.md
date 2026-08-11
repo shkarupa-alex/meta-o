@@ -249,13 +249,44 @@ Tracked fixture and acceptance documents define repeatable scenarios, map
 requirements, and state current reusable support posture only. They never store
 candidate-bound PASS evidence. Live facts come from the native public surface
 and remain in ephemeral current-run state and the final answer. The verified
-final-result record has exactly `candidate`, `worktree`, `reviews`, and
-`scenarios`: unchanged full SHA, `worktree=clean`, exactly two A/B
-reviewer/actor/provider/PASS/content-safe-evidence entries, and one equivalent
-entry for every applicable scenario. Empty `scenarios` requires independently
-established E2E NA. Never edit or commit tracked documentation after a gate or
-create a manifest, registry, receipt or external evidence sink. Dirty state,
-changed SHA, missing entry, or unreadable evidence invalidates every PASS.
+final-result record has exact top-level order
+`candidate,worktree,gates,support,reviews,scenarios`: unchanged full SHA and
+`worktree=clean`; then:
+
+- `gates` is exactly ordered entries with keys `gate,statuses` for QC, smoke and
+  checks. Each status array is reviewer A then B; QC/smoke are PASS/PASS and
+  checks are each PASS|NA.
+- `support` has 1..16 unique entries, canonically sorted by the exact key tuple
+  `backend,provider,provider-version,backend-version,surface,os,fixture`. Each has
+  exact keys `key,status,scenarios`, status SUPPORTED, and a sorted unique list
+  of at most 32 scenario IDs. Every safe identifier matches
+  `[a-z0-9][a-z0-9._-]{0,63}`; facts cover every selected-topology provider.
+- `reviews` is exactly A then B. Exact keys are
+  `reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,evidence`;
+  status, qc and smoke are PASS, checks is PASS|NA, providers differ, and
+  disposition is REQUIRED|NA. Top-level gate arrays byte-equal the corresponding
+  A/B review fields. `support-key` is the exact
+  slash-join of its matched support fact's seven safe-ID values. It resolves to
+  `backend=omnigent`, the same provider, `surface=review`, `fixture=review-turn`, and
+  `scenarios=[]`. Evidence keys are exactly
+  `source,protocol,parts,rows,bytes`, source `backend-public-surface`, protocol
+  `MO_REVIEW_V2`, and bounds 6 parts/1000 rows/61,440 bytes.
+- Both review dispositions agree. Both NA requires `scenarios=[]`; one NA is
+  invalid. Both REQUIRED derives a nonempty scenario set exactly as the sorted
+  unique union of `support[].scenarios`; no default/external list is allowed.
+- Scenario records follow that exact order and have exact keys
+  `scenario,actor,provider,support-key,status,evidence`, status PASS, and a
+  support key resolving to `backend=omnigent`, the same provider, `surface=e2e`,
+  `fixture=scenario`, and `scenarios=[scenario]`. A merely same-provider fact is
+  invalid. Evidence keys are
+  `source,protocol,ordinal,total,rows,bytes`. Source is
+  `backend-public-surface`, protocol `MO_E2E_V1`, ordinal is 1..total with one
+  consistent total, and bounds are 1000 rows/65,536 bytes.
+
+Never edit or commit tracked documentation after a gate or create a manifest,
+registry, receipt or external evidence sink. Extra keys, generic prose evidence,
+dirty/new `HEAD`, missing gates/support/evidence, FAIL or UNKNOWN invalidates
+PASS.
 
 A supported route independently proves:
 

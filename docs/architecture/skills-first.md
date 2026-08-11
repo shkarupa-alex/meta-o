@@ -61,9 +61,13 @@ Tracked fixture, E2E and acceptance documents are durable definitions, proof
 maps and current reusable support posture—not candidate-bound receipts. Live
 gate facts stay in the backend's current run and final result: unchanged full
 SHA, clean worktree, and a record with exactly `candidate`, `worktree`,
-`reviews`, and `scenarios`. Review/scenario entries carry the exact actor,
-provider, status and content-safe public-surface evidence; `scenarios=[]`
-requires independently established E2E NA. Writing or committing those facts
+`gates`, `support`, `reviews`, and `scenarios` in that order. It closes over
+ordered A/B gate arrays, 1..16 canonical exact-key SUPPORTED facts, different-
+provider A/B PASS reviews with agreeing E2E dispositions/structural evidence,
+and the exact support-derived ordered scenario PASS set. Every review/scenario
+record carries the exact `support-key` reference to its route-specific support
+fact; matching only another fact's provider is insufficient. Only NA/NA permits
+no scenarios. Writing or committing those facts
 after a gate would create a new SHA and invalidate the very result it tried to
 preserve; an external sink, manifest or receipt would also create the forbidden
 second truth.

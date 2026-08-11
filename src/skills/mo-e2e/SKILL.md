@@ -69,14 +69,41 @@ evidence that separates test/environment failure from candidate behavior.
 
 This body is current-run evidence only. Do not write or commit it into the
 project's fixture, acceptance or E2E documents, and do not create a manifest,
-receipt, registry or external evidence sink. The orchestrator's final result
-record has exactly `candidate`, `worktree`, `reviews`, and `scenarios`. Every
-applicable scenario entry carries scenario, this exact actor, provider, PASS,
-and one content-safe public-surface evidence fact; an empty list requires
-independently established E2E NA. The record also requires the unchanged full
-candidate SHA, `worktree=clean`, and exactly two A/B PASS review entries. A dirty
-tree, changed SHA, missing entry, or unreadable evidence invalidates every
-candidate-bound PASS.
+receipt, registry or external evidence sink.
+
+The orchestrator's closed final-result record has exact top-level order
+`candidate,worktree,gates,support,reviews,scenarios`. It requires the unchanged
+full SHA and `worktree=clean`; ordered A/B gate statuses for QC, smoke and checks;
+1..16 canonically sorted exact support-key facts with `status=SUPPORTED` and
+sorted unique scenario lists of at most 32 safe IDs; and exactly A/B PASS review
+entries from different providers. Review entries carry `e2e=REQUIRED|NA` and
+exact structural `MO_REVIEW_V2` public-surface evidence bounded by 6 parts, 1000
+rows and 61,440 bytes. Each review's exact fields include
+`reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,evidence`; status,
+qc and smoke are PASS, checks is PASS|NA, and the top-level gate arrays
+byte-equal the corresponding A/B review fields. Each review `support-key` is the
+slash-join of the matched support fact's seven safe-ID values and resolves to the
+enclosing backend, the same provider, `surface=review`, `fixture=review-turn`,
+and `scenarios=[]`.
+
+Each support fact key is exactly
+`backend,provider,provider-version,backend-version,surface,os,fixture`; every safe
+identifier matches `[a-z0-9][a-z0-9._-]{0,63}`, and the support facts cover every
+provider selected in the final topology.
+
+Both review dispositions must agree. Both NA yields no scenario records. Both
+REQUIRED derives the nonempty scenario set only as the exact sorted unique union
+of `support[].scenarios`; one NA, a default list or an external list is invalid.
+The final scenario records follow that order. Each exact
+`scenario,actor,provider,support-key,status,evidence` entry has PASS.
+`support-key` is the slash-join of the matched support fact's seven safe-ID values
+and resolves to the enclosing backend, the same provider, `surface=e2e`,
+`fixture=scenario`, and `scenarios=[scenario]`; a merely same-provider fact is
+invalid. Structural evidence is
+ordered `source,protocol,ordinal,total,rows,bytes`, with source
+`backend-public-surface`, protocol `MO_E2E_V1`, consistent 1..total ordinals,
+at most 1000 rows and 65,536 bytes. Extra keys, generic prose evidence, dirty or
+changed `HEAD`, missing support/gates/evidence, FAIL or UNKNOWN invalidate PASS.
 
 The complete body including header is at most 65,536 UTF-8 bytes, contains no NUL
 and preserves original newlines.

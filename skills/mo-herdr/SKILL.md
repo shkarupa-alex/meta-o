@@ -230,6 +230,9 @@ the prompt, and pass the same trusted remaining value to extraction. Reject an
 oversize outcome before acceptance without changing retained state; one compact
 retry uses the same remaining value. Aggregate relay validation independently
 accumulates every peer body and still enforces framing and argv ceilings.
+Pass the exact current target separately as extraction `expectedFinding`; require
+the `MO_ADJUDICATION_V1` header finding to equal it. Pass `none` for every other
+protocol and reject a wrong, duplicate, reordered or off-route value.
 
 Use the exhaustive `MO_RELAY_V2` direction table in methodology §5 and the
 literal mechanics recipe. Route executor `RESPONSE` to its origin reviewer.
@@ -318,13 +321,41 @@ wake the user.
 ## Final answer
 
 Return the verified unchanged full SHA and a short summary backed by the
-ephemeral current-run final-result record. That record has exactly `candidate`,
-`worktree`, `reviews` and `scenarios`: require `worktree=clean`; include two
-reviewer/actor/provider/PASS/evidence entries; and include one
-scenario/actor/provider/PASS/evidence entry per applicable E2E scenario, all from
-the backend public surface. An empty scenario list requires the independently
-established E2E-NA case. Recheck the same clean `HEAD` immediately before return;
-a dirty tree, new SHA, missing evidence or unreadable evidence invalidates PASS.
+ephemeral current-run final-result record. Emit its exact top-level order
+`candidate`, `worktree`, `gates`, `support`, `reviews`, `scenarios` and no other
+fields as one JSON object, followed only by a short human summary. Require the
+unchanged full SHA and `worktree=clean`.
+
+Emit gates exactly in `qc`, `smoke`, `checks` order with A-then-B `statuses`;
+require PASS for both QC/smoke and PASS or NA for each applicable-check status.
+Require each pair to equal the two reviews' correspondingly named header fields.
+Emit 1..16 canonical sorted support facts, each exactly `key`, `status`,
+`scenarios`: its key is exactly backend, provider, provider-version,
+backend-version, surface, os, fixture; status is SUPPORTED; all IDs are lower safe
+IDs of at most 64 bytes; and each sorted unique scenario-name list has at most
+32 entries. Slash-join those seven values as its canonical reference. Cover
+every exact actor surface on the selected Herdr topology.
+
+Emit exactly A then B review records with reviewer, actor, provider, exact
+`support-key`, PASS status, QC, smoke, checks, E2E disposition and evidence in
+that order. QC/smoke are PASS and checks is PASS or NA. Bind that reference to
+the same provider's Herdr `review`/`review-turn` fact with no scenarios. Both
+dispositions must be REQUIRED or both NA; reject one NA. Review evidence is
+exactly source `backend-public-surface`, protocol `MO_REVIEW_V2`, and positive
+parts/rows/bytes bounded by 6/1,000/61,440. Different reviewer providers remain
+mandatory. Both NA requires an empty scenario list. Both REQUIRED derives the
+nonempty scenario list only as the sorted unique union of support-fact scenarios;
+no default or out-of-band name is accepted. Each derived scenario record is
+ordered by name and carries actor, provider, PASS, exact `support-key` and exact
+structural evidence. Bind its reference to the same provider's Herdr `e2e` fact
+whose fixture and sole scenario both equal the record name. Evidence source is
+`backend-public-surface`, protocol is `MO_E2E_V1`, ordinal/total is exact, and
+positive rows/bytes are bounded by 1,000/65,536. Reject missing or unrelated
+support keys, gates/dispositions, extra fields, FAIL/UNKNOWN or arbitrary
+prose/generic evidence.
+
+Recheck the same clean `HEAD` immediately before return; a dirty tree, new SHA,
+missing evidence or unreadable evidence invalidates PASS.
 
 Keep candidate-bound live evidence only in current-run state and the final
 answer. Never edit or commit `docs/phase-0-fixtures.md` or another tracked file

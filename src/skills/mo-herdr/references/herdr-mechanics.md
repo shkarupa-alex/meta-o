@@ -79,11 +79,12 @@ fallback.
 Use the following literal recipe after saving each public read as a `0600` file
 inside the current `mo-herdr-` scratch directory. Pass provider, the 64-lower-hex
 prompt fingerprint, scratch directory, a new basename, expected protocol,
-candidate, reviewer (`A`, `B`, or `none`), expected-open IDs, peer-outcome
-remaining bytes, then the
+candidate, reviewer (`A`, `B`, or `none`), expected-open IDs, expected finding,
+peer-outcome remaining bytes, then the
 120/200/400/800/1000 capture paths in that exact order. Expected-open is
 the exact canonical complete current same-origin set for an executor RESPONSE,
-otherwise `none`. Peer-outcome remaining is canonical `1..122880` for
+otherwise `none`. Expected finding is the exact canonical single finding ID for
+`MO_ADJUDICATION_V1` and `none` otherwise. Peer-outcome remaining is canonical `1..122880` for
 `MO_ADJUDICATION_V1` and `none` otherwise; extraction rejects before writing when
 the handoff exceeds `min(65536, remaining)`. It emits one validated header and writes the complete
 header-inclusive handoff to scratch; every failure is silent and means UNKNOWN.
@@ -141,7 +142,7 @@ const parse = (line) => {
   });
   return { protocol, ...values };
 };
-const valid = (header, protocol, candidate, reviewer, expectedOpen) => {
+const valid = (header, protocol, candidate, reviewer, expectedOpen, expectedFinding) => {
   const h = parse(header);
   die(h.protocol === protocol);
   if (Object.hasOwn(h, "candidate")) die(h.candidate === candidate && (candidate === "none" || oid.test(candidate)));
@@ -179,6 +180,7 @@ const valid = (header, protocol, candidate, reviewer, expectedOpen) => {
     die(oid.test(candidate));
     die(h.reviewer === reviewer && /^[AB]$/.test(reviewer) && /^(UPHOLD|WITHDRAW|UNRESOLVED)$/.test(h.outcome));
     die(idList(h.finding).length === 1);
+    die(h.finding === expectedFinding);
     die(h.reviewer !== h.finding[0]);
   } else if (protocol === "MO_E2E_V1") {
     die(oid.test(candidate));
@@ -195,9 +197,10 @@ const valid = (header, protocol, candidate, reviewer, expectedOpen) => {
   return h;
 };
 try {
-  const [provider, fingerprint, scratchArg, output, protocol, candidate, reviewer, expectedOpen, peerOutcomeRemaining, ...captures] = process.argv.slice(2);
+  const [provider, fingerprint, scratchArg, output, protocol, candidate, reviewer, expectedOpen, expectedFinding, peerOutcomeRemaining, ...captures] = process.argv.slice(2);
   die(/^(claude|codex)$/.test(provider) && /^[0-9a-f]{64}$/.test(fingerprint));
   die(captures.length === 5 && basename(output) === output && /^[a-z0-9._-]+$/.test(output));
+  die(protocol === "MO_ADJUDICATION_V1" ? idList(expectedFinding).length === 1 : expectedFinding === "none");
   die(protocol === "MO_ADJUDICATION_V1" ? pos.test(peerOutcomeRemaining) && +peerOutcomeRemaining <= 122_880 : peerOutcomeRemaining === "none");
   const scratch = resolve(scratchArg);
   const directory = statSync(scratch);
@@ -229,7 +232,7 @@ try {
     die(after.length === 1 && between.length === 1);
     const [start] = between; const [end] = after;
     const header = lines[start];
-    valid(header, protocol, candidate, reviewer, expectedOpen);
+    valid(header, protocol, candidate, reviewer, expectedOpen, expectedFinding);
     const handoff = Buffer.from(lines.slice(start, end).join("\n"), "utf8");
     const rows = end - start;
     const parsed = parse(header);
@@ -698,14 +701,35 @@ evidence. A transport UNKNOWN that retains PASS check fields remains unknown and
 cannot satisfy the deterministic-review gate.
 
 Hold candidate-bound gate evidence only in ephemeral current-run state. The
-final-result record has exactly `candidate`, `worktree`, `reviews` and
-`scenarios`; its review and scenario entries each carry the named actor,
-provider, PASS status and a content-safe evidence fact retrieved from the public
-backend surface. Require the same full candidate SHA and `worktree=clean`
-immediately before return. A dirty tree, changed SHA, absent scenario entry or
-missing/unreadable evidence invalidates the record and cannot produce PASS.
-Never turn these facts into a tracked edit or commit, manifest, receipt, verdict
-file or external evidence sink.
+Herdr final-result output has exactly `candidate`, `worktree`, `gates`,
+`support`, `reviews`, `scenarios` in that order and the closed nested field order
+from methodology §3. Render it as exactly one JSON object followed only by the
+short human summary. Gates are exactly QC, smoke, checks with A-then-B statuses;
+support is 1..16 canonical facts keyed by the exact seven selected-topology
+fields; reviews are exactly A then B; and scenario records are canonical.
+Take each gate status from the same validated A/B review header field, copy it
+into that review record and require the top-level pair to equal those two values.
+
+Every review and scenario record carries `support-key`, the slash-joined exact
+seven-field fact key. Resolve it, not just its provider: review records require
+the matching Herdr/provider `review`/`review-turn` fact with no scenarios;
+scenario records require the matching Herdr/provider `e2e` fact whose fixture
+and sole scenario equal the scenario name. A same-provider fact for another
+surface is unrelated and invalid.
+
+Bind review evidence only to the validated public `MO_REVIEW_V2` retrieval
+metadata and scenario evidence only to the validated public `MO_E2E_V1`
+retrieval metadata. The structural evidence objects and their 6/1,000/61,440 and
+1,000/65,536 bounds reject arbitrary body prose or a generic evidence label.
+Derive E2E names without reading opaque bodies: both reviewer dispositions NA
+means exactly no scenarios; both REQUIRED means exactly the nonempty sorted
+unique union of selected support-fact scenario names; one NA is invalid.
+
+Require the same full candidate SHA, `worktree=clean`, complete deterministic
+gates and support coverage immediately before return. A dirty tree, changed SHA,
+missing fact/disposition/scenario or FAIL/UNKNOWN evidence invalidates the record
+and cannot produce PASS. Never turn these facts into a tracked edit or commit,
+manifest, receipt, verdict file or external evidence sink.
 
 ## 7. Failure and restart bounds
 

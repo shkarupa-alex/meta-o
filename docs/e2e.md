@@ -9,22 +9,48 @@ supports only visible ordinary interactive actors started through `herdr agent s
 
 ## Evidence contract
 
-Intermediate E2E handoffs may be PASS, FAIL, or UNKNOWN. A verified final-result
-record in the final answer has exactly `candidate`, `worktree`, `reviews`, and
-`scenarios`:
+Intermediate E2E handoffs may be PASS, FAIL, or UNKNOWN. The verified final-result
+record is closed: top-level keys occur exactly in this order:
 
-- `candidate`: the unchanged full SHA;
-- `worktree`: exactly `clean`;
-- `reviews[]`: exactly A and B, each with reviewer, exact actor, provider, PASS, and one
-  content-safe public-surface evidence fact;
-- `scenarios[]`: every applicable scenario, each with scenario, exact actor, provider, PASS, and
-  one content-safe public-surface evidence fact; it may be empty only for independently
-  established E2E NA;
-- no missing or unreadable entry; there is no partial pass.
+```text
+candidate, worktree, gates, support, reviews, scenarios
+```
 
-Each content-safe `evidence` fact may name relevant versions, OS, command/prompt,
-observed public fact, and cleanup with secrets omitted; these do not add
-top-level record fields.
+- `candidate` is the unchanged full SHA and `worktree` is exactly `clean`.
+- `gates` is exactly the ordered array `qc`, `smoke`, `checks`. Each entry has
+  exactly `gate,statuses`; statuses are reviewer-A then reviewer-B. QC and smoke
+  are `PASS,PASS`; each checks status is `PASS|NA`.
+- `support` has 1..16 unique entries, sorted by the exact seven-field key tuple
+  `backend,provider,provider-version,backend-version,surface,os,fixture`. Each entry
+  has exactly `key,status,scenarios`; `status=SUPPORTED`; `scenarios` is a sorted
+  unique list of at most 32 safe IDs. Every safe lowercase identifier matches
+  `[a-z0-9][a-z0-9._-]{0,63}`, and support facts cover every provider in the
+  selected topology.
+- `reviews` is exactly A then B. Each entry has exactly
+  `reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,evidence`;
+  status, qc and smoke are PASS, checks is `PASS|NA`, providers differ, and
+  `e2e` is `REQUIRED|NA`. The top-level gate status arrays byte-equal the A/B
+  review `qc`, `smoke`, and `checks` fields. `support-key` is the exact
+  slash-join of its matched support fact's seven safe-ID values in key order.
+  That fact has `backend=herdr`, the same provider, `surface=review`,
+  `fixture=review-turn`, and `scenarios=[]`. Evidence has exactly
+  `source,protocol,parts,rows,bytes`: source `backend-public-surface`, protocol
+  `MO_REVIEW_V2`, and maxima 6 parts, 1000 rows, 61,440 bytes.
+- The two review E2E dispositions agree. Both `NA` requires `scenarios=[]`; one
+  `NA` is invalid. Both `REQUIRED` derives a nonempty `scenarios` list exactly as
+  the sorted unique union of `support[].scenarios`; no default or external list
+  is permitted.
+- Scenario records follow that exact sorted order. Each has exactly
+  `scenario,actor,provider,support-key,status,evidence`; status is PASS.
+  `support-key` resolves to a fact with `backend=herdr`, the same provider,
+  `surface=e2e`, `fixture=scenario`, and `scenarios=[scenario]`; a merely
+  same-provider fact is insufficient. Evidence has exactly
+  `source,protocol,ordinal,total,rows,bytes`: source `backend-public-surface`,
+  protocol `MO_E2E_V1`, ordinal 1..total, the same total on every entry, and
+  maxima 1000 rows and 65,536 bytes.
+
+Extra keys, prose/generic evidence, missing support/gates/evidence, FAIL/UNKNOWN,
+a dirty tree, or a changed SHA cannot produce the verified record.
 
 `PASS` is valid only when the complete expected result can be read and the final `HEAD` still
 equals the named candidate with a clean worktree. Missing, truncated, ambiguous, stale, or
@@ -84,7 +110,8 @@ implementable. They use a throwaway repository and prove only installed external
 7. native goal settlement has the required quiet behavior;
 8. the maximum portable relay argument launches on every supported OS.
 
-This session has no `HERDR_ENV=1`; therefore none of P1-P8 has been executed for this change.
+P1-P8 remain PENDING/UNSUPPORTED in the durable fixture map until their exact
+reusable surface keys are established.
 
 ## Post-cutover Herdr scenarios
 
@@ -114,7 +141,7 @@ Herdr evidence or mechanics.
 | Scenario         | Required behavior                                                                                                                |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | OM1 firewall     | After activation only native process/lifecycle facts, validated headers, and narrow Git metadata enter orchestrator context.     |
-| OM2 candidate    | One clean full SHA binds every applicable gate.                                                                                  |
+| OM2 candidate    | One clean full SHA binds the exact closed gates/support/reviews/derived-scenarios final-result schema.                           |
 | OM3 independence | A completes before B; PASS/PASS does not relay; a findings pair releases atomically; A mutation skips B.                         |
 | OM4 findings     | RESPONSE accounts for full rebuts; canonical A-then-B BigInt lists feed exact outcome state, while only disputes enter delivery. |
 | OM5 invalidation | A new commit invalidates every prior gate and open ID.                                                                           |
@@ -122,7 +149,8 @@ Herdr evidence or mechanics.
 | OM7 vocabulary   | The weaker prompt objective and byte-identical capsule precede a final-row marker that excludes echoed inbound frames.           |
 | OM8 attention    | Repository-changing input reaches executor/new SHA; approval matches independently stored operation and exact native E2E actor.  |
 
-No final Omnigent scenario has been executed for the post-cutover candidate.
+OM1-OM8 remain PENDING/UNSUPPORTED reusable posture in the fixture map; a
+candidate verdict exists only in the ephemeral closed final result.
 
 ## Final workflow scenario
 

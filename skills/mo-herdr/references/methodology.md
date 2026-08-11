@@ -228,15 +228,55 @@ One object ID is verified only when:
 - every applicable backend surface fixture supports the exact surface key.
 
 Candidate-bound evidence exists only in ephemeral current-run state and the
-final answer. Its final-result record has exactly `candidate`, `worktree`,
-`reviews` and `scenarios`: `candidate` is the unchanged full SHA; `worktree` is
-`clean`; the two review entries each carry reviewer, actor, provider, PASS status
-and a content-safe evidence fact observed on the backend's public surface; and
-each applicable scenario has its own scenario, actor, provider, PASS status and
-content-safe public-surface evidence fact. An empty scenario list is valid only
-for the independently established E2E-NA case. Missing or unreadable evidence is
-unknown, never PASS. A dirty worktree or different `HEAD` invalidates the whole
-record.
+final answer. Its closed final-result record has exactly these top-level fields
+in order: `candidate`, `worktree`, `gates`, `support`, `reviews`, `scenarios`.
+`candidate` is the unchanged full SHA and `worktree` is exactly `clean`.
+The successful backend final answer renders exactly one JSON object with that
+field order, followed only by a short human summary.
+
+`gates` is exactly three records in `qc`, `smoke`, `checks` order. Each has only
+`gate` and `statuses`, whose two entries are reviewer A then B. QC and smoke are
+both `PASS,PASS`; applicable additional checks are represented by `checks` and
+each status is `PASS` or `NA`. Missing, extra, `FAIL` or `UNKNOWN` gate state is
+invalid. Each A-then-B status pair must equal the correspondingly named fields
+in the two review records.
+
+`support` has 1..16 unique records in ascending canonical-key order. Each has
+only `key`, `status`, `scenarios`; `status` is `SUPPORTED`; and `key` has exactly
+`backend`, `provider`, `provider-version`, `backend-version`, `surface`, `os`,
+`fixture` in that order. Those seven values are lower-case safe IDs of 1..64
+bytes and form the reusable support key for the selected topology. Each fact's
+`scenarios` is an ascending unique list of at most 32 lower-case safe IDs. The
+canonical reference is those seven values slash-joined in order. The facts must
+cover every exact surface used by a final review or scenario actor on the
+selected backend.
+
+`reviews` has exactly A then B. Each record has only `reviewer`, `actor`,
+`provider`, `support-key`, `status`, `qc`, `smoke`, `checks`, `e2e`, `evidence`;
+status, QC and smoke are `PASS`; checks is `PASS` or `NA`; E2E is `REQUIRED` or
+`NA`; reviewer providers differ. These gate fields come from the validated
+review header and bind the top-level gate pairs. `support-key` must resolve to
+the exact selected fact with backend `herdr`, the same provider, surface
+`review`, fixture `review-turn` and no scenarios. Evidence has only `source`,
+`protocol`, `parts`, `rows`, `bytes`: source is `backend-public-surface`, protocol
+is `MO_REVIEW_V2`, and positive bounds are respectively 6, 1,000 and 61,440.
+Arbitrary prose or a generic evidence label is invalid.
+
+The two E2E dispositions must agree. Both `NA` means `scenarios` is exactly
+empty. Both `REQUIRED` derives the required scenario names solely as the sorted
+unique union of `support[].scenarios`; that union must be nonempty and the final
+scenario list must equal it. One `NA`, an out-of-band default or an omitted
+support fact is invalid. Each scenario record has only `scenario`, `actor`,
+`provider`, `support-key`, `status`, `evidence`, appears in derived-name order
+and has `PASS`. `support-key` must resolve to backend `herdr`, the same provider,
+surface `e2e`, fixture equal to the scenario name and fact scenarios exactly
+equal to that one name. Its evidence has only `source`, `protocol`, `ordinal`,
+`total`, `rows`, `bytes`: source is `backend-public-surface`, protocol is
+`MO_E2E_V1`, ordinal is the one-based record position, total is the derived
+count, and positive row/byte bounds are 1,000 and 65,536.
+
+Missing or unreadable evidence is unknown, never PASS. A dirty worktree or
+different `HEAD` invalidates the whole record.
 
 Do not write, append, record or commit that live evidence, candidate SHA or PASS
 verdict to a tracked document. Do not create a manifest, receipt, verdict file or
@@ -434,6 +474,12 @@ exceeds that cap. Aggregate construction independently accumulates each retained
 body in canonical target order and rejects as soon as the total exceeds 122,880;
 the same projection is rechecked, so every accepted aggregate fits the 7,168-byte
 framing and 130,048-byte argv ceilings by construction.
+
+For each `MO_ADJUDICATION_V1` extraction, the caller also supplies the one exact
+canonical target as separate trusted `expectedFinding` lifecycle metadata.
+Extraction requires the header `finding` to equal it byte-for-byte before scratch
+acceptance. `expectedFinding` is `none` for every other protocol; a missing,
+duplicate, wrong, out-of-order or off-route value is invalid.
 
 For any captured executor `RESPONSE`, the caller supplies the canonical complete
 current open set for that origin as trusted lifecycle metadata. Extraction and

@@ -1041,93 +1041,385 @@ test("candidate freeze rejects dirty, stale, non-commit and missing-develop meta
   assert.throws(() => freeze({ branch: "develop" }));
 });
 
-function validateFinalResult(result, { head = OID, clean = true, applicableScenarios = [] } = {}) {
-  assert.deepEqual(Object.keys(result), ["candidate", "worktree", "reviews", "scenarios"]);
+function validateFinalResult(result, { head = OID, clean = true } = {}) {
+  const exactKeys = (value, keys) => assert.deepEqual(Object.keys(value), keys);
+  const safeId = (value) => {
+    assert.match(value, /^[a-z0-9][a-z0-9._-]{0,63}$/);
+    return value;
+  };
+  const positiveBounded = (value, max) => {
+    assert.equal(Number.isInteger(value) && value > 0 && value <= max, true);
+  };
+  exactKeys(result, ["candidate", "worktree", "gates", "support", "reviews", "scenarios"]);
   assert.equal(clean, true);
   assert.equal(result.candidate, head);
   assert.match(result.candidate, /^[0-9a-f]{40,64}$/);
   assert.equal(result.worktree, "clean");
+
+  assert.equal(result.gates.length, 3);
+  assert.deepEqual(
+    result.gates.map((gate) => gate.gate),
+    ["qc", "smoke", "checks"],
+  );
+  for (const gate of result.gates) {
+    exactKeys(gate, ["gate", "statuses"]);
+    assert.equal(gate.statuses.length, 2);
+    const allowed = gate.gate === "checks" ? /^(PASS|NA)$/ : /^PASS$/;
+    gate.statuses.forEach((status) => assert.match(status, allowed));
+  }
+
+  assert.equal(result.support.length >= 1 && result.support.length <= 16, true);
+  const supportKeys = [];
+  const supportFacts = new Map();
+  const derivedScenarios = new Set();
+  for (const fact of result.support) {
+    exactKeys(fact, ["key", "status", "scenarios"]);
+    exactKeys(fact.key, [
+      "backend",
+      "provider",
+      "provider-version",
+      "backend-version",
+      "surface",
+      "os",
+      "fixture",
+    ]);
+    const keyValues = Object.values(fact.key).map(safeId);
+    assert.equal(fact.key.backend, "herdr");
+    assert.equal(fact.status, "SUPPORTED");
+    const canonicalKey = keyValues.join("/");
+    assert.equal(supportKeys.includes(canonicalKey), false);
+    supportKeys.push(canonicalKey);
+    supportFacts.set(canonicalKey, fact);
+    assert.equal(fact.scenarios.length <= 32, true);
+    const names = fact.scenarios.map(safeId);
+    assert.deepEqual(names, [...new Set(names)].sort());
+    names.forEach((name) => derivedScenarios.add(name));
+  }
+  assert.deepEqual(supportKeys, [...supportKeys].sort());
+
   assert.equal(result.reviews.length, 2);
   assert.deepEqual(
     result.reviews.map((entry) => entry.reviewer),
     ["A", "B"],
   );
   for (const entry of result.reviews) {
-    assert.deepEqual(Object.keys(entry), ["reviewer", "actor", "provider", "status", "evidence"]);
-    assert.match(entry.actor, /^m-[a-z0-9._-]+$/);
-    assert.match(entry.provider, /^[a-z][a-z0-9._-]*$/);
+    exactKeys(entry, [
+      "reviewer",
+      "actor",
+      "provider",
+      "support-key",
+      "status",
+      "qc",
+      "smoke",
+      "checks",
+      "e2e",
+      "evidence",
+    ]);
+    assert.match(entry.actor, /^m-[a-z0-9][a-z0-9._-]{0,125}$/);
+    safeId(entry.provider);
+    const support = supportFacts.get(entry["support-key"]);
+    assert.ok(support);
+    assert.equal(support.key.backend, "herdr");
+    assert.equal(support.key.provider, entry.provider);
+    assert.equal(support.key.surface, "review");
+    assert.equal(support.key.fixture, "review-turn");
+    assert.deepEqual(support.scenarios, []);
     assert.equal(entry.status, "PASS");
-    assert.match(entry.evidence, /^backend-public-surface:.+/);
+    assert.equal(entry.qc, "PASS");
+    assert.equal(entry.smoke, "PASS");
+    assert.match(entry.checks, /^(PASS|NA)$/);
+    assert.match(entry.e2e, /^(REQUIRED|NA)$/);
+    exactKeys(entry.evidence, ["source", "protocol", "parts", "rows", "bytes"]);
+    assert.equal(entry.evidence.source, "backend-public-surface");
+    assert.equal(entry.evidence.protocol, "MO_REVIEW_V2");
+    positiveBounded(entry.evidence.parts, 6);
+    positiveBounded(entry.evidence.rows, 1_000);
+    positiveBounded(entry.evidence.bytes, 61_440);
   }
+  assert.notEqual(result.reviews[0].provider, result.reviews[1].provider);
+  for (const [index, gate] of result.gates.entries()) {
+    const field = ["qc", "smoke", "checks"][index];
+    assert.deepEqual(
+      gate.statuses,
+      result.reviews.map((reviewEntry) => reviewEntry[field]),
+    );
+  }
+  assert.equal(result.reviews[0].e2e, result.reviews[1].e2e);
+
+  const requiredScenarios = result.reviews[0].e2e === "NA" ? [] : [...derivedScenarios].sort();
+  if (result.reviews[0].e2e === "REQUIRED") assert.ok(requiredScenarios.length > 0);
   assert.deepEqual(
     result.scenarios.map((entry) => entry.scenario),
-    applicableScenarios,
+    requiredScenarios,
   );
-  for (const entry of result.scenarios) {
-    assert.deepEqual(Object.keys(entry), ["scenario", "actor", "provider", "status", "evidence"]);
-    assert.match(entry.actor, /^m-[a-z0-9._-]+$/);
-    assert.match(entry.provider, /^[a-z][a-z0-9._-]*$/);
+  for (const [index, entry] of result.scenarios.entries()) {
+    exactKeys(entry, ["scenario", "actor", "provider", "support-key", "status", "evidence"]);
+    safeId(entry.scenario);
+    assert.match(entry.actor, /^m-[a-z0-9][a-z0-9._-]{0,125}$/);
+    safeId(entry.provider);
+    const support = supportFacts.get(entry["support-key"]);
+    assert.ok(support);
+    assert.equal(support.key.backend, "herdr");
+    assert.equal(support.key.provider, entry.provider);
+    assert.equal(support.key.surface, "e2e");
+    assert.equal(support.key.fixture, entry.scenario);
+    assert.deepEqual(support.scenarios, [entry.scenario]);
     assert.equal(entry.status, "PASS");
-    assert.match(entry.evidence, /^backend-public-surface:.+/);
+    exactKeys(entry.evidence, ["source", "protocol", "ordinal", "total", "rows", "bytes"]);
+    assert.equal(entry.evidence.source, "backend-public-surface");
+    assert.equal(entry.evidence.protocol, "MO_E2E_V1");
+    assert.equal(entry.evidence.ordinal, index + 1);
+    assert.equal(entry.evidence.total, requiredScenarios.length);
+    positiveBounded(entry.evidence.rows, 1_000);
+    positiveBounded(entry.evidence.bytes, 65_536);
   }
   return result.candidate;
 }
 
-test("candidate evidence remains ephemeral and final PASS binds exact clean SHA and scenarios", () => {
+test("closed ephemeral final result derives scenarios from dispositions and support facts", () => {
+  const supportKey = (provider, surface, fixture) =>
+    `herdr/${provider}/v1/v1/${surface}/darwin-arm64/${fixture}`;
+  const reviewRecord = (reviewer, provider, e2e = "REQUIRED") => ({
+    reviewer,
+    actor: `m-review-${reviewer.toLowerCase()}`,
+    provider,
+    "support-key": supportKey(provider, "review", "review-turn"),
+    status: "PASS",
+    qc: "PASS",
+    smoke: "PASS",
+    checks: reviewer === "A" ? "PASS" : "NA",
+    e2e,
+    evidence: {
+      source: "backend-public-surface",
+      protocol: "MO_REVIEW_V2",
+      parts: 6,
+      rows: 1_000,
+      bytes: 61_440,
+    },
+  });
   const finalResult = {
     candidate: OID,
     worktree: "clean",
-    reviews: [
+    gates: [
+      { gate: "qc", statuses: ["PASS", "PASS"] },
+      { gate: "smoke", statuses: ["PASS", "PASS"] },
+      { gate: "checks", statuses: ["PASS", "NA"] },
+    ],
+    support: [
       {
-        reviewer: "A",
-        actor: "m-review-a",
-        provider: "claude",
-        status: "PASS",
-        evidence: "backend-public-surface:complete-v2-pass",
+        key: {
+          backend: "herdr",
+          provider: "claude",
+          "provider-version": "v1",
+          "backend-version": "v1",
+          surface: "review",
+          os: "darwin-arm64",
+          fixture: "review-turn",
+        },
+        status: "SUPPORTED",
+        scenarios: [],
       },
       {
-        reviewer: "B",
-        actor: "m-review-b",
-        provider: "codex",
-        status: "PASS",
-        evidence: "backend-public-surface:complete-v2-pass",
+        key: {
+          backend: "herdr",
+          provider: "codex",
+          "provider-version": "v1",
+          "backend-version": "v1",
+          surface: "e2e",
+          os: "darwin-arm64",
+          fixture: "production-smoke",
+        },
+        status: "SUPPORTED",
+        scenarios: ["production-smoke"],
+      },
+      {
+        key: {
+          backend: "herdr",
+          provider: "codex",
+          "provider-version": "v1",
+          "backend-version": "v1",
+          surface: "review",
+          os: "darwin-arm64",
+          fixture: "review-turn",
+        },
+        status: "SUPPORTED",
+        scenarios: [],
       },
     ],
+    reviews: [reviewRecord("A", "claude"), reviewRecord("B", "codex")],
     scenarios: [
       {
         scenario: "production-smoke",
         actor: "m-e2e",
         provider: "codex",
+        "support-key": supportKey("codex", "e2e", "production-smoke"),
         status: "PASS",
-        evidence: "backend-public-surface:complete-e2e-pass",
+        evidence: {
+          source: "backend-public-surface",
+          protocol: "MO_E2E_V1",
+          ordinal: 1,
+          total: 1,
+          rows: 1_000,
+          bytes: 65_536,
+        },
       },
     ],
   };
-  assert.equal(
-    validateFinalResult(finalResult, { applicableScenarios: ["production-smoke"] }),
-    OID,
-  );
+  assert.equal(validateFinalResult(finalResult), OID);
+  const bothNa = {
+    ...finalResult,
+    reviews: [reviewRecord("A", "claude", "NA"), reviewRecord("B", "codex", "NA")],
+    scenarios: [],
+  };
+  assert.equal(validateFinalResult(bothNa), OID);
   assert.throws(() => validateFinalResult(finalResult, { clean: false }));
   assert.throws(() => validateFinalResult(finalResult, { head: "b".repeat(40) }));
-  assert.throws(() => validateFinalResult(finalResult, { applicableScenarios: [] }));
-  assert.throws(() =>
-    validateFinalResult(
-      {
-        ...finalResult,
-        scenarios: [{ ...finalResult.scenarios[0], evidence: "" }],
-      },
-      { applicableScenarios: ["production-smoke"] },
-    ),
-  );
-  assert.throws(() =>
-    validateFinalResult(
-      {
-        ...finalResult,
-        reviews: [finalResult.reviews[0], { ...finalResult.reviews[1], status: "UNKNOWN" }],
-      },
-      { applicableScenarios: ["production-smoke"] },
-    ),
-  );
+  for (const invalid of [
+    { ...finalResult, extra: true },
+    { ...finalResult, gates: finalResult.gates.slice(0, 2) },
+    { ...finalResult, gates: [...finalResult.gates].reverse() },
+    {
+      ...finalResult,
+      gates: finalResult.gates.with(0, { gate: "qc", statuses: ["PASS", "UNKNOWN"] }),
+    },
+    {
+      ...finalResult,
+      gates: finalResult.gates.with(2, { gate: "checks", statuses: ["NA", "NA"] }),
+    },
+    { ...finalResult, support: [] },
+    { ...finalResult, support: [...finalResult.support].reverse() },
+    {
+      ...finalResult,
+      support: finalResult.support.map((fact) => ({ ...fact, scenarios: [] })),
+    },
+    {
+      ...finalResult,
+      reviews: [reviewRecord("A", "claude", "NA"), reviewRecord("B", "codex")],
+    },
+    { ...finalResult, reviews: [...finalResult.reviews].reverse() },
+    {
+      ...finalResult,
+      reviews: [
+        {
+          reviewer: "A",
+          actor: "m-review-a",
+          provider: "claude",
+          "support-key": supportKey("claude", "review", "review-turn"),
+          status: "PASS",
+          qc: "PASS",
+          smoke: "PASS",
+          checks: "PASS",
+          evidence: finalResult.reviews[0].evidence,
+        },
+        finalResult.reviews[1],
+      ],
+    },
+    {
+      ...finalResult,
+      reviews: [
+        {
+          reviewer: "A",
+          actor: "m-review-a",
+          provider: "claude",
+          status: "PASS",
+          qc: "PASS",
+          smoke: "PASS",
+          checks: "PASS",
+          e2e: "REQUIRED",
+          evidence: finalResult.reviews[0].evidence,
+        },
+        finalResult.reviews[1],
+      ],
+    },
+    { ...bothNa, scenarios: finalResult.scenarios },
+    {
+      ...finalResult,
+      reviews: [
+        finalResult.reviews[0],
+        {
+          ...finalResult.reviews[1],
+          "support-key": supportKey("codex", "e2e", "production-smoke"),
+        },
+      ],
+    },
+    {
+      ...finalResult,
+      reviews: [
+        {
+          ...finalResult.reviews[0],
+          "support-key": "herdr/claude/v1/v1/review/darwin-arm64/missing",
+        },
+        finalResult.reviews[1],
+      ],
+    },
+    {
+      ...finalResult,
+      scenarios: [
+        {
+          ...finalResult.scenarios[0],
+          "support-key": supportKey("codex", "review", "review-turn"),
+        },
+      ],
+    },
+    {
+      ...finalResult,
+      scenarios: [{ ...finalResult.scenarios[0], scenario: "out-of-band-default" }],
+    },
+    {
+      ...finalResult,
+      reviews: [{ ...finalResult.reviews[0], status: "FAIL" }, finalResult.reviews[1]],
+    },
+    {
+      ...finalResult,
+      reviews: [
+        { ...finalResult.reviews[0], evidence: "generic pass evidence" },
+        finalResult.reviews[1],
+      ],
+    },
+    {
+      ...finalResult,
+      reviews: [
+        {
+          ...finalResult.reviews[0],
+          evidence: { ...finalResult.reviews[0].evidence, bytes: 61_441 },
+        },
+        finalResult.reviews[1],
+      ],
+    },
+    {
+      ...finalResult,
+      scenarios: [
+        {
+          ...finalResult.scenarios[0],
+          status: "UNKNOWN",
+        },
+      ],
+    },
+    {
+      ...finalResult,
+      scenarios: [
+        {
+          ...finalResult.scenarios[0],
+          evidence: { ...finalResult.scenarios[0].evidence, bytes: 65_537 },
+        },
+      ],
+    },
+    {
+      ...finalResult,
+      scenarios: [
+        {
+          ...finalResult.scenarios[0],
+          evidence: { ...finalResult.scenarios[0].evidence, ordinal: 2 },
+        },
+      ],
+    },
+    {
+      ...finalResult,
+      support: [{ ...finalResult.support[0], status: "PENDING" }, finalResult.support[1]],
+    },
+  ]) {
+    assert.throws(() => validateFinalResult(invalid));
+  }
 
   const validateEvidenceInstruction = (instruction) => {
     assert.equal(
@@ -1477,6 +1769,11 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
     .parse(methodologySource, {})
     .filter((token) => token.type === "fence" && token.content === EXECUTOR_CAPSULE);
   assert.equal(capsules.length, 1, "methodology must own one exact executor capsule");
+  assert.equal(
+    methodologySource.match(/^MO_E2E_V1\|candidate=<oid>.*$/gm)?.length,
+    1,
+    "methodology must own one exact E2E schema row",
+  );
   assert.ok(relay.includes(`const executorCapsule = \`${EXECUTOR_CAPSULE}\`;`));
   assert.match(flow, /Every later executor objective carries the same\s+capsule/);
   assert.match(relay, /every direction puts the marker after\nthe complete relay as the final row/);
@@ -1509,6 +1806,15 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
   assert.ok(relay.includes('h.status === "OUTCOMES"') && relay.includes("h.open === h.disputes"));
   const extraction = sectionText(mechanicsSource, "3. Adaptive extraction");
   assert.ok(extraction.includes("Math.min(65_536, +peerOutcomeRemaining)"));
+  assert.ok(
+    extraction.includes("expectedOpen, expectedFinding, peerOutcomeRemaining, ...captures"),
+  );
+  assert.ok(extraction.includes("h.finding === expectedFinding"));
+  assert.ok(
+    extraction.includes(
+      'protocol === "MO_ADJUDICATION_V1" ? idList(expectedFinding).length === 1 : expectedFinding === "none"',
+    ),
+  );
   assert.ok(extraction.includes("const suffix = BigInt(match[2]);"));
   assert.ok(extraction.includes("die(lastPrefix <= match[1]);"));
   assert.ok(extraction.includes("h.open === h.disputes"));
@@ -1548,6 +1854,8 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
   assert.match(methodRelay, /`HUMAN_ANSWER_TO_EXECUTOR`\n`human-answer-resolution`\nexecutor\n/);
   assert.match(methodRelay, /larger projected body-excluded\nenvelope must be at most 7,168 bytes/);
   assert.match(methodRelay, /remaining = 122880 - retained/);
+  assert.match(methodRelay, /separate trusted `expectedFinding` lifecycle metadata/);
+  assert.match(methodRelay, /`expectedFinding` is `none` for every other protocol/);
   assert.match(
     methodologySource,
     /canonical `open` is\n  byte-for-byte equal to canonical `disputes`/,
@@ -1559,7 +1867,34 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
   );
   assert.match(methodologySource, /Never serialize raw set iteration or caller order/);
   const candidate = sectionText(methodologySource, "3. Candidate and gates");
-  assert.match(candidate, /final-result record has exactly `candidate`, `worktree`,/);
+  assert.match(
+    candidate,
+    /closed final-result record has exactly these top-level fields\s+in order: `candidate`, `worktree`, `gates`, `support`, `reviews`, `scenarios`/,
+  );
+  assert.match(candidate, /renders exactly one JSON object with that\s+field order/);
+  assert.match(candidate, /exactly three records in `qc`, `smoke`, `checks` order/);
+  assert.match(
+    candidate,
+    /status pair must equal the correspondingly named fields\s+in the two review records/,
+  );
+  assert.match(
+    candidate,
+    /`backend`, `provider`, `provider-version`, `backend-version`, `surface`, `os`,\s+`fixture` in that order/,
+  );
+  assert.match(candidate, /`reviews` has exactly A then B/);
+  assert.match(
+    candidate,
+    /`provider`, `support-key`, `status`, `qc`, `smoke`, `checks`, `e2e`, `evidence`/,
+  );
+  assert.match(candidate, /canonical reference is those seven values slash-joined in order/);
+  assert.match(candidate, /surface\s+`review`, fixture `review-turn` and no scenarios/);
+  assert.match(
+    candidate,
+    /surface `e2e`, fixture equal to the scenario name and fact scenarios exactly\s+equal to that one name/,
+  );
+  assert.match(candidate, /The two E2E dispositions must agree/);
+  assert.match(candidate, /sorted\s+unique union of `support\[\]\.scenarios`/);
+  assert.match(candidate, /positive row\/byte\s+bounds are 1,000 and 65,536/);
   assert.match(candidate, /Missing or unreadable evidence is\s+unknown, never PASS/);
   assert.match(candidate, /Do not write, append, record or commit that live evidence/);
   assert.match(
@@ -1568,6 +1903,19 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
   );
   const finalAnswer = sectionText(skillSource, "Final answer");
   assert.match(finalAnswer, /ephemeral current-run final-result record/);
+  assert.match(finalAnswer, /`candidate`, `worktree`, `gates`, `support`, `reviews`, `scenarios`/);
+  assert.match(finalAnswer, /as one JSON object, followed only by a short human summary/);
+  assert.match(finalAnswer, /Both\s+dispositions must be REQUIRED or both NA/);
+  assert.match(
+    finalAnswer,
+    /PASS status, QC, smoke, checks, E2E disposition and evidence in\s+that order/,
+  );
+  assert.match(finalAnswer, /exact `support-key`/);
+  assert.match(finalAnswer, /same provider's Herdr `review`\/`review-turn` fact/);
+  assert.match(finalAnswer, /same provider's Herdr `e2e` fact/);
+  assert.match(finalAnswer, /reject one NA/);
+  assert.match(finalAnswer, /6\/1,000\/61,440/);
+  assert.match(finalAnswer, /1,000\/65,536/);
   assert.match(finalAnswer, /Recheck the same clean `HEAD` immediately before return/);
   assert.match(
     finalAnswer,
@@ -1575,10 +1923,20 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
   );
   assert.match(finalAnswer, /Never edit or commit `docs\/phase-0-fixtures\.md`/);
   const freeze = sectionText(mechanicsSource, "6. Candidate freeze and waits");
-  assert.match(freeze, /final-result record has exactly `candidate`, `worktree`, `reviews` and/);
   assert.match(
     freeze,
-    /dirty tree, changed SHA, absent scenario entry or\s+missing\/unreadable evidence invalidates the record/,
+    /exactly `candidate`, `worktree`, `gates`,\s+`support`, `reviews`, `scenarios` in that order/,
+  );
+  assert.match(freeze, /exactly one JSON object followed only by the\s+short human summary/);
+  assert.match(freeze, /slash-joined exact\nseven-field fact key/);
+  assert.match(freeze, /Resolve it, not just its provider/);
+  assert.match(freeze, /same-provider fact for another\nsurface is unrelated and invalid/);
+  assert.match(freeze, /require the top-level pair to equal those two values/);
+  assert.match(freeze, /both reviewer dispositions NA\s+means exactly no scenarios/);
+  assert.match(freeze, /both REQUIRED means exactly the nonempty sorted\s+unique union/);
+  assert.match(
+    freeze,
+    /dirty tree, changed SHA,\s+missing fact\/disposition\/scenario or FAIL\/UNKNOWN evidence invalidates the record/,
   );
   assert.match(freeze, /Never turn these facts into a tracked edit or commit/);
   const attention = sectionText(methodologySource, "7. Blockers and human attention");
@@ -1598,6 +1956,8 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
   assert.match(flow, /operation independently between scenario and actor argv/);
   assert.match(flow, /five-digit maximum body\nlength fields/);
   assert.match(flow, /one compact\nretry uses the same remaining value/);
+  assert.match(flow, /exact current target separately as extraction `expectedFinding`/);
+  assert.match(flow, /Pass `none` for every other\nprotocol/);
   assert.match(
     flow,
     /One finding receives at most one\nadjudication, keyed by its single canonical ID/,
@@ -1803,6 +2163,15 @@ test("authored Herdr mutation guards kill acceptance, reviewer barrier and byte-
       methodology,
     ],
     [skill, mechanics.replace("Math.min(65_536, +peerOutcomeRemaining)", "65_536"), methodology],
+    [skill, mechanics.replace("h.finding === expectedFinding", "true"), methodology],
+    [
+      skill,
+      mechanics.replace(
+        'protocol === "MO_ADJUDICATION_V1" ? idList(expectedFinding).length === 1 : expectedFinding === "none"',
+        'protocol === "MO_ADJUDICATION_V1" ? true : true',
+      ),
+      methodology,
+    ],
     [
       skill,
       mechanics.replace("aggregateEnvelopeBytes <= 7_168", "aggregateEnvelopeBytes <= 7_169"),
@@ -1893,9 +2262,85 @@ test("authored Herdr mutation guards kill acceptance, reviewer barrier and byte-
       skill,
       mechanics,
       methodology.replace(
-        "Missing or unreadable evidence is\nunknown, never PASS",
+        "Missing or unreadable evidence is unknown, never PASS",
         "Missing evidence may PASS",
       ),
+    ],
+    [
+      skill,
+      mechanics,
+      methodology.replace(
+        "exactly three records in `qc`, `smoke`, `checks` order",
+        "an arbitrary gate list",
+      ),
+    ],
+    [
+      skill,
+      mechanics,
+      methodology.replace("`provider-version`, `backend-version`", "`backend-version`"),
+    ],
+    [
+      skill.replace(
+        "Both\ndispositions must be REQUIRED or both NA; reject one NA",
+        "One NA may use a default scenario",
+      ),
+      mechanics,
+      methodology,
+    ],
+    [
+      skill,
+      mechanics.replace(
+        "both REQUIRED means exactly the nonempty sorted\nunique union",
+        "both REQUIRED may use out-of-band defaults",
+      ),
+      methodology,
+    ],
+    [
+      skill,
+      mechanics,
+      methodology.replace(
+        "canonical reference is those seven values slash-joined in order",
+        "provider name alone is the reference",
+      ),
+    ],
+    [
+      skill.replace("same provider's Herdr `review`/`review-turn` fact", "any same-provider fact"),
+      mechanics,
+      methodology,
+    ],
+    [
+      skill,
+      mechanics.replace("Resolve it, not just its provider", "Match provider only"),
+      methodology,
+    ],
+    [
+      skill,
+      mechanics,
+      methodology.replace(
+        "status pair must equal the correspondingly named fields\nin the two review records",
+        "gate pairs need not match reviews",
+      ),
+    ],
+    [
+      skill.replace(
+        "PASS status, QC, smoke, checks, E2E disposition and evidence in\nthat order",
+        "PASS status and generic evidence",
+      ),
+      mechanics,
+      methodology,
+    ],
+    [
+      skill,
+      mechanics.replace(
+        "require the top-level pair to equal those two values",
+        "allow unrelated top-level values",
+      ),
+      methodology,
+    ],
+    [
+      skill,
+      mechanics,
+      methodology.replace(/^MO_E2E_V1\|candidate=<oid>.*$/m, (row) => `${row}\n${row}`),
     ],
   ];
   for (const [
@@ -1905,7 +2350,7 @@ test("authored Herdr mutation guards kill acceptance, reviewer barrier and byte-
     assert.notEqual(
       `${mutantSkill}\0${mutantMechanics}\0${mutantMethodology}`,
       `${skill}\0${mechanics}\0${methodology}`,
-      `mutation ${index + 1} must alter an authored contract`,
+      `mutation ${index + 1} must alter an authored contract (skill=${mutantSkill !== skill}, mechanics=${mutantMechanics !== mechanics}, methodology=${mutantMethodology !== methodology})`,
     );
     assert.throws(
       () => assertAuthoredHerdrContract(mutantSkill, mutantMechanics, mutantMethodology),
@@ -2121,6 +2566,7 @@ test("AST extraction recipe accepts Claude and Codex goldens byte-for-byte", () 
         reviewer,
         "none",
         "none",
+        "none",
         ...captures,
       ],
       { encoding: "utf8" },
@@ -2167,6 +2613,7 @@ test("literal extraction accepts only an exact body-free E2E approval request", 
           "none",
           "none",
           "none",
+          "none",
           ...captures,
         ],
         { encoding: "utf8" },
@@ -2205,6 +2652,7 @@ test("AST extraction binds executor RESPONSE to the exact complete current open 
         "none",
         expectedOpen,
         "none",
+        "none",
         ...captures,
       ],
       { encoding: "utf8" },
@@ -2215,7 +2663,7 @@ test("AST extraction binds executor RESPONSE to the exact complete current open 
   assert.equal(run("A-1,A-2,A-3").status, 1, "proper superset must be rejected");
 });
 
-test("literal adjudication extraction enforces the trusted aggregate remaining budget", () => {
+test("literal adjudication extraction binds finding and aggregate remaining trusted argv", () => {
   const mechanics = join(ROOT, "src", "skills", "mo-herdr", "references", "herdr-mechanics.md");
   const source = recipeFence(mechanics, "extraction-recipe");
   const header = `MO_ADJUDICATION_V1|candidate=${OID}|finding=A-1|reviewer=B|outcome=UPHOLD`;
@@ -2223,7 +2671,13 @@ test("literal adjudication extraction enforces the trusted aggregate remaining b
     const prefix = `${header}\n`;
     return `${prefix}${"x".repeat(bytes - Buffer.byteLength(prefix))}`;
   };
-  const run = (bytes, remaining, recipeSource = source) => {
+  const run = (
+    bytes,
+    remaining,
+    recipeSource = source,
+    expectedFinding = "A-1",
+    swapTrustedArgv = false,
+  ) => {
     const directory = scratchDirectory();
     const recipe = installRecipe(directory, `adjudication-${bytes}.mjs`, recipeSource);
     const rendered = `MO_PROMPT_BOUNDARY_V1|fingerprint=${PROMPT_FINGERPRINT}\n${handoff(bytes)}\n╭─ input ❯ ─╮\n`;
@@ -2242,7 +2696,8 @@ test("literal adjudication extraction enforces the trusted aggregate remaining b
         OID,
         "B",
         "none",
-        String(remaining),
+        swapTrustedArgv ? String(remaining) : expectedFinding,
+        swapTrustedArgv ? expectedFinding : String(remaining),
         ...captures,
       ],
       { encoding: "utf8" },
@@ -2255,12 +2710,60 @@ test("literal adjudication extraction enforces the trusted aggregate remaining b
   assert.equal(run(5_001, 5_000).result.status, 1, "remaining + 1 must be rejected");
   assert.equal(run(65_536, 122_880).result.status, 0, "per-turn exact boundary must pass");
   assert.equal(run(65_537, 122_880).result.status, 1, "per-turn boundary + 1 must fail");
+  assert.equal(run(5_000, 5_000, source, "A-2").result.status, 1, "wrong finding must fail");
+  assert.equal(
+    run(5_000, 5_000, source, "A-1,A-1").result.status,
+    1,
+    "duplicate expected finding must fail",
+  );
+  assert.equal(
+    run(5_000, 5_000, source, "A-1", true).result.status,
+    1,
+    "out-of-order trusted argv must fail",
+  );
   const mutant = source.replace("Math.min(65_536, +peerOutcomeRemaining)", "65_536");
   assert.notEqual(mutant, source);
   assert.equal(
     run(5_001, 5_000, mutant).result.status,
     0,
     "remaining-budget mutation must be observable",
+  );
+  const findingMutant = source.replace("h.finding === expectedFinding", "true");
+  assert.notEqual(findingMutant, source);
+  assert.equal(
+    run(5_000, 5_000, findingMutant, "A-2").result.status,
+    0,
+    "expected-finding equality mutation must be observable",
+  );
+
+  const directory = scratchDirectory();
+  const recipe = installRecipe(directory, "off-route-expected-finding.mjs", source);
+  const marker = `MO_PROMPT_BOUNDARY_V1|fingerprint=${PROMPT_FINGERPRINT}`;
+  const capture = `${marker}\n${review()}\nbody\n╭─ input ❯ ─╮\n`;
+  const captures = [120, 200, 400, 800, 1000].map((rows) =>
+    privateFile(directory, `off-route-${rows}.txt`, capture),
+  );
+  assert.equal(
+    spawnSync(
+      process.execPath,
+      [
+        recipe,
+        "claude",
+        PROMPT_FINGERPRINT,
+        directory,
+        "off-route.txt",
+        "MO_REVIEW_V2",
+        OID,
+        "A",
+        "none",
+        "A-1",
+        "none",
+        ...captures,
+      ],
+      { encoding: "utf8" },
+    ).status,
+    1,
+    "expected finding must be none off adjudication route",
   );
 });
 
@@ -2285,6 +2788,7 @@ test("literal extraction enforces OUTCOMES open state and unbounded BigInt ID or
         "MO_REVIEW_V2",
         OID,
         "A",
+        "none",
         "none",
         "none",
         ...captures,
@@ -2386,6 +2890,7 @@ test("AST extraction recipe rejects adversarial boundaries, encoding, modes, ide
         "A",
         "none",
         "none",
+        "none",
         ...captures,
       ],
       { encoding: "utf8" },
@@ -2434,6 +2939,7 @@ test("AST extraction rejects marker-free fallback even for one same-candidate he
       "A",
       "none",
       "none",
+      "none",
       ...captures,
     ],
     { encoding: "utf8" },
@@ -2466,6 +2972,7 @@ test("extraction marker mutation guard kills missing-current and stale same-cand
         "MO_REVIEW_V2",
         OID,
         "A",
+        "none",
         "none",
         "none",
         ...captures,
@@ -2512,6 +3019,7 @@ test("AST extraction and relay preserve a missing final LF", () => {
       "MO_REVIEW_V2",
       OID,
       "A",
+      "none",
       "none",
       "none",
       ...captures,
@@ -4420,6 +4928,7 @@ test("literal relay and extraction recipes round-trip provider renders for every
       output = `MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=1|not_run=none|blocker=none`;
     }
     const extractionRemaining = protocol === "MO_ADJUDICATION_V1" ? "122880" : "none";
+    const extractionFinding = protocol === "MO_ADJUDICATION_V1" ? "A-1" : "none";
     for (const provider of ["claude", "codex"]) {
       const boundary = provider === "claude" ? "╭─ input ❯ ─╮" : "╭─ input › ─╮";
       const capture = `provider-render\n${payload}\n${output}\n${boundary}\n`;
@@ -4439,6 +4948,7 @@ test("literal relay and extraction recipes round-trip provider renders for every
           OID,
           actualReviewer,
           "none",
+          extractionFinding,
           extractionRemaining,
           ...captures,
         ],
@@ -4464,6 +4974,7 @@ test("literal relay and extraction recipes round-trip provider renders for every
             OID,
             actualReviewer,
             "none",
+            extractionFinding,
             extractionRemaining,
             ...duplicateCaptures,
           ],
@@ -4489,6 +5000,7 @@ test("literal relay and extraction recipes round-trip provider renders for every
             OID,
             actualReviewer,
             "none",
+            extractionFinding,
             extractionRemaining,
             ...repeatedMarkerCaptures,
           ],
@@ -4547,6 +5059,7 @@ test("literal relay and extraction recipes round-trip provider renders for every
         "rt-mutant-out.txt",
         "MO_EXECUTOR_V1",
         OID,
+        "none",
         "none",
         "none",
         "none",
