@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
+  existsSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
@@ -937,8 +938,11 @@ test("reentrant shutdown preserves the first signal status", async () => {
   const { home, root } = fixture();
   const bin = providerBin(root, "wrapper-bin");
   const scratch = join(root, "tmp");
+  const ready = join(root, "measured-shell.ready");
   mkdirSync(scratch);
-  writeZshProfiles(home, bin, { zshenvExtra: "sleep 30" });
+  writeZshProfiles(home, bin, {
+    zshenvExtra: `printf ready >${JSON.stringify(ready)}\nsleep 30`,
+  });
   const script = reentrantShutdownScript(root, "reentrant-shutdown");
   const child = spawn(script, ["--shell", "zsh"], {
     cwd: ROOT,
@@ -953,8 +957,11 @@ test("reentrant shutdown preserves the first signal status", async () => {
     stdio: "ignore",
   });
   const deadline = Date.now() + 5_000;
-  while (!readdirSync(scratch).some((entry) => entry.startsWith("mo-posture."))) {
-    assert.ok(Date.now() < deadline, "reentrant fixture did not create its private directory");
+  // The private directory appears before the measured child is fully launched.
+  // Wait for the child profile marker so TERM deterministically enters
+  // stop_active_child(), where the injected HUP exercises reentrant shutdown.
+  while (!existsSync(ready)) {
+    assert.ok(Date.now() < deadline, "reentrant fixture did not launch its measured shell");
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
   child.kill("SIGTERM");
