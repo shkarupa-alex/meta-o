@@ -5986,7 +5986,12 @@ test("project/setup version-control and non-mutating review contracts agree", ()
 test("support identity, provisional extraction, and backend smoke stay explicit", () => {
   const seven = /backend\/provider\/provider-version\/backend-version\/surface\/os\/fixture/;
   const glossary = readFileSync(join(ROOT, "docs", "glossary.md"), "utf8");
+  const architecture = readFileSync(join(ROOT, "docs", "architecture", "skills-first.md"), "utf8");
   const methodology = readFileSync(join(ROOT, "shared", "references", "methodology.md"), "utf8");
+  const specification = readFileSync(
+    join(ROOT, "spec", "2026-08-08-herdr-orchestrator-operational-corrections", "spec-review.md"),
+    "utf8",
+  );
   const mechanics = readFileSync(
     join(ROOT, "src", "skills", "mo-herdr", "references", "herdr-mechanics.md"),
     "utf8",
@@ -6034,6 +6039,21 @@ test("support identity, provisional extraction, and backend smoke stay explicit"
   }
   assert.match(methodology, /Before support selection, acquire topology identity/);
   assert.match(methodology, /The map never supplies or overrides\s+these observed values/);
+  const activation = sectionText(methodology, "1. Activation and the process firewall");
+  assert.match(activation, /resolves and validates the selected backend's explicit pre-activation/);
+  assert.match(activation, /fixture-map\/scenario-set input from §9/);
+  assert.match(activation, /map\s+input is missing, malformed, unreadable, or wrong-backend/);
+  assert.match(
+    methodology,
+    /inbound relay when\s+present\. An applicable `MO_E2E_ASSIGNMENT_V1` row follows those elements and is\s+immediately before the marker/,
+  );
+  assert.match(
+    specification,
+    /inbound\s+relay when present, an applicable `MO_E2E_ASSIGNMENT_V1` as the penultimate row,\s+and one fresh\s+`MO_PROMPT_BOUNDARY_V1/,
+  );
+  assert.match(architecture, /required explicit\s+pre-activation input/);
+  assert.match(architecture, /support selection needs durable reusable posture/);
+  assert.match(architecture, /Missing or wrong-backend input blocks activation/);
   assert.match(methodology, /exact current workspace\/session identity/);
   assert.match(
     methodology,

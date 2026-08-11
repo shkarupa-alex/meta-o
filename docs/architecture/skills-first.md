@@ -17,6 +17,12 @@ searches, quotes, summarizes or edits tracked project content. It does not read
 source, tests, diffs, logs, business framing, review findings or E2E bodies.
 Repository-reading actors open the locator and project knowledge themselves.
 
+The exact fixture-map and scenario-set records are therefore a required explicit
+pre-activation input. They are resolved and structurally validated before the
+firewall closes because support selection needs durable reusable posture, while
+the active orchestrator is forbidden to reopen tracked project content or infer
+support from a live actor result. Missing or wrong-backend input blocks activation.
+
 The orchestrator may retain only process facts: repository root, branch, full
 `HEAD`, commit existence, cleanliness, actor/pane identity, actual provider
 kind/executable, bounded public backend/provider version tokens, normalized OS

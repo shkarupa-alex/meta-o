@@ -11,12 +11,14 @@ manifest, digest or recovery database.
 ## 1. Activation and the process firewall
 
 Before activating a backend skill, the caller resolves the repository, injects
-the byte-identical project contract, supplies one opaque task/spec locator, and
-completes the mandatory §2.1 verbatim append for every applicable user intent,
-with credential-safe substitution where required, in both the business framing
-and the task/spec. Activation cannot proceed while those copies differ or an
-applicable intent is absent. Once the backend skill is active, those tracked
-files are actor-owned and read-only to the orchestrator.
+the byte-identical project contract, supplies one opaque task/spec locator,
+resolves and validates the selected backend's explicit pre-activation
+fixture-map/scenario-set input from §9, and completes the mandatory §2.1 verbatim
+append for every applicable user intent, with credential-safe substitution where
+required, in both the business framing and the task/spec. Activation cannot
+proceed while those copies differ, an applicable intent is absent, or that map
+input is missing, malformed, unreadable, or wrong-backend. Once the backend skill
+is active, those tracked files are actor-owned and read-only to the orchestrator.
 
 After activation the orchestrator never intentionally opens, searches, quotes,
 summarizes or edits tracked project content. It does not read diffs, logs, source,
@@ -174,9 +176,11 @@ binds the completed turn to that exact current marker. Candidate equality is not
 turn identity: a stale same-candidate handoff with an older marker is rejected.
 The marker is always the final submitted row, with no trailing LF: after the
 whole goal/objective, executor capsule when applicable, and inbound relay when
-present. Generate it after capture inputs are known and reject/regenerate if its
-exact row occurs in any opaque segment. Nothing follows the current marker in
-the submitted prompt; actor output renders after it.
+present. An applicable `MO_E2E_ASSIGNMENT_V1` row follows those elements and is
+immediately before the marker. Generate the marker after capture inputs are known
+and reject/regenerate if its exact row occurs in any opaque segment. Nothing
+follows the current marker in the submitted prompt; actor output renders after
+it.
 
 Every Herdr objective sent to the executor—initial work, returned review/E2E,
 adjudication, invalidated-check and repository-changing human return—then carries

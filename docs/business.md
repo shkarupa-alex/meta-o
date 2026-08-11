@@ -717,6 +717,19 @@ and `rm` from the system utility path.
 > давай уже без своих сабагентов когда исправишь все найденное
 > дальше я буду тебе скидывать замечания
 
+### Review corrections — 2026-08-11
+
+> A. §1 методологии не знает о новом обязательном pre-activation входе. Раздел, который владеет границей активации, по-прежнему перечисляет только контракт проекта, opaque-локатор и §2.1-append: «Activation cannot
+> proceed while those copies differ or an applicable intent is absent». Про карту фикстур сказано только в §9 и в двух backend-скилах, хотя она блокирующая. Тот, кто следует §1, активируется без неё. Правка — одно
+> предложение в §1.
+>
+> B. Перечисление «exact layout» промпта не допускает строку задания. methodology.md:175 («…after the whole goal/objective, executor capsule when applicable, and inbound relay when present») и spec-review.md:693
+> («goal/objective, capsule when executor-bound, inbound relay when present, and one fresh MO_PROMPT_BOUNDARY_V1») перечисляют состав промпта как исчерпывающий, а §2.5, механика и docs/e2e.md требуют четвёртый
+> элемент — MO_E2E_ASSIGNMENT_V1 предпоследней строкой. Правка — по одной оговорке в каждом месте.
+>
+> Рекомендация (не дефект): контракт проекта требует, чтобы новая граница фиксировалась в docs/architecture/. Про новый входной формат там пока только сквозные упоминания «pre-activation row»; причина живёт в спеке
+> и §9. Двух строк в архитектуре хватит, чтобы правило соблюдалось буквально.
+
 <!-- meta-o-later-user-intents-v1:end -->
 
 ### 22. Recovered original task description — 2026-08-10
