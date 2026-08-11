@@ -216,30 +216,37 @@ That closed record has exact top-level order
 SHA/clean worktree to:
 
 - ordered QC, smoke and checks A/B status arrays;
-- 1..67 unique facts sorted by the exact seven-field support-key tuple, each
+- 3..67 unique facts sorted by the exact seven-field support-key tuple, each
   with outer keys `key,status,scenarios`, SUPPORTED status, an empty or singleton
-  safe scenario-ID list and together covering every selected-topology
-  provider;
+  safe scenario-ID list; exactly one lifecycle-selected executor fact, two
+  review-referenced facts and one scenario-referenced fact per derived name,
+  with no unused facts;
 - exact A-then-B different-provider PASS reviews with REQUIRED|NA dispositions
   and exact
   `reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,scenarios,evidence` keys;
-  status, qc and smoke are PASS, checks is PASS|NA, and top-level gate arrays
+  status, qc and smoke are PASS, checks is PASS|NA, actor/provider identities
+  equal lifecycle state, at least one reviewer provider differs from the
+  executor, and top-level gate arrays
   byte-equal the corresponding A/B review fields;
   `support-key` is the slash-join of the matched fact's seven safe-ID values and
-  resolves to backend Herdr, the same provider, review surface, `review-turn`
+  resolves to the selected backend, the same provider, review surface, `review-turn`
   fixture and no scenarios; structural evidence is
   `source,protocol,parts,rows,bytes`, `MO_REVIEW_V2`, and bounded by 6 parts, 1000
   rows and 61,440 bytes; and
 - when both reviews require E2E, the nonempty exact sorted union of both validated
   review scenario lists, with support proving every identity and exact
   `scenario,actor,provider,support-key,status,evidence`
-  keys. The support key resolves to backend Herdr, the same provider, E2E
+  keys. The support key resolves to the selected backend, the same provider, E2E
   surface, scenario fixture and exactly that scenario; a merely same-provider
   fact is invalid. Structural `source,protocol,ordinal,total,rows,bytes`
   `MO_E2E_V1` evidence is bounded by 1000 rows and 65,536 bytes. Ordinals are
   1..one consistent total. For REQUIRED/REQUIRED, the validated PASS-header
   scenario count and exact canonical IDs equal the derived scenario list and every evidence
-  total, with none omitted. NA/NA alone permits an empty list. A mixed first
+  total, with none omitted. The initial E2E prompt carries that same
+  candidate/count/list in exact
+  `MO_E2E_ASSIGNMENT_V1` immediately before its final prompt boundary; the actor
+  executes it without selecting another applicability set. NA/NA alone permits
+  an empty list. A mixed first
   pass re-prompts exactly the NA reviewer once on the unchanged candidate
   without peer output; a change to REQUIRED proceeds, while repeated NA is
   terminal `needs_attention:e2e_disposition_dispute`.

@@ -39,6 +39,13 @@ never a candidate receipt and never stores a candidate SHA, review verdict or
 live run evidence. If the project already owns an equivalent fixture map, keep
 that file and pass its locator explicitly instead of creating a duplicate.
 
+Create the map's pre-activation section with the exact fenced
+`MO_FIXTURE_MAP_V1` and `MO_FIXTURE_SCENARIOS_V1` grammars from methodology §9.
+Use one unique sorted 1..64 scenario-set row per backend and structurally valid
+`UNSUPPORTED` `unproven-*` executor, two-review-provider, and E2E defaults until
+exact isolated fixtures establish actual provider/version/backend-version/OS
+keys. Validate the Markdown through a real AST; never regex-parse Markdown.
+
 `business`, `glossary` and `backlog` live at the top of `docs/`. Do not create a
 `docs/knowledge/` layer and do not introduce a knowledge-impact plan; both were
 tried and both turned into ritual.

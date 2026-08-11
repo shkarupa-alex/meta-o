@@ -248,7 +248,11 @@ to inspect the repository; no previous session is adopted.
 Before activation the backend retains the exact seven-field keys, reusable
 posture, explicit Omnigent backend scope, and at most 64 canonical safe scenario
 definitions from the explicit fixture-map input. It rejects missing, malformed,
-or wrong-backend input before the firewall closes.
+or wrong-backend input before the firewall closes. Resolve the exact
+`MO_FIXTURE_MAP_V1` and `MO_FIXTURE_SCENARIOS_V1` fenced records while reading
+the Markdown; any automated Markdown parser is a real AST, never regex. Require
+selected-backend executor, two-review-provider and E2E definitions plus one
+unique sorted scenario-set row.
 
 Tracked fixture and acceptance documents define repeatable scenarios, map
 requirements, and state current reusable support posture only. They never store
@@ -261,11 +265,14 @@ final-result record has exact top-level order
 - `gates` is exactly ordered entries with keys `gate,statuses` for QC, smoke and
   checks. Each status array is reviewer A then B; QC/smoke are PASS/PASS and
   checks are each PASS|NA.
-- `support` has 1..67 unique entries, canonically sorted by the exact key tuple
+- `support` has 3..67 unique entries, canonically sorted by the exact key tuple
   `backend,provider,provider-version,backend-version,surface,os,fixture`. Each has
   exact keys `key,status,scenarios`, status SUPPORTED, and an empty or singleton
   scenario list. Every safe identifier matches
-  `[a-z0-9][a-z0-9._-]{0,63}`; facts cover every selected-topology provider.
+  `[a-z0-9][a-z0-9._-]{0,63}`. The facts are exactly one lifecycle-selected
+  executor fact, two review-referenced facts and one fact per derived scenario;
+  unused facts are invalid. Actor/provider identities equal lifecycle state and
+  at least one reviewer provider differs from the executor.
 - `reviews` is exactly A then B. Exact keys are
   `reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,scenarios,evidence`;
   status, qc and smoke are PASS, checks is PASS|NA, providers differ, and
@@ -280,7 +287,10 @@ final-result record has exact top-level order
 - Both review dispositions agree. Both NA requires `scenarios=[]`; one NA is
   invalid. Both REQUIRED derives a nonempty scenario set exactly as the sorted
   unique union of the two review scenario lists; support proves each name but
-  never defines the required set. No default/external list is allowed.
+  never defines the required set. No default/external list is allowed. The
+  initial E2E prompt ends with exact
+  `MO_E2E_ASSIGNMENT_V1|candidate=<oid>|scenarios=<positive-int>|ids=<safe-id-list>`
+  using that candidate/count/list; E2E runs it without selecting another set.
 - Scenario records follow that exact order and have exact keys
   `scenario,actor,provider,support-key,status,evidence`, status PASS, and a
   support key resolving to `backend=omnigent`, the same provider, `surface=e2e`,

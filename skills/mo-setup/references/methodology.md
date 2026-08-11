@@ -205,11 +205,18 @@ normalized, sent to E2E, retried again, or turned into an ordinary user choice.
 
 ### 2.5 E2E actor
 
-After disposition reconciliation, a `REQUIRED/REQUIRED` pair starts a separate
-read-only actor that runs `mo-e2e`, selects applicable scenarios, owns
-namespacing and cleanup, and returns one E2E handoff. It never edits or commits
-tracked files. An unreadable or `UNKNOWN` review is resolved by the review retry
-contract before applicability is considered.
+After disposition reconciliation, a `REQUIRED/REQUIRED` pair produces the exact
+sorted unique union of the two validated review scenario lists. The orchestrator
+starts a separate read-only actor with this exact final prompt row:
+
+```text
+MO_E2E_ASSIGNMENT_V1|candidate=<oid>|scenarios=<positive-int>|ids=<safe-id-list>
+```
+
+The actor runs exactly that assigned list through `mo-e2e`, owns namespacing and
+cleanup, and returns one E2E handoff. It never selects another applicability set
+or edits or commits tracked files. An unreadable or `UNKNOWN` review is resolved
+by the review retry contract before applicability is considered.
 
 ## 3. Candidate and gates
 
@@ -251,15 +258,19 @@ each status is `PASS` or `NA`. Missing, extra, `FAIL` or `UNKNOWN` gate state is
 invalid. Each A-then-B status pair must equal the correspondingly named fields
 in the two review records.
 
-`support` has 1..67 unique records in ascending canonical-key order. Each has
+`support` has 3..67 unique records in ascending canonical-key order. Each has
 only `key`, `status`, `scenarios`; `status` is `SUPPORTED`; and `key` has exactly
 `backend`, `provider`, `provider-version`, `backend-version`, `surface`, `os`,
 `fixture` in that order. Those seven values are lower-case safe IDs of 1..64
 bytes and form the reusable support key for the selected topology. Each fact's
 `scenarios` is either empty or a singleton lower-case safe ID list. The
 canonical reference is those seven values slash-joined in order. The facts must
-cover every exact surface used by a final review or scenario actor on the
-selected backend.
+cover every exact selected surface and contain no unused facts. Exactly one fact
+has the lifecycle-selected executor provider, surface `executor`, fixture
+`executor-turn`, and no scenarios. Exactly two facts are referenced by the A/B
+reviews, and exactly one fact is referenced by each derived scenario record.
+The selected reviewer providers differ, at least one differs from the executor,
+and every actor/provider value equals its lifecycle-stored identity.
 
 `reviews` has exactly A then B. Each record has only `reviewer`, `actor`,
 `provider`, `support-key`, `status`, `qc`, `smoke`, `checks`, `e2e`, `scenarios`,
@@ -821,6 +832,23 @@ separate exact live fixture. Mere membership of a directory in `PATH` proves
 nothing. A surface support key is exactly
 backend/provider/provider-version/backend-version/surface/os/fixture; support
 never transfers between keys.
+
+The pre-activation fixture-map input exposes exact fenced records:
+
+```text
+MO_FIXTURE_MAP_V1|backend=<herdr|omnigent>|provider=<safe-id>|provider-version=<safe-id>|backend-version=<safe-id>|surface=<executor|review|e2e>|os=<safe-id>|fixture=<safe-id>|scenarios=<safe-id|none>|posture=<SUPPORTED|PENDING|UNSUPPORTED>
+MO_FIXTURE_SCENARIOS_V1|backend=<herdr|omnigent>|ids=<safe-id-list>
+```
+
+Read the Markdown before activation and validate the fenced record fields
+exactly. If automating Markdown parsing, use an available real AST; never
+regex-parse Markdown. Require one unique sorted 1..64
+scenario-set row and at least executor, two review-provider, and E2E definitions
+for the selected backend. Executor/review scenarios are `none`; an E2E scenario
+is `none` or a singleton equal to its fixture. Other-backend rows may coexist,
+but a missing selected-backend scope is wrong-backend input. Only actual exact
+key values with `posture=SUPPORTED` can enter final support; fail-closed
+`unproven-*` records define no support.
 
 `docs/phase-0-fixtures.md` is a durable definition and support-posture map only.
 Its posture may be `SUPPORTED`, `PENDING` or `UNSUPPORTED`; none is a

@@ -19,6 +19,36 @@ surface never change a support key. Historical inline/headless captures are deli
 absent: that Herdr route is removed by the cutover and cannot prove the visible interactive
 actor surface.
 
+## Pre-activation input records
+
+Backend skills read this fenced record set before the tracked-content firewall closes. The
+format is exact and independently scoped by backend:
+
+```text
+MO_FIXTURE_MAP_V1|backend=<herdr|omnigent>|provider=<safe-id>|provider-version=<safe-id>|backend-version=<safe-id>|surface=<executor|review|e2e>|os=<safe-id>|fixture=<safe-id>|scenarios=<safe-id|none>|posture=<SUPPORTED|PENDING|UNSUPPORTED>
+MO_FIXTURE_SCENARIOS_V1|backend=<herdr|omnigent>|ids=<safe-id-list>
+```
+
+There is exactly one scenario-set row per backend. Its 1..64 IDs are unique and sorted bytewise.
+Fixture rows use the seven key fields in their canonical order; review/executor rows have
+`scenarios=none`, while an E2E row has either `none` or the same singleton ID as its fixture.
+Only a row with actual exact provider/backend versions and OS plus `posture=SUPPORTED` may become
+a final support fact. The `unproven-*` rows below are structurally valid fail-closed defaults:
+they define no support and cannot match a selected live topology.
+
+```text
+MO_FIXTURE_MAP_V1|backend=herdr|provider=unproven-executor|provider-version=unproven|backend-version=unproven|surface=executor|os=unproven|fixture=executor-turn|scenarios=none|posture=UNSUPPORTED
+MO_FIXTURE_MAP_V1|backend=herdr|provider=unproven-e2e|provider-version=unproven|backend-version=unproven|surface=e2e|os=unproven|fixture=h13|scenarios=h13|posture=UNSUPPORTED
+MO_FIXTURE_MAP_V1|backend=herdr|provider=unproven-review-a|provider-version=unproven|backend-version=unproven|surface=review|os=unproven|fixture=review-turn|scenarios=none|posture=UNSUPPORTED
+MO_FIXTURE_MAP_V1|backend=herdr|provider=unproven-review-b|provider-version=unproven|backend-version=unproven|surface=review|os=unproven|fixture=review-turn|scenarios=none|posture=UNSUPPORTED
+MO_FIXTURE_SCENARIOS_V1|backend=herdr|ids=h13,h14,h15,h16,h17,h18,h19,h20,h21,h22,h23,h24,h25,h26,h27,h28,h29,h30,h31,h32,h33,h34,h35,h36,h37,h7b,p1,p2,p3,p4,p5,p6,p7,p8
+MO_FIXTURE_MAP_V1|backend=omnigent|provider=unproven-executor|provider-version=unproven|backend-version=unproven|surface=executor|os=unproven|fixture=executor-turn|scenarios=none|posture=UNSUPPORTED
+MO_FIXTURE_MAP_V1|backend=omnigent|provider=unproven-e2e|provider-version=unproven|backend-version=unproven|surface=e2e|os=unproven|fixture=om1|scenarios=om1|posture=UNSUPPORTED
+MO_FIXTURE_MAP_V1|backend=omnigent|provider=unproven-review-a|provider-version=unproven|backend-version=unproven|surface=review|os=unproven|fixture=review-turn|scenarios=none|posture=UNSUPPORTED
+MO_FIXTURE_MAP_V1|backend=omnigent|provider=unproven-review-b|provider-version=unproven|backend-version=unproven|surface=review|os=unproven|fixture=review-turn|scenarios=none|posture=UNSUPPORTED
+MO_FIXTURE_SCENARIOS_V1|backend=omnigent|ids=om1,om2,om3,om4,om5,om6,om7,om8
+```
+
 No exact live Herdr fixture has established a reusable supported surface key. All Herdr fixture
 definitions remain PENDING and their current surface support is UNSUPPORTED. No live candidate
 result is stored or claimed below.
@@ -32,7 +62,7 @@ from the backend public surface. Its verified final-result record has exactly:
 candidate: <full SHA>
 worktree: clean
 gates[]: <qc/smoke/checks; reviewer-A then reviewer-B statuses>
-support[]: <1..67 canonical exact-key SUPPORTED facts with empty/singleton scenario lists>
+support[]: <3..67 exact used SUPPORTED facts: executor, two reviews, then one per scenario>
 reviews[]: <exactly A then B; actor/provider/support-key/PASS/qc/smoke/checks/e2e/scenarios/evidence>
 scenarios[]: <exact review-derived, support-proven order; actor/provider/support-key/PASS/structural evidence>
 ```
@@ -43,11 +73,15 @@ surface invalidates every candidate-bound PASS. H7b and H13-H37 still run agains
 full post-cutover SHA, but their evidence returns in that run rather than this file.
 The closed schema and structural limits are defined in `docs/e2e.md`. Both reviewer dispositions
 must agree: only both NA permits `scenarios=[]`; both REQUIRED derives the exact sorted unique
-scenario union from support facts. No external/default scenario list is accepted.
+scenario union solely from both validated review headers. Support facts prove every derived
+identity but never define applicability. No external/default scenario list is accepted.
+The executor fact binds the lifecycle-selected provider to `executor`/`executor-turn`; every
+review/scenario actor and provider equals lifecycle state, reviewer providers differ, and at
+least one differs from the executor. Unused facts are invalid.
 The top-level qc/smoke/checks A/B status arrays byte-equal the corresponding review fields.
 Every `support-key` is the exact slash-join of the matched fact's seven safe-ID key values. A
-review key resolves to backend Herdr, the same provider, review surface, `review-turn` fixture,
-and no scenarios; a scenario key resolves to backend Herdr, the same provider, E2E surface,
+review key resolves to the selected backend, the same provider, review surface, `review-turn` fixture,
+and no scenarios; a scenario key resolves to the selected backend, the same provider, E2E surface,
 the scenario fixture, and exactly that scenario. Same-provider facts do not substitute.
 
 ## I3 and I5 — remote installation
@@ -123,12 +157,12 @@ or private-transcript fallback.
 
 ### Candidate lifecycle
 
-| ID  | Exact fixture                                                                                                                                                                                        | Expected observation                                                                                                                             | Fixture posture | Support     |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------- | ----------- |
-| H26 | Build the closed final-result record, then mutate field order/keys, clean SHA, gates, support, review evidence, scenario derivation/order/ordinals and limits.                                       | Exact six-field schema passes only for clean unchanged HEAD; every extra/missing/generic/FAIL/UNKNOWN or non-derived scenario fact fails closed. | PENDING         | UNSUPPORTED |
-| H27 | Create a new commit after at least one passing gate.                                                                                                                                                 | Every old gate and old-candidate open ID is invalidated before further completion.                                                               | PENDING         | UNSUPPORTED |
-| H28 | Lose an actor once, lose a pane once, then repeat the same loss.                                                                                                                                     | New ordinary sessions start in visible panes with the ID floor; first loss restarts the gate and repeated loss reaches attention.                | PENDING         | UNSUPPORTED |
-| H29 | Test fallback outcomes and 1..67 exact seven-field support facts, including unsafe IDs, duplicates, key misordering, non-singleton facts, 64/65 scenario boundaries, and missing topology providers. | Fallback outcomes remain distinct; only canonical SUPPORTED facts cover the selected topology and prove the exact reviewer-derived scenario set. | PENDING         | UNSUPPORTED |
+| ID  | Exact fixture                                                                                                                                                                                                                                                      | Expected observation                                                                                                                             | Fixture posture | Support     |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------- | ----------- |
+| H26 | Build the closed final-result record, then mutate field order/keys, clean SHA, gates, support, review evidence, scenario derivation/order/ordinals and limits.                                                                                                     | Exact six-field schema passes only for clean unchanged HEAD; every extra/missing/generic/FAIL/UNKNOWN or non-derived scenario fact fails closed. | PENDING         | UNSUPPORTED |
+| H27 | Create a new commit after at least one passing gate.                                                                                                                                                                                                               | Every old gate and old-candidate open ID is invalidated before further completion.                                                               | PENDING         | UNSUPPORTED |
+| H28 | Lose an actor once, lose a pane once, then repeat the same loss.                                                                                                                                                                                                   | New ordinary sessions start in visible panes with the ID floor; first loss restarts the gate and repeated loss reaches attention.                | PENDING         | UNSUPPORTED |
+| H29 | Test fallback outcomes and 3..67 exact seven-field support facts, including missing executor, unused facts, actor/provider substitutions, unsafe IDs, duplicates, key misordering, non-singleton facts, 64/65 scenario boundaries, and missing topology providers. | Fallback outcomes remain distinct; only the lifecycle-bound executor, two review facts, and one fact per exact reviewer-derived scenario pass.   | PENDING         | UNSUPPORTED |
 
 ### Firewall, attention, and scratch
 

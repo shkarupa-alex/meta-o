@@ -285,9 +285,12 @@ The enclosing backend's closed final-result record has exact top-level order
 `candidate,worktree,gates,support,reviews,scenarios`, unchanged full SHA, and
 `worktree=clean`. `gates` is exactly ordered QC, smoke and checks entries with
 A/B `statuses`; QC/smoke are PASS/PASS and checks are independently PASS|NA.
-`support` contains 1..67 unique canonically sorted exact seven-field keys,
+`support` contains 3..67 unique canonically sorted exact seven-field keys,
 `status=SUPPORTED`, and empty or singleton scenario lists. Its
-facts cover every provider in the selected topology.
+facts are exactly one lifecycle-selected executor fact, the two review-referenced
+facts and one scenario-referenced fact per derived name. No unused fact passes;
+actor/provider values equal lifecycle state and at least one reviewer differs
+from the executor.
 The support key order is exactly
 `backend,provider,provider-version,backend-version,surface,os,fixture`; each outer
 entry is exactly `key,status,scenarios`, and safe IDs match

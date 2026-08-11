@@ -42,12 +42,13 @@ and current reusable support posture; they are never candidate PASS receipts. A
 run returns live evidence only through its backend public surface and final
 answer. Its verified final-result record has exactly `candidate`, `worktree`,
 `gates`, `support`, `reviews`, and `scenarios` in that order. It closes over the
-unchanged full SHA/clean worktree; ordered A/B QC, smoke and checks facts; 1..16
-canonical exact-key SUPPORTED surface facts; two different-provider A/B PASS
+unchanged full SHA/clean worktree; ordered A/B QC, smoke and checks facts; 3..67
+canonical exact-key SUPPORTED surface facts consisting of one lifecycle-bound
+executor fact, two review facts, and one fact per derived scenario; two different-provider A/B PASS
 reviews with agreeing REQUIRED|NA dispositions and structural public-surface
 evidence, each bound by `support-key` to its exact review surface fact; and the
-exact derived ordered scenario PASS set, each likewise bound to its exact E2E
-surface fact. The top-level gate arrays byte-equal the corresponding A/B review
+exact reviewer-derived, support-proven ordered scenario PASS set, each likewise
+bound to its exact E2E surface fact. The top-level gate arrays byte-equal the corresponding A/B review
 fields. Both reviewers saying NA is the only empty-scenario case. Missing facts,
 generic prose evidence, extra
 keys, dirty/new `HEAD`, FAIL or UNKNOWN cannot verify. The run never commits this

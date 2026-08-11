@@ -62,9 +62,11 @@ maps and current reusable support posture—not candidate-bound receipts. Live
 gate facts stay in the backend's current run and final result: unchanged full
 SHA, clean worktree, and a record with exactly `candidate`, `worktree`,
 `gates`, `support`, `reviews`, and `scenarios` in that order. It closes over
-ordered A/B gate arrays, 1..67 canonical exact-key SUPPORTED facts, different-
+ordered A/B gate arrays, 3..67 canonical exact-key SUPPORTED facts, different-
 provider A/B PASS reviews with agreeing E2E dispositions/exact scenario lists,
-and the exact review-derived, support-proven ordered scenario PASS set. Every review/scenario
+and the exact review-derived, support-proven ordered scenario PASS set. The facts
+are exactly one lifecycle-bound executor fact, two review facts and one fact per
+scenario, with no unused entries. Every review/scenario
 record carries the exact `support-key` reference to its route-specific support
 fact; matching only another fact's provider is insufficient. Only NA/NA permits
 no scenarios. Writing or committing those facts

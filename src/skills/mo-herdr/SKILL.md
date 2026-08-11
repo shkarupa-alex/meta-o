@@ -23,6 +23,10 @@ scope, and up to 64 canonical fixture scenario IDs. A missing,
 unreadable, malformed, or wrong-backend map is setup attention and prevents activation; it is
 never repaired by reading tracked content later. Candidate SHA, verdicts and
 live run evidence are not part of this input.
+Validate the exact fenced `MO_FIXTURE_MAP_V1` and
+`MO_FIXTURE_SCENARIOS_V1` records from methodology §9 while reading the input.
+If automating Markdown parsing, use an available real AST and never regex-parse
+Markdown. Other-backend rows may coexist; the Herdr scope itself is mandatory.
 
 The project contract is injected before activation. After activation, treat the
 task/spec locator as opaque and enforce the methodology firewall. Never open a
@@ -194,8 +198,12 @@ polling, predicted SHA/cleanliness or terminal prose.
    ordinary user question.
 9. Any fix/new SHA invalidates every gate and open ID; repeat the full freeze.
 
-Reviewer/E2E prompts name only locator, candidate, role, protocol version,
-row/part/byte limits and exact header grammar. They never embed tracked content.
+Reviewer prompts name only locator, candidate, role, protocol version,
+row/part/byte limits and exact header grammar. The initial E2E prompt additionally
+places exact
+`MO_E2E_ASSIGNMENT_V1|candidate=<oid>|scenarios=<positive-int>|ids=<safe-id-list>`
+containing the reconciled review union's candidate, count and IDs immediately
+before the fresh final prompt boundary. It never embeds tracked content.
 Continuation prompts name the next part and remaining cumulative budgets.
 
 Origin closure, forced dispute, adjudication, unknown recovery, blocker routing
@@ -343,12 +351,16 @@ unchanged full SHA and `worktree=clean`.
 Emit gates exactly in `qc`, `smoke`, `checks` order with A-then-B `statuses`;
 require PASS for both QC/smoke and PASS or NA for each applicable-check status.
 Require each pair to equal the two reviews' correspondingly named header fields.
-Emit 1..67 canonical sorted support facts, each exactly `key`, `status`,
+Emit 3..67 canonical sorted support facts, each exactly `key`, `status`,
 `scenarios`: its key is exactly backend, provider, provider-version,
 backend-version, surface, os, fixture; status is SUPPORTED; all IDs are lower safe
 IDs of at most 64 bytes; and each scenario-name list is empty or a singleton.
 Slash-join those seven values as its canonical reference. Cover
-every exact actor surface on the selected Herdr topology.
+every exact actor surface on the selected Herdr topology. Require exactly one
+lifecycle-selected `executor`/`executor-turn` fact with no scenarios, exactly the
+two review-referenced facts, and one scenario-referenced fact per derived name;
+reject unused facts. Bind every actor/provider to lifecycle state and require at
+least one reviewer provider to differ from the executor.
 
 Emit exactly A then B review records with reviewer, actor, provider, exact
 `support-key`, PASS status, QC, smoke, checks, E2E disposition, exact scenario

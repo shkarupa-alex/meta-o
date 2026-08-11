@@ -13,9 +13,17 @@ reviewers.
 
 ## Inputs and freeze
 
-Receive the opaque task/spec locator, one full frozen candidate SHA, role and
-`MO_E2E_V1` limits. Read the project's E2E contract and select applicable
-scenarios. Do not edit or commit tracked files. A new SHA invalidates this result.
+Receive the opaque task/spec locator, one full frozen candidate SHA, role,
+`MO_E2E_V1` limits, and exactly one final assignment row:
+
+```text
+MO_E2E_ASSIGNMENT_V1|candidate=<oid>|scenarios=<positive-int>|ids=<safe-id-list>
+```
+
+Validate that its candidate is frozen, its count equals 1..64 unique safe IDs,
+and its IDs are sorted bytewise. Read the project's E2E contract and run exactly
+that assigned list; never select a different applicability set. Do not edit or
+commit tracked files. A new SHA invalidates this result.
 
 Use a unique namespace per run and scenario. Clean up on pass, fail, unknown and
 blocker. Run no production/destructive scenario until the E2E contract names its
@@ -74,7 +82,7 @@ receipt, registry or external evidence sink.
 The orchestrator's closed final-result record has exact top-level order
 `candidate,worktree,gates,support,reviews,scenarios`. It requires the unchanged
 full SHA and `worktree=clean`; ordered A/B gate statuses for QC, smoke and checks;
-1..67 canonically sorted exact support-key facts with `status=SUPPORTED` and
+3..67 canonically sorted exact support-key facts with `status=SUPPORTED` and
 empty or singleton scenario lists; and exactly A/B PASS review
 entries from different providers. Review entries carry `e2e=REQUIRED|NA` and
 exact structural `MO_REVIEW_V2` public-surface evidence bounded by 6 parts, 1000
@@ -96,6 +104,12 @@ REQUIRED derives the nonempty scenario set only as the exact sorted unique union
 of the two independently validated review `scenarios` lists; one NA, a default
 list or an external list is invalid. The set has at most 64 names. Support proves
 each derived name but never defines the required set.
+Exactly one otherwise-unreferenced support fact binds the lifecycle-selected
+executor provider to `surface=executor`, `fixture=executor-turn`, and no
+scenarios. The other facts are exactly the two referenced review facts and one
+referenced fact per scenario; no unused fact is valid. Every serialized
+actor/provider equals the lifecycle-stored identity, and at least one reviewer
+provider differs from the executor.
 The final scenario records follow that order. Each exact
 `scenario,actor,provider,support-key,status,evidence` entry has PASS.
 `support-key` is the slash-join of the matched support fact's seven safe-ID values

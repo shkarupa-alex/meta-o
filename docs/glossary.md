@@ -54,11 +54,12 @@ document or external receipt sink.
 Each has A/B statuses byte-equal to the corresponding ordered review fields;
 QC/smoke are PASS/PASS and checks are each PASS or NA.
 
-**Support fact** — one of 1..67 canonically sorted reusable surface facts with
+**Support fact** — one of 3..67 canonically sorted reusable surface facts with
 exact `backend,provider,provider-version,backend-version,surface,os,fixture` key,
 SUPPORTED status, and an empty or singleton safe scenario-ID list. Safe
-IDs match `[a-z0-9][a-z0-9._-]{0,63}`. Facts cover all providers selected by the
-final topology.
+IDs match `[a-z0-9][a-z0-9._-]{0,63}`. The closed result contains exactly one
+lifecycle-selected executor fact, two review-referenced facts and one
+scenario-referenced fact per derived name; unused facts are invalid.
 
 **Support key reference** — exact slash-join of one support fact's seven safe-ID
 key values in canonical order. Each final review and scenario record carries a
@@ -70,7 +71,9 @@ exact canonical scenario list. Both must agree: NA/NA alone permits no scenarios
 REQUIRED/REQUIRED derives the nonempty ordered scenario set exactly from the
 union of both review lists; support proves rather than defines those names. A mixed first pass
 gets one same-candidate re-evaluation by the NA reviewer; persistent disagreement
-is `needs_attention:e2e_disposition_dispute`.
+is `needs_attention:e2e_disposition_dispute`. The reconciled union becomes the
+exact `MO_E2E_ASSIGNMENT_V1` initial-prompt row; E2E runs it without selecting a
+different set.
 
 **Fixture map** — tracked definitions, requirement mappings and current reusable
 support posture. It never stores candidate-bound PASS evidence.

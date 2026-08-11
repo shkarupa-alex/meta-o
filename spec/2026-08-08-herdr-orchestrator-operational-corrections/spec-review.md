@@ -297,7 +297,7 @@ This change adds no orchestration CLI, provider proxy, daemon, adapter layer, st
 
 Tracked fixture, E2E and acceptance documents are durable definitions, proof mappings and current reusable support posture only; they never become candidate-bound PASS receipts. Live candidate evidence remains ephemeral in current backend-run state and the final answer. Its closed final-result record has exact top-level order `candidate`, `worktree`, `gates`, `support`, `reviews`, `scenarios`. Candidate is the unchanged full SHA and worktree is `clean`.
 
-`gates` is exactly `[{gate:"qc",statuses:[A,B]},{gate:"smoke",statuses:[A,B]},{gate:"checks",statuses:[A,B]}]`; QC/smoke are PASS/PASS and checks are each PASS|NA. `support` contains 1..67 unique entries sorted by the exact key tuple `backend,provider,provider-version,backend-version,surface,os,fixture`; each outer entry is exactly `key,status,scenarios`, has `status=SUPPORTED`, and has either an empty list or one safe lowercase scenario ID matching `[a-z0-9][a-z0-9._-]{0,63}`. The bound covers two review facts, up to 64 scenario facts, and one distinct executor fact. The facts cover every provider and exact final-result surface in the selected topology.
+`gates` is exactly `[{gate:"qc",statuses:[A,B]},{gate:"smoke",statuses:[A,B]},{gate:"checks",statuses:[A,B]}]`; QC/smoke are PASS/PASS and checks are each PASS|NA. `support` contains 3..67 unique entries sorted by the exact key tuple `backend,provider,provider-version,backend-version,surface,os,fixture`; each outer entry is exactly `key,status,scenarios`, has `status=SUPPORTED`, and has either an empty list or one safe lowercase scenario ID matching `[a-z0-9][a-z0-9._-]{0,63}`. The bound is exact: one lifecycle-selected `executor`/`executor-turn` fact with no scenarios, two facts referenced by the A/B reviews, and one fact referenced by every derived scenario, up to 64. There are no unused facts. The facts and actor/provider fields equal the lifecycle-stored selected topology; reviewer providers differ and at least one differs from the executor.
 
 `reviews` is exactly A then B. Each entry is exactly `reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,scenarios,evidence`; providers differ, status/qc/smoke are PASS, checks is PASS|NA, and E2E is REQUIRED|NA. Each review header and final review record independently names the exact canonical scenario list: REQUIRED has 1..64 unique safe IDs sorted bytewise; NA has none. The top-level gate arrays byte-equal the corresponding A/B review qc, smoke, and checks fields. `support-key` is the exact slash-join of the matched fact's seven safe-ID values and resolves to a fact with the selected route's backend, the same provider, `surface=review`, `fixture=review-turn`, and `scenarios=[]`. Evidence is exactly `source,protocol,parts,rows,bytes` with `source=backend-public-surface`, `protocol=MO_REVIEW_V2`, and maxima 6 parts, 1000 rows, 61,440 bytes. Both dispositions must agree: NA/NA is equivalent to an empty scenario list; REQUIRED/REQUIRED derives the required nonempty scenario set exactly as the sorted unique union of both validated review lists. Support facts prove every derived name but never define applicability. A mixed first pass re-prompts exactly the NA reviewer once on the unchanged candidate without peer output; a change to REQUIRED settles the pair, while repeated NA is terminal `needs_attention:e2e_disposition_dispute`.
 
@@ -427,7 +427,7 @@ readable protocol artifact, not an executable review product.
 
 ### E2E actor
 
-When required, a separate visible interactive actor runs `mo-e2e`, reads the E2E contract, selects applicable scenarios, handles namespacing/cleanup, and emits one handoff. It never edits or commits tracked files.
+When required, the orchestrator derives the exact sorted unique union of both validated review scenario lists and passes it to a separate visible interactive actor as `MO_E2E_ASSIGNMENT_V1|candidate=<oid>|scenarios=<positive-int>|ids=<safe-id-list>` in the initial prompt. The actor runs exactly that assigned list through `mo-e2e`, handles namespacing/cleanup, and emits one handoff. It never selects another applicability set or edits or commits tracked files.
 
 ## Canonical vocabulary
 
@@ -492,6 +492,16 @@ contract applies independently to Herdr and Omnigent. A missing, unreadable,
 malformed, or wrong-backend map is setup attention and prevents activation;
 candidate evidence is never part of this input and the orchestrator never
 repairs it with a later tracked read.
+
+The input contains exact fenced `MO_FIXTURE_MAP_V1` rows in
+`backend,provider,provider-version,backend-version,surface,os,fixture,scenarios,posture`
+order and exactly one `MO_FIXTURE_SCENARIOS_V1|backend=<backend>|ids=<safe-id-list>`
+row per included backend. Read the Markdown and validate the records exactly;
+any automated Markdown parser uses a real AST, never regex. For the selected backend require executor, two
+review-provider, and E2E definitions plus one unique byte-sorted 1..64 scenario
+set. Other-backend scopes may coexist. Only actual exact-key `SUPPORTED` rows
+can enter final support; structurally valid `unproven-*` defaults remain
+fail-closed.
 
 Before topology mutation, run:
 
@@ -609,7 +619,7 @@ herdr agent wait <actor> --until idle --until done --until blocked \
 
 Normalize only public identity, readiness, status, `state_change_seq`, kind, and foreground PID/executable/cwd fields. `state_change_seq` remains diagnostic.
 
-Every reviewer and E2E prompt names the task locator, candidate, role, protocol version, row/part/byte limits, and required header grammar without embedding tracked content. Review continuation prompts name the next expected part and remaining cumulative row/byte budget. Peer-adjudication prompts name the exact target, per-turn cap, and remaining cumulative peer-outcome budget.
+Every reviewer and E2E prompt names the task locator, candidate, role, protocol version, row/part/byte limits, and required header grammar without embedding tracked content. The initial E2E prompt additionally places the exact `MO_E2E_ASSIGNMENT_V1` candidate/count/IDs row derived solely from the reconciled review lists immediately before the fresh final prompt-boundary row. Review continuation prompts name the next expected part and remaining cumulative row/byte budget. Peer-adjudication prompts name the exact target, per-turn cap, and remaining cumulative peer-outcome budget.
 
 Recommended caller goal:
 

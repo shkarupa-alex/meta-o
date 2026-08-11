@@ -20,15 +20,18 @@ candidate, worktree, gates, support, reviews, scenarios
 - `gates` is exactly the ordered array `qc`, `smoke`, `checks`. Each entry has
   exactly `gate,statuses`; statuses are reviewer-A then reviewer-B. QC and smoke
   are `PASS,PASS`; each checks status is `PASS|NA`.
-- `support` has 1..67 unique entries, sorted by the exact seven-field key tuple
+- `support` has 3..67 unique entries, sorted by the exact seven-field key tuple
   `backend,provider,provider-version,backend-version,surface,os,fixture`. Each entry
   has exactly `key,status,scenarios`; `status=SUPPORTED`; `scenarios` is empty or
   a singleton safe ID list. Every safe lowercase identifier matches
-  `[a-z0-9][a-z0-9._-]{0,63}`, and support facts cover every provider in the
-  selected topology.
+  `[a-z0-9][a-z0-9._-]{0,63}`. The facts are exactly one lifecycle-selected
+  `executor`/`executor-turn` fact, the two review-referenced facts, and one
+  scenario-referenced fact per derived name; no unused fact is allowed.
 - `reviews` is exactly A then B. Each entry has exactly
   `reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,scenarios,evidence`;
-  status, qc and smoke are PASS, checks is `PASS|NA`, providers differ, and
+  status, qc and smoke are PASS, checks is `PASS|NA`, actor/provider identities
+  equal lifecycle state, providers differ, at least one reviewer provider
+  differs from the executor, and
   `e2e` is `REQUIRED|NA`. Its exact canonical scenario list has 1..64 IDs for
   REQUIRED and is empty for NA. The top-level gate status arrays byte-equal the A/B
   review `qc`, `smoke`, and `checks` fields. `support-key` is the exact
@@ -44,6 +47,10 @@ candidate, worktree, gates, support, reviews, scenarios
   exactly the NA reviewer once on the unchanged candidate without peer output;
   a change to REQUIRED proceeds,
   while repeated NA is terminal `needs_attention:e2e_disposition_dispute`.
+  For REQUIRED/REQUIRED the initial E2E prompt places exact
+  `MO_E2E_ASSIGNMENT_V1|candidate=<oid>|scenarios=<positive-int>|ids=<safe-id-list>`
+  for that union immediately before the final prompt boundary; E2E executes
+  exactly the assignment rather than selecting applicability.
 - Scenario records follow that exact sorted order. Each has exactly
   `scenario,actor,provider,support-key,status,evidence`; status is PASS.
   `support-key` resolves to a fact with the selected route's backend, the same provider,

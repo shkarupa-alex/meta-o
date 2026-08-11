@@ -1105,7 +1105,19 @@ test("candidate freeze rejects dirty, stale, non-commit and missing-develop meta
   assert.throws(() => freeze({ branch: "develop" }));
 });
 
-function validateFinalResult(result, { head = OID, clean = true, backend = "herdr" } = {}) {
+const FINAL_LIFECYCLE = {
+  executor: { provider: "codex" },
+  reviewers: {
+    A: { actor: "m-review-a", provider: "claude" },
+    B: { actor: "m-review-b", provider: "codex" },
+  },
+  e2e: { actor: "m-e2e", provider: "codex" },
+};
+
+function validateFinalResult(
+  result,
+  { head = OID, clean = true, backend = "herdr", lifecycle } = {},
+) {
   const exactKeys = (value, keys) => assert.deepEqual(Object.keys(value), keys);
   const safeId = (value) => {
     assert.match(value, /^[a-z0-9][a-z0-9._-]{0,63}$/);
@@ -1115,6 +1127,7 @@ function validateFinalResult(result, { head = OID, clean = true, backend = "herd
     assert.equal(Number.isInteger(value) && value > 0 && value <= max, true);
   };
   exactKeys(result, ["candidate", "worktree", "gates", "support", "reviews", "scenarios"]);
+  assert.ok(lifecycle, "lifecycle identities are mandatory");
   safeId(backend);
   assert.equal(clean, true);
   assert.equal(result.candidate, head);
@@ -1133,7 +1146,7 @@ function validateFinalResult(result, { head = OID, clean = true, backend = "herd
     gate.statuses.forEach((status) => assert.match(status, allowed));
   }
 
-  assert.equal(result.support.length >= 1 && result.support.length <= 67, true);
+  assert.equal(result.support.length >= 3 && result.support.length <= 67, true);
   const supportKeys = [];
   const supportFacts = new Map();
   for (const fact of result.support) {
@@ -1159,6 +1172,13 @@ function validateFinalResult(result, { head = OID, clean = true, backend = "herd
     assert.deepEqual(names, [...new Set(names)].sort());
   }
   assert.deepEqual(supportKeys, [...supportKeys].sort());
+  const executorFacts = result.support.filter(
+    (fact) => fact.key.surface === "executor" && fact.key.fixture === "executor-turn",
+  );
+  assert.equal(executorFacts.length, 1);
+  assert.equal(executorFacts[0].key.provider, lifecycle.executor.provider);
+  assert.deepEqual(executorFacts[0].scenarios, []);
+  const usedSupportKeys = new Set([Object.values(executorFacts[0].key).join("/")]);
 
   assert.equal(result.reviews.length, 2);
   assert.deepEqual(
@@ -1179,8 +1199,9 @@ function validateFinalResult(result, { head = OID, clean = true, backend = "herd
       "scenarios",
       "evidence",
     ]);
-    assert.match(entry.actor, /^m-[a-z0-9][a-z0-9._-]{0,125}$/);
+    assert.equal(entry.actor, lifecycle.reviewers[entry.reviewer].actor);
     safeId(entry.provider);
+    assert.equal(entry.provider, lifecycle.reviewers[entry.reviewer].provider);
     const support = supportFacts.get(entry["support-key"]);
     assert.ok(support);
     assert.equal(support.key.backend, backend);
@@ -1188,6 +1209,7 @@ function validateFinalResult(result, { head = OID, clean = true, backend = "herd
     assert.equal(support.key.surface, "review");
     assert.equal(support.key.fixture, "review-turn");
     assert.deepEqual(support.scenarios, []);
+    usedSupportKeys.add(entry["support-key"]);
     assert.equal(entry.status, "PASS");
     assert.equal(entry.qc, "PASS");
     assert.equal(entry.smoke, "PASS");
@@ -1206,6 +1228,10 @@ function validateFinalResult(result, { head = OID, clean = true, backend = "herd
     positiveBounded(entry.evidence.bytes, 61_440);
   }
   assert.notEqual(result.reviews[0].provider, result.reviews[1].provider);
+  assert.equal(
+    result.reviews.some((entry) => entry.provider !== lifecycle.executor.provider),
+    true,
+  );
   for (const [index, gate] of result.gates.entries()) {
     const field = ["qc", "smoke", "checks"][index];
     assert.deepEqual(
@@ -1227,8 +1253,9 @@ function validateFinalResult(result, { head = OID, clean = true, backend = "herd
   for (const [index, entry] of result.scenarios.entries()) {
     exactKeys(entry, ["scenario", "actor", "provider", "support-key", "status", "evidence"]);
     safeId(entry.scenario);
-    assert.match(entry.actor, /^m-[a-z0-9][a-z0-9._-]{0,125}$/);
+    assert.equal(entry.actor, lifecycle.e2e.actor);
     safeId(entry.provider);
+    assert.equal(entry.provider, lifecycle.e2e.provider);
     const support = supportFacts.get(entry["support-key"]);
     assert.ok(support);
     assert.equal(support.key.backend, backend);
@@ -1236,6 +1263,7 @@ function validateFinalResult(result, { head = OID, clean = true, backend = "herd
     assert.equal(support.key.surface, "e2e");
     assert.equal(support.key.fixture, entry.scenario);
     assert.deepEqual(support.scenarios, [entry.scenario]);
+    usedSupportKeys.add(entry["support-key"]);
     assert.equal(entry.status, "PASS");
     exactKeys(entry.evidence, ["source", "protocol", "ordinal", "total", "rows", "bytes"]);
     assert.equal(entry.evidence.source, "backend-public-surface");
@@ -1245,7 +1273,24 @@ function validateFinalResult(result, { head = OID, clean = true, backend = "herd
     positiveBounded(entry.evidence.rows, 1_000);
     positiveBounded(entry.evidence.bytes, 65_536);
   }
+  assert.deepEqual([...usedSupportKeys].sort(), supportKeys);
   return result.candidate;
+}
+
+function e2eAssignment(candidate, reviews) {
+  assert.match(candidate, /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
+  assert.deepEqual(
+    reviews.map((entry) => entry.reviewer),
+    ["A", "B"],
+  );
+  assert.equal(
+    reviews.every((entry) => entry.e2e === "REQUIRED"),
+    true,
+  );
+  const selected = [...new Set(reviews.flatMap((entry) => entry.scenarios))].sort();
+  assert.equal(selected.length > 0 && selected.length <= 64, true);
+  selected.forEach((scenario) => assert.match(scenario, /^[a-z0-9][a-z0-9._-]{0,63}$/));
+  return `MO_E2E_ASSIGNMENT_V1|candidate=${candidate}|scenarios=${selected.length}|ids=${selected.join(",")}`;
 }
 
 function reconcileE2EDispositions(a, b, recheckedNa) {
@@ -1282,6 +1327,8 @@ test("mixed E2E dispositions get one bounded NA-side recheck", () => {
 });
 
 test("closed ephemeral final result derives scenarios from exact reviewer lists", () => {
+  const validate = (result, options = {}) =>
+    validateFinalResult(result, { ...options, lifecycle: FINAL_LIFECYCLE });
   const supportKey = (provider, surface, fixture, backend = "herdr") =>
     `${backend}/${provider}/v1/v1/${surface}/darwin-arm64/${fixture}`;
   const reviewRecord = (
@@ -1349,6 +1396,19 @@ test("closed ephemeral final result derives scenarios from exact reviewer lists"
           provider: "codex",
           "provider-version": "v1",
           "backend-version": "v1",
+          surface: "executor",
+          os: "darwin-arm64",
+          fixture: "executor-turn",
+        },
+        status: "SUPPORTED",
+        scenarios: [],
+      },
+      {
+        key: {
+          backend: "herdr",
+          provider: "codex",
+          "provider-version": "v1",
+          "backend-version": "v1",
           surface: "review",
           os: "darwin-arm64",
           fixture: "review-turn",
@@ -1376,7 +1436,12 @@ test("closed ephemeral final result derives scenarios from exact reviewer lists"
       },
     ],
   };
-  assert.equal(validateFinalResult(finalResult), OID);
+  assert.equal(validate(finalResult), OID);
+  assert.throws(() => validateFinalResult(finalResult));
+  assert.equal(
+    e2eAssignment(OID, finalResult.reviews),
+    `MO_E2E_ASSIGNMENT_V1|candidate=${OID}|scenarios=1|ids=production-smoke`,
+  );
   assert.equal(
     bindE2EPassToFinal(
       `MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=1|ids=production-smoke|not_run=none|blocker=none`,
@@ -1447,7 +1512,7 @@ test("closed ephemeral final result derives scenarios from exact reviewer lists"
     })),
   };
   assert.equal(maximumResult.support.length, 67);
-  assert.equal(validateFinalResult(maximumResult), OID);
+  assert.equal(validate(maximumResult), OID);
   assert.equal(
     bindE2EPassToFinal(
       `MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=64|ids=${maximumScenarios.join(",")}|not_run=none|blocker=none`,
@@ -1463,7 +1528,7 @@ test("closed ephemeral final result derives scenarios from exact reviewer lists"
     ),
   };
   assert.equal(overMaximumSupport.support.length, 68);
-  assert.throws(() => validateFinalResult(overMaximumSupport));
+  assert.throws(() => validate(overMaximumSupport));
   const omnigentResult = {
     ...finalResult,
     support: finalResult.support.map((fact) => ({
@@ -1479,17 +1544,18 @@ test("closed ephemeral final result derives scenarios from exact reviewer lists"
       "support-key": scenario["support-key"].replace(/^herdr\//, "omnigent/"),
     })),
   };
-  assert.equal(validateFinalResult(omnigentResult, { backend: "omnigent" }), OID);
-  assert.throws(() => validateFinalResult(omnigentResult));
-  assert.throws(() => validateFinalResult(finalResult, { backend: "omnigent" }));
+  assert.equal(validate(omnigentResult, { backend: "omnigent" }), OID);
+  assert.throws(() => validate(omnigentResult));
+  assert.throws(() => validate(finalResult, { backend: "omnigent" }));
   const bothNa = {
     ...finalResult,
     reviews: [reviewRecord("A", "claude", "NA"), reviewRecord("B", "codex", "NA")],
+    support: finalResult.support.filter((fact) => fact.key.surface !== "e2e"),
     scenarios: [],
   };
-  assert.equal(validateFinalResult(bothNa), OID);
-  assert.throws(() => validateFinalResult(finalResult, { clean: false }));
-  assert.throws(() => validateFinalResult(finalResult, { head: "b".repeat(40) }));
+  assert.equal(validate(bothNa), OID);
+  assert.throws(() => validate(finalResult, { clean: false }));
+  assert.throws(() => validate(finalResult, { head: "b".repeat(40) }));
   for (const invalid of [
     { ...finalResult, extra: true },
     { ...finalResult, gates: finalResult.gates.slice(0, 2) },
@@ -1503,6 +1569,17 @@ test("closed ephemeral final result derives scenarios from exact reviewer lists"
       gates: finalResult.gates.with(2, { gate: "checks", statuses: ["NA", "NA"] }),
     },
     { ...finalResult, support: [] },
+    {
+      ...finalResult,
+      support: finalResult.support.filter((fact) => fact.key.surface !== "executor"),
+    },
+    {
+      ...finalResult,
+      support: [...finalResult.support, fact("codex", "executor", "unused-executor-turn")].sort(
+        (left, right) =>
+          Object.values(left.key).join("/").localeCompare(Object.values(right.key).join("/")),
+      ),
+    },
     { ...finalResult, support: [...finalResult.support].reverse() },
     {
       ...finalResult,
@@ -1514,6 +1591,17 @@ test("closed ephemeral final result derives scenarios from exact reviewer lists"
       reviews: [reviewRecord("A", "claude", "NA"), reviewRecord("B", "codex")],
     },
     { ...finalResult, reviews: [...finalResult.reviews].reverse() },
+    {
+      ...finalResult,
+      reviews: [
+        { ...finalResult.reviews[0], actor: "m-review-substitute" },
+        finalResult.reviews[1],
+      ],
+    },
+    {
+      ...finalResult,
+      reviews: [{ ...finalResult.reviews[0], provider: "other-provider" }, finalResult.reviews[1]],
+    },
     {
       ...finalResult,
       reviews: [
@@ -1584,6 +1672,14 @@ test("closed ephemeral final result derives scenarios from exact reviewer lists"
     },
     {
       ...finalResult,
+      scenarios: [{ ...finalResult.scenarios[0], actor: "m-e2e-substitute" }],
+    },
+    {
+      ...finalResult,
+      scenarios: [{ ...finalResult.scenarios[0], provider: "other-provider" }],
+    },
+    {
+      ...finalResult,
       reviews: [{ ...finalResult.reviews[0], status: "FAIL" }, finalResult.reviews[1]],
     },
     {
@@ -1635,8 +1731,9 @@ test("closed ephemeral final result derives scenarios from exact reviewer lists"
       support: [{ ...finalResult.support[0], status: "PENDING" }, finalResult.support[1]],
     },
   ]) {
-    assert.throws(() => validateFinalResult(invalid));
+    assert.throws(() => validate(invalid));
   }
+  assert.throws(() => e2eAssignment(OID, bothNa.reviews));
 
   const validateEvidenceInstruction = (instruction) => {
     assert.equal(
@@ -5353,6 +5450,11 @@ test("support identity, provisional extraction, and backend smoke stay explicit"
   );
   const herdr = readFileSync(join(ROOT, "src", "skills", "mo-herdr", "SKILL.md"), "utf8");
   const omnigent = readFileSync(join(ROOT, "src", "skills", "mo-omnigent", "SKILL.md"), "utf8");
+  const omnigentMechanics = readFileSync(
+    join(ROOT, "src", "skills", "mo-omnigent", "references", "omnigent-mechanics.md"),
+    "utf8",
+  );
+  const e2e = readFileSync(join(ROOT, "src", "skills", "mo-e2e", "SKILL.md"), "utf8");
   const fixtureReadme = readFileSync(
     join(ROOT, "tests", "fixtures", "herdr-extraction", "README.md"),
     "utf8",
@@ -5371,6 +5473,13 @@ test("support identity, provisional extraction, and backend smoke stay explicit"
     assert.match(source, new RegExp(`explicit ${backend} backend\\s+scope`, "i"));
     assert.match(source, /up to\s+64 canonical fixture scenario IDs/);
     assert.match(source, /wrong-backend map is setup attention and prevents\s+activation/);
+    assert.match(source, /MO_FIXTURE_MAP_V1/);
+    assert.match(source, /MO_FIXTURE_SCENARIOS_V1/);
+  }
+  const assignment =
+    /MO_E2E_ASSIGNMENT_V1\|candidate=<oid>\|scenarios=<positive-int>\|ids=<safe-id-list>/;
+  for (const source of [methodology, herdr, mechanics, omnigent, omnigentMechanics, e2e]) {
+    assert.match(source, assignment);
   }
   assert.match(fixtureReadme, /authored deterministic cases, not recordings/);
   assert.match(fixtureReadme, /P6\/H17 must measure/);

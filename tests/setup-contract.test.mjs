@@ -17,6 +17,7 @@ import MarkdownIt from "markdown-it";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const METHODOLOGY = join(ROOT, "shared", "references", "methodology.md");
 const SETUP = join(ROOT, "src", "skills", "mo-setup", "SKILL.md");
+const PHASE0 = join(ROOT, "docs", "phase-0-fixtures.md");
 const markdown = new MarkdownIt();
 
 test("setup creates the backend fixture-map input without making it a receipt", () => {
@@ -31,8 +32,109 @@ test("setup creates the backend fixture-map input without making it a receipt", 
   assert.match(source, /canonical safe scenario-ID\s+definitions \(at most 64 per route\)/);
   assert.match(source, /Review fixtures have no scenarios/);
   assert.match(source, /each E2E fixture names\s+exactly one scenario/);
+  assert.match(source, /MO_FIXTURE_MAP_V1/);
+  assert.match(source, /MO_FIXTURE_SCENARIOS_V1/);
+  assert.match(source, /real AST/);
   assert.match(source, /never a candidate receipt/);
   assert.match(source, /pass its locator explicitly instead of creating a duplicate/);
+});
+
+function validateDefaultFixtureMap(source) {
+  const blocks = sectionTokens(source, 2, "Pre-activation input records")
+    .filter((token) => token.type === "fence")
+    .map((token) => token.content.trim())
+    .filter((content) => content.startsWith("MO_FIXTURE_MAP_V1|backend=herdr"));
+  assert.equal(blocks.length, 1);
+  const lines = blocks[0].split("\n");
+  const parse = (line, protocol, fields) => {
+    const parts = line.split("|");
+    assert.equal(parts.shift(), protocol);
+    assert.equal(parts.length, fields.length);
+    const record = {};
+    for (const [index, part] of parts.entries()) {
+      const separator = part.indexOf("=");
+      assert.notEqual(separator, -1);
+      const key = part.slice(0, separator);
+      assert.equal(key, fields[index]);
+      assert.equal(Object.hasOwn(record, key), false);
+      record[key] = part.slice(separator + 1);
+    }
+    return record;
+  };
+  const factFields = [
+    "backend",
+    "provider",
+    "provider-version",
+    "backend-version",
+    "surface",
+    "os",
+    "fixture",
+    "scenarios",
+    "posture",
+  ];
+  const facts = lines
+    .filter((line) => line.startsWith("MO_FIXTURE_MAP_V1|"))
+    .map((line) => parse(line, "MO_FIXTURE_MAP_V1", factFields));
+  const scenarioSets = lines
+    .filter((line) => line.startsWith("MO_FIXTURE_SCENARIOS_V1|"))
+    .map((line) => parse(line, "MO_FIXTURE_SCENARIOS_V1", ["backend", "ids"]));
+  const safe = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+  for (const backend of ["herdr", "omnigent"]) {
+    const scoped = facts.filter((fact) => fact.backend === backend);
+    assert.equal(scoped.length >= 4, true);
+    assert.equal(
+      scoped.filter((fact) => fact.surface === "executor" && fact.fixture === "executor-turn")
+        .length,
+      1,
+    );
+    assert.equal(
+      new Set(
+        scoped
+          .filter((fact) => fact.surface === "review" && fact.fixture === "review-turn")
+          .map((fact) => fact.provider),
+      ).size >= 2,
+      true,
+    );
+    assert.equal(
+      scoped.some((fact) => fact.surface === "e2e"),
+      true,
+    );
+    for (const fact of scoped) {
+      for (const key of factFields.slice(0, 7)) assert.match(fact[key], safe);
+      assert.match(fact.posture, /^(SUPPORTED|PENDING|UNSUPPORTED)$/);
+      assert.equal(fact.posture, "UNSUPPORTED");
+      if (fact.surface === "e2e" && fact.scenarios !== "none") {
+        assert.equal(fact.scenarios, fact.fixture);
+      } else {
+        assert.equal(fact.scenarios, "none");
+      }
+    }
+    const matchingSets = scenarioSets.filter((entry) => entry.backend === backend);
+    assert.equal(matchingSets.length, 1);
+    const ids = matchingSets[0].ids.split(",");
+    assert.equal(ids.length >= 1 && ids.length <= 64, true);
+    ids.forEach((id) => assert.match(id, safe));
+    assert.deepEqual(ids, [...new Set(ids)].sort());
+  }
+  assert.equal(
+    facts.every((fact) => /^(herdr|omnigent)$/.test(fact.backend)),
+    true,
+  );
+  return { facts, scenarioSets };
+}
+
+test("the default pre-activation map is structurally consumable for both backends", () => {
+  const source = readFileSync(PHASE0, "utf8");
+  const parsed = validateDefaultFixtureMap(source);
+  assert.equal(parsed.scenarioSets.length, 2);
+  for (const mutant of [
+    source.replace("|provider-version=unproven", ""),
+    source.replace("MO_FIXTURE_SCENARIOS_V1|backend=omnigent", "BROKEN|backend=omnigent"),
+    source.replace("ids=om1,om2,om3,om4,om5,om6,om7,om8", "ids=om2,om1"),
+  ]) {
+    assert.notEqual(mutant, source);
+    assert.throws(() => validateDefaultFixtureMap(mutant));
+  }
 });
 
 /** Return AST tokens inside one exact heading, stopping at the next peer. */
