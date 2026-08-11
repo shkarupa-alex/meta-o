@@ -1110,22 +1110,26 @@ function acquireTopologyIdentity(observation) {
     assert.match(value, /^[a-z0-9][a-z0-9._-]{0,63}$/);
     return value;
   };
-  const versionFrom = (probe, actualExecutable) => {
+  const versionToken = (stdout) => {
+    assert.equal(Buffer.byteLength(stdout) <= 256, true);
+    assert.equal(stdout.includes("\0"), false);
+    assert.match(stdout, /^[\x20-\x7e]+\n?$/);
+    const line = stdout.endsWith("\n") ? stdout.slice(0, -1) : stdout;
+    assert.equal(line.includes("\n"), false);
+    const versionFields = line
+      .toLowerCase()
+      .split(/[\t ]+/)
+      .filter((token) => /^v?[0-9]/.test(token));
+    assert.equal(versionFields.length, 1);
+    assert.match(versionFields[0], /^v?[0-9]+(?:[._-][0-9a-z]+)*$/);
+    return safeId(versionFields[0]);
+  };
+  const executableVersion = (probe, verifiedTarget) => {
     assert.deepEqual(Object.keys(probe), ["executable", "status", "stdout"]);
     assert.match(probe.executable, /^\//);
-    assert.equal(probe.executable, actualExecutable);
+    assert.equal(probe.executable, verifiedTarget);
     assert.equal(probe.status, 0);
-    assert.equal(Buffer.byteLength(probe.stdout) <= 256, true);
-    assert.equal(probe.stdout.includes("\0"), false);
-    assert.match(probe.stdout, /^[\x20-\x7e]+\n?$/);
-    const line = probe.stdout.endsWith("\n") ? probe.stdout.slice(0, -1) : probe.stdout;
-    assert.equal(line.includes("\n"), false);
-    const versions = line
-      .toLowerCase()
-      .split(/[^a-z0-9._-]+/)
-      .filter((token) => /^v?[0-9]+(?:[._-][0-9a-z]+)*$/.test(token));
-    assert.equal(versions.length, 1);
-    return safeId(versions[0]);
+    return versionToken(probe.stdout);
   };
   const os = new Map([
     ["Darwin/arm64", "darwin-arm64"],
@@ -1133,17 +1137,47 @@ function acquireTopologyIdentity(observation) {
     ["Linux/aarch64", "linux-aarch64"],
   ]).get(`${observation.os.system}/${observation.os.arch}`);
   assert.ok(os);
-  assert.match(observation.backend.actualExecutable, /^\//);
-  const backendVersion = versionFrom(
-    observation.backend.versionProbe,
-    observation.backend.actualExecutable,
+  assert.deepEqual(Object.keys(observation.backend), [
+    "expectedIdentity",
+    "controlClient",
+    "activeInstance",
+  ]);
+  safeId(observation.backend.expectedIdentity);
+  assert.match(observation.backend.controlClient.executable, /^\//);
+  const clientVersion = executableVersion(
+    observation.backend.controlClient.versionProbe,
+    observation.backend.controlClient.executable,
   );
+  assert.deepEqual(Object.keys(observation.backend.activeInstance), [
+    "identity",
+    "source",
+    "status",
+    "stdout",
+  ]);
+  assert.equal(observation.backend.activeInstance.identity, observation.backend.expectedIdentity);
+  safeId(observation.backend.activeInstance.source);
+  assert.equal(observation.backend.activeInstance.status, 0);
+  const backendVersion = versionToken(observation.backend.activeInstance.stdout);
+  assert.equal(clientVersion, backendVersion);
   const actor = (entry) => {
-    assert.match(entry.actualExecutable, /^\//);
+    assert.deepEqual(Object.keys(entry.launch), ["kind", "entrypoint", "verifiedTarget"]);
+    assert.match(entry.launch.kind, /^(executable|script-wrapper|alias|function|provider-native)$/);
+    assert.match(entry.launch.verifiedTarget, /^\//);
+    if (/^(executable|script-wrapper)$/.test(entry.launch.kind)) {
+      assert.match(entry.launch.entrypoint, /^\//);
+    } else {
+      safeId(entry.launch.entrypoint);
+    }
+    if (entry.launch.kind === "executable") {
+      assert.equal(entry.launch.entrypoint, entry.launch.verifiedTarget);
+    }
+    assert.deepEqual(Object.keys(entry.observedProcess), ["provider", "executable"]);
+    assert.equal(entry.observedProcess.provider, entry.provider);
+    assert.equal(entry.observedProcess.executable, entry.launch.verifiedTarget);
     return {
       actor: safeId(entry.actor),
       provider: safeId(entry.provider),
-      "provider-version": versionFrom(entry.versionProbe, entry.actualExecutable),
+      "provider-version": executableVersion(entry.versionProbe, entry.launch.verifiedTarget),
     };
   };
   return {
@@ -1160,21 +1194,40 @@ function acquireTopologyIdentity(observation) {
 
 const FINAL_TOPOLOGY_OBSERVATION = {
   backend: {
-    actualExecutable: "/opt/herdr/bin/herdr",
-    versionProbe: { executable: "/opt/herdr/bin/herdr", status: 0, stdout: "herdr v1\n" },
+    expectedIdentity: "workspace-1",
+    controlClient: {
+      executable: "/opt/herdr/bin/herdr",
+      versionProbe: { executable: "/opt/herdr/bin/herdr", status: 0, stdout: "herdr v1\n" },
+    },
+    activeInstance: {
+      identity: "workspace-1",
+      source: "workspace-status",
+      status: 0,
+      stdout: "herdr v1\n",
+    },
   },
   os: { system: "Darwin", arch: "arm64" },
   actors: {
     executor: {
       actor: "m-executor",
       provider: "codex",
-      actualExecutable: "/opt/providers/bin/codex",
+      launch: {
+        kind: "script-wrapper",
+        entrypoint: "/opt/wrappers/bin/codex",
+        verifiedTarget: "/opt/providers/bin/codex",
+      },
+      observedProcess: { provider: "codex", executable: "/opt/providers/bin/codex" },
       versionProbe: { executable: "/opt/providers/bin/codex", status: 0, stdout: "codex v1\n" },
     },
     reviewA: {
       actor: "m-review-a",
       provider: "claude",
-      actualExecutable: "/opt/providers/bin/claude",
+      launch: {
+        kind: "executable",
+        entrypoint: "/opt/providers/bin/claude",
+        verifiedTarget: "/opt/providers/bin/claude",
+      },
+      observedProcess: { provider: "claude", executable: "/opt/providers/bin/claude" },
       versionProbe: {
         executable: "/opt/providers/bin/claude",
         status: 0,
@@ -1184,13 +1237,23 @@ const FINAL_TOPOLOGY_OBSERVATION = {
     reviewB: {
       actor: "m-review-b",
       provider: "codex",
-      actualExecutable: "/opt/providers/bin/codex",
+      launch: {
+        kind: "executable",
+        entrypoint: "/opt/providers/bin/codex",
+        verifiedTarget: "/opt/providers/bin/codex",
+      },
+      observedProcess: { provider: "codex", executable: "/opt/providers/bin/codex" },
       versionProbe: { executable: "/opt/providers/bin/codex", status: 0, stdout: "codex v1\n" },
     },
     e2e: {
       actor: "m-e2e",
       provider: "codex",
-      actualExecutable: "/opt/providers/bin/codex",
+      launch: {
+        kind: "provider-native",
+        entrypoint: "codex-profile",
+        verifiedTarget: "/opt/providers/bin/codex",
+      },
+      observedProcess: { provider: "codex", executable: "/opt/providers/bin/codex" },
       versionProbe: { executable: "/opt/providers/bin/codex", status: 0, stdout: "codex v1\n" },
     },
   },
@@ -1218,7 +1281,7 @@ test("topology support identity comes from bounded public process observations",
     observation.actors.executor.versionProbe.executable = "/opt/providers/bin/other-codex";
   });
   mutate((observation) => {
-    observation.backend.versionProbe.stdout = "herdr v1 v2\n";
+    observation.backend.controlClient.versionProbe.stdout = "herdr v1 v2\n";
   });
   mutate((observation) => {
     observation.actors.reviewA.versionProbe.stdout = "claude unknown\n";
@@ -1230,7 +1293,24 @@ test("topology support identity comes from bounded public process observations",
     observation.os = { system: "UnknownOS", arch: "mystery" };
   });
   mutate((observation) => {
-    observation.backend.actualExecutable = "relative/herdr";
+    observation.backend.controlClient.executable = "relative/herdr";
+  });
+  mutate((observation) => {
+    observation.backend.activeInstance.stdout = "herdr v2\n";
+  });
+  mutate((observation) => {
+    observation.backend.activeInstance.identity = "workspace-2";
+  });
+  mutate((observation) => {
+    observation.actors.executor.observedProcess.executable = "/opt/wrappers/bin/codex";
+  });
+  for (const version of ["1.2.3+build-a", "1.2.3+build-b"]) {
+    mutate((observation) => {
+      observation.actors.reviewB.versionProbe.stdout = `codex ${version}\n`;
+    });
+  }
+  mutate((observation) => {
+    observation.actors.reviewA.launch.entrypoint = "/opt/wrappers/bin/claude";
   });
 });
 
@@ -1242,9 +1322,49 @@ function trustedFixtureMap(support, posture = "SUPPORTED") {
   }));
 }
 
+function capturedEvidenceFor(scenarioNames, lifecycle = FINAL_LIFECYCLE) {
+  return {
+    reviews: ["A", "B"].map((reviewer) => ({
+      candidate: OID,
+      reviewer,
+      actor: lifecycle.reviewers[reviewer].actor,
+      provider: lifecycle.reviewers[reviewer].provider,
+      evidence: {
+        source: "backend-public-surface",
+        protocol: "MO_REVIEW_V2",
+        parts: 6,
+        rows: 1_000,
+        bytes: 61_440,
+      },
+    })),
+    scenarios: scenarioNames.map((scenario, index) => ({
+      candidate: OID,
+      scenario,
+      actor: lifecycle.e2e.actor,
+      provider: lifecycle.e2e.provider,
+      evidence: {
+        source: "backend-public-surface",
+        protocol: "MO_E2E_V1",
+        ordinal: index + 1,
+        total: scenarioNames.length,
+        rows: 1_000,
+        bytes: 65_536,
+      },
+    })),
+  };
+}
+
 function validateFinalResult(
   result,
-  { head = OID, clean = true, backend = "herdr", lifecycle, fixtureMap } = {},
+  {
+    head = OID,
+    clean = true,
+    backend = "herdr",
+    lifecycle,
+    fixtureMap,
+    fixtureScenarios,
+    captures,
+  } = {},
 ) {
   const exactKeys = (value, keys) => assert.deepEqual(Object.keys(value), keys);
   const safeId = (value) => {
@@ -1265,11 +1385,41 @@ function validateFinalResult(
   ]);
   assert.ok(lifecycle, "lifecycle identities are mandatory");
   assert.ok(fixtureMap, "trusted pre-activation fixture map is mandatory");
+  assert.ok(fixtureScenarios, "trusted pre-activation fixture scenario set is mandatory");
+  assert.ok(captures, "trusted public-surface capture metadata is mandatory");
   safeId(backend);
   assert.equal(clean, true);
   assert.equal(result.candidate, head);
   assert.match(result.candidate, /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
   assert.equal(result.worktree, "clean");
+
+  exactKeys(captures, ["reviews", "scenarios"]);
+  assert.deepEqual(
+    captures.reviews.map((capture) => capture.reviewer),
+    ["A", "B"],
+  );
+  const reviewCaptures = new Map();
+  for (const capture of captures.reviews) {
+    exactKeys(capture, ["candidate", "reviewer", "actor", "provider", "evidence"]);
+    assert.equal(capture.candidate, head);
+    assert.equal(capture.actor, lifecycle.reviewers[capture.reviewer].actor);
+    assert.equal(capture.provider, lifecycle.reviewers[capture.reviewer].provider);
+    reviewCaptures.set(capture.reviewer, capture);
+  }
+  const scenarioCaptures = new Map();
+  for (const capture of captures.scenarios) {
+    exactKeys(capture, ["candidate", "scenario", "actor", "provider", "evidence"]);
+    assert.equal(capture.candidate, head);
+    assert.equal(capture.actor, lifecycle.e2e.actor);
+    assert.equal(capture.provider, lifecycle.e2e.provider);
+    assert.equal(scenarioCaptures.has(capture.scenario), false);
+    scenarioCaptures.set(capture.scenario, capture);
+  }
+
+  assert.equal(fixtureScenarios.length > 0 && fixtureScenarios.length <= 64, true);
+  fixtureScenarios.forEach(safeId);
+  assert.deepEqual(fixtureScenarios, [...new Set(fixtureScenarios)].sort());
+  const declaredFixtureScenarios = new Set(fixtureScenarios);
 
   const fixtureFacts = new Map();
   for (const fact of fixtureMap) {
@@ -1296,7 +1446,12 @@ function validateFinalResult(
     const canonicalKey = keyValues.join("/");
     assert.equal(fixtureFacts.has(canonicalKey), false);
     assert.match(fact.posture, /^(SUPPORTED|PENDING|UNSUPPORTED)$/);
-    if (fact.scenarios !== "none") safeId(fact.scenarios);
+    if (fact.scenarios !== "none") {
+      safeId(fact.scenarios);
+      assert.equal(fact.surface, "e2e");
+      assert.equal(fact.fixture, fact.scenarios);
+      assert.equal(declaredFixtureScenarios.has(fact.scenarios), true);
+    }
     fixtureFacts.set(canonicalKey, fact);
   }
 
@@ -1409,6 +1564,7 @@ function validateFinalResult(
     positiveBounded(entry.evidence.parts, 6);
     positiveBounded(entry.evidence.rows, 1_000);
     positiveBounded(entry.evidence.bytes, 61_440);
+    assert.deepEqual(entry.evidence, reviewCaptures.get(entry.reviewer).evidence);
   }
   assert.notEqual(result.reviews[0].provider, result.reviews[1].provider);
   assert.equal(
@@ -1429,10 +1585,14 @@ function validateFinalResult(
       ? []
       : [...new Set(result.reviews.flatMap((entry) => entry.scenarios))].sort();
   if (result.reviews[0].e2e === "REQUIRED") assert.ok(requiredScenarios.length > 0);
+  for (const scenario of requiredScenarios) {
+    assert.equal(declaredFixtureScenarios.has(scenario), true);
+  }
   assert.deepEqual(
     result.scenarios.map((entry) => entry.scenario),
     requiredScenarios,
   );
+  assert.deepEqual([...scenarioCaptures.keys()], requiredScenarios);
   for (const [index, entry] of result.scenarios.entries()) {
     exactKeys(entry, ["scenario", "actor", "provider", "support-key", "status", "evidence"]);
     safeId(entry.scenario);
@@ -1458,6 +1618,7 @@ function validateFinalResult(
     assert.equal(entry.evidence.total, requiredScenarios.length);
     positiveBounded(entry.evidence.rows, 1_000);
     positiveBounded(entry.evidence.bytes, 65_536);
+    assert.deepEqual(entry.evidence, scenarioCaptures.get(entry.scenario).evidence);
   }
   assert.deepEqual([...usedSupportKeys].sort(), supportKeys);
   return result.candidate;
@@ -1647,15 +1808,64 @@ test("closed ephemeral final result derives scenarios from exact reviewer lists"
     ],
   };
   const selectedFixtureMap = trustedFixtureMap(finalResult.support);
+  const selectedCaptures = capturedEvidenceFor(["production-smoke"]);
   const validate = (result, options = {}) =>
     validateFinalResult(result, {
+      captures: selectedCaptures,
       fixtureMap: selectedFixtureMap,
+      fixtureScenarios: ["production-smoke"],
       lifecycle: FINAL_LIFECYCLE,
       ...options,
     });
   assert.equal(validate(finalResult), OID);
   assert.throws(() => validateFinalResult(finalResult));
   assert.throws(() => validateFinalResult(finalResult, { lifecycle: FINAL_LIFECYCLE }));
+  assert.throws(() =>
+    validateFinalResult(finalResult, {
+      captures: selectedCaptures,
+      fixtureMap: selectedFixtureMap,
+      lifecycle: FINAL_LIFECYCLE,
+    }),
+  );
+  assert.throws(() =>
+    validate(finalResult, {
+      fixtureMap: [
+        ...selectedFixtureMap,
+        {
+          backend: "herdr",
+          provider: "codex",
+          "provider-version": "v1",
+          "backend-version": "v1",
+          surface: "e2e",
+          os: "darwin-arm64",
+          fixture: "surprise",
+          scenarios: "surprise",
+          posture: "SUPPORTED",
+        },
+      ],
+    }),
+  );
+  for (const mutateCapture of [
+    (captures) => {
+      captures.reviews[0].candidate = "b".repeat(40);
+    },
+    (captures) => {
+      captures.reviews[1].actor = "m-review-substitute";
+    },
+    (captures) => {
+      captures.scenarios[0].provider = "other-provider";
+    },
+    (captures) => {
+      captures.scenarios.push({
+        ...captures.scenarios[0],
+        scenario: "surprise",
+      });
+    },
+  ]) {
+    const captures = structuredClone(selectedCaptures);
+    mutateCapture(captures);
+    assert.throws(() => validate(finalResult, { captures }));
+  }
   assert.throws(() =>
     validate(finalResult, {
       fixtureMap: selectedFixtureMap.map((fact, index) =>
@@ -1664,6 +1874,19 @@ test("closed ephemeral final result derives scenarios from exact reviewer lists"
     }),
   );
   assert.throws(() => validate(finalResult, { fixtureMap: selectedFixtureMap.slice(1) }));
+  for (const [section, index, field, value] of [
+    ["reviews", 0, "parts", 5],
+    ["reviews", 1, "rows", 999],
+    ["reviews", 1, "bytes", 61_439],
+    ["scenarios", 0, "ordinal", 2],
+    ["scenarios", 0, "total", 2],
+    ["scenarios", 0, "rows", 999],
+    ["scenarios", 0, "bytes", 65_535],
+  ]) {
+    const mutated = structuredClone(finalResult);
+    mutated[section][index].evidence[field] = value;
+    assert.throws(() => validate(mutated));
+  }
   const substituteEverySupportField = (field, value) => {
     const substituted = structuredClone(finalResult);
     const references = new Map();
@@ -1787,7 +2010,14 @@ test("closed ephemeral final result derives scenarios from exact reviewer lists"
     })),
   };
   assert.equal(maximumResult.support.length, 67);
-  assert.equal(validate(maximumResult, { fixtureMap: trustedFixtureMap(maximumSupport) }), OID);
+  assert.equal(
+    validate(maximumResult, {
+      captures: capturedEvidenceFor(maximumScenarios),
+      fixtureMap: trustedFixtureMap(maximumSupport),
+      fixtureScenarios: maximumScenarios,
+    }),
+    OID,
+  );
   assert.equal(
     bindE2EPassToFinal(
       `MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=64|ids=${maximumScenarios.join(",")}|not_run=none|blocker=none`,
@@ -1805,7 +2035,9 @@ test("closed ephemeral final result derives scenarios from exact reviewer lists"
   assert.equal(overMaximumSupport.support.length, 68);
   assert.throws(() =>
     validate(overMaximumSupport, {
+      captures: capturedEvidenceFor(maximumScenarios),
       fixtureMap: trustedFixtureMap(overMaximumSupport.support),
+      fixtureScenarios: maximumScenarios,
     }),
   );
   const omnigentResult = {
@@ -1829,7 +2061,11 @@ test("closed ephemeral final result derives scenarios from exact reviewer lists"
   };
   const omnigentFixtureMap = trustedFixtureMap(omnigentResult.support);
   assert.equal(
-    validate(omnigentResult, { backend: "omnigent", fixtureMap: omnigentFixtureMap }),
+    validate(omnigentResult, {
+      backend: "omnigent",
+      captures: selectedCaptures,
+      fixtureMap: omnigentFixtureMap,
+    }),
     OID,
   );
   assert.throws(() => validate(omnigentResult));
@@ -1840,7 +2076,7 @@ test("closed ephemeral final result derives scenarios from exact reviewer lists"
     support: finalResult.support.filter((fact) => fact.key.surface !== "e2e"),
     scenarios: [],
   };
-  assert.equal(validate(bothNa), OID);
+  assert.equal(validate(bothNa, { captures: capturedEvidenceFor([]) }), OID);
   assert.throws(() => validate(finalResult, { clean: false }));
   assert.throws(() => validate(finalResult, { head: "b".repeat(40) }));
   for (const invalid of [
@@ -5762,6 +5998,7 @@ test("support identity, provisional extraction, and backend smoke stay explicit"
     "utf8",
   );
   const e2e = readFileSync(join(ROOT, "src", "skills", "mo-e2e", "SKILL.md"), "utf8");
+  const review = readFileSync(join(ROOT, "src", "skills", "mo-review", "SKILL.md"), "utf8");
   const fixtureReadme = readFileSync(
     join(ROOT, "tests", "fixtures", "herdr-extraction", "README.md"),
     "utf8",
@@ -5785,15 +6022,33 @@ test("support identity, provisional extraction, and backend smoke stay explicit"
     assert.match(source, /wrong-backend map is setup attention and prevents\s+activation/);
     assert.match(source, /MO_FIXTURE_MAP_V1/);
     assert.match(source, /MO_FIXTURE_SCENARIOS_V1/);
-    assert.match(source, /documented noninteractive version action/);
-    assert.match(source, /exact executable path/);
+    assert.match(source, /documented\s+noninteractive version action/);
+    assert.match(source, /active observation's (?:workspace|session) identity/);
+    assert.match(source, /launch entrypoint,\s+credential-safely\s+verified real\s+target/);
+    assert.match(source, /stable actor process/);
+    assert.match(source, /unsafe build metadata rather than stripping it/);
     assert.match(
       source,
-      /(?:never copy identity from the fixture map|map values never supply live topology identity)/i,
+      /(?:never copy identity from the fixture map|map values never supply (?:live )?topology\s+identity)/i,
     );
   }
   assert.match(methodology, /Before support selection, acquire topology identity/);
   assert.match(methodology, /The map never supplies or overrides\s+these observed values/);
+  assert.match(methodology, /exact current workspace\/session identity/);
+  assert.match(
+    methodology,
+    /Never compare a wrapper pathname to the\s+post-dispatch process pathname/,
+  );
+  assert.match(methodology, /stripping\/splitting build metadata are invalid/);
+  assert.match(phase0, /Every non-`none` E2E scenario belongs to that backend's scenario-set row/);
+  assert.match(phase0, /Reverse coverage is\s+not required/);
+  for (const source of [methodology, herdr, mechanics, omnigent, omnigentMechanics, e2e, review]) {
+    assert.match(
+      source,
+      /byte-equal(?:s|ity)?(?: to)? (?:that |the )?trusted (?:public retrieval )?capture/i,
+    );
+    assert.match(source, /candidate\/(?:reviewer|scenario|reviewer-or-scenario)\/actor\/provider/);
+  }
   const assignment =
     /MO_E2E_ASSIGNMENT_V1\|candidate=<oid>\|scenarios=<positive-int>\|ids=<safe-id-list>/;
   for (const source of [methodology, herdr, mechanics, omnigent, omnigentMechanics, e2e]) {

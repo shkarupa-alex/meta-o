@@ -53,17 +53,26 @@ creation. Use the bundled self-contained model helper and the finite automatic
 fallback in methodology §9. Catalogue availability is not entitlement; actual
 native actor launch establishes route/vendor identity.
 
-Before actor creation, acquire topology identity independently of the map. Run
-the exact Omnigent executable and each posture-resolved provider executable only
-through the documented noninteractive version action found in installed public
-help. Require status zero, at most 256 bytes of single-line ASCII, and exactly
-one unambiguous version token that lowercases to a safe ID. Normalize only
-`uname -s`/`uname -m` pairs `Darwin/arm64`, `Linux/x86_64`, and
-`Linux/aarch64` to the methodology values. Retain these credential-free process
-facts ephemerally. After each native actor starts, its public kind/process
-identity must match the measured provider and exact executable path. Missing or
-ambiguous version output, mismatch, or unknown OS leaves that surface
-unsupported; map values never supply live topology identity.
+Before actor creation, acquire topology identity independently of the map.
+Version both the resolved Omnigent control client and active native backend
+instance through public surfaces and require the normalized versions to agree.
+Require the active observation's session identity to equal the native session
+selected for this run.
+For each provider retain the launch entrypoint, credential-safely verified real
+target, and observed stable actor process separately. A direct executable equals
+its target; a verified wrapper, alias/function or provider-native configuration
+dispatches solely to it. Run the documented noninteractive version action on the
+real target, then require native actor kind/process identity to match that target
+rather than a wrapper pathname.
+
+Each version result is status zero, at most 256 bytes of single-line ASCII and
+contains exactly one complete whitespace-delimited version field that lowercases
+unchanged to a safe ID; reject unsafe build metadata rather than stripping it.
+Normalize only `uname -s`/`uname -m` pairs `Darwin/arm64`, `Linux/x86_64`, and
+`Linux/aarch64`. Retain these credential-free facts ephemerally. Missing or
+ambiguous versions, client/backend mismatch, unverified target, process mismatch
+or unknown OS leaves the surface unsupported; map values never supply topology
+identity.
 
 ## Executor objective
 
@@ -197,7 +206,9 @@ scenario-referenced fact per derived name. Unused facts and lifecycle
 actor/provider substitutions are invalid, and at least one reviewer differs
 from the executor. Every used fact byte-matches a retained pre-activation
 `SUPPORTED` row across all seven key fields and scenario identity; its
-provider/backend versions and OS equal lifecycle state.
+provider/backend versions and OS equal lifecycle state. Every nonempty E2E fact
+scenario belongs to the retained Omnigent `MO_FIXTURE_SCENARIOS_V1` set; a
+declared name without a fact remains unsupported.
 Each support entry is exactly `key,status,scenarios`, and safe IDs match
 `[a-z0-9][a-z0-9._-]{0,63}`.
 
@@ -209,8 +220,10 @@ the slash-join of the matched fact's seven safe-ID values and resolves to
 `backend=omnigent`, the same provider, `surface=review`, `fixture=review-turn`, and
 `scenarios=[]`. Reviews have agreeing
 `e2e=REQUIRED|NA` dispositions and exact canonical scenario lists plus structural `MO_REVIEW_V2`
-public-surface evidence bounded by 6 parts, 1000 rows and 61,440 bytes. Both NA
-requires no scenarios; both REQUIRED derives the nonempty sorted scenario set
+public-surface evidence bounded by 6 parts, 1000 rows and 61,440 bytes. It
+byte-equals the trusted capture retained under exact
+candidate/reviewer/actor/provider identity; merely in-range values do not pass.
+Both NA requires no scenarios; both REQUIRED derives the nonempty sorted scenario set
 only from the exact union of the two review scenario lists. Support proves each
 derived name but never defines the required set. Scenario PASS records have
 exact keys `scenario,actor,provider,support-key,status,evidence`, follow that
@@ -220,8 +233,9 @@ same-provider fact is invalid. They carry structural `MO_E2E_V1` evidence with
 consistent ordinal/total; the validated PASS header's positive `scenarios`
 count equals the derived list length and every evidence `total`, its canonical
 `ids` byte-equals the complete derived list, and `not_run=none`. Evidence is
-bounded by 1000 rows and 65,536 bytes. Extra keys, generic prose evidence,
-dirty/new `HEAD`, missing gates/support/evidence, FAIL or UNKNOWN
+bounded by 1000 rows and 65,536 bytes and byte-equals the trusted capture
+retained under exact candidate/scenario/actor/provider identity. Extra keys,
+generic prose evidence, dirty/new `HEAD`, missing gates/support/evidence, FAIL or UNKNOWN
 invalidate PASS. Never edit or commit tracked fixture, acceptance or E2E docs as
 a receipt, and create no manifest, registry, receipt or external evidence sink.
 

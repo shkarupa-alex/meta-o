@@ -712,6 +712,11 @@ and `rm` from the system utility path.
   документации, но означает, что сейчас можно принять только детерминированную часть, не работоспособность Herdr/Omnigent маршрутов.
 ```
 
+### Local-only correction request — 2026-08-11
+
+> давай уже без своих сабагентов когда исправишь все найденное
+> дальше я буду тебе скидывать замечания
+
 <!-- meta-o-later-user-intents-v1:end -->
 
 ### 22. Recovered original task description — 2026-08-10

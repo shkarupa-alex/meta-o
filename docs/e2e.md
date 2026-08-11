@@ -31,7 +31,9 @@ candidate, worktree, executor, gates, support, reviews, scenarios
   fact referenced by `executor`, the two review-referenced facts, and one
   scenario-referenced fact per derived name; no unused fact is allowed.
   Every fact byte-matches a retained pre-activation `SUPPORTED` row across all
-  seven fields/scenario identity and the lifecycle-selected versions/OS.
+  seven fields/scenario identity and the lifecycle-selected versions/OS. Every
+  nonempty E2E fact scenario belongs to the retained selected-backend scenario
+  set; a declared scenario without an exact fact remains unsupported.
 - `reviews` is exactly A then B. Each entry has exactly
   `reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,scenarios,evidence`;
   status, qc and smoke are PASS, checks is `PASS|NA`, actor/provider identities
@@ -44,7 +46,10 @@ candidate, worktree, executor, gates, support, reviews, scenarios
   That fact has the selected route's backend, the same provider, `surface=review`,
   `fixture=review-turn`, and `scenarios=[]`. Evidence has exactly
   `source,protocol,parts,rows,bytes`: source `backend-public-surface`, protocol
-  `MO_REVIEW_V2`, and maxima 6 parts, 1000 rows, 61,440 bytes.
+  `MO_REVIEW_V2`, and maxima 6 parts, 1000 rows, 61,440 bytes. It byte-equals
+  trusted retrieval metadata retained under exact
+  candidate/reviewer/actor/provider identity; in-range invented values are
+  invalid.
 - The two final review E2E dispositions agree. Both `NA` requires
   `scenarios=[]`. Both `REQUIRED` derives a nonempty `scenarios` list exactly as
   the sorted unique union of both validated review lists; support facts prove
@@ -63,7 +68,9 @@ candidate, worktree, executor, gates, support, reviews, scenarios
   same-provider fact is insufficient. Evidence has exactly
   `source,protocol,ordinal,total,rows,bytes`: source `backend-public-surface`,
   protocol `MO_E2E_V1`, ordinal 1..total, the same total on every entry, and
-  maxima 1000 rows and 65,536 bytes.
+  maxima 1000 rows and 65,536 bytes. It byte-equals trusted metadata retained
+  under exact candidate/scenario/actor/provider identity; missing, duplicate or
+  substituted captures are invalid.
 - For REQUIRED/REQUIRED, the validated E2E PASS header's positive `scenarios`
   count and exact canonical `ids` list equal the derived scenario identities and
   every evidence `total`, with `not_run=none`. A smaller, repeated, reordered,

@@ -108,19 +108,34 @@ for the bounded per-ID and delivery states defined in §7; closure, candidate
 invalidation and controlled exit delete the eligible files.
 
 Before support selection, acquire topology identity from credential-safe public
-process observations rather than from the fixture map. Resolve the backend and
-each selected provider to the exact executable that will launch, use only its
-documented noninteractive version surface, require status zero and one bounded
-single-line ASCII output with exactly one unambiguous lower-case safe version
-token, and retain that token with the absolute executable identity. Normalize OS
-only from the public kernel system/architecture pair: `Darwin/arm64` becomes
-`darwin-arm64`, `Linux/x86_64` becomes `linux-x86_64`, and `Linux/aarch64`
-becomes `linux-aarch64`; every other pair is unsupported until an exact fixture
-adds it. After each actor starts, its public kind/process identity must match the
-measured provider and executable. A missing/ambiguous version surface, changed
-path, process mismatch, multiline/NUL/non-ASCII output or unknown OS fails before
-that surface can select a `SUPPORTED` row. The map never supplies or overrides
-these observed values.
+process observations rather than from the fixture map. Separately version the
+exact resolved control-client executable and the active backend instance through
+its public status/version surface. The active-instance observation must also
+name the exact current workspace/session identity supplied by the native route;
+a response for another instance is invalid. Both complete version fields must
+normalize identically or the backend is unsupported. The support key uses that
+independently observed active-backend version.
+
+For each provider retain three distinct identities: the launch mechanism, its
+credential-safely verified real executable target, and the public stable actor
+process. A direct executable entrypoint equals the target. A script wrapper,
+verified alias/function, or provider-native configuration may differ only when
+its inspected fixed dispatch resolves solely to the named real target. Run the
+version action on that target and require the actor's public provider kind and
+stable process executable to equal it. Never compare a wrapper pathname to the
+post-dispatch process pathname.
+
+Every version action is documented, noninteractive, status zero and at most 256
+bytes of one-line ASCII. Parse one complete whitespace-delimited version field;
+it must already lowercase to a safe ID. Unsafe characters, multiple candidate
+fields, or stripping/splitting build metadata are invalid rather than a lossy
+normalization. Normalize OS only from the public kernel system/architecture
+pair: `Darwin/arm64` becomes `darwin-arm64`, `Linux/x86_64` becomes
+`linux-x86_64`, and `Linux/aarch64` becomes `linux-aarch64`; every other pair is
+unsupported until an exact fixture adds it. A missing/ambiguous version surface,
+client/active-backend mismatch, unverified dispatch target, process mismatch,
+multiline/NUL/non-ASCII output or unknown OS fails before that surface can select
+a `SUPPORTED` row. The map never supplies or overrides these observed values.
 
 ### 2.3 Executor
 
@@ -299,7 +314,9 @@ The selected reviewer providers differ, at least one differs from the executor,
 and every actor/provider value equals its lifecycle-stored identity.
 Every used fact byte-matches a retained pre-activation `SUPPORTED` row across
 all seven key fields and scenario identity; invented, unsupported, stale-version
-or other-OS rows are invalid.
+or other-OS rows are invalid. Every nonempty E2E fact scenario belongs to the
+retained selected-backend `MO_FIXTURE_SCENARIOS_V1` set. Reverse coverage is not
+inferred: a declared scenario without an exact fact remains unsupported.
 
 `reviews` has exactly A then B. Each record has only `reviewer`, `actor`,
 `provider`, `support-key`, `status`, `qc`, `smoke`, `checks`, `e2e`, `scenarios`,
@@ -313,7 +330,10 @@ the exact selected fact with the selected backend, the same provider, surface
 `review`, fixture `review-turn` and no scenarios. Evidence has only `source`,
 `protocol`, `parts`, `rows`, `bytes`: source is `backend-public-surface`, protocol
 is `MO_REVIEW_V2`, and positive bounds are respectively 6, 1,000 and 61,440.
-Arbitrary prose or a generic evidence label is invalid.
+Arbitrary prose or a generic evidence label is invalid. Retain the validated
+public retrieval metadata ephemerally under exact candidate/reviewer/actor/provider
+identity; the final evidence object must byte-equal that trusted capture, not
+merely fit its ranges.
 
 The two E2E dispositions must agree. Both `NA` means every review and top-level
 `scenarios` list is exactly empty. Both `REQUIRED` derives the required scenario
@@ -329,6 +349,9 @@ equal to that one name. Its evidence has only `source`, `protocol`, `ordinal`,
 `total`, `rows`, `bytes`: source is `backend-public-surface`, protocol is
 `MO_E2E_V1`, ordinal is the one-based record position, total is the derived
 count, and positive row/byte bounds are 1,000 and 65,536.
+Retain each validated capture under exact candidate/scenario/actor/provider
+identity and require the final evidence object to byte-equal it. Missing,
+duplicate, substituted or merely in-range metadata is invalid.
 
 For `REQUIRED/REQUIRED`, the validated `MO_E2E_V1` PASS header's positive
 `scenarios` integer equals the derived scenario-list length and every scenario
@@ -848,10 +871,13 @@ cannot be proved without revealing a value, the verdict is unknown.
 Apply the same credential-safe structural inspection to executable wrappers and
 provider-native configuration. Evidence names the real target, required fixed
 option/key names and caller-argument pass-through, but not protected values. A
-surface is supported only when its actual process resolves the verified wrapper
-first, a verified credential-free alias/function dispatches only to it, or one
-named provider-native configuration supplies all required fixed behavior. Name
-intentional differences instead of issuing an unconditional supported verdict.
+surface is supported only when its launch mechanism is verified separately and
+dispatches solely to the verified real target: a direct executable names that
+target, a credential-safe wrapper/alias/function has one fixed target, or one
+named provider-native configuration supplies all required fixed behavior. The
+stable post-dispatch actor process must then name that real target, not the
+wrapper or alias. Name intentional differences instead of issuing an
+unconditional supported verdict.
 
 A child inherits its launch parent's `PATH`, so the shell matrix is diagnostic,
 not final proof. Repeat a path-only first-resolution check inside the actual
@@ -882,9 +908,13 @@ regex-parse Markdown. Require exactly one non-`none`, unique, sorted 1..64
 scenario-set row per represented backend and at least executor, two
 review-provider, and E2E definitions for the selected backend. Executor/review
 scenarios are `none`; an E2E scenario is `none` or a singleton equal to its
-fixture. Other-backend rows may coexist, but a missing selected-backend scope is
-wrong-backend input. Only actual exact key values with `posture=SUPPORTED` can
-enter final support; fail-closed `unproven-*` records define no support.
+fixture, and every non-`none` E2E scenario must belong to that backend's declared
+scenario set. Reverse coverage is not required: a declared scenario without an
+exact fact row is eligible for review assignment but remains unsupported until
+such a row exists. Other-backend rows may coexist, but a missing selected-backend
+scope is wrong-backend input. Only actual exact key values with
+`posture=SUPPORTED` can enter final support; fail-closed `unproven-*` records
+define no support.
 
 `docs/phase-0-fixtures.md` is a durable definition and support-posture map only.
 Its posture may be `SUPPORTED`, `PENDING` or `UNSUPPORTED`; none is a

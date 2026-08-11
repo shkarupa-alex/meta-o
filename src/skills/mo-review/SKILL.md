@@ -300,7 +300,9 @@ entry is exactly `key,status,scenarios`, and safe IDs match
 `[a-z0-9][a-z0-9._-]{0,63}`.
 Every used fact byte-matches a retained pre-activation `SUPPORTED` row across
 provider version, backend version, OS, the other four key fields and scenario
-identity; invented, unsupported or stale-topology rows cannot pass.
+identity; every nonempty E2E fact scenario belongs to the retained backend
+`MO_FIXTURE_SCENARIOS_V1` set, while a declared name without a fact remains
+unsupported. Invented, unsupported or stale-topology rows cannot pass.
 
 `reviews` is exactly A then B with exact keys
 `reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,scenarios,evidence`; status,
@@ -312,8 +314,10 @@ exact slash-join of the matched support fact's seven safe-ID values and resolves
 to the enclosing backend, the same provider, `surface=review`,
 `fixture=review-turn`, and `scenarios=[]`. Evidence keys are exactly
 `source,protocol,parts,rows,bytes`, with source `backend-public-surface`, protocol
-`MO_REVIEW_V2`, and maxima 6/1000/61,440. Both dispositions must agree: both NA
-requires no scenarios; both REQUIRED derives a nonempty sorted scenario set only
+`MO_REVIEW_V2`, and maxima 6/1000/61,440. It byte-equals trusted retrieval
+metadata retained ephemerally under exact candidate/reviewer/actor/provider
+identity; merely in-range values do not pass. Both dispositions must agree: both
+NA requires no scenarios; both REQUIRED derives a nonempty sorted scenario set only
 from the exact union of the two review scenario lists. Support proves every
 derived scenario but never defines the required set. Scenario records are structurally
 bound `MO_E2E_V1` PASS entries in that order with exact keys
@@ -322,7 +326,9 @@ to the enclosing backend, the same provider, `surface=e2e`,
 `fixture=scenario`, and `scenarios=[scenario]`; a merely same-provider fact is
 invalid. Evidence keys are exactly
 `source,protocol,ordinal,total,rows,bytes`, ordinal 1..one consistent total, and
-bounds 1000 rows/65,536 bytes. Extra keys, generic prose evidence, missing
-gates/support/evidence, FAIL/UNKNOWN, dirty state or a changed SHA cannot pass.
+bounds 1000 rows/65,536 bytes. It byte-equals the trusted capture retained under
+exact candidate/scenario/actor/provider identity. Extra keys, generic prose
+evidence, missing gates/support/evidence, FAIL/UNKNOWN, dirty state or a changed
+SHA cannot pass.
 Never write or commit candidate evidence into fixture, acceptance or E2E docs,
 and create no manifest, receipt, registry or external evidence sink.

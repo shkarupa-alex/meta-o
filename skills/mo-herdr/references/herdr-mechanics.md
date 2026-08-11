@@ -758,7 +758,11 @@ surface is unrelated and invalid.
 
 Bind review evidence only to the validated public `MO_REVIEW_V2` retrieval
 metadata and scenario evidence only to the validated public `MO_E2E_V1`
-retrieval metadata. The structural evidence objects and their 6/1,000/61,440 and
+retrieval metadata. Retain those captures under exact
+candidate/reviewer-or-scenario/actor/provider identity and require every final
+evidence object to byte-equal the trusted capture corresponding to that identity;
+merely in-range values do not pass. The structural evidence objects and their
+6/1,000/61,440 and
 1,000/65,536 bounds reject arbitrary body prose or a generic evidence label.
 Derive E2E names without reading opaque bodies: both reviewer dispositions NA
 means exactly no scenarios; both REQUIRED means exactly the nonempty sorted
@@ -825,10 +829,12 @@ P1–P8 establish only installed external capabilities before implementation.
 H7b and H13–H37 establish the post-cutover behavior on one named unchanged SHA.
 No prose, incidental failure or old inline fixture transfers support to a new
 backend/provider/provider-version/backend-version/surface/os/fixture key.
-Acquire backend/provider version tokens and normalized OS through the bounded
-public process observations in methodology §2.2. The actor's public kind and
-foreground executable must match that measured provider path; otherwise the
-surface is unsupported before map selection.
+Acquire matching control-client/active-backend versions, provider launch
+mechanism/verified target/observed stable process, and normalized OS through the
+bounded public observations in methodology §2.2. The public active-backend
+identity also matches the selected workspace. The actor kind/process matches
+the real target after any verified wrapper or configuration dispatch; otherwise
+the surface is unsupported before map selection.
 
 `docs/phase-0-fixtures.md` is only the durable fixture-definition and
 support-posture map. `SUPPORTED`, `PENDING` and `UNSUPPORTED` describe a surface
@@ -839,4 +845,6 @@ Resolve its exact `MO_FIXTURE_MAP_V1` and `MO_FIXTURE_SCENARIOS_V1` fenced
 records while reading the Markdown; any automated Markdown parser is a real
 AST, never regex. Require selected-backend executor, two-review-provider and E2E
 definitions plus one unique sorted scenario-set row. Select only rows whose
-seven fields byte-match the independently observed topology identity.
+seven fields byte-match the independently observed topology identity. Every
+nonempty E2E fact scenario belongs to that retained set; reverse coverage is not
+inferred, so a declared scenario without a fact remains unsupported.

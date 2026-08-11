@@ -229,6 +229,11 @@ inventing project documentation or bookkeeping that the user did not request.
   документации, но означает, что сейчас можно принять только детерминированную часть, не работоспособность Herdr/Omnigent маршрутов.
 ~~~~
 
+### Local-only correction request — 2026-08-11
+
+> давай уже без своих сабагентов когда исправишь все найденное
+> дальше я буду тебе скидывать замечания
+
 <!-- meta-o-later-user-intents-v1:end -->
 
 ## Purpose
@@ -297,11 +302,16 @@ This change adds no orchestration CLI, provider proxy, daemon, adapter layer, st
 
 Tracked fixture, E2E and acceptance documents are durable definitions, proof mappings and current reusable support posture only; they never become candidate-bound PASS receipts. Live candidate evidence remains ephemeral in current backend-run state and the final answer. Its closed final-result record has exact top-level order `candidate`, `worktree`, `executor`, `gates`, `support`, `reviews`, `scenarios`. Candidate is the unchanged full SHA and worktree is `clean`. `executor` is exactly `actor,provider,support-key`; actor/provider equal lifecycle state and its support key resolves to the exact retained pre-activation `SUPPORTED` seven-field fact for `surface=executor`, `fixture=executor-turn`, and no scenarios.
 
-`gates` is exactly `[{gate:"qc",statuses:[A,B]},{gate:"smoke",statuses:[A,B]},{gate:"checks",statuses:[A,B]}]`; QC/smoke are PASS/PASS and checks are each PASS|NA. `support` contains 3..67 unique entries sorted by the exact key tuple `backend,provider,provider-version,backend-version,surface,os,fixture`; each outer entry is exactly `key,status,scenarios`, has `status=SUPPORTED`, and has either an empty list or one safe lowercase scenario ID matching `[a-z0-9][a-z0-9._-]{0,63}`. The bound is exact: one fact referenced by `executor`, two facts referenced by the A/B reviews, and one fact referenced by every derived scenario, up to 64. There are no unused facts. Every fact byte-matches one retained pre-activation `SUPPORTED` row across all seven key fields/scenario identity and equals the lifecycle-selected backend/provider versions/OS. The facts and actor/provider fields equal the lifecycle-stored selected topology; reviewer providers differ and at least one differs from the executor.
+`gates` is exactly `[{gate:"qc",statuses:[A,B]},{gate:"smoke",statuses:[A,B]},{gate:"checks",statuses:[A,B]}]`; QC/smoke are PASS/PASS and checks are each PASS|NA. `support` contains 3..67 unique entries sorted by the exact key tuple `backend,provider,provider-version,backend-version,surface,os,fixture`; each outer entry is exactly `key,status,scenarios`, has `status=SUPPORTED`, and has either an empty list or one safe lowercase scenario ID matching `[a-z0-9][a-z0-9._-]{0,63}`. The bound is exact: one fact referenced by `executor`, two facts referenced by the A/B reviews, and one fact referenced by every derived scenario, up to 64. There are no unused facts. Every fact byte-matches one retained pre-activation `SUPPORTED` row across all seven key fields/scenario identity and equals the lifecycle-selected backend/provider versions/OS. Every nonempty E2E fact scenario belongs to the retained selected-backend `MO_FIXTURE_SCENARIOS_V1` set; reverse coverage is not inferred, so a declared scenario without an exact fact remains unsupported. The facts and actor/provider fields equal the lifecycle-stored selected topology; reviewer providers differ and at least one differs from the executor.
 
 `reviews` is exactly A then B. Each entry is exactly `reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,scenarios,evidence`; providers differ, status/qc/smoke are PASS, checks is PASS|NA, and E2E is REQUIRED|NA. Each review header and final review record independently names the exact canonical scenario list: REQUIRED has 1..64 unique safe IDs sorted bytewise; NA has none. The top-level gate arrays byte-equal the corresponding A/B review qc, smoke, and checks fields. `support-key` is the exact slash-join of the matched fact's seven safe-ID values and resolves to a fact with the selected route's backend, the same provider, `surface=review`, `fixture=review-turn`, and `scenarios=[]`. Evidence is exactly `source,protocol,parts,rows,bytes` with `source=backend-public-surface`, `protocol=MO_REVIEW_V2`, and maxima 6 parts, 1000 rows, 61,440 bytes. Both dispositions must agree: NA/NA is equivalent to an empty scenario list; REQUIRED/REQUIRED derives the required nonempty scenario set exactly as the sorted unique union of both validated review lists. Support facts prove every derived name but never define applicability. A mixed first pass re-prompts exactly the NA reviewer once on the unchanged candidate without peer output; a change to REQUIRED settles the pair, while repeated NA is terminal `needs_attention:e2e_disposition_dispute`.
 
 Scenario records follow that exact order. Each entry is exactly `scenario,actor,provider,support-key,status,evidence`, status PASS. Its support key resolves to a fact with the selected route's backend, the same provider, `surface=e2e`, `fixture=scenario`, and `scenarios=[scenario]`; a merely same-provider fact is invalid. Evidence is exactly `source,protocol,ordinal,total,rows,bytes`, source `backend-public-surface`, protocol `MO_E2E_V1`, ordinal 1..total, consistent total, and maxima 1000 rows/65,536 bytes. For REQUIRED/REQUIRED, the validated PASS header's positive `scenarios` count and exact canonical `ids` list equal the derived scenario-list length and identities and every evidence `total`, with `not_run=none`. A smaller, repeated, reordered, or same-size different list is incomplete. Extra keys, prose/generic evidence, missing support/gates/evidence, count or identity mismatch, FAIL/UNKNOWN, dirty state or a changed SHA invalidates PASS. Never edit or commit tracked docs after a gate and never create a manifest, receipt, verdict file or external evidence sink.
+
+For both review and scenario retrieval, retain validated metadata ephemerally
+under exact candidate, role/scenario, actor and provider identity. Every final
+evidence object byte-equals its trusted capture; missing, duplicate, substituted,
+or merely in-range fabricated values cannot support PASS.
 
 ## Implementation authority and change control
 
@@ -502,20 +512,30 @@ executor|review|e2e, and duplicate canonical seven-field keys or scenario-set
 rows fail closed regardless of posture/scenario metadata. Any automated Markdown
 parser uses a real AST, never regex. For the selected backend require executor,
 two review-provider, and E2E definitions plus one unique byte-sorted non-`none`
-1..64 scenario set. Other-backend scopes may coexist. Only actual exact-key
-`SUPPORTED` rows can enter final support; structurally valid `unproven-*`
-defaults remain fail-closed.
+1..64 scenario set. Every non-`none` E2E row must name a member of that backend
+set. Reverse coverage is deliberately not required: a declared scenario without
+an exact row is eligible for review assignment but unsupported. Other-backend
+scopes may coexist. Only actual exact-key `SUPPORTED` rows can enter final
+support; structurally valid `unproven-*` defaults remain fail-closed.
 
 Before selecting any such row, acquire backend version, provider version and OS
-from bounded credential-safe public process observations, never from the map.
-Use the exact resolved backend/provider executable's documented noninteractive
-version surface; require status zero, one bounded ASCII line and exactly one
-unambiguous safe version token. Normalize only supported public kernel
-system/architecture pairs. After launch, the actor's public kind/process identity
-must match the measured provider/executable. Missing or ambiguous version output,
-path/process mismatch, unknown OS, or any map value that differs from these live
-facts leaves the surface unsupported. Retaining these process facts is explicitly
-permitted ephemeral lifecycle state.
+from bounded credential-safe public observations, never from the map. Version
+the resolved control client and active backend instance independently and require
+their exact normalized fields to agree. The active observation must name the
+exact native workspace/session selected for the run. For a provider retain launch mechanism,
+credential-safely verified real target, and observed stable actor process as
+separate facts. Direct executable entrypoints equal the target; a verified
+wrapper/alias/function/native configuration dispatches solely to it, and the
+actor process matches the target rather than the wrapper pathname.
+
+Version actions run on the real target, return status zero and one at-most-256
+byte ASCII line, and contain exactly one complete whitespace-delimited field
+that lowercases unchanged to a safe ID. Unsafe build metadata is rejected, never
+stripped into a colliding value. Normalize only supported public kernel
+system/architecture pairs. Missing or ambiguous output, client/backend mismatch,
+unverified target, process mismatch, unknown OS, or a differing map value leaves
+the surface unsupported. Retaining these process facts is explicitly permitted
+ephemeral lifecycle state.
 
 Before topology mutation, run:
 

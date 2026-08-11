@@ -143,6 +143,16 @@ function validateDefaultFixtureMap(source) {
     assert.equal(ids.length >= 1 && ids.length <= 64, true);
     ids.forEach((id) => assert.match(id, safe));
     assert.deepEqual(ids, [...new Set(ids)].sort());
+    const declared = new Set(ids);
+    for (const fact of scoped.filter(
+      (entry) => entry.surface === "e2e" && entry.scenarios !== "none",
+    )) {
+      assert.equal(declared.has(fact.scenarios), true);
+    }
+    assert.equal(
+      ids.some((id) => !scoped.some((fact) => fact.surface === "e2e" && fact.scenarios === id)),
+      true,
+    );
   }
   assert.equal(
     facts.every((fact) => /^(herdr|omnigent)$/.test(fact.backend)),
@@ -177,6 +187,11 @@ test("the default pre-activation map is structurally consumable for both backend
       "MO_FIXTURE_MAP_V1|backend=herdr|provider=unproven-e2e|provider-version=unproven|backend-version=unproven|surface=e2e|os=unproven|fixture=h13|scenarios=h13|posture=UNSUPPORTED\nMO_FIXTURE_MAP_V1|backend=herdr|provider=unproven-e2e|provider-version=unproven|backend-version=unproven|surface=e2e|os=unproven|fixture=h13|scenarios=none|posture=UNSUPPORTED",
     ),
     source.replace("|surface=e2e|", "|surface=unknown|"),
+    source.replace(
+      "MO_FIXTURE_SCENARIOS_V1|backend=herdr|ids=",
+      "MO_FIXTURE_MAP_V1|backend=herdr|provider=unproven-e2e|provider-version=unproven|backend-version=unproven|surface=e2e|os=unproven|fixture=surprise|scenarios=surprise|posture=UNSUPPORTED\nMO_FIXTURE_SCENARIOS_V1|backend=herdr|ids=",
+    ),
+    source.replace("ids=h13,h14", "ids=h14"),
   ]) {
     assert.notEqual(mutant, source);
     assert.throws(() => validateDefaultFixtureMap(mutant));
@@ -249,7 +264,9 @@ test("methodology §9 owns the complete posture diagnostic", () => {
   assert.match(text, /status 2 means evidence/);
   assert.match(text, /type=missing/);
   assert.match(text, /path=missing/);
-  assert.match(text, /actual process resolves/);
+  assert.match(text, /launch mechanism is verified separately/);
+  assert.match(text, /stable post-dispatch actor process/);
+  assert.match(text, /real target, not the\s+wrapper or alias/);
   assert.match(text, /actual\s+backend, hook, or script environment/);
 });
 

@@ -25,6 +25,15 @@ bounded retry counters, scratch handle and delivery state. Version and OS facts
 are measured independently of the fixture map and exist only to prevent support
 from transferring across topology keys.
 
+Provider launch mechanism, verified real target and observed stable process are
+separate facts: a wrapper/alias/function/native configuration is valid only when
+its credential-safe inspected dispatch reaches that target, while the actor
+process matches the target rather than the wrapper pathname. Backend identity is
+also dual-observed: the resolved control client and active public backend
+instance must report the same exact version, and the active instance must name
+the native workspace/session selected for this run. Otherwise that route stays
+unsupported.
+
 ## Autonomous process supervision
 
 Thin does not mean passive. From activation until one verified SHA or a

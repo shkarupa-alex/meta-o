@@ -134,10 +134,14 @@ body-excluded framing budget, and the completed payload must fit 130,048 bytes.
 or `unknown` state. Provider prose is not lifecycle.
 
 **Topology identity** — ephemeral credential-safe public observation of the
-exact backend/provider executable, its bounded unambiguous version token, and
-normalized OS system/architecture. Each launched actor must match the measured
-provider executable/kind before a retained fixture-map row can support it; map
-values never manufacture topology identity.
+control-client and active-backend versions; provider launch mechanism, verified
+real target and observed stable actor process; and normalized OS
+system/architecture. Client/active versions must match, and the public active
+instance identity must equal the native workspace/session selected for the run. Direct executables equal
+their target; verified wrappers/aliases/functions/native configuration dispatch
+to it, and the stable actor process matches that target rather than the wrapper
+pathname. Complete version fields must already be safe IDs; lossy stripping is
+invalid. Map values never manufacture topology identity.
 
 **Route** — existing configured `route/model/effort` preference. It does not own
 fixture applicability.

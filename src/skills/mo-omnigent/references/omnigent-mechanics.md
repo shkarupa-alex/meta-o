@@ -254,10 +254,14 @@ the Markdown; any automated Markdown parser is a real AST, never regex. Require
 selected-backend executor, two-review-provider and E2E definitions plus one
 unique sorted scenario-set row.
 
-Acquire backend/provider version tokens and normalized OS independently through
-methodology §2.2's bounded public process observations. Require each native
-actor's public kind/process executable to match the measured provider path, then
-select only map rows whose seven key fields byte-match those observed facts.
+Acquire matching control-client/active-backend versions, provider launch
+mechanism/verified target/observed stable process, and normalized OS through
+methodology §2.2's bounded public observations. Require the public active-backend
+identity to match the selected native session and each native actor's
+public kind/process to match the real target after verified dispatch, then select
+only map rows whose seven key fields byte-match those observed facts. Every
+nonempty E2E fact scenario belongs to the retained set; reverse coverage is not
+inferred, so a declared scenario without a fact remains unsupported.
 
 Tracked fixture and acceptance documents define repeatable scenarios, map
 requirements, and state current reusable support posture only. They never store
@@ -296,6 +300,8 @@ and `worktree=clean`; then:
   `scenarios=[]`. Evidence keys are exactly
   `source,protocol,parts,rows,bytes`, source `backend-public-surface`, protocol
   `MO_REVIEW_V2`, and bounds 6 parts/1000 rows/61,440 bytes.
+  The object byte-equals the trusted capture retained under exact
+  candidate/reviewer/actor/provider identity; merely in-range values do not pass.
 - Both review dispositions agree. Both NA requires `scenarios=[]`; one NA is
   invalid. Both REQUIRED derives a nonempty scenario set exactly as the sorted
   unique union of the two review scenario lists; support proves each name but
@@ -316,7 +322,8 @@ and `worktree=clean`; then:
   header's positive `scenarios` count equals the derived list length and every
   evidence `total`, its canonical `ids` byte-equals the complete derived list,
   and `not_run=none`; a smaller, repeated, reordered or different same-sized set
-  is incomplete.
+  is incomplete. Each evidence object byte-equals the trusted capture retained
+  under exact candidate/scenario/actor/provider identity.
 
 Never edit or commit tracked documentation after a gate or create a manifest,
 registry, receipt or external evidence sink. Extra keys, generic prose evidence,

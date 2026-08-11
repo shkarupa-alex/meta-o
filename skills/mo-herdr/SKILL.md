@@ -60,16 +60,24 @@ posture only; never record this candidate's SHA, PASS verdict or live evidence
 there.
 
 Before actor creation, acquire topology identity independently of that map.
-Run the exact Herdr executable and each posture-resolved provider executable only
-through the documented noninteractive version action found in installed public
-help. Require status zero, at most 256 bytes of single-line ASCII, and exactly
-one unambiguous version token that lowercases to a safe ID. Normalize only
-`uname -s`/`uname -m` pairs `Darwin/arm64`, `Linux/x86_64`, and
+Version both the resolved Herdr control client and the active workspace/backend
+through its public status/version surface; require the exact normalized versions
+to agree, and require the active observation's workspace identity to equal the
+workspace ID supplied to this run. For every provider keep the launch entrypoint,
+credential-safely verified real target, and observed stable actor process separate. A direct
+executable equals its target; a verified wrapper, alias/function or
+provider-native configuration dispatches solely to it. Run the documented
+noninteractive version action on the real target, then require `agent start`'s
+public kind/process to match that target rather than a wrapper pathname.
+
+Each version result is status zero, at most 256 bytes of single-line ASCII and
+contains exactly one complete whitespace-delimited version field that lowercases
+unchanged to a safe ID; reject unsafe build metadata rather than stripping it.
+Normalize only `uname -s`/`uname -m` pairs `Darwin/arm64`, `Linux/x86_64`, and
 `Linux/aarch64` to the methodology values. Retain these credential-free process
-facts ephemerally. After every `agent start`, require public kind/foreground
-process identity to match the measured provider and exact executable path. A
-missing/ambiguous version, path/process mismatch, or unknown OS leaves that
-surface unsupported; never copy identity from the fixture map.
+facts ephemerally. Missing/ambiguous versions, client/backend mismatch,
+unverified target, process mismatch or unknown OS leaves the surface unsupported;
+never copy identity from the fixture map.
 
 Use the bundled `scripts/mo-models.mjs` for preferences/catalogues. It is
 self-contained; missing ambient `node_modules` is not a reason to search the
@@ -377,9 +385,11 @@ lifecycle-selected, executor-referenced `executor`/`executor-turn` fact with no
 scenarios, exactly the two review-referenced facts, and one scenario-referenced
 fact per derived name; reject unused facts. Every used fact byte-matches a
 retained pre-activation `SUPPORTED` row across all seven key fields and scenario
-identity; its provider/backend versions and OS equal lifecycle state. Bind every
-actor/provider to lifecycle state and require at least one reviewer provider to
-differ from the executor.
+identity; every nonempty E2E fact scenario belongs to the retained Herdr
+`MO_FIXTURE_SCENARIOS_V1` set, while a declared name without a fact remains
+unsupported. Its provider/backend versions and OS equal lifecycle state. Bind
+every actor/provider to lifecycle state and require at least one reviewer
+provider to differ from the executor.
 
 Emit exactly A then B review records with reviewer, actor, provider, exact
 `support-key`, PASS status, QC, smoke, checks, E2E disposition, exact scenario
@@ -390,7 +400,9 @@ dispositions must be REQUIRED or both NA; reject one NA. A REQUIRED review has
 a nonempty canonical list of at most 64 safe scenario IDs; NA has none. Review evidence is
 exactly source `backend-public-surface`, protocol `MO_REVIEW_V2`, and positive
 parts/rows/bytes bounded by 6/1,000/61,440. Different reviewer providers remain
-mandatory. Both NA requires an empty scenario list. Both REQUIRED derives the
+mandatory. It byte-equals the trusted public retrieval capture retained under
+the exact candidate/reviewer/actor/provider identity; merely in-range values do
+not pass. Both NA requires an empty scenario list. Both REQUIRED derives the
 nonempty scenario list only as the sorted unique union of both review scenario
 lists; support proves every derived name but never defines the required set. No
 default or out-of-band name is accepted. Each derived scenario record is
@@ -400,8 +412,9 @@ whose fixture and sole scenario both equal the record name. Evidence source is
 `backend-public-surface`, protocol is `MO_E2E_V1`, ordinal/total is exact, and
 the validated PASS header's `scenarios` count equals both the derived list
 length and every evidence `total`, its `ids` byte-equals the complete derived
-list, and `not_run=none`. Positive rows/bytes are
-bounded by 1,000/65,536. Reject missing or unrelated
+list, and `not_run=none`. Positive rows/bytes are bounded by 1,000/65,536, and
+the evidence byte-equals the trusted capture retained under exact
+candidate/scenario/actor/provider identity. Reject missing or unrelated
 support keys, gates/dispositions, extra fields, FAIL/UNKNOWN or arbitrary
 prose/generic evidence.
 

@@ -91,7 +91,8 @@ executor/executor-turn fact; ordered A/B gate statuses for QC, smoke and checks;
 empty or singleton scenario lists; and exactly A/B PASS review
 entries from different providers. Review entries carry `e2e=REQUIRED|NA` and
 exact structural `MO_REVIEW_V2` public-surface evidence bounded by 6 parts, 1000
-rows and 61,440 bytes. Each review's exact fields include
+rows and 61,440 bytes and byte-equal to trusted metadata retained under exact
+candidate/reviewer/actor/provider identity. Each review's exact fields include
 `reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,scenarios,evidence`; status,
 qc and smoke are PASS, checks is PASS|NA, and the top-level gate arrays
 byte-equal the corresponding A/B review fields. Each review `support-key` is the
@@ -105,7 +106,9 @@ identifier matches `[a-z0-9][a-z0-9._-]{0,63}`, and the support facts cover ever
 provider selected in the final topology.
 Every used fact byte-matches its retained pre-activation `SUPPORTED` row across
 all seven fields and scenario identity; provider/backend versions and OS also
-equal the selected lifecycle state.
+equal the selected lifecycle state. Every nonempty E2E fact scenario belongs to
+the retained backend `MO_FIXTURE_SCENARIOS_V1` set; a declared name without an
+exact fact remains unsupported.
 
 Both review dispositions must agree. Both NA yields no scenario records. Both
 REQUIRED derives the nonempty scenario set only as the exact sorted unique union
@@ -126,8 +129,10 @@ and resolves to the enclosing backend, the same provider, `surface=e2e`,
 invalid. Structural evidence is
 ordered `source,protocol,ordinal,total,rows,bytes`, with source
 `backend-public-surface`, protocol `MO_E2E_V1`, consistent 1..total ordinals,
-at most 1000 rows and 65,536 bytes. Extra keys, generic prose evidence, dirty or
-changed `HEAD`, missing support/gates/evidence, FAIL or UNKNOWN invalidate PASS.
+at most 1000 rows and 65,536 bytes, and byte-equality to the trusted capture
+retained under exact candidate/scenario/actor/provider identity. Extra keys,
+generic prose evidence, dirty or changed `HEAD`, missing support/gates/evidence,
+FAIL or UNKNOWN invalidate PASS.
 
 The complete body including header is at most 65,536 UTF-8 bytes, contains no NUL
 and preserves original newlines.
