@@ -35,7 +35,7 @@ native lifecycle, vendor diversity, or absence of tracked reads in a real actor 
 | Model bundle      | Pinned SDK/esbuild versions, size ceiling, metafile roots, notices, no externals, no runtime `node_modules`.                                                |
 | Catalogue         | `catalog_unknown`, `model_missing`, and `launch_failed` remain distinct; history never becomes catalogue.                                                   |
 | Header protocols  | Executor, review, adjudication, E2E, E2E approval-request, human-answer, and operational-approval grammar, field order, matrices, IDs, and unknown classes. |
-| Review accounting | Consecutive parts, cumulative open IDs, total origin outcomes, and remaining-budget-bound aggregate adjudication.                                           |
+| Review accounting | Full-rebuts origin outcomes plus disputes-only target projection, remaining budgets, and aggregate adjudication.                                            |
 | Candidate gates   | Full object IDs, branch grammar, clean tree, same-SHA gates, commit invalidation, and missing `develop`.                                                    |
 | Relay             | Exact framing, marker-last human returns, aggregate peer outcomes, independent approval operation/actor binding, and body-silent failures.                  |
 | Portable argv     | First-pass and both projected aggregate envelopes keep framing/body totals within 7,168/130,048 bytes.                                                      |
@@ -93,7 +93,7 @@ Herdr evidence or mechanics.
 | OM1 firewall     | After activation only native process/lifecycle facts, validated headers, and narrow Git metadata enter orchestrator context.    |
 | OM2 candidate    | One clean full SHA binds every applicable gate.                                                                                 |
 | OM3 independence | A completes before B; PASS/PASS does not relay; a findings pair releases atomically; A mutation skips B.                        |
-| OM4 findings     | RESPONSE covers the complete origin-open set; sequential peer results share one 122,880-byte budget before atomic delivery.     |
+| OM4 findings     | RESPONSE accounts for full origin-open rebuts; only validated disputes enter projection, requests, and atomic delivery.         |
 | OM5 invalidation | A new commit invalidates every prior gate and open ID.                                                                          |
 | OM6 recovery     | Native session continuity/recovery uses no private store and invents no Herdr-style evidence.                                   |
 | OM7 vocabulary   | The weaker prompt objective and byte-identical capsule precede a final-row marker that excludes echoed inbound frames.          |

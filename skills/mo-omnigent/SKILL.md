@@ -77,18 +77,23 @@ ask the human to resume, route or select an ordinary actor.
    rebutted IDs close; it is delivered whole by
    `ORIGIN_FINDINGS_TO_EXECUTOR`. Different origins use separate settled
    resolution turns, and a mixed-origin executor `RESPONSE` is invalid.
-   Resolve every disputed target before relaying any terminal peer outcome.
+   Resolve every target in the validated outcome's exact canonical `disputes`
+   set before relaying any terminal peer outcome. Full `rebuts` remains the
+   close/dispute accounting set but never expands the aggregate target set.
    Retain at most 122,880 header-inclusive UTF-8 bytes across all peer outcomes
    in that disputed set. Before each sequential request, compute the exact
    remaining aggregate budget and use the mechanics' exact budget-bound prompt;
    never reset it between targets or after a rejected oversize attempt.
    Before accepting the first outcome, project both possible final aggregate
-   prompt envelopes with conservative `bytes=65536` segment lengths and require
-   the larger body-excluded envelope to fit 7,168 bytes. Recheck the final
-   complete prompt against 130,048 bytes before submission.
+   prompt envelopes using only that `disputes` set/count with conservative
+   `bytes=65536` segment lengths and require the larger body-excluded envelope to
+   fit 7,168 bytes. Recheck the final complete prompt against 130,048 bytes
+   before submission.
    Aggregate all N peer results in canonical target order: any `UPHOLD` sends
    the complete `UPHOLD|WITHDRAW` set atomically to the executor; all
-   `WITHDRAW` sends it atomically to the origin. `UNRESOLVED` reaches the human.
+   `WITHDRAW` sends it atomically to the origin. Outer `finding` and the N
+   ordered results equal that exact `disputes` set. `UNRESOLVED` reaches the
+   human.
 7. Repeat after every new commit; open IDs and all gates are SHA-bound.
 8. Run a separate read-only E2E actor when required, or finish only when both
    reviewers independently say NA.

@@ -87,9 +87,11 @@ outcomes use `OUTCOMES`; all-dispute uses `DISPUTED`. Only `FOLLOWUP` uses
 and a mixed-origin response is rejected rather than split or interpreted.
 
 Multi-ID adjudication requests remain sequential, but terminal delivery is
-total and atomic. Wait until every disputed target has a valid peer result. If
-at least one is `UPHOLD`, relay all N ordered `UPHOLD|WITHDRAW` bodies together
-to the executor with the complete same-origin outer ID list. If all are
+total and atomic. The canonical target set is the validated origin outcome's
+exact `disputes`; the full `RESPONSE.rebuts` remains only the set partitioned by
+`closes` and `disputes`. Wait until every disputed target has a valid peer
+result. If at least one is `UPHOLD`, relay all N ordered `UPHOLD|WITHDRAW` bodies
+together to the executor with that exact `disputes` outer ID list. If all are
 `WITHDRAW`, relay all N together to the origin with the same list. `UNRESOLVED`
 reaches the human; no per-ID terminal relay is released early.
 The retained peer bodies for one set have one header-inclusive cumulative
@@ -98,14 +100,17 @@ budget and caps its next complete body at `min(65536, remaining)`; prior bodies
 are never truncated, discarded, summarized, or excluded from the subtraction.
 Oversize is rejected before acceptance, and its one compact retry receives the
 same remaining value.
-Herdr supplies that canonical value as `peerOutcomeRemaining` immediately after
-`expectedOpen` in extraction argv and supplies `none` for every other protocol;
-Omnigent binds the equivalent value through its native lifecycle state.
+Herdr supplies that canonical value to extraction as `peerOutcomeRemaining`
+immediately after `expectedOpen` and supplies `none` for every other protocol.
+In relay argv, `expectedOpen` remains full `RESPONSE.rebuts`, the following
+`aggregateTargets` equals validated `disputes` for request/aggregate routes and
+is `none` otherwise, and `peerOutcomeRemaining` follows it. Omnigent binds the
+equivalent values through native lifecycle state.
 Before accepting the first peer result, both possible final aggregate envelopes
-are projected from exact routing inputs with every body-length field rendered as
-`bytes=65536`. The larger body-excluded envelope must fit 7,168 bytes. Final
-submission rechecks that projection plus exact cumulative bodies against the
-130,048-byte complete-payload ceiling.
+are projected from exact routing inputs and only that `disputes` set/count, with
+every body-length field rendered as `bytes=65536`. The larger body-excluded
+envelope must fit 7,168 bytes. Final submission rechecks that projection plus
+exact cumulative bodies against the 130,048-byte complete-payload ceiling.
 
 Failed E2E, the A-only invalidating check, executor response, adjudication
 request, peer outcome, repository-changing human answer, candidate-stable E2E

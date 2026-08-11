@@ -111,10 +111,11 @@ ID; an approval addressed to any other native actor fails closed. Optional
 watchdog approval stays with the orchestrator. Operational requests and
 approvals are header-only and never persist opaque human text.
 
-Multi-ID disputes are requested from the peer sequentially, but their terminal
-results are delivered only after every target resolves: one ordered atomic set
-goes to the executor if any finding is upheld, or to the origin reviewer if all
-are withdrawn. A partial per-ID terminal history is never released.
+Only IDs in the validated origin outcome's `disputes` set are requested from the
+peer. They run sequentially, but their terminal results are delivered only after
+every such target resolves: one ordered atomic set goes to the executor if any
+finding is upheld, or to the origin reviewer if all are withdrawn. Closed-only
+rebuttal IDs never enter that set, and a partial per-ID history is never released.
 
 ## Repository layout
 
@@ -150,7 +151,9 @@ hand-edited copy of the methodology could begin.
 - Summarise a reviewer's findings on the way to the author.
 - Ask the human to choose an ordinary route, retry, fix or process step.
 - Start an optional watchdog without an explicit request.
-- Let the executor edit or delete the spec.
+- Let the executor arbitrarily rewrite or delete the spec. The one explicit
+  exception is the required credential-safe §2.1 verbatim append of each
+  repository-changing human intent to every current task/spec before acting.
 - Weaken a quality gate to make a candidate green.
 - Push, tag or open a PR without being asked.
 - Keep run state, gate receipts, digests, manifests or baselines anywhere. The

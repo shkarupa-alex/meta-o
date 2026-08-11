@@ -184,6 +184,10 @@ Each disputed target is adjudicated sequentially using the same exact whole
 executor `RESPONSE`, the same exact whole `OUTCOMES`/`DISPUTED` body and that
 target's introducing part. The native route must keep those shared opaque result
 references available until every referenced adjudication delivery is terminal.
+Derive the canonical target set only from the validated origin outcome's exact
+`disputes`. The complete `RESPONSE.rebuts` remains the accounting set whose IDs
+partition across `closes` and `disputes`; closed-only IDs never enter requests,
+aggregate projection, outer `finding`, or peer-result ordering.
 Across one disputed set, retained peer handoffs have one cumulative 122,880-byte
 UTF-8 ceiling including every header. Before each target, subtract the exact
 byte lengths of earlier retained peer outcomes and submit this exact sentence
@@ -203,7 +207,8 @@ remaining budget.
 
 Before accepting the first peer outcome, project both possible final aggregate
 prompt envelopes from the exact locator, candidate, canonical target set/count,
-recipient, executor objective/capsule, fixed frames, and final marker. Render
+recipient, executor objective/capsule, fixed frames, and final marker, where the
+target set/count is exactly the validated `disputes`. Render
 every segment length conservatively as `bytes=65536`; the larger body-excluded
 envelope must be at most 7,168 UTF-8 bytes or stop before acceptance. Before the
 final aggregate prompt, recompute the projection with exact retained bodies and
@@ -211,10 +216,11 @@ require the complete prompt to remain at most 130,048 bytes.
 A peer outcome is not relayed onward until every disputed target has resolved.
 Then deliver all N `MO_ADJUDICATION_V1` bodies atomically in exact canonical
 target order: if at least one is `UPHOLD`, send every `UPHOLD|WITHDRAW` through
-`ADJUDICATION_UPHOLD_TO_EXECUTOR` with the complete same-origin outer ID list; if
-all are `WITHDRAW`, send them through `ADJUDICATION_WITHDRAW_TO_ORIGIN` with that
-same list. Any `UNRESOLVED` reaches the human; never send a premature per-ID
-terminal relay.
+`ADJUDICATION_UPHOLD_TO_EXECUTOR` with validated `disputes` as the outer ID list;
+if all are `WITHDRAW`, send them through `ADJUDICATION_WITHDRAW_TO_ORIGIN` with
+that same list. That outer list and all N ordered bodies equal the validated
+`disputes` set exactly, never full `rebuts`. Any `UNRESOLVED` reaches the human;
+never send a premature per-ID terminal relay.
 A `FOLLOWUP` remains through the new-finding relay; its response has no disputed
 target reference after confirmed origin delivery. The route never borrows Herdr
 scratch; if its public surface cannot prove those lifetimes and byte identity,

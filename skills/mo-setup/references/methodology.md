@@ -378,8 +378,11 @@ token generation at most eight times. The direction table is exhaustive. An
 adjudication request accepts its target among a multi-ID executor `RESPONSE`,
 preserves that whole response body plus the shared origin outcome, and rejects a
 mixed-origin response. The outcome's disjoint closes/disputes union must equal
-the complete rebuttal set. One three-segment request is sent sequentially for
-each disputed ID, with the target's introducing part. Do not deliver a peer
+the complete rebuttal set. Lifecycle state keeps that full set as
+`expectedOpen`, separately derives canonical `aggregateTargets` byte-for-byte
+from the validated outcome's `disputes`, and never places a closed ID in that
+target set. One three-segment request is sent sequentially for each ID in
+`aggregateTargets`, with the target's introducing part. Do not deliver a peer
 outcome onward until every ID in that exact disputed set has one terminal peer
 result. Then send one atomic aggregate in canonical ID order: all `WITHDRAW`
 results use `ADJUDICATION_WITHDRAW_TO_ORIGIN`; a set containing any `UPHOLD`
@@ -393,7 +396,7 @@ uses one ID or `none` as declared by its row.
 The cumulative retained peer-adjudication handoff budget is exactly 122,880
 UTF-8 bytes including every compact header and original newline. Before the
 first peer turn, lifecycle state projects both possible final aggregate payloads
-from the exact locator, candidate, canonical target set, target count, recipient,
+from the exact locator, candidate, canonical `aggregateTargets` value and count, recipient,
 executor goal/capsule, final marker and fixed frames, using the five-digit
 `bytes=65536` field for every segment. The larger projected body-excluded
 envelope must be at most 7,168 bytes; otherwise adjudication stops before any
@@ -412,7 +415,10 @@ current open set for that origin as trusted lifecycle metadata. Extraction and
 relay independently require byte-exact equality with `rebuts`; a proper subset,
 proper superset, mixed origin or different ordering is invalid. The subsequent
 origin outcome then accounts for that entire exact set once across disjoint
-`closes` and `disputes`.
+`closes` and `disputes`. Relay receives that full set separately from
+`aggregateTargets`, requires the latter to equal the validated canonical
+`disputes` field, and uses only `aggregateTargets` for peer sequencing,
+terminal aggregate membership and both envelope projections.
 
 Before construction, the caller proves the exact recipient actor identity,
 source actor identity, phase, candidate and target ID/set from validated

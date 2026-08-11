@@ -198,8 +198,11 @@ globally and handled in separate origin turns. The next
 origin handoff accounts for every rebutted ID exactly once across disjoint
 `closes` and `disputes`. `PASS` closes them all without new IDs; `FOLLOWUP`
 closes them all and adds new IDs; `OUTCOMES` represents a mixed close/dispute
-result without new IDs; `DISPUTED` represents all-dispute. Relay each disputed
-target sequentially with the shared exact response/outcome bytes, but deliver no
+result without new IDs; `DISPUTED` represents all-dispute. Keep the full exact
+`RESPONSE.rebuts` set as `expectedOpen`, derive separate canonical
+`aggregateTargets` byte-for-byte from the validated outcome's `disputes`, and
+never include its closed IDs. Relay each `aggregateTargets` ID sequentially with
+the shared exact response/outcome bytes, but deliver no
 peer result onward until every disputed ID has resolved. Then atomically send an
 all-WITHDRAW aggregate to the origin, or the complete mixed/all-UPHOLD aggregate
 to the executor. A `FOLLOWUP` returns to the executor through
@@ -207,7 +210,7 @@ to the executor. A `FOLLOWUP` returns to the executor through
 
 Track retained peer-adjudication handoffs against one header-inclusive 122,880-
 byte aggregate budget. Before the first peer turn project the larger of the two
-possible final aggregate envelopes from exact lifecycle fields, every fixed
+possible final aggregate envelopes from exact `aggregateTargets` only, every fixed
 frame, the executor goal/capsule and final marker, with five-digit maximum body
 length fields; stop before acceptance unless it is at most 7,168 bytes. Before
 each peer turn compute the exact remaining bytes

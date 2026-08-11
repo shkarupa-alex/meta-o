@@ -162,13 +162,16 @@ reviewer may issue one `MO_ADJUDICATION_V1` on one disputed ID:
 MO_ADJUDICATION_V1|candidate=<oid>|finding=<id>|reviewer=<A|B>|outcome=<UPHOLD|WITHDRAW|UNRESOLVED>
 ```
 
-Adjudication does not close the origin finding. Resolve every disputed target
-before any terminal peer-outcome relay. `UNRESOLVED`, or repeated refusal after
-withdrawal, is the only technical dispute boundary sent to the human.
+Adjudication does not close the origin finding. Resolve every target in the
+validated outcome's exact `disputes` before any terminal peer-outcome relay.
+`UNRESOLVED`, or repeated refusal after withdrawal, is the only technical
+dispute boundary sent to the human.
 
 For multiple disputes from one outcome, adjudicate targets sequentially. Every
 request reuses the exact whole executor `RESPONSE`, exact whole origin outcome,
-and the introducing part for that target. Backend scratch reference-counts the
+and the introducing part for that target. The canonical adjudication target set
+is exactly the validated origin outcome's `disputes`, not its full `rebuts`
+accounting set. Backend scratch reference-counts the
 shared response/outcome until every referenced adjudication delivery is
 terminal; it never deletes shared bytes after only the first target.
 
@@ -185,13 +188,19 @@ The complete next handoff must be at most both 65,536 bytes and that remaining
 budget. Do not truncate, summarize, discard an earlier outcome, or reset the
 budget between targets. Reject an oversize result before acceptance without
 changing retained state; its one compact retry uses the same remaining value.
-Herdr passes the same canonical value as extraction argument
-`peerOutcomeRemaining` immediately after `expectedOpen`; every non-adjudication
-protocol supplies `none`. Omnigent binds the same value in native lifecycle
-state and validates it before accepting the complete turn.
+Herdr passes the same canonical value to extraction as
+`peerOutcomeRemaining` immediately after `expectedOpen`; every
+non-adjudication protocol supplies `none`. Omnigent binds the same value in
+native lifecycle state and validates it before accepting the complete turn. In
+Herdr relay argv, `expectedOpen` remains the complete same-origin
+`RESPONSE.rebuts`; the following `aggregateTargets` argument is exactly the
+validated outcome `disputes` for adjudication requests and terminal aggregate
+routes and is `none` otherwise, followed by `peerOutcomeRemaining`. Each
+request requires its target in that set and the parsed outcome's `disputes` to
+equal it.
 
 Before accepting the first peer outcome, project both possible final aggregate
-envelopes from the exact locator, candidate, canonical target set/count,
+envelopes from the exact locator, candidate, canonical `disputes` set/count,
 recipient, executor goal/capsule, fixed frames, and final marker. Conservatively
 render every segment length as `bytes=65536`; the larger body-excluded envelope
 must be at most 7,168 UTF-8 bytes or the backend stops before acceptance. Before
@@ -200,11 +209,12 @@ and require the complete payload to remain at most 130,048 bytes.
 
 After every target has a valid `MO_ADJUDICATION_V1`, deliver terminal outcomes
 atomically in exact canonical target order. If at least one outcome is `UPHOLD`,
-`ADJUDICATION_UPHOLD_TO_EXECUTOR` uses the complete same-origin ID list in outer
+`ADJUDICATION_UPHOLD_TO_EXECUTOR` uses the validated `disputes` list as outer
 `finding` and carries all N peer outcomes, each `UPHOLD` or `WITHDRAW`. If every
-outcome is `WITHDRAW`, `ADJUDICATION_WITHDRAW_TO_ORIGIN` uses that same ID list
-and carries all N `WITHDRAW` outcomes. Never relay an early per-ID terminal
-outcome; any `UNRESOLVED` reaches the human instead.
+outcome is `WITHDRAW`, `ADJUDICATION_WITHDRAW_TO_ORIGIN` uses that same set and
+carries all N `WITHDRAW` outcomes. Never include closed-only rebuttal IDs, relay an early
+per-ID terminal outcome, or let a projection use the full `rebuts` set; any
+`UNRESOLVED` reaches the human instead.
 
 Every repository-changing permitted non-dispute human answer begins exactly:
 

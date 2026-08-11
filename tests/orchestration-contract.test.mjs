@@ -1292,12 +1292,14 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
   );
   assert.ok(
     relay.includes(
-      "expectedOpen, peerOutcomeRemaining, approvalRequest, approvalScenario, approvalOperation, approvalActor, scratchArg",
+      "expectedOpen, aggregateTargets, peerOutcomeRemaining, approvalRequest, approvalScenario, approvalOperation, approvalActor, scratchArg",
     ),
   );
   assert.ok(relay.includes("retainedPeerOutcomeBytes <= 122_880"));
   assert.ok(relay.includes("aggregateEnvelopeBytes <= 7_168"));
   assert.ok(relay.includes("projectedAggregateOverhead"));
+  assert.ok(relay.includes("count = aggregateTargetIds.length"));
+  assert.ok(relay.includes("h.disputes === aggregateTargets"));
   const extraction = sectionText(mechanicsSource, "3. Adaptive extraction");
   assert.ok(extraction.includes("Math.min(65_536, +peerOutcomeRemaining)"));
   assert.ok(
@@ -1318,11 +1320,12 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
     flow,
     /accounts for every rebutted ID exactly once across disjoint\n`closes` and `disputes`/,
   );
+  assert.match(flow, /derive separate canonical\n`aggregateTargets` byte-for-byte/);
   assert.match(flow, /subsets, supersets and mixed A\/B responses are rejected\nglobally/);
   assert.match(flow, /`FOLLOWUP`\ncloses them all and adds new IDs/);
   assert.match(
     flow,
-    /Relay each disputed\ntarget sequentially with the shared exact response\/outcome bytes/,
+    /Relay each `aggregateTargets` ID sequentially with\nthe shared exact response\/outcome bytes/,
   );
   assert.match(flow, /phase\/requester-bound `HUMAN_ANSWER_TO_EXECUTOR`/);
   assert.match(flow, /`E2E_APPROVAL_TO_E2E` at `e2e-approval-resume`/);
@@ -1466,7 +1469,7 @@ test("authored Herdr mutation guards kill acceptance, reviewer barrier and byte-
     [skill.replace("`FOLLOWUP`\ncloses them all", "`FOLLOWUP` may defer rebutted IDs"), mechanics],
     [
       skill.replace(
-        "Relay each disputed\ntarget sequentially with the shared exact response/outcome bytes",
+        "Relay each `aggregateTargets` ID sequentially with\nthe shared exact response/outcome bytes",
         "Relay only the first disputed target",
       ),
       mechanics,
@@ -1552,6 +1555,16 @@ test("authored Herdr mutation guards kill acceptance, reviewer barrier and byte-
     [
       skill,
       mechanics.replace("aggregateEnvelopeBytes <= 7_168", "aggregateEnvelopeBytes <= 7_169"),
+      methodology,
+    ],
+    [
+      skill,
+      mechanics.replace("count = aggregateTargetIds.length", "count = expectedOpenIds.length"),
+      methodology,
+    ],
+    [
+      skill,
+      mechanics.replace("h.disputes === aggregateTargets", "disputes.includes(finding)"),
       methodology,
     ],
     [
@@ -2137,6 +2150,7 @@ test("AST extraction and relay preserve a missing final LF", () => {
       "none",
       "none",
       "none",
+      "none",
       directory,
       "reviewerA",
       "1",
@@ -2189,6 +2203,7 @@ test("AST relay builds exact frames, preserves opaque argv, and stays body-silen
     locator,
     PROMPT_FINGERPRINT,
     OID,
+    "none",
     "none",
     "none",
     "none",
@@ -2250,12 +2265,12 @@ test("AST relay builds exact frames, preserves opaque argv, and stays body-silen
   assert.equal(failed.status, 1);
   assert.equal(failed.stdout + failed.stderr, "", "failure disclosed the opaque body");
   assert.equal(
-    spawnSync(process.execPath, args.with(10, "1"), { encoding: "utf8", env }).status,
+    spawnSync(process.execPath, args.with(11, "1"), { encoding: "utf8", env }).status,
     1,
     "non-adjudication routes require peerOutcomeRemaining=none",
   );
   assert.equal(
-    spawnSync(process.execPath, args.with(13, "production_e2e"), {
+    spawnSync(process.execPath, args.with(14, "production_e2e"), {
       encoding: "utf8",
       env,
     }).status,
@@ -2305,6 +2320,7 @@ test("AST relay rejects multipart, ordering, byte, encoding, mode and collision 
         locator,
         PROMPT_FINGERPRINT,
         OID,
+        "none",
         "none",
         "none",
         "none",
@@ -2480,6 +2496,7 @@ test("literal relay caps first-pass parts independently at six per reviewer", ()
         "none",
         "none",
         "none",
+        "none",
         directory,
         ...triples.flat(),
       ],
@@ -2532,6 +2549,7 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
     "A-1",
     "B",
     "A-1",
+    "A-1",
     "122880",
     "none",
     "none",
@@ -2553,7 +2571,7 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
   assert.equal(adjudication.stdout + adjudication.stderr, "");
   for (const invalidRemaining of ["none", "0", "122881"]) {
     assert.equal(
-      spawnSync(process.execPath, adjudicationArgs.with(10, invalidRemaining), {
+      spawnSync(process.execPath, adjudicationArgs.with(11, invalidRemaining), {
         encoding: "utf8",
         env,
       }).status,
@@ -2562,27 +2580,50 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
     );
   }
 
-  const largeTargetSet = Array.from({ length: 80 }, (_, index) => `A-${index + 1}`).join(",");
-  const largeResponse = privateFile(
-    directory,
-    "large-target-response.txt",
-    `MO_EXECUTOR_V1|type=RESPONSE|candidate=${OID}|branch=feature/x|base=none|fixes=none|rebuts=${largeTargetSet}|blocker=none\nresponse\n`,
+  const allDisputedArgs = (count, recipePath = recipe) => {
+    const targetSet = Array.from({ length: count }, (_, index) => `A-${index + 1}`).join(",");
+    const responsePath = privateFile(
+      directory,
+      `projected-response-${count}.txt`,
+      `MO_EXECUTOR_V1|type=RESPONSE|candidate=${OID}|branch=feature/x|base=none|fixes=none|rebuts=${targetSet}|blocker=none\nresponse\n`,
+    );
+    const outcomePath = privateFile(
+      directory,
+      `projected-outcome-${count}.txt`,
+      `${review({ status: "DISPUTED", open: targetSet, disputes: targetSet, e2e: "UNKNOWN" })}\nall disputed\n`,
+    );
+    return adjudicationArgs
+      .with(0, recipePath)
+      .with(9, targetSet)
+      .with(10, targetSet)
+      .with(22, responsePath)
+      .with(25, outcomePath);
+  };
+  let acceptedTargetCount = 1;
+  for (let low = 1, high = 80; low <= high;) {
+    const middle = Math.floor((low + high) / 2);
+    const status = spawnSync(process.execPath, allDisputedArgs(middle), {
+      encoding: "utf8",
+      env,
+    }).status;
+    if (status === 0) {
+      acceptedTargetCount = middle;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+  assert.ok(acceptedTargetCount >= 3, "projection must admit a 3+ dispute terminal set");
+  assert.equal(
+    spawnSync(process.execPath, allDisputedArgs(acceptedTargetCount), { env }).status,
+    0,
   );
-  const largeDisputed = privateFile(
-    directory,
-    "large-target-disputed.txt",
-    `${review({ status: "DISPUTED", open: largeTargetSet, disputes: largeTargetSet, e2e: "UNKNOWN" })}\nall disputed\n`,
+  const projectedOversizeArgs = allDisputedArgs(acceptedTargetCount + 1);
+  assert.equal(
+    spawnSync(process.execPath, projectedOversizeArgs, { encoding: "utf8", env }).status,
+    1,
+    "the first target-count projection above 7,168 bytes must fail before peer prompt",
   );
-  const projectedOversizeArgs = adjudicationArgs
-    .with(9, largeTargetSet)
-    .with(21, largeResponse)
-    .with(24, largeDisputed);
-  const projectedOversize = spawnSync(process.execPath, projectedOversizeArgs, {
-    encoding: "utf8",
-    env,
-  });
-  assert.equal(projectedOversize.status, 1, "oversize final envelope must fail before peer prompt");
-  assert.equal(projectedOversize.stdout + projectedOversize.stderr, "");
   const projectionMutant = source.replace(
     'if (purpose === "adjudication-request" || aggregateRoute) ok(aggregateEnvelopeBytes <= 7_168);',
     'if (purpose === "adjudication-request" || aggregateRoute) ok(aggregateEnvelopeBytes > 0);',
@@ -2600,6 +2641,59 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
     }).status,
     0,
     "envelope preflight mutation must be observable",
+  );
+
+  const largeOpenSet = Array.from({ length: 80 }, (_, index) => `A-${index + 1}`).join(",");
+  const closedSet = Array.from({ length: 79 }, (_, index) => `A-${index + 1}`).join(",");
+  const lastDispute = "A-80";
+  const lastIntroducing = privateFile(
+    directory,
+    "large-mixed-introducing.txt",
+    `${review({ status: "FINDINGS", ids: lastDispute, open: lastDispute, qc: "FAIL", e2e: "REQUIRED" })}\nlast finding\n`,
+  );
+  const largeMixedResponse = privateFile(
+    directory,
+    "large-mixed-response.txt",
+    `MO_EXECUTOR_V1|type=RESPONSE|candidate=${OID}|branch=feature/x|base=none|fixes=none|rebuts=${largeOpenSet}|blocker=none\nresponse\n`,
+  );
+  const largeMixedOutcome = privateFile(
+    directory,
+    "large-mixed-outcome.txt",
+    `${review({ status: "OUTCOMES", open: lastDispute, closes: closedSet, disputes: lastDispute, e2e: "UNKNOWN" })}\n79 closed, one disputed\n`,
+  );
+  const largeMixedArgs = adjudicationArgs
+    .with(7, lastDispute)
+    .with(9, largeOpenSet)
+    .with(10, lastDispute)
+    .with(19, lastIntroducing)
+    .with(22, largeMixedResponse)
+    .with(25, largeMixedOutcome);
+  assert.equal(
+    spawnSync(process.execPath, largeMixedArgs, { encoding: "utf8", env }).status,
+    0,
+    "many closes plus one dispute must project only the one aggregate target",
+  );
+  const closedTargetArgs = largeMixedArgs.with(10, "A-79");
+  assert.equal(spawnSync(process.execPath, closedTargetArgs, { encoding: "utf8", env }).status, 1);
+  const targetBindingMutant = source.replace(
+    "h.disputes === aggregateTargets",
+    "disputes.includes(finding)",
+  );
+  assert.notEqual(targetBindingMutant, source);
+  assert.equal(
+    spawnSync(
+      process.execPath,
+      closedTargetArgs.with(
+        0,
+        installRecipe(directory, "relay-target-binding-mutant.mjs", targetBindingMutant),
+      ),
+      {
+        encoding: "utf8",
+        env,
+      },
+    ).status,
+    0,
+    "origin disputes to aggregate-target binding must be load-bearing",
   );
 
   const multiple = privateFile(
@@ -2629,6 +2723,7 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
       OID,
       "A-1",
       "B",
+      "A-1,A-2",
       "A-1,A-2",
       "122880",
       "none",
@@ -2678,6 +2773,7 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
       "A-2",
       "B",
       "A-1,A-2",
+      "A-1,A-2",
       "61440",
       "none",
       "none",
@@ -2725,6 +2821,7 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
       "A-2",
       "B",
       "A-1,A-2",
+      "A-2",
       "61440",
       "none",
       "none",
@@ -2752,7 +2849,7 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
   );
   const incompleteTarget = spawnSync(
     process.execPath,
-    adjudicationArgs.with(9, "A-1,A-2").with(21, multiple).with(24, incompleteOutcome),
+    adjudicationArgs.with(9, "A-1,A-2").with(22, multiple).with(25, incompleteOutcome),
     { encoding: "utf8", env },
   );
   assert.equal(incompleteTarget.status, 1);
@@ -2764,7 +2861,7 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
   );
   const extraTarget = spawnSync(
     process.execPath,
-    adjudicationArgs.with(9, "A-1,A-2").with(21, multiple).with(24, extraOutcome),
+    adjudicationArgs.with(9, "A-1,A-2").with(22, multiple).with(25, extraOutcome),
     { encoding: "utf8", env },
   );
   assert.equal(extraTarget.status, 1);
@@ -2774,7 +2871,7 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
     "mixed-response.txt",
     `MO_EXECUTOR_V1|type=RESPONSE|candidate=${OID}|branch=feature/x|base=none|fixes=none|rebuts=A-1,B-1|blocker=none\nresponse\n`,
   );
-  const mixedOrigin = spawnSync(process.execPath, adjudicationArgs.with(21, mixed), {
+  const mixedOrigin = spawnSync(process.execPath, adjudicationArgs.with(22, mixed), {
     encoding: "utf8",
     env,
   });
@@ -2786,7 +2883,7 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
     "disputed-with-new.txt",
     `${review({ status: "DISPUTED", ids: "A-2", open: "A-1,A-2", disputes: "A-1", e2e: "UNKNOWN" })}\ndispute plus new finding\n`,
   );
-  const disputedAndNew = spawnSync(process.execPath, adjudicationArgs.with(24, disputedWithNew), {
+  const disputedAndNew = spawnSync(process.execPath, adjudicationArgs.with(25, disputedWithNew), {
     encoding: "utf8",
     env,
   });
@@ -2821,6 +2918,7 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
     "/opaque/spec.md",
     PROMPT_FINGERPRINT,
     OID,
+    "none",
     "none",
     "none",
     "none",
@@ -2899,6 +2997,7 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
     triples,
     candidate = OID,
     expectedOpen = "none",
+    aggregateTargets = "none",
     peerOutcomeRemaining = "none",
     approvalRequest = "none",
     approvalScenario = "none",
@@ -2917,6 +3016,7 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
       finding,
       reviewer,
       expectedOpen,
+      aggregateTargets,
       peerOutcomeRemaining,
       approvalRequest,
       approvalScenario,
@@ -2984,6 +3084,7 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
     finding: "A-1",
     reviewer: "none",
     expectedOpen: "A-1",
+    aggregateTargets: "A-1",
     triples: [["reviewerB", "none", uphold]],
   });
   assert.match(
@@ -3001,6 +3102,7 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
     finding: "A-1",
     reviewer: "A",
     expectedOpen: "A-1",
+    aggregateTargets: "A-1",
     triples: [["reviewerB", "none", withdraw]],
   });
   assert.match(
@@ -3018,6 +3120,7 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
     finding: "A-1,A-2",
     reviewer: "none",
     expectedOpen: "A-1,A-2",
+    aggregateTargets: "A-1,A-2",
     triples: [
       ["reviewerB", "none", uphold],
       ["reviewerB", "none", withdrawA2],
@@ -3037,6 +3140,7 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
     finding: "A-1,A-2",
     reviewer: "A",
     expectedOpen: "A-1,A-2",
+    aggregateTargets: "A-1,A-2",
     triples: [
       ["reviewerB", "none", withdraw],
       ["reviewerB", "none", withdrawA2],
@@ -3048,6 +3152,64 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
   );
   assert.ok(allWithdrawAggregate.prompt.includes(withdrawBody));
   assert.ok(allWithdrawAggregate.prompt.includes(withdrawA2Body));
+
+  const threeTargetSet = "A-3,A-4,A-5";
+  const fullFiveSet = "A-1,A-2,A-3,A-4,A-5";
+  const threePeerOutcomes = [
+    ["A-3", "UPHOLD"],
+    ["A-4", "WITHDRAW"],
+    ["A-5", "WITHDRAW"],
+  ].map(([id, outcome]) =>
+    privateFile(
+      directory,
+      `three-${id}.txt`,
+      `MO_ADJUDICATION_V1|candidate=${OID}|finding=${id}|reviewer=B|outcome=${outcome}\npeer ${outcome}`,
+    ),
+  );
+  const threeTargetAggregate = invoke({
+    actor: "m-task-executor-abc123",
+    purpose: "adjudication-uphold",
+    phase: "adjudication-resolution",
+    finding: threeTargetSet,
+    reviewer: "none",
+    expectedOpen: fullFiveSet,
+    aggregateTargets: threeTargetSet,
+    triples: threePeerOutcomes.map((path) => ["reviewerB", "none", path]),
+  });
+  assert.match(
+    threeTargetAggregate.prompt,
+    /MO_RELAY_V2\|direction=ADJUDICATION_UPHOLD_TO_EXECUTOR\|recipient=executor\|candidate=[^|]+\|finding=A-3,A-4,A-5\|segments=3\|/,
+  );
+  assert.doesNotMatch(
+    threeTargetAggregate.prompt.split("\n").find((row) => row.startsWith("MO_RELAY_V2|")),
+    /A-1|A-2/,
+    "closed IDs must be excluded from the terminal aggregate header",
+  );
+
+  const largeOpenSet = Array.from({ length: 80 }, (_, index) => `A-${index + 1}`).join(",");
+  const lastPeerOutcome = privateFile(
+    directory,
+    "last-peer-outcome.txt",
+    `MO_ADJUDICATION_V1|candidate=${OID}|finding=A-80|reviewer=B|outcome=WITHDRAW\nlast withdrawal`,
+  );
+  const largeMixedAggregate = invoke({
+    actor: "m-task-reviewera-abc123",
+    purpose: "adjudication-withdraw",
+    phase: "origin-closure",
+    finding: "A-80",
+    reviewer: "A",
+    expectedOpen: largeOpenSet,
+    aggregateTargets: "A-80",
+    triples: [["reviewerB", "none", lastPeerOutcome]],
+  });
+  assert.match(
+    largeMixedAggregate.prompt,
+    /MO_RELAY_V2\|direction=ADJUDICATION_WITHDRAW_TO_ORIGIN\|recipient=reviewerA\|candidate=[^|]+\|finding=A-80\|segments=1\|/,
+  );
+  assert.doesNotMatch(
+    largeMixedAggregate.prompt.split("\n").find((row) => row.startsWith("MO_RELAY_V2|")),
+    /A-1\b|A-79\b/,
+  );
 
   const sizedOutcome = (finding, outcome, bytes, name) => {
     const header = `MO_ADJUDICATION_V1|candidate=${OID}|finding=${finding}|reviewer=B|outcome=${outcome}`;
@@ -3069,6 +3231,7 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
     finding: "A-1,A-2",
     reviewer: "none",
     expectedOpen: "A-1,A-2",
+    aggregateTargets: "A-1,A-2",
     triples: [
       ["reviewerB", "none", largeUpholdA1],
       ["reviewerB", "none", largeWithdrawA2],
@@ -3087,6 +3250,7 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
     finding: "A-1,A-2",
     reviewer: "A",
     expectedOpen: "A-1,A-2",
+    aggregateTargets: "A-1,A-2",
     triples: [
       ["reviewerB", "none", largeWithdrawA1],
       ["reviewerB", "none", largeWithdrawA2],
@@ -3105,6 +3269,7 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
     finding: "A-1,A-2",
     reviewer: "none",
     expectedOpen: "A-1,A-2",
+    aggregateTargets: "A-1,A-2",
     triples: [
       ["reviewerB", "none", largeUpholdA1],
       ["reviewerB", "none", oversizedWithdrawA2],
@@ -3118,6 +3283,7 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
     finding: "A-1,A-2",
     reviewer: "A",
     expectedOpen: "A-1,A-2",
+    aggregateTargets: "A-1,A-2",
     triples: [
       ["reviewerB", "none", largeWithdrawA1],
       ["reviewerB", "none", oversizedWithdrawA2],
@@ -3145,13 +3311,13 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
     finding: "A-1",
     reviewer: "none",
     expectedOpen: "A-1,A-2",
+    aggregateTargets: "A-1,A-2",
     triples: [["reviewerB", "none", uphold]],
     status: 1,
   });
-  const partialAggregateMutant = source.replace(
-    "expectedOpenIds.length > 0 && (!aggregateRoute || finding === expectedOpen)",
-    "expectedOpenIds.length > 0",
-  );
+  const partialAggregateMutant = source
+    .replaceAll("finding === aggregateTargets", "true")
+    .replace("segments.length === aggregateTargetIds.length", "segments.length > 0");
   assert.notEqual(partialAggregateMutant, source);
   const partialAggregateRecipe = installRecipe(
     directory,
@@ -3172,6 +3338,7 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
     finding: "A-1,A-2",
     reviewer: "A",
     expectedOpen: "A-1,A-2",
+    aggregateTargets: "A-1,A-2",
     triples: [
       ["reviewerB", "none", uphold],
       ["reviewerB", "none", withdrawA2],
@@ -3730,6 +3897,7 @@ test("literal relay and extraction recipes round-trip provider renders for every
       finding,
       reviewer,
       expectedOpen,
+      purpose.startsWith("adjudication-") ? finding : "none",
       purpose === "adjudication-request" ? "122880" : "none",
       purpose === "e2e-approval" ? approvalRequest : "none",
       approvalId,
@@ -3861,6 +4029,7 @@ test("literal relay and extraction recipes round-trip provider renders for every
       first[4],
       first[5],
       first[6],
+      "none",
       "none",
       "none",
       first[7],

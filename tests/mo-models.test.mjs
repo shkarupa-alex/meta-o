@@ -20,7 +20,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -158,7 +158,7 @@ process.stdin.on("data", (chunk) => {
       FAKE_CLAUDE_MODE: mode,
       FAKE_CLAUDE_PIDS: pids,
       MO_MODELS_CATALOG_TIMEOUT_MS: mode === "never" ? "200" : "2000",
-      PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin`,
+      PATH: [bin, dirname(process.execPath), "/usr/bin", "/bin"].join(delimiter),
     },
     executable,
     log,
@@ -538,34 +538,37 @@ test("Claude containment support is decided before provider start", () => {
   }
 });
 
-test(
-  "a hard helper exit closes the capability and reaps the provider group",
-  { skip: process.platform !== "darwin" ? "Seatbelt containment is macOS-only" : false },
-  async () => {
-    const home = sandbox();
-    const fixture = fakeClaude(home, "never");
-    const helper = spawn(process.execPath, [HELPER, "--catalog", "--route", "claude", "--json"], {
-      cwd: home,
-      env: { ...process.env, ...fixture.env, HOME: home, MO_MODELS_CATALOG_TIMEOUT_MS: "2000" },
-      stdio: "ignore",
-    });
-    const deadline = Date.now() + 2_000;
-    while (!existsSync(fixture.pids) && helper.exitCode === null && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    assert.ok(
-      existsSync(fixture.pids),
-      "provider did not start before the hard-exit fixture bound",
-    );
-    const { parent } = JSON.parse(readFileSync(fixture.pids, "utf8"));
-    assert.equal(processIsAlive(parent), true, "provider was not alive before helper termination");
+test("a hard helper exit closes its capability or fails before provider start", async () => {
+  const home = sandbox();
+  const fixture = fakeClaude(home, "never");
+  if (process.platform !== "darwin") {
+    const result = run(home, ["--catalog", "--route", "claude", "--json"], home, fixture.env);
+    assert.equal(result.status, 0, result.stderr);
+    const report = JSON.parse(result.stdout).claude;
+    assert.equal(report.catalog, null);
+    assert.match(report.catalogUnavailableReason, /kernel-owned Claude descendant containment/);
+    assert.equal(existsSync(fixture.pids), false, "unsupported platforms must fail before spawn");
+    return;
+  }
 
-    const closed = new Promise((resolve) => helper.once("close", resolve));
-    helper.kill("SIGKILL");
-    await closed;
-    assert.equal(waitUntilGone(parent), true, `provider ${parent} survived lifecycle-fd closure`);
-  },
-);
+  const helper = spawn(process.execPath, [HELPER, "--catalog", "--route", "claude", "--json"], {
+    cwd: home,
+    env: { ...process.env, ...fixture.env, HOME: home, MO_MODELS_CATALOG_TIMEOUT_MS: "2000" },
+    stdio: "ignore",
+  });
+  const deadline = Date.now() + 2_000;
+  while (!existsSync(fixture.pids) && helper.exitCode === null && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.ok(existsSync(fixture.pids), "provider did not start before the hard-exit fixture bound");
+  const { parent } = JSON.parse(readFileSync(fixture.pids, "utf8"));
+  assert.equal(processIsAlive(parent), true, "provider was not alive before helper termination");
+
+  const closed = new Promise((resolve) => helper.once("close", resolve));
+  helper.kill("SIGKILL");
+  await closed;
+  assert.equal(waitUntilGone(parent), true, `provider ${parent} survived lifecycle-fd closure`);
+});
 
 test("a Claude catalogue timeout is bounded and leaves no provider child", () => {
   const home = sandbox();
@@ -576,6 +579,11 @@ test("a Claude catalogue timeout is bounded and leaves no provider child", () =>
   assert.ok(Date.now() - started < 2_500, "catalogue timeout exceeded its cleanup bound");
   const report = JSON.parse(result.stdout).claude;
   assert.equal(report.catalog, null);
+  if (process.platform !== "darwin") {
+    assert.match(report.catalogUnavailableReason, /kernel-owned Claude descendant containment/);
+    assert.equal(existsSync(fixture.pids), false, "unsupported platforms must fail before spawn");
+    return;
+  }
   assert.match(report.catalogUnavailableReason, /no answer within 200ms/);
   if (existsSync(fixture.pids)) {
     const pids = JSON.parse(readFileSync(fixture.pids, "utf8"));
@@ -594,7 +602,14 @@ test("an isolated generated helper needs no ambient node_modules", () => {
     { cwd: home, encoding: "utf8", env: { ...process.env, ...fixture.env, HOME: home } },
   );
   assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(JSON.parse(result.stdout).claude.catalog, ["fake-opus"]);
+  const report = JSON.parse(result.stdout).claude;
+  if (process.platform !== "darwin") {
+    assert.equal(report.catalog, null);
+    assert.match(report.catalogUnavailableReason, /kernel-owned Claude descendant containment/);
+    assert.equal(existsSync(fixture.pids), false, "unsupported platforms must fail before spawn");
+    return;
+  }
+  assert.deepEqual(report.catalog, ["fake-opus"]);
 });
 
 test("roles are scoped to the Git root, so any subdirectory is the same project", () => {

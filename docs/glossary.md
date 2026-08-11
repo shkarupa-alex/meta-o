@@ -66,10 +66,11 @@ before any reviewer body reaches the executor.
 Evidence, Impact and Expected fix. Only its origin reviewer closes it.
 
 **Adjudication** — one other-vendor decision on a disputed finding. Requests for
-a same-origin disputed set run sequentially, but terminal results are released
-only as one ordered atomic set after every target resolves: any uphold routes the
-whole set to the executor, while all-withdraw routes it to the origin. Unresolved
-reaches the human; the peer never closes an origin finding. Retained peer
+a same-origin outcome's exact validated `disputes` set run sequentially; closed
+IDs from the full rebuttal accounting set are not targets. Terminal results are
+released only as one ordered atomic set after every target resolves: any uphold
+routes the whole set to the executor, while all-withdraw routes it to the origin.
+Unresolved reaches the human; the peer never closes an origin finding. Retained peer
 handoffs for one disputed set share one 122,880-byte header-inclusive cumulative
 budget rather than each receiving an independent aggregate allowance. Both
 possible final aggregate envelopes must first fit the separate 7,168-byte
