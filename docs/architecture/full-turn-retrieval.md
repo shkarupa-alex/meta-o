@@ -92,6 +92,20 @@ at least one is `UPHOLD`, relay all N ordered `UPHOLD|WITHDRAW` bodies together
 to the executor with the complete same-origin outer ID list. If all are
 `WITHDRAW`, relay all N together to the origin with the same list. `UNRESOLVED`
 reaches the human; no per-ID terminal relay is released early.
+The retained peer bodies for one set have one header-inclusive cumulative
+122,880-byte UTF-8 ceiling. Each request names the exact remaining aggregate
+budget and caps its next complete body at `min(65536, remaining)`; prior bodies
+are never truncated, discarded, summarized, or excluded from the subtraction.
+Oversize is rejected before acceptance, and its one compact retry receives the
+same remaining value.
+Herdr supplies that canonical value as `peerOutcomeRemaining` immediately after
+`expectedOpen` in extraction argv and supplies `none` for every other protocol;
+Omnigent binds the equivalent value through its native lifecycle state.
+Before accepting the first peer result, both possible final aggregate envelopes
+are projected from exact routing inputs with every body-length field rendered as
+`bytes=65536`. The larger body-excluded envelope must fit 7,168 bytes. Final
+submission rechecks that projection plus exact cumulative bodies against the
+130,048-byte complete-payload ceiling.
 
 Failed E2E, the A-only invalidating check, executor response, adjudication
 request, peer outcome, repository-changing human answer, candidate-stable E2E
@@ -133,9 +147,11 @@ unpredictable request token binds each approval to its exact requester,
 operation, safe scenario, phase, candidate, and lifecycle-stored requesting E2E
 actor and is consumed once. That actor must equal the native recipient even
 though the compact header says `requester=e2e`; the trusted relay argv carries
-this independent `approvalActor` immediately after `approvalScenario`, while
-every non-E2E-approval route carries `none`. Stale, replayed, or cross-actor
-approval fails closed.
+the independently stored operation as `approvalOperation` immediately after
+`approvalScenario`, followed by `approvalActor`. Both must exactly match the
+returned header/native recipient state; every non-E2E-approval route carries
+`none` for all approval arguments. Stale, replayed, wrong-operation, or
+cross-actor approval fails closed.
 
 Ambiguous submission or relay delivery is never blindly retried. A changed
 public signal means the turn may be live and must be awaited; unchanged or

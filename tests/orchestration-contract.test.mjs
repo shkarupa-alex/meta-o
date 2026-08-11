@@ -901,6 +901,12 @@ test("operational approval is one-shot and candidate-stable through E2E PASS or 
     "m-task-e2e-abc123",
     request,
   );
+  assert.throws(() =>
+    e2e.decide(
+      `MO_OPERATIONAL_APPROVAL_V1|candidate=${OID}|operation=production_e2e|scenario=${scenario}|requester=e2e|request=${request}|decision=APPROVE`,
+      "m-task-e2e-abc123",
+    ),
+  );
   const resume = e2e.decide(
     `MO_OPERATIONAL_APPROVAL_V1|candidate=${OID}|operation=irreversible_e2e|scenario=${scenario}|requester=e2e|request=${request}|decision=APPROVE`,
     "m-task-e2e-abc123",
@@ -1085,6 +1091,26 @@ test("scratch retention is per-file, ID-driven and bounded by delivery outcomes"
   scratch.settle("adjudication-aggregate:A-1,A-2", ["peer:A-1", "peer:A-2"], "confirmed");
   assert.equal(scratch.files.has("peer:A-1"), false);
   assert.equal(scratch.files.has("peer:A-2"), false);
+
+  const budgetScratch = new ScratchRetention();
+  let retainedPeerBytes = 0;
+  const acceptPeer = (name, bytes) => {
+    const remaining = 122_880 - retainedPeerBytes;
+    if (bytes > Math.min(65_536, remaining)) return { accepted: false, remaining };
+    budgetScratch.capture(name);
+    retainedPeerBytes += bytes;
+    return { accepted: true, remaining: 122_880 - retainedPeerBytes };
+  };
+  assert.deepEqual(acceptPeer("peer:A-1", 61_440), { accepted: true, remaining: 61_440 });
+  assert.deepEqual(acceptPeer("peer:A-2-oversize", 61_441), {
+    accepted: false,
+    remaining: 61_440,
+  });
+  assert.deepEqual([...budgetScratch.files.keys()], ["peer:A-1"]);
+  assert.deepEqual(acceptPeer("peer:A-2", 61_440), { accepted: true, remaining: 0 });
+  budgetScratch.prepare("aggregate", ["peer:A-1", "peer:A-2"]);
+  budgetScratch.settle("aggregate", ["peer:A-1", "peer:A-2"], "confirmed");
+  assert.equal(budgetScratch.files.size, 0);
   scratch.close("A-1");
   assert.equal(
     scratch.files.has("a-introducing"),
@@ -1258,6 +1284,22 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
   assert.match(relay, /Human decision requires\nsource `human`, `part=none`/);
   assert.match(relay, /Human answer requires source `human`, `part=none`/);
   assert.ok(relay.includes("approvalActor === actor && /^m-"));
+  assert.ok(relay.includes("h.operation === approvalOperation"));
+  assert.ok(
+    relay.includes(
+      'purpose === "e2e-approval" ? /^(production_e2e|irreversible_e2e)$/.test(approvalOperation) : approvalOperation === "none"',
+    ),
+  );
+  assert.ok(
+    relay.includes(
+      "expectedOpen, peerOutcomeRemaining, approvalRequest, approvalScenario, approvalOperation, approvalActor, scratchArg",
+    ),
+  );
+  assert.ok(relay.includes("retainedPeerOutcomeBytes <= 122_880"));
+  assert.ok(relay.includes("aggregateEnvelopeBytes <= 7_168"));
+  assert.ok(relay.includes("projectedAggregateOverhead"));
+  const extraction = sectionText(mechanicsSource, "3. Adaptive extraction");
+  assert.ok(extraction.includes("Math.min(65_536, +peerOutcomeRemaining)"));
   assert.ok(
     relay.includes(
       'segment.source === "human" && segment.part === "none" && h.protocol === "MO_HUMAN_DECISION_V1"',
@@ -1288,6 +1330,8 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
   const methodRelay = sectionText(methodologySource, "5. Opaque body and relay");
   assert.match(methodRelay, /`HUMAN_DECISION_TO_EXECUTOR`\n`post-human-resolution`\nexecutor\n/);
   assert.match(methodRelay, /`HUMAN_ANSWER_TO_EXECUTOR`\n`human-answer-resolution`\nexecutor\n/);
+  assert.match(methodRelay, /larger projected body-excluded\nenvelope must be at most 7,168 bytes/);
+  assert.match(methodRelay, /remaining = 122880 - retained/);
   const attention = sectionText(methodologySource, "7. Blockers and human attention");
   assert.match(
     attention,
@@ -1302,6 +1346,9 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
     /all-WITHDRAW aggregate to the origin, or the complete mixed\/all-UPHOLD aggregate\nto the executor/,
   );
   assert.match(flow, /independently stored\nrequester-actor identity/);
+  assert.match(flow, /operation independently between scenario and actor argv/);
+  assert.match(flow, /five-digit maximum body\nlength fields/);
+  assert.match(flow, /one compact\nretry uses the same remaining value/);
   assert.match(
     flow,
     /One finding receives at most one\nadjudication, keyed by its single canonical ID/,
@@ -1486,6 +1533,33 @@ test("authored Herdr mutation guards kill acceptance, reviewer barrier and byte-
     [
       skill,
       mechanics.replace("approvalActor === actor && /^m-", 'approvalActor !== "none" && /^m-'),
+      methodology,
+    ],
+    [
+      skill,
+      mechanics.replace("h.operation === approvalOperation", "h.operation !== 'none'"),
+      methodology,
+    ],
+    [
+      skill,
+      mechanics.replace(
+        'purpose === "e2e-approval" ? /^(production_e2e|irreversible_e2e)$/.test(approvalOperation) : approvalOperation === "none"',
+        'purpose === "e2e-approval" ? /^(production_e2e|irreversible_e2e)$/.test(approvalOperation) : true',
+      ),
+      methodology,
+    ],
+    [skill, mechanics.replace("Math.min(65_536, +peerOutcomeRemaining)", "65_536"), methodology],
+    [
+      skill,
+      mechanics.replace("aggregateEnvelopeBytes <= 7_168", "aggregateEnvelopeBytes <= 7_169"),
+      methodology,
+    ],
+    [
+      skill,
+      mechanics.replace(
+        "retainedPeerOutcomeBytes <= 122_880",
+        "retainedPeerOutcomeBytes <= 122_881",
+      ),
       methodology,
     ],
     [
@@ -1727,6 +1801,7 @@ test("AST extraction recipe accepts Claude and Codex goldens byte-for-byte", () 
         OID,
         reviewer,
         "none",
+        "none",
         ...captures,
       ],
       { encoding: "utf8" },
@@ -1772,6 +1847,7 @@ test("literal extraction accepts only an exact body-free E2E approval request", 
           OID,
           "none",
           "none",
+          "none",
           ...captures,
         ],
         { encoding: "utf8" },
@@ -1809,6 +1885,7 @@ test("AST extraction binds executor RESPONSE to the exact complete current open 
         OID,
         "none",
         expectedOpen,
+        "none",
         ...captures,
       ],
       { encoding: "utf8" },
@@ -1817,6 +1894,55 @@ test("AST extraction binds executor RESPONSE to the exact complete current open 
   assert.equal(run("A-1,A-2").status, 0);
   assert.equal(run("A-1").status, 1, "proper subset must be rejected");
   assert.equal(run("A-1,A-2,A-3").status, 1, "proper superset must be rejected");
+});
+
+test("literal adjudication extraction enforces the trusted aggregate remaining budget", () => {
+  const mechanics = join(ROOT, "src", "skills", "mo-herdr", "references", "herdr-mechanics.md");
+  const source = recipeFence(mechanics, "extraction-recipe");
+  const header = `MO_ADJUDICATION_V1|candidate=${OID}|finding=A-1|reviewer=B|outcome=UPHOLD`;
+  const handoff = (bytes) => {
+    const prefix = `${header}\n`;
+    return `${prefix}${"x".repeat(bytes - Buffer.byteLength(prefix))}`;
+  };
+  const run = (bytes, remaining, recipeSource = source) => {
+    const directory = scratchDirectory();
+    const recipe = installRecipe(directory, `adjudication-${bytes}.mjs`, recipeSource);
+    const rendered = `MO_PROMPT_BOUNDARY_V1|fingerprint=${PROMPT_FINGERPRINT}\n${handoff(bytes)}\n╭─ input ❯ ─╮\n`;
+    const captures = [120, 200, 400, 800, 1000].map((rows) =>
+      privateFile(directory, `${rows}.txt`, rendered),
+    );
+    const result = spawnSync(
+      process.execPath,
+      [
+        recipe,
+        "claude",
+        PROMPT_FINGERPRINT,
+        directory,
+        "peer.txt",
+        "MO_ADJUDICATION_V1",
+        OID,
+        "B",
+        "none",
+        String(remaining),
+        ...captures,
+      ],
+      { encoding: "utf8" },
+    );
+    return { directory, result };
+  };
+  const exactRemaining = run(5_000, 5_000);
+  assert.equal(exactRemaining.result.status, 0);
+  assert.equal(statSync(join(exactRemaining.directory, "peer.txt")).size, 5_000);
+  assert.equal(run(5_001, 5_000).result.status, 1, "remaining + 1 must be rejected");
+  assert.equal(run(65_536, 122_880).result.status, 0, "per-turn exact boundary must pass");
+  assert.equal(run(65_537, 122_880).result.status, 1, "per-turn boundary + 1 must fail");
+  const mutant = source.replace("Math.min(65_536, +peerOutcomeRemaining)", "65_536");
+  assert.notEqual(mutant, source);
+  assert.equal(
+    run(5_001, 5_000, mutant).result.status,
+    0,
+    "remaining-budget mutation must be observable",
+  );
 });
 
 test("AST extraction recipe rejects adversarial boundaries, encoding, modes, identity and limits", () => {
@@ -1844,6 +1970,7 @@ test("AST extraction recipe rejects adversarial boundaries, encoding, modes, ide
         "MO_REVIEW_V2",
         OID,
         "A",
+        "none",
         "none",
         ...captures,
       ],
@@ -1892,6 +2019,7 @@ test("AST extraction rejects marker-free fallback even for one same-candidate he
       OID,
       "A",
       "none",
+      "none",
       ...captures,
     ],
     { encoding: "utf8" },
@@ -1924,6 +2052,7 @@ test("extraction marker mutation guard kills missing-current and stale same-cand
         "MO_REVIEW_V2",
         OID,
         "A",
+        "none",
         "none",
         ...captures,
       ],
@@ -1970,6 +2099,7 @@ test("AST extraction and relay preserve a missing final LF", () => {
       OID,
       "A",
       "none",
+      "none",
       ...captures,
     ],
     { encoding: "utf8" },
@@ -1999,6 +2129,8 @@ test("AST extraction and relay preserve a missing final LF", () => {
       "/opaque/spec path.md",
       PROMPT_FINGERPRINT,
       OID,
+      "none",
+      "none",
       "none",
       "none",
       "none",
@@ -2063,6 +2195,8 @@ test("AST relay builds exact frames, preserves opaque argv, and stays body-silen
     "none",
     "none",
     "none",
+    "none",
+    "none",
     directory,
     "reviewerA",
     "1",
@@ -2115,6 +2249,19 @@ test("AST relay builds exact frames, preserves opaque argv, and stays body-silen
   });
   assert.equal(failed.status, 1);
   assert.equal(failed.stdout + failed.stderr, "", "failure disclosed the opaque body");
+  assert.equal(
+    spawnSync(process.execPath, args.with(10, "1"), { encoding: "utf8", env }).status,
+    1,
+    "non-adjudication routes require peerOutcomeRemaining=none",
+  );
+  assert.equal(
+    spawnSync(process.execPath, args.with(13, "production_e2e"), {
+      encoding: "utf8",
+      env,
+    }).status,
+    1,
+    "non-approval routes require approvalOperation=none",
+  );
 });
 
 test("AST relay rejects multipart, ordering, byte, encoding, mode and collision adversaries", () => {
@@ -2158,6 +2305,8 @@ test("AST relay rejects multipart, ordering, byte, encoding, mode and collision 
         locator,
         PROMPT_FINGERPRINT,
         OID,
+        "none",
+        "none",
         "none",
         "none",
         "none",
@@ -2329,6 +2478,8 @@ test("literal relay caps first-pass parts independently at six per reviewer", ()
         "none",
         "none",
         "none",
+        "none",
+        "none",
         directory,
         ...triples.flat(),
       ],
@@ -2381,6 +2532,8 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
     "A-1",
     "B",
     "A-1",
+    "122880",
+    "none",
     "none",
     "none",
     "none",
@@ -2398,6 +2551,56 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
   const adjudication = spawnSync(process.execPath, adjudicationArgs, { encoding: "utf8", env });
   assert.equal(adjudication.status, 0, adjudication.stderr);
   assert.equal(adjudication.stdout + adjudication.stderr, "");
+  for (const invalidRemaining of ["none", "0", "122881"]) {
+    assert.equal(
+      spawnSync(process.execPath, adjudicationArgs.with(10, invalidRemaining), {
+        encoding: "utf8",
+        env,
+      }).status,
+      1,
+      `invalid adjudication remaining ${invalidRemaining} must fail`,
+    );
+  }
+
+  const largeTargetSet = Array.from({ length: 80 }, (_, index) => `A-${index + 1}`).join(",");
+  const largeResponse = privateFile(
+    directory,
+    "large-target-response.txt",
+    `MO_EXECUTOR_V1|type=RESPONSE|candidate=${OID}|branch=feature/x|base=none|fixes=none|rebuts=${largeTargetSet}|blocker=none\nresponse\n`,
+  );
+  const largeDisputed = privateFile(
+    directory,
+    "large-target-disputed.txt",
+    `${review({ status: "DISPUTED", open: largeTargetSet, disputes: largeTargetSet, e2e: "UNKNOWN" })}\nall disputed\n`,
+  );
+  const projectedOversizeArgs = adjudicationArgs
+    .with(9, largeTargetSet)
+    .with(21, largeResponse)
+    .with(24, largeDisputed);
+  const projectedOversize = spawnSync(process.execPath, projectedOversizeArgs, {
+    encoding: "utf8",
+    env,
+  });
+  assert.equal(projectedOversize.status, 1, "oversize final envelope must fail before peer prompt");
+  assert.equal(projectedOversize.stdout + projectedOversize.stderr, "");
+  const projectionMutant = source.replace(
+    'if (purpose === "adjudication-request" || aggregateRoute) ok(aggregateEnvelopeBytes <= 7_168);',
+    'if (purpose === "adjudication-request" || aggregateRoute) ok(aggregateEnvelopeBytes > 0);',
+  );
+  assert.notEqual(projectionMutant, source);
+  const projectionMutantRecipe = installRecipe(
+    directory,
+    "relay-envelope-projection-mutant.mjs",
+    projectionMutant,
+  );
+  assert.equal(
+    spawnSync(process.execPath, projectedOversizeArgs.with(0, projectionMutantRecipe), {
+      encoding: "utf8",
+      env,
+    }).status,
+    0,
+    "envelope preflight mutation must be observable",
+  );
 
   const multiple = privateFile(
     directory,
@@ -2427,6 +2630,8 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
       "A-1",
       "B",
       "A-1,A-2",
+      "122880",
+      "none",
       "none",
       "none",
       "none",
@@ -2450,7 +2655,9 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
   assert.deepEqual(adjudicationTransport.slice(4), ["--wait", "--timeout", "300000"]);
   assert.match(
     adjudicationPrompt,
-    new RegExp(`^MO_RELAY_V2\\|direction=ADJUDICATION_REQUEST_TO_PEER\\|recipient=reviewerB\\|`),
+    new RegExp(
+      `^Emit exactly one MO_ADJUDICATION_V1 handoff for A-1; its complete header-inclusive output is at most 65536 UTF-8 bytes; 122880 aggregate peer-outcome bytes remain before this turn\\.\\nMO_RELAY_V2\\|direction=ADJUDICATION_REQUEST_TO_PEER\\|recipient=reviewerB\\|`,
+    ),
   );
   assert.equal(
     adjudicationPrompt.endsWith(`\nMO_PROMPT_BOUNDARY_V1|fingerprint=${PROMPT_FINGERPRINT}`),
@@ -2471,6 +2678,8 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
       "A-2",
       "B",
       "A-1,A-2",
+      "61440",
+      "none",
       "none",
       "none",
       "none",
@@ -2485,9 +2694,18 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
       "none",
       multipleDisputed,
     ],
-    { encoding: "utf8", env },
+    { encoding: "utf8", env: { ...env, RELAY_ARGV_LOG: log } },
   );
   assert.equal(secondTarget.status, 0, secondTarget.stderr);
+  const secondTargetPrompt = JSON.parse(readFileSync(log, "utf8"))[3];
+  assert.match(
+    secondTargetPrompt,
+    /^Emit exactly one MO_ADJUDICATION_V1 handoff for A-2; its complete header-inclusive output is at most 61440 UTF-8 bytes; 61440 aggregate peer-outcome bytes remain before this turn\.\nMO_RELAY_V2\|direction=ADJUDICATION_REQUEST_TO_PEER\|recipient=reviewerB\|/,
+  );
+  assert.equal(
+    secondTargetPrompt.endsWith(`\nMO_PROMPT_BOUNDARY_V1|fingerprint=${PROMPT_FINGERPRINT}`),
+    true,
+  );
 
   const mixedOutcome = privateFile(
     directory,
@@ -2507,6 +2725,8 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
       "A-2",
       "B",
       "A-1,A-2",
+      "61440",
+      "none",
       "none",
       "none",
       "none",
@@ -2532,7 +2752,7 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
   );
   const incompleteTarget = spawnSync(
     process.execPath,
-    adjudicationArgs.with(9, "A-1,A-2").with(18, multiple).with(21, incompleteOutcome),
+    adjudicationArgs.with(9, "A-1,A-2").with(21, multiple).with(24, incompleteOutcome),
     { encoding: "utf8", env },
   );
   assert.equal(incompleteTarget.status, 1);
@@ -2544,7 +2764,7 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
   );
   const extraTarget = spawnSync(
     process.execPath,
-    adjudicationArgs.with(9, "A-1,A-2").with(18, multiple).with(21, extraOutcome),
+    adjudicationArgs.with(9, "A-1,A-2").with(21, multiple).with(24, extraOutcome),
     { encoding: "utf8", env },
   );
   assert.equal(extraTarget.status, 1);
@@ -2554,7 +2774,7 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
     "mixed-response.txt",
     `MO_EXECUTOR_V1|type=RESPONSE|candidate=${OID}|branch=feature/x|base=none|fixes=none|rebuts=A-1,B-1|blocker=none\nresponse\n`,
   );
-  const mixedOrigin = spawnSync(process.execPath, adjudicationArgs.with(18, mixed), {
+  const mixedOrigin = spawnSync(process.execPath, adjudicationArgs.with(21, mixed), {
     encoding: "utf8",
     env,
   });
@@ -2566,7 +2786,7 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
     "disputed-with-new.txt",
     `${review({ status: "DISPUTED", ids: "A-2", open: "A-1,A-2", disputes: "A-1", e2e: "UNKNOWN" })}\ndispute plus new finding\n`,
   );
-  const disputedAndNew = spawnSync(process.execPath, adjudicationArgs.with(21, disputedWithNew), {
+  const disputedAndNew = spawnSync(process.execPath, adjudicationArgs.with(24, disputedWithNew), {
     encoding: "utf8",
     env,
   });
@@ -2601,6 +2821,8 @@ test("AST relay admits complete multi-ID adjudication chains and one E2E segment
     "/opaque/spec.md",
     PROMPT_FINGERPRINT,
     OID,
+    "none",
+    "none",
     "none",
     "none",
     "none",
@@ -2677,8 +2899,10 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
     triples,
     candidate = OID,
     expectedOpen = "none",
+    peerOutcomeRemaining = "none",
     approvalRequest = "none",
     approvalScenario = "none",
+    approvalOperation = "none",
     approvalActor = "none",
     status = 0,
   }) => {
@@ -2693,8 +2917,10 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
       finding,
       reviewer,
       expectedOpen,
+      peerOutcomeRemaining,
       approvalRequest,
       approvalScenario,
+      approvalOperation,
       approvalActor,
       directory,
       ...triples.flatMap(([declaredSource, part, path]) => [declaredSource, part, path]),
@@ -2822,6 +3048,95 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
   );
   assert.ok(allWithdrawAggregate.prompt.includes(withdrawBody));
   assert.ok(allWithdrawAggregate.prompt.includes(withdrawA2Body));
+
+  const sizedOutcome = (finding, outcome, bytes, name) => {
+    const header = `MO_ADJUDICATION_V1|candidate=${OID}|finding=${finding}|reviewer=B|outcome=${outcome}`;
+    const prefix = `${header}\n`;
+    return privateFile(
+      directory,
+      name,
+      `${prefix}${"x".repeat(bytes - Buffer.byteLength(prefix))}`,
+    );
+  };
+  const largeUpholdA1 = sizedOutcome("A-1", "UPHOLD", 61_440, "large-uphold-a1.txt");
+  const largeWithdrawA1 = sizedOutcome("A-1", "WITHDRAW", 61_440, "large-withdraw-a1.txt");
+  const largeWithdrawA2 = sizedOutcome("A-2", "WITHDRAW", 61_440, "large-withdraw-a2.txt");
+  const oversizedWithdrawA2 = sizedOutcome("A-2", "WITHDRAW", 61_441, "oversized-withdraw-a2.txt");
+  const exactMixed = invoke({
+    actor: "m-task-executor-abc123",
+    purpose: "adjudication-uphold",
+    phase: "adjudication-resolution",
+    finding: "A-1,A-2",
+    reviewer: "none",
+    expectedOpen: "A-1,A-2",
+    triples: [
+      ["reviewerB", "none", largeUpholdA1],
+      ["reviewerB", "none", largeWithdrawA2],
+    ],
+  });
+  assert.equal(
+    Buffer.byteLength(exactMixed.prompt) - 122_880 <= 7_168 &&
+      Buffer.byteLength(exactMixed.prompt) <= 130_048,
+    true,
+    "mixed exact aggregate boundary must fit the complete payload",
+  );
+  const exactWithdraw = invoke({
+    actor: "m-task-reviewera-abc123",
+    purpose: "adjudication-withdraw",
+    phase: "origin-closure",
+    finding: "A-1,A-2",
+    reviewer: "A",
+    expectedOpen: "A-1,A-2",
+    triples: [
+      ["reviewerB", "none", largeWithdrawA1],
+      ["reviewerB", "none", largeWithdrawA2],
+    ],
+  });
+  assert.equal(
+    Buffer.byteLength(exactWithdraw.prompt) - 122_880 <= 7_168 &&
+      Buffer.byteLength(exactWithdraw.prompt) <= 130_048,
+    true,
+    "all-WITHDRAW exact aggregate boundary must fit the complete payload",
+  );
+  const overMixed = invoke({
+    actor: "m-task-executor-abc123",
+    purpose: "adjudication-uphold",
+    phase: "adjudication-resolution",
+    finding: "A-1,A-2",
+    reviewer: "none",
+    expectedOpen: "A-1,A-2",
+    triples: [
+      ["reviewerB", "none", largeUpholdA1],
+      ["reviewerB", "none", oversizedWithdrawA2],
+    ],
+    status: 1,
+  });
+  invoke({
+    actor: "m-task-reviewera-abc123",
+    purpose: "adjudication-withdraw",
+    phase: "origin-closure",
+    finding: "A-1,A-2",
+    reviewer: "A",
+    expectedOpen: "A-1,A-2",
+    triples: [
+      ["reviewerB", "none", largeWithdrawA1],
+      ["reviewerB", "none", oversizedWithdrawA2],
+    ],
+    status: 1,
+  });
+  const budgetMutant = source
+    .replace("retainedPeerOutcomeBytes <= 122_880", "retainedPeerOutcomeBytes <= 122_881")
+    .replace("ok(bodies <= 122_880);", "ok(bodies <= 122_881);");
+  assert.notEqual(budgetMutant, source);
+  const budgetMutantRecipe = installRecipe(directory, "relay-budget-mutant.mjs", budgetMutant);
+  assert.equal(
+    spawnSync(process.execPath, overMixed.args.with(0, budgetMutantRecipe), {
+      encoding: "utf8",
+      env,
+    }).status,
+    0,
+    "aggregate +1 mutation must be observable",
+  );
 
   const partialAggregate = invoke({
     actor: "m-task-executor-abc123",
@@ -2968,6 +3283,7 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
     reviewer: "none",
     approvalRequest,
     approvalScenario,
+    approvalOperation: "production_e2e",
     approvalActor: "m-task-e2e-abc123",
     triples: [["human", "none", approval]],
   });
@@ -2979,6 +3295,37 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
   );
   assert.equal(approvalLeg.prompt.includes("MO_EXECUTOR_PROTOCOL_CAPSULE_V1"), false);
   assert.equal(approvalLeg.prompt.startsWith("/goal"), false);
+  const operationMismatch = invoke({
+    actor: "m-task-e2e-abc123",
+    purpose: "e2e-approval",
+    phase: "e2e-approval-resume",
+    finding: "none",
+    reviewer: "none",
+    approvalRequest,
+    approvalScenario,
+    approvalOperation: "irreversible_e2e",
+    approvalActor: "m-task-e2e-abc123",
+    triples: [["human", "none", approval]],
+    status: 1,
+  });
+  const approvalOperationMutant = source.replace(
+    "h.operation === approvalOperation",
+    "/^(production_e2e|irreversible_e2e)$/.test(h.operation)",
+  );
+  assert.notEqual(approvalOperationMutant, source);
+  const approvalOperationRecipe = installRecipe(
+    directory,
+    "relay-approval-operation-mutant.mjs",
+    approvalOperationMutant,
+  );
+  assert.equal(
+    spawnSync(process.execPath, operationMismatch.args.with(0, approvalOperationRecipe), {
+      encoding: "utf8",
+      env,
+    }).status,
+    0,
+    "production/irreversible operation equality must be load-bearing",
+  );
   for (const [actor, request] of [
     ["m-task-reviewera-abc123", approvalRequest],
     ["m-task-e2e-abc123", "4".repeat(64)],
@@ -2992,6 +3339,7 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
       reviewer: "none",
       approvalRequest: request,
       approvalScenario,
+      approvalOperation: "production_e2e",
       approvalActor: "m-task-e2e-abc123",
       triples: [["human", "none", approval]],
       status: 1,
@@ -3013,6 +3361,7 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
       reviewer: "none",
       approvalRequest,
       approvalScenario,
+      approvalOperation: "production_e2e",
       approvalActor: "m-task-e2e-abc123",
       triples: [["human", "none", invalidApproval]],
       status: 1,
@@ -3381,8 +3730,10 @@ test("literal relay and extraction recipes round-trip provider renders for every
       finding,
       reviewer,
       expectedOpen,
+      purpose === "adjudication-request" ? "122880" : "none",
       purpose === "e2e-approval" ? approvalRequest : "none",
       approvalId,
+      purpose === "e2e-approval" ? "production_e2e" : "none",
       purpose === "e2e-approval" ? actor : "none",
       directory,
       ...triples.flatMap(([source, part, path]) => [source, part, path]),
@@ -3410,6 +3761,7 @@ test("literal relay and extraction recipes round-trip provider renders for every
       protocol = "MO_E2E_V1";
       output = `MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=1|not_run=none|blocker=none`;
     }
+    const extractionRemaining = protocol === "MO_ADJUDICATION_V1" ? "122880" : "none";
     for (const provider of ["claude", "codex"]) {
       const boundary = provider === "claude" ? "╭─ input ❯ ─╮" : "╭─ input › ─╮";
       const capture = `provider-render\n${payload}\n${output}\n${boundary}\n`;
@@ -3429,6 +3781,7 @@ test("literal relay and extraction recipes round-trip provider renders for every
           OID,
           actualReviewer,
           "none",
+          extractionRemaining,
           ...captures,
         ],
         { encoding: "utf8" },
@@ -3453,6 +3806,7 @@ test("literal relay and extraction recipes round-trip provider renders for every
             OID,
             actualReviewer,
             "none",
+            extractionRemaining,
             ...duplicateCaptures,
           ],
           { encoding: "utf8" },
@@ -3477,6 +3831,7 @@ test("literal relay and extraction recipes round-trip provider renders for every
             OID,
             actualReviewer,
             "none",
+            extractionRemaining,
             ...repeatedMarkerCaptures,
           ],
           { encoding: "utf8" },
@@ -3507,7 +3862,9 @@ test("literal relay and extraction recipes round-trip provider renders for every
       first[5],
       first[6],
       "none",
+      "none",
       first[7],
+      "none",
       "none",
       directory,
       ...first[8].flatMap(([source, part, path]) => [source, part, path]),
@@ -3531,6 +3888,7 @@ test("literal relay and extraction recipes round-trip provider renders for every
         "rt-mutant-out.txt",
         "MO_EXECUTOR_V1",
         OID,
+        "none",
         "none",
         "none",
         ...mutantCaptures,

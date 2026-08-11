@@ -172,6 +172,32 @@ and the introducing part for that target. Backend scratch reference-counts the
 shared response/outcome until every referenced adjudication delivery is
 terminal; it never deletes shared bytes after only the first target.
 
+Retained peer-adjudication handoffs for one disputed set have a cumulative
+122,880-byte UTF-8 ceiling, header included. Before each target, subtract the
+exact byte lengths of all earlier retained peer outcomes. The backend submits
+this exact sentence with canonical decimal substitutions:
+
+```text
+Emit exactly one MO_ADJUDICATION_V1 handoff for <id>; its complete header-inclusive output is at most <min(65536,remaining)> UTF-8 bytes; <remaining> aggregate peer-outcome bytes remain before this turn.
+```
+
+The complete next handoff must be at most both 65,536 bytes and that remaining
+budget. Do not truncate, summarize, discard an earlier outcome, or reset the
+budget between targets. Reject an oversize result before acceptance without
+changing retained state; its one compact retry uses the same remaining value.
+Herdr passes the same canonical value as extraction argument
+`peerOutcomeRemaining` immediately after `expectedOpen`; every non-adjudication
+protocol supplies `none`. Omnigent binds the same value in native lifecycle
+state and validates it before accepting the complete turn.
+
+Before accepting the first peer outcome, project both possible final aggregate
+envelopes from the exact locator, candidate, canonical target set/count,
+recipient, executor goal/capsule, fixed frames, and final marker. Conservatively
+render every segment length as `bytes=65536`; the larger body-excluded envelope
+must be at most 7,168 UTF-8 bytes or the backend stops before acceptance. Before
+the final aggregate relay, recompute that projection with the retained bodies
+and require the complete payload to remain at most 130,048 bytes.
+
 After every target has a valid `MO_ADJUDICATION_V1`, deliver terminal outcomes
 atomically in exact canonical target order. If at least one outcome is `UPHOLD`,
 `ADJUDICATION_UPHOLD_TO_EXECUTOR` uses the complete same-origin ID list in outer
@@ -211,8 +237,12 @@ an actor relay. Operational request and approval are each exactly one header row
 with no body or final LF. Retain only that row and current conversation evidence;
 never persist opaque text or create a documentation commit.
 The freshly unpredictable request token is bound to the requester, named
-operation, phase, and candidate and is consumed exactly once; reject stale,
-replayed, or cross-actor approval.
+operation, phase, and candidate and is consumed exactly once. The backend stores
+the operation independently of the compact header and requires exact equality
+when the approval returns. Herdr carries that value as `approvalOperation` after
+`approvalScenario` and before `approvalActor`; all four approval arguments are
+`none` off the E2E-approval route. Reject stale, replayed, wrong-operation, or
+cross-actor approval.
 
 ## Backend convergence
 

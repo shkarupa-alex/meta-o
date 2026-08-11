@@ -66,8 +66,11 @@ standard `mktemp` and `rm` found by `command -p`. A Bash matrix additionally
 requires `/usr/bin/env` with `-0`; a requested Zsh matrix needs Zsh.
 NixOS/Alpine-style layouts without these absolute paths are outside this helper's
 compatibility contract. Building and installing this repository also needs Node
-≥ 22 and Git, and its full `make mo-qc` needs Zsh. Nothing is compiled and nothing
-is written into the projects the skills work on.
+≥ 22 and Git, and its full `make mo-qc` needs Zsh. The repository installs no
+orchestration engine, provider proxy or daemon. Its build bundles the
+self-contained `.mjs` helper; installation writes the selected skill directories
+into the target harness, and a feature workflow then edits and commits the target
+project it was asked to develop.
 
 The installed unit is a directory: `SKILL.md` plus the `references/` and
 `scripts/` that skill owns. `tests/install.test.mjs` runs a real local `apm

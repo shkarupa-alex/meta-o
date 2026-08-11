@@ -124,6 +124,8 @@ prompted. Keep only the header and current conversation evidence. Never persist
 or accept any suffix/body or append it to tracked intent ledgers.
 Bind the freshly unpredictable request token to that requester actor, operation,
 scenario/observer action, phase, and candidate, then consume it exactly once.
+Store the exact request operation independently of the approval header and
+require equality when the approval returns.
 The lifecycle-stored requester actor must equal the native recipient actor even
 though the compact header keeps `requester=e2e`. Reject stale, replayed,
 wrong-recipient, or cross-actor approval.
@@ -182,6 +184,30 @@ Each disputed target is adjudicated sequentially using the same exact whole
 executor `RESPONSE`, the same exact whole `OUTCOMES`/`DISPUTED` body and that
 target's introducing part. The native route must keep those shared opaque result
 references available until every referenced adjudication delivery is terminal.
+Across one disputed set, retained peer handoffs have one cumulative 122,880-byte
+UTF-8 ceiling including every header. Before each target, subtract the exact
+byte lengths of earlier retained peer outcomes and submit this exact sentence
+with canonical decimal substitutions:
+
+```text
+Emit exactly one MO_ADJUDICATION_V1 handoff for <id>; its complete header-inclusive output is at most <min(65536,remaining)> UTF-8 bytes; <remaining> aggregate peer-outcome bytes remain before this turn.
+```
+
+Accept the next complete handoff only when its byte length is at most both
+65,536 and the stated remaining budget. Never truncate or summarize an outcome,
+discard retained evidence, or reset the aggregate budget between targets. Reject
+oversize before acceptance without changing retained state; its one compact
+retry uses the same remaining value. Store that exact value in native lifecycle
+state and use it for complete-turn validation; no other protocol receives a peer
+remaining budget.
+
+Before accepting the first peer outcome, project both possible final aggregate
+prompt envelopes from the exact locator, candidate, canonical target set/count,
+recipient, executor objective/capsule, fixed frames, and final marker. Render
+every segment length conservatively as `bytes=65536`; the larger body-excluded
+envelope must be at most 7,168 UTF-8 bytes or stop before acceptance. Before the
+final aggregate prompt, recompute the projection with exact retained bodies and
+require the complete prompt to remain at most 130,048 bytes.
 A peer outcome is not relayed onward until every disputed target has resolved.
 Then deliver all N `MO_ADJUDICATION_V1` bodies atomically in exact canonical
 target order: if at least one is `UPHOLD`, send every `UPHOLD|WITHDRAW` through

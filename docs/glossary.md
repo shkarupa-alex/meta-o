@@ -69,7 +69,11 @@ Evidence, Impact and Expected fix. Only its origin reviewer closes it.
 a same-origin disputed set run sequentially, but terminal results are released
 only as one ordered atomic set after every target resolves: any uphold routes the
 whole set to the executor, while all-withdraw routes it to the origin. Unresolved
-reaches the human; the peer never closes an origin finding.
+reaches the human; the peer never closes an origin finding. Retained peer
+handoffs for one disputed set share one 122,880-byte header-inclusive cumulative
+budget rather than each receiving an independent aggregate allowance. Both
+possible final aggregate envelopes must first fit the separate 7,168-byte
+body-excluded framing budget, and the completed payload must fit 130,048 bytes.
 
 **Lifecycle state** — backend-native public actor progress state used for waiting.
 
@@ -107,7 +111,8 @@ already named production/destructive E2E action or explicitly requested
 watchdog. It is candidate-stable run control, not product intent; only its
 credential-free one-row compact header remains in current run evidence. E2E
 approval exactly matches the visible request candidate, operation, safe scenario
-ID and token. Its lifecycle-stored requesting E2E actor must also equal the
+ID and token. The exact operation is stored independently of the returned header
+and must equal it. Its lifecycle-stored requesting E2E actor must also equal the
 native recipient even though the compact header uses `requester=e2e`; watchdog
 approval uses `scenario=none`.
 

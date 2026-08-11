@@ -205,6 +205,18 @@ all-WITHDRAW aggregate to the origin, or the complete mixed/all-UPHOLD aggregate
 to the executor. A `FOLLOWUP` returns to the executor through
 `ORIGIN_FINDINGS_TO_EXECUTOR`.
 
+Track retained peer-adjudication handoffs against one header-inclusive 122,880-
+byte aggregate budget. Before the first peer turn project the larger of the two
+possible final aggregate envelopes from exact lifecycle fields, every fixed
+frame, the executor goal/capsule and final marker, with five-digit maximum body
+length fields; stop before acceptance unless it is at most 7,168 bytes. Before
+each peer turn compute the exact remaining bytes
+from validated retained lengths, put that value and `min(65536, remaining)` in
+the prompt, and pass the same trusted remaining value to extraction. Reject an
+oversize outcome before acceptance without changing retained state; one compact
+retry uses the same remaining value. Aggregate relay validation independently
+accumulates every peer body and still enforces framing and argv ceilings.
+
 Use the exhaustive `MO_RELAY_V2` direction table in methodology §5 and the
 literal mechanics recipe. Route executor `RESPONSE` to its origin reviewer.
 Route either human `UPHOLD` or `WITHDRAW` to the executor first with the exact
@@ -230,7 +242,10 @@ before deriving a fresh token/state. Candidate-bound
 then return E2E PASS on the unchanged SHA. Pass the independently stored
 requester-actor identity to the relay recipe and require exact equality with the
 recipient actor, in addition to its `e2e` role, candidate, request-header
-operation/scenario and freshly unpredictable one-shot 64-hex request token;
+operation/scenario and freshly unpredictable one-shot 64-hex request token. Pass
+operation independently between scenario and actor argv and require exact
+approval-header equality; every non-approval route passes `none` for all four
+approval-state arguments;
 reject stale, replayed, second-E2E-actor and cross-actor approvals.
 `watchdog_start` uses the non-relay
 `WATCHDOG_START_TO_ORCHESTRATOR` control route and starts the observer only on

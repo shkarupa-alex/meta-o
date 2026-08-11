@@ -41,6 +41,10 @@ MO_OPERATIONAL_APPROVAL_V1|candidate=<oid>|operation=<production_e2e|irreversibl
 
 The relay segment is exactly that one row with no body or final LF. Candidate,
 operation, scenario, and request must equal the one open approval request.
+The lifecycle state stores the exact request operation independently of the
+returned header and requires equality; on Herdr the trusted relay argument
+`approvalOperation` carries that independent value after `approvalScenario` and
+before `approvalActor`.
 The lifecycle-stored requesting E2E actor must equal this exact native recipient
 actor; the compact header deliberately remains `requester=e2e` rather than
 encoding an actor name.

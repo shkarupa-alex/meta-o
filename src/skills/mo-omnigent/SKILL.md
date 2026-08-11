@@ -78,6 +78,14 @@ ask the human to resume, route or select an ordinary actor.
    `ORIGIN_FINDINGS_TO_EXECUTOR`. Different origins use separate settled
    resolution turns, and a mixed-origin executor `RESPONSE` is invalid.
    Resolve every disputed target before relaying any terminal peer outcome.
+   Retain at most 122,880 header-inclusive UTF-8 bytes across all peer outcomes
+   in that disputed set. Before each sequential request, compute the exact
+   remaining aggregate budget and use the mechanics' exact budget-bound prompt;
+   never reset it between targets or after a rejected oversize attempt.
+   Before accepting the first outcome, project both possible final aggregate
+   prompt envelopes with conservative `bytes=65536` segment lengths and require
+   the larger body-excluded envelope to fit 7,168 bytes. Recheck the final
+   complete prompt against 130,048 bytes before submission.
    Aggregate all N peer results in canonical target order: any `UPHOLD` sends
    the complete `UPHOLD|WITHDRAW` set atomically to the executor; all
    `WITHDRAW` sends it atomically to the origin. `UNRESOLVED` reaches the human.
@@ -116,8 +124,10 @@ uses the non-relay `WATCHDOG_START_TO_ORCHESTRATOR` control route. Keep only the
 exact one-row approval header as run evidence; accept no body or final LF, never
 update tracked intent, and create no new candidate. Bind its fresh request token
 to the exact requester/operation/scenario/phase/candidate and consume it once;
-the lifecycle-stored requesting E2E actor must equal the native recipient actor
-despite the compact `requester=e2e` field. Reject replay or cross-actor use.
+store the exact request operation independently and require the returned header
+to equal it. The lifecycle-stored requesting E2E actor must equal the native recipient actor
+despite the compact `requester=e2e` field. Reject replay, wrong-operation, or
+cross-actor use.
 
 Every native objective, follow-up and opaque relay carries the exact
 `MO_PROMPT_BOUNDARY_V1|fingerprint=<64-lower-hex>` marker for that submitted

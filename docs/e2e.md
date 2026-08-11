@@ -35,10 +35,10 @@ native lifecycle, vendor diversity, or absence of tracked reads in a real actor 
 | Model bundle      | Pinned SDK/esbuild versions, size ceiling, metafile roots, notices, no externals, no runtime `node_modules`.                                                |
 | Catalogue         | `catalog_unknown`, `model_missing`, and `launch_failed` remain distinct; history never becomes catalogue.                                                   |
 | Header protocols  | Executor, review, adjudication, E2E, E2E approval-request, human-answer, and operational-approval grammar, field order, matrices, IDs, and unknown classes. |
-| Review accounting | Consecutive parts, cumulative open IDs, complete-origin-open RESPONSE, total origin outcomes, aggregate adjudication, and forced dispute.                   |
+| Review accounting | Consecutive parts, cumulative open IDs, total origin outcomes, and remaining-budget-bound aggregate adjudication.                                           |
 | Candidate gates   | Full object IDs, branch grammar, clean tree, same-SHA gates, commit invalidation, and missing `develop`.                                                    |
-| Relay             | Exact framing, marker-last human returns, aggregate peer outcomes, requester-actor approval binding, and body-silent failures.                              |
-| Portable argv     | Combined 130,048-byte argument and bounded adjudication subset remain below supported limits.                                                               |
+| Relay             | Exact framing, marker-last human returns, aggregate peer outcomes, independent approval operation/actor binding, and body-silent failures.                  |
+| Portable argv     | First-pass and both projected aggregate envelopes keep framing/body totals within 7,168/130,048 bytes.                                                      |
 | Prompt ambiguity  | A changed signal is awaited; unchanged or contradictory evidence never causes a blind retry.                                                                |
 | Topology          | Exact executor/review commands, structured `root_pane`, collision handling, and partial failure.                                                            |
 | Lifecycle         | One waiter, direct wait arms, 10-second quiet period, bounded loss/retry, and no-progress key.                                                              |
@@ -76,7 +76,7 @@ removal of the old inline/headless path.
 | Independent review     | H20-H25      | Sequential barrier, conditional pair release, total multi-ID outcomes, byte identity, and blockers.                                           |
 | Candidate lifecycle    | H26-H29      | Same-SHA completion, commit invalidation, restart, and model fallback.                                                                        |
 | Firewall and attention | H30-H31      | Repository-changing intent/new-SHA routing, visible exact-scenario candidate-stable operational approval, and tracked-read canary.            |
-| Transport lifetime     | H32          | Shared-artifact and aggregate-outcome refcounts, ambiguity, controlled cleanup, and lost-scratch recovery.                                    |
+| Transport lifetime     | H32          | Both aggregate-envelope projections, cumulative peer budget, refcounts, cleanup, and lost-scratch recovery.                                   |
 | Diversity and waits    | H33-H35      | Actual vendors, direct waits, retry/no-progress bounds, and non-gating badges.                                                                |
 | Failure edges          | H36-H37      | Missing `develop` and total existing-peer adjudication.                                                                                       |
 
@@ -88,16 +88,16 @@ The detailed expected observation and current status for every ID live in
 Run a supported native Omnigent route against the same candidate contract without copying
 Herdr evidence or mechanics.
 
-| Scenario         | Required behavior                                                                                                                        |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| OM1 firewall     | After activation only native process/lifecycle facts, validated headers, and narrow Git metadata enter orchestrator context.             |
-| OM2 candidate    | One clean full SHA binds every applicable gate.                                                                                          |
-| OM3 independence | A completes before B; PASS/PASS does not relay; a findings pair releases atomically; A mutation skips B.                                 |
-| OM4 findings     | RESPONSE covers the complete origin-open set; requests are sequential, then one ordered terminal result set is delivered atomically.     |
-| OM5 invalidation | A new commit invalidates every prior gate and open ID.                                                                                   |
-| OM6 recovery     | Native session continuity/recovery uses no private store and invents no Herdr-style evidence.                                            |
-| OM7 vocabulary   | The weaker prompt objective and byte-identical capsule precede a final-row marker that excludes echoed inbound frames.                   |
-| OM8 attention    | Repository-changing input reaches executor/new SHA; one-row approval matches the request and its exact native E2E actor on the same SHA. |
+| Scenario         | Required behavior                                                                                                               |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| OM1 firewall     | After activation only native process/lifecycle facts, validated headers, and narrow Git metadata enter orchestrator context.    |
+| OM2 candidate    | One clean full SHA binds every applicable gate.                                                                                 |
+| OM3 independence | A completes before B; PASS/PASS does not relay; a findings pair releases atomically; A mutation skips B.                        |
+| OM4 findings     | RESPONSE covers the complete origin-open set; sequential peer results share one 122,880-byte budget before atomic delivery.     |
+| OM5 invalidation | A new commit invalidates every prior gate and open ID.                                                                          |
+| OM6 recovery     | Native session continuity/recovery uses no private store and invents no Herdr-style evidence.                                   |
+| OM7 vocabulary   | The weaker prompt objective and byte-identical capsule precede a final-row marker that excludes echoed inbound frames.          |
+| OM8 attention    | Repository-changing input reaches executor/new SHA; approval matches independently stored operation and exact native E2E actor. |
 
 No final Omnigent scenario has been executed for the post-cutover candidate.
 
@@ -141,8 +141,9 @@ one-row `MO_E2E_APPROVAL_REQUEST_V1` naming the operation and credential-safe sc
 followed by a matching one-row `MO_OPERATIONAL_APPROVAL_V1` immediately before that scenario.
 The approval returns only to the exact lifecycle-stored requesting E2E actor on
 the unchanged candidate; that actor must equal the native recipient even though
-the compact header says `requester=e2e`. Its token is consumed once, and a wrong
-actor, wrong scenario, or replay fails closed. Neither row has a body or final
-LF. Stop every provider session started by the fixture.
+the compact header says `requester=e2e`. The operation is stored independently
+and must equal the returned header. Its token is consumed once, and a wrong
+actor, operation, scenario, or replay fails closed. Neither row has a body or
+final LF. Stop every provider session started by the fixture.
 Do not store raw reviewer bodies, screenshots, private transcripts, or a gate registry as
 evidence.

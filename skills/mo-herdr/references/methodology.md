@@ -390,6 +390,23 @@ Each complete request relay is at most 117,760 bytes including framing.
 use a same-origin ID list in the outer `finding` field; every other direction
 uses one ID or `none` as declared by its row.
 
+The cumulative retained peer-adjudication handoff budget is exactly 122,880
+UTF-8 bytes including every compact header and original newline. Before the
+first peer turn, lifecycle state projects both possible final aggregate payloads
+from the exact locator, candidate, canonical target set, target count, recipient,
+executor goal/capsule, final marker and fixed frames, using the five-digit
+`bytes=65536` field for every segment. The larger projected body-excluded
+envelope must be at most 7,168 bytes; otherwise adjudication stops before any
+peer outcome is accepted. Before each sequential peer turn, lifecycle state
+computes `remaining = 122880 - retained`
+without reading body semantics. The peer prompt names that exact remaining value
+and caps the next complete handoff at `min(65536, remaining)`. Extraction receives
+the same trusted remaining value and rejects the handoff before acceptance if it
+exceeds that cap. Aggregate construction independently accumulates each retained
+body in canonical target order and rejects as soon as the total exceeds 122,880;
+the same projection is rechecked, so every accepted aggregate fits the 7,168-byte
+framing and 130,048-byte argv ceilings by construction.
+
 For any captured executor `RESPONSE`, the caller supplies the canonical complete
 current open set for that origin as trusted lifecycle metadata. Extraction and
 relay independently require byte-exact equality with `rebuts`; a proper subset,
@@ -440,6 +457,9 @@ sets and delivery state; the orchestrator never reads body semantics:
   one aggregate onward delivery is confirmed; all-WITHDRAW delivery releases
   the set to the origin, while a mixed or all-UPHOLD delivery releases it to the
   executor;
+- an over-remaining peer handoff is rejected before scratch acceptance; already
+  retained peer outcomes and their aggregate references remain unchanged for the
+  one compact retry, which receives the same computed remaining budget;
 - after confirmed onward delivery delete a source file only when no other open
   ID or pending direction references it; closure or candidate invalidation
   deletes every file whose remaining references were thereby removed;
@@ -569,8 +589,11 @@ continues without it. These authorization events follow the credential-safe
 run-evidence rule in §2.1: retain only the header and current conversation
 evidence, never persist the opaque body or mutate tracked intent ledgers.
 The approval itself is exactly one header row with no final LF, body, suffix or
-prose. E2E operation and scenario must byte-match the validated request header;
-watchdog requires `scenario=none`. Any extra byte is invalid.
+prose. E2E operation and scenario must byte-match independent lifecycle values
+from the validated request header; the relay receives both as trusted argv and
+requires exact header equality. Every non-approval route supplies `none` for
+request token, scenario, operation and requester actor. Watchdog requires
+`scenario=none`. Any extra byte is invalid.
 
 After either human `UPHOLD` or human `WITHDRAW`, route the decision to the
 executor first—never directly to the origin reviewer on the same candidate.
