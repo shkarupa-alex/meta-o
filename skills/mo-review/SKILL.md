@@ -162,15 +162,23 @@ reviewer may issue one `MO_ADJUDICATION_V1` on one disputed ID:
 MO_ADJUDICATION_V1|candidate=<oid>|finding=<id>|reviewer=<A|B>|outcome=<UPHOLD|WITHDRAW|UNRESOLVED>
 ```
 
-Adjudication does not close the origin finding. UPHOLD returns work. WITHDRAW
-still requires final origin closure/PASS. UNRESOLVED or repeated refusal after
-withdrawal is the only technical dispute boundary sent to the human.
+Adjudication does not close the origin finding. Resolve every disputed target
+before any terminal peer-outcome relay. `UNRESOLVED`, or repeated refusal after
+withdrawal, is the only technical dispute boundary sent to the human.
 
 For multiple disputes from one outcome, adjudicate targets sequentially. Every
 request reuses the exact whole executor `RESPONSE`, exact whole origin outcome,
 and the introducing part for that target. Backend scratch reference-counts the
 shared response/outcome until every referenced adjudication delivery is
 terminal; it never deletes shared bytes after only the first target.
+
+After every target has a valid `MO_ADJUDICATION_V1`, deliver terminal outcomes
+atomically in exact canonical target order. If at least one outcome is `UPHOLD`,
+`ADJUDICATION_UPHOLD_TO_EXECUTOR` uses the complete same-origin ID list in outer
+`finding` and carries all N peer outcomes, each `UPHOLD` or `WITHDRAW`. If every
+outcome is `WITHDRAW`, `ADJUDICATION_WITHDRAW_TO_ORIGIN` uses that same ID list
+and carries all N `WITHDRAW` outcomes. Never relay an early per-ID terminal
+outcome; any `UNRESOLVED` reaches the human instead.
 
 Every repository-changing permitted non-dispute human answer begins exactly:
 
@@ -195,7 +203,9 @@ MO_OPERATIONAL_APPROVAL_V1|candidate=<oid|none>|operation=<production_e2e|irreve
 
 An E2E approval exactly matches the visible
 `MO_E2E_APPROVAL_REQUEST_V1` candidate, operation, and credential-safe scenario,
-then resumes only that scenario in the same E2E actor on the unchanged candidate.
+then resumes only that scenario in the lifecycle-stored requesting E2E actor on
+the unchanged candidate. That actor must equal the native recipient even though
+the compact header retains `requester=e2e`.
 Watchdog approval uses `scenario=none` and is handled by the orchestrator without
 an actor relay. Operational request and approval are each exactly one header row
 with no body or final LF. Retain only that row and current conversation evidence;

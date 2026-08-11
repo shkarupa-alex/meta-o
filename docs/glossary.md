@@ -65,8 +65,11 @@ before any reviewer body reaches the executor.
 **Finding** — reviewer-owned `A-*` or `B-*` issue whose full opaque body contains
 Evidence, Impact and Expected fix. Only its origin reviewer closes it.
 
-**Adjudication** — one other-vendor decision on a disputed finding. It can uphold,
-recommend withdrawal or declare unresolved; it never closes the origin finding.
+**Adjudication** — one other-vendor decision on a disputed finding. Requests for
+a same-origin disputed set run sequentially, but terminal results are released
+only as one ordered atomic set after every target resolves: any uphold routes the
+whole set to the executor, while all-withdraw routes it to the origin. Unresolved
+reaches the human; the peer never closes an origin finding.
 
 **Lifecycle state** — backend-native public actor progress state used for waiting.
 
@@ -104,7 +107,9 @@ already named production/destructive E2E action or explicitly requested
 watchdog. It is candidate-stable run control, not product intent; only its
 credential-free one-row compact header remains in current run evidence. E2E
 approval exactly matches the visible request candidate, operation, safe scenario
-ID and token; watchdog approval uses `scenario=none`.
+ID and token. Its lifecycle-stored requesting E2E actor must also equal the
+native recipient even though the compact header uses `requester=e2e`; watchdog
+approval uses `scenario=none`.
 
 **E2E approval request** — an exact one-row, body-free
 `MO_E2E_APPROVAL_REQUEST_V1` handoff with no body or final LF from the E2E actor immediately before one

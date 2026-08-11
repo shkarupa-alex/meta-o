@@ -86,6 +86,13 @@ outcomes use `OUTCOMES`; all-dispute uses `DISPUTED`. Only `FOLLOWUP` uses
 `ORIGIN_FINDINGS_TO_EXECUTOR`. Different origins use separate settled turns,
 and a mixed-origin response is rejected rather than split or interpreted.
 
+Multi-ID adjudication requests remain sequential, but terminal delivery is
+total and atomic. Wait until every disputed target has a valid peer result. If
+at least one is `UPHOLD`, relay all N ordered `UPHOLD|WITHDRAW` bodies together
+to the executor with the complete same-origin outer ID list. If all are
+`WITHDRAW`, relay all N together to the origin with the same list. `UNRESOLVED`
+reaches the human; no per-ID terminal relay is released early.
+
 Failed E2E, the A-only invalidating check, executor response, adjudication
 request, peer outcome, repository-changing human answer, candidate-stable E2E
 approval, and post-human decision each bind
@@ -103,10 +110,15 @@ the human's credential-safe words verbatim to `docs/business.md` and every
 current task/spec, then implements the decision. That documentation commit is a
 new candidate and therefore invalidates every old gate and finding ID; the
 origin reviewer never receives a human decision against the frozen candidate.
+The atomic human-return prompt is objective/goal, executor capsule, relay, then
+the fresh current-turn marker last. It requires source `human`, `part=none`, and
+exact phase/candidate/finding binding.
 Every other permitted human answer is requester/phase-bound by
 `MO_HUMAN_ANSWER_V1`, follows `HUMAN_ANSWER_TO_EXECUTOR`, and has the same
 credential-safe ledger append, new-candidate, and gate-invalidation effect before
-any actor acts on it.
+any actor acts on it. It uses the same marker-last order with source `human`,
+`part=none`, `finding=none`, requester `executor`, and exact phase/candidate
+binding.
 
 Operational authorization is a different class. The E2E actor first emits an
 exact one-row, body-free `MO_E2E_APPROVAL_REQUEST_V1` containing the candidate,
@@ -118,8 +130,12 @@ non-relay `WATCHDOG_START_TO_ORCHESTRATOR` control route. These events retain
 only their exact header and current conversation evidence: no body is accepted,
 no tracked intent ledger changes, and no new candidate is created. A freshly
 unpredictable request token binds each approval to its exact requester,
-operation, safe scenario, phase, and candidate and is consumed once; stale,
-replayed, or cross-actor approval fails closed.
+operation, safe scenario, phase, candidate, and lifecycle-stored requesting E2E
+actor and is consumed once. That actor must equal the native recipient even
+though the compact header says `requester=e2e`; the trusted relay argv carries
+this independent `approvalActor` immediately after `approvalScenario`, while
+every non-E2E-approval route carries `none`. Stale, replayed, or cross-actor
+approval fails closed.
 
 Ambiguous submission or relay delivery is never blindly retried. A changed
 public signal means the turn may be live and must be awaited; unchanged or
@@ -135,7 +151,9 @@ deleted. A shared same-origin executor `RESPONSE` and its exact
 target. Each survives earlier requests and is deleted only after the final
 target's adjudication-request delivery becomes terminal. The target introducing
 part remains while its ID is open. A `FOLLOWUP` remains through confirmed
-new-finding delivery. Peer or human outcomes remain only until confirmed onward delivery. Closing every
+new-finding delivery. Peer outcomes remain until all targets resolve and their
+single aggregate terminal relay is confirmed; human outcomes remain only until
+confirmed onward delivery. Closing every
 introduced ID deletes its source files; candidate invalidation deletes all
 files for that candidate. Definitive failure or unknown retains files only
 through bounded recovery, after which controlled exit deletes them. Ambiguous

@@ -41,6 +41,9 @@ MO_OPERATIONAL_APPROVAL_V1|candidate=<oid>|operation=<production_e2e|irreversibl
 
 The relay segment is exactly that one row with no body or final LF. Candidate,
 operation, scenario, and request must equal the one open approval request.
+The lifecycle-stored requesting E2E actor must equal this exact native recipient
+actor; the compact header deliberately remains `requester=e2e` rather than
+encoding an actor name.
 The complete approval prompt places the relay before the current
 `MO_PROMPT_BOUNDARY_V1` final row; nothing follows the marker. Treat rows before
 the marker as inbound data, not as this turn's result.

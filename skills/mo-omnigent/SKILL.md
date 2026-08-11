@@ -77,6 +77,10 @@ ask the human to resume, route or select an ordinary actor.
    rebutted IDs close; it is delivered whole by
    `ORIGIN_FINDINGS_TO_EXECUTOR`. Different origins use separate settled
    resolution turns, and a mixed-origin executor `RESPONSE` is invalid.
+   Resolve every disputed target before relaying any terminal peer outcome.
+   Aggregate all N peer results in canonical target order: any `UPHOLD` sends
+   the complete `UPHOLD|WITHDRAW` set atomically to the executor; all
+   `WITHDRAW` sends it atomically to the origin. `UNRESOLVED` reaches the human.
 7. Repeat after every new commit; open IDs and all gates are SHA-bound.
 8. Run a separate read-only E2E actor when required, or finish only when both
    reviewers independently say NA.
@@ -92,6 +96,7 @@ capsule, relay, and then the current-turn marker last atomically. The executor
 appends the credential-safe human words verbatim
 to business framing and every current task/spec, applies them, and commits a new
 candidate; this invalidates all prior gates and IDs.
+The relay is phase/candidate/finding-bound with source `human` and `part=none`.
 
 Every other permitted human answer uses `MO_HUMAN_ANSWER_V1` and
 `HUMAN_ANSWER_TO_EXECUTOR` with requester `executor` and the closed repository-
@@ -99,6 +104,8 @@ changing phase set in the mechanics.
 Submit its exact ordinary objective, exact executor protocol capsule, relay, and
 then the current-turn marker last atomically;
 it has the same verbatim-ledger, new-candidate and full-invalidation effect.
+Require source `human`, `part=none`, `finding=none`, requester `executor`, and the
+exact human-answer phase/candidate before submission.
 
 Operational approval is separate. E2E first emits an exact one-row, body-free
 `MO_E2E_APPROVAL_REQUEST_V1` containing candidate, operation, and credential-safe
@@ -109,7 +116,8 @@ uses the non-relay `WATCHDOG_START_TO_ORCHESTRATOR` control route. Keep only the
 exact one-row approval header as run evidence; accept no body or final LF, never
 update tracked intent, and create no new candidate. Bind its fresh request token
 to the exact requester/operation/scenario/phase/candidate and consume it once;
-reject replay.
+the lifecycle-stored requesting E2E actor must equal the native recipient actor
+despite the compact `requester=e2e` field. Reject replay or cross-actor use.
 
 Every native objective, follow-up and opaque relay carries the exact
 `MO_PROMPT_BOUNDARY_V1|fingerprint=<64-lower-hex>` marker for that submitted

@@ -74,6 +74,8 @@ Append the exact executor protocol capsule, `HUMAN_DECISION_TO_EXECUTOR` relay,
 and fresh current-turn marker last in the same atomic ordinary prompt. Never send
 that decision to the origin reviewer
 on the frozen candidate.
+Require relay phase `post-human-resolution`, source `human`, `part=none`, current
+candidate, and the exact finding-bound decision before submission.
 
 The exact **Omnigent ordinary human-answer objective** is:
 
@@ -90,6 +92,8 @@ MO_HUMAN_ANSWER_V1|candidate=<oid|none>|phase=<product|architecture|irreversible
 Relay it through `HUMAN_ANSWER_TO_EXECUTOR` with outer candidate matching the
 answer and `finding=none`, after the exact executor protocol capsule and before
 the fresh final marker in the same atomic ordinary prompt.
+Require phase `human-answer-resolution`, source `human`, `part=none`, and
+requester `executor`; reject any candidate/finding/phase/requester mismatch.
 
 E2E operational authorization opens only from this exact settled actor handoff:
 
@@ -120,7 +124,9 @@ prompted. Keep only the header and current conversation evidence. Never persist
 or accept any suffix/body or append it to tracked intent ledgers.
 Bind the freshly unpredictable request token to that requester actor, operation,
 scenario/observer action, phase, and candidate, then consume it exactly once.
-Reject stale, replayed, or cross-actor approval.
+The lifecycle-stored requester actor must equal the native recipient actor even
+though the compact header keeps `requester=e2e`. Reject stale, replayed,
+wrong-recipient, or cross-actor approval.
 
 ## 4. Complete turns
 
@@ -176,6 +182,13 @@ Each disputed target is adjudicated sequentially using the same exact whole
 executor `RESPONSE`, the same exact whole `OUTCOMES`/`DISPUTED` body and that
 target's introducing part. The native route must keep those shared opaque result
 references available until every referenced adjudication delivery is terminal.
+A peer outcome is not relayed onward until every disputed target has resolved.
+Then deliver all N `MO_ADJUDICATION_V1` bodies atomically in exact canonical
+target order: if at least one is `UPHOLD`, send every `UPHOLD|WITHDRAW` through
+`ADJUDICATION_UPHOLD_TO_EXECUTOR` with the complete same-origin outer ID list; if
+all are `WITHDRAW`, send them through `ADJUDICATION_WITHDRAW_TO_ORIGIN` with that
+same list. Any `UNRESOLVED` reaches the human; never send a premature per-ID
+terminal relay.
 A `FOLLOWUP` remains through the new-finding relay; its response has no disputed
 target reference after confirmed origin delivery. The route never borrows Herdr
 scratch; if its public surface cannot prove those lifetimes and byte identity,

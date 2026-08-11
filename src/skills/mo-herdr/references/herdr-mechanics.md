@@ -265,19 +265,24 @@ body bytes only.
 Use the following complete literal recipe. Its argv is actor, purpose, phase,
 opaque task/spec locator, current unpredictable 64-lower-hex prompt fingerprint,
 candidate, finding/target-set/`none`, recipient reviewer (`A`, `B`, or `none`),
-expected-open IDs, approval-request token, approval scenario, scratch directory, then
-source/part/path triples. Expected-open is the exact complete current origin set
-for executor-response/adjudication-request and `none` otherwise. Approval-request
+expected-open IDs, approval-request token, approval scenario, lifecycle-stored
+approval requester actor, scratch directory, then source/part/path triples.
+Expected-open is the exact complete current origin set for
+executor-response/adjudication-request, the exact complete disputed target set
+for either aggregate adjudication-result route, and `none` otherwise. Approval-request
 is the exact one-shot 64-hex E2E request token for E2E approval and `none`
 otherwise; approval scenario is the exact credential-safe request-header ID for
-E2E approval and `none` otherwise. Purpose and
+E2E approval and `none` otherwise. Approval requester actor is the exact E2E
+actor that emitted the validated request for E2E approval and `none` otherwise;
+it is independent trusted lifecycle argv and must equal the recipient actor. Purpose and
 phase map one-to-one onto the exhaustive `MO_RELAY_V2` directions in methodology
 §5. Directions to the executor prepend the applicable exact native `/goal`,
 byte-identical executor protocol capsule; every direction puts the marker after
 the complete relay as the final row. Every path is
 a regular `0600` file owned by the current user beneath the current fixed-prefix
 `0700` scratch directory. The recipe validates header-inclusive role limits,
-ordering, exact multi-ID outcome accounting, singular adjudication identity,
+ordering, exact multi-ID outcome accounting, per-ID request and total aggregate
+identity,
 valid UTF-8, LF preservation, NUL
 absence, frame collision, segment/frame counts, framing budget, adjudication
 budget and the one-argument ceiling before a body-silent `shell:false` spawn.
@@ -333,7 +338,7 @@ EMIT exactly one header as the first output row; IDs are unique canonical numeri
 MO_EXECUTOR_PROTOCOL_CAPSULE_END_V1
 `;
 try {
-  const [actor, purpose, phase, locator, fingerprint, candidate, finding, recipientReviewer, expectedOpen, approvalRequest, approvalScenario, scratchArg, ...items] = process.argv.slice(2);
+  const [actor, purpose, phase, locator, fingerprint, candidate, finding, recipientReviewer, expectedOpen, approvalRequest, approvalScenario, approvalActor, scratchArg, ...items] = process.argv.slice(2);
   const routes = {
     "review-resolution": ["first-pass-resolution", "REVIEW_PAIR_TO_EXECUTOR", "executor"],
     "failed-e2e": ["e2e-resolution", "FAILED_E2E_TO_EXECUTOR", "executor"],
@@ -354,15 +359,19 @@ try {
   const direction = route[1], role = route[2];
   const actorRole = actor.match(/^m-[a-z0-9](?:[a-z0-9-]{0,10}[a-z0-9])?-(executor|reviewera|reviewerb|e2e)-[a-z0-9]{6}$/)?.[1];
   ok(actorRole);
-  const targeted = !["review-resolution", "failed-e2e", "human-answer", "e2e-approval"].includes(purpose);
+  const aggregateRoute = ["adjudication-uphold", "adjudication-withdraw"].includes(purpose);
+  const targeted = !["review-resolution", "failed-e2e", "human-answer", "e2e-approval", "adjudication-uphold", "adjudication-withdraw"].includes(purpose);
   const originTargets = purpose === "origin-findings" ? list(finding) : [];
-  ok(purpose === "origin-findings" ? originTargets.length > 0 && originTargets.every((id) => id[0] === originTargets[0][0]) : targeted ? /^[AB]-[1-9][0-9]*$/.test(finding) : finding === "none");
-  const origin = targeted ? finding[0] : "none";
+  const aggregateTargets = aggregateRoute ? list(finding) : [];
+  ok(purpose === "origin-findings" ? originTargets.length > 0 && originTargets.every((id) => id[0] === originTargets[0][0]) : aggregateRoute ? aggregateTargets.length > 0 && aggregateTargets.every((id) => id[0] === aggregateTargets[0][0]) : targeted ? /^[AB]-[1-9][0-9]*$/.test(finding) : finding === "none");
+  const origin = targeted || aggregateRoute ? finding[0] : "none";
   const responseRoute = ["executor-response", "adjudication-request"].includes(purpose);
-  const expectedOpenIds = responseRoute ? list(expectedOpen, origin) : [];
-  ok(responseRoute ? expectedOpenIds.length > 0 : expectedOpen === "none");
+  const setBoundRoute = responseRoute || aggregateRoute;
+  const expectedOpenIds = setBoundRoute ? list(expectedOpen, origin) : [];
+  ok(setBoundRoute ? expectedOpenIds.length > 0 && (!aggregateRoute || finding === expectedOpen) : expectedOpen === "none");
   ok(purpose === "e2e-approval" ? /^[0-9a-f]{64}$/.test(approvalRequest) : approvalRequest === "none");
   ok(purpose === "e2e-approval" ? /^[a-z0-9][a-z0-9._-]{0,63}$/.test(approvalScenario) && approvalScenario !== "none" : approvalScenario === "none");
+  ok(purpose === "e2e-approval" ? approvalActor === actor && /^m-[a-z0-9](?:[a-z0-9-]{0,10}[a-z0-9])?-e2e-[a-z0-9]{6}$/.test(approvalActor) : approvalActor === "none");
   const expectedReviewer = role === "origin" ? origin : role === "peer" ? (origin === "A" ? "B" : "A") : "none";
   ok(recipientReviewer === expectedReviewer);
   const expectedActorRole = role === "executor" ? "executor" : role === "e2e" ? "e2e" : `reviewer${expectedReviewer.toLowerCase()}`;
@@ -392,9 +401,9 @@ try {
   }
   ok(segments.length > 0);
   const validateEvaluation = (allowedSides, requireAInvalidation = false, priorOpen = []) => {
-    ok(segments.length >= allowedSides.length && segments.length <= allowedSides.length * 6);
+    ok(segments.length >= allowedSides.length);
     let side = allowedSides[0], sideOffset = 0, next = 1;
-    const totals = { reviewerA: [0, 0], reviewerB: [0, 0] };
+    const totals = { reviewerA: [0, 0, 0], reviewerB: [0, 0, 0] };
     const state = {
       reviewerA: { identity: "", status: "", open: new Set(allowedSides.includes("reviewerA") ? priorOpen : []), ids: new Set(), closes: new Set(), disputes: new Set(), complete: false },
       reviewerB: { identity: "", status: "", open: new Set(allowedSides.includes("reviewerB") ? priorOpen : []), ids: new Set(), closes: new Set(), disputes: new Set(), complete: false },
@@ -426,12 +435,13 @@ try {
       current.complete = h.more === "no";
       ok(segment.rows <= 180);
       totals[side][0] += segment.rows; totals[side][1] += segment.body.length;
+      ok(++totals[side][2] <= 6);
     }
     ok(sideOffset === allowedSides.length - 1);
     for (const name of allowedSides) {
       const current = state[name];
       const byteLimit = /^(FOLLOWUP|OUTCOMES|DISPUTED)$/.test(current.status) ? 24_576 : 61_440;
-      ok(current.complete && totals[name][0] <= 1000 && totals[name][1] <= byteLimit);
+      ok(current.complete && totals[name][0] <= 1000 && totals[name][1] <= byteLimit && totals[name][2] <= 6);
       if (current.status === "FINDINGS") ok(current.ids.size > 0);
     }
     if (requireAInvalidation) {
@@ -449,10 +459,16 @@ try {
     ok(rebuts.length > 0 && rebuts.includes(finding) && rebuts.every((id) => id[0] === origin) && h.rebuts === expectedOpen);
     ok(segment.body.length <= 24_576);
   };
-  const validateAdjudication = (segment, outcome) => {
-    const h = segment.header, peer = origin === "A" ? "B" : "A";
-    ok(segment.source === `reviewer${peer}` && segment.part === "none" && h.protocol === "MO_ADJUDICATION_V1");
-    ok(h.finding === finding && h.reviewer === peer && h.outcome === outcome && segment.body.length <= 65_536);
+  const validateAdjudicationSet = (allWithdraw) => {
+    const peer = origin === "A" ? "B" : "A", outcomes = [];
+    ok(segments.length === aggregateTargets.length);
+    segments.forEach((segment, index) => {
+      const h = segment.header;
+      ok(segment.source === `reviewer${peer}` && segment.part === "none" && h.protocol === "MO_ADJUDICATION_V1");
+      ok(h.finding === aggregateTargets[index] && h.reviewer === peer && /^(UPHOLD|WITHDRAW)$/.test(h.outcome) && segment.body.length <= 65_536);
+      outcomes.push(h.outcome);
+    });
+    ok(allWithdraw ? outcomes.every((outcome) => outcome === "WITHDRAW") : outcomes.includes("UPHOLD"));
   };
   if (purpose === "review-resolution") {
     const state = validateEvaluation(["reviewerA", "reviewerB"]);
@@ -489,9 +505,9 @@ try {
     if (h.status === "OUTCOMES") ok(closes.length > 0 && disputes.length > 0);
     if (h.status === "DISPUTED") ok(closes.length === 0 && disputes.length === rebuts.length);
   } else if (purpose === "adjudication-uphold") {
-    ok(segments.length === 1); validateAdjudication(segments[0], "UPHOLD");
+    validateAdjudicationSet(false);
   } else if (purpose === "adjudication-withdraw") {
-    ok(segments.length === 1); validateAdjudication(segments[0], "WITHDRAW");
+    validateAdjudicationSet(true);
   } else if (purpose === "human-decision") {
     ok(segments.length === 1);
     const segment = segments[0], h = segment.header;
@@ -573,16 +589,24 @@ The exact failed-E2E native goal prefix is:
 ```
 
 The review-resolution prefix is the exact line in methodology §2.3. The
-post-human prefixes are the exact lines in methodology §7 and send either a
-finding decision or another permitted phase/requester-bound answer to the
-executor before action. The direction table is exhaustive: review pair, failed
+post-human prefixes are the exact lines in methodology §7. Each exact post-human
+submission is goal → byte-identical executor capsule → one human-source relay →
+fresh marker as the final row with no trailing LF. Human decision requires
+source `human`, `part=none`, exact lifecycle candidate/finding and a permitted
+decision. Human answer requires source `human`, `part=none`, exact lifecycle
+candidate, requester `executor`, a permitted phase and outer `finding=none`.
+The direction table is exhaustive: review pair, failed
 E2E, executor response, origin `FOLLOWUP`, adjudication request/outcomes, human
 decision/answer, E2E operational approval and A-only invalidated-check each have
 a distinct phase and recipient. E2E approval requires the exact candidate,
-requester actor and one-shot open request token; replay or cross-actor use is
-invalid. A request carries the shared whole same-origin executor response and
-origin outcome even when they name multiple IDs; only the target introducing
-part changes between sequential requests.
+one-shot open request token and an independent lifecycle-stored requester-actor
+argv equal to the recipient actor; matching only the `e2e` role is insufficient,
+so replay through a second valid E2E actor is invalid. A request carries the
+shared whole same-origin executor response and origin outcome even when they
+name multiple IDs; only the target introducing part changes between sequential
+requests. After every target resolves, the two terminal routes carry every peer
+outcome atomically in canonical target order: all WITHDRAW to origin, any UPHOLD
+to executor with withdrawals included. Partial histories are invalid.
 The A-only route requires a complete reviewer-A `FINDINGS` evaluation with
 `checks=FAIL` and never accepts reviewer B. No semantic body selection is allowed.
 Within the review-pair direction, B starts only after A is
@@ -621,7 +645,9 @@ Retain a shared executor `RESPONSE` plus origin `OUTCOMES`/`DISPUTED` with one
 pending-direction reference per disputed ID. Release one reference after that
 target's confirmed adjudication-request delivery; both shared files survive
 until the last sequential target. Retain an introducing part while any of its
-IDs stays open.
+IDs stays open. Retain each terminal peer adjudication under the one aggregate
+direction until every target resolves and aggregate delivery confirms; then
+release the whole peer-outcome set together.
 Confirmed onward delivery, closure or invalidation deletes only files with no
 remaining open-ID/pending-direction reference. Construction or confirmed
 non-delivery failure retains inputs for the bounded retry. Ambiguous delivery

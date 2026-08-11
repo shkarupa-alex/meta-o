@@ -102,10 +102,16 @@ Human input has two distinct paths. Product meaning, architecture, credentials,
 subscription state, and other repository-changing answers return to the
 executor for credential-safe verbatim intent recording and a new candidate SHA.
 Approval for one already named production/irreversible E2E scenario returns to
-that same E2E actor on the unchanged candidate only after its visible one-row
-request names the exact operation and credential-safe scenario ID; optional
-watchdog approval stays with the orchestrator. Operational requests and approvals
-are header-only and never persist opaque human text.
+that same lifecycle-recorded E2E actor on the unchanged candidate only after its
+visible one-row request names the exact operation and credential-safe scenario
+ID; an approval addressed to any other native actor fails closed. Optional
+watchdog approval stays with the orchestrator. Operational requests and
+approvals are header-only and never persist opaque human text.
+
+Multi-ID disputes are requested from the peer sequentially, but their terminal
+results are delivered only after every target resolves: one ordered atomic set
+goes to the executor if any finding is upheld, or to the origin reviewer if all
+are withdrawn. A partial per-ID terminal history is never released.
 
 ## Repository layout
 

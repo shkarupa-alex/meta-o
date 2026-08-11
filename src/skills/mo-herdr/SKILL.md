@@ -199,18 +199,25 @@ origin handoff accounts for every rebutted ID exactly once across disjoint
 `closes` and `disputes`. `PASS` closes them all without new IDs; `FOLLOWUP`
 closes them all and adds new IDs; `OUTCOMES` represents a mixed close/dispute
 result without new IDs; `DISPUTED` represents all-dispute. Relay each disputed
-target sequentially with the shared exact response/outcome bytes. A `FOLLOWUP`
-returns to the executor through `ORIGIN_FINDINGS_TO_EXECUTOR`.
+target sequentially with the shared exact response/outcome bytes, but deliver no
+peer result onward until every disputed ID has resolved. Then atomically send an
+all-WITHDRAW aggregate to the origin, or the complete mixed/all-UPHOLD aggregate
+to the executor. A `FOLLOWUP` returns to the executor through
+`ORIGIN_FINDINGS_TO_EXECUTOR`.
 
 Use the exhaustive `MO_RELAY_V2` direction table in methodology §5 and the
-literal mechanics recipe. Route executor `RESPONSE` to its origin reviewer;
-route peer `UPHOLD` to the executor and peer `WITHDRAW` to the origin reviewer.
+literal mechanics recipe. Route executor `RESPONSE` to its origin reviewer.
 Route either human `UPHOLD` or `WITHDRAW` to the executor first with the exact
-credential-safe verbatim-intent `/goal` from methodology §7. It must create a new
-candidate that invalidates all same-candidate gates and open IDs; no human
-decision goes directly to the origin. Route any other permitted human answer
-through phase/requester-bound `HUMAN_ANSWER_TO_EXECUTOR`; the executor records it
-credential-safely before acting and commits a new candidate.
+credential-safe verbatim-intent `/goal` from methodology §7, byte-identical
+capsule, human-source relay, and fresh marker last. Require source `human`,
+`part=none`, and exact lifecycle candidate/finding before submission. It must
+create a new candidate that invalidates all same-candidate gates and open IDs;
+no human decision goes directly to the origin. Route any other permitted human
+answer through phase/requester-bound `HUMAN_ANSWER_TO_EXECUTOR` in the same exact
+goal → capsule → relay → fresh-final-marker order. Require source `human`,
+`part=none`, exact lifecycle candidate, requester `executor`, allowed phase and
+outer `finding=none`; the executor records it credential-safely before acting and
+commits a new candidate.
 
 Do not send operational approvals through that repository-changing route.
 An E2E actor requests approval only with the exact header-only/no-final-LF
@@ -220,9 +227,12 @@ action without that production claim. Validate its credential-safe scenario ID
 before deriving a fresh token/state. Candidate-bound
 `production_e2e`/`irreversible_e2e` `APPROVE|DENY` then uses only
 `E2E_APPROVAL_TO_E2E` at `e2e-approval-resume`; an approved named scenario may
-then return E2E PASS on the unchanged SHA. Bind it to the exact requester actor,
-candidate, request-header operation/scenario and freshly unpredictable one-shot 64-hex request
-token; reject stale, replayed and cross-actor approvals. `watchdog_start` uses the non-relay
+then return E2E PASS on the unchanged SHA. Pass the independently stored
+requester-actor identity to the relay recipe and require exact equality with the
+recipient actor, in addition to its `e2e` role, candidate, request-header
+operation/scenario and freshly unpredictable one-shot 64-hex request token;
+reject stale, replayed, second-E2E-actor and cross-actor approvals.
+`watchdog_start` uses the non-relay
 `WATCHDOG_START_TO_ORCHESTRATOR` control route and starts the observer only on
 `APPROVE`. These credential-free headers are run authorization, not tracked
 product intent; never persist their opaque bodies or create a docs commit.
@@ -252,8 +262,10 @@ Retention is per file and header/ID-driven, never semantic. Keep all review part
 until confirmed first-pass delivery, then only introducing parts still referenced
 by open IDs. Keep a shared RESPONSE plus `OUTCOMES`/`DISPUTED` file under one
 pending reference per disputed target; each survives until every sequential
-adjudication request has confirmed delivery. Confirmed onward delivery, closure
-or invalidation deletes each file once its final reference is gone.
+adjudication request has confirmed delivery. Retain every terminal peer outcome
+until the one total aggregate is confirmed onward; then release every aggregate
+reference together. Confirmed onward delivery, closure or invalidation deletes
+each file once its final reference is gone.
 Construction/non-delivery failure retains inputs for the bounded retry; ambiguous
 delivery retains them, records possibly delivered and stops without replay.
 Controlled exit deletes all files in only the validated current scratch directory
