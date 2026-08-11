@@ -40,17 +40,18 @@ skills:
 mo-test:
 	node --test "tests/*.test.mjs"
 
-# Does the shipped settings helper boot and answer? Under a throwaway HOME, because
+# Do the source helper and both shipped backend copies boot and answer? Under a throwaway HOME, because
 # this gate judges the repository: a settings file the developer happens to have
 # — or a corrupt one — must not decide whether an unmodified checkout is green.
 mo-smoke:
-	@home=$$(mktemp -d) && \
-		HOME=$$home node shared/scripts/mo-models.mjs --help > /dev/null && \
-		HOME=$$home node shared/scripts/mo-models.mjs --show > /dev/null && \
-		cp skills/mo-herdr/scripts/mo-models.mjs $$home/mo-models.mjs && \
-		(cd $$home && HOME=$$home node ./mo-models.mjs --help > /dev/null) && \
-		(cd $$home && HOME=$$home node ./mo-models.mjs --show > /dev/null) && \
-		rm -rf $$home
+	@set -e; smoke_dir=$$(mktemp -d); trap 'rm -rf "$$smoke_dir"' 0 HUP INT TERM; \
+		HOME=$$smoke_dir node shared/scripts/mo-models.mjs --help > /dev/null; \
+		HOME=$$smoke_dir node shared/scripts/mo-models.mjs --show > /dev/null; \
+		for backend in mo-herdr mo-omnigent; do \
+			cp skills/$$backend/scripts/mo-models.mjs $$smoke_dir/$$backend.mjs; \
+			(cd $$smoke_dir && HOME=$$smoke_dir node ./$$backend.mjs --help > /dev/null); \
+			(cd $$smoke_dir && HOME=$$smoke_dir node ./$$backend.mjs --show > /dev/null); \
+		done
 	@echo "mo-smoke ok"
 
 # Agent-required E2E pretends nothing. It says what a human or an agent must run,

@@ -15,6 +15,14 @@ Require `HERDR_ENV=1`, Node.js 22+, a Git repository, an interactive orchestrato
 pane, named public Herdr commands, and two exact-fixture-proven reviewer vendors.
 Do not fabricate Herdr state and do not use this skill outside Herdr.
 
+Before activation, resolve the fixture map as an explicit input: use a
+caller-supplied locator when present, otherwise the project-contract path
+`docs/phase-0-fixtures.md`. Read it before the firewall closes and retain only
+the exact seven-field support keys and their reusable posture. A missing,
+unreadable or malformed map is setup attention and prevents activation; it is
+never repaired by reading tracked content later. Candidate SHA, verdicts and
+live run evidence are not part of this input.
+
 The project contract is injected before activation. After activation, treat the
 task/spec locator as opaque and enforce the methodology firewall. Never open a
 tracked file or run a content-revealing Git command. Repository-reading actors
@@ -40,8 +48,9 @@ Require status 0 for every applicable shell, a complete non-divergent matrix and
 no selected provider whose record is `type=missing` or `path=missing` before
 topology mutation. Only fixed classification, command kind and first path enter context.
 Trust, permission, model activation and entitlement stay live fixture gates.
-`docs/phase-0-fixtures.md` defines fixture keys and durable support posture only;
-never record this candidate's SHA, PASS verdict or live evidence there.
+The resolved pre-activation fixture map defines fixture keys and durable support
+posture only; never record this candidate's SHA, PASS verdict or live evidence
+there.
 
 Use the bundled `scripts/mo-models.mjs` for preferences/catalogues. It is
 self-contained; missing ambient `node_modules` is not a reason to search the
@@ -176,8 +185,12 @@ polling, predicted SHA/cleanliness or terminal prose.
    proceeds to the applicable gate. If A alone invalidates the
    candidate by a mutating check, use only the phase-bound
    `INVALIDATED_A_CHECK_TO_EXECUTOR` route; never start or fabricate B.
-8. If both pass and both say E2E NA, return the unchanged SHA. Otherwise lazily
-   create E2E, prompt the E2E actor, and apply the V1 result.
+8. Reconcile the two PASS dispositions before E2E. `NA/NA` returns the unchanged
+   SHA and `REQUIRED/REQUIRED` lazily creates E2E and applies its V1 result. For
+   a mixed pair, re-prompt exactly the NA reviewer once on the unchanged
+   candidate with no peer output. A change to REQUIRED proceeds; repeated NA is
+   terminal `needs_attention:e2e_disposition_dispute`, never a second retry or
+   ordinary user question.
 9. Any fix/new SHA invalidates every gate and open ID; repeat the full freeze.
 
 Reviewer/E2E prompts name only locator, candidate, role, protocol version,
@@ -350,7 +363,9 @@ ordered by name and carries actor, provider, PASS, exact `support-key` and exact
 structural evidence. Bind its reference to the same provider's Herdr `e2e` fact
 whose fixture and sole scenario both equal the record name. Evidence source is
 `backend-public-surface`, protocol is `MO_E2E_V1`, ordinal/total is exact, and
-positive rows/bytes are bounded by 1,000/65,536. Reject missing or unrelated
+the validated PASS header's `scenarios` count equals both the derived list
+length and every evidence `total`, with `not_run=none`. Positive rows/bytes are
+bounded by 1,000/65,536. Reject missing or unrelated
 support keys, gates/dispositions, extra fields, FAIL/UNKNOWN or arbitrary
 prose/generic evidence.
 

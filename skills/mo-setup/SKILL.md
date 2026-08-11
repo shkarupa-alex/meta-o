@@ -24,9 +24,18 @@ docs/glossary.md
 docs/backlog.md
 docs/architecture/
 docs/e2e.md                 # or docs/e2e/index.md + group files
+docs/phase-0-fixtures.md    # reusable backend surface definitions/posture
 AGENTS.md
 CLAUDE.md
 ```
+
+`docs/phase-0-fixtures.md` is the conventional pre-activation input for backend
+skills. Create it with exact backend/provider/provider-version/backend-version/
+surface/os/fixture keys and default unknown surfaces to `PENDING` or
+`UNSUPPORTED`; only an isolated exact fixture may establish `SUPPORTED`. It is
+never a candidate receipt and never stores a candidate SHA, review verdict or
+live run evidence. If the project already owns an equivalent fixture map, keep
+that file and pass its locator explicitly instead of creating a duplicate.
 
 `business`, `glossary` and `backlog` live at the top of `docs/`. Do not create a
 `docs/knowledge/` layer and do not introduce a knowledge-impact plan; both were

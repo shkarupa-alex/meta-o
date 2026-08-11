@@ -51,6 +51,9 @@ The build contract is:
   dependency;
 - Node.js 22 ESM output, with bundling enabled, no externals, no minification and
   no source map;
+- esbuild preserves symlinked package paths, so checkout/worktree/pnpm/cache
+  realpaths cannot change emitted source labels or leak developer/disposable
+  absolute paths into the bundle;
 - system Claude resolved through the established `PATH` scan; no provider
   executable is vendored;
 - macOS Claude runs under a Seatbelt profile whose kernel-enforced
@@ -68,11 +71,16 @@ The build contract is:
   containment because a concurrently spawned process can detach and a numeric
   PID can be reused;
 - no unresolved live package import and no runtime `node_modules` requirement;
-- byte-identical generated helper output for `mo-herdr` and `mo-omnigent`.
+- byte-identical generated helper output for `mo-herdr` and `mo-omnigent`, also
+  when rebuilt with a symlinked dependency layout.
 
 The measured bundle baseline is 999,247 bytes. The current 25% audited ceiling
 is 1,249,059 bytes. Crossing it fails the build and requires a fresh size and
 dependency audit; it is not silently accepted as ordinary generated churn.
+
+The source helper and both generated backend copies are smoke-tested. A
+disposable clone whose `node_modules` is a symlink must rebuild the exact
+committed bundle bytes without embedding either source-tree absolute path.
 
 The external brain-council files cited by the specification are design
 references only. Source, build, tests, generated skills and runtime must work

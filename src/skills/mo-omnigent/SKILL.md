@@ -100,8 +100,12 @@ ask the human to resume, route or select an ordinary actor.
    ordered results equal that exact `disputes` set. `UNRESOLVED` reaches the
    human.
 7. Repeat after every new commit; open IDs and all gates are SHA-bound.
-8. Run a separate read-only E2E actor when required, or finish only when both
-   reviewers independently say NA.
+8. Reconcile the two PASS dispositions first. Run a separate read-only E2E actor
+   for REQUIRED/REQUIRED, or finish for NA/NA. For a mixed pair, re-prompt
+   exactly the NA reviewer once on the unchanged candidate without peer output;
+   a change to REQUIRED proceeds and repeated NA returns terminal
+   `needs_attention:e2e_disposition_dispute` without another retry or user
+   choice.
 
 Both reviewers run QC, smoke and applicable checks. Review bodies stay opaque;
 the orchestrator prints only validated headers. Origin closure, forced dispute,
@@ -176,7 +180,9 @@ exact keys `scenario,actor,provider,support-key,status,evidence`, follow that
 order, and resolve their support key to `backend=omnigent`, the same provider,
 `surface=e2e`, `fixture=scenario`, and `scenarios=[scenario]`; a merely
 same-provider fact is invalid. They carry structural `MO_E2E_V1` evidence with
-consistent ordinal/total, at most 1000 rows and 65,536 bytes. Extra keys, generic prose
+consistent ordinal/total; the validated PASS header's positive `scenarios`
+count equals the derived list length and every evidence `total`, with
+`not_run=none`. Evidence is bounded by 1000 rows and 65,536 bytes. Extra keys, generic prose
 evidence, dirty/new `HEAD`, missing gates/support/evidence, FAIL or UNKNOWN
 invalidate PASS. Never edit or commit tracked fixture, acceptance or E2E docs as
 a receipt, and create no manifest, registry, receipt or external evidence sink.

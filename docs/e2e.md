@@ -36,10 +36,12 @@ candidate, worktree, gates, support, reviews, scenarios
   `fixture=review-turn`, and `scenarios=[]`. Evidence has exactly
   `source,protocol,parts,rows,bytes`: source `backend-public-surface`, protocol
   `MO_REVIEW_V2`, and maxima 6 parts, 1000 rows, 61,440 bytes.
-- The two review E2E dispositions agree. Both `NA` requires `scenarios=[]`; one
-  `NA` is invalid. Both `REQUIRED` derives a nonempty `scenarios` list exactly as
+- The two final review E2E dispositions agree. Both `NA` requires
+  `scenarios=[]`. Both `REQUIRED` derives a nonempty `scenarios` list exactly as
   the sorted unique union of `support[].scenarios`; no default or external list
-  is permitted.
+  is permitted. A mixed first pass re-prompts exactly the NA reviewer once on
+  the unchanged candidate without peer output; a change to REQUIRED proceeds,
+  while repeated NA is terminal `needs_attention:e2e_disposition_dispute`.
 - Scenario records follow that exact sorted order. Each has exactly
   `scenario,actor,provider,support-key,status,evidence`; status is PASS.
   `support-key` resolves to a fact with the selected route's backend, the same provider,
@@ -48,6 +50,10 @@ candidate, worktree, gates, support, reviews, scenarios
   `source,protocol,ordinal,total,rows,bytes`: source `backend-public-surface`,
   protocol `MO_E2E_V1`, ordinal 1..total, the same total on every entry, and
   maxima 1000 rows and 65,536 bytes.
+- For REQUIRED/REQUIRED, the validated E2E PASS header's positive `scenarios`
+  count equals the derived scenario-list length and every evidence `total`, with
+  `not_run=none`. A self-selected smaller support/result set cannot prove
+  completeness.
 
 Extra keys, prose/generic evidence, missing support/gates/evidence, FAIL/UNKNOWN,
 a dirty tree, or a changed SHA cannot produce the verified record.

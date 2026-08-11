@@ -147,7 +147,7 @@ function canonicalOpenIds(value) {
 function validateReview(line) {
   const header = parseHeader(line);
   assert.equal(header.protocol, "MO_REVIEW_V2");
-  assert.match(header.candidate, /^[0-9a-f]{40,64}$/);
+  assert.match(header.candidate, /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
   assert.match(header.reviewer, /^[AB]$/);
   assert.match(header.status, /^(PASS|FINDINGS|FOLLOWUP|OUTCOMES|DISPUTED|UNKNOWN)$/);
   assert.match(header.more, /^(yes|no)$/);
@@ -223,7 +223,7 @@ function validateReview(line) {
 
 function validateExecutor(line, expectedOpen = "none") {
   const header = parseHeader(line);
-  const oid = /^[0-9a-f]{40,64}$/;
+  const oid = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
   const branch = /^feature\/[a-z0-9][a-z0-9._-]{0,62}$/;
   assert.equal(header.protocol, "MO_EXECUTOR_V1");
   if (header.type === "CANDIDATE") {
@@ -247,7 +247,7 @@ function validateExecutor(line, expectedOpen = "none") {
     assert.equal(header.rebuts, expectedOpen, "RESPONSE is not the exact current open set");
     assert.equal(header.blocker, "none");
   } else if (header.type === "BLOCKER") {
-    assert.match(header.candidate, /^(none|[0-9a-f]{40,64})$/);
+    assert.match(header.candidate, /^(none|(?:[0-9a-f]{40}|[0-9a-f]{64}))$/);
     assert.match(header.branch, /^(none|feature\/[a-z0-9][a-z0-9._-]{0,62})$/);
     assert.equal(header.base, "none");
     assert.equal(header.fixes, "none");
@@ -264,7 +264,7 @@ function validateExecutor(line, expectedOpen = "none") {
 function validateE2E(line) {
   const header = parseHeader(line);
   assert.equal(header.protocol, "MO_E2E_V1");
-  assert.match(header.candidate, /^[0-9a-f]{40,64}$/);
+  assert.match(header.candidate, /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
   if (header.status === "PASS") {
     assert.ok(canonicalPositive(header.scenarios));
     assert.equal(header.not_run, "none");
@@ -291,7 +291,7 @@ function validateE2E(line) {
 function validateAdjudication(line, actualReviewer) {
   const header = parseHeader(line);
   assert.equal(header.protocol, "MO_ADJUDICATION_V1");
-  assert.match(header.candidate, /^[0-9a-f]{40,64}$/);
+  assert.match(header.candidate, /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
   assert.equal(ids(header.finding).length, 1, "adjudication has exactly one finding ID");
   assert.match(header.reviewer, /^[AB]$/);
   if (actualReviewer) assert.equal(header.reviewer, actualReviewer);
@@ -303,7 +303,7 @@ function validateAdjudication(line, actualReviewer) {
 function validateHumanAnswer(line) {
   const header = parseHeader(line);
   assert.equal(header.protocol, "MO_HUMAN_ANSWER_V1");
-  assert.match(header.candidate, /^(none|[0-9a-f]{40,64})$/);
+  assert.match(header.candidate, /^(none|(?:[0-9a-f]{40}|[0-9a-f]{64}))$/);
   assert.match(
     header.phase,
     /^(product|architecture|irreversible|credentials|subscription|external_blocker)$/,
@@ -316,7 +316,7 @@ function validateE2EApprovalRequest(line) {
   assert.equal(line.includes("\n"), false, "approval request must be one row without final LF");
   const header = parseHeader(line);
   assert.equal(header.protocol, "MO_E2E_APPROVAL_REQUEST_V1");
-  assert.match(header.candidate, /^[0-9a-f]{40,64}$/);
+  assert.match(header.candidate, /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
   assert.match(header.operation, /^(production_e2e|irreversible_e2e)$/);
   assert.match(header.scenario, /^[a-z0-9][a-z0-9._-]{0,63}$/);
   assert.notEqual(header.scenario, "none");
@@ -327,7 +327,7 @@ function validateOperationalApproval(line, openRequest) {
   assert.equal(line.includes("\n"), false, "approval must be one row without final LF/body");
   const header = parseHeader(line);
   assert.equal(header.protocol, "MO_OPERATIONAL_APPROVAL_V1");
-  assert.match(header.candidate, /^(none|[0-9a-f]{40,64})$/);
+  assert.match(header.candidate, /^(none|(?:[0-9a-f]{40}|[0-9a-f]{64}))$/);
   assert.match(header.request, /^[0-9a-f]{64}$/);
   assert.match(header.decision, /^(APPROVE|DENY)$/);
   const e2e =
@@ -335,12 +335,12 @@ function validateOperationalApproval(line, openRequest) {
     /^(production_e2e|irreversible_e2e)$/.test(header.operation) &&
     /^[a-z0-9][a-z0-9._-]{0,63}$/.test(header.scenario) &&
     header.scenario !== "none" &&
-    /^[0-9a-f]{40,64}$/.test(header.candidate);
+    /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(header.candidate);
   const watchdog =
     header.requester === "orchestrator" &&
     header.operation === "watchdog_start" &&
     header.scenario === "none" &&
-    /^(none|[0-9a-f]{40,64})$/.test(header.candidate);
+    /^(none|(?:[0-9a-f]{40}|[0-9a-f]{64}))$/.test(header.candidate);
   assert.ok(e2e || watchdog, "unreachable operational approval combination");
   if (openRequest) {
     assert.deepEqual(
@@ -464,7 +464,7 @@ class FeatureRun {
   }
 
   freeze(candidate) {
-    assert.match(candidate, /^[0-9a-f]{40,64}$/);
+    assert.match(candidate, /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
     if (candidate !== this.candidate) {
       this.candidate = candidate;
       this.gates.clear();
@@ -608,7 +608,7 @@ class OperationalApprovalState {
 
   openWatchdog(candidate, request) {
     assert.equal(this.current, undefined, "only one operational request may be open");
-    assert.match(candidate, /^(none|[0-9a-f]{40,64})$/);
+    assert.match(candidate, /^(none|(?:[0-9a-f]{40}|[0-9a-f]{64}))$/);
     assert.match(request, /^[0-9a-f]{64}$/);
     this.current = {
       candidate,
@@ -653,6 +653,18 @@ test("all compact headers have exact field order and canonical identities", () =
     ),
   );
   validateE2E(`MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=1|not_run=none|blocker=none`);
+  const oid64 = "b".repeat(64);
+  validateExecutor(
+    `MO_EXECUTOR_V1|type=CANDIDATE|candidate=${oid64}|branch=feature/x|base=${oid64}|fixes=none|rebuts=none|blocker=none`,
+  );
+  for (const length of [39, 41, 63, 65]) {
+    const malformed = "c".repeat(length);
+    assert.throws(() =>
+      validateExecutor(
+        `MO_EXECUTOR_V1|type=CANDIDATE|candidate=${malformed}|branch=feature/x|base=${malformed}|fixes=none|rebuts=none|blocker=none`,
+      ),
+    );
+  }
   assert.throws(() => parseHeader(review().replace("|reviewer=A", "|reviewer=A|reviewer=A")));
   assert.throws(() => parseHeader(review().replace("|part=1", "|more=no|part=1")));
   assert.throws(() => validateReview(review({ part: "01" })));
@@ -1025,7 +1037,7 @@ test("candidate freeze rejects dirty, stale, non-commit and missing-develop meta
     commitExists = true,
     developBaseExists = true,
   } = {}) => {
-    assert.match(head, /^[0-9a-f]{40,64}$/);
+    assert.match(head, /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
     assert.equal(headerCandidate, head);
     assert.match(branch, /^feature\/[a-z0-9][a-z0-9._-]{0,62}$/);
     assert.equal(clean, true);
@@ -1054,7 +1066,7 @@ function validateFinalResult(result, { head = OID, clean = true, backend = "herd
   safeId(backend);
   assert.equal(clean, true);
   assert.equal(result.candidate, head);
-  assert.match(result.candidate, /^[0-9a-f]{40,64}$/);
+  assert.match(result.candidate, /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
   assert.equal(result.worktree, "clean");
 
   assert.equal(result.gates.length, 3);
@@ -1177,6 +1189,35 @@ function validateFinalResult(result, { head = OID, clean = true, backend = "herd
   return result.candidate;
 }
 
+function reconcileE2EDispositions(a, b, recheckedNa) {
+  assert.match(a, /^(REQUIRED|NA)$/);
+  assert.match(b, /^(REQUIRED|NA)$/);
+  if (a === b) return a === "NA" ? "FINISH" : "RUN_E2E";
+  const reviewer = a === "NA" ? "A" : "B";
+  if (recheckedNa === undefined) return `RECHECK_${reviewer}`;
+  assert.match(recheckedNa, /^(REQUIRED|NA)$/);
+  return recheckedNa === "REQUIRED" ? "RUN_E2E" : "NEEDS_ATTENTION";
+}
+
+function bindE2EPassToFinal(headerLine, finalResult) {
+  const header = validateE2E(headerLine);
+  assert.equal(header.status, "PASS");
+  const count = Number(header.scenarios);
+  assert.equal(Number.isSafeInteger(count), true);
+  assert.equal(count, finalResult.scenarios.length);
+  for (const scenario of finalResult.scenarios) assert.equal(scenario.evidence.total, count);
+  return count;
+}
+
+test("mixed E2E dispositions get one bounded NA-side recheck", () => {
+  assert.equal(reconcileE2EDispositions("NA", "NA"), "FINISH");
+  assert.equal(reconcileE2EDispositions("REQUIRED", "REQUIRED"), "RUN_E2E");
+  assert.equal(reconcileE2EDispositions("NA", "REQUIRED"), "RECHECK_A");
+  assert.equal(reconcileE2EDispositions("REQUIRED", "NA"), "RECHECK_B");
+  assert.equal(reconcileE2EDispositions("NA", "REQUIRED", "REQUIRED"), "RUN_E2E");
+  assert.equal(reconcileE2EDispositions("REQUIRED", "NA", "NA"), "NEEDS_ATTENTION");
+});
+
 test("closed ephemeral final result derives scenarios from dispositions and support facts", () => {
   const supportKey = (provider, surface, fixture, backend = "herdr") =>
     `${backend}/${provider}/v1/v1/${surface}/darwin-arm64/${fixture}`;
@@ -1267,6 +1308,19 @@ test("closed ephemeral final result derives scenarios from dispositions and supp
     ],
   };
   assert.equal(validateFinalResult(finalResult), OID);
+  assert.equal(
+    bindE2EPassToFinal(
+      `MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=1|not_run=none|blocker=none`,
+      finalResult,
+    ),
+    1,
+  );
+  assert.throws(() =>
+    bindE2EPassToFinal(
+      `MO_E2E_V1|candidate=${OID}|status=PASS|scenarios=2|not_run=none|blocker=none`,
+      finalResult,
+    ),
+  );
   const omnigentResult = {
     ...finalResult,
     support: finalResult.support.map((fact) => ({
@@ -1915,6 +1969,7 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
   assert.match(candidate, /The two E2E dispositions must agree/);
   assert.match(candidate, /sorted\s+unique union of `support\[\]\.scenarios`/);
   assert.match(candidate, /positive row\/byte\s+bounds are 1,000 and 65,536/);
+  assert.match(candidate, /PASS header's positive\s+`scenarios` integer must equal/);
   assert.match(candidate, /Missing or unreadable evidence is\s+unknown, never PASS/);
   assert.match(candidate, /Do not write, append, record or commit that live evidence/);
   assert.match(
@@ -1936,6 +1991,7 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
   assert.match(finalAnswer, /reject one NA/);
   assert.match(finalAnswer, /6\/1,000\/61,440/);
   assert.match(finalAnswer, /1,000\/65,536/);
+  assert.match(finalAnswer, /PASS header's `scenarios` count equals/);
   assert.match(finalAnswer, /Recheck the same clean `HEAD` immediately before return/);
   assert.match(
     finalAnswer,
@@ -1959,6 +2015,12 @@ function assertAuthoredHerdrContract(skillSource, mechanicsSource, methodologySo
     /dirty tree, changed SHA,\s+missing fact\/disposition\/scenario or FAIL\/UNKNOWN evidence invalidates the record/,
   );
   assert.match(freeze, /Never turn these facts into a tracked edit or commit/);
+  assert.match(freeze, /PASS header's positive\s+`scenarios` count/);
+  const featureFlow = sectionText(skillSource, "Feature flow");
+  assert.match(featureFlow, /re-prompt exactly the NA reviewer once/);
+  assert.match(featureFlow, /needs_attention:e2e_disposition_dispute/);
+  assert.match(mechanicsSource, /Synthetic provisional literals only: P6\/H17/);
+  assert.match(mechanicsSource, /Exit 2\nmeans the Herdr invocation was attempted/);
   const attention = sectionText(methodologySource, "7. Blockers and human attention");
   assert.match(
     attention,
@@ -3058,7 +3120,7 @@ test("AST extraction and relay preserve a missing final LF", () => {
   const log = join(directory, "argv.json");
   writeFileSync(
     join(directory, "herdr"),
-    `#!${process.execPath}\nimport { writeFileSync } from "node:fs"; writeFileSync(process.env.RELAY_ARGV_LOG, JSON.stringify(process.argv.slice(2)));\n`,
+    `#!${process.execPath}\nimport { writeFileSync } from "node:fs"; writeFileSync(process.env.RELAY_ARGV_LOG, JSON.stringify(process.argv.slice(2))); if (process.env.RELAY_FAKE_STATUS) process.exit(Number(process.env.RELAY_FAKE_STATUS));\n`,
   );
   chmodSync(join(directory, "herdr"), 0o755);
   const sent = spawnSync(
@@ -3191,7 +3253,7 @@ test("AST relay builds exact frames, preserves opaque argv, and stays body-silen
     encoding: "utf8",
     env: { ...env, RELAY_EXIT: "7" },
   });
-  assert.equal(failed.status, 1);
+  assert.equal(failed.status, 2);
   assert.equal(failed.stdout + failed.stderr, "", "failure disclosed the opaque body");
   assert.equal(
     spawnSync(process.execPath, args.with(11, "1"), { encoding: "utf8", env }).status,
@@ -4002,7 +4064,7 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
   const marker = join(directory, "body-must-stay-opaque");
   writeFileSync(
     join(directory, "herdr"),
-    `#!${process.execPath}\nimport { writeFileSync } from "node:fs"; writeFileSync(process.env.RELAY_ARGV_LOG, JSON.stringify(process.argv.slice(2)));\n`,
+    `#!${process.execPath}\nimport { writeFileSync } from "node:fs"; writeFileSync(process.env.RELAY_ARGV_LOG, JSON.stringify(process.argv.slice(2))); if (process.env.RELAY_FAKE_STATUS) process.exit(Number(process.env.RELAY_FAKE_STATUS));\n`,
   );
   chmodSync(join(directory, "herdr"), 0o755);
   const env = { ...process.env, PATH: `${directory}:${process.env.PATH}`, RELAY_ARGV_LOG: log };
@@ -4076,6 +4138,35 @@ test("AST relay executes every resolution leg with phase, recipient, source, can
   );
   assert.equal(responseBody.endsWith("\n"), false);
   assert.notEqual(Buffer.from(responseLeg.prompt).indexOf(Buffer.from(responseBody)), -1);
+
+  rmSync(log, { force: true });
+  env.RELAY_FAKE_STATUS = "9";
+  invoke({
+    actor: "m-task-reviewera-abc123",
+    purpose: "executor-response",
+    phase: "origin-resolution",
+    finding: "A-2",
+    reviewer: "A",
+    expectedOpen: "A-1,A-2",
+    triples: [["executor", "none", response]],
+    status: 2,
+  });
+  delete env.RELAY_FAKE_STATUS;
+  assert.equal(existsSync(log), true, "ambiguous exit must follow an attempted invocation");
+
+  rmSync(log, { force: true });
+  invoke({
+    actor: "m-task-reviewera-abc123",
+    purpose: "executor-response",
+    phase: "origin-resolution",
+    candidate: "b".repeat(41),
+    finding: "A-2",
+    reviewer: "A",
+    expectedOpen: "A-1,A-2",
+    triples: [["executor", "none", response]],
+    status: 1,
+  });
+  assert.equal(existsSync(log), false, "pre-submission rejection must not invoke Herdr");
 
   const originFindingsBody = `${review({ status: "FOLLOWUP", ids: "A-3", open: "A-3", closes: "A-1,A-2", qc: "FAIL" })}\nclosed A-1/A-2 and introduced A-3`;
   const originFindings = privateFile(directory, "origin-findings.txt", originFindingsBody);
@@ -5102,6 +5193,29 @@ test("project/setup version-control and non-mutating review contracts agree", ()
     assert.match(text, /isolated disposable location/);
     assert.match(text, /subsequent commit\ninvalidates its review and verification gates/);
   }
+});
+
+test("support identity, provisional extraction, and backend smoke stay explicit", () => {
+  const seven = /backend\/provider\/provider-version\/backend-version\/surface\/os\/fixture/;
+  const glossary = readFileSync(join(ROOT, "docs", "glossary.md"), "utf8");
+  const methodology = readFileSync(join(ROOT, "shared", "references", "methodology.md"), "utf8");
+  const mechanics = readFileSync(
+    join(ROOT, "src", "skills", "mo-herdr", "references", "herdr-mechanics.md"),
+    "utf8",
+  );
+  const fixtureReadme = readFileSync(
+    join(ROOT, "tests", "fixtures", "herdr-extraction", "README.md"),
+    "utf8",
+  );
+  const backlog = readFileSync(join(ROOT, "docs", "backlog.md"), "utf8");
+  const makefile = readFileSync(join(ROOT, "Makefile"), "utf8");
+  assert.match(glossary, seven);
+  assert.match(methodology, seven);
+  assert.match(mechanics, seven);
+  assert.match(fixtureReadme, /authored deterministic cases, not recordings/);
+  assert.match(fixtureReadme, /P6\/H17 must measure/);
+  assert.match(backlog, /lower-boundary literals[\s\S]*synthetic provisional/);
+  assert.match(makefile, /for backend in mo-herdr mo-omnigent/);
 });
 
 test("root intent and E2E contracts keep one-shot operational approval candidate-stable", () => {

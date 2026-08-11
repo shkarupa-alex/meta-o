@@ -110,7 +110,7 @@ const fields = {
   MO_E2E_V1: ["candidate", "status", "scenarios", "not_run", "blocker"],
   MO_E2E_APPROVAL_REQUEST_V1: ["candidate", "operation", "scenario"],
 };
-const oid = /^[0-9a-f]{40,64}$/;
+const oid = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const pos = /^[1-9][0-9]*$/;
 const idList = (value, reviewer) => {
   if (value === "none") return [];
@@ -175,7 +175,7 @@ const valid = (header, protocol, candidate, reviewer, expectedOpen, expectedFind
       die(oid.test(h.candidate) && branch.test(h.branch) && h.base === "none" && h.fixes === "none" && rebuts.length > 0 && rebuts.every((id) => id[0] === rebuts[0][0]) && expected.length > 0 && expected.every((id) => id[0] === rebuts[0][0]) && h.rebuts === expectedOpen && h.blocker === "none");
     }
     if (h.type !== "RESPONSE") die(expectedOpen === "none");
-    if (h.type === "BLOCKER") die(/^(none|[0-9a-f]{40,64})$/.test(h.candidate) && /^(none|feature\/[a-z0-9][a-z0-9._-]{0,62})$/.test(h.branch) && h.base === "none" && h.fixes === "none" && h.rebuts === "none" && /^(product_meaning|product_architecture_fork|irreversible_action|credentials|subscription|external_blocker)$/.test(h.blocker));
+    if (h.type === "BLOCKER") die(/^(none|(?:[0-9a-f]{40}|[0-9a-f]{64}))$/.test(h.candidate) && /^(none|feature\/[a-z0-9][a-z0-9._-]{0,62})$/.test(h.branch) && h.base === "none" && h.fixes === "none" && h.rebuts === "none" && /^(product_meaning|product_architecture_fork|irreversible_action|credentials|subscription|external_blocker)$/.test(h.blocker));
   } else if (protocol === "MO_ADJUDICATION_V1") {
     die(oid.test(candidate));
     die(h.reviewer === reviewer && /^[AB]$/.test(reviewer) && /^(UPHOLD|WITHDRAW|UNRESOLVED)$/.test(h.outcome));
@@ -208,6 +208,8 @@ try {
   if (process.getuid) die(directory.uid === process.getuid());
   const within = (path) => resolve(path).startsWith(`${scratch}${sep}`);
   const marker = `MO_PROMPT_BOUNDARY_V1|fingerprint=${fingerprint}`;
+  // Synthetic provisional literals only: P6/H17 must confirm or replace these
+  // exact provider/version rows before this extraction surface is SUPPORTED.
   const boundary = provider === "claude" ? "╭─ input ❯ ─╮" : "╭─ input › ─╮";
   const decoder = new TextDecoder("utf-8", { fatal: true });
   const ladder = [120, 200, 400, 800, 1000];
@@ -387,7 +389,7 @@ try {
   const route = routes[purpose];
   ok(/^[a-z][a-z0-9_-]{0,31}$/.test(actor) && route && phase === route[0] && locator.length > 0 && !/[\0\r\n]/.test(locator));
   ok(/^[0-9a-f]{64}$/.test(fingerprint));
-  ok((purpose === "human-answer" ? /^(none|[0-9a-f]{40,64})$/ : /^[0-9a-f]{40,64}$/).test(candidate) && items.length % 3 === 0);
+  ok((purpose === "human-answer" ? /^(none|(?:[0-9a-f]{40}|[0-9a-f]{64}))$/ : /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/).test(candidate) && items.length % 3 === 0);
   const direction = route[1], role = route[2];
   const actorRole = actor.match(/^m-[a-z0-9](?:[a-z0-9-]{0,10}[a-z0-9])?-(executor|reviewera|reviewerb|e2e)-[a-z0-9]{6}$/)?.[1];
   ok(actorRole);
@@ -618,11 +620,17 @@ try {
   const text = decoder.decode(payload);
   const timeout = role === "executor" ? "600000" : "300000";
   const result = spawnSync("herdr", ["agent", "prompt", actor, text, "--wait", "--timeout", timeout], { shell: false, encoding: "utf8" });
-  ok(!result.error && result.status === 0);
+  if (result.error || result.status !== 0) process.exitCode = 2;
 } catch {
   stop();
 }
 ```
+
+Exit 0 means the public prompt-and-wait operation completed. Exit 1 is reserved
+for rejection before `spawnSync` and therefore positive non-delivery. Exit 2
+means the Herdr invocation was attempted but delivery versus wait failure is
+ambiguous; retain inputs, mark possibly delivered, stop, and never replay it.
+The recipe remains body-silent for every exit.
 
 The constructed goal/framing wrapper overhead remains at most 7,168 UTF-8 bytes;
 deterministic tests measure the complete prompt argument minus body bytes. The
@@ -723,7 +731,12 @@ retrieval metadata. The structural evidence objects and their 6/1,000/61,440 and
 1,000/65,536 bounds reject arbitrary body prose or a generic evidence label.
 Derive E2E names without reading opaque bodies: both reviewer dispositions NA
 means exactly no scenarios; both REQUIRED means exactly the nonempty sorted
-unique union of selected support-fact scenario names; one NA is invalid.
+unique union of selected support-fact scenario names. A mixed first pass follows
+the one-shot NA-reviewer reconciliation before construction; persistent mixed
+dispositions are invalid and end in `needs_attention:e2e_disposition_dispute`.
+Before final construction, require the validated E2E PASS header's positive
+`scenarios` count to equal that derived list length and every scenario evidence
+`total`, with `not_run=none`; a smaller self-selected result is incomplete.
 
 Require the same full candidate SHA, `worktree=clean`, complete deterministic
 gates and support coverage immediately before return. A dirty tree, changed SHA,
@@ -772,7 +785,7 @@ directories.
 P1–P8 establish only installed external capabilities before implementation.
 H7b and H13–H37 establish the post-cutover behavior on one named unchanged SHA.
 No prose, incidental failure or old inline fixture transfers support to a new
-backend/provider/version/surface key.
+backend/provider/provider-version/backend-version/surface/os/fixture key.
 
 `docs/phase-0-fixtures.md` is only the durable fixture-definition and
 support-posture map. `SUPPORTED`, `PENDING` and `UNSUPPORTED` describe a surface

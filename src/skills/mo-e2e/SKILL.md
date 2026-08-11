@@ -120,7 +120,9 @@ Fields occur once in that order and candidate equals the observed frozen `HEAD`.
 Positive integers are canonical unsigned base 10 without leading zeroes.
 
 - PASS: positive scenarios, every selected scenario passed, `not_run=none`,
-  `blocker=none`.
+  `blocker=none`. The count must equal the backend's support-derived required
+  scenario-list length and every final scenario evidence `total`; a smaller
+  self-selected result is incomplete rather than PASS.
 - FAIL: positive scenarios, at least one candidate-relevant failure,
   `not_run=none` or a positive omitted count, `blocker=none`.
 - UNKNOWN: scenarios none or positive; if none ran, `not_run` is positive; no

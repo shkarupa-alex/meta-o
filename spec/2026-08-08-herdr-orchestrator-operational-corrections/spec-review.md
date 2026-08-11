@@ -135,6 +135,100 @@ inventing project documentation or bookkeeping that the user did not request.
 > я тут долго думал и понял что не нужен нам Assisted by в коммитах
 > убери упоминания этого из спеки
 
+### Questions and pause request — 2026-08-10
+
+> объясни что мы так долго делаем? в смысле почему так долго?
+> и давай пока сделаем паузу
+
+> а почему у нас образовалось несколько веток herd-orchestrator-candidate-*** ?
+
+> а ты сейчас пока делаешь эту работу и запускаешь тесты при этом используешь клод/кодекс/опенкод? подписки тратятся?
+
+> какой объем работы по спеке еще остался? как-то подозрительно долго делаем
+> мы же все еще делаем тонкий оркестратор на скилах (+может небольших скриптах в них) без кучи обвеса?
+
+> лишние ветки поудаляй что ли
+> а то висят/шумят
+
+> в нашей спеке есть что-то что подразумевает правки omnigent-скила или его тестирование?
+
+### Two supplied reviews — 2026-08-11
+
+> ниже 2 ревью
+
+~~~~text
+  1. Сборка бандла не воспроизводима вне «обычного» node_modules (главное)
+
+  tools/build-skills.mjs:106 вызывает esbuild без preserveSymlinks, поэтому esbuild резолвит входы через realpath и вписывает их в бандл как комментарии относительно рабочего каталога. Если node_modules — не
+  настоящий каталог внутри корня репозитория (git worktree с общими зависимостями, pnpm-раскладка, чекаут под симлинком, восстановленный из кеша CI), байты бандла меняются.
+
+  Воспроизвёл: в worktree с симлинком на node_modules HEAD тоже падает на make skills-check (входит в mo-qc) с «skills/ is out of date. Run make skills». А предписанное лечение — make skills — перезаписывает два
+  поставляемых бандла, вбивая в них абсолютный путь разработчика:
+
+  // ../../../../../../../Users/alex/Develop/meta-o/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs
+
+  То есть гейт даёт ложный отказ, а «исправление» молча меняет shipped-артефакт и утаскивает локальный путь в репозиторий. Текущие тесты этого не поймают, потому что все они собирают в одной и той же раскладке.
+
+  Проверил и починку: с preserveSymlinks: true сборка в том же worktree побайтово совпадает с закоммиченным бандлом и абсолютных путей не содержит. Предлагаю добавить preserveSymlinks: true в bundleModels и
+  детерминированную проверку в build-skills.test.mjs: в выходе не должно быть ни абсолютного пути, ни входного комментария с ... Это ровно то место, где спека требует «byte-identical Herdr/Omnigent output» — сейчас
+  идентичность гарантирована только внутри одной машины и одной раскладки.
+
+  2. Легальный исход ревью REQUIRED/NA не имеет определённого следующего шага
+
+  Состояние достижимо: оба ревью status=PASS, у A e2e=REQUIRED, у B e2e=NA (грамматика это разрешает, применимость E2E принадлежит каждому ревьюеру отдельно). Дальше:
+
+  - methodology.md:200 (§2.5) запускает E2E, когда «either reviewer says E2E is required or unknown» — то есть E2E пойдёт и может дать PASS;
+  - methodology.md:265 и все прочие дома («one NA is invalid», docs/e2e.md:39, docs/glossary.md:67, mo-herdr/SKILL.md:343) запрещают выдать финальную запись;
+  - ни одна граница §7 этот случай не покрывает, это не actor noncompliance, и ключ no-progress не повторяется.
+
+  Итог — прогон fail-closed, но встаёт без разрешённого перехода, что противоречит NI23 и исходному интенту пользователя («оркестратор должен меня заменять»). H22 в docs/phase-0-fixtures.md:119 проверяет только,
+  что one-NA невалидна, но не что делать. Нужно назвать переход в §6 (например: переспросить именно NA-ревьюера о финальной диспозиции на неизменённом кандидате; устойчивое расхождение — ограниченный
+  needs_attention) и дописать это в H22.
+
+  3. Полнота E2E самоподтверждающаяся: счётчик хода не сверяется с выведенным набором
+
+  Финальная запись выводит требуемые сценарии как объединение support[].scenarios, а support-факты существуют только для того, что прошло. Значит недопокрытый прогон E2E даёт внутренне согласованный PASS: чего не
+  запускали — того нет и в объединении. Единственное утверждение о полноте — собственное not_run=none актора, а его scenarios=<n> нигде не сравнивается ни с total, ни с числом записей сценариев (проверил: такого
+  правила нет ни в methodology.md, ни в mo-herdr/mo-e2e). Оба числа уже лежат в валидированном состоянии — сверка стоит одну строку в §3 и в разделах Final answer, плюс детерминированный кейс.
+
+  4. Структурные литералы нижней границы зашиты, но не измерены
+
+  herdr-mechanics.md:211 жёстко задаёт ╭─ input ❯ ─╮ и ╭─ input › ─╮, а голдены авторские, не снятые (Claude golden body: готово.). Если реальный рендер отличается на байт — или строка промпта приходит с
+  префиксом/переносом, так что line === marker не совпадёт, — каждое извлечение станет UNKNOWN и маршрут будет нерабочим целиком. На уровне постуры это честно: P6/H17 — PENDING/UNSUPPORTED, беклог пишет, что P1–P8
+  не запускались. Но ни в рецепте, ни в tests/fixtures/herdr-extraction/ не сказано, что эти два литерала — временные заглушки, ожидающие измерения P6. Достаточно комментария в рецепте, заголовка/README у фикстур и
+  строки в беклоге, привязывающей литерал к измеренному значению P6.
+
+  5. Код возврата рецепта релея смешивает «не отправлено» и «отправлено, но истёк wait»
+
+  herdr-mechanics.md:620-621: и отказ валидации до spawnSync, и таймаут herdr agent prompt --wait дают один и тот же молчаливый exit 1. Правило «никогда не пересылать возможно доставленный ход» держится целиком на
+  внешнем захвате сигналов оркестратором. Учитывая, что исходная жалоба пользователя была именно про потерянные/повторные отправки, отдельный код возврата после spawnSync сделал бы «уже отправлено» механически
+  различимым, а не выводимым.
+
+  6. Мелочи
+
+  - mo-smoke поднимает только копию mo-herdr, хотя спека говорит про «isolated generated helpers»; побайтовая идентичность копий проверяется тестом, так что покрытие транзитивное — но mo-lint/mo-smoke читаются как
+  неполные.
+  - oid-регексп ^[0-9a-f]{40,64}$ принимает длины 41–63, невозможные для Git. Практически не эксплуатируется (кандидат всегда из git rev-parse), но слабее формулировки «full Git object ID».
+  - Гигиена VCS: локальный (непушнутый) develop указывает на 5738907, а этот коммит правит src/skills/mo-review|mo-setup|mo-reuse/SKILL.md — то есть работа делалась прямо на develop, что запрещено собственным
+  правилом проекта. Сгенерированные копии в том же коммите присутствуют, так что дерево осталось согласованным.
+~~~~
+
+~~~~text
+• Нашёл 3 блокирующих замечания.
+
+- [P1] Канонический формат surface support key противоречив. Финальная схема требует 7 компонентов — backend, provider, provider-version, backend-version, surface, os, fixture (shared/references/
+  methodology.md:244), но канонический glossary и нижележащие инструкции определяют 5-компонентный ключ backend/provider/version/surface/fixture (docs/glossary.md:126, shared/references/methodology.md:792, src/
+  skills/mo-herdr/references/herdr-mechanics.md:770). Это допускает перенос evidence между разными версиями backend и OS, хотя контракт его запрещает. Нужно везде оставить одну точную семикомпонентную форму.
+
+- [P1] Установленный mo-herdr зависит от недоступной ему карты fixtures. Skill ссылается на docs/phase-0-fixtures.md как источник ключей и support posture (src/skills/mo-herdr/SKILL.md:43), но этот файл не входит
+  в пакет mo-herdr, а mo-setup не создаёт его в целевом проекте (src/skills/mo-setup/SKILL.md:19). После activation читать tracked project content дополнительно запрещено. В результате отдельно установленный
+  skill не может определить, какие exact fixtures имеют SUPPORTED, и честно сформировать финальные support facts. Нужен самодостаточный packaged reference либо явно определённый pre-activation input.
+
+- [P1] Реализация пока не удовлетворяет собственным completion criteria. Все P1–P8, H7b/H13–H37 и OM1–OM8 остаются PENDING/UNSUPPORTED (docs/acceptance.md:53, docs/acceptance.md:67, docs/acceptance.md:102), тогда
+  как спека разрешает представлять реализацию к adoption только после этих прогонов на одном SHA (spec/2026-08-08-herdr-orchestrator-operational-corrections/spec-review.md:1074). Это честно отражено в
+  документации, но означает, что сейчас можно принять только детерминированную часть, не работоспособность Herdr/Omnigent маршрутов.
+~~~~
+
 <!-- meta-o-later-user-intents-v1:end -->
 
 ## Purpose
@@ -205,9 +299,9 @@ Tracked fixture, E2E and acceptance documents are durable definitions, proof map
 
 `gates` is exactly `[{gate:"qc",statuses:[A,B]},{gate:"smoke",statuses:[A,B]},{gate:"checks",statuses:[A,B]}]`; QC/smoke are PASS/PASS and checks are each PASS|NA. `support` contains 1..16 unique entries sorted by the exact key tuple `backend,provider,provider-version,backend-version,surface,os,fixture`; each outer entry is exactly `key,status,scenarios`, has `status=SUPPORTED`, and has a sorted unique list of at most 32 safe lowercase IDs matching `[a-z0-9][a-z0-9._-]{0,63}`. The facts cover every provider in the selected topology.
 
-`reviews` is exactly A then B. Each entry is exactly `reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,evidence`; providers differ, status/qc/smoke are PASS, checks is PASS|NA, and E2E is REQUIRED|NA. The top-level gate arrays byte-equal the corresponding A/B review qc, smoke, and checks fields. `support-key` is the exact slash-join of the matched fact's seven safe-ID values and resolves to a fact with the selected route's backend, the same provider, `surface=review`, `fixture=review-turn`, and `scenarios=[]`. Evidence is exactly `source,protocol,parts,rows,bytes` with `source=backend-public-surface`, `protocol=MO_REVIEW_V2`, and maxima 6 parts, 1000 rows, 61,440 bytes. Both dispositions must agree: NA/NA is equivalent to an empty scenario list; one NA is invalid; REQUIRED/REQUIRED derives a nonempty scenario set exactly as the sorted unique union of `support[].scenarios`, never from a default/external list.
+`reviews` is exactly A then B. Each entry is exactly `reviewer,actor,provider,support-key,status,qc,smoke,checks,e2e,evidence`; providers differ, status/qc/smoke are PASS, checks is PASS|NA, and E2E is REQUIRED|NA. The top-level gate arrays byte-equal the corresponding A/B review qc, smoke, and checks fields. `support-key` is the exact slash-join of the matched fact's seven safe-ID values and resolves to a fact with the selected route's backend, the same provider, `surface=review`, `fixture=review-turn`, and `scenarios=[]`. Evidence is exactly `source,protocol,parts,rows,bytes` with `source=backend-public-surface`, `protocol=MO_REVIEW_V2`, and maxima 6 parts, 1000 rows, 61,440 bytes. Both dispositions must agree: NA/NA is equivalent to an empty scenario list; REQUIRED/REQUIRED derives a nonempty scenario set exactly as the sorted unique union of `support[].scenarios`, never from a default/external list. A mixed first pass re-prompts exactly the NA reviewer once on the unchanged candidate without peer output; a change to REQUIRED settles the pair, while repeated NA is terminal `needs_attention:e2e_disposition_dispute`.
 
-Scenario records follow that exact order. Each entry is exactly `scenario,actor,provider,support-key,status,evidence`, status PASS. Its support key resolves to a fact with the selected route's backend, the same provider, `surface=e2e`, `fixture=scenario`, and `scenarios=[scenario]`; a merely same-provider fact is invalid. Evidence is exactly `source,protocol,ordinal,total,rows,bytes`, source `backend-public-surface`, protocol `MO_E2E_V1`, ordinal 1..total, consistent total, and maxima 1000 rows/65,536 bytes. Extra keys, prose/generic evidence, missing support/gates/evidence, FAIL/UNKNOWN, dirty state or a changed SHA invalidates PASS. Never edit or commit tracked docs after a gate and never create a manifest, receipt, verdict file or external evidence sink.
+Scenario records follow that exact order. Each entry is exactly `scenario,actor,provider,support-key,status,evidence`, status PASS. Its support key resolves to a fact with the selected route's backend, the same provider, `surface=e2e`, `fixture=scenario`, and `scenarios=[scenario]`; a merely same-provider fact is invalid. Evidence is exactly `source,protocol,ordinal,total,rows,bytes`, source `backend-public-surface`, protocol `MO_E2E_V1`, ordinal 1..total, consistent total, and maxima 1000 rows/65,536 bytes. For REQUIRED/REQUIRED, the validated PASS header's positive `scenarios` count equals the derived scenario-list length and every evidence `total`, with `not_run=none`. Extra keys, prose/generic evidence, missing support/gates/evidence, count mismatch, FAIL/UNKNOWN, dirty state or a changed SHA invalidates PASS. Never edit or commit tracked docs after a gate and never create a manifest, receipt, verdict file or external evidence sink.
 
 ## Implementation authority and change control
 
@@ -361,7 +455,7 @@ When required, a separate visible interactive actor runs `mo-e2e`, reads the E2E
 - **adjudication** — other-vendor decision that does not close the origin review;
 - **lifecycle state** and **Herdr lifecycle state**;
 - **route** — existing `route/model/effort` value;
-- **surface support key** — backend/provider/version/surface fixture identity;
+- **surface support key** — exact backend/provider/provider-version/backend-version/surface/os/fixture identity;
 - **catalogue availability**, **model presence**, **launchability**, **entitlement**;
 - **gate `unknown`** and **Herdr lifecycle `unknown`**;
 - **`needs_attention`** — permitted boundary or unavailable harness capability, never an ordinary engineering choice;
@@ -389,6 +483,13 @@ Tests use `markdown-it` AST nodes for entry ownership. Reviewers own semantic co
 - named public Herdr commands;
 - two launchable reviewer vendors with passing exact fixtures.
 
+Before activation, resolve an explicit fixture-map input from a caller-supplied
+locator or the project-contract default `docs/phase-0-fixtures.md`. Read it
+before the tracked-content firewall closes and retain only exact seven-field
+support keys and reusable posture. A missing, unreadable or malformed map is
+setup attention and prevents activation; candidate evidence is never part of
+this input and the orchestrator never repairs it with a later tracked read.
+
 Before topology mutation, run:
 
 ```text
@@ -408,7 +509,9 @@ git status --porcelain
 git cat-file -e <validated-object-id>^{commit}
 ```
 
-Object IDs are complete single-line outputs, excluding terminating newline, and are passed as distinct non-shell arguments.
+Object IDs are complete single-line outputs of exactly 40 or 64 lowercase hex
+characters, excluding terminating newline, and are passed as distinct
+non-shell arguments.
 
 ### Visible topology
 
@@ -736,6 +839,9 @@ Extraction:
 1. After objective/capsule/relay inputs are fixed, generate a non-colliding fingerprint and append exact `MO_PROMPT_BOUNDARY_V1|fingerprint=<64-lower-hex>` as the final submitted row with no trailing LF.
 2. After settlement read 120 rows, then 200, 400, 800, and 1000 as needed.
 3. Match fixture-defined Claude `❯` or Codex `›` structural boundary; glyph alone is insufficient.
+   The authored Claude and Codex lower-boundary literals and golden captures are
+   synthetic provisional inputs, not measurements. P6/H17 must confirm or
+   replace their exact bytes for the installed provider versions.
 4. Select the interval after the exact current-turn marker and before the new lower boundary. There is no marker-free or scrolled-anchor fallback.
 5. Reject missing, stale, or duplicate markers and ambiguous or multiple headers/boundaries.
 6. Copy header through the row before the boundary byte-for-byte; discard earlier tool rendering.
@@ -744,6 +850,12 @@ Extraction:
 9. Deliver with a literal AST-tested Node recipe using trusted actor/scratch arguments and `spawnSync("herdr", argv, { shell: false })`. Each captured body is one framed segment with random 128-bit delimiter and byte length. Never print body, argv, or raw spawn results.
 
 The executor validates frame lengths before acting. Mismatch produces a compact damaged-relay fact and no repository action.
+
+The relay recipe returns 0 only after a successful Herdr invocation, 1 only for
+a positive pre-spawn rejection where no delivery was attempted, and 2 after an
+invocation was attempted but Herdr returned an error or wait failure. Exit 2 is
+possibly delivered and is never replayed; lifecycle settlement decides the next
+step.
 
 Ambiguous delivery is never retried: a changed signal means wait for the possibly live turn, while unchanged or contradictory evidence is harness-capability `needs_attention` because non-delivery is not positively proven.
 
@@ -788,6 +900,9 @@ preflight
   -> reviewer_B
   -> first_pass_barrier
        -> A_or_B_FINDINGS -> combined_pair_goal -> executor_active
+       -> both_pass/mixed_e2e -> recheck_NA_reviewer_once
+            -> REQUIRED -> e2e
+            -> repeated_NA -> needs_attention:e2e_disposition_dispute
        -> both_pass/e2e_NA -> verified
        -> both_pass/e2e_required -> e2e
             -> FAIL -> failed_e2e_goal -> executor_active
@@ -867,7 +982,11 @@ The existing peer’s post-barrier adjudication contaminates later warm context.
 
 ### E2E and verified result
 
-Skip E2E only when both final reviewers independently say NA. Required or unknown cannot be skipped.
+Skip E2E only when both final reviewers independently say NA. Start E2E only
+after both independently say REQUIRED. Reconcile a mixed first pass by asking
+only the NA reviewer once on the unchanged candidate without peer output;
+repeated NA is terminal `needs_attention:e2e_disposition_dispute`. Required or
+unknown cannot be skipped.
 
 Return one full SHA only when:
 
@@ -876,7 +995,9 @@ Return one full SHA only when:
 - at least one differs from executor;
 - both reviews pass with no open IDs, QC/smoke pass, and checks pass/NA;
 - every finding is closed or invalidated;
-- E2E passes or both reviewers say NA;
+- for required E2E, the PASS-header scenario count equals the derived final
+  scenario count and every evidence total, with none omitted; or both reviewers
+  say NA;
 - final `HEAD` equals candidate.
 
 ## Model catalogue and self-contained build
@@ -902,15 +1023,21 @@ Claude bundle:
 - reference implementation: `/Users/alex/bitrix/skills/src/build.ts` and `/Users/alex/bitrix/skills/src/build.test.ts` for the self-contained esbuild output with zero distributed `node_modules` and no live SDK imports, plus `/Users/alex/bitrix/skills/src/brain-council/scripts/runtime/routes/claude.ts` and its version-pinned contract in `/Users/alex/bitrix/skills/src/brain-council/scripts/runtime/sdk-options.md` for system-Claude resolution and the `Query.supportedModels()` catalogue pattern; implementation reproduces these properties in project-owned source, build, and tests;
 - the brain-council paths are design references only: generated skills, tests, build, and runtime must not depend on `/Users/alex/bitrix/skills` being present;
 - system Claude resolved through established PATH scan;
-- Node 22 ESM bundle, no externals/minification;
+- Node 22 ESM bundle, no externals/minification, with symlink preservation so
+  package inputs and emitted source labels do not depend on the checkout or
+  `node_modules` realpath;
 - measured first-build size plus 25% tolerance enforced by deterministic coverage and named in the fixture definition, never appended as a candidate receipt;
 - no vendored executable or unresolved runtime import;
-- byte-identical Herdr/Omnigent output;
+- byte-identical Herdr/Omnigent output and byte-identical rebuilds from a
+  symlinked dependency layout, with no developer/disposable absolute path in
+  the bundle;
 - esbuild metafile package roots exactly match explicit `SHARED_PLAN` licence mappings;
 - mapped licences/notices copied into each generated skill;
 - no ambient runtime `node_modules`.
 
-Isolated tests use fake system Claude, timeout, and child-leak checks. Smoke covers source and isolated generated helpers. Live fixture separates catalogue from launchability.
+Isolated tests use fake system Claude, timeout, child-leak, and symlinked-layout
+reproducibility checks. Smoke boots the source helper and both isolated generated
+backend copies. Live fixture separates catalogue from launchability.
 
 Codex and OpenCode retain native listings.
 

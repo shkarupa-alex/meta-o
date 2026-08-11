@@ -115,6 +115,7 @@ function bundleModels(destination) {
     minify: false,
     sourcemap: false,
     metafile: true,
+    preserveSymlinks: true,
     logLevel: "silent",
   });
   chmodSync(destination, 0o755);

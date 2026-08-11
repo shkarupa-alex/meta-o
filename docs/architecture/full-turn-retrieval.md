@@ -56,7 +56,10 @@ inbound protocol rows cannot collide with the single-result-header check. The
 marker must match the fingerprint recorded before submission; there is no
 marker-free or exactly-one-header fallback.
 
-A glyph by itself is never a boundary. A missing, duplicate, stale,
+A glyph by itself is never a boundary. The current authored Claude/Codex lower
+boundary literals and golden captures are synthetic provisional inputs until
+P6/H17 confirms or replaces their exact bytes for installed provider versions.
+A missing, duplicate, stale,
 contradictory, oversized or unreadable boundary or header is `unknown`, as are
 invalid UTF-8, NUL, role/candidate mismatch and unproven multipart accounting.
 One compact correction can repair actor noncompliance; it cannot repair an
@@ -133,6 +136,12 @@ collision-checked random frame, declared raw UTF-8 byte lengths and a literal
 AST-tested Node recipe that invokes `herdr` with argument arrays and
 `shell: false`. It prints neither bodies, argv nor raw spawn results. Recipients
 validate frame lengths before treating any enclosed bytes as work.
+
+The relay recipe returns 0 only for a successful Herdr invocation, 1 only for a
+positive pre-spawn rejection where no delivery was attempted, and 2 once an
+invocation was attempted but Herdr returned an error or wait failure. Exit 2 is
+possibly delivered and is never replayed; the orchestrator waits for lifecycle
+settlement.
 
 An unresolved peer outcome may reach the human, but the resulting
 `MO_HUMAN_DECISION_V1|candidate=<oid>|finding=<id>|decision=<UPHOLD|WITHDRAW>`
@@ -227,7 +236,12 @@ SHA/clean worktree to:
   surface, scenario fixture and exactly that scenario; a merely same-provider
   fact is invalid. Structural `source,protocol,ordinal,total,rows,bytes`
   `MO_E2E_V1` evidence is bounded by 1000 rows and 65,536 bytes. Ordinals are
-  1..one consistent total; NA/NA alone permits an empty list and one NA is invalid.
+  1..one consistent total. For REQUIRED/REQUIRED, the validated PASS-header
+  scenario count equals the derived scenario-list length and every evidence
+  total, with none omitted. NA/NA alone permits an empty list. A mixed first
+  pass re-prompts exactly the NA reviewer once on the unchanged candidate
+  without peer output; a change to REQUIRED proceeds, while repeated NA is
+  terminal `needs_attention:e2e_disposition_dispute`.
 
 Every nested key/order is closed; extra prose/generic evidence, missing facts,
 FAIL/UNKNOWN, dirty state or a changed SHA cannot pass. Tracked fixture, E2E and
@@ -235,7 +249,8 @@ acceptance documents remain definitions/maps/support posture and are never
 edited or committed as candidate PASS receipts; no manifest, registry, receipt
 or external sink is introduced.
 
-Support belongs to the exact backend/provider/version/surface fixture key.
+Support belongs to the exact
+backend/provider/provider-version/backend-version/surface/os/fixture key.
 Actor prose or an incidental live failure cannot grant or revoke it. P1-P8 prove
 installed external capability only; H7b and H13-H37 prove the implemented
 post-cutover surface on one named unchanged candidate SHA.

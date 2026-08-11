@@ -195,11 +195,21 @@ Reviewer vendors differ and at least one differs from the executor. Actual
 launched process kinds establish vendor identity. A listed model is not evidence
 of launchability or entitlement.
 
+After two readable first-pass `PASS` results, reconcile their E2E dispositions
+before starting E2E. `NA/NA` and `REQUIRED/REQUIRED` are settled. For a mixed
+pair, ask exactly the `NA` reviewer once to re-evaluate applicability on the
+same unchanged candidate and locator, without any peer output. A change to
+`REQUIRED` settles the pair and starts E2E. A repeated `NA` is terminal
+`needs_attention` with class `e2e_disposition_dispute`; it is not silently
+normalized, sent to E2E, retried again, or turned into an ordinary user choice.
+
 ### 2.5 E2E actor
 
-When either reviewer says E2E is required or unknown, a separate read-only actor
-runs `mo-e2e`, selects applicable scenarios, owns namespacing and cleanup, and
-returns one E2E handoff. It never edits or commits tracked files.
+After disposition reconciliation, a `REQUIRED/REQUIRED` pair starts a separate
+read-only actor that runs `mo-e2e`, selects applicable scenarios, owns
+namespacing and cleanup, and returns one E2E handoff. It never edits or commits
+tracked files. An unreadable or `UNKNOWN` review is resolved by the review retry
+contract before applicability is considered.
 
 ## 3. Candidate and gates
 
@@ -274,6 +284,12 @@ equal to that one name. Its evidence has only `source`, `protocol`, `ordinal`,
 `total`, `rows`, `bytes`: source is `backend-public-surface`, protocol is
 `MO_E2E_V1`, ordinal is the one-based record position, total is the derived
 count, and positive row/byte bounds are 1,000 and 65,536.
+
+For `REQUIRED/REQUIRED`, the validated `MO_E2E_V1` PASS header's positive
+`scenarios` integer must equal both the derived scenario-list length and every
+scenario evidence `total`; its `not_run` is `none`. This comparison happens
+before final-result construction. A smaller self-selected support/result set,
+or any count mismatch, is incomplete evidence and cannot PASS.
 
 Missing or unreadable evidence is unknown, never PASS. A dirty worktree or
 different `HEAD` invalidates the whole record.
@@ -789,8 +805,9 @@ not final proof. Repeat a path-only first-resolution check inside the actual
 backend, hook, or script environment, then prove provider readiness, model
 activation, entitlement, workspace trust, and permission behavior through the
 separate exact live fixture. Mere membership of a directory in `PATH` proves
-nothing. A surface support key is
-backend/provider/version/surface/fixture; support never transfers between keys.
+nothing. A surface support key is exactly
+backend/provider/provider-version/backend-version/surface/os/fixture; support
+never transfers between keys.
 
 `docs/phase-0-fixtures.md` is a durable definition and support-posture map only.
 Its posture may be `SUPPORTED`, `PENDING` or `UNSUPPORTED`; none is a

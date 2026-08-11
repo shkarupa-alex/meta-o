@@ -174,6 +174,18 @@ test("the model helper is one self-contained byte-identical backend bundle", () 
   }
 });
 
+test("the model bundle is independent of a symlinked node_modules layout", () => {
+  const root = clone();
+  const result = build(root);
+  assert.equal(result.status, 0, `${result.stdout}${result.stderr}`);
+  const rebuilt = readFileSync(join(root, "skills", "mo-herdr", "scripts", "mo-models.mjs"));
+  const committed = readFileSync(join(OUTPUT, "mo-herdr", "scripts", "mo-models.mjs"));
+  assert.ok(rebuilt.equals(committed), "a symlinked dependency tree changed bundle bytes");
+  const text = rebuilt.toString("utf8");
+  assert.equal(text.includes(ROOT), false, "bundle disclosed the source checkout path");
+  assert.equal(text.includes(root), false, "bundle disclosed the disposable checkout path");
+});
+
 test("every bundled package has its exact installed licence in every consumer", () => {
   assert.deepEqual(Object.keys(BUNDLE_LICENSE_PLAN), ["@anthropic-ai/claude-agent-sdk"]);
   for (const [packageName, licensePath] of Object.entries(BUNDLE_LICENSE_PLAN)) {
@@ -235,11 +247,16 @@ test("the methodology has exactly one source owner", () => {
 /**
  * The layout of the *project being worked on*, which exists on a user's machine
  * and not here. `mo-setup` defines this layout and the other skills rely on it.
- * Both entries are documented *alternatives* to a single file — `docs/e2e.md` and
- * `docs/business.md` — so a repository that has one will not have the other, and
- * this one has neither split.
+ * The two index entries are documented *alternatives* to `docs/e2e.md` and
+ * `docs/business.md`, so a repository that has one will not have the other.
+ * The fixture map is instead a required conventional pre-activation input
+ * installed by `mo-setup` unless an equivalent locator is supplied explicitly.
  */
-const PROJECT_LAYOUT = new Set(["docs/e2e/index.md", "docs/business/index.md"]);
+const PROJECT_LAYOUT = new Set([
+  "docs/e2e/index.md",
+  "docs/business/index.md",
+  "docs/phase-0-fixtures.md",
+]);
 
 /**
  * Paths that appear inside a worked example and are not references at all.

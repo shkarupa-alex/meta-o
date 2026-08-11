@@ -84,7 +84,10 @@ honestly. Older inline/headless runs exercise a rejected surface and are not reu
 
 **Practical impact.** Every exact Herdr provider/version/surface key remains unsupported. The
 Herdr actor surface cannot be adopted, and fewer than two proven reviewer vendors would stop
-the Herdr-specific cutover.
+the Herdr-specific cutover. In particular, the recipe's current exact lower-boundary literals
+`╭─ input ❯ ─╮` and `╭─ input › ─╮` and the authored golden captures are synthetic provisional
+inputs, not measurements; P6/H17 must confirm or replace them for the installed provider
+versions.
 
 **Next step.** From a real interactive Herdr orchestrator pane, run P1-P8 in a scratch
 repository. Return the exact support key, commands, observations, cleanup and outcome through

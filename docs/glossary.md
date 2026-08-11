@@ -66,7 +66,9 @@ not merely to another fact with the same provider.
 
 **E2E disposition** — each final A/B review's REQUIRED or NA decision. Both must
 agree: NA/NA alone permits no scenarios; REQUIRED/REQUIRED derives the nonempty
-ordered scenario set exactly from the union of support facts.
+ordered scenario set exactly from the union of support facts. A mixed first pass
+gets one same-candidate re-evaluation by the NA reviewer; persistent disagreement
+is `needs_attention:e2e_disposition_dispute`.
 
 **Fixture map** — tracked definitions, requirement mappings and current reusable
 support posture. It never stores candidate-bound PASS evidence.
@@ -123,8 +125,9 @@ or `unknown` state. Provider prose is not lifecycle.
 **Route** — existing configured `route/model/effort` preference. It does not own
 fixture applicability.
 
-**Surface support key** — exact backend/provider/version/surface/fixture identity
-to which empirical support applies. Evidence never transfers to another key.
+**Surface support key** — exact
+backend/provider/provider-version/backend-version/surface/os/fixture identity to
+which empirical support applies. Evidence never transfers to another key.
 
 **Catalogue availability** — whether a provider-owned listing can be read.
 

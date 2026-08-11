@@ -281,7 +281,10 @@ final-result record has exact top-level order
   invalid. Evidence keys are
   `source,protocol,ordinal,total,rows,bytes`. Source is
   `backend-public-surface`, protocol `MO_E2E_V1`, ordinal is 1..total with one
-  consistent total, and bounds are 1000 rows/65,536 bytes.
+  consistent total, and bounds are 1000 rows/65,536 bytes. The validated PASS
+  header's positive `scenarios` count equals the derived list length and every
+  evidence `total`, with `not_run=none`; a smaller self-selected set is
+  incomplete.
 
 Never edit or commit tracked documentation after a gate or create a manifest,
 registry, receipt or external evidence sink. Extra keys, generic prose evidence,

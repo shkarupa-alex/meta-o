@@ -44,6 +44,8 @@ review-freeze state, or candidate PASS/FAIL/PENDING assertion belongs in this ma
 | NI22 | Architecture changes require a concrete contradiction, violated invariant, or failed exact fixture.                                                                                                    | Architecture/spec review definition.                                          |
 | NI23 | The orchestrator autonomously owns ordinary lifecycle, routing, retry, fallback, and bookkeeping.                                                                                                      | Choice-menu/attention tests and H30/H34 definitions.                          |
 | NI24 | Every task/spec and business framing preserve all repository-changing user intents verbatim with credential-safe value redaction; candidate-stable operational approvals are header-only run evidence. | Intent/approval tests and final-review definition.                            |
+| NI25 | The shipped model-helper bundle is byte-reproducible across ordinary and symlinked dependency layouts without embedding local absolute paths.                                                          | Isolated symlink-layout build and byte-identity tests.                        |
+| NI26 | Mixed review E2E dispositions have one bounded transition, and required E2E PASS counts exactly bind to the derived final scenario set.                                                                | Disposition/state and final-result count-binding tests; H22 definition.       |
 
 ## Preimplementation capability probes
 
@@ -70,34 +72,34 @@ H7b and H13-H37 definitions apply only after the candidate contains the cutover 
 gates pass. Their reusable-posture cells never assert a candidate verdict; exact SHA binding
 belongs only to the closed ephemeral final-result schema.
 
-| ID  | Scenario                                                                                                               | Reusable posture |
-| --- | ---------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| H7b | Host-window resize during extraction preserves or safely invalidates the measured boundary.                            | PENDING          |
-| H13 | Exact visible topology and partial-failure remnants.                                                                   | PENDING          |
-| H14 | Posture self-check, native launch, trust, and permission cycle.                                                        | PENDING          |
-| H15 | Warm executor/reviewer pane continuity.                                                                                | PENDING          |
-| H16 | Native goal capsule, quiet end, re-arm, and portable maximum relay prompt.                                             | PENDING          |
-| H17 | Final-row current-turn-marker extraction ladder, inbound-frame isolation, structural boundary, and H7b behavior.       | PENDING          |
-| H18 | Actor noncompliance versus structural surface failure classification.                                                  | PENDING          |
-| H19 | Multipart bounds, one-part outcomes, and exact A-then-B unbounded numeric ID ordering.                                 | PENDING          |
-| H20 | A-before-B independence, PASS/PASS progression, and conditional atomic pair release.                                   | PENDING          |
-| H21 | Mutating reviewer-check handling and candidate invalidation.                                                           | PENDING          |
-| H22 | Independent reviewer ownership of QC, smoke, and applicable checks.                                                    | PENDING          |
-| H23 | Adversarial UTF-8 body transport remains byte-identical.                                                               | PENDING          |
-| H24 | Final-marker relay, independent operation/actor-bound E2E approval, mixed-origin rejection, argv bound, and ambiguity. | PENDING          |
-| H25 | Full-rebuts accounting, exact OUTCOMES open/disputes state, disputes-only targets, ID floor, and blockers.             | PENDING          |
-| H26 | Same-SHA clean completion.                                                                                             | PENDING          |
-| H27 | Any new commit invalidates all gates and open IDs.                                                                     | PENDING          |
-| H28 | One actor/pane restart and bounded repeated-loss attention.                                                            | PENDING          |
-| H29 | Catalogue isolation, model presence, launchability, and finite fallback.                                               | PENDING          |
-| H30 | Repository-intent/new-SHA routing versus exact-scenario candidate-stable E2E and orchestrator operational approval.    | PENDING          |
-| H31 | Test-only tracked-read audit with a canary.                                                                            | PENDING          |
-| H32 | Disputes-only peer-envelope projection, outcome budget, refcounts, cleanup, ambiguity, and scratch restart.            | PENDING          |
-| H33 | Actual reviewer vendor diversity and one reviewer differing from executor.                                             | PENDING          |
-| H34 | Direct waits, one waiter, bounded retries, and canonicalized no-progress-key stop.                                     | PENDING          |
-| H35 | Metadata badges remain observable but non-gating.                                                                      | PENDING          |
-| H36 | Missing or unusable `develop` fails closed with no branch fallback.                                                    | PENDING          |
-| H37 | Exact disputes-target adjudication, projection/budget bounds, and human-decision invalidation.                         | PENDING          |
+| ID  | Scenario                                                                                                                     | Reusable posture |
+| --- | ---------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| H7b | Host-window resize during extraction preserves or safely invalidates the measured boundary.                                  | PENDING          |
+| H13 | Exact visible topology and partial-failure remnants.                                                                         | PENDING          |
+| H14 | Posture self-check, native launch, trust, and permission cycle.                                                              | PENDING          |
+| H15 | Warm executor/reviewer pane continuity.                                                                                      | PENDING          |
+| H16 | Native goal capsule, quiet end, re-arm, and portable maximum relay prompt.                                                   | PENDING          |
+| H17 | Final-row current-turn-marker extraction ladder, inbound-frame isolation, structural boundary, and H7b behavior.             | PENDING          |
+| H18 | Actor noncompliance versus structural surface failure classification.                                                        | PENDING          |
+| H19 | Multipart bounds, one-part outcomes, and exact A-then-B unbounded numeric ID ordering.                                       | PENDING          |
+| H20 | A-before-B independence, PASS/PASS progression, and conditional atomic pair release.                                         | PENDING          |
+| H21 | Mutating reviewer-check handling and candidate invalidation.                                                                 | PENDING          |
+| H22 | Independent reviewer ownership of QC/smoke/checks, bounded mixed-E2E reconciliation, and exact final scenario-count binding. | PENDING          |
+| H23 | Adversarial UTF-8 body transport remains byte-identical.                                                                     | PENDING          |
+| H24 | Final-marker relay, independent operation/actor-bound E2E approval, mixed-origin rejection, argv bound, and ambiguity.       | PENDING          |
+| H25 | Full-rebuts accounting, exact OUTCOMES open/disputes state, disputes-only targets, ID floor, and blockers.                   | PENDING          |
+| H26 | Same-SHA clean completion.                                                                                                   | PENDING          |
+| H27 | Any new commit invalidates all gates and open IDs.                                                                           | PENDING          |
+| H28 | One actor/pane restart and bounded repeated-loss attention.                                                                  | PENDING          |
+| H29 | Catalogue isolation, model presence, launchability, and finite fallback.                                                     | PENDING          |
+| H30 | Repository-intent/new-SHA routing versus exact-scenario candidate-stable E2E and orchestrator operational approval.          | PENDING          |
+| H31 | Test-only tracked-read audit with a canary.                                                                                  | PENDING          |
+| H32 | Disputes-only peer-envelope projection, outcome budget, refcounts, cleanup, ambiguity, and scratch restart.                  | PENDING          |
+| H33 | Actual reviewer vendor diversity and one reviewer differing from executor.                                                   | PENDING          |
+| H34 | Direct waits, one waiter, bounded retries, and canonicalized no-progress-key stop.                                           | PENDING          |
+| H35 | Metadata badges remain observable but non-gating.                                                                            | PENDING          |
+| H36 | Missing or unusable `develop` fails closed with no branch fallback.                                                          | PENDING          |
+| H37 | Exact disputes-target adjudication, projection/budget bounds, and human-decision invalidation.                               | PENDING          |
 
 ## Omnigent acceptance
 
@@ -124,17 +126,17 @@ C1's reusable Herdr prerequisite posture remains PENDING/UNSUPPORTED until P1-P8
 required capabilities and two reviewer vendors. C2-C10 are ephemeral candidate-completion
 definitions, not tracked verdicts:
 
-| ID  | Completion definition                                                                                     | Ephemeral proof source                                      |
-| --- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| C2  | Planned increments, generated output, and cutover removal are in the candidate with `make mo-qc` passing. | Closed final-result `gates` plus deterministic QC evidence. |
-| C3  | H7b and all applicable H13-H37 scenarios pass one named candidate.                                        | Derived final-result `scenarios` and `support`.             |
-| C4  | Both independent reviewers pass that candidate with no actionable findings.                               | Ordered final-result `reviews` and gate arrays.             |
-| C5  | Applicable E2E passes, or both reviewers independently declare E2E NA.                                    | Review dispositions and derived final-result `scenarios`.   |
-| C6  | The candidate contains the cutover and no old Herdr inline/headless actor path.                           | Deterministic cutover proof bound to final `candidate`.     |
-| C7  | This map names every durable proof source without becoming a candidate receipt.                           | This document; candidate facts stay in the final answer.    |
-| C8  | Every intentionally unfinished or unsupported item is in the open backlog.                                | Durable backlog map plus final review evidence.             |
-| C9  | No architecture question remains disguised as an implementation TODO.                                     | Architecture/spec review evidence.                          |
-| C10 | The returned result is the unchanged full candidate SHA with a clean worktree and closed evidence schema. | Exact final-result `candidate` and `worktree`.              |
+| ID  | Completion definition                                                                                                                                                    | Ephemeral proof source                                      |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
+| C2  | Planned increments, generated output, and cutover removal are in the candidate with `make mo-qc` passing.                                                                | Closed final-result `gates` plus deterministic QC evidence. |
+| C3  | H7b and all applicable H13-H37 scenarios pass one named candidate.                                                                                                       | Derived final-result `scenarios` and `support`.             |
+| C4  | Both independent reviewers pass that candidate with no actionable findings.                                                                                              | Ordered final-result `reviews` and gate arrays.             |
+| C5  | Required E2E passes with header/evidence counts equal to the complete derived scenario set, or both reviewers independently declare E2E NA after bounded reconciliation. | Review dispositions and derived final-result `scenarios`.   |
+| C6  | The candidate contains the cutover and no old Herdr inline/headless actor path.                                                                                          | Deterministic cutover proof bound to final `candidate`.     |
+| C7  | This map names every durable proof source without becoming a candidate receipt.                                                                                          | This document; candidate facts stay in the final answer.    |
+| C8  | Every intentionally unfinished or unsupported item is in the open backlog.                                                                                               | Durable backlog map plus final review evidence.             |
+| C9  | No architecture question remains disguised as an implementation TODO.                                                                                                    | Architecture/spec review evidence.                          |
+| C10 | The returned result is the unchanged full candidate SHA with a clean worktree and closed evidence schema.                                                                | Exact final-result `candidate` and `worktree`.              |
 
 The closed schema itself is the durable definition in `docs/e2e.md`: gate arrays are derived
 byte-for-byte from A/B review fields, and every review/scenario record resolves its exact

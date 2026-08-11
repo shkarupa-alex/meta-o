@@ -19,6 +19,18 @@ const METHODOLOGY = join(ROOT, "shared", "references", "methodology.md");
 const SETUP = join(ROOT, "src", "skills", "mo-setup", "SKILL.md");
 const markdown = new MarkdownIt();
 
+test("setup creates the backend fixture-map input without making it a receipt", () => {
+  const source = readFileSync(SETUP, "utf8");
+  assert.match(source, /docs\/phase-0-fixtures\.md\s+# reusable backend surface/);
+  assert.match(source, /conventional pre-activation input for backend\nskills/);
+  assert.match(
+    source,
+    /backend\/provider\/provider-version\/backend-version\/\s*surface\/os\/fixture keys/,
+  );
+  assert.match(source, /never a candidate receipt/);
+  assert.match(source, /pass its locator explicitly instead of creating a duplicate/);
+});
+
 /** Return AST tokens inside one exact heading, stopping at the next peer. */
 function sectionTokens(source, level, heading) {
   const tokens = markdown.parse(source, {});
