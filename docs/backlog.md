@@ -6,6 +6,28 @@ closed backlog entries.
 
 ## Open
 
+### The project-instruction contract needs a formal minimal-content rule
+
+**Reason.** `AGENTS.md` and `CLAUDE.md` must be small enough to load on every agent run, but
+the project does not formally distinguish information that every agent must receive from
+material that belongs in linked knowledge. The commit convention is a known required item.
+Project commands and the rule for recording deferred work may also belong there. It is not yet
+decided whether the contract should mention that user dictation can contain odd typos or
+recognition errors, or introduce a `papercut` log of commands agents repeatedly get wrong so
+those failures can later improve skills or the project instructions.
+
+**Practical impact.** Important cross-run instructions can be omitted and never reach an
+executor, while adding all potentially useful context would make the files large, unstable,
+and repetitive. Repeated mistakes on non-obvious commands currently have no named feedback
+path into better skills or the minimal always-loaded contract.
+
+**Next step.** Define and document a selection test: include only rules needed by every agent
+on every run, plus rules that otherwise cannot reliably reach the executor. Require the commit
+convention; assess project commands, backlog recording, the dictation caveat, and a lightweight
+`papercut` mechanism against that test. Keep architecture and other project knowledge out of
+the files except for concise links, set an explicit size budget, and keep `AGENTS.md` and
+`CLAUDE.md` byte-identical.
+
 ### Provider-posture profiles can detach descendants with `setsid`
 
 **Reason.** The posture probe owns one process-group leader through quiescence, but a shell
