@@ -6,27 +6,39 @@ closed backlog entries.
 
 ## Open
 
-### The project-instruction contract needs a formal minimal-content rule
+### The standalone project-entry layer needs a formal contract
 
-**Reason.** `AGENTS.md` and `CLAUDE.md` must be small enough to load on every agent run, but
-the project does not formally distinguish information that every agent must receive from
-material that belongs in linked knowledge. The commit convention is a known required item.
-Project commands and the rule for recording deferred work may also belong there. It is not yet
-decided whether the contract should mention that user dictation can contain odd typos or
-recognition errors, or introduce a `papercut` log of commands agents repeatedly get wrong so
-those failures can later improve skills or the project instructions.
+**Reason.** `AGENTS.md` and `CLAUDE.md` must be small enough to load on every agent run, while
+README must give a human-readable project description and links into `docs/`. The project does
+not formally distinguish information that every agent must receive from material that belongs
+in linked knowledge. Nor is it yet a business rule that the knowledge layer, project
+instructions, and README stand alone without referencing Meta-O skills and remain usable
+without adopting its methodology, so a person working with ordinary agents can use the project
+without either. The commit convention is a known required instruction. Project commands and
+the rule for recording deferred work may also belong there. It is not yet decided whether the
+contract should mention that user dictation can contain odd typos or recognition errors, or
+introduce a `papercut` log of commands agents repeatedly get wrong so those failures can later
+improve skills or the project instructions.
 
 **Practical impact.** Important cross-run instructions can be omitted and never reach an
 executor, while adding all potentially useful context would make the files large, unstable,
-and repetitive. Repeated mistakes on non-obvious commands currently have no named feedback
-path into better skills or the minimal always-loaded contract.
+and repetitive. A README without a plain-language overview and knowledge links makes the
+project harder for a human to enter. References from the base project layer to optional skills
+or methodology make that layer incomplete when those additions are absent. Repeated mistakes
+on non-obvious commands currently have no named feedback path into better skills or the
+minimal always-loaded contract.
 
 **Next step.** Define and document a selection test: include only rules needed by every agent
 on every run, plus rules that otherwise cannot reliably reach the executor. Require the commit
 convention; assess project commands, backlog recording, the dictation caveat, and a lightweight
-`papercut` mechanism against that test. Keep architecture and other project knowledge out of
-the files except for concise links, set an explicit size budget, and keep `AGENTS.md` and
-`CLAUDE.md` byte-identical.
+`papercut` mechanism against that test. Make standalone usability an explicit business rule
+of this methodology project: the knowledge layer, `AGENTS.md`, `CLAUDE.md`, and README must not
+reference Meta-O skills and must remain usable without adopting Meta-O methodology, including
+for people using ordinary agents alone.
+Require README to explain the project in human terms and link to the relevant `docs/` entry
+points. Keep architecture and other project knowledge out of the instruction files except for
+concise links, set an explicit size budget, and keep `AGENTS.md` and `CLAUDE.md`
+byte-identical.
 
 ### Provider-posture profiles can detach descendants with `setsid`
 
