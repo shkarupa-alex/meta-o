@@ -6,6 +6,22 @@ closed backlog entries.
 
 ## Open
 
+### Backlog must not be used as a progress tracker
+
+**Reason.** Agents repeatedly treat `docs/backlog.md` as a place to record current progress,
+although it is intended only for work deliberately deferred by the user or work an agent
+decides it will not or cannot do in the current implementation iteration.
+
+**Practical impact.** Transient execution state creates noisy entries, makes ordinary work in
+progress look like an accepted deferral, and obscures the deliberate decisions the backlog is
+supposed to preserve.
+
+**Next step.** Make the backlog boundary explicit wherever agents learn the knowledge
+contract: record only a deliberate deferral beyond the current iteration, with its reason,
+impact, and next step when known. Keep current progress, remaining steps within the active
+iteration, and temporary gate state in run-local status or task planning rather than the
+tracked backlog.
+
 ### The standalone project-entry layer needs a formal contract
 
 **Reason.** `AGENTS.md` and `CLAUDE.md` must be small enough to load on every agent run, while
