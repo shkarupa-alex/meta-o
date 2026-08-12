@@ -6,6 +6,25 @@ closed backlog entries.
 
 ## Open
 
+### The project needs an explicit language policy
+
+**Reason.** The project does not formally separate the language of human-facing knowledge
+from the language of code-facing material. README, `docs/business.md`, and the rest of
+`docs/` should use the user's language, inferred from the existing business framing and README
+when it is not stated explicitly. Source code and directly code-facing material, including
+code comments, should use English.
+
+**Practical impact.** Agents can produce project knowledge in a language that is inconvenient
+for the user or mix languages unpredictably across documentation and code. That makes the
+knowledge layer less accessible while making the codebase less consistent for technical
+contributors and tooling.
+
+**Next step.** Define the exact boundary between human-facing knowledge and code-facing
+material, including mixed artifacts such as API documentation, examples, commit messages, and
+diagnostics. Record how the user's language is selected and how an explicit user preference
+overrides inference, then apply the policy consistently to README, business framing, `docs/`,
+source, and code comments without rewriting verbatim user intents.
+
 ### Backlog must not be used as a progress tracker
 
 **Reason.** Agents repeatedly treat `docs/backlog.md` as a place to record current progress,
