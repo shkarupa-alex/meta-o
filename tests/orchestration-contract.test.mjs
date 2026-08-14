@@ -73,8 +73,12 @@ test("backend mechanics use only the intended public result and diagnostic surfa
   assert.match(orca, /complete `worker_done` body/);
   assert.match(orca, /Do not use `worker-read --source transcript`/);
   assert.match(orca, /`ready` and `input_accepted` is only a transport/);
+  assert.match(orca, /terminal wait .*--for tui-idle/);
+  assert.match(orca, /dispatch --task <task-id> --to <handle> --inject/);
+  assert.match(orca, /do not duplicate a posture flag/);
   assert.match(paseo, /public `wait --json` result's settled assistant message/);
   assert.match(paseo, /`inspect` is a\nmetadata and state surface/);
+  assert.match(paseo, /version-matched public application bundle/);
   assert.match(herdr, /`herdr agent read --source recent-unwrapped`/);
   for (const source of [herdr, orca, paseo]) {
     assert.match(source, /three-to-four-screen|three-to-four-screen|three-to-four/);

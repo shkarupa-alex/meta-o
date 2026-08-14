@@ -44,6 +44,9 @@ test("setup checks controls, companions and every harness posture separately", (
   assert.match(contract, /Missing, divergent or unreadable posture is not support/);
   assert.match(contract, /Detect the active backend/);
   assert.match(contract, /unsupported or ambiguous environments/);
+  assert.match(contract, /Orca exposes its\nversion-matched `orchestration` guide/);
+  assert.match(contract, /Paseo may expose\nits version-matched `paseo` guide/);
+  assert.match(setup, /installed or version-matched bundled\nPaseo guide/);
 });
 
 test("knowledge policy covers verbatim intent, language, semantic links and backlog fields", () => {

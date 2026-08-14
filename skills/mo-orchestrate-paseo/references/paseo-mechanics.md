@@ -2,7 +2,13 @@
 
 Use the installed `paseo --help` and subcommand help. Require `paseo status
 --json`, the intended workspace/working directory, `paseo` on `PATH`, and the
-upstream `paseo` companion skill in the active harness skill directory.
+upstream `paseo` companion skill. Prefer an installed active-harness copy. When
+that is absent, Paseo's version-matched public application bundle is an
+acceptable separate companion source if its complete `skills/paseo/SKILL.md`
+can be read; on packaged macOS this is
+`/Applications/Paseo.app/Contents/Resources/skills/paseo/SKILL.md`. Report the
+companion missing only when neither source is readable. Do not install personal
+skills without explicit confirmation.
 
 ## Sessions
 

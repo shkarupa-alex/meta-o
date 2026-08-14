@@ -48,6 +48,14 @@ unsupported or ambiguous environments rather than guessing. When explicitly
 asked, check all three backend controls and companion skills from
 [Backend contract](backend-contract.md).
 
+Companion discovery is backend-native and remains separate from executable
+discovery. Herdr may expose an installed `herdr` skill, Orca exposes its
+version-matched `orchestration` guide through `orca skills`, and Paseo may expose
+its version-matched `paseo` guide either in an active harness directory or its
+public application bundle. Name which source was found. Do not require copying
+a readable bundled guide into personal configuration merely to make the check
+pass.
+
 Run the bundled posture helper for Codex, Claude Code and OpenCode in applicable
 launch-parent shells:
 

@@ -17,6 +17,11 @@ backend. Check controls and companion skills separately: `herdr` plus `herdr`,
 `orca`/`orca-cli` plus upstream `orchestration`, and `paseo` plus upstream
 `paseo`.
 
+Use each backend's native companion source: installed `herdr`, Orca's
+version-matched `orca skills` guide, and an installed or version-matched bundled
+Paseo guide. Report the exact source separately from control discovery; do not
+copy a bundled skill into personal configuration without explicit confirmation.
+
 Inspect knowledge, entry instructions, README, architecture reasons, backlog
 quality, E2E and acceptance mapping, language/build config, mature complexity
 and size linting, significant-code purpose, deterministic non-mutating QC, and

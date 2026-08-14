@@ -7,8 +7,8 @@ listed by `orca skills list --json`.
 
 ## Run, tasks and workers
 
-Bind a lightweight Run, create all independent tasks first, then start all
-independent workers before waiting:
+Bind a lightweight Run and create all independent tasks first. Prefer the
+composed worker start when it launches and recognizes the requested harness:
 
 ```text
 orca orchestration run-create --objective <objective> --json
@@ -24,9 +24,25 @@ injected lifecycle preamble is part of Orca's public orchestration surface. Use
 receipt. Before treating the task as delivered, verify through the public worker
 and terminal surfaces that the requested harness is actually running and has
 received the task. An untouched harness prompt, a shell prompt, or task text
-executed by the shell is a failed dispatch, even while Orca still labels the
-worker ready. Stop only that exact dispatch and report the backend unsupported;
-do not retry across harnesses until one happens to accept the prompt.
+executed by the shell is a failed composed start, even while Orca still labels
+the worker ready. Stop only that exact dispatch.
+
+The version-matched upstream skill documents one fallback when composed start
+does not establish a recognized harness: create the exact harness terminal,
+wait for `tui-idle`, and inject the task into that terminal:
+
+```text
+orca terminal create --worktree active --title <title> --command <harness-command> --json
+orca terminal wait --terminal <handle> --for tui-idle --timeout-ms <ms> --json
+orca orchestration dispatch --task <task-id> --to <handle> --inject --json
+```
+
+Verify effective model, effort and unsandboxed posture in the visible harness
+before injection. Respect launch wrappers: do not duplicate a posture flag that
+the resolved wrapper already supplies. If this documented fallback also fails,
+report the backend unsupported rather than trying unrelated harnesses until one
+accepts the task. Start all independent workers successfully before waiting for
+either result.
 
 ## State, completion and questions
 
@@ -54,6 +70,9 @@ whole-session diagnostics and delivery checks only.
 
 Create both review tasks before starting either worker, then start both without
 waiting. Keep the messages isolated until both `worker_done` bodies are complete.
-Release a settled worker only with `orca orchestration worker-release`; never
-substitute a broad terminal close. A failed or uncertain worker follows the
-exact recovery action in its public receipt.
+Release a settled supervised worker only with
+`orca orchestration worker-release`; never substitute a broad terminal close.
+A low-level injected terminal is not a supervised worker resource, so close
+only its exact returned handle after its Dispatch settles and its response is
+delivered. A failed or uncertain worker follows the exact recovery action in its
+public receipt.
