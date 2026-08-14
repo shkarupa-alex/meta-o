@@ -29,6 +29,10 @@ delivery ownership through the kernel. Classification uses scalar values rather
 than key names, and stable comparison excludes volatile Orca envelope IDs and
 Paseo `UpdatedAt`. Patterns will improve from real failures.
 
+A status-zero Orca or Paseo target read is trusted only when its native JSON
+envelope and locator-specific shape validate. Malformed output is an
+`observe-error`; it never reaches state persistence or nudge delivery.
+
 A nudge requires two successful identical native reads. The helper serializes
 the per-locator duplicate check, reservation and delivery. It stores the message
 digest before native delivery, so a concurrent invocation or ambiguous crash is

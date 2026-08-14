@@ -53,6 +53,43 @@ read_target() {
   esac
 }
 
+# A successful exit is not sufficient for JSON backends: wrappers and broken
+# controls can print diagnostics with status zero. Require the native target
+# envelope before any observation is trusted or any nudge can be delivered.
+validate_target() {
+  WATCHDOG_BACKEND=$1
+  WATCHDOG_SESSION=$2
+  WATCHDOG_TEXT=$3
+  case "$WATCHDOG_BACKEND:$WATCHDOG_SESSION" in
+    herdr:*) return 0 ;;
+    orca:ctx_*)
+      /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -e --arg locator "$WATCHDOG_SESSION" '
+        .ok == true and (.result | type) == "object"
+        and (.result.dispatch | type) == "object" and .result.dispatch.id == $locator
+        and (.result.worker | type) == "object" and .result.worker.dispatch_id == $locator
+      ' >/dev/null 2>&1
+      ;;
+    orca:task_*)
+      /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -e --arg locator "$WATCHDOG_SESSION" '
+        .ok == true and (.result.dispatch | type) == "object"
+        and .result.dispatch.task_id == $locator
+      ' >/dev/null 2>&1
+      ;;
+    orca:term_*)
+      /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -e --arg locator "$WATCHDOG_SESSION" '
+        .ok == true and (.result.terminal | type) == "object"
+        and .result.terminal.handle == $locator
+      ' >/dev/null 2>&1
+      ;;
+    paseo:*)
+      /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -e '
+        type == "object" and ((.Status? // .status?) | type) == "string"
+      ' >/dev/null 2>&1
+      ;;
+    *) return 1 ;;
+  esac
+}
+
 # Orca generates fresh RPC request/runtime IDs and Paseo refreshes `UpdatedAt`
 # on otherwise identical reads. Those observation fields cannot participate in
 # stale-state suppression. Semantic result fields, including Orca lastOutputAt,
@@ -306,8 +343,17 @@ fi
 
 WATCHDOG_BEFORE=$(read_target "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION")
 WATCHDOG_STATUS=$?
+WATCHDOG_VALID=1
+if [ "$WATCHDOG_STATUS" -eq 0 ] && \
+  ! validate_target "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_BEFORE"; then
+  WATCHDOG_STATUS=65
+  WATCHDOG_VALID=0
+fi
 WATCHDOG_CLASSIFICATION=$(classification_text "$WATCHDOG_BEFORE")
 WATCHDOG_STATE=$(classify "$WATCHDOG_CLASSIFICATION")
+if [ "$WATCHDOG_VALID" -eq 0 ]; then
+  WATCHDOG_STATE=unclassified
+fi
 if [ -z "$WATCHDOG_NUDGE" ]; then
   /usr/bin/printf 'backend=%s session=%s status=%s state=%s action=observed\n%s\n' \
     "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_STATUS" "$WATCHDOG_STATE" "$WATCHDOG_BEFORE"
@@ -337,10 +383,14 @@ fi
 # authorized action. Compare semantic backend state, not a changing RPC envelope.
 WATCHDOG_AFTER=$(read_target "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION")
 WATCHDOG_AFTER_STATUS=$?
+if [ "$WATCHDOG_AFTER_STATUS" -eq 0 ] && \
+  ! validate_target "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_AFTER"; then
+  WATCHDOG_AFTER_STATUS=65
+fi
 if [ "$WATCHDOG_AFTER_STATUS" -ne 0 ]; then
   release_nudge_lock
-  /usr/bin/printf 'backend=%s session=%s status=%s state=%s action=observe-error\n' \
-    "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_AFTER_STATUS" "$WATCHDOG_STATE"
+  /usr/bin/printf 'backend=%s session=%s status=%s state=unclassified action=observe-error\n' \
+    "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_AFTER_STATUS"
   exit "$WATCHDOG_AFTER_STATUS"
 fi
 WATCHDOG_STABLE_BEFORE=$(stable_snapshot "$WATCHDOG_BACKEND" "$WATCHDOG_BEFORE")

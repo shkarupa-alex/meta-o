@@ -256,6 +256,8 @@ separate watchdog invocation is the consumer that must avoid repeating delivery.
 
 The helper requires the mature `jq` JSON parser so it can validate backend response shapes
 and classify every session from scalar values rather than matching incidental field names.
+For an Orca or Paseo target, a status-zero read still fails closed unless its native JSON
+envelope and locator-specific shape validate; malformed output cannot authorize a nudge.
 It uses mature `flock` advisory locking so process exit releases lock ownership safely.
 `mo-setup` reports both dependencies separately from the three backend controls.
 

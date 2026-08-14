@@ -240,6 +240,7 @@ test("watchdog does not mistake empty Paseo permission metadata for a question",
     fake,
     `#!/bin/sh
 if [ "$1" = inspect ]; then
+  if [ -n "\${WATCHDOG_MALFORMED-}" ]; then echo not-json; exit 0; fi
   n=$(cat "$WATCHDOG_COUNT" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > "$WATCHDOG_COUNT"
   printf '{"Status":"idle","UpdatedAt":"tick-%s","PendingPermissions":[],"AvailableModes":[{"label":"Default Permissions"}]}\\n' "$n"
 elif [ "$1" = send ]; then
@@ -264,6 +265,14 @@ fi
   );
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /state=completed action=observed/);
+  result = spawnSync(
+    join(ROOT, "shared", "scripts", "mo-watchdog.sh"),
+    ["target", "--backend", "paseo", "--session", "a", "--nudge", "malformed"],
+    { env: { ...env, WATCHDOG_MALFORMED: "1" }, encoding: "utf8" },
+  );
+  assert.equal(result.status, 65);
+  assert.match(result.stdout, /status=65 state=unclassified action=observe-error/);
+  assert.equal(existsSync(log), false);
   result = spawnSync(
     join(ROOT, "shared", "scripts", "mo-watchdog.sh"),
     ["target", "--backend", "paseo", "--session", "a", "--nudge", "continue"],
@@ -440,10 +449,11 @@ test("watchdog normalizes Orca envelopes and reports every worker and terminal",
     `#!/bin/sh
 printf '%s\\n' "$*" >> "$WATCHDOG_LOG"
 case "$*" in
-  "orchestration dispatch-show --task task_fixture --json") echo '{"status":"completed"}' ;;
+  "orchestration dispatch-show --task task_fixture --json") echo '{"ok":true,"result":{"dispatch":{"task_id":"task_fixture","status":"completed"}}}' ;;
   "orchestration worker-show --dispatch ctx_fixture --json")
+    if [ -n "\${WATCHDOG_MALFORMED-}" ]; then echo not-json; exit 0; fi
     n=$(wc -l < "$WATCHDOG_LOG" | tr -d ' ')
-    printf '{"id":"request-%s","ok":true,"result":{"dispatchId":"ctx_fixture","workerState":"stopped","dispatchStatus":"failed"},"_meta":{"runtimeId":"runtime-%s"}}\\n' "$n" "$n"
+    printf '{"id":"request-%s","ok":true,"result":{"dispatch":{"id":"ctx_fixture","status":"running"},"worker":{"dispatch_id":"ctx_fixture","state":"working"}},"_meta":{"runtimeId":"runtime-%s"}}\\n' "$n" "$n"
     ;;
   "orchestration send --to dispatch:ctx_fixture --subject Watchdog --body continue --json") echo '{"accepted":true}' ;;
   "orchestration worker-list --json") echo '{"result":{"workers":[{"dispatchId":"ctx_failed","workerState":"stopped","dispatchStatus":"failed","resource":{"releaseError":null}},{"dispatchId":"ctx_working","workerState":"working","dispatchStatus":"running","resource":{"releaseError":null}}]}}' ;;
@@ -473,6 +483,14 @@ esac
   );
   assert.equal(result.status, 64);
   assert.equal(readdirSync(root).includes("state"), false);
+  result = spawnSync(
+    script,
+    ["target", "--backend", "orca", "--session", "ctx_fixture", "--nudge", "malformed"],
+    { env: { ...env, WATCHDOG_MALFORMED: "1" }, encoding: "utf8" },
+  );
+  assert.equal(result.status, 65);
+  assert.match(result.stdout, /status=65 state=unclassified action=observe-error/);
+  assert.doesNotMatch(readFileSync(log, "utf8"), /orchestration send/);
   result = spawnSync(
     script,
     ["target", "--backend", "orca", "--session", "ctx_fixture", "--nudge", "continue"],
