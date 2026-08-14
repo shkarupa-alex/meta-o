@@ -77,10 +77,10 @@ catalog from a command failure. Report a missing provider-managed working
 directory or failed server boot as the concrete missing capability; do not
 create personal Paseo state or restart its daemon without explicit confirmation.
 
-When `mo-watchdog` is installed or expected, require `jq` separately from the
-three backend controls. A missing JSON parser makes scan and stable Orca state
-comparison unavailable; report that dependency rather than treating backend
-output as unstructured text.
+When `mo-watchdog` is installed or expected, require `jq` and `flock` separately
+from the three backend controls. Missing JSON parsing or kernel-released locking
+makes safe scan or nudge delivery unavailable; report that dependency rather
+than treating backend output or concurrency as best effort.
 
 ## Isolated setup branch
 

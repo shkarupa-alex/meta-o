@@ -21,8 +21,8 @@ backend. Check controls and companion skills separately: `herdr` plus `herdr`,
 `orca`/`orca-cli` plus upstream `orchestration`, and `paseo` plus upstream
 `paseo`.
 
-When watchdog readiness is in scope, check `jq` as its separate mature JSON
-parser dependency.
+When watchdog readiness is in scope, check mature `jq` and `flock` dependencies
+separately from backend controls.
 
 Use each backend's native companion source: installed `herdr`, Orca's
 version-matched `orca skills` guide, and an installed or version-matched bundled

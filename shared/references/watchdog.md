@@ -19,18 +19,20 @@ visible.
 An explicit `nudge` is allowed only for an authorized target. Re-read native
 state immediately before sending. Do not repeat an identical nudge while the
 observed state is unchanged. There is deliberately no numeric cooldown or retry
-count. Successful delivery stores only mode-`0600` state and message digests
-keyed by backend and locator under the user state directory; a changed state
-replaces its prior message set. It stores no prompt, response, candidate, gate or
-actor registry. Herdr and Paseo nudges are nonblocking, and completion is observed
-separately. The helper requires `jq` so native JSON is parsed per session instead
-of with regular expressions. Classification uses scalar values rather than key
-names, and stable comparison excludes volatile Orca envelope IDs and Paseo
-`UpdatedAt`. Patterns will improve from real failures.
+count. An authorized delivery attempt first reserves only mode-`0600` state and
+message digests keyed by backend and locator under the user state directory; a
+changed state replaces its prior message set. It stores no prompt, response,
+candidate, gate or actor registry. Herdr and Paseo nudges are nonblocking, and
+completion is observed separately. The helper requires `jq` so native JSON is parsed per session instead
+of with regular expressions, and `flock` so process exit releases per-locator
+delivery ownership through the kernel. Classification uses scalar values rather
+than key names, and stable comparison excludes volatile Orca envelope IDs and
+Paseo `UpdatedAt`. Patterns will improve from real failures.
 
 A nudge requires two successful identical native reads. The helper serializes
-the per-locator duplicate check, delivery and digest update; a concurrent
-identical invocation is suppressed rather than allowed to race the state file.
+the per-locator duplicate check, reservation and delivery. It stores the message
+digest before native delivery, so a concurrent invocation or ambiguous crash is
+suppressed rather than allowed to duplicate the nudge.
 
 Never inspect provider-private transcripts, credentials or tracked project
 content. Report backend, session locator, observed state and action. Do not

@@ -2,8 +2,8 @@
 
 ## Decision
 
-The pattern watchdog stores one mode-`0600` record per backend locator after a
-successful nudge. The record contains a digest of the backend, locator and
+The pattern watchdog stores one mode-`0600` record per backend locator before an
+authorized nudge attempt. The record contains a digest of the backend, locator and
 normalized native state plus digests of messages already delivered in that
 state. A later invocation suppresses any repeated message while that state is
 unchanged. A new state replaces the prior message set. It stores no message,
@@ -15,11 +15,12 @@ identical reads: Orca's top-level RPC request/runtime IDs and Paseo's `UpdatedAt
 Native semantic fields such as Orca `lastOutputAt` remain significant. Herdr and
 Paseo delivery is nonblocking; subsequent observation owns completion.
 
-The helper accepts a nudge only after two successful identical reads. An atomic
-per-locator lock covers the duplicate check, native delivery and digest update,
-so concurrent invocations cannot both send before either persists its result.
-The lock contains only the local helper PID; a dead owner's exact stale lock is
-reclaimed on the next invocation.
+The helper accepts a nudge only after two successful identical reads. A mature
+`flock` advisory lock covers the per-locator duplicate check, reservation and
+native delivery, and the kernel releases ownership when a process exits. The
+message digest is reserved before delivery; a crash or nonzero backend result is
+ambiguous and remains suppressed until native state changes rather than risking
+a duplicate nudge.
 
 ## Business reason
 

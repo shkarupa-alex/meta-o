@@ -15,7 +15,7 @@ own named reason in `docs/architecture/`.
 Everything shipped is Markdown plus three self-contained helper files: the
 bundled `.mjs` settings helper and `.sh` provider-posture probe copied into the
 three orchestration skills, and the pattern watchdog `.sh` copied into
-`mo-watchdog`. The watchdog requires the mature `jq` JSON parser. The posture
+`mo-watchdog`. The watchdog requires mature `jq` and `flock` controls. The posture
 helper is also copied into `mo-setup`. The build tool and the tests are not
 shipped and do use real parsers, because this contract forbids hand-written ones.
 

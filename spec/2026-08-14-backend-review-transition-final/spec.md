@@ -256,11 +256,13 @@ separate watchdog invocation is the consumer that must avoid repeating delivery.
 
 The helper requires the mature `jq` JSON parser so it can validate backend response shapes
 and classify every session from scalar values rather than matching incidental field names.
-`mo-setup` reports that dependency separately from the three backend controls.
+It uses mature `flock` advisory locking so process exit releases lock ownership safely.
+`mo-setup` reports both dependencies separately from the three backend controls.
 
 A nudge requires two successful identical native reads. The helper serializes the
-per-locator duplicate check, native delivery and digest update, suppressing a concurrent
-invocation instead of allowing both processes to send before either records its digest.
+per-locator duplicate check, reservation and native delivery. It reserves the message digest
+before delivery, so a concurrent invocation, crash or ambiguous backend result remains
+suppressed until state changes instead of risking a duplicate nudge.
 
 No numeric cooldown or attempt count is prescribed. Imperfect patterns are an acceptable
 iterative limitation; the script can be refined from observed failures.

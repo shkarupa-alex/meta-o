@@ -121,37 +121,19 @@ remember_nudge() {
   mv "$WATCHDOG_TEMP" "$WATCHDOG_FILE"
 }
 
-# One atomic file per backend locator serializes the duplicate check, delivery
-# and digest update. A live owner suppresses a concurrent invocation; a dead
-# owner's exact stale lock is reclaimed without touching any session data.
+# One advisory lock per backend locator serializes the duplicate check,
+# reservation and delivery. The kernel releases it if the helper crashes.
 acquire_nudge_lock() {
   WATCHDOG_LOCK_FILE=${WATCHDOG_FILE}.lock
-  WATCHDOG_LOCK_ATTEMPT=0
-  while [ "$WATCHDOG_LOCK_ATTEMPT" -lt 2 ]; do
-    if (set -C; /usr/bin/printf '%s\n' "$$" > "$WATCHDOG_LOCK_FILE") 2>/dev/null; then
-      chmod 600 "$WATCHDOG_LOCK_FILE" 2>/dev/null || true
-      return 0
-    fi
-    WATCHDOG_LOCK_OWNER=$(sed -n '1p' "$WATCHDOG_LOCK_FILE" 2>/dev/null)
-    case "$WATCHDOG_LOCK_OWNER" in
-      ''|*[!0-9]*) ;;
-      *)
-        if kill -0 "$WATCHDOG_LOCK_OWNER" 2>/dev/null; then
-          return 1
-        fi
-        ;;
-    esac
-    rm -f "$WATCHDOG_LOCK_FILE" 2>/dev/null || return 1
-    WATCHDOG_LOCK_ATTEMPT=$((WATCHDOG_LOCK_ATTEMPT + 1))
-  done
-  return 1
+  umask 077
+  exec 9>"$WATCHDOG_LOCK_FILE" || return 1
+  chmod 600 "$WATCHDOG_LOCK_FILE" 2>/dev/null || true
+  flock -n 9
 }
 
 release_nudge_lock() {
-  if [ -f "$WATCHDOG_LOCK_FILE" ] && \
-    [ "$(sed -n '1p' "$WATCHDOG_LOCK_FILE")" = "$$" ]; then
-    rm -f "$WATCHDOG_LOCK_FILE"
-  fi
+  flock -u 9 2>/dev/null || true
+  exec 9>&-
 }
 
 report_item() {
@@ -221,6 +203,10 @@ fi
 
 if ! command -v jq >/dev/null 2>&1; then
   /usr/bin/printf '%s\n' 'watchdog requires jq to parse native backend JSON safely' >&2
+  exit 69
+fi
+if ! command -v flock >/dev/null 2>&1; then
+  /usr/bin/printf '%s\n' 'watchdog requires flock to serialize nudge delivery safely' >&2
   exit 69
 fi
 
@@ -296,6 +282,9 @@ if ! command -v "$WATCHDOG_BACKEND" >/dev/null 2>&1; then
     "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION"
   exit 1
 fi
+if [ -n "$WATCHDOG_NUDGE" ] && [ "$WATCHDOG_BACKEND" = orca ]; then
+  case "$WATCHDOG_SESSION" in ctx_*|term_*) ;; *) usage >&2; exit 64 ;; esac
+fi
 
 WATCHDOG_BEFORE=$(read_target "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION")
 WATCHDOG_STATUS=$?
@@ -362,6 +351,18 @@ if [ -f "$WATCHDOG_FILE" ] && \
   exit 2
 fi
 
+# Reserve before native delivery. A crash or ambiguous nonzero backend result
+# must suppress a retry in unchanged state rather than risk a duplicate nudge.
+remember_nudge "$WATCHDOG_FILE" "$WATCHDOG_STATE_FINGERPRINT" \
+  "$WATCHDOG_MESSAGE_FINGERPRINT"
+WATCHDOG_NUDGE_STATUS=$?
+if [ "$WATCHDOG_NUDGE_STATUS" -ne 0 ]; then
+  release_nudge_lock
+  /usr/bin/printf 'backend=%s session=%s state=%s action=state-error status=%s\n' \
+    "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_STATE" "$WATCHDOG_NUDGE_STATUS"
+  exit "$WATCHDOG_NUDGE_STATUS"
+fi
+
 case "$WATCHDOG_BACKEND" in
   herdr) herdr agent prompt "$WATCHDOG_SESSION" "$WATCHDOG_NUDGE" ;;
   orca)
@@ -374,10 +375,6 @@ case "$WATCHDOG_BACKEND" in
   paseo) paseo send "$WATCHDOG_SESSION" --prompt "$WATCHDOG_NUDGE" --no-wait --json ;;
 esac
 WATCHDOG_NUDGE_STATUS=$?
-if [ "$WATCHDOG_NUDGE_STATUS" -eq 0 ]; then
-  remember_nudge "$WATCHDOG_FILE" "$WATCHDOG_STATE_FINGERPRINT" \
-    "$WATCHDOG_MESSAGE_FINGERPRINT" || WATCHDOG_NUDGE_STATUS=$?
-fi
 release_nudge_lock
 /usr/bin/printf 'backend=%s session=%s state=%s action=nudge status=%s\n' \
   "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_STATE" "$WATCHDOG_NUDGE_STATUS"

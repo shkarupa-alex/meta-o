@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 import MarkdownIt from "markdown-it";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const SYSTEM_PATH = "/opt/homebrew/bin:/usr/bin:/bin";
 const markdown = new MarkdownIt({ html: true, linkify: true });
 const temporary = [];
 after(() => temporary.forEach((path) => rmSync(path, { recursive: true, force: true })));
@@ -153,7 +154,7 @@ test("watchdog observes, rereads before nudge, and suppresses changed state", ()
   const script = join(ROOT, "shared", "scripts", "mo-watchdog.sh");
   const env = {
     ...process.env,
-    PATH: `${root}:/usr/bin:/bin`,
+    PATH: `${root}:${SYSTEM_PATH}`,
     WATCHDOG_LOG: log,
     WATCHDOG_COUNT: count,
     WATCHDOG_STATE_DIR: join(root, "state"),
@@ -188,7 +189,7 @@ test("watchdog observes, rereads before nudge, and suppresses changed state", ()
   );
   assert.equal(result.status, 0, result.stderr);
   const stateDirectory = join(root, "state");
-  const stateEntries = readdirSync(stateDirectory);
+  const stateEntries = readdirSync(stateDirectory).filter((entry) => !entry.endsWith(".lock"));
   assert.equal(stateEntries.length, 1);
   assert.equal(statSync(stateDirectory).mode & 0o777, 0o700);
   const stateRecord = join(stateDirectory, stateEntries[0]);
@@ -241,7 +242,7 @@ fi
   chmodSync(fake, 0o755);
   const env = {
     ...process.env,
-    PATH: `${root}:/usr/bin:/bin`,
+    PATH: `${root}:${SYSTEM_PATH}`,
     WATCHDOG_LOG: log,
     WATCHDOG_COUNT: count,
     WATCHDOG_STATE_DIR: join(root, "state"),
@@ -283,6 +284,11 @@ if [ "$1 $2" = "agent get" ]; then
   if [ -n "\${WATCHDOG_READ_FAILURE-}" ]; then echo failed >&2; exit 7; fi
   echo working
 elif [ "$1 $2" = "agent prompt" ]; then
+  if [ -n "\${WATCHDOG_CRASH_AFTER_ACCEPT-}" ]; then
+    printf '%s\\n' "$*" >> "$WATCHDOG_LOG"
+    kill -9 "$PPID"
+    exit 1
+  fi
   sleep 1
   printf '%s\\n' "$*" >> "$WATCHDOG_LOG"
   echo sent
@@ -295,7 +301,7 @@ fi
   const args = ["target", "--backend", "herdr", "--session", "a", "--nudge", "continue"];
   const env = {
     ...process.env,
-    PATH: `${root}:/usr/bin:/bin`,
+    PATH: `${root}:${SYSTEM_PATH}`,
     WATCHDOG_LOG: log,
     WATCHDOG_STATE_DIR: join(root, "state"),
   };
@@ -307,6 +313,10 @@ fi
   assert.match(failed.stdout, /status=7 state=failed action=observe-error/);
   assert.equal(readdirSync(root).includes("log"), false);
 
+  const seed = spawnSync(script, [...args.slice(0, -1), "seed"], { env, encoding: "utf8" });
+  assert.equal(seed.status, 0, seed.stderr);
+  writeFileSync(log, "");
+
   const results = await Promise.all([
     run(script, args, { env, encoding: "utf8" }),
     run(script, args, { env, encoding: "utf8" }),
@@ -314,6 +324,17 @@ fi
   assert.deepEqual(results.map(({ status }) => status).sort(), [0, 2]);
   assert.match(results.map(({ stdout }) => stdout).join("\n"), /action=concurrent-suppressed/);
   assert.equal(readFileSync(log, "utf8").trim().split("\n").length, 1);
+
+  const crashArgs = [...args.slice(0, -1), "crash-window"];
+  const crashed = spawnSync(script, crashArgs, {
+    env: { ...env, WATCHDOG_CRASH_AFTER_ACCEPT: "1" },
+    encoding: "utf8",
+  });
+  assert.equal(crashed.signal, "SIGKILL");
+  const retry = spawnSync(script, crashArgs, { env, encoding: "utf8" });
+  assert.equal(retry.status, 2);
+  assert.match(retry.stdout, /action=duplicate-suppressed/);
+  assert.equal(readFileSync(log, "utf8").trim().split("\n").length, 2);
 });
 
 test("watchdog rejects missing flag values instead of hanging", () => {
@@ -353,7 +374,7 @@ esac
   const script = join(ROOT, "shared", "scripts", "mo-watchdog.sh");
   const env = {
     ...process.env,
-    PATH: `${root}:/usr/bin:/bin`,
+    PATH: `${root}:${SYSTEM_PATH}`,
     WATCHDOG_LOG: log,
     WATCHDOG_STATE_DIR: join(root, "state"),
   };
@@ -363,6 +384,13 @@ esac
   });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /state=completed action=observed/);
+  result = spawnSync(
+    script,
+    ["target", "--backend", "orca", "--session", "task_fixture", "--nudge", "continue"],
+    { env, encoding: "utf8" },
+  );
+  assert.equal(result.status, 64);
+  assert.equal(readdirSync(root).includes("state"), false);
   result = spawnSync(
     script,
     ["target", "--backend", "orca", "--session", "ctx_fixture", "--nudge", "continue"],
@@ -402,7 +430,7 @@ esac
   );
   chmodSync(fake, 0o755);
   const result = spawnSync(join(ROOT, "shared", "scripts", "mo-watchdog.sh"), ["scan"], {
-    env: { ...process.env, PATH: `${root}:/usr/bin:/bin` },
+    env: { ...process.env, PATH: `${root}:${SYSTEM_PATH}` },
     encoding: "utf8",
   });
   assert.equal(result.status, 1);
@@ -429,7 +457,7 @@ esac
     chmodSync(join(root, name), 0o755);
   }
   const result = spawnSync(join(ROOT, "shared", "scripts", "mo-watchdog.sh"), ["scan"], {
-    env: { ...process.env, PATH: `${root}:/usr/bin:/bin` },
+    env: { ...process.env, PATH: `${root}:${SYSTEM_PATH}` },
     encoding: "utf8",
   });
   assert.equal(result.status, 1);
@@ -465,7 +493,7 @@ if [ "$*" = "ls --json" ]; then echo '[]'; else exit 2; fi
     chmodSync(join(root, name), 0o755);
   }
   const result = spawnSync(join(ROOT, "shared", "scripts", "mo-watchdog.sh"), ["scan"], {
-    env: { ...process.env, PATH: `${root}:/usr/bin:/bin` },
+    env: { ...process.env, PATH: `${root}:${SYSTEM_PATH}` },
     encoding: "utf8",
   });
   assert.equal(result.status, 0, result.stderr);
