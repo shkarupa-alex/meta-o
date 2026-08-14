@@ -5,6 +5,11 @@
 
 set -u
 
+# Bound private state even when an operator tries many distinct messages without
+# any native state change. Saturation suppresses all further nudges fail-closed.
+WATCHDOG_MAX_MESSAGE_DIGESTS=16
+WATCHDOG_SATURATED=SATURATED
+
 usage() {
   /usr/bin/printf '%s\n' \
     'usage: mo-watchdog.sh scan' \
@@ -112,6 +117,20 @@ remember_nudge() {
   WATCHDOG_TEMP=$(mktemp "${WATCHDOG_FILE}.XXXXXX") || return 73
   if [ -f "$WATCHDOG_FILE" ] && \
     [ "$(sed -n '1p' "$WATCHDOG_FILE")" = "$WATCHDOG_STATE_FINGERPRINT" ]; then
+    if grep -Fqx "$WATCHDOG_SATURATED" "$WATCHDOG_FILE"; then
+      cp "$WATCHDOG_FILE" "$WATCHDOG_TEMP" || return 73
+      chmod 600 "$WATCHDOG_TEMP" 2>/dev/null || true
+      mv "$WATCHDOG_TEMP" "$WATCHDOG_FILE"
+      return
+    fi
+    WATCHDOG_MESSAGE_COUNT=$(sed -n '2,$p' "$WATCHDOG_FILE" | awk 'END { print NR + 0 }')
+    if [ "$WATCHDOG_MESSAGE_COUNT" -ge "$WATCHDOG_MAX_MESSAGE_DIGESTS" ]; then
+      /usr/bin/printf '%s\n%s\n' "$WATCHDOG_STATE_FINGERPRINT" \
+        "$WATCHDOG_SATURATED" > "$WATCHDOG_TEMP" || return 73
+      chmod 600 "$WATCHDOG_TEMP" 2>/dev/null || true
+      mv "$WATCHDOG_TEMP" "$WATCHDOG_FILE"
+      return
+    fi
     cp "$WATCHDOG_FILE" "$WATCHDOG_TEMP" || return 73
   else
     /usr/bin/printf '%s\n' "$WATCHDOG_STATE_FINGERPRINT" > "$WATCHDOG_TEMP" || return 73
@@ -205,11 +224,6 @@ if ! command -v jq >/dev/null 2>&1; then
   /usr/bin/printf '%s\n' 'watchdog requires jq to parse native backend JSON safely' >&2
   exit 69
 fi
-if ! command -v flock >/dev/null 2>&1; then
-  /usr/bin/printf '%s\n' 'watchdog requires flock to serialize nudge delivery safely' >&2
-  exit 69
-fi
-
 WATCHDOG_MODE=$1
 shift
 
@@ -276,6 +290,10 @@ case "$WATCHDOG_BACKEND" in herdr|orca|paseo) ;; *) usage >&2; exit 64 ;; esac
 if [ -z "$WATCHDOG_SESSION" ]; then
   usage >&2
   exit 64
+fi
+if [ -n "$WATCHDOG_NUDGE" ] && ! command -v flock >/dev/null 2>&1; then
+  /usr/bin/printf '%s\n' 'watchdog requires flock to serialize nudge delivery safely' >&2
+  exit 69
 fi
 if ! command -v "$WATCHDOG_BACKEND" >/dev/null 2>&1; then
   /usr/bin/printf 'backend=%s session=%s state=missing-control action=none\n' \
@@ -344,7 +362,8 @@ WATCHDOG_MESSAGE_FINGERPRINT=$(/usr/bin/printf '%s' "$WATCHDOG_NUDGE" | digest) 
 }
 if [ -f "$WATCHDOG_FILE" ] && \
   [ "$(sed -n '1p' "$WATCHDOG_FILE")" = "$WATCHDOG_STATE_FINGERPRINT" ] && \
-  sed -n '2,$p' "$WATCHDOG_FILE" | grep -Fqx "$WATCHDOG_MESSAGE_FINGERPRINT"; then
+  { sed -n '2,$p' "$WATCHDOG_FILE" | grep -Fqx "$WATCHDOG_MESSAGE_FINGERPRINT" || \
+    grep -Fqx "$WATCHDOG_SATURATED" "$WATCHDOG_FILE"; }; then
   release_nudge_lock
   /usr/bin/printf 'backend=%s session=%s state=%s action=duplicate-suppressed\n' \
     "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_STATE"
@@ -364,15 +383,15 @@ if [ "$WATCHDOG_NUDGE_STATUS" -ne 0 ]; then
 fi
 
 case "$WATCHDOG_BACKEND" in
-  herdr) herdr agent prompt "$WATCHDOG_SESSION" "$WATCHDOG_NUDGE" ;;
+  herdr) (exec 9>&-; herdr agent prompt "$WATCHDOG_SESSION" "$WATCHDOG_NUDGE") ;;
   orca)
     case "$WATCHDOG_SESSION" in
-      ctx_*) orca orchestration send --to "dispatch:$WATCHDOG_SESSION" --subject Watchdog --body "$WATCHDOG_NUDGE" --json ;;
-      term_*) orca terminal send --terminal "$WATCHDOG_SESSION" --text "$WATCHDOG_NUDGE" --enter --json ;;
+      ctx_*) (exec 9>&-; orca orchestration send --to "dispatch:$WATCHDOG_SESSION" --subject Watchdog --body "$WATCHDOG_NUDGE" --json) ;;
+      term_*) (exec 9>&-; orca terminal send --terminal "$WATCHDOG_SESSION" --text "$WATCHDOG_NUDGE" --enter --json) ;;
       *) usage >&2; exit 64 ;;
     esac
     ;;
-  paseo) paseo send "$WATCHDOG_SESSION" --prompt "$WATCHDOG_NUDGE" --no-wait --json ;;
+  paseo) (exec 9>&-; paseo send "$WATCHDOG_SESSION" --prompt "$WATCHDOG_NUDGE" --no-wait --json) ;;
 esac
 WATCHDOG_NUDGE_STATUS=$?
 release_nudge_lock

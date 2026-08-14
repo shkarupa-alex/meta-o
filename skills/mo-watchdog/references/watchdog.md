@@ -32,7 +32,9 @@ Paseo `UpdatedAt`. Patterns will improve from real failures.
 A nudge requires two successful identical native reads. The helper serializes
 the per-locator duplicate check, reservation and delivery. It stores the message
 digest before native delivery, so a concurrent invocation or ambiguous crash is
-suppressed rather than allowed to duplicate the nudge.
+suppressed rather than allowed to duplicate the nudge. After sixteen distinct
+messages in one unchanged state, the record collapses to a saturation marker and
+suppresses all further nudges until state changes.
 
 Never inspect provider-private transcripts, credentials or tracked project
 content. Report backend, session locator, observed state and action. Do not

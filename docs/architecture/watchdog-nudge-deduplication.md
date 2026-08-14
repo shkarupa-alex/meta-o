@@ -20,7 +20,9 @@ The helper accepts a nudge only after two successful identical reads. A mature
 native delivery, and the kernel releases ownership when a process exits. The
 message digest is reserved before delivery; a crash or nonzero backend result is
 ambiguous and remains suppressed until native state changes rather than risking
-a duplicate nudge.
+a duplicate nudge. Sixteen distinct message digests in one unchanged state
+collapse to one saturation marker, keeping the record bounded while failing
+closed until state changes.
 
 ## Business reason
 

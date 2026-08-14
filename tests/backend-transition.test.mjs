@@ -9,6 +9,7 @@ import {
   readdirSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -19,7 +20,8 @@ import { fileURLToPath } from "node:url";
 import MarkdownIt from "markdown-it";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const SYSTEM_PATH = "/opt/homebrew/bin:/usr/bin:/bin";
+const SYSTEM_PATH = "/usr/bin:/bin";
+const FLOCK = spawnSync("/bin/sh", ["-c", "command -v flock"], { encoding: "utf8" }).stdout.trim();
 const markdown = new MarkdownIt({ html: true, linkify: true });
 const temporary = [];
 after(() => temporary.forEach((path) => rmSync(path, { recursive: true, force: true })));
@@ -41,6 +43,11 @@ function run(command, args, options) {
     child.stderr.on("data", (chunk) => (stderr += chunk));
     child.on("close", (status) => resolve({ status, stdout, stderr }));
   });
+}
+
+function exposeFlock(root) {
+  assert.notEqual(FLOCK, "", "test host must provide flock");
+  symlinkSync(FLOCK, join(root, "flock"));
 }
 
 test("removed backend and standalone legacy entry names survive only in protected history", () => {
@@ -143,6 +150,7 @@ test("every backlog deferral has reason, practical impact, and next step", () =>
 test("watchdog observes, rereads before nudge, and suppresses changed state", () => {
   const root = mkdtempSync(join(tmpdir(), "mo-watchdog-test-"));
   temporary.push(root);
+  exposeFlock(root);
   const log = join(root, "log");
   const count = join(root, "count");
   const fake = join(root, "herdr");
@@ -223,6 +231,7 @@ test("watchdog observes, rereads before nudge, and suppresses changed state", ()
 test("watchdog does not mistake empty Paseo permission metadata for a question", () => {
   const root = mkdtempSync(join(tmpdir(), "mo-watchdog-paseo-test-"));
   temporary.push(root);
+  exposeFlock(root);
   const fake = join(root, "paseo");
   const log = join(root, "log");
   const count = join(root, "count");
@@ -275,6 +284,7 @@ fi
 test("watchdog rejects failed observations and serializes identical concurrent nudges", async () => {
   const root = mkdtempSync(join(tmpdir(), "mo-watchdog-lock-test-"));
   temporary.push(root);
+  exposeFlock(root);
   const fake = join(root, "herdr");
   const log = join(root, "log");
   writeFileSync(
@@ -286,10 +296,12 @@ if [ "$1 $2" = "agent get" ]; then
 elif [ "$1 $2" = "agent prompt" ]; then
   if [ -n "\${WATCHDOG_CRASH_AFTER_ACCEPT-}" ]; then
     printf '%s\\n' "$*" >> "$WATCHDOG_LOG"
-    kill -9 "$PPID"
+    (sleep 2) &
+    watchdog_pid=$(ps -o ppid= -p "$PPID" | tr -d ' ')
+    kill -9 "$watchdog_pid"
     exit 1
   fi
-  sleep 1
+  if [ -n "\${WATCHDOG_SLOW_SEND-}" ]; then sleep 1; fi
   printf '%s\\n' "$*" >> "$WATCHDOG_LOG"
   echo sent
 else exit 2
@@ -318,8 +330,8 @@ fi
   writeFileSync(log, "");
 
   const results = await Promise.all([
-    run(script, args, { env, encoding: "utf8" }),
-    run(script, args, { env, encoding: "utf8" }),
+    run(script, args, { env: { ...env, WATCHDOG_SLOW_SEND: "1" }, encoding: "utf8" }),
+    run(script, args, { env: { ...env, WATCHDOG_SLOW_SEND: "1" }, encoding: "utf8" }),
   ]);
   assert.deepEqual(results.map(({ status }) => status).sort(), [0, 2]);
   assert.match(results.map(({ stdout }) => stdout).join("\n"), /action=concurrent-suppressed/);
@@ -335,6 +347,24 @@ fi
   assert.equal(retry.status, 2);
   assert.match(retry.stdout, /action=duplicate-suppressed/);
   assert.equal(readFileSync(log, "utf8").trim().split("\n").length, 2);
+
+  for (let index = 0; index < 17; index += 1) {
+    spawnSync(script, [...args.slice(0, -1), `distinct-${index}`], { env, encoding: "utf8" });
+  }
+  const saturated = spawnSync(script, [...args.slice(0, -1), "after-saturation"], {
+    env,
+    encoding: "utf8",
+  });
+  assert.equal(saturated.status, 2);
+  assert.match(saturated.stdout, /action=duplicate-suppressed/);
+  const stateRecord = readdirSync(join(root, "state")).find((entry) => !entry.endsWith(".lock"));
+  assert.ok(stateRecord);
+  assert.deepEqual(
+    readFileSync(join(root, "state", stateRecord), "utf8")
+      .trim()
+      .split("\n").length,
+    2,
+  );
 });
 
 test("watchdog rejects missing flag values instead of hanging", () => {
@@ -348,9 +378,36 @@ test("watchdog rejects missing flag values instead of hanging", () => {
   assert.match(result.stderr, /usage: mo-watchdog\.sh/);
 });
 
+test("watchdog needs flock only for nudge delivery", () => {
+  const root = mkdtempSync(join(tmpdir(), "mo-watchdog-no-flock-test-"));
+  temporary.push(root);
+  for (const command of ["jq", "tr", "grep"]) {
+    symlinkSync(`/usr/bin/${command}`, join(root, command));
+  }
+  const fake = join(root, "herdr");
+  writeFileSync(fake, "#!/bin/sh\necho working\n");
+  chmodSync(fake, 0o755);
+  const script = join(ROOT, "shared", "scripts", "mo-watchdog.sh");
+  const env = { ...process.env, PATH: root, WATCHDOG_STATE_DIR: join(root, "state") };
+  let result = spawnSync(script, ["target", "--backend", "herdr", "--session", "a"], {
+    env,
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /state=working action=observed/);
+  result = spawnSync(
+    script,
+    ["target", "--backend", "herdr", "--session", "a", "--nudge", "continue"],
+    { env, encoding: "utf8" },
+  );
+  assert.equal(result.status, 69);
+  assert.match(result.stderr, /requires flock/);
+});
+
 test("watchdog normalizes Orca envelopes and reports every worker and terminal", () => {
   const root = mkdtempSync(join(tmpdir(), "mo-watchdog-orca-test-"));
   temporary.push(root);
+  exposeFlock(root);
   const log = join(root, "log");
   const fake = join(root, "orca");
   writeFileSync(

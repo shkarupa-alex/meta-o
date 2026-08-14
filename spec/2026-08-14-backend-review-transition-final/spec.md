@@ -262,7 +262,9 @@ It uses mature `flock` advisory locking so process exit releases lock ownership 
 A nudge requires two successful identical native reads. The helper serializes the
 per-locator duplicate check, reservation and native delivery. It reserves the message digest
 before delivery, so a concurrent invocation, crash or ambiguous backend result remains
-suppressed until state changes instead of risking a duplicate nudge.
+suppressed until state changes instead of risking a duplicate nudge. After sixteen distinct
+messages in one unchanged state, their hashes collapse to one saturation marker and all
+further nudges remain suppressed until state changes, keeping the record bounded.
 
 No numeric cooldown or attempt count is prescribed. Imperfect patterns are an acceptable
 iterative limitation; the script can be refined from observed failures.
