@@ -28,18 +28,20 @@ paseo permit allow <agent-id> <request-id> --json
 paseo permit deny <agent-id> <request-id> --json
 ```
 
-Inspect after every wait. Distinguish running, idle/completed, pending
-permission/question, failed and missing states. Use `send` for an ordinary
-answer and `permit allow|deny` only for the exact visible permission request.
-Never infer completion from an idle process alone.
+Inspect after every wait when more state detail is needed. Distinguish running,
+idle/completed, pending permission/question, failed and missing states. Use
+`send` for an ordinary answer and `permit allow|deny` only for the exact visible
+permission request. Never infer completion from an idle process alone.
 
 ## Complete response and diagnostics
 
-The installed public `inspect --json` result must expose the entire settled
-assistant response. Verify it with a normal fixture and a three-to-four-screen
-fixture containing begin/middle/end markers. If `inspect` exposes only a preview
-or no final-result field, Paseo is unsupported for Meta-O until its public
-surface changes; do not reconstruct a result from private provider data.
+The installed public `wait --json` result's settled assistant message is the
+complete response for Meta-O. Verify it with a normal fixture and a
+three-to-four-screen fixture containing begin/middle/end markers. `inspect` is a
+metadata and state surface; it need not repeat the final response. If `wait`
+exposes only a preview or no settled assistant message, Paseo is unsupported for
+Meta-O until its public surface changes; do not reconstruct a result from
+private provider data.
 
 `paseo logs <id>` and `paseo attach <id>` provide whole-session diagnostics.
 They do not establish a complete settled response unless the long fixture proves

@@ -72,7 +72,10 @@ test("backend mechanics use only the intended public result and diagnostic surfa
   assert.match(herdr, /herdr agent (?:get|read|wait|prompt)/);
   assert.match(orca, /complete `worker_done` body/);
   assert.match(orca, /Do not use `worker-read --source transcript`/);
-  assert.match(paseo, /`inspect --json` result must expose the entire settled/);
+  assert.match(orca, /`ready` and `input_accepted` is only a transport/);
+  assert.match(paseo, /public `wait --json` result's settled assistant message/);
+  assert.match(paseo, /`inspect` is a\nmetadata and state surface/);
+  assert.match(herdr, /`herdr agent read --source recent-unwrapped`/);
   for (const source of [herdr, orca, paseo]) {
     assert.match(source, /three-to-four-screen|three-to-four-screen|three-to-four/);
     assert.match(source, /whole-session|Whole-session|whole session/);

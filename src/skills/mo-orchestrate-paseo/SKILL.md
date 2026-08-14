@@ -13,7 +13,7 @@ Read [Feature lifecycle](references/methodology.md),
 
 Use Paseo only. Confirm the control executable, upstream `paseo` companion
 skill, intended workspace and all public capabilities. In particular, do not
-claim support unless `inspect` or another documented public result surface
-passes complete normal and long settled-response fixtures. Follow the shared
+claim support unless the documented public `wait` result surface passes complete
+normal and long settled-response fixtures. Follow the shared
 lifecycle without orchestrator code inspection or edits and return one verified
 full SHA or honest `needs_attention`.

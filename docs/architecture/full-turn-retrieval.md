@@ -5,7 +5,7 @@
 Meta-O retrieves the entire settled assistant response through the selected
 backend's documented public native surface. Herdr uses its public agent result,
 Orca uses the complete `worker_done` orchestration message, and Paseo requires a
-complete result from public `inspect` output. Backend mechanics records the
+complete settled assistant message from public `wait` output. Backend mechanics records the
 exact installed commands.
 
 A whole-session view remains available for occasional diagnosis, but a terminal

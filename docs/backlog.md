@@ -6,6 +6,37 @@ Every entry records its reason, practical impact and next step.
 
 ## Open
 
+### Orca worker readiness can precede harness task delivery
+
+**Reason.** Live acceptance against Orca 1.4.182 reported both `ready` and
+`input_accepted`, while a Codex dispatch sent the task text to the shell and an
+OpenCode dispatch remained at its untouched input prompt. One bounded
+cross-harness probe reproduced the delivery gap, so this is not accepted as a
+harness-specific transient.
+
+**Practical impact.** Orca cannot currently support Meta-O orchestration or
+standalone review: a task may never reach the worker even though the public
+receipt looks successful.
+
+**Next step.** Reproduce with the Orca maintainers, make public readiness prove
+that the harness received its task, then rerun every Orca scenario in
+`docs/e2e.md` against one frozen candidate SHA.
+
+### Paseo companion skill is unavailable in the active harness
+
+**Reason.** The Paseo control plane and complete public `wait` response passed
+normal and long live fixtures, but no upstream `paseo` companion skill was
+available in the active Codex, Claude Code or OpenCode skill directories.
+Installing personal harness configuration was outside this task's authority.
+
+**Practical impact.** Paseo's native session mechanics work, but Meta-O cannot
+claim a supported Paseo route because the required upstream agent guidance is
+absent.
+
+**Next step.** Obtain or publish the upstream companion, install it with explicit
+authorization, then rerun every Paseo scenario in `docs/e2e.md` against one
+frozen candidate SHA.
+
 ### Mixed-artifact language policy needs examples
 
 **Reason.** Human-facing knowledge now follows the user's language, while code,

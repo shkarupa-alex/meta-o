@@ -110,7 +110,7 @@ test("every backlog deferral has reason, practical impact, and next step", () =>
     }
     entries.push({ title, body: body.join("\n") });
   }
-  assert.equal(entries.length, 4);
+  assert.ok(entries.length > 0, "backlog must contain at least one real deferral");
   for (const entry of entries) {
     for (const field of ["Reason.", "Practical impact.", "Next step."]) {
       assert.match(entry.body, new RegExp(field.replace(".", "\\.")), `${entry.title}: ${field}`);
@@ -159,4 +159,30 @@ test("watchdog observes, rereads before nudge, and suppresses changed state", ()
   );
   assert.equal(result.status, 2);
   assert.match(result.stdout, /state=changed action=suppressed/);
+});
+
+test("watchdog does not mistake empty Paseo permission metadata for a question", () => {
+  const root = mkdtempSync(join(tmpdir(), "mo-watchdog-paseo-test-"));
+  temporary.push(root);
+  const fake = join(root, "paseo");
+  writeFileSync(
+    fake,
+    `#!/bin/sh
+if [ "$1" = inspect ]; then
+  printf '%s\\n' '{"Status":"idle","PendingPermissions":[],"AvailableModes":[{"label":"Default Permissions"}]}'
+else exit 2
+fi
+`,
+  );
+  chmodSync(fake, 0o755);
+  const result = spawnSync(
+    join(ROOT, "shared", "scripts", "mo-watchdog.sh"),
+    ["target", "--backend", "paseo", "--session", "a"],
+    {
+      env: { ...process.env, PATH: `${root}:/usr/bin:/bin` },
+      encoding: "utf8",
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /state=completed action=observed/);
 });

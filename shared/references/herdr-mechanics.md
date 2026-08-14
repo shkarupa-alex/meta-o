@@ -34,14 +34,22 @@ question boundary. Answer with an ordinary `agent prompt`. Do not blindly
 resubmit after an ambiguous timeout: inspect state first. `unknown`, a missing
 agent or a process mismatch is not success.
 
+A harness-native `/goal` may remain active and repeat an already produced answer
+instead of settling. Judge this only from the public agent state and visible
+response. When the requested work is complete but the goal remains active, send
+one ordinary follow-up asking the executor to mark that goal complete. Do not
+invent a completion grammar or resend the original task.
+
 ## Complete response and diagnostics
 
 Use the public settled-response field returned by `herdr agent get` when the
 installed version exposes it. If it does not, use the documented public agent
 read surface only when a live acceptance fixture proves it contains the entire
-settled final response. `herdr agent read --source visible|recent` is a
-whole-session diagnostic or bounded terminal view by default; it is not proof of
-complete response retrieval without that fixture.
+settled final response. In the current public surface,
+`herdr agent read --source recent-unwrapped` can serve that role only after both
+normal and long fixtures pass. Other `visible|recent` reads are whole-session
+diagnostics or bounded terminal views by default; they are not proof of complete
+response retrieval without that fixture.
 
 Never use private transcripts, hooks, direct provider processes or undocumented
 session storage. Verify normal and three-to-four-screen responses with explicit
