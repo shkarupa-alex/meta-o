@@ -344,7 +344,7 @@ case "$*" in
     ;;
   "orchestration send --to dispatch:ctx_fixture --subject Watchdog --body continue --json") echo '{"accepted":true}' ;;
   "orchestration worker-list --json") echo '{"result":{"workers":[{"dispatchId":"ctx_failed","workerState":"stopped","dispatchStatus":"failed","resource":{"releaseError":null}},{"dispatchId":"ctx_working","workerState":"working","dispatchStatus":"running","resource":{"releaseError":null}}]}}' ;;
-  "terminal list --json") echo '{"result":{"terminals":[{"handle":"term_active","connected":true,"preview":"working"},{"handle":"term_done","connected":false,"preview":"completed"},{"handle":"term_disconnected","connected":false,"orphaned":true,"preview":"$ "}]}}' ;;
+  "terminal list --json") echo '{"result":{"terminals":[{"handle":"term_active","status":"running","connected":true,"preview":"Ask for approval"},{"handle":"term_done","connected":false,"preview":"completed"},{"handle":"term_disconnected","connected":false,"orphaned":true,"preview":"$ "}]}}' ;;
   *) exit 2 ;;
 esac
 `,

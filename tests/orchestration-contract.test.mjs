@@ -42,6 +42,9 @@ test("question and delegated-decision boundaries match the user contract", () =>
 test("shared review protocol owns concurrency, diversity, atomic delivery and backlog lens", () => {
   const source = shared("review-protocol.md");
   assert.match(source, /Start reviewer A and reviewer B concurrently/);
+  assert.match(source, /native interactive Codex, Claude Code or OpenCode instances/);
+  assert.match(source, /review\s+brief or its accessible file path/);
+  assert.match(source, /Do not create or execute a shell script to\s+invoke the reviewer harness/);
   assert.match(source, /different model vendors/);
   assert.match(source, /at least one differs from the executor vendor/);
   assert.match(source, /read all of `docs\/backlog.md`/);
@@ -73,6 +76,10 @@ test("backend mechanics use only the intended public result and diagnostic surfa
   const herdr = shared("herdr-mechanics.md");
   const orca = shared("orca-mechanics.md");
   const paseo = shared("paseo-mechanics.md");
+  for (const source of [herdr, orca, paseo]) {
+    assert.match(source, /accessible file path/);
+    assert.match(source, /shell script that\s+invokes the\s+reviewer harness/);
+  }
   assert.match(herdr, /herdr agent (?:get|read|wait|prompt)/);
   assert.match(herdr, /`--lines 120`, then increase to 200 and\s+400/);
   assert.match(herdr, /discarded by a harness alternate screen/);

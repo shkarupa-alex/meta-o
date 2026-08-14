@@ -17,7 +17,7 @@ classify() {
   if /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'rate.?limit|quota|too many requests|overload|capacity|inference.*busy'; then
     /usr/bin/printf 'limit_or_overload'
   elif /usr/bin/printf '%s\n' "$WATCHDOG_COMPACT" | grep -Eiq '"(PendingPermissions|pending_permissions)":\[\{' || \
-    /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'question|blocked|approval|required input|pending.?permission'; then
+    /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'question|blocked|required input|pending.?permission'; then
     /usr/bin/printf 'question'
   elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'failed|error|lost|unknown|crash|stopped'; then
     /usr/bin/printf 'failed'
