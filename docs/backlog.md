@@ -6,24 +6,6 @@ Every entry records its reason, practical impact and next step.
 
 ## Open
 
-### Paseo cannot launch OpenCode when its managed serve directory is absent
-
-**Reason.** Live acceptance against Paseo 0.3.1 on 2026-08-14 reproduced an
-OpenCode startup failure: Paseo launches `opencode --auto serve` with
-`~/.paseo/opencode-home/serve` as its working directory, but that managed
-directory does not exist. Codex and Claude launch successfully through the same
-daemon. Creating personal Paseo state or upgrading/restarting the desktop-owned
-daemon requires explicit confirmation.
-
-**Practical impact.** Paseo cannot satisfy the required OpenCode posture check,
-vendor-diverse standalone review, or complete B1-B14 live matrix, so the Paseo
-route blocks feature completion.
-
-**Next step.** With explicit authorization, create only the missing managed
-directory or upgrade Paseo, then rerun OpenCode launch plus every affected Paseo
-scenario against one newly frozen candidate SHA. Do not restart the daemon while
-unrelated agents are active.
-
 ### Mixed-artifact language policy needs examples
 
 **Reason.** Human-facing knowledge now follows the user's language, while code,

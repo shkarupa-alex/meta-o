@@ -28,6 +28,11 @@ catalog. In particular, an OpenCode server that cannot enter Paseo's managed
 working directory is not launch-ready even while `paseo status --json` reports
 the provider available. A direct successful launch may prove readiness when
 catalog discovery alone is unavailable; record which public evidence was used.
+Also resolve the provider executable through the daemon's effective `PATH`.
+A user shim that injects an interactive flag before OpenCode's `serve`
+subcommand can turn the provider server into a TUI and make discovery time out.
+Prefer the native executable earlier in the daemon's `PATH`, then restart the
+daemon with explicit authority; do not silently rewrite a user's shared shim.
 
 ## Sessions
 
