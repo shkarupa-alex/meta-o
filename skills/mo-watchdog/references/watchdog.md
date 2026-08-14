@@ -24,7 +24,9 @@ keyed by backend and locator under the user state directory; a changed state
 replaces its prior message set. It stores no prompt, response, candidate, gate or
 actor registry. Herdr and Paseo nudges are nonblocking, and completion is observed
 separately. The helper requires `jq` so native JSON is parsed per session instead
-of with regular expressions. Patterns will improve from real failures.
+of with regular expressions. Classification uses scalar values rather than key
+names, and stable comparison excludes volatile Orca envelope IDs and Paseo
+`UpdatedAt`. Patterns will improve from real failures.
 
 Never inspect provider-private transcripts, credentials or tracked project
 content. Report backend, session locator, observed state and action. Do not

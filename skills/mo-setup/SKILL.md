@@ -8,18 +8,21 @@ license: MIT
 
 Read [Project setup contract](references/project-setup.md),
 [Backend contract](references/backend-contract.md), and
-[Purpose and architecture contract](references/purpose-and-architecture.md).
-For a Python project also read [Python QC profile](references/qc-python.md); for
-a TypeScript or JavaScript project also read
+[Purpose and architecture contract](references/purpose-and-architecture.md)
+completely. For a Python project also read
+[Python QC profile](references/qc-python.md) completely; for a TypeScript or
+JavaScript project also read
 [TypeScript QC profile](references/qc-typescript.md). Read both for a mixed
-Python/TypeScript project. Read only the applicable language profiles
-completely.
+Python/TypeScript project. Read only the applicable language profiles completely.
 
 Detect the active backend through its native environment and status surface;
 report unsupported or ambiguous environments. When asked, check every supported
 backend. Check controls and companion skills separately: `herdr` plus `herdr`,
 `orca`/`orca-cli` plus upstream `orchestration`, and `paseo` plus upstream
 `paseo`.
+
+When watchdog readiness is in scope, check `jq` as its separate mature JSON
+parser dependency.
 
 Use each backend's native companion source: installed `herdr`, Orca's
 version-matched `orca skills` guide, and an installed or version-matched bundled

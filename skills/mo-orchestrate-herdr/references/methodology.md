@@ -88,9 +88,17 @@ and full `HEAD`, then freeze that SHA. Start both reviewer sessions concurrently
 and independently. Give them the same task/spec, complete intent ledger and the
 same candidate SHA. Do not give either reviewer peer output.
 
+Each reviewer is a native interactive Codex, Claude Code or OpenCode instance
+started inside a terminal, pane or session by the selected backend's native
+surface. Deliver the review brief through the backend's ordinary prompt, input,
+task-injection or message field, either as inline text or an accessible file
+path. Never create or execute a shell script to invoke the reviewer harness.
+
 Wait for both complete settled final responses. Save them unchanged in two
 private temporary files with restrictive permissions. A failure to retrieve or
-write either complete response is `unknown`, never a partial review pass.
+write either complete response is `unknown`, never a partial review pass. These
+files are inert Markdown response payloads used only for the atomic handoff to
+the executor; they are never executable and never launch a reviewer.
 
 If both pass, continue to verification. If either finds work, wait until both
 are complete, then send one ordinary message to the executor containing both

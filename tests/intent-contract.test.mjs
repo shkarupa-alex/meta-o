@@ -43,13 +43,16 @@ function fencedText(source) {
     .map((token) => token.content);
 }
 
-test("the complete final ledger appears contiguously and byte-semantically in business framing", () => {
+test("the complete final ledger appears byte-semantically and in order in business framing", () => {
   const ledger = blockquotes(readFileSync(intentPath, "utf8"));
   const business = blockquotes(readFileSync(businessPath, "utf8"));
   assert.ok(ledger.length > 20, "the approved conversation was unexpectedly shortened");
-  const start = business.findIndex((record) => record === ledger[0]);
-  assert.notEqual(start, -1);
-  assert.deepEqual(business.slice(start, start + ledger.length), ledger);
+  let businessIndex = 0;
+  for (const record of ledger) {
+    businessIndex = business.indexOf(record, businessIndex);
+    assert.notEqual(businessIndex, -1, `missing verbatim intent: ${record.slice(0, 80)}`);
+    businessIndex += 1;
+  }
 });
 
 test("the current implementation request and no-workflow-skill preference are recorded twice", () => {
@@ -65,10 +68,25 @@ test("the current implementation request and no-workflow-skill preference are re
 test("the complete latest review is duplicated byte-for-byte in both intent ledgers", () => {
   const intentReviews = fencedText(readFileSync(intentPath, "utf8"));
   const businessReviews = fencedText(readFileSync(businessPath, "utf8"));
-  const latest = intentReviews.at(-1);
+  const latest = intentReviews.find((record) => record.startsWith("ниже 2 ревью\n"));
   assert.match(latest, /^ниже 2 ревью\n/);
   assert.match(latest, /Nudge watchdog для Orca не срабатывает никогда/);
-  assert.equal(businessReviews.at(-1), latest);
+  assert.ok(businessReviews.includes(latest));
+});
+
+test("the reviewer-instance clarification is recorded twice", () => {
+  const exact =
+    "наши скилы каким-то образом намекают на то что для ревьюеров нужно создавать sh-скрипты и их выполнять? я подразумевал что ревьюеры будут запускаться как инстансы клода/кодекса и оркестратор будет им передавать текст прямо в поле ввода";
+  for (const path of [intentPath, businessPath])
+    assert.ok(readFileSync(path, "utf8").includes(exact));
+});
+
+test("the native reviewer launch and file-path clarification is recorded twice", () => {
+  const exact =
+    "оркестратор может передавать и путь к файлу с ревью/заданием - это не запрещено\nно вызов клода/кодекса должен быть не из sh-скрипта а нативно внутри терминала/панели бекенда (herdr/orca/paseo)";
+  for (const path of [intentPath, businessPath]) {
+    assert.ok(blockquotes(readFileSync(path, "utf8")).includes(exact));
+  }
 });
 
 test("methodology preserves product intent but excludes narrow run-control approvals", () => {

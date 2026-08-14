@@ -17,13 +17,13 @@ classify() {
   if /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'rate.?limit|quota|too many requests|overload|capacity|inference.*busy'; then
     /usr/bin/printf 'limit_or_overload'
   elif /usr/bin/printf '%s\n' "$WATCHDOG_COMPACT" | grep -Eiq '"(PendingPermissions|pending_permissions)":\[\{' || \
-    /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'question|blocked|approval|required input'; then
+    /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'question|blocked|approval|required input|pending.?permission'; then
     /usr/bin/printf 'question'
   elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'failed|error|lost|unknown|crash|stopped'; then
     /usr/bin/printf 'failed'
   elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'done|completed|idle|worker_done|succeeded'; then
     /usr/bin/printf 'completed'
-  elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'working|running|active|in_progress|connected'; then
+  elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'working|running|active|in_progress'; then
     /usr/bin/printf 'working'
   else
     /usr/bin/printf 'unclassified'
@@ -48,15 +48,35 @@ read_target() {
   esac
 }
 
-# Orca generates a fresh RPC request ID and runtime ID for every read. They are
-# transport metadata, not observed session state, so they cannot participate in
-# stale-state suppression. All result fields, including lastOutputAt, remain.
+# Orca generates fresh RPC request/runtime IDs and Paseo refreshes `UpdatedAt`
+# on otherwise identical reads. Those observation fields cannot participate in
+# stale-state suppression. Semantic result fields, including Orca lastOutputAt,
+# remain.
 stable_snapshot() {
   WATCHDOG_BACKEND=$1
   WATCHDOG_TEXT=$2
-  if [ "$WATCHDOG_BACKEND" = orca ] && \
-    /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -e . >/dev/null 2>&1; then
-    /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -cS 'del(.id, ._meta.runtimeId)'
+  if /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -e . >/dev/null 2>&1; then
+    case "$WATCHDOG_BACKEND" in
+      orca) /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -cS 'del(.id, ._meta.runtimeId)' ;;
+      paseo) /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -cS 'del(.UpdatedAt)' ;;
+      *) /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -cS . ;;
+    esac
+  else
+    /usr/bin/printf '%s' "$WATCHDOG_TEXT"
+  fi
+}
+
+# Classify JSON values, never field names: a null `releaseError` is not an error
+# and `connected: false` is not working. Pending-permission arrays need one
+# explicit semantic token because their meaning otherwise lives in the key.
+classification_text() {
+  WATCHDOG_TEXT=$1
+  if /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -e . >/dev/null 2>&1; then
+    /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -r '
+      ([.. | scalars | select(. != null and . != false and . != true)] | map(tostring) | join(" "))
+      + (if (((.PendingPermissions? // .pending_permissions? // []) | length) > 0)
+         then " pending_permission" else "" end)
+    '
   else
     /usr/bin/printf '%s' "$WATCHDOG_TEXT"
   fi
@@ -78,8 +98,10 @@ state_file() {
   WATCHDOG_KEY=$(/usr/bin/printf '%s\0%s' "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" | digest) || return 69
   WATCHDOG_STATE_ROOT=${WATCHDOG_STATE_DIR:-${XDG_STATE_HOME:-${HOME:-/tmp}/.local/state}/meta-o/watchdog}
   umask 077
-  mkdir -p "$WATCHDOG_STATE_ROOT" || return 73
-  chmod 700 "$WATCHDOG_STATE_ROOT" 2>/dev/null || true
+  if [ ! -d "$WATCHDOG_STATE_ROOT" ]; then
+    mkdir -p "$WATCHDOG_STATE_ROOT" || return 73
+    chmod 700 "$WATCHDOG_STATE_ROOT" || return 73
+  fi
   /usr/bin/printf '%s/%s' "$WATCHDOG_STATE_ROOT" "$WATCHDOG_KEY"
 }
 
@@ -103,7 +125,8 @@ report_item() {
   WATCHDOG_BACKEND=$1
   WATCHDOG_LOCATOR=$2
   WATCHDOG_ITEM=$3
-  WATCHDOG_STATE=$(classify "$WATCHDOG_ITEM")
+  WATCHDOG_CLASSIFICATION=$(classification_text "$WATCHDOG_ITEM")
+  WATCHDOG_STATE=$(classify "$WATCHDOG_CLASSIFICATION")
   /usr/bin/printf 'backend=%s session=%s state=%s action=observed\n' \
     "$WATCHDOG_BACKEND" "$WATCHDOG_LOCATOR" "$WATCHDOG_STATE"
 }
@@ -119,7 +142,17 @@ scan_json_items() {
       "$WATCHDOG_BACKEND" "$WATCHDOG_SURFACE" "$WATCHDOG_OUTPUT"
     return 1
   fi
-  WATCHDOG_COUNT=$(/usr/bin/printf '%s\n' "$WATCHDOG_OUTPUT" | jq "$WATCHDOG_FILTER | length")
+  WATCHDOG_COUNT=$(
+    /usr/bin/printf '%s\n' "$WATCHDOG_OUTPUT" |
+      jq -er "($WATCHDOG_FILTER) | if type == \"array\" then length else error(\"expected array\") end"
+  )
+  WATCHDOG_FILTER_STATUS=$?
+  case "$WATCHDOG_COUNT" in ''|*[!0-9]*) WATCHDOG_FILTER_STATUS=1 ;; esac
+  if [ "$WATCHDOG_FILTER_STATUS" -ne 0 ]; then
+    /usr/bin/printf 'backend=%s surface=%s state=unclassified action=observe-error\n%s\n' \
+      "$WATCHDOG_BACKEND" "$WATCHDOG_SURFACE" "$WATCHDOG_OUTPUT"
+    return 1
+  fi
   if [ "$WATCHDOG_COUNT" -eq 0 ]; then
     /usr/bin/printf 'backend=%s surface=%s state=no-sessions action=observed\n' \
       "$WATCHDOG_BACKEND" "$WATCHDOG_SURFACE"
@@ -174,18 +207,18 @@ if [ "$WATCHDOG_MODE" = scan ]; then
     fi
     case "$WATCHDOG_BACKEND" in
       herdr)
-        scan_command herdr agents '.result.agents // []' \
+        scan_command herdr agents 'if (.result.agents? | type) == "array" then .result.agents else error("missing agents array") end' \
           '(.name // .pane_id // .terminal_id // "unknown")' herdr agent list || WATCHDOG_SCAN_STATUS=1
         ;;
       orca)
-        scan_command orca workers '.result.workers // .workers // []' \
+        scan_command orca workers 'if (.result.workers? | type) == "array" then .result.workers elif (.workers? | type) == "array" then .workers else error("missing workers array") end' \
           '(.dispatchId // .taskId // .agentTerminalHandle // "unknown")' \
           orca orchestration worker-list --json || WATCHDOG_SCAN_STATUS=1
-        scan_command orca terminals '.result.terminals // .terminals // []' \
+        scan_command orca terminals 'if (.result.terminals? | type) == "array" then .result.terminals elif (.terminals? | type) == "array" then .terminals else error("missing terminals array") end' \
           '(.handle // "unknown")' orca terminal list --json || WATCHDOG_SCAN_STATUS=1
         ;;
       paseo)
-        scan_command paseo agents 'if type == "array" then . else (.agents // .result.agents // []) end' \
+        scan_command paseo agents 'if type == "array" then . elif (.agents? | type) == "array" then .agents elif (.result.agents? | type) == "array" then .result.agents else error("missing agents array") end' \
           '(.id // .agentId // .name // "unknown")' paseo ls --json || WATCHDOG_SCAN_STATUS=1
         ;;
     esac
@@ -233,7 +266,8 @@ fi
 
 WATCHDOG_BEFORE=$(read_target "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION")
 WATCHDOG_STATUS=$?
-WATCHDOG_STATE=$(classify "$WATCHDOG_BEFORE")
+WATCHDOG_CLASSIFICATION=$(classification_text "$WATCHDOG_BEFORE")
+WATCHDOG_STATE=$(classify "$WATCHDOG_CLASSIFICATION")
 if [ -z "$WATCHDOG_NUDGE" ]; then
   /usr/bin/printf 'backend=%s session=%s status=%s state=%s action=observed\n%s\n' \
     "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_STATUS" "$WATCHDOG_STATE" "$WATCHDOG_BEFORE"

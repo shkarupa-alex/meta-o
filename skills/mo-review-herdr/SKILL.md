@@ -7,10 +7,11 @@ license: MIT
 # Review through Herdr
 
 Read [Review protocol](references/review-protocol.md),
-[Backend contract](references/backend-contract.md), and
-[Herdr native mechanics](references/herdr-mechanics.md). Also read
+[Backend contract](references/backend-contract.md),
+[Herdr native mechanics](references/herdr-mechanics.md), and
 [Purpose and architecture contract](references/purpose-and-architecture.md)
-completely before applying reviewer B's architecture lens.
+completely. Read the purpose contract before applying reviewer B's architecture
+lens.
 
 Operate on the current clean full candidate SHA. Create only reviewer A and B,
 start them concurrently with required vendor diversity, and never use `/goal`.

@@ -29,14 +29,15 @@ public command accepts them.
 **Reason.** Installed Herdr 0.8.0 exposes lifecycle metadata through `agent get`
 but no structured settled-response field. Its public `agent read
 --source recent-unwrapped` can retrieve only rows retained by the terminal; an
-alternate-screen harness may discard earlier rows. The current agent is not
-inside a Herdr-managed pane, so the corrected long boundary-marker fixture
-cannot be rerun honestly for the new candidate.
+alternate-screen harness may discard earlier rows. No backend-owned evidence
+currently proves the normal and long boundary-marker fixtures for all three
+harnesses.
 
-**Practical impact.** Herdr B8 and B9 remain `UNKNOWN` for the new candidate, so
-the Herdr orchestration and standalone-review routes cannot be called verified
-even though the mechanics now restore the 120/200/400-line ladder and fail
-closed on missing markers.
+**Practical impact.** Complete-response support cannot be advertised for Herdr,
+so both orchestration and standalone-review routes remain unsupported. This
+durable capability entry supersedes disposition row 7 from the transition spec:
+the same missing response surface prevents live qualification of the standalone
+review skill.
 
 **Next step.** From a Herdr-managed pane, run normal and three-to-four-screen
 `BEGIN`/`MIDDLE`/`END` fixtures against Codex, Claude Code and OpenCode. Remove
@@ -50,12 +51,29 @@ private transcripts or agent-authored result files.
 `screen_detection_skipped: true` for OpenCode. That flag is not evidence of the
 exact TUI or effective unsandboxed posture.
 
-**Practical impact.** Herdr B4 and the OpenCode part of B7 remain `UNKNOWN` for
-the current installed control plane.
+**Practical impact.** OpenCode launch readiness and reliable state
+classification cannot be advertised for the current Herdr control surface.
 
 **Next step.** Re-run OpenCode launch from a Herdr-managed pane and capture exact
 public TUI and posture evidence. If no public Herdr surface can provide it, keep
 the harness unsupported and raise the missing detection capability upstream.
+
+### Paseo complete-response support lacks a qualified public field
+
+**Reason.** Installed Paseo 0.3.1 documents `wait` as waiting for an agent to
+become idle. Observed JSON contains idle status and a bounded recent-activity
+summary, not a separately identified complete settled assistant response. No
+normal and long boundary-marker fixture currently proves otherwise.
+
+**Practical impact.** Paseo orchestration and standalone review cannot be
+advertised as supported because normal or long reviewer output may be a preview
+or an earlier turn rather than the complete settled response.
+
+**Next step.** Identify a documented public Paseo field that represents exactly
+one settled assistant message and run normal plus three-to-four-screen
+`BEGIN`/`MIDDLE`/`END` fixtures. Remove this entry only when both pass; otherwise
+request that complete-response surface upstream and do not use private provider
+state as a fallback.
 
 ### Mixed-artifact language policy needs examples
 

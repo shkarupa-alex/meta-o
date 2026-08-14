@@ -12,12 +12,12 @@ watchdog keeps only the narrow nudge-deduplication digest justified in
 `docs/architecture/watchdog-nudge-deduplication.md`; any broader state needs its
 own named reason in `docs/architecture/`.
 
-Everything shipped is Markdown plus three self-contained runtime helpers: the
+Everything shipped is Markdown plus three self-contained helper files: the
 bundled `.mjs` settings helper and `.sh` provider-posture probe copied into the
 three orchestration skills, and the pattern watchdog `.sh` copied into
-`mo-watchdog`. The posture helper is also copied into `mo-setup`. The build
-tool and the tests are not shipped and do use real parsers, because this contract
-forbids hand-written ones.
+`mo-watchdog`. The watchdog requires the mature `jq` JSON parser. The posture
+helper is also copied into `mo-setup`. The build tool and the tests are not
+shipped and do use real parsers, because this contract forbids hand-written ones.
 
 ## Desired outcomes
 

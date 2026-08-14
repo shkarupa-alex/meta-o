@@ -11,6 +11,12 @@ complete verbatim user-intent ledger. Start reviewer A and reviewer B concurrent
 in separate sessions. They receive no peer output. Use different model vendors,
 and ensure at least one differs from the executor vendor.
 
+Reviewers are native interactive Codex, Claude Code or OpenCode instances
+started inside backend-managed terminals, panes or sessions. Put the review
+brief or its accessible file path into each backend's ordinary prompt, input,
+task-injection or message field. Do not create or execute a shell script to
+invoke the reviewer harness.
+
 Use complementary lenses:
 
 - Reviewer A: correctness, requirements, regressions, tests and operational
@@ -58,8 +64,9 @@ After reviewing the feature itself, read all of `docs/backlog.md` and:
 Wait until both settled responses are complete before releasing either. Save
 them unchanged in two private temporary files and give the executor both paths
 in one ordinary message. Do not merge, rank, summarize, hash, encode, split or
-size-limit responses. File creation or complete-read failure is delivery
-failure. Cleanup is best effort.
+size-limit responses. The files are inert Markdown response payloads, never
+executables or reviewer launchers. File creation or complete-read failure is
+delivery failure. Cleanup is best effort.
 
 The executor owns fixes and a new commit. A new SHA requires two new independent
 reviews. Use judgment rather than finding identifiers, adjudication grammars or

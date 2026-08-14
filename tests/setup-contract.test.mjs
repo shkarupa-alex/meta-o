@@ -52,6 +52,8 @@ test("setup checks controls, companions and every harness posture separately", (
   assert.match(contract, /Backend-wide health does not prove harness readiness/);
   assert.match(contract, /native\s+provider discovery for Codex, Claude Code and OpenCode/);
   assert.match(setup, /daemon health alone is insufficient/);
+  assert.match(setup, /check `jq` as its separate mature JSON/);
+  assert.match(contract, /require `jq` separately from the\s+three backend controls/);
 });
 
 test("knowledge policy covers verbatim intent, language, semantic links and backlog fields", () => {

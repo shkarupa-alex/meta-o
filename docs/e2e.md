@@ -40,12 +40,12 @@ Run this matrix for Herdr, Orca and Paseo:
 
 ## Watchdog scenarios
 
-| ID  | Scenario                      | Proof                                                           |
-| --- | ----------------------------- | --------------------------------------------------------------- |
-| W1  | Target one session read-only. | Exact locator and classified native state; no prompt sent.      |
-| W2  | Scan all reachable backends.  | Herdr, Orca and Paseo are enumerated or report missing control. |
-| W3  | Nudge one authorized target.  | Stable native state permits one nonblocking exact message.      |
-| W4  | Suppress an unsafe repeat.    | Changed state or an unchanged duplicate prevents delivery.      |
+| ID  | Scenario                      | Proof                                                                          |
+| --- | ----------------------------- | ------------------------------------------------------------------------------ |
+| W1  | Target one session read-only. | Exact locator and classified native state; no prompt sent.                     |
+| W2  | Scan all reachable backends.  | Every session has its native locator and own state; an empty surface is named. |
+| W3  | Nudge one authorized target.  | Stable native state permits one nonblocking exact message.                     |
+| W4  | Suppress an unsafe repeat.    | Changed state or an unchanged duplicate prevents delivery.                     |
 
 ## Installation scenarios
 

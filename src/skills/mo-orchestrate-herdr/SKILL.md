@@ -8,11 +8,10 @@ license: MIT
 
 Read [Feature lifecycle](references/methodology.md),
 [Backend contract](references/backend-contract.md),
-[Review protocol](references/review-protocol.md), and
-[Herdr native mechanics](references/herdr-mechanics.md). Before constructing
-reviewer prompts, also read
+[Review protocol](references/review-protocol.md),
+[Herdr native mechanics](references/herdr-mechanics.md), and
 [Purpose and architecture contract](references/purpose-and-architecture.md)
-completely.
+completely. Read the purpose contract before constructing reviewer prompts.
 
 Use Herdr only. Confirm the control executable, upstream `herdr` companion
 skill, intended workspace and all required public capabilities before starting.

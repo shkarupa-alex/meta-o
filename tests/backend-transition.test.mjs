@@ -183,6 +183,14 @@ test("watchdog observes, rereads before nudge, and suppresses changed state", ()
   const stateRecord = join(stateDirectory, stateEntries[0]);
   assert.equal(statSync(stateRecord).mode & 0o777, 0o600);
   assert.doesNotMatch(readFileSync(stateRecord, "utf8"), /continue|other/);
+  chmodSync(stateDirectory, 0o755);
+  result = spawnSync(
+    script,
+    ["target", "--backend", "herdr", "--session", "a", "--nudge", "third"],
+    { env, encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(statSync(stateDirectory).mode & 0o777, 0o755);
   result = spawnSync(
     script,
     ["target", "--backend", "herdr", "--session", "a", "--nudge", "continue"],
@@ -190,7 +198,7 @@ test("watchdog observes, rereads before nudge, and suppresses changed state", ()
   );
   assert.equal(result.status, 2);
   assert.match(result.stdout, /action=duplicate-suppressed/);
-  assert.equal(readFileSync(log, "utf8").trim().split("\n").length, 2);
+  assert.equal(readFileSync(log, "utf8").trim().split("\n").length, 3);
   result = spawnSync(
     script,
     ["target", "--backend", "herdr", "--session", "a", "--nudge", "again"],
@@ -205,11 +213,13 @@ test("watchdog does not mistake empty Paseo permission metadata for a question",
   temporary.push(root);
   const fake = join(root, "paseo");
   const log = join(root, "log");
+  const count = join(root, "count");
   writeFileSync(
     fake,
     `#!/bin/sh
 if [ "$1" = inspect ]; then
-  printf '%s\\n' '{"Status":"idle","PendingPermissions":[],"AvailableModes":[{"label":"Default Permissions"}]}'
+  n=$(cat "$WATCHDOG_COUNT" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > "$WATCHDOG_COUNT"
+  printf '{"Status":"idle","UpdatedAt":"tick-%s","PendingPermissions":[],"AvailableModes":[{"label":"Default Permissions"}]}\\n' "$n"
 elif [ "$1" = send ]; then
   printf '%s\\n' "$*" >> "$WATCHDOG_LOG"
   printf '%s\\n' '{"accepted":true}'
@@ -222,6 +232,7 @@ fi
     ...process.env,
     PATH: `${root}:/usr/bin:/bin`,
     WATCHDOG_LOG: log,
+    WATCHDOG_COUNT: count,
     WATCHDOG_STATE_DIR: join(root, "state"),
   };
   let result = spawnSync(
@@ -239,6 +250,14 @@ fi
   assert.equal(result.error, undefined);
   assert.equal(result.status, 0, result.stderr);
   assert.match(readFileSync(log, "utf8"), /send a --prompt continue --no-wait --json/);
+  result = spawnSync(
+    join(ROOT, "shared", "scripts", "mo-watchdog.sh"),
+    ["target", "--backend", "paseo", "--session", "a", "--nudge", "continue"],
+    { env, encoding: "utf8", timeout: 1_000 },
+  );
+  assert.equal(result.status, 2);
+  assert.match(result.stdout, /action=duplicate-suppressed/);
+  assert.equal(readFileSync(log, "utf8").trim().split("\n").length, 1);
 });
 
 test("watchdog rejects missing flag values instead of hanging", () => {
@@ -268,8 +287,8 @@ case "$*" in
     printf '{"id":"request-%s","ok":true,"result":{"dispatchId":"ctx_fixture","workerState":"stopped","dispatchStatus":"failed"},"_meta":{"runtimeId":"runtime-%s"}}\\n' "$n" "$n"
     ;;
   "orchestration send --to dispatch:ctx_fixture --subject Watchdog --body continue --json") echo '{"accepted":true}' ;;
-  "orchestration worker-list --json") echo '{"result":{"workers":[{"dispatchId":"ctx_failed","workerState":"stopped","dispatchStatus":"failed"},{"dispatchId":"ctx_working","workerState":"working","dispatchStatus":"running"}]}}' ;;
-  "terminal list --json") echo '{"result":{"terminals":[{"handle":"term_active","connected":true,"preview":"working"},{"handle":"term_done","connected":false,"preview":"completed"}]}}' ;;
+  "orchestration worker-list --json") echo '{"result":{"workers":[{"dispatchId":"ctx_failed","workerState":"stopped","dispatchStatus":"failed","resource":{"releaseError":null}},{"dispatchId":"ctx_working","workerState":"working","dispatchStatus":"running","resource":{"releaseError":null}}]}}' ;;
+  "terminal list --json") echo '{"result":{"terminals":[{"handle":"term_active","connected":true,"preview":"working"},{"handle":"term_done","connected":false,"preview":"completed"},{"handle":"term_disconnected","connected":false,"orphaned":true,"preview":"$ "}]}}' ;;
   *) exit 2 ;;
 esac
 `,
@@ -302,6 +321,7 @@ esac
     /backend=orca session=ctx_working state=working/,
     /backend=orca session=term_active state=working/,
     /backend=orca session=term_done state=completed/,
+    /backend=orca session=term_disconnected state=unclassified/,
   ]) {
     assert.match(result.stdout, expected);
   }
@@ -332,6 +352,35 @@ esac
   assert.equal(result.status, 1);
   assert.match(result.stdout, /backend=orca surface=workers status=7 state=control-error/);
   assert.match(result.stdout, /backend=orca surface=terminals state=no-sessions/);
+});
+
+test("watchdog fails closed when a scan surface changes JSON shape", () => {
+  const root = mkdtempSync(join(tmpdir(), "mo-watchdog-shape-test-"));
+  temporary.push(root);
+  const commands = {
+    herdr: "#!/bin/sh\necho '\"ok\"'\n",
+    orca: `#!/bin/sh
+case "$*" in
+  "orchestration worker-list --json") echo '{"result":{"workers":[]}}' ;;
+  "terminal list --json") echo '{"result":{"terminals":[]}}' ;;
+  *) exit 2 ;;
+esac
+`,
+    paseo: "#!/bin/sh\necho '[]'\n",
+  };
+  for (const [name, source] of Object.entries(commands)) {
+    writeFileSync(join(root, name), source);
+    chmodSync(join(root, name), 0o755);
+  }
+  const result = spawnSync(join(ROOT, "shared", "scripts", "mo-watchdog.sh"), ["scan"], {
+    env: { ...process.env, PATH: `${root}:/usr/bin:/bin` },
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 1);
+  assert.match(
+    result.stdout,
+    /backend=herdr surface=agents state=unclassified action=observe-error/,
+  );
 });
 
 test("watchdog reports Herdr agents separately and names an empty Paseo surface", () => {

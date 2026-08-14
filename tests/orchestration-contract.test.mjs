@@ -18,12 +18,16 @@ test("lifecycle keeps the orchestrator out of product code and binds every gate 
   assert.match(source, /two to five sentences/);
   assert.match(source, /need not be\s+repository-relative or tracked/);
   assert.match(source, /start both reviewer sessions concurrently/i);
+  assert.match(source, /native interactive Codex, Claude Code or OpenCode instance/);
+  assert.match(source, /inline text or an accessible file\s+path/);
+  assert.match(source, /Never create or execute a shell script to invoke the reviewer harness/);
   assert.match(source, /Wait for both complete settled final responses/);
   assert.match(
     source,
     /send one ordinary message to the executor containing both\s+temporary-file paths/,
   );
   assert.match(source, /Do not merge, rank, hash, encode, split, truncate or\s+summarize/);
+  assert.match(source, /inert Markdown response payloads/);
   assert.doesNotMatch(source, /MO_[A-Z0-9_]+/);
 });
 
@@ -79,10 +83,14 @@ test("backend mechanics use only the intended public result and diagnostic surfa
   assert.match(orca, /terminal wait .*--for tui-idle/);
   assert.match(orca, /dispatch --task <task-id> --to <handle> --inject/);
   assert.match(orca, /do not duplicate a posture flag/);
-  assert.match(paseo, /public `wait --json` result's settled assistant message/);
+  assert.match(paseo, /`wait --json` proves only settlement/);
+  assert.match(paseo, /bounded last-activity list is not the response/);
   assert.match(paseo, /paseo send <agent-id> --prompt <message> --no-wait --json/);
   assert.match(paseo, /never turn `send` into the wait/);
-  assert.match(paseo, /`inspect` is a\s+metadata and state surface/);
+  assert.match(paseo, /retain the public `UpdatedAt` value/);
+  assert.match(paseo, /non-idle state was observed/);
+  assert.match(paseo, /An unchanged identity and idle state may be the\s+previous response/);
+  assert.match(paseo, /`inspect` is\s+a metadata and state surface/);
   assert.match(paseo, /version-matched public application bundle/);
   assert.match(paseo, /Read the discovered companion guide completely/);
   assert.match(paseo, /paseo provider models <codex\|claude\|opencode> --json/);

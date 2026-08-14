@@ -43,8 +43,10 @@ working directory:
 paseo run --background --title <title> --provider <codex|claude|opencode> --model <model> --mode <unsandboxed-mode> --cwd <repo> --json <prompt>
 ```
 
-Use the returned agent ID for every later action. Start both review agents before
-waiting for either.
+Use the returned agent ID for every later action. Start both review agents as
+native harness instances and put each review brief or its accessible file path
+in `run`'s prompt argument; never generate or run a shell script that invokes the
+reviewer harness. Start both before waiting for either.
 
 ## Delivery, state and questions
 
@@ -60,21 +62,29 @@ paseo permit deny <agent-id> <request-id> --json
 
 Follow-ups and answers use `--no-wait`: delivery must return immediately so the
 orchestrator can continue servicing questions and permissions. Track completion
-with a separate `wait` and then `inspect`; never turn `send` into the wait.
-Distinguish running,
-idle/completed, pending permission/question, failed and missing states. Use
-`send` for an ordinary answer and `permit allow|deny` only for the exact visible
-permission request. Never infer completion from an idle process alone.
+with a separate `wait` and then `inspect`; never turn `send` into the wait. Before
+sending, retain the public `UpdatedAt` value exposed by `inspect`; inspect again
+immediately after the send receipt. Accept completion only after either a
+non-idle state was observed before the final idle state, or a later `UpdatedAt`
+advance beyond that immediate post-send receipt and `wait` includes the new
+prompt with its settled message. An unchanged identity and idle state may be the
+previous response, so it is `unknown`, not success. After that evidence,
+distinguish running, idle/completed, pending permission/question, failed and
+missing states. Use `send` for an ordinary answer and `permit allow|deny` only
+for the exact visible permission request. Never infer completion from an idle
+process alone.
 
 ## Complete response and diagnostics
 
-The installed public `wait --json` result's settled assistant message is the
-complete response for Meta-O. Verify it with a normal fixture and a
-three-to-four-screen fixture containing begin/middle/end markers. `inspect` is a
-metadata and state surface; it need not repeat the final response. If `wait`
-exposes only a preview or no settled assistant message, Paseo is unsupported for
-Meta-O until its public surface changes; do not reconstruct a result from
-private provider data.
+`wait --json` proves only settlement unless its result also exposes one
+identifiable complete assistant message. A status such as `idle`, an "Agent is
+idle" summary or a bounded last-activity list is not the response. Qualify a
+settled-message field only after a normal fixture and a three-to-four-screen
+fixture contain intact begin/middle/end markers in that one field. `inspect` is
+a metadata and state surface; it need not repeat the final response. Installed
+Paseo 0.3.1 has not yet proved such a public complete-response field, so the
+route remains unsupported until the fixture passes. Do not reconstruct a result
+from private provider data.
 
 `paseo logs <id>` and `paseo attach <id>` provide whole-session diagnostics.
 They do not establish a complete settled response unless the long fixture proves

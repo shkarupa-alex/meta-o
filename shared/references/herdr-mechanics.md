@@ -74,6 +74,9 @@ begin/middle/end markers. Missing markers make the result `unknown`.
 ## Reviews and cleanup
 
 Create reviewer panes first, then start both reviewers before waiting for either.
+Start native harness instances with `herdr agent start` and enter each review
+brief or its accessible file path with `herdr agent prompt`; never generate or
+run a shell script that invokes the reviewer harness.
 Retrieve both complete responses independently. Keep sessions visible until the
 barrier and delivery succeed. Clean up only exact panes/tabs/agents created by
 this run and only when ownership is certain.

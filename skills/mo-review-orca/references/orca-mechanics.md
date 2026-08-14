@@ -69,7 +69,11 @@ whole-session diagnostics and delivery checks only.
 ## Reviews and cleanup
 
 Create both review tasks before starting either worker, then start both without
-waiting. Keep the messages isolated until both `worker_done` bodies are complete.
+waiting. Each worker is a native harness instance; its review brief is the task
+text or accessible file path delivered by `worker-start` or the documented
+native terminal injection, never a generated or executed shell script that
+invokes the reviewer harness. Keep the messages isolated until both
+`worker_done` bodies are complete.
 Release a settled supervised worker only with
 `orca orchestration worker-release`; never substitute a broad terminal close.
 A low-level injected terminal is not a supervised worker resource, so close

@@ -172,6 +172,12 @@ Standalone review operates on the current candidate and does not introduce `/goa
 It creates only the two reviewer sessions and reports E2E as not evaluated unless E2E was
 separately requested.
 
+Each reviewer is a native interactive Codex, Claude Code or OpenCode instance started by the
+backend's native surface inside a managed terminal, pane or session. The orchestrator puts
+the review brief or its accessible file path into the backend's ordinary prompt, input,
+task-injection or message field. It does not create or execute a shell script to invoke the
+reviewer harness.
+
 Review A and Review B:
 
 - start concurrently in separate sessions;
@@ -184,7 +190,8 @@ Review A and Review B:
 The orchestrator waits until both complete. Full final responses are saved unchanged in two
 private temporary files, and one ordinary message gives the executor both paths. Responses
 are not merged, ranked, hashed, split, encoded or size-limited. Failure to create or read a
-complete file is a delivery failure, never a partial review pass. Cleanup is best effort.
+complete file is a delivery failure, never a partial review pass. The files are inert
+Markdown response payloads, not executables or reviewer launchers. Cleanup is best effort.
 
 ### Backlog lens
 
@@ -246,6 +253,10 @@ Cross-invocation suppression persists only hashes of normalized native state and
 for one backend locator. It stores no prompt, response, actor, candidate or gate data, and a
 changed state replaces the prior message set. This bounded record exists only because a
 separate watchdog invocation is the consumer that must avoid repeating delivery.
+
+The helper requires the mature `jq` JSON parser so it can validate backend response shapes
+and classify every session from scalar values rather than matching incidental field names.
+`mo-setup` reports that dependency separately from the three backend controls.
 
 No numeric cooldown or attempt count is prescribed. Imperfect patterns are an acceptable
 iterative limitation; the script can be refined from observed failures.
