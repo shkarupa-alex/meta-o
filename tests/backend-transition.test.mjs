@@ -267,6 +267,13 @@ fi
   assert.match(result.stdout, /state=completed action=observed/);
   result = spawnSync(
     join(ROOT, "shared", "scripts", "mo-watchdog.sh"),
+    ["target", "--backend", "paseo", "--session", "a"],
+    { env: { ...env, WATCHDOG_MALFORMED: "1" }, encoding: "utf8" },
+  );
+  assert.equal(result.status, 65);
+  assert.match(result.stdout, /status=65 state=unclassified action=observe-error/);
+  result = spawnSync(
+    join(ROOT, "shared", "scripts", "mo-watchdog.sh"),
     ["target", "--backend", "paseo", "--session", "a", "--nudge", "malformed"],
     { env: { ...env, WATCHDOG_MALFORMED: "1" }, encoding: "utf8" },
   );
@@ -476,6 +483,12 @@ esac
   });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /state=completed action=observed/);
+  result = spawnSync(script, ["target", "--backend", "orca", "--session", "ctx_fixture"], {
+    env: { ...env, WATCHDOG_MALFORMED: "1" },
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 65);
+  assert.match(result.stdout, /status=65 state=unclassified action=observe-error/);
   result = spawnSync(
     script,
     ["target", "--backend", "orca", "--session", "task_fixture", "--nudge", "continue"],

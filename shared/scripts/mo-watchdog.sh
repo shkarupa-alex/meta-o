@@ -355,8 +355,13 @@ if [ "$WATCHDOG_VALID" -eq 0 ]; then
   WATCHDOG_STATE=unclassified
 fi
 if [ -z "$WATCHDOG_NUDGE" ]; then
-  /usr/bin/printf 'backend=%s session=%s status=%s state=%s action=observed\n%s\n' \
-    "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_STATUS" "$WATCHDOG_STATE" "$WATCHDOG_BEFORE"
+  WATCHDOG_ACTION=observed
+  if [ "$WATCHDOG_STATUS" -ne 0 ]; then
+    WATCHDOG_ACTION=observe-error
+  fi
+  /usr/bin/printf 'backend=%s session=%s status=%s state=%s action=%s\n%s\n' \
+    "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_STATUS" "$WATCHDOG_STATE" \
+    "$WATCHDOG_ACTION" "$WATCHDOG_BEFORE"
   exit "$WATCHDOG_STATUS"
 fi
 
