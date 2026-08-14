@@ -71,7 +71,7 @@ test("entry files treat material dictation anomalies as questions, not silent co
   );
   assert.match(
     agents,
-    /imperfect dictation[\s\S]*materially change scope or outcome[\s\S]*ask the user/,
+    /imperfect dictation[\s\S]*materially change scope or outcome[\s\S]*ask the\s+user/,
   );
   assert.match(agents, /Preserve confirmed intent\nverbatim/);
 });
