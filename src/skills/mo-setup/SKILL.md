@@ -1,239 +1,29 @@
 ---
 name: mo-setup
-description: Bring a project up to the contract the Meta-O workflow needs — docs/business, glossary, backlog and architecture, byte-identical AGENTS.md and CLAUDE.md, make mo-qc and its gates, E2E docs, and a provider wrapper/trust/hook preflight. Use for a new project, or when an existing one is missing part of that contract.
+description: Inspect and bring a project and its environment up to the Meta-O contract, including substantive knowledge, instructions, tooling, backend companions, and unsandboxed Codex, Claude Code, and OpenCode posture.
 license: MIT
 ---
 
-# Give the project a contract
+# Set up a project for Meta-O
 
-Idempotent, and safe to re-run. Before changing anything, show the proposed diff
-and say what each piece is for. Never overwrite an existing convention: if the
-project already has an equivalent under a different name, ask whether to add an
-alias rather than replacing what works.
+Read [Project setup contract](references/project-setup.md),
+[Backend contract](references/backend-contract.md), and
+[Purpose and architecture contract](references/purpose-and-architecture.md)
+completely.
 
-Read `references/purpose-and-architecture.md` before proposing any purpose or
-documentation gate — it defines what those gates are actually checking.
+Detect the active backend through its native environment and status surface;
+report unsupported or ambiguous environments. When asked, check every supported
+backend. Check controls and companion skills separately: `herdr` plus `herdr`,
+`orca`/`orca-cli` plus upstream `orchestration`, and `paseo` plus upstream
+`paseo`.
 
-## 1. Knowledge and instructions
+Inspect knowledge, entry instructions, README, architecture reasons, backlog
+quality, E2E and acceptance mapping, language/build config, mature complexity
+and size linting, significant-code purpose, deterministic non-mutating QC, and
+unsandboxed Codex/Claude Code/OpenCode posture. Do not create a backend fixture
+document in ordinary projects.
 
-Default layout:
-
-```text
-docs/business.md
-docs/glossary.md
-docs/backlog.md
-docs/architecture/
-docs/e2e.md                 # or docs/e2e/index.md + group files
-docs/phase-0-fixtures.md    # reusable backend surface definitions/posture
-AGENTS.md
-CLAUDE.md
-```
-
-`docs/phase-0-fixtures.md` is the conventional pre-activation input for backend
-skills. Create it with exact backend/provider/provider-version/backend-version/
-surface/os/fixture keys, explicit backend scope, and canonical safe scenario-ID
-definitions (at most 64 per route); default unknown surfaces to `PENDING` or
-`UNSUPPORTED`. Review fixtures have no scenarios and each E2E fixture names
-exactly one scenario; only an isolated exact fixture may establish `SUPPORTED`. It is
-never a candidate receipt and never stores a candidate SHA, review verdict or
-live run evidence. If the project already owns an equivalent fixture map, keep
-that file and pass its locator explicitly instead of creating a duplicate.
-
-Create the map's pre-activation section with the exact fenced
-`MO_FIXTURE_MAP_V1` and `MO_FIXTURE_SCENARIOS_V1` grammars from methodology §9.
-Use one unique sorted 1..64 scenario-set row per backend and structurally valid
-`UNSUPPORTED` `unproven-*` executor, two-review-provider, and E2E defaults until
-exact isolated fixtures establish actual provider/version/backend-version/OS
-keys. Validate the Markdown through a real AST; never regex-parse Markdown.
-
-`business`, `glossary` and `backlog` live at the top of `docs/`. Do not create a
-`docs/knowledge/` layer and do not introduce a knowledge-impact plan; both were
-tried and both turned into ritual.
-
-`docs/business.md` holds two things, in this order: the **business framing** — the
-user's original request and every later clarification, kept verbatim — and the
-durable theses derived from it. Say that in the file itself, because the two get
-confused and the framing is the half that gets "tidied" into a summary. When one
-file stops being readable, split it the way E2E splits: `docs/business/index.md`
-plus one file per piece of work, with the durable theses in the index — and from
-then on the framing for a task goes in that task's file, never into a fresh
-`docs/business.md` beside the tree. Two files claiming to be the framing is worse
-than one long one, because a reviewer reads whichever it finds first.
-
-Every task/spec repeats all entries for that piece of work word for word under
-`## User intents (verbatim)`. The business framing remains the independent source;
-a summary or a link between the documents replaces neither copy. Whoever receives
-a later user answer, opinion, clarification, correction, preference or constraint
-appends it to both before implementation continues.
-
-One thing never goes in verbatim: a **secret**. This file is committed and pushed,
-so a token, password, key, connection string with credentials, private URL,
-customer data or PII is stored as a marker that keeps the meaning —
-`[REDACTED: deployment token]` — with the rest of the sentence word for word. Write
-that rule into the file you create, so the next person recording a request reads it
-before pasting.
-
-The methodology's §2.1 owns the rules; this skill only creates the place they live.
-
-Who writes what, and when:
-
-| File                 | Holds                                                         | Written by                                            |
-| -------------------- | ------------------------------------------------------------- | ----------------------------------------------------- |
-| `docs/business.md`   | the recorded business framing, and why the product exists      | whoever takes the request before activation           |
-| `docs/glossary.md`   | the project's vocabulary, one meaning per term                | executor, when a term enters or shifts                |
-| `docs/architecture/` | boundaries and decisions, each traceable to a business reason | executor, when a boundary or decision changes         |
-| `docs/backlog.md`    | everything deferred, blocked or knowingly left unfixed        | anyone, the moment they defer it                      |
-
-The spec stays tracked. Durable knowledge is transferred by the executor
-**before** the candidate commit, not archived afterwards.
-
-## 2. `AGENTS.md` and `CLAUDE.md`
-
-Both files carry the **same short, stable project contract**: desired outcomes,
-the architecture / purpose / knowledge theses, and the project's commands. They
-carry no executor methodology and no constraint that belongs to a single feature
-run.
-
-They are created and kept **byte-for-byte identical**:
-
-```bash
-cmp -s AGENTS.md CLAUDE.md || echo "project instructions have diverged"
-```
-
-The provider CLI reads whichever file it prefers, by itself. That is exactly why
-an orchestrator never copies the contract into a prompt, and why the two files
-must not drift: one provider would silently be working to a different contract.
-
-Both files must state, explicitly, that **anything deferred, deliberately not
-done, blocked, or left unfixed for any reason goes into `docs/backlog.md`**, with
-its reason, its practical impact and the next step if one is known.
-
-## 3. Provider wrappers, trust and hooks
-
-Read `references/methodology.md §9` first. It owns the shell-mode probes,
-credential-safe launch-mechanism inspection, `unknown` rules and surface-scoped
-verdict. This section owns only remediation. Before proposing that remediation,
-run the two direct commands from this installed `mo-setup` directory, with a
-bounded execution timeout and disconnected stdin:
-
-```text
-scripts/mo-posture.sh --self-check --shell all
-scripts/mo-posture.sh --shell <zsh|bash|all> -- <selected-providers>
-```
-
-Do not prefix either command with `bash`, omit a mode, or replace the actual
-launch-parent check with the matrix. A status-1/status-2 matrix, incomplete
-records, `type=missing`, `path=missing`, or unreadable actual-surface resolution
-cannot support the affected surface.
-
-Judge `PATH` by the executable that resolves first, never by whether a directory
-is present somewhere in the list. If a wrapper exists but loses precedence,
-inspect the actual startup order: the **last** applicable `PATH` prepend wins.
-Place the wrapper-directory prepend after every other `PATH` initializer in each
-startup file read by a planned surface. Those initializers may include
-`brew shellenv`, `mise` / `asdf` / `pyenv` initialization, an explicit
-`path_helper`, or a direct assignment. Cover every relevant shell mode; for
-example, ordinary and login zsh may require separate final prepends, and a
-`.zprofile` prepend must follow later lines such as `brew shellenv`, not merely
-follow `/etc/zprofile`. Re-run the methodology's full mode matrix and the actual
-launch surface; do not infer success from a file edit.
-
-If an alias or function carries required arguments, the user owns disclosure of
-its one safe definition. Ask them to print it only after they confirm it is
-credential-free; otherwise they inspect it outside the agent and provide the
-redacted definition described by the methodology. Never run a command that dumps
-the definition on their behalf. Propose an executable wrapper that runs
-the real provider binary, supplies every required fixed launch behaviour named by
-the methodology and passes all caller arguments through (`"$@"` or equivalent),
-or a named provider-native configuration that supplies the same behaviour. Keep
-protected environment and prompt values in their existing secure source; never
-copy them into displayed output or a new wrapper; compare them locally and retain
-only `match` or `mismatch`. Name every intentional difference before proposing a
-supported verdict.
-
-The wrapper and shell profiles live outside the repository. Show a redacted but
-otherwise exact wrapper/profile diff or ready-to-run commands and ask for
-explicit confirmation before writing either one. If the user declines, make no
-personal-configuration change: keep the affected launch surfaces `unsupported`
-where failure is proven and `unknown` otherwise, and record the gap in the
-project's `docs/backlog.md` with its impact and next remediation step.
-
-Install this version-control contract byte-identically in both instruction files:
-
-```markdown
-## Version control
-
-Never develop directly on `main`, `master`, `develop`, or `default`. Create each
-task branch from an up-to-date `develop` using `feature/<short-slug>` and use it for
-the whole task.
-
-Run the relevant checks before committing. Commit every coherent, independently
-verifiable increment instead of accumulating the whole task in one commit. Use
-`<type>: <what changed and why>` with `feat`, `fix`, `refactor`, `test`, `docs`, or
-`chore`. Reference an issue or specification when one exists, but neither is
-required.
-
-The final verified result is one full Git object ID. Any subsequent commit
-invalidates its review and verification gates.
-```
-
-Also install the rule that reviewer checks are non-mutating and any mutating
-diagnostic runs only in an isolated disposable location, never in the frozen
-candidate worktree.
-
-The local wrappers on the author's machine live in `~/bin/claude` and
-`~/bin/codex`. They are a reference for that machine only; absolute paths never
-go into portable project docs.
-
-For Claude, additionally check workspace trust for the current project root, and
-where the hooks come from. An untrusted workspace goes through the one-time
-interactive native trust dialog — this skill does not edit the private
-`~/.claude.json` on the user's behalf, and does not promise to work around a
-managed policy. Managed `disableAllHooks` / `allowManagedHooksOnly` cannot be
-overridden by a wrapper; say so rather than trying.
-
-## 4. Make and QC aliases
-
-One aggregate entry is mandatory:
-
-```text
-make mo-qc
-```
-
-Conditional entries, created only where the gate really exists:
-
-```text
-make mo-typecheck
-make mo-lint
-make mo-test
-make mo-build
-make mo-smoke
-make mo-e2e
-```
-
-Read the `Makefile`, the package scripts and any task runner **first**. When an
-equivalent command already exists under another name, ask whether to add an
-alias. When a gate is genuinely missing, propose a mature tool plus a
-project-owned config — see `references/qc-python.md` and
-`references/qc-typescript.md`. A custom wrapper or checker is written only after
-a plugin or config solution has been shown to be impossible, and that proof goes
-in the commit message.
-
-`make mo-e2e` for browser or benchmark suites pretends nothing. It prints help
-starting with `AGENT_REQUIRED: not executed`, names the docs, the commands and
-the cleanup, and exits 2. `mo-qc` does not depend on it.
-
-## 5. E2E docs
-
-- a small set: `docs/e2e.md`;
-- a large set: `docs/e2e/index.md` plus one file per group.
-
-The index describes the environment, the prerequisites, how a group is selected,
-what counts as evidence, and cleanup. Each group file explains when to choose it.
-A tester runs the relevant groups, never the whole catalogue by default.
-
-## 6. What this skill does not create
-
-No `.quality/` manifest, no adoption manifest, no receipts, no digests, no
-baselines. A project-owned manifest is created when a real external consumer
-appears and can be named; in the baseline there is none.
+If tracked repair is required, explain it and use a separate
+`feature/meta-o-setup` branch based on up-to-date `develop`; never mix setup
+repair into the current feature branch. Personal configuration changes require
+explicit confirmation.

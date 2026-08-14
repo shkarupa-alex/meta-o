@@ -1,8 +1,8 @@
 # Purpose and architecture contract
 
 This file has one source owner — `shared/references/purpose-and-architecture.md`
-in the meta-o repository. The copies inside `mo-review` and `mo-setup` are
-produced mechanically. Never edit a copy.
+in the meta-o repository. The copy inside `mo-setup` is produced mechanically.
+Never edit that copy.
 
 Linters check that purpose is _present_ and _shaped_ correctly. Only a reviewer
 can check that it _means_ something. Both halves are required; neither
@@ -77,6 +77,6 @@ that does not is the cheapest finding anybody will ever write.
 
 ## 5. Documentation that is a program's input
 
-If Markdown has to be parsed programmatically, use a real AST library found
-through `mo-reuse`. A regex Markdown parser is not acceptable — it is the
+If Markdown has to be parsed programmatically, use a mature real AST library. A
+regex Markdown parser is not acceptable — it is the
 classic case of a home-grown checker that is wrong in ways nobody owns.

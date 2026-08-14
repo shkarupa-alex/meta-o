@@ -1,235 +1,65 @@
 # Backlog
 
-Only unfinished, deferred, blocked, knowingly unfixed, or unsupported work belongs here. Git
-is the history of completed work; resolved narratives are removed rather than retained as
-closed backlog entries.
+Only deliberately deferred, blocked, knowingly unfixed or unsupported work
+belongs here. Current progress and temporary gate state stay in run-local plans.
+Every entry records its reason, practical impact and next step.
 
 ## Open
 
-### The project needs an explicit language policy
+### Mixed-artifact language policy needs examples
 
-**Reason.** The project does not formally separate the language of human-facing knowledge
-from the language of code-facing material. README, `docs/business.md`, and the rest of
-`docs/` should use the user's language, inferred from the existing business framing and README
-when it is not stated explicitly. Source code and directly code-facing material, including
-code comments, should use English.
+**Reason.** Human-facing knowledge now follows the user's language, while code,
+identifiers, commands, protocol literals and upstream names retain their
+technical language. Mixed artifacts such as API examples and diagnostics still
+have no agreed catalogue of examples.
 
-**Practical impact.** Agents can produce project knowledge in a language that is inconvenient
-for the user or mix languages unpredictably across documentation and code. That makes the
-knowledge layer less accessible while making the codebase less consistent for technical
-contributors and tooling.
+**Practical impact.** An agent may make a locally reasonable but inconsistent
+language choice inside a mixed document; the core human/code boundary remains
+clear and usable.
 
-**Next step.** Define the exact boundary between human-facing knowledge and code-facing
-material, including mixed artifacts such as API documentation, examples, commit messages, and
-diagnostics. Record how the user's language is selected and how an explicit user preference
-overrides inference, then apply the policy consistently to README, business framing, `docs/`,
-source, and code comments without rewriting verbatim user intents.
+**Next step.** Collect concrete confusing mixed artifacts and add examples to
+the project setup contract without rewriting verbatim user intents.
 
-### Backlog must not be used as a progress tracker
+### Portable provider-posture containment remains limited
 
-**Reason.** Agents repeatedly treat `docs/backlog.md` as a place to record current progress,
-although it is intended only for work deliberately deferred by the user or work an agent
-decides it will not or cannot do in the current implementation iteration.
+**Reason.** The posture probe owns its process group, but a profile can detach a
+descendant with `setsid`. Claude catalogue discovery additionally has no proven
+kernel-owned containment equivalent on every supported OS.
 
-**Practical impact.** Transient execution state creates noisy entries, makes ordinary work in
-progress look like an accepted deferral, and obscures the deliberate decisions the backlog is
-supposed to preserve.
+**Practical impact.** Posture proves command resolution and ordinary launch
+behavior, not containment of hostile detached profile descendants; non-macOS
+Claude catalogue discovery may remain unknown even while configured-model launch
+is tested directly.
 
-**Next step.** Make the backlog boundary explicit wherever agents learn the knowledge
-contract: record only a deliberate deferral beyond the current iteration, with its reason,
-impact, and next step when known. Keep current progress, remaining steps within the active
-iteration, and temporary gate state in run-local status or task planning rather than the
-tracked backlog.
+**Next step.** Reproduce the limitation on a target OS, add a portable
+kernel-owned containment boundary, and retain only platforms where the exact
+start, timeout and cleanup fixture passes. Do not use PID snapshots as a
+workaround.
 
-### The standalone project-entry layer needs a formal contract
+### Remote installation is not yet proven
 
-**Reason.** `AGENTS.md` and `CLAUDE.md` must be small enough to load on every agent run, while
-README must give a human-readable project description and links into `docs/`. The project does
-not formally distinguish information that every agent must receive from material that belongs
-in linked knowledge. Nor is it yet a business rule that the knowledge layer, project
-instructions, and README stand alone without referencing Meta-O skills and remain usable
-without adopting its methodology, so a person working with ordinary agents can use the project
-without either. The commit convention is a known required instruction. Project commands and
-the rule for recording deferred work may also belong there. It is not yet decided whether the
-contract should mention that user dictation can contain odd typos or recognition errors, or
-introduce a `papercut` log of commands agents repeatedly get wrong so those failures can later
-improve skills or the project instructions.
+**Reason.** The exact post-transition candidate has not been published, and the
+user did not authorize pushing solely to test installation.
 
-**Practical impact.** Important cross-run instructions can be omitted and never reach an
-executor, while adding all potentially useful context would make the files large, unstable,
-and repetitive. A README without a plain-language overview and knowledge links makes the
-project harder for a human to enter. References from the base project layer to optional skills
-or methodology make that layer incomplete when those additions are absent. Repeated mistakes
-on non-obvious commands currently have no named feedback path into better skills or the
-minimal always-loaded contract.
+**Practical impact.** Local-path installation is deterministic and tested, but
+the advertised GitHub forms remain unverified for this ten-skill tree.
 
-**Next step.** Define and document a selection test: include only rules needed by every agent
-on every run, plus rules that otherwise cannot reliably reach the executor. Require the commit
-convention; assess project commands, backlog recording, the dictation caveat, and a lightweight
-`papercut` mechanism against that test. Make standalone usability an explicit business rule
-of this methodology project: the knowledge layer, `AGENTS.md`, `CLAUDE.md`, and README must not
-reference Meta-O skills and must remain usable without adopting Meta-O methodology, including
-for people using ordinary agents alone.
-Require README to explain the project in human terms and link to the relevant `docs/` entry
-points. Keep architecture and other project knowledge out of the instruction files except for
-concise links, set an explicit size budget, and keep `AGENTS.md` and `CLAUDE.md`
-byte-identical.
+**Next step.** After an independently authorized publish, install the exact
+public SHA with `npx skills add shkarupa-alex/meta-o` and
+`apm install shkarupa-alex/meta-o` from clean disposable projects. Remove this
+entry after both installed file lists match the built tree.
 
-### Provider-posture profiles can detach descendants with `setsid`
+### Local-model watchdog is not implemented
 
-**Reason.** The posture probe owns one process-group leader through quiescence, but a shell
-profile can call `setsid` and move a descendant into a different session and process group.
-The owned-group shutdown cannot address that escaped process, and process-table discovery
-would reintroduce the descendant-race and numeric-PID-reuse hazards that the helper was
-designed to avoid.
+**Reason.** This feature deliberately ships the pattern-based shell observer
+first. A second watchdog driven by a small local model through Ollama or LM
+Studio needs a concrete model/runtime contract and measured benefit.
 
-**Practical impact.** A hostile or accidentally detaching profile process can outlive the
-read-only diagnostic and continue using inherited resources after its matrix row is parsed.
-The posture result proves command resolution, not containment of arbitrary profile-launched
-processes; live provider readiness and support must continue to be established separately.
+**Practical impact.** Known limit, overload, question and failure text can be
+classified without cloud inference; novel or ambiguous states still require a
+human to interpret the native output.
 
-**Next step.** Run each measured profile under a portable kernel-owned descendant-containment
-boundary, or reject session-changing descendants with equivalent fail-closed evidence. Add a
-`setsid` escape regression that proves no descendant remains before removing this item; do
-not add numeric-PID or process-table signalling as a workaround.
-
-### Claude catalogue discovery is unsupported outside macOS
-
-**Reason.** Safe Claude catalogue discovery currently depends on macOS Seatbelt's
-kernel-enforced `deny process-fork` boundary. Linux, Windows, and other POSIX systems have
-no implemented equivalent with a passing live compatibility fixture; process groups and
-process-table snapshots cannot safely contain detached descendants or prevent PID-reuse
-races.
-
-**Practical impact.** On those platforms the Claude catalogue probe fails closed before
-starting the provider. Configured-model fallback can report `catalog_unknown`, but cannot
-use a live Claude catalogue to distinguish model absence or select a compatible catalogue
-pair.
-
-**Next step.** Implement a kernel-owned descendant-containment boundary for each target
-platform, prove that ordinary and detached descendant creation cannot escape it, and run a
-live catalogue/cleanup compatibility fixture. Remove this item only after the platform's
-provider start, catalogue result, timeout, and cleanup paths all pass without numeric-PID
-snapshot signalling.
-
-### Remote installation fixtures I3 and I5 have not run
-
-**Reason.** The post-correction candidate has not been pushed by a separately authorized
-release action, so the advertised remote locator cannot install that exact tree. Local-path
-installation tests prove a different transport and cannot be reused as remote evidence.
-
-**Practical impact.** Remote all-skill `npx skills add` discovery and remote `apm install`
-remain unsupported. The README may present their exact commands only as unproven fixtures,
-not as verified installation paths. No standalone `mo-review` runtime is advertised.
-
-**Next step.** After the final candidate is pushed on explicit authority, run I3 and I5 from clean
-disposable projects. Return the public full SHA, client versions, exact installed file lists,
-cleanup and statuses through the current backend run/final result; do not append them to tracked
-fixture docs or another receipt sink. Remove this item in a later independently verified change
-only after reusable remote support posture is established. Do not push solely to run the fixtures.
-
-### Standalone `mo-review` execution is unavailable
-
-**Reason.** The shipped `mo-review` package has no qualified executable backend interface for
-actor launch, vendor selection, complete-turn retrieval, opaque relay, finding application,
-commits, or E2E. Those capabilities exist only inside the installed `mo-herdr` and
-`mo-omnigent` feature workflows; inventing an ambient subagent or private/headless fallback
-would violate the backend surface contract.
-
-**Practical impact.** `mo-review` is a reusable protocol component only. Installing or invoking
-it alone cannot start two reviews or apply findings, so callers must enter through a qualified
-backend skill or receive review-capability attention.
-
-**Next step.** Either design and package a real executable review-backend interface and pass
-its complete-turn, vendor-diversity, lifecycle, relay, and live fixture contract, or retain the
-protocol-only boundary and continue routing executable review requests through `mo-herdr` or
-`mo-omnigent`.
-
-### Herdr P1-P8 have not run in a real control plane
-
-**Reason.** The implementation session has no `HERDR_ENV=1`, so it cannot create the required
-visible tabs, panes, and ordinary interactive actors or observe Herdr's public lifecycle
-honestly. Older inline/headless runs exercise a rejected surface and are not reusable evidence.
-
-**Practical impact.** Every exact Herdr provider/version/surface key remains unsupported. The
-Herdr actor surface cannot be adopted, and fewer than two proven reviewer vendors would stop
-the Herdr-specific cutover. In particular, the recipe's current exact lower-boundary literals
-`╭─ input ❯ ─╮` and `╭─ input › ─╮` and the authored golden captures are synthetic provisional
-inputs, not measurements; P6/H17 must confirm or replace them for the installed provider
-versions.
-
-**Next step.** From a real interactive Herdr orchestrator pane, run P1-P8 in a scratch
-repository. Return the exact support key, commands, observations, cleanup and outcome through
-the current backend run/final result; never write a candidate-bound receipt into the fixture map.
-A later independently verified documentation change may update reusable support posture. A
-failure stays fail-closed and does not authorize inline, headless, SDK or private-transcript
-fallback.
-
-### H7b and H13-H37 have not run against the post-cutover candidate
-
-**Reason.** These are candidate-bound agentic fixtures. They require the completed cutover, a
-green deterministic gate, a real Herdr environment, and one named full SHA. None of those live
-results exists yet.
-
-**Practical impact.** Topology, prompt acceptance, quiet goal settlement, interactive
-extraction, atomic review barrier, byte-identical relay, tracked-content firewall, waits,
-recovery, diversity, and same-SHA completion remain unproved in the installed product. No
-candidate can be presented for Herdr adoption.
-
-**Next step.** Freeze the first clean post-cutover SHA that passes `make mo-qc`, then run H7b
-and all applicable H13-H37 rows without changing it. Any new commit invalidates the entire
-evidence set and starts the run again.
-
-### No final Omnigent route has passed OM1-OM8
-
-**Reason.** The backend-neutral firewall and handoff contract changed. Earlier Omnigent runs
-used the old review/output behavior and cannot prove the final native route.
-
-**Practical impact.** Omnigent support for candidate binding, sequential independent review,
-opaque finding transport, invalidation, native recovery, vocabulary, and narrow human
-attention remains unsupported.
-
-**Next step.** Run OM1-OM8 through one exact installed Omnigent route against the post-cutover
-candidate. Use only Omnigent's native session/output surfaces; if native continuity cannot be
-proven, keep the route unsupported rather than inventing Herdr-style evidence or reading a
-private store.
-
-### Hard-crash scratch residue can remain until operating-system cleanup
-
-**Reason.** Scratch transport deliberately has no run registry, daemon, cross-run ownership
-store, or recovery protocol. A controlled exit knows and deletes its one `0700` directory, but
-after a hard process or machine crash no new run has sufficient ownership evidence to discover
-and delete an older directory safely.
-
-**Practical impact.** Opaque reviewer or E2E bytes may remain in an OS temporary directory
-longer than the feature run. The directory is private (`0700`) and its files are private
-(`0600`), but deletion is delayed until the operating system's temporary-file policy removes
-it.
-
-**Next step.** Revisit only if measured OS cleanup policy is insufficient or a named external
-cleanup consumer requires stronger reclamation. Any solution must preserve content-free names
-and avoid a run registry or broad cross-run deletion.
-
-### Fixed E2E pane subdivision remains deliberately unspecified
-
-**Reason.** The accepted design requires a visible lazily created E2E actor but does not
-require a fixed multi-pane subdivision for its tab. No current consumer needs a stronger
-layout contract.
-
-**Practical impact.** E2E remains observable and candidate-bound, but its internal tab
-arrangement is not a portable UI promise.
-
-**Next step.** Define a fixed subdivision only when an exact E2E workflow demonstrates that
-visibility without it is insufficient.
-
-### Four upstream Herdr issue candidates await exact installed-version reproduction
-
-**Reason.** Logical last-turn retrieval, capture beyond 1000 rows, per-agent token/cache
-telemetry, and documented `state_change_seq` freshness would improve the surface, but a
-suspected gap is not evidence of an upstream defect.
-
-**Practical impact.** Meta-O must stay inside the current bounded extraction and diagnostic
-contract and cannot cite an upstream issue as a substitute for a failed local fixture.
-
-**Next step.** File an issue only after the exact installed version reproduces the specific gap with
-credential-safe public-surface evidence. Do not file rename or status claims without reproduction.
+**Next step.** Prototype one local-only classifier against captured
+credential-free backend states, compare it with the pattern script, then specify
+an implementation only if it materially improves detection without adding a
+daemon or persistent run state.

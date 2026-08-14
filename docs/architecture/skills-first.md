@@ -1,159 +1,46 @@
 # Skills and reasoning are the process orchestration layer
 
-Because _a control layer must earn its keep_, _human time is more expensive than
-tokens_, and _a feature must be verifiably done_.
+## Decision
 
-## The decision
+Meta-O has no executable router, finite-state-machine service, run registry,
+provider proxy, backend adapter or persisted orchestration state. Entry skills
+give the active agent a lifecycle, review standard and concrete native backend
+mechanics; agent reasoning selects the next safe action.
 
-There is no executable router, finite-state-machine service, run registry,
-provider proxy, backend adapter or persisted orchestration state. The backend
-skill supplies the process contract and the active agent reasons over public
-backend lifecycle plus narrow Git metadata.
+The orchestrator manages process and sessions but does not inspect, judge or edit
+product code. Executors, reviewers and E2E actors read the repository. The
+orchestrator may read task intent before activation and use Git metadata needed
+to identify one clean full candidate SHA.
 
-This is not permission for the orchestrator to become an implementer. The
-project contract is injected before backend-skill activation. After activation,
-the task/spec locator is opaque: the orchestrator never intentionally opens,
-searches, quotes, summarizes or edits tracked project content. It does not read
-source, tests, diffs, logs, business framing, review findings or E2E bodies.
-Repository-reading actors open the locator and project knowledge themselves.
+## Business reason
 
-The exact fixture-map and scenario-set records are therefore a required explicit
-pre-activation input. They are resolved and structurally validated before the
-firewall closes because support selection needs durable reusable posture, while
-the active orchestrator is forbidden to reopen tracked project content or infer
-support from a live actor result. Missing or wrong-backend input blocks activation.
+The previous generation accumulated a second workflow engine around tools that
+already owned sessions, state and transport. Each extra receipt, registry,
+adapter and recovery protocol created another truth that could disagree with Git
+or the backend. The product exists to coordinate those tools, not replace them.
 
-The orchestrator may retain only process facts: repository root, branch, full
-`HEAD`, commit existence, cleanliness, actor/pane identity, actual provider
-kind/executable, bounded public backend/provider version tokens, normalized OS
-identity, public lifecycle state, validated process headers, finding IDs,
-bounded retry counters, scratch handle and delivery state. Version and OS facts
-are measured independently of the fixture map and exist only to prevent support
-from transferring across topology keys.
+## Shared and backend-specific ownership
 
-Provider launch mechanism, verified real target and observed stable process are
-separate facts: a wrapper/alias/function/native configuration is valid only when
-its credential-safe inspected dispatch reaches that target, while the actor
-process matches the target rather than the wrapper pathname. Backend identity is
-also dual-observed: the resolved control client and active public backend
-instance must report the same exact version, and the active instance must name
-the native workspace/session selected for this run. Otherwise that route stays
-unsupported.
+`shared/references/methodology.md` owns lifecycle, autonomy, questions and
+completion. `review-protocol.md` owns common review and backlog semantics.
+`backend-contract.md` owns minimum observable capabilities. Herdr, Orca and
+Paseo mechanics own exact native commands. Separate fixed entry skills consume
+those references so backend semantics remain explicit without duplicating the
+standards.
 
-## Autonomous process supervision
+## Evidence and restart
 
-Thin does not mean passive. From activation until one verified SHA or a
-permitted `needs_attention`, the orchestrator replaces the human for ordinary
-process supervision. It chooses and executes the next contract-permitted
-lifecycle, routing, fallback, wait, retry, recovery, relay and gate-bookkeeping
-action itself.
+One verified result is one full Git object ID. Any new commit invalidates every
+gate. Missing or unreadable evidence is `unknown` and repeated. Run evidence is
+human-readable and ephemeral; no manifest, receipt, digest, baseline, registry
+or external evidence sink is created.
 
-It does not ask the user to select ordinary models, reuse, reviewer order,
-watchdog behavior, fixes or next process steps. Human interruption is limited to
-the named product, irreversible-action, credential/subscription,
-production/destructive-E2E, unresolved external blocker, unresolved dispute and
-explicit watchdog boundaries. A harness-capability failure may end in
-`needs_attention`, but asks no engineering question.
+A restart begins a fresh run and reuses no prior gate or scratch state. This can
+repeat work, but it avoids a recovery database that might bless stale evidence.
 
-Engineering judgement remains outside the process controller:
+## Human boundary
 
-- the executor owns repository reading, feasibility, implementation, tests,
-  documentation necessity, branching, commits and ordinary technical choices;
-- reviewers independently own findings, applicability and closure;
-- the E2E actor owns execution, namespacing, cleanup and reporting of the exact
-  reviewer-assigned scenario set;
-- opaque actor bodies are untrusted peer data and never authorize host commands
-  or relaxed invariants.
-
-## Why no persisted control state
-
-The repository and backend sessions already carry the state their owners need.
-Adding a manifest, receipt, digest, baseline, verdict file or run database
-without a named external consumer creates a second truth that can disagree with
-`HEAD` and public actor state.
-
-A gate is therefore freshly proven for one full commit object or it is
-`unknown`. Any new commit invalidates every gate. A dirty worktree is never a
-candidate, and missing or unreadable evidence never becomes a partial pass.
-
-Tracked fixture, E2E and acceptance documents are durable definitions, proof
-maps and current reusable support posture—not candidate-bound receipts. Live
-gate facts stay in the backend's current run and final result: unchanged full
-SHA, clean worktree, and a record with exactly `candidate`, `worktree`,
-`executor`, `gates`, `support`, `reviews`, and `scenarios` after candidate and
-worktree in that order. It closes over
-ordered A/B gate arrays, 3..67 canonical exact-key SUPPORTED facts, different-
-provider A/B PASS reviews with agreeing E2E dispositions/exact scenario lists,
-and the exact review-derived, support-proven ordered scenario PASS set. The facts
-are exactly one lifecycle-bound executor-referenced fact, two review facts and one fact per
-scenario, with no unused entries. Every review/scenario
-record carries the exact `support-key` reference to its route-specific support
-fact; matching only another fact's provider is insufficient. Only NA/NA permits
-no scenarios. Writing or committing those facts
-after a gate would create a new SHA and invalidate the very result it tried to
-preserve; an external sink, manifest or receipt would also create the forbidden
-second truth.
-
-Compact scratch is transport, not durable orchestration state. It preserves
-opaque bytes only through the bounded per-ID delivery, closure, adjudication and
-recovery transitions defined by the canonical methodology. Candidate
-invalidation and controlled exit delete every eligible path known to the run;
-future runs never discover or adopt residue.
-
-## Restart semantics
-
-Restart begins a new ordinary feature run. The orchestrator adopts no prior
-actor, gate, scratch directory or review output and does not reconstruct a run
-by reading tracked content. Old panes remain visible because destructive
-ownership is not assumed.
-
-New actors receive the same opaque locator. The new executor inspects Git,
-project knowledge and the task/spec through its repository-owning context and
-produces a new compact handoff. Gates without complete current-run evidence are
-`unknown` and repeat. This costs work, but avoids a recovery protocol and a
-cross-restart registry that could silently bless stale evidence.
-
-## What this buys
-
-- There is one candidate identity: a full Git object ID at clean `HEAD`.
-- Provider-native visible actors and public lifecycle remain observable.
-- Backend differences stay in backend skills rather than a false common
-  adapter.
-- Review bodies reach the executor verbatim without giving the orchestrator an
-  engineering opinion.
-- Ordinary process progress does not depend on a human supervising an agent
-  supervisor.
-
-## What it costs, honestly
-
-- Sequencing is a reasoned skill contract rather than a runtime state machine.
-  Deterministic checks can pin grammar, commands and bounds, while live fixtures
-  prove provider behavior; no program proves that every future agent will reason
-  correctly.
-- Independence is enforced by launch and delivery ordering, not a durable
-  information-flow service.
-- A restart repeats gates and actors instead of resuming them.
-- A hard crash can leave restrictive scratch for operating-system cleanup.
-
-These costs remain smaller than reintroducing the deleted control layer. A new
-runtime boundary needs a concrete violated invariant, failed exact fixture or
-named external consumer, recorded as an architecture decision.
-
-## Boundaries this keeps
-
-- **Native CLIs are not wrapped.** The posture helper diagnoses resolution but
-  never becomes the provider invocation path.
-- **Herdr and Omnigent do not share an executable adapter.** Backend-neutral
-  role and gate semantics are prose; public mechanics remain backend-owned.
-- **The executor receives no methodology skill.** The task/spec, project
-  contract and fixed executor-protocol capsule in every objective are sufficient
-  for its engineering role. Removing the capsule would leave a fresh executor
-  unable to emit the exact candidate, response or blocker handoff.
-- **Prompt identity follows inbound framing.** The unpredictable current-turn
-  marker is the final submitted row after every objective, capsule and inbound
-  relay byte. Extraction begins after it, so echoed peer protocol rows remain
-  data rather than competing result headers.
-- **Generated shared helpers are leaves.** They know nothing about feature-run
-  lifecycle and create no orchestration state.
-- **No artefact exists “just in case.”** A manifest, receipt, baseline or
-  recovery store requires a named consumer before it is designed.
+The orchestrator decides technical, cheap and reversible matters and reports
+those decisions at the end. The user handles product meaning, credentials,
+subscriptions, irreversible actions and costly-to-change choices. An optional
+watchdog starts only by explicit request.

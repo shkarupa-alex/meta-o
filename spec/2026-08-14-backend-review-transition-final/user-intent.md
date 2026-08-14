@@ -253,4 +253,7 @@ later user answer, correction, preference and constraint verbatim.
 > принимаем
 
 > да
+
+> реализуй spec/2026-08-14-backend-review-transition-final/spec.md , вот тут мои интенты spec/2026-08-14-backend-review-transition-final/user-intent.md (при реализации скилы вроде mo-herdr тебе не нужно использовать)
+
 <!-- prettier-ignore-end -->

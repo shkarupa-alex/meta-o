@@ -20,6 +20,7 @@ Two requirements pull in opposite directions:
 - `shared/references/` owns canonical shared prose.
 - `shared/scripts/mo-models.mjs` owns the model settings and catalogue source.
 - `shared/scripts/mo-posture.sh` owns the provider-resolution probe.
+- `shared/scripts/mo-watchdog.sh` owns the inference-independent observer.
 - `shared/licenses/` owns the notices required by packages redistributed inside
   a generated helper.
 - `src/skills/<name>/` holds only that skill's `SKILL.md` and skill-owned
@@ -28,9 +29,10 @@ Two requirements pull in opposite directions:
   licence mapping and the generated `skills/` tree.
 
 Most shared entries are copied byte-for-byte. `mo-models.mjs` is deliberately
-different: the source is bundled into the runtime file placed in `mo-herdr` and
-`mo-omnigent`. Both destinations are produced by the same build operation and
-must be byte-identical to each other. Generated files are never hand-edited.
+different: the source is bundled into the runtime file placed in all three
+`mo-orchestrate-<backend>` skills. All destinations are produced by the same
+build operation and must be byte-identical. Generated files are never
+hand-edited.
 
 `make mo-qc` regenerates into a temporary tree and compares every path and byte
 with committed `skills/`. It also refuses source files that shadow a
@@ -71,14 +73,14 @@ The build contract is:
   containment because a concurrently spawned process can detach and a numeric
   PID can be reused;
 - no unresolved live package import and no runtime `node_modules` requirement;
-- byte-identical generated helper output for `mo-herdr` and `mo-omnigent`, also
+- byte-identical generated helper output for all three orchestration skills, also
   when rebuilt with a symlinked dependency layout.
 
 The measured bundle baseline is 999,247 bytes. The current 25% audited ceiling
 is 1,249,059 bytes. Crossing it fails the build and requires a fresh size and
 dependency audit; it is not silently accepted as ordinary generated churn.
 
-The source helper and both generated backend copies are smoke-tested. A
+The source helper and all three generated backend copies are smoke-tested. A
 disposable clone whose `node_modules` is a symlink must rebuild the exact
 committed bundle bytes without embedding either source-tree absolute path.
 
@@ -105,11 +107,15 @@ generated tree can exist.
 
 ## Provider posture remains a copied leaf
 
-`mo-posture.sh` is copied byte-for-byte into `mo-herdr`, `mo-omnigent` and
+`mo-posture.sh` is copied byte-for-byte into the three orchestration skills and
 `mo-setup`. It is a bounded read-only diagnostic leaf: it starts no provider,
 stores no run state and knows nothing about backend sessions. Duplication makes
 each skill standalone without creating a runtime shared package or backend
 adapter.
+
+`mo-watchdog.sh` is copied only into `mo-watchdog`. It is a separately justified
+runtime leaf: observation must continue when cloud-model limits or overload
+prevent the orchestrator itself from progressing.
 
 ## Why the installable tree is `skills/`
 

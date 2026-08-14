@@ -1,202 +1,44 @@
 # Glossary
 
-One durable term has one meaning here. Protocol grammar, retries, byte limits and
-fixture commands live in their normative operational documents, not in this
-vocabulary.
+One durable term has one meaning here. Backend commands and acceptance scenarios
+live in their normative documents rather than this vocabulary.
 
-**Actor** — persistent specialist participant: a visible ordinary interactive CLI
-in Herdr or a native agent in Omnigent. Actor is a role-bearing participant, not a
-provider process invocation or fixed name.
+**Backend** — Herdr, Orca or Paseo: the system managing agent sessions.
 
-**Session** — backend-owned continuity carrier for an actor. It is not a role,
-gate, registry entry or Meta-O state record.
+**Harness** — Codex, Claude Code or OpenCode: the interactive coding-agent
+program running inside a backend-managed session.
 
-**Orchestrator** — process-only transport and lifecycle controller. After
-activation it does not intentionally read tracked project content or form
-engineering opinions; it autonomously owns ordinary lifecycle, routing, retries,
-fallbacks and gate bookkeeping.
+**Companion skill** — an upstream skill required by a backend integration. It is
+checked separately from the backend executable and is not interchangeable with
+it.
 
-**Executor** — repository-reading implementation owner. It decides feasibility,
-architecture application, implementation, tests, documentation and version
-control, and produces candidate commits.
+**Orchestrator** — the agent managing process, sessions, questions, candidate
+identity and gates. It does not inspect, judge or edit product code.
 
-**Reviewer** — independent read-only candidate evaluator that owns its findings,
-applicability and closure. Reviewer A finishes before reviewer B starts.
+**Executor** — the repository-reading implementation owner that changes files,
+commits coherent increments and produces candidate SHAs.
 
-**E2E actor** — separate read-only participant that runs applicable agent-required
-end-to-end scenarios against one frozen candidate.
+**Reviewer** — an independent read-only evaluator of one exact candidate SHA.
 
-**Feature run** — one uninterrupted attempt from backend activation to verified
-result or permitted attention. Restart begins a new run and adopts no prior state.
+**E2E actor** — a separate read-only agent running applicable end-to-end
+scenarios against one frozen candidate.
 
-**Candidate** — full Git commit object ID equal to clean `HEAD` on the required
-feature branch.
+**Candidate** — a full Git object ID equal to clean `HEAD` on the task branch.
 
-**Candidate freeze** — interval in which candidate and cleanliness must remain
-unchanged while review and E2E evidence is produced; the executor receives no
-prompt during it.
+**Settled final response** — the assistant's completed answer, excluding
+tool-call chatter. It is the primary retrieval unit.
 
-**Gate** — evidence bound to one candidate SHA. A missing, incomplete, unknown,
-stale or differently bound verdict does not pass.
+**Whole-session view** — optional diagnostic access to visible session output.
+It cannot replace a missing complete settled response.
 
-**Live result** — ephemeral current-run/final response from backend public
-surfaces with closed ordered fields `candidate`, `worktree`, `executor`, `gates`,
-`support`, `reviews`, `scenarios`. It binds one full SHA and clean worktree to exact gate
-arrays, support facts, A/B review dispositions/evidence with exact scenario
-lists, and the review-derived, support-proven ordered scenario evidence. Each
-review/scenario resolves an exact route-specific support key, and the top gate
-arrays byte-equal the A/B review gate fields.
-Extra/missing/generic evidence, dirty/new HEAD,
-FAIL/UNKNOWN, or a one-NA disposition cannot PASS. It is not written to a tracked
-document or external receipt sink.
+**Gate** — QC, review or E2E evidence bound to one candidate. Missing,
+incomplete, unknown, stale or other-SHA evidence does not pass.
 
-**Gate facts** — the live result's exact ordered QC, smoke, and checks entries.
-Each has A/B statuses byte-equal to the corresponding ordered review fields;
-QC/smoke are PASS/PASS and checks are each PASS or NA.
+**Run evidence** — human-readable current-run facts. It is not a persisted
+receipt, event log, support certificate, manifest or registry.
 
-**Executor fact** — exact final `actor,provider,support-key` identity for the
-lifecycle-selected executor. Its key resolves to the retained pre-activation
-`SUPPORTED` seven-field `executor`/`executor-turn` row with no scenarios.
+**Route** — provider/model/effort selection. It does not name run evidence.
 
-**Support fact** — one of 3..67 canonically sorted reusable surface facts with
-exact `backend,provider,provider-version,backend-version,surface,os,fixture` key,
-SUPPORTED status, and an empty or singleton safe scenario-ID list. Safe
-IDs match `[a-z0-9][a-z0-9._-]{0,63}`. The closed result contains exactly one
-lifecycle-selected executor-referenced fact, two review-referenced facts and one
-scenario-referenced fact per derived name; unused facts are invalid. Every used
-fact byte-matches a retained pre-activation `SUPPORTED` row across all seven key
-fields and scenario identity, including lifecycle-selected versions and OS.
-
-**Support key reference** — exact slash-join of one support fact's seven safe-ID
-key values in canonical order. Each final review and scenario record carries a
-`support-key`; it must resolve to the exact route-specific surface and fixture,
-not merely to another fact with the same provider.
-
-**E2E disposition** — each final A/B review's REQUIRED or NA decision plus its
-exact canonical scenario list. Both must agree: NA/NA alone permits no scenarios;
-REQUIRED/REQUIRED derives the nonempty ordered scenario set exactly from the
-union of both review lists; support proves rather than defines those names. A mixed first pass
-gets one same-candidate re-evaluation by the NA reviewer; persistent disagreement
-is `needs_attention:e2e_disposition_dispute`. The reconciled union becomes the
-exact `MO_E2E_ASSIGNMENT_V1` initial-prompt row; E2E runs it without selecting a
-different set.
-
-**Fixture map** — tracked definitions, requirement mappings and current reusable
-support posture. It never stores candidate-bound PASS evidence.
-
-**Verified result** — unchanged candidate whose required different-vendor
-reviews, QC, smoke, additional checks and E2E all pass.
-
-**Compact handoff** — bounded exact process header plus an opaque UTF-8 body.
-
-**Process header** — validated first line that carries routing, candidate and
-mechanical accounting fields; it is not by itself proof of a complete turn.
-
-**Complete result** — valid terminal compact handoff for the expected actor,
-candidate and phase, bounded by a fixture-proven provider lower boundary.
-
-**Terminal process event** — mechanical tuple of candidate, actor, phase, header
-type, status and open IDs used to detect unchanged-failure loops. Its open-ID
-component canonicalizes the internal set as the complete A block followed by the
-complete B block before serialization; raw set/caller order is invalid, so
-equivalent permutations produce one key.
-
-**Opaque body** — actor-produced bytes transported without interpretation,
-filtering, ranking, merging, paraphrase or command execution.
-
-**Provider lower boundary** — exact surface/version fixture-proven rendered marker
-after a completed provider turn. A glyph without structural context is not one.
-
-**First-pass barrier** — point after complete independent A and B first passes and
-before any reviewer body reaches the executor.
-
-**Finding** — reviewer-owned `A-*` or `B-*` issue whose full opaque body contains
-Evidence, Impact and Expected fix. Its suffix is an unbounded canonical positive
-decimal, ordered exactly as a `BigInt` within its prefix. A canonical mixed ID
-list is every A ID first and every B ID second; reviewer-origin lists have one
-prefix. `Number`, unary numeric coercion, and lexicographic suffix ordering are
-invalid. Only its origin reviewer closes it.
-
-**Adjudication** — one other-vendor decision on a disputed finding. Requests for
-a same-origin outcome's exact validated `disputes` set run sequentially; closed
-IDs from the full rebuttal accounting set are not targets. Terminal results are
-released only as one ordered atomic set after every target resolves: any uphold
-routes the whole set to the executor, while all-withdraw routes it to the origin.
-Unresolved reaches the human; the peer never closes an origin finding. Retained peer
-handoffs for one disputed set share one 122,880-byte header-inclusive cumulative
-budget rather than each receiving an independent aggregate allowance. Both
-possible final aggregate envelopes must first fit the separate 7,168-byte
-body-excluded framing budget, and the completed payload must fit 130,048 bytes.
-
-**Lifecycle state** — backend-native public actor progress state used for waiting.
-
-**Herdr lifecycle state** — normalized Herdr `working`, `idle`, `done`, `blocked`
-or `unknown` state. Provider prose is not lifecycle.
-
-**Topology identity** — ephemeral credential-safe public observation of the
-control-client and active-backend versions; provider launch mechanism, verified
-real target and observed stable actor process; and normalized OS
-system/architecture. Client/active versions must match, and the public active
-instance identity must equal the native workspace/session selected for the run. Direct executables equal
-their target; verified wrappers/aliases/functions/native configuration dispatch
-to it, and the stable actor process matches that target rather than the wrapper
-pathname. Complete version fields must already be safe IDs; lossy stripping is
-invalid. Map values never manufacture topology identity.
-
-**Route** — existing configured `route/model/effort` preference. It does not own
-fixture applicability.
-
-**Surface support key** — exact
-backend/provider/provider-version/backend-version/surface/os/fixture identity to
-which empirical support applies. Evidence never transfers to another key.
-
-**Catalogue availability** — whether a provider-owned listing can be read.
-
-**Model presence** — whether an ID occurs in that listing.
-
-**Launchability** — whether the configured actor can start and reach readiness.
-
-**Entitlement** — whether the current subscription/account may use that model.
-Catalogue presence proves neither launchability nor entitlement.
-
-**Gate `unknown`** — a complete passing verdict cannot be established. It is
-repeated within its bound and never averaged into a pass.
-
-**Herdr lifecycle `unknown`** — public Herdr state cannot be normalized; it is
-re-armed once and then becomes harness-capability attention.
-
-**`needs_attention`** — permitted user boundary or unavailable harness capability,
-never an ordinary engineering or process choice. Product meaning/architecture,
-irreversible action, credentials, subscription, production E2E, external blocker,
-unresolved dispute and explicit watchdog are the permitted human boundaries.
-
-**Operational approval** — one request-bound `APPROVE`/`DENY` authorizing an
-already named production/destructive E2E action or explicitly requested
-watchdog. It is candidate-stable run control, not product intent; only its
-credential-free one-row compact header remains in current run evidence. E2E
-approval exactly matches the visible request candidate, operation, safe scenario
-ID and token. The exact operation is stored independently of the returned header
-and must equal it. Its lifecycle-stored requesting E2E actor must also equal the
-native recipient even though the compact header uses `requester=e2e`; watchdog
-approval uses `scenario=none`.
-
-**E2E approval request** — an exact one-row, body-free
-`MO_E2E_APPROVAL_REQUEST_V1` handoff with no body or final LF from the E2E actor immediately before one
-named production/irreversible scenario. Its credential-safe scenario ID makes
-the action visible to the process-only orchestrator without reading opaque prose.
-
-**Warm session** — backend-native session retained for role continuity during one
-feature run. Warmth is not persisted Meta-O state.
-
-**Scratch transport** — restrictive temporary body storage outside the repository,
-owned only for bounded current-run per-ID and delivery transitions and never
-adopted across runs.
-
-**PATH wrapper** — executable file selected first by PATH resolution. An alias or
-function may be a verified launch mechanism, but it is not a PATH wrapper; see
-launch posture.
-
-**Launch posture** — per-surface proof that required permission, approval,
-sandbox, environment, prompt and fixed arguments plus caller pass-through reach
-the actual provider process through a verified wrapper, credential-free forwarding
-mechanism or named provider-native configuration.
+**`needs_attention`** — a genuine user boundary: product meaning, an
+irreversible action, credentials, a subscription, an unresolvable dispute, an
+unavailable required backend capability, or explicit watchdog start.

@@ -61,32 +61,62 @@ const MODEL_BUNDLE_MAX_BYTES = Math.ceil(MODEL_BUNDLE_BASELINE_BYTES * 1.25);
  * Which shared file lands in which skill.
  *
  * Every entry is a deliberate decision about standalone installability:
- * `mo-review` carries the purpose contract so its independently installable
- * package remains self-contained readable protocol material for qualified
- * backend workflows, without pretending to be a standalone executable review;
- * `mo-setup` carries the methodology because provider diagnosis has one owner
- * even though setup owns the personal-configuration remediation.
+ * Orchestrators and standalone reviewers each carry their backend mechanics
+ * plus the shared contracts they consume. Setup owns project readiness and the
+ * watchdog owns only its methodology-independent observer helper.
  */
 const SHARED_PLAN = {
-  "mo-herdr": [
+  "mo-orchestrate-herdr": [
     ["references/methodology.md", "references/methodology.md"],
+    ["references/backend-contract.md", "references/backend-contract.md"],
+    ["references/review-protocol.md", "references/review-protocol.md"],
+    ["references/herdr-mechanics.md", "references/herdr-mechanics.md"],
     ["scripts/mo-models.mjs", "scripts/mo-models.mjs", { bundleLicenses: BUNDLE_LICENSE_PLAN }],
     ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],
     ["licenses/claude-agent-sdk-LICENSE.md", "licenses/claude-agent-sdk-LICENSE.md"],
   ],
-  "mo-omnigent": [
+  "mo-orchestrate-orca": [
     ["references/methodology.md", "references/methodology.md"],
+    ["references/backend-contract.md", "references/backend-contract.md"],
+    ["references/review-protocol.md", "references/review-protocol.md"],
+    ["references/orca-mechanics.md", "references/orca-mechanics.md"],
     ["scripts/mo-models.mjs", "scripts/mo-models.mjs", { bundleLicenses: BUNDLE_LICENSE_PLAN }],
     ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],
     ["licenses/claude-agent-sdk-LICENSE.md", "licenses/claude-agent-sdk-LICENSE.md"],
   ],
-  "mo-review": [
-    ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
+  "mo-orchestrate-paseo": [
+    ["references/methodology.md", "references/methodology.md"],
+    ["references/backend-contract.md", "references/backend-contract.md"],
+    ["references/review-protocol.md", "references/review-protocol.md"],
+    ["references/paseo-mechanics.md", "references/paseo-mechanics.md"],
+    ["scripts/mo-models.mjs", "scripts/mo-models.mjs", { bundleLicenses: BUNDLE_LICENSE_PLAN }],
+    ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],
+    ["licenses/claude-agent-sdk-LICENSE.md", "licenses/claude-agent-sdk-LICENSE.md"],
+  ],
+  "mo-review-herdr": [
+    ["references/backend-contract.md", "references/backend-contract.md"],
+    ["references/review-protocol.md", "references/review-protocol.md"],
+    ["references/herdr-mechanics.md", "references/herdr-mechanics.md"],
+  ],
+  "mo-review-orca": [
+    ["references/backend-contract.md", "references/backend-contract.md"],
+    ["references/review-protocol.md", "references/review-protocol.md"],
+    ["references/orca-mechanics.md", "references/orca-mechanics.md"],
+  ],
+  "mo-review-paseo": [
+    ["references/backend-contract.md", "references/backend-contract.md"],
+    ["references/review-protocol.md", "references/review-protocol.md"],
+    ["references/paseo-mechanics.md", "references/paseo-mechanics.md"],
   ],
   "mo-setup": [
-    ["references/methodology.md", "references/methodology.md"],
+    ["references/project-setup.md", "references/project-setup.md"],
+    ["references/backend-contract.md", "references/backend-contract.md"],
     ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
     ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],
+  ],
+  "mo-watchdog": [
+    ["references/watchdog.md", "references/watchdog.md"],
+    ["scripts/mo-watchdog.sh", "scripts/mo-watchdog.sh"],
   ],
 };
 
@@ -310,7 +340,7 @@ function build(outputRoot) {
     }
   }
 
-  for (const consumer of ["mo-herdr", "mo-omnigent"]) {
+  for (const consumer of ["mo-orchestrate-herdr", "mo-orchestrate-orca", "mo-orchestrate-paseo"]) {
     const plan = SHARED_PLAN[consumer];
     const helper = plan.find(([source]) => source === "scripts/mo-models.mjs");
     const declared = Object.keys(helper?.[2]?.bundleLicenses ?? {}).sort();

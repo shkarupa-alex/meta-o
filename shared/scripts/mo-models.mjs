@@ -335,10 +335,30 @@ function lineListing(descriptor) {
  * about it. Separated from the spawn so the filter can be tested on a fixture.
  */
 export function parseCodexModels(text) {
-  const start = String(text).indexOf("{");
+  const source = String(text);
+  const start = source.indexOf("{");
+  let end = -1;
+  let depth = 0;
+  let quoted = false;
+  let escaped = false;
+  for (let index = start; index >= 0 && index < source.length; index += 1) {
+    const character = source[index];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') quoted = false;
+      continue;
+    }
+    if (character === '"') quoted = true;
+    else if (character === "{") depth += 1;
+    else if (character === "}" && --depth === 0) {
+      end = index + 1;
+      break;
+    }
+  }
   let parsed;
   try {
-    parsed = JSON.parse(start >= 0 ? String(text).slice(start) : String(text));
+    parsed = JSON.parse(start >= 0 && end > start ? source.slice(start, end) : source);
   } catch (error) {
     return unavailable(`codex debug models returned unparseable JSON: ${error.message}`);
   }

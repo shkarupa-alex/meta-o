@@ -386,6 +386,23 @@ test("codex listings keep only the rows the CLI itself would offer", () => {
   assert.deepEqual(listing.efforts, { "gpt-9.9": ["low", "high"] });
 });
 
+test("codex catalog parsing ignores wrapper diagnostics around one complete JSON value", () => {
+  const listing = parseCodexModels(
+    `wrapper start\n${JSON.stringify({
+      models: [
+        {
+          slug: "gpt-wrapper",
+          visibility: "list",
+          supported_in_api: true,
+          supported_reasoning_levels: [{ effort: "high" }],
+        },
+      ],
+    })}\nwrapper end`,
+  );
+  assert.deepEqual(listing.models, ["gpt-wrapper"]);
+  assert.deepEqual(listing.efforts, { "gpt-wrapper": ["high"] });
+});
+
 test("a codex listing with nothing offerable is unavailable, not empty-but-fine", () => {
   const listing = parseCodexModels(JSON.stringify({ models: [] }));
   assert.equal(listing.available, false);
@@ -403,11 +420,15 @@ test(
   {
     skip: commandMissing("codex"),
   },
-  () => {
+  (context) => {
     const home = sandbox();
     const result = run(home, ["--catalog", "--route", "codex", "--json"]);
     assert.equal(result.status, 0, result.stderr);
     const report = JSON.parse(result.stdout);
+    if (!Array.isArray(report.codex.catalog)) {
+      context.skip(report.codex.catalogUnavailableReason);
+      return;
+    }
     assert.equal(report.codex.source, "codex-json");
     assert.ok(Array.isArray(report.codex.catalog) && report.codex.catalog.length > 0);
     const [first] = report.codex.catalog;
@@ -595,7 +616,7 @@ test("an isolated generated helper needs no ambient node_modules", () => {
   const home = sandbox();
   const fixture = fakeClaude(home, "success");
   const isolated = join(home, "isolated-mo-models.mjs");
-  copyFileSync(join(ROOT, "skills", "mo-herdr", "scripts", "mo-models.mjs"), isolated);
+  copyFileSync(join(ROOT, "skills", "mo-orchestrate-herdr", "scripts", "mo-models.mjs"), isolated);
   const result = spawnSync(
     process.execPath,
     [isolated, "--catalog", "--route", "claude", "--json"],
@@ -647,34 +668,51 @@ test("roles are scoped to the Git root, so any subdirectory is the same project"
   assert.match(run(home, ["--show"], elsewhere).stdout, /executor=unset/);
 });
 
-test(
-  "an effort the model does not offer is refused before anything is written",
-  { skip: commandMissing("codex") },
-  () => {
-    const home = sandbox();
-    const listed = JSON.parse(run(home, ["--catalog", "--route", "codex", "--json"]).stdout).codex;
-    const model = Object.keys(listed.efforts)[0];
-    assert.ok(model, "this test needs one codex model that publishes effort levels");
+test("an effort the model does not offer is refused before anything is written", () => {
+  const home = sandbox();
+  const bin = join(home, "bin");
+  mkdirSync(bin, { recursive: true });
+  const codex = join(bin, "codex");
+  writeFileSync(
+    codex,
+    `#!/bin/sh\nprintf '%s\\n' '{"models":[{"slug":"gpt-fixture","visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}]}]}'\n`,
+  );
+  chmodSync(codex, 0o755);
+  const environment = { PATH: `${bin}${delimiter}${process.env.PATH}` };
+  const listed = JSON.parse(
+    run(home, ["--catalog", "--route", "codex", "--json"], ROOT, environment).stdout,
+  ).codex;
+  const model = Object.keys(listed.efforts)[0];
+  assert.ok(model, "this test needs one codex model that publishes effort levels");
 
-    const badEffort = run(home, ["--set", `executor=codex/${model}/not-an-effort`]);
-    assert.equal(badEffort.status, 1);
-    assert.match(badEffort.stderr, /offers effort/);
-    assert.throws(
-      () => readFileSync(join(home, ".meta-o", "models.json")),
-      /ENOENT/,
-      "an unsupported effort must not be stored",
-    );
+  const badEffort = run(
+    home,
+    ["--set", `executor=codex/${model}/not-an-effort`],
+    ROOT,
+    environment,
+  );
+  assert.equal(badEffort.status, 1);
+  assert.match(badEffort.stderr, /offers effort/);
+  assert.throws(
+    () => readFileSync(join(home, ".meta-o", "models.json")),
+    /ENOENT/,
+    "an unsupported effort must not be stored",
+  );
 
-    const badModel = run(home, ["--set", "executor=codex/no-such-model-9/high"]);
-    assert.equal(badModel.status, 1);
-    assert.match(badModel.stderr, /is not in the codex catalog/);
+  const badModel = run(home, ["--set", "executor=codex/no-such-model-9/high"], ROOT, environment);
+  assert.equal(badModel.status, 1);
+  assert.match(badModel.stderr, /is not in the codex catalog/);
 
-    // The real thing is accepted, and the same value goes through with --force.
-    const good = run(home, ["--set", `executor=codex/${model}/${listed.efforts[model][0]}`]);
-    assert.equal(good.status, 0, good.stderr);
-    assert.equal(run(home, ["--set", "executor=codex/no-such-model-9/high", "--force"]).status, 0);
-  },
-);
+  // The real thing is accepted, and the same value goes through with --force.
+  const good = run(
+    home,
+    ["--set", `executor=codex/${model}/${listed.efforts[model][0]}`],
+    ROOT,
+    environment,
+  );
+  assert.equal(good.status, 0, good.stderr);
+  assert.equal(run(home, ["--set", "executor=codex/no-such-model-9/high", "--force"]).status, 0);
+});
 
 test("a selection is stored with the gap named when the catalog cannot answer", () => {
   const home = sandbox();

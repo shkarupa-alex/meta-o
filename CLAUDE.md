@@ -5,14 +5,15 @@
 
 ## What this project is
 
-Seven agent skills that run a whole feature from a spec to a verified candidate
+Ten agent skills that run a whole feature from a spec to a verified candidate
 commit, using tools that already exist. There is no orchestration or
 provider-proxy CLI, no daemon, no state store and no adapter layer, and adding
 one back needs a named reason recorded in `docs/architecture/`.
 
-Everything shipped is Markdown plus two self-contained runtime helpers: the
-bundled `.mjs` settings helper copied into the two backend skills, and the `.sh`
-provider-posture probe copied into both backend skills and `mo-setup`. The build
+Everything shipped is Markdown plus three self-contained runtime helpers: the
+bundled `.mjs` settings helper and `.sh` provider-posture probe copied into the
+three orchestration skills, and the pattern watchdog `.sh` copied into
+`mo-watchdog`. The posture helper is also copied into `mo-setup`. The build
 tool and the tests are not shipped and do use real parsers, because this contract
 forbids hand-written ones.
 
@@ -48,15 +49,15 @@ ritual prose.
 
 ## Knowledge
 
-| File                       | Holds                                                   |
-| -------------------------- | ------------------------------------------------------- |
-| `docs/business.md`         | the recorded business framing, then why this exists     |
-| `docs/glossary.md`         | the vocabulary, one meaning per term                    |
-| `docs/architecture/`       | boundaries and decisions, each citing a business reason |
-| `docs/backlog.md`          | everything deferred, blocked or knowingly left unfixed  |
-| `docs/e2e.md`              | what is verified end to end, and by whom                |
-| `docs/phase-0-fixtures.md` | the manual capability checklist gating route support    |
-| `docs/acceptance.md`       | each spec criterion against what actually proves it     |
+| File                           | Holds                                                   |
+| ------------------------------ | ------------------------------------------------------- |
+| `docs/business.md`             | the recorded business framing, then why this exists     |
+| `docs/glossary.md`             | the vocabulary, one meaning per term                    |
+| `docs/architecture/`           | boundaries and decisions, each citing a business reason |
+| `docs/backlog.md`              | everything deferred, blocked or knowingly left unfixed  |
+| `docs/e2e.md`                  | what is verified end to end, and by whom                |
+| `docs/backend-capabilities.md` | the supported-backend behavior and companion map        |
+| `docs/acceptance.md`           | each spec criterion against what actually proves it     |
 
 Knowledge is updated in the same change that made it new or false — not
 afterwards.
@@ -80,7 +81,12 @@ ledgers. See `shared/references/methodology.md §2.1` and §7.
 
 **Anything postponed, deliberately not done, blocked, or left unfixed for any
 reason goes into `docs/backlog.md`**, with its reason, its practical impact, and
-the next step if one is known.
+the next step if one is known. Current progress and temporary gate state never
+go there.
+
+Human-facing knowledge uses the user's language, inferred from the business
+framing unless the user asks otherwise. Code, identifiers, commands, protocol
+literals and upstream names retain their technical language.
 
 ## Commands
 
