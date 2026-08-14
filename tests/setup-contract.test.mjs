@@ -47,6 +47,9 @@ test("setup checks controls, companions and every harness posture separately", (
   assert.match(contract, /Orca exposes its\nversion-matched `orchestration` guide/);
   assert.match(contract, /Paseo may expose\nits version-matched `paseo` guide/);
   assert.match(setup, /installed or version-matched bundled\nPaseo guide/);
+  assert.match(contract, /Backend-wide health does not prove harness readiness/);
+  assert.match(contract, /native\nprovider discovery for Codex, Claude Code and OpenCode/);
+  assert.match(setup, /daemon health alone is insufficient/);
 });
 
 test("knowledge policy covers verbatim intent, language, semantic links and backlog fields", () => {

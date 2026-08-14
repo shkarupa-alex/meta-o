@@ -15,6 +15,20 @@ creating a session, and follow its current preference-discovery requirements.
 A path check alone does not establish that the controlling agent knows Paseo's
 semantics.
 
+Preflight each selected harness through Paseo's native provider surface, not
+from daemon health alone:
+
+```text
+paseo provider ls --json
+paseo provider models <codex|claude|opencode> --json
+```
+
+A provider-discovery failure is actionable readiness evidence, not an empty
+catalog. In particular, an OpenCode server that cannot enter Paseo's managed
+working directory is not launch-ready even while `paseo status --json` reports
+the provider available. A direct successful launch may prove readiness when
+catalog discovery alone is unavailable; record which public evidence was used.
+
 ## Sessions
 
 Start a visible background agent with an explicit provider, model, posture and

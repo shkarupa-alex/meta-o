@@ -80,6 +80,8 @@ test("backend mechanics use only the intended public result and diagnostic surfa
   assert.match(paseo, /`inspect` is a\nmetadata and state surface/);
   assert.match(paseo, /version-matched public application bundle/);
   assert.match(paseo, /Read the discovered companion guide completely/);
+  assert.match(paseo, /paseo provider models <codex\|claude\|opencode> --json/);
+  assert.match(paseo, /provider-discovery failure is actionable readiness evidence/);
   assert.match(herdr, /`herdr agent read --source recent-unwrapped`/);
   assert.match(herdr, /prompt receipt is not\ndelivery proof/i);
   for (const source of [herdr, orca, paseo]) {

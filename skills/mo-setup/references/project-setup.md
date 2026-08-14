@@ -68,6 +68,12 @@ Missing, divergent or unreadable posture is not support. Check workspace trust,
 hooks and wrappers without printing secrets. Personal configuration changes
 require explicit confirmation.
 
+Backend-wide health does not prove harness readiness. For Paseo, inspect native
+provider discovery for Codex, Claude Code and OpenCode and distinguish an empty
+catalog from a command failure. Report a missing provider-managed working
+directory or failed server boot as the concrete missing capability; do not
+create personal Paseo state or restart its daemon without explicit confirmation.
+
 ## Isolated setup branch
 
 If tracked project setup must change, do it in a separate

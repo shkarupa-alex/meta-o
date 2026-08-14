@@ -21,6 +21,10 @@ Use each backend's native companion source: installed `herdr`, Orca's
 version-matched `orca skills` guide, and an installed or version-matched bundled
 Paseo guide. Report the exact source separately from control discovery; do not
 copy a bundled skill into personal configuration without explicit confirmation.
+For Paseo, check native provider discovery for Codex, Claude Code and OpenCode;
+daemon health alone is insufficient, and a provider command failure is not an
+empty catalog. Report missing managed directories without creating personal
+state or restarting the daemon silently.
 
 Inspect knowledge, entry instructions, README, architecture reasons, backlog
 quality, E2E and acceptance mapping, language/build config, mature complexity
