@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
+  existsSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -296,10 +297,9 @@ if [ "$1 $2" = "agent get" ]; then
 elif [ "$1 $2" = "agent prompt" ]; then
   if [ -n "\${WATCHDOG_CRASH_AFTER_ACCEPT-}" ]; then
     printf '%s\\n' "$*" >> "$WATCHDOG_LOG"
-    (sleep 2) &
-    watchdog_pid=$(ps -o ppid= -p "$PPID" | tr -d ' ')
-    kill -9 "$watchdog_pid"
-    exit 1
+    printf '%s\\n' "$$" > "$WATCHDOG_DELIVERY_PID"
+    sleep 10
+    exit 9
   fi
   if [ -n "\${WATCHDOG_SLOW_SEND-}" ]; then sleep 1; fi
   printf '%s\\n' "$*" >> "$WATCHDOG_LOG"
@@ -338,25 +338,50 @@ fi
   assert.equal(readFileSync(log, "utf8").trim().split("\n").length, 1);
 
   const crashArgs = [...args.slice(0, -1), "crash-window"];
-  const crashed = spawnSync(script, crashArgs, {
-    env: { ...env, WATCHDOG_CRASH_AFTER_ACCEPT: "1" },
-    encoding: "utf8",
+  const deliveryPid = join(root, "delivery-pid");
+  const crashing = spawn(script, crashArgs, {
+    env: {
+      ...env,
+      WATCHDOG_CRASH_AFTER_ACCEPT: "1",
+      WATCHDOG_DELIVERY_PID: deliveryPid,
+    },
+    stdio: "ignore",
   });
-  assert.equal(crashed.signal, "SIGKILL");
+  for (let attempt = 0; attempt < 100 && !existsSync(deliveryPid); attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.ok(existsSync(deliveryPid), "fake backend never accepted the nudge");
+  const crashed = new Promise((resolve) =>
+    crashing.once("exit", (status, signal) => resolve({ status, signal })),
+  );
+  crashing.kill("SIGKILL");
+  assert.deepEqual(await crashed, { status: null, signal: "SIGKILL" });
   const retry = spawnSync(script, crashArgs, { env, encoding: "utf8" });
   assert.equal(retry.status, 2);
   assert.match(retry.stdout, /action=duplicate-suppressed/);
   assert.equal(readFileSync(log, "utf8").trim().split("\n").length, 2);
+  process.kill(Number(readFileSync(deliveryPid, "utf8").trim()), "SIGTERM");
 
-  for (let index = 0; index < 17; index += 1) {
-    spawnSync(script, [...args.slice(0, -1), `distinct-${index}`], { env, encoding: "utf8" });
+  for (let index = 0; index < 13; index += 1) {
+    const distinct = spawnSync(script, [...args.slice(0, -1), `distinct-${index}`], {
+      env,
+      encoding: "utf8",
+    });
+    assert.equal(distinct.status, 0, distinct.stderr);
   }
-  const saturated = spawnSync(script, [...args.slice(0, -1), "after-saturation"], {
+  const saturated = spawnSync(script, [...args.slice(0, -1), "distinct-13"], {
     env,
     encoding: "utf8",
   });
   assert.equal(saturated.status, 2);
-  assert.match(saturated.stdout, /action=duplicate-suppressed/);
+  assert.match(saturated.stdout, /action=saturation-suppressed/);
+  const afterSaturation = spawnSync(script, [...args.slice(0, -1), "after-saturation"], {
+    env,
+    encoding: "utf8",
+  });
+  assert.equal(afterSaturation.status, 2);
+  assert.match(afterSaturation.stdout, /action=duplicate-suppressed/);
+  assert.equal(readFileSync(log, "utf8").trim().split("\n").length, 15);
   const stateRecord = readdirSync(join(root, "state")).find((entry) => !entry.endsWith(".lock"));
   assert.ok(stateRecord);
   assert.deepEqual(

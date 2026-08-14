@@ -121,7 +121,7 @@ remember_nudge() {
       cp "$WATCHDOG_FILE" "$WATCHDOG_TEMP" || return 73
       chmod 600 "$WATCHDOG_TEMP" 2>/dev/null || true
       mv "$WATCHDOG_TEMP" "$WATCHDOG_FILE"
-      return
+      return 2
     fi
     WATCHDOG_MESSAGE_COUNT=$(sed -n '2,$p' "$WATCHDOG_FILE" | awk 'END { print NR + 0 }')
     if [ "$WATCHDOG_MESSAGE_COUNT" -ge "$WATCHDOG_MAX_MESSAGE_DIGESTS" ]; then
@@ -129,7 +129,7 @@ remember_nudge() {
         "$WATCHDOG_SATURATED" > "$WATCHDOG_TEMP" || return 73
       chmod 600 "$WATCHDOG_TEMP" 2>/dev/null || true
       mv "$WATCHDOG_TEMP" "$WATCHDOG_FILE"
-      return
+      return 2
     fi
     cp "$WATCHDOG_FILE" "$WATCHDOG_TEMP" || return 73
   else
@@ -376,6 +376,12 @@ remember_nudge "$WATCHDOG_FILE" "$WATCHDOG_STATE_FINGERPRINT" \
   "$WATCHDOG_MESSAGE_FINGERPRINT"
 WATCHDOG_NUDGE_STATUS=$?
 if [ "$WATCHDOG_NUDGE_STATUS" -ne 0 ]; then
+  if [ "$WATCHDOG_NUDGE_STATUS" -eq 2 ]; then
+    release_nudge_lock
+    /usr/bin/printf 'backend=%s session=%s state=%s action=saturation-suppressed\n' \
+      "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_STATE"
+    exit 2
+  fi
   release_nudge_lock
   /usr/bin/printf 'backend=%s session=%s state=%s action=state-error status=%s\n' \
     "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_STATE" "$WATCHDOG_NUDGE_STATUS"
