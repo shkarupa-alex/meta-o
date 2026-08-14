@@ -79,6 +79,11 @@ candidate the action authorizes. Any accompanying preference, correction or
 scope change is a separate user intent and still appends verbatim to both
 ledgers. See `shared/references/methodology.md` sections 2 and 6.
 
+User input may come from imperfect dictation and contain surprising recognition
+errors. When anomalous wording could materially change scope or outcome, ask the
+user instead of silently guessing a correction. Preserve confirmed intent
+verbatim; do not rewrite the original ledger entry to hide the dictation error.
+
 **Anything postponed, deliberately not done, blocked, or left unfixed for any
 reason goes into `docs/backlog.md`**, with its reason, its practical impact, and
 the next step if one is known. Current progress and temporary gate state never

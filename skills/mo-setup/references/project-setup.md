@@ -16,7 +16,10 @@ Inspect substance, not file presence. A ready project has:
 - a plain-language README explaining purpose, use, constraints, commands and
   links to the knowledge layer;
 - concise, useful, byte-identical `AGENTS.md` and `CLAUDE.md` containing project
-  outcomes, boundaries, purpose, knowledge, commands and version-control rules.
+  outcomes, boundaries, purpose, knowledge, commands, version-control rules and
+  a dictation rule: anomalous wording that could materially change scope or
+  outcome is clarified with the user rather than silently corrected, while the
+  confirmed intent remains verbatim.
 
 Human-facing project knowledge uses the user's language, inferred from the
 business framing unless the user chooses another. Code, identifiers, commands,

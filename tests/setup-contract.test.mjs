@@ -9,6 +9,8 @@ import { fileURLToPath } from "node:url";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const setup = readFileSync(join(ROOT, "src", "skills", "mo-setup", "SKILL.md"), "utf8");
 const contract = readFileSync(join(ROOT, "shared", "references", "project-setup.md"), "utf8");
+const agents = readFileSync(join(ROOT, "AGENTS.md"), "utf8");
+const claude = readFileSync(join(ROOT, "CLAUDE.md"), "utf8");
 
 test("setup inspects project substance and isolates tracked repair", () => {
   for (const phrase of [
@@ -59,4 +61,17 @@ test("knowledge policy covers verbatim intent, language, semantic links and back
   assert.match(contract, /mature Markdown AST\/link\ntool, never a regex Markdown parser/);
   for (const field of ["reason", "practical impact", "next step"])
     assert.match(contract, new RegExp(field));
+});
+
+test("entry files treat material dictation anomalies as questions, not silent corrections", () => {
+  assert.equal(agents, claude);
+  assert.match(
+    contract,
+    /dictation rule:[\s\S]*materially change scope or[\s\S]*clarified with the user/,
+  );
+  assert.match(
+    agents,
+    /imperfect dictation[\s\S]*materially change scope or outcome[\s\S]*ask the user/,
+  );
+  assert.match(agents, /Preserve confirmed intent\nverbatim/);
 });
