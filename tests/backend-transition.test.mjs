@@ -2,7 +2,15 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
 import { after, test } from "node:test";
@@ -128,7 +136,7 @@ test("watchdog observes, rereads before nudge, and suppresses changed state", ()
   const fake = join(root, "herdr");
   writeFileSync(
     fake,
-    `#!/bin/sh\nif [ "$1 $2" = "agent get" ]; then\n  if [ -n "\${WATCHDOG_CHANGE-}" ]; then\n    n=$(cat "$WATCHDOG_COUNT" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > "$WATCHDOG_COUNT"; echo "working-$n"\n  else echo working\n  fi\nelif [ "$1 $2" = "agent prompt" ]; then echo "$4" >> "$WATCHDOG_LOG"; echo sent\nelse exit 2\nfi\n`,
+    `#!/bin/sh\nif [ "$1 $2" = "agent get" ]; then\n  if [ -n "\${WATCHDOG_CHANGE-}" ]; then\n    n=$(cat "$WATCHDOG_COUNT" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > "$WATCHDOG_COUNT"; echo "working-$n"\n  else echo working\n  fi\nelif [ "$1 $2" = "agent prompt" ]; then echo "$*" >> "$WATCHDOG_LOG"; echo sent\nelse exit 2\nfi\n`,
   );
   chmodSync(fake, 0o755);
   const script = join(ROOT, "shared", "scripts", "mo-watchdog.sh");
@@ -137,6 +145,7 @@ test("watchdog observes, rereads before nudge, and suppresses changed state", ()
     PATH: `${root}:/usr/bin:/bin`,
     WATCHDOG_LOG: log,
     WATCHDOG_COUNT: count,
+    WATCHDOG_STATE_DIR: join(root, "state"),
   };
   let result = spawnSync(script, ["target", "--backend", "herdr", "--session", "a"], {
     env,
@@ -152,6 +161,36 @@ test("watchdog observes, rereads before nudge, and suppresses changed state", ()
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /action=nudge status=0/);
   assert.match(readFileSync(log, "utf8"), /continue/);
+  assert.doesNotMatch(readFileSync(log, "utf8"), /--wait/);
+  result = spawnSync(
+    script,
+    ["target", "--backend", "herdr", "--session", "a", "--nudge", "continue"],
+    { env, encoding: "utf8" },
+  );
+  assert.equal(result.status, 2);
+  assert.match(result.stdout, /action=duplicate-suppressed/);
+  assert.equal(readFileSync(log, "utf8").trim().split("\n").length, 1);
+  result = spawnSync(
+    script,
+    ["target", "--backend", "herdr", "--session", "a", "--nudge", "other"],
+    { env, encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const stateDirectory = join(root, "state");
+  const stateEntries = readdirSync(stateDirectory);
+  assert.equal(stateEntries.length, 1);
+  assert.equal(statSync(stateDirectory).mode & 0o777, 0o700);
+  const stateRecord = join(stateDirectory, stateEntries[0]);
+  assert.equal(statSync(stateRecord).mode & 0o777, 0o600);
+  assert.doesNotMatch(readFileSync(stateRecord, "utf8"), /continue|other/);
+  result = spawnSync(
+    script,
+    ["target", "--backend", "herdr", "--session", "a", "--nudge", "continue"],
+    { env, encoding: "utf8" },
+  );
+  assert.equal(result.status, 2);
+  assert.match(result.stdout, /action=duplicate-suppressed/);
+  assert.equal(readFileSync(log, "utf8").trim().split("\n").length, 2);
   result = spawnSync(
     script,
     ["target", "--backend", "herdr", "--session", "a", "--nudge", "again"],
@@ -165,26 +204,41 @@ test("watchdog does not mistake empty Paseo permission metadata for a question",
   const root = mkdtempSync(join(tmpdir(), "mo-watchdog-paseo-test-"));
   temporary.push(root);
   const fake = join(root, "paseo");
+  const log = join(root, "log");
   writeFileSync(
     fake,
     `#!/bin/sh
 if [ "$1" = inspect ]; then
   printf '%s\\n' '{"Status":"idle","PendingPermissions":[],"AvailableModes":[{"label":"Default Permissions"}]}'
+elif [ "$1" = send ]; then
+  printf '%s\\n' "$*" >> "$WATCHDOG_LOG"
+  printf '%s\\n' '{"accepted":true}'
 else exit 2
 fi
 `,
   );
   chmodSync(fake, 0o755);
-  const result = spawnSync(
+  const env = {
+    ...process.env,
+    PATH: `${root}:/usr/bin:/bin`,
+    WATCHDOG_LOG: log,
+    WATCHDOG_STATE_DIR: join(root, "state"),
+  };
+  let result = spawnSync(
     join(ROOT, "shared", "scripts", "mo-watchdog.sh"),
     ["target", "--backend", "paseo", "--session", "a"],
-    {
-      env: { ...process.env, PATH: `${root}:/usr/bin:/bin` },
-      encoding: "utf8",
-    },
+    { env, encoding: "utf8" },
   );
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /state=completed action=observed/);
+  result = spawnSync(
+    join(ROOT, "shared", "scripts", "mo-watchdog.sh"),
+    ["target", "--backend", "paseo", "--session", "a", "--nudge", "continue"],
+    { env, encoding: "utf8", timeout: 1_000 },
+  );
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(readFileSync(log, "utf8"), /send a --prompt continue --no-wait --json/);
 });
 
 test("watchdog rejects missing flag values instead of hanging", () => {
@@ -198,7 +252,7 @@ test("watchdog rejects missing flag values instead of hanging", () => {
   assert.match(result.stderr, /usage: mo-watchdog\.sh/);
 });
 
-test("watchdog observes low-level Orca tasks and scans worker and terminal surfaces", () => {
+test("watchdog normalizes Orca envelopes and reports every worker and terminal", () => {
   const root = mkdtempSync(join(tmpdir(), "mo-watchdog-orca-test-"));
   temporary.push(root);
   const log = join(root, "log");
@@ -209,24 +263,108 @@ test("watchdog observes low-level Orca tasks and scans worker and terminal surfa
 printf '%s\\n' "$*" >> "$WATCHDOG_LOG"
 case "$*" in
   "orchestration dispatch-show --task task_fixture --json") echo '{"status":"completed"}' ;;
-  "orchestration worker-list --json") echo '{"workers":[]}' ;;
-  "terminal list --json") echo '{"terminals":[]}' ;;
+  "orchestration worker-show --dispatch ctx_fixture --json")
+    n=$(wc -l < "$WATCHDOG_LOG" | tr -d ' ')
+    printf '{"id":"request-%s","ok":true,"result":{"dispatchId":"ctx_fixture","workerState":"stopped","dispatchStatus":"failed"},"_meta":{"runtimeId":"runtime-%s"}}\\n' "$n" "$n"
+    ;;
+  "orchestration send --to dispatch:ctx_fixture --subject Watchdog --body continue --json") echo '{"accepted":true}' ;;
+  "orchestration worker-list --json") echo '{"result":{"workers":[{"dispatchId":"ctx_failed","workerState":"stopped","dispatchStatus":"failed"},{"dispatchId":"ctx_working","workerState":"working","dispatchStatus":"running"}]}}' ;;
+  "terminal list --json") echo '{"result":{"terminals":[{"handle":"term_active","connected":true,"preview":"working"},{"handle":"term_done","connected":false,"preview":"completed"}]}}' ;;
   *) exit 2 ;;
 esac
 `,
   );
   chmodSync(fake, 0o755);
   const script = join(ROOT, "shared", "scripts", "mo-watchdog.sh");
-  const env = { ...process.env, PATH: `${root}:/usr/bin:/bin`, WATCHDOG_LOG: log };
+  const env = {
+    ...process.env,
+    PATH: `${root}:/usr/bin:/bin`,
+    WATCHDOG_LOG: log,
+    WATCHDOG_STATE_DIR: join(root, "state"),
+  };
   let result = spawnSync(script, ["target", "--backend", "orca", "--session", "task_fixture"], {
     env,
     encoding: "utf8",
   });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /state=completed action=observed/);
+  result = spawnSync(
+    script,
+    ["target", "--backend", "orca", "--session", "ctx_fixture", "--nudge", "continue"],
+    { env, encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /action=nudge status=0/);
   result = spawnSync(script, ["scan"], { env, encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
+  for (const expected of [
+    /backend=orca session=ctx_failed state=failed/,
+    /backend=orca session=ctx_working state=working/,
+    /backend=orca session=term_active state=working/,
+    /backend=orca session=term_done state=completed/,
+  ]) {
+    assert.match(result.stdout, expected);
+  }
   const calls = readFileSync(log, "utf8");
   assert.match(calls, /orchestration worker-list --json/);
   assert.match(calls, /terminal list --json/);
+});
+
+test("watchdog does not mask an Orca scan surface failure", () => {
+  const root = mkdtempSync(join(tmpdir(), "mo-watchdog-orca-error-test-"));
+  temporary.push(root);
+  const fake = join(root, "orca");
+  writeFileSync(
+    fake,
+    `#!/bin/sh
+case "$*" in
+  "orchestration worker-list --json") echo 'worker list failed' >&2; exit 7 ;;
+  "terminal list --json") echo '{"result":{"terminals":[]}}' ;;
+  *) exit 2 ;;
+esac
+`,
+  );
+  chmodSync(fake, 0o755);
+  const result = spawnSync(join(ROOT, "shared", "scripts", "mo-watchdog.sh"), ["scan"], {
+    env: { ...process.env, PATH: `${root}:/usr/bin:/bin` },
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /backend=orca surface=workers status=7 state=control-error/);
+  assert.match(result.stdout, /backend=orca surface=terminals state=no-sessions/);
+});
+
+test("watchdog reports Herdr agents separately and names an empty Paseo surface", () => {
+  const root = mkdtempSync(join(tmpdir(), "mo-watchdog-mixed-scan-test-"));
+  temporary.push(root);
+  const commands = {
+    herdr: `#!/bin/sh
+if [ "$*" = "agent list" ]; then
+  echo '{"result":{"agents":[{"name":"h-done","agent_status":"done"},{"name":"h-working","agent_status":"working"}]}}'
+else exit 2
+fi
+`,
+    orca: `#!/bin/sh
+case "$*" in
+  "orchestration worker-list --json") echo '{"result":{"workers":[]}}' ;;
+  "terminal list --json") echo '{"result":{"terminals":[]}}' ;;
+  *) exit 2 ;;
+esac
+`,
+    paseo: `#!/bin/sh
+if [ "$*" = "ls --json" ]; then echo '[]'; else exit 2; fi
+`,
+  };
+  for (const [name, source] of Object.entries(commands)) {
+    writeFileSync(join(root, name), source);
+    chmodSync(join(root, name), 0o755);
+  }
+  const result = spawnSync(join(ROOT, "shared", "scripts", "mo-watchdog.sh"), ["scan"], {
+    env: { ...process.env, PATH: `${root}:/usr/bin:/bin` },
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /backend=herdr session=h-done state=completed/);
+  assert.match(result.stdout, /backend=herdr session=h-working state=working/);
+  assert.match(result.stdout, /backend=paseo surface=agents state=no-sessions/);
 });

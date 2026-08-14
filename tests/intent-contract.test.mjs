@@ -36,6 +36,13 @@ function blockquotes(source) {
   return records;
 }
 
+function fencedText(source) {
+  return markdown
+    .parse(source, {})
+    .filter((token) => token.type === "fence" && token.info.trim() === "text")
+    .map((token) => token.content);
+}
+
 test("the complete final ledger appears contiguously and byte-semantically in business framing", () => {
   const ledger = blockquotes(readFileSync(intentPath, "utf8"));
   const business = blockquotes(readFileSync(businessPath, "utf8"));
@@ -55,13 +62,22 @@ test("the current implementation request and no-workflow-skill preference are re
     );
 });
 
+test("the complete latest review is duplicated byte-for-byte in both intent ledgers", () => {
+  const intentReviews = fencedText(readFileSync(intentPath, "utf8"));
+  const businessReviews = fencedText(readFileSync(businessPath, "utf8"));
+  const latest = intentReviews.at(-1);
+  assert.match(latest, /^ниже 2 ревью\n/);
+  assert.match(latest, /Nudge watchdog для Orca не срабатывает никогда/);
+  assert.equal(businessReviews.at(-1), latest);
+});
+
 test("methodology preserves product intent but excludes narrow run-control approvals", () => {
   const methodology = readFileSync(join(ROOT, "shared", "references", "methodology.md"), "utf8");
   assert.match(
     methodology,
-    /append it verbatim\nto the task ledger and the project's business framing before implementation\ncontinues/,
+    /append it verbatim\s+to the task ledger and the project's business framing before implementation\s+continues/,
   );
   assert.match(methodology, /Redact secrets while preserving the sentence's meaning/);
-  assert.match(methodology, /one-shot\napproval.*is run control/is);
-  assert.match(methodology, /do not mutate\ntracked intent ledgers/);
+  assert.match(methodology, /one-shot\s+approval.*is run control/is);
+  assert.match(methodology, /do not mutate\s+tracked intent ledgers/);
 });

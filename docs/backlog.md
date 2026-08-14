@@ -6,6 +6,57 @@ Every entry records its reason, practical impact and next step.
 
 ## Open
 
+### Orca cannot release two retained failed workers
+
+**Reason.** Public `worker-list` reports Dispatches `ctx_51a2a3d73a57` and
+`ctx_113a0d0eb712` as `dispatchStatus: failed`, `workerState: stopped`,
+`terminalState: retained` and `releaseState: not_requested`. On 2026-08-15 an
+exact `worker-release --dispatch` for each returned `dispatch_inactive`, saying
+only a succeeded or failed worker can release. This contradicts the listed
+failed state, and a broad terminal close would violate ownership mechanics.
+
+**Practical impact.** Two stopped terminals remain retained in Orca resource
+accounting. They do not run work, but scan continues to report them and their
+resources cannot be reclaimed through the documented safe command.
+
+**Next step.** Reproduce the state tuple and rejection against Orca's current
+version, then fix or report the upstream transition so `worker-release` accepts
+a stopped failed Dispatch. Release only these two exact Dispatches after the
+public command accepts them.
+
+### Herdr complete-response support remains fixture-bound
+
+**Reason.** Installed Herdr 0.8.0 exposes lifecycle metadata through `agent get`
+but no structured settled-response field. Its public `agent read
+--source recent-unwrapped` can retrieve only rows retained by the terminal; an
+alternate-screen harness may discard earlier rows. The current agent is not
+inside a Herdr-managed pane, so the corrected long boundary-marker fixture
+cannot be rerun honestly for the new candidate.
+
+**Practical impact.** Herdr B8 and B9 remain `UNKNOWN` for the new candidate, so
+the Herdr orchestration and standalone-review routes cannot be called verified
+even though the mechanics now restore the 120/200/400-line ladder and fail
+closed on missing markers.
+
+**Next step.** From a Herdr-managed pane, run normal and three-to-four-screen
+`BEGIN`/`MIDDLE`/`END` fixtures against Codex, Claude Code and OpenCode. Remove
+this entry only if one public read contains all markers for every harness; on a
+failure, request an upstream complete settled-response surface rather than using
+private transcripts or agent-authored result files.
+
+### Herdr OpenCode readiness lacks public detection evidence
+
+**Reason.** The live Herdr agent record supplied with the review reports
+`screen_detection_skipped: true` for OpenCode. That flag is not evidence of the
+exact TUI or effective unsandboxed posture.
+
+**Practical impact.** Herdr B4 and the OpenCode part of B7 remain `UNKNOWN` for
+the current installed control plane.
+
+**Next step.** Re-run OpenCode launch from a Herdr-managed pane and capture exact
+public TUI and posture evidence. If no public Herdr surface can provide it, keep
+the harness unsupported and raise the missing detection capability upstream.
+
 ### Mixed-artifact language policy needs examples
 
 **Reason.** Human-facing knowledge now follows the user's language, while code,

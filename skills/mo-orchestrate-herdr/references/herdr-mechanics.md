@@ -26,6 +26,10 @@ response. If public output proves the task never appeared, wait for true
 readiness and retry that exact initial prompt once. If delivery is ambiguous, do
 not resend it.
 
+`screen_detection_skipped: true` is not readiness evidence for that harness.
+Resolve detection or prove the exact TUI and posture from another public Herdr
+surface before claiming the launch scenario passed.
+
 ## Delivery, state and questions
 
 ```text
@@ -53,9 +57,15 @@ installed version exposes it. If it does not, use the documented public agent
 read surface only when a live acceptance fixture proves it contains the entire
 settled final response. In the current public surface,
 `herdr agent read --source recent-unwrapped` can serve that role only after both
-normal and long fixtures pass. Other `visible|recent` reads are whole-session
-diagnostics or bounded terminal views by default; they are not proof of complete
-response retrieval without that fixture.
+normal and long fixtures pass. Start at `--lines 120`, then increase to 200 and
+400 when a boundary marker is absent; stop only when `BEGIN`, `MIDDLE` and `END`
+are all present in one public read. Increasing `--lines` cannot recover output
+discarded by a harness alternate screen. If any harness loses a marker that way,
+the complete-response capability is unsupported for that harness and the result
+is `unknown`; do not claim support from a shorter fixture. Other
+`visible|recent` reads are whole-session diagnostics or bounded terminal views
+by default; they are not proof of complete response retrieval without that
+fixture.
 
 Never use private transcripts, hooks, direct provider processes or undocumented
 session storage. Verify normal and three-to-four-screen responses with explicit

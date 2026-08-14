@@ -51,8 +51,9 @@ evidence.
 ## Architecture
 
 Skills and agent reasoning are the orchestration layer. This feature adds no orchestration
-CLI, provider proxy, daemon, state store, adapter service, run registry, manifest, receipt or
-digest protocol.
+CLI, provider proxy, daemon, orchestration state store, adapter service, run registry,
+manifest, receipt or digest protocol. The watchdog's private nudge-deduplication hashes are
+the narrow exception described below; they are not workflow or gate state.
 
 The orchestrator manages the process but does not inspect, judge or edit product code.
 Executors, reviewers and E2E agents inspect repository contents. The orchestrator may use
@@ -240,6 +241,11 @@ The script supports:
 - an explicit nudge for an authorized target;
 - rereading native state before another action;
 - avoiding repeated identical nudges while state remains unchanged.
+
+Cross-invocation suppression persists only hashes of normalized native state and messages
+for one backend locator. It stores no prompt, response, actor, candidate or gate data, and a
+changed state replaces the prior message set. This bounded record exists only because a
+separate watchdog invocation is the consumer that must avoid repeating delivery.
 
 No numeric cooldown or attempt count is prescribed. Imperfect patterns are an acceptable
 iterative limitation; the script can be refined from observed failures.

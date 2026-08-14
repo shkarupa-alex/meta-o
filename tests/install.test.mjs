@@ -88,5 +88,5 @@ test("README distinguishes proven local and unproven remote installation", () =>
   const readme = run("sed -n '1,90p' README.md", ROOT).stdout;
   assert.match(readme, /apm install \/path\/to\/meta-o/);
   assert.match(readme, /--skill mo-review-orca/);
-  assert.match(readme, /Remote installation remains\nunproven/);
+  assert.match(readme, /Remote installation remains\s+unproven/);
 });

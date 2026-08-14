@@ -86,6 +86,26 @@ test("all orchestration skills carry one self-contained model helper and posture
   }
 });
 
+test("review and setup packages carry every contract their entry skill routes to", () => {
+  for (const backend of ["herdr", "orca", "paseo"]) {
+    for (const entry of [`mo-review-${backend}`, `mo-orchestrate-${backend}`]) {
+      assert.equal(
+        existsSync(join(OUTPUT, entry, "references", "purpose-and-architecture.md")),
+        true,
+      );
+      assert.match(
+        readFileSync(join(SOURCES, entry, "SKILL.md"), "utf8"),
+        /references\/purpose-and-architecture\.md/,
+      );
+    }
+  }
+  const setupEntry = readFileSync(join(SOURCES, "mo-setup", "SKILL.md"), "utf8");
+  for (const profile of ["qc-python.md", "qc-typescript.md"]) {
+    assert.equal(existsSync(join(OUTPUT, "mo-setup", "references", profile)), true);
+    assert.match(setupEntry, new RegExp(profile));
+  }
+});
+
 test("watchdog is shipped executable and source/build file sets agree", () => {
   assert.notEqual(
     statSync(join(OUTPUT, "mo-watchdog", "scripts", "mo-watchdog.sh")).mode & 0o111,

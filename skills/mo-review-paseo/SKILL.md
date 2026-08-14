@@ -8,7 +8,9 @@ license: MIT
 
 Read [Review protocol](references/review-protocol.md),
 [Backend contract](references/backend-contract.md), and
-[Paseo native mechanics](references/paseo-mechanics.md) completely.
+[Paseo native mechanics](references/paseo-mechanics.md). Also read
+[Purpose and architecture contract](references/purpose-and-architecture.md)
+completely before applying reviewer B's architecture lens.
 
 Start two background review agents before waiting. Require complete public
 settled-response retrieval from both. Never use `/goal`, edit, commit or run

@@ -7,8 +7,10 @@
 
 Ten agent skills that run a whole feature from a spec to a verified candidate
 commit, using tools that already exist. There is no orchestration or
-provider-proxy CLI, no daemon, no state store and no adapter layer, and adding
-one back needs a named reason recorded in `docs/architecture/`.
+provider-proxy CLI, no daemon, orchestration state store or adapter layer. The
+watchdog keeps only the narrow nudge-deduplication digest justified in
+`docs/architecture/watchdog-nudge-deduplication.md`; any broader state needs its
+own named reason in `docs/architecture/`.
 
 Everything shipped is Markdown plus three self-contained runtime helpers: the
 bundled `.mjs` settings helper and `.sh` provider-posture probe copied into the
@@ -31,9 +33,9 @@ forbids hand-written ones.
 
 - **Skills and reasoning are the orchestration layer** — see
   `docs/architecture/skills-first.md`.
-- **Full-turn retrieval goes through the backend's own surface only** — never a
+- **Settled final responses come through the backend's own surface only** — never a
   provider's private transcripts, hooks or session database. See
-  `docs/architecture/full-turn-retrieval.md`.
+  `docs/architecture/settled-final-response.md`.
 - **`shared/` has one source owner; `skills/` is built, never hand-edited** — see
   `docs/architecture/distribution.md`.
 - No native CLI is wrapped in a proxy script. No manifest, receipt, digest or

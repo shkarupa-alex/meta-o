@@ -8,7 +8,11 @@ license: MIT
 
 Read [Project setup contract](references/project-setup.md),
 [Backend contract](references/backend-contract.md), and
-[Purpose and architecture contract](references/purpose-and-architecture.md)
+[Purpose and architecture contract](references/purpose-and-architecture.md).
+For a Python project also read [Python QC profile](references/qc-python.md); for
+a TypeScript or JavaScript project also read
+[TypeScript QC profile](references/qc-typescript.md). Read both for a mixed
+Python/TypeScript project. Read only the applicable language profiles
 completely.
 
 Detect the active backend through its native environment and status surface;

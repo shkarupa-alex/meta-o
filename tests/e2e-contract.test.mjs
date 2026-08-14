@@ -20,13 +20,15 @@ test("each backend gets the complete B1-B14 acceptance matrix", () => {
   assert.match(e2e, /`BEGIN`, `MIDDLE` and `END` markers/);
   assert.match(
     e2e,
-    /Private provider transcripts, hook stores and inferred\nsession databases are forbidden evidence/,
+    /Private provider transcripts, hook stores and inferred\s+session databases are forbidden evidence/,
   );
 });
 
 test("watchdog and documentation carry-forward scenarios are explicit", () => {
   for (let index = 1; index <= 4; index += 1) assert.match(e2e, new RegExp(`\\| W${index}\\s+\\|`));
-  assert.match(e2e, /both final-SHA\nreviewers explicitly confirm/);
+  assert.match(e2e, /one nonblocking exact message/);
+  assert.match(e2e, /unchanged duplicate prevents delivery/);
+  assert.match(e2e, /both final-SHA\s+reviewers explicitly confirm/);
   assert.match(e2e, /skill or agent instructions, acceptance, or this contract/);
 });
 

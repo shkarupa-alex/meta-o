@@ -9,7 +9,10 @@ license: MIT
 Read [Feature lifecycle](references/methodology.md),
 [Backend contract](references/backend-contract.md),
 [Review protocol](references/review-protocol.md), and
-[Paseo native mechanics](references/paseo-mechanics.md) completely.
+[Paseo native mechanics](references/paseo-mechanics.md). Before constructing
+reviewer prompts, also read
+[Purpose and architecture contract](references/purpose-and-architecture.md)
+completely.
 
 Use Paseo only. Confirm the control executable, upstream `paseo` companion
 skill, intended workspace and all public capabilities. In particular, do not

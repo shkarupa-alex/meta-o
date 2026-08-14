@@ -67,7 +67,7 @@ route невозможен вовсе — прогон там шёл на бол
 | 20 Phase 2 | destructive simplification | выполнено; удалённый control layer остался только в истории Git. **Порядок фаз нарушен намеренно** — см. раздел ниже |
 | 21 | acceptance criteria | [`docs/acceptance.md`](../../docs/acceptance.md) |
 | A1–A5 (addendum) | бизнес-постановка | [`addendum-01-business-framing.md`](./addendum-01-business-framing.md); methodology §2.1; [`docs/business.md`](../../docs/business.md) |
-| 7.2 + addendum-02 | retrieval: захват stdout и structural envelope | [`addendum-02-orchestrator-owned-capture.md`](./addendum-02-orchestrator-owned-capture.md); [`docs/architecture/full-turn-retrieval.md`](../../docs/architecture/full-turn-retrieval.md); `mo-herdr/references/herdr-mechanics.md §1.7`, `§3` |
+| 7.2 + addendum-02 | retrieval: захват stdout и structural envelope | [`addendum-02-orchestrator-owned-capture.md`](./addendum-02-orchestrator-owned-capture.md); [Settled final responses stay on public backend surfaces](../../docs/architecture/settled-final-response.md); `mo-herdr/references/herdr-mechanics.md §1.7`, `§3` |
 | 8 | native export; route без достижимого export — unsupported | `mo-omnigent/references/omnigent-mechanics.md §2`; addendum-02 §8 не меняет, и следствие для Omnigent записано там же и в [`docs/phase-0-fixtures.md §O`](../../docs/phase-0-fixtures.md) |
 | 23 | open questions | не блокирующие; conditional contracts закрываются Phase 0 |
 

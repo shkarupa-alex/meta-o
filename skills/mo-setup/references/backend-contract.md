@@ -21,9 +21,12 @@ A supported backend can, through documented public commands:
 
 Only the settled assistant response is the primary retrieval unit. Whole-session
 output is diagnostic and cannot replace a missing complete final response.
-Bounded previews, terminal snapshots, private provider transcripts, provider
-hooks, inferred session databases and “repeat your answer” prompts do not prove
-complete retrieval. If a full result cannot be read, the result is `unknown` and
+Bounded previews, private provider transcripts, provider hooks, inferred session
+databases and “repeat your answer” prompts do not prove complete retrieval. A
+documented public terminal read is also diagnostic by default; it qualifies only
+for a specific backend/harness after one live normal fixture and one live long
+fixture each return the entire response in a single read. Missing boundary rows,
+including rows discarded by an alternate screen, make the result `unknown` and
 the backend fails acceptance.
 
 Versions are diagnostic only. Do not pin them or automatically requalify every

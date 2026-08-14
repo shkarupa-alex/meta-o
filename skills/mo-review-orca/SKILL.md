@@ -8,7 +8,9 @@ license: MIT
 
 Read [Review protocol](references/review-protocol.md),
 [Backend contract](references/backend-contract.md), and
-[Orca native mechanics](references/orca-mechanics.md) completely.
+[Orca native mechanics](references/orca-mechanics.md). Also read
+[Purpose and architecture contract](references/purpose-and-architecture.md)
+completely before applying reviewer B's architecture lens.
 
 Create one Orca Run and two review tasks, then start both workers before waiting.
 Use their complete `worker_done` bodies; do not use private transcript retrieval.

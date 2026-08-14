@@ -1,4 +1,4 @@
-# Complete responses stay on public backend surfaces
+# Settled final responses stay on public backend surfaces
 
 ## Decision
 

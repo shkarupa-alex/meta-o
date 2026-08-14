@@ -44,8 +44,8 @@ Run this matrix for Herdr, Orca and Paseo:
 | --- | ----------------------------- | --------------------------------------------------------------- |
 | W1  | Target one session read-only. | Exact locator and classified native state; no prompt sent.      |
 | W2  | Scan all reachable backends.  | Herdr, Orca and Paseo are enumerated or report missing control. |
-| W3  | Nudge one authorized target.  | State is re-read immediately before one exact message.          |
-| W4  | State changes before nudge.   | The action is suppressed.                                       |
+| W3  | Nudge one authorized target.  | Stable native state permits one nonblocking exact message.      |
+| W4  | Suppress an unsafe repeat.    | Changed state or an unchanged duplicate prevents delivery.      |
 
 ## Installation scenarios
 

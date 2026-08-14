@@ -19,7 +19,12 @@ visible.
 An explicit `nudge` is allowed only for an authorized target. Re-read native
 state immediately before sending. Do not repeat an identical nudge while the
 observed state is unchanged. There is deliberately no numeric cooldown or retry
-count. Patterns will improve from real failures.
+count. Successful delivery stores only mode-`0600` state and message digests
+keyed by backend and locator under the user state directory; a changed state
+replaces its prior message set. It stores no prompt, response, candidate, gate or
+actor registry. Herdr and Paseo nudges are nonblocking, and completion is observed
+separately. The helper requires `jq` so native JSON is parsed per session instead
+of with regular expressions. Patterns will improve from real failures.
 
 Never inspect provider-private transcripts, credentials or tracked project
 content. Report backend, session locator, observed state and action. Do not

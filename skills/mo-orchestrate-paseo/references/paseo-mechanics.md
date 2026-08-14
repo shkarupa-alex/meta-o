@@ -49,7 +49,7 @@ waiting for either.
 ## Delivery, state and questions
 
 ```text
-paseo send <agent-id> --prompt <message> --json
+paseo send <agent-id> --prompt <message> --no-wait --json
 paseo wait <agent-id> --timeout <seconds> --json
 paseo inspect <agent-id> --json
 paseo ls --json
@@ -58,7 +58,10 @@ paseo permit allow <agent-id> <request-id> --json
 paseo permit deny <agent-id> <request-id> --json
 ```
 
-Inspect after every wait when more state detail is needed. Distinguish running,
+Follow-ups and answers use `--no-wait`: delivery must return immediately so the
+orchestrator can continue servicing questions and permissions. Track completion
+with a separate `wait` and then `inspect`; never turn `send` into the wait.
+Distinguish running,
 idle/completed, pending permission/question, failed and missing states. Use
 `send` for an ordinary answer and `permit allow|deny` only for the exact visible
 permission request. Never infer completion from an idle process alone.

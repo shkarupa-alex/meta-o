@@ -9,7 +9,10 @@ license: MIT
 Read [Feature lifecycle](references/methodology.md),
 [Backend contract](references/backend-contract.md),
 [Review protocol](references/review-protocol.md), and
-[Orca native mechanics](references/orca-mechanics.md) completely.
+[Orca native mechanics](references/orca-mechanics.md). Before constructing
+reviewer prompts, also read
+[Purpose and architecture contract](references/purpose-and-architecture.md)
+completely.
 
 Use Orca only. Confirm `orca`, its version-matched upstream `orchestration`
 companion skill, the bound worktree and all required public capabilities. Follow

@@ -33,7 +33,10 @@ standards.
 One verified result is one full Git object ID. Any new commit invalidates every
 gate. Missing or unreadable evidence is `unknown` and repeated. Run evidence is
 human-readable and ephemeral; no manifest, receipt, digest, baseline, registry
-or external evidence sink is created.
+or external evidence sink is created. The watchdog's private delivery digest is
+not run evidence: it has the single external consumer and deletion semantics
+recorded in
+[Watchdog nudge deduplication stores one private digest](watchdog-nudge-deduplication.md).
 
 A restart begins a fresh run and reuses no prior gate or scratch state. This can
 repeat work, but it avoids a recovery database that might bless stale evidence.

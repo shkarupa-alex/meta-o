@@ -257,3 +257,101 @@ later user answer, correction, preference and constraint verbatim.
 > реализуй spec/2026-08-14-backend-review-transition-final/spec.md , вот тут мои интенты spec/2026-08-14-backend-review-transition-final/user-intent.md (при реализации скилы вроде mo-herdr тебе не нужно использовать)
 
 <!-- prettier-ignore-end -->
+
+<!-- prettier-ignore-start -->
+
+```text
+ниже 2 ревью
+
+---
+
+  1. [P1] Paseo follow-up может заблокировать оркестратор.
+     В shared/references/paseo-mechanics.md:52 используется paseo send ... --json без --no-wait. В установленном Paseo 0.3.1 send по
+     умолчанию ждёт завершения агента. В результате оркестратор после follow-up не сможет параллельно обслуживать новые вопросы или
+     permission requests. Та же проблема есть у watchdog в shared/scripts/mo-watchdog.sh:155: nudge при лимите способен зависнуть,
+     ожидая завершения агента. Здесь нужен неблокирующий send --no-wait, после которого состояние отслеживается отдельно.
+
+  2. [P1] Watchdog не реализует подавление повторного идентичного nudge.
+     Скрипт сравнивает два чтения только внутри одного запуска (shared/scripts/mo-watchdog.sh:128), но после отправки ничего не
+     сохраняет. Повторный запуск с тем же сообщением и неизменным состоянием снова отправит nudge. Более того, src/skills/mo-
+     watchdog/SKILL.md:15 прямо перекладывает это на “operator judgment”, хотя spec требует эту возможность от скрипта. Тест
+     проверяет лишь изменение состояния между двумя чтениями, а не повтор идентичного nudge между запусками.
+
+  3. [P2] scan классифицирует весь backend одной агрегированной строкой.
+     В shared/scripts/mo-watchdog.sh:76 вывод всех сессий передаётся в один classify, после чего печатается один state на backend.
+     Например, одна завершённая и одна работающая сессия могут быть представлены как общий completed; locator и состояние каждой
+     сессии не сообщаются. Кроме того, у Orca ошибка worker-list маскируется успешным terminal list, поскольку сохраняется статус
+     только последней команды. Это не выполняет требование сканировать и сообщать состояние всех сессий/панелей.
+
+
+---
+
+  Блокирующее
+
+  1. Nudge watchdog для Orca не срабатывает никогда — подтверждено запуском.
+  Подавление сравнивает побайтово весь вывод «до/после» (mo-watchdog.sh:140). Но у Orca RPC-конверт содержит свежий UUID id на
+  каждый вызов. Два последовательных чтения одной сессии:
+
+  < "id": "7ee2d2e6-2a84-4604-b50c-034d4b6bd952"   < "lastOutputAt": 1786741652302
+  > "id": "abbe4945-701c-4afa-a4e4-dccc0672368e"   > "lastOutputAt": 1786741654527
+
+  Следствие: target --backend orca … --nudge всегда печатает state=changed action=suppressed и выходит 2 — для ctx_, task_ и term_
+  одинаково, независимо от реального состояния. Тесты это structurally не ловят: nudge проверяется только на фейковом herdr со
+  статичным выводом, а orca-тест покрывает лишь observe и scan. Сценарий W3 объявлен живым — для Orca он пройти не мог.
+
+  2. Nudge у Herdr и Paseo блокируется на неопределённое время.
+  mo-watchdog.sh:147 вызывает herdr agent prompt … --wait без --timeout, а справка самого Herdr гласит: «Without --timeout, the
+  settled-state wait is indefinite». mo-watchdog.sh:155 вызывает paseo send без --no-wait, а он по умолчанию ждёт завершения ответа.
+  Наблюдатель, существующий ровно для случая «агент упёрся в лимит или инференс перегружен» (ваш интент), вместо «пнул и продолжил
+  наблюдать» повисает на весь ход агента. Наблюдателю ответ вообще не нужен — --wait здесь лишний по смыслу.
+
+  3. У Herdr нечем доказать полный settled-ответ (B8/B9, критерий приёмки 5).
+  herdr agent get на установленной версии не содержит поля ответа — только метаданные сессии (проверил: agent, agent_status,
+  pane_id, revision, state_change_seq, terminal_*, workspace_id). Значит остаётся только agent read --source recent-unwrapped, то
+  есть терминальный снимок, который ваш же backend-contract.md относит к «не доказывает полное извлечение». При этом новая
+  herdr-mechanics.md (69 строк) потеряла операционную деталь, без которой длинный ответ физически не забрать: в старой версии была
+  лестница --lines (120, 200, 400…), теперь --lines не упомянут вовсе. Плюс справка Herdr предупреждает, что строки, ушедшие с
+  alternate screen (а это ровно TUI Codex/Claude/OpenCode), в scrollback не попадают и увеличением --lines не восстанавливаются.
+  Детерминированные фикстуры tests/fixtures/herdr-extraction/* при этом удалены без замены.
+
+  4. scan классифицирует бекенд целиком, а не сессии — подтверждено живым прогоном W2.
+  Четыре Herdr-агента со статусами done/done/idle/idle дали одно backend=herdr state=completed. У Orca два stopped/failed воркера
+  перекрыли реально работающего Claude (✳ Sprouting…) → state=failed. Пустой Paseo → unclassified вместо «нет сессий».
+  mo-watchdog/SKILL.md обещает «Report the native locator, classified state and action», но scan не выдаёт локаторов вообще — только
+  сырой дамп. Главная ценность scan (найти, какая сессия встала) не достигается.
+
+  Существенное
+
+  5. purpose-and-architecture.md больше не попадает ни в один ревью-скилл. До этой фичи он шипился в mo-review (git show
+  1c7d885:tools/build-skills.mjs:83-84), теперь — только в mo-setup. По спеке он владеет guidance для архитектурного ревью, а
+  reviewer B по протоколу отвечает за «architecture, simplicity, maintainability», то есть остался без определения правила purpose,
+  которое сам же должен требовать. Тест «shared ownership and build distribution are preserved» этот класс не проверяет.
+
+  6. qc-python.md и qc-typescript.md — осиротевший груз. Они уезжают в установленный mo-setup, но на них не ссылается ни SKILL.md,
+  ни project-setup.md; агент, которому велено прочитать три другие ссылки, до них не дойдёт. А это именно та субстанция, которой
+  спека требует проверять линтеры цикломатической сложности и размера.
+
+  Мелкое
+
+  7. Устаревшая лексика в точке входа. AGENTS.md/CLAUDE.md всё ещё говорят «Full-turn retrieval», и файл называется
+  full-turn-retrieval.md, хотя его H1 теперь «Complete responses stay on public backend surfaces», спека ввела «Settled final
+  response», а глоссарий термина «full turn» не содержит. Вы прямо возражали против «полного turn» — правка дошла до содержимого, но
+  не до заголовка и имени файла.
+
+  8. Тесты вшивают переносы строк прозы (/does not inspect, judge\nor edit product code/). proseWrap: preserve смягчает, но любая
+  переформулировка потребует правки тестов — это приглашение их ослаблять; последний коммит ветки был ровно про это.
+
+  Чего я подтвердить не могу
+
+  Критерии приёмки 3–8 и 12 — живые, и docs/acceptance.md сознательно не хранит вердикты («Current-run verdicts stay in the final
+  report»). Из дерева они недоказуемы by design, поэтому нужен ваш отчёт по B1-B14 × 3 бекенда и W1-W4. Два места вызывают отдельный
+  вопрос: строка беклога 7 (standalone review) по матрице удаляется только после прохождения живой приёмки всеми тремя бекендами, а
+  строка 13 — только после воспроизведения всех четырёх Herdr-кандидатов; обе удалены, доказательств в дереве нет. Findings 1 и 3
+  заставляют думать, что W3 и B8/B9 в полном объёме не проходили.
+
+  Побочно, из живого скана: у Orca висят два воркера dispatchStatus: failed, terminalState: retained, releaseState: not_requested,
+  counts.retained: 2 — по вашей же механике их следовало закрыть worker-release. И у opencode-агента в Herdr стоит
+  screen_detection_skipped: true, что прямо ставит под вопрос B4/B7 для OpenCode.
+```
+
+<!-- prettier-ignore-end -->
