@@ -186,3 +186,47 @@ fi
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /state=completed action=observed/);
 });
+
+test("watchdog rejects missing flag values instead of hanging", () => {
+  const result = spawnSync(
+    join(ROOT, "shared", "scripts", "mo-watchdog.sh"),
+    ["target", "--backend"],
+    { encoding: "utf8", timeout: 1_000 },
+  );
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 64);
+  assert.match(result.stderr, /usage: mo-watchdog\.sh/);
+});
+
+test("watchdog observes low-level Orca tasks and scans worker and terminal surfaces", () => {
+  const root = mkdtempSync(join(tmpdir(), "mo-watchdog-orca-test-"));
+  temporary.push(root);
+  const log = join(root, "log");
+  const fake = join(root, "orca");
+  writeFileSync(
+    fake,
+    `#!/bin/sh
+printf '%s\\n' "$*" >> "$WATCHDOG_LOG"
+case "$*" in
+  "orchestration dispatch-show --task task_fixture --json") echo '{"status":"completed"}' ;;
+  "orchestration worker-list --json") echo '{"workers":[]}' ;;
+  "terminal list --json") echo '{"terminals":[]}' ;;
+  *) exit 2 ;;
+esac
+`,
+  );
+  chmodSync(fake, 0o755);
+  const script = join(ROOT, "shared", "scripts", "mo-watchdog.sh");
+  const env = { ...process.env, PATH: `${root}:/usr/bin:/bin`, WATCHDOG_LOG: log };
+  let result = spawnSync(script, ["target", "--backend", "orca", "--session", "task_fixture"], {
+    env,
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /state=completed action=observed/);
+  result = spawnSync(script, ["scan"], { env, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  const calls = readFileSync(log, "utf8");
+  assert.match(calls, /orchestration worker-list --json/);
+  assert.match(calls, /terminal list --json/);
+});

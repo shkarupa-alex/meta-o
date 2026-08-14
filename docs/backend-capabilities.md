@@ -22,5 +22,5 @@ failure is addressed.
 The control and companion are checked separately. A present executable does not
 prove that an agent knows the backend semantics. A backend's documented
 version-matched bundle counts as the companion source when the complete guide is
-readable; installation into a personal harness directory is not required for
-that capability check.
+readable and the controlling agent reads it before acting; installation into a
+personal harness directory is not required for that capability check.

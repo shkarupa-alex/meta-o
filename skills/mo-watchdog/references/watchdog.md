@@ -10,6 +10,12 @@ backends (`scan`). Observation is read-only by default. Match backend-specific
 regular expressions for limit, overload, failure, question, working and
 completion states.
 
+For Orca, a supervised worker uses its `ctx_` Dispatch locator. A low-level
+injected task uses its `task_` locator for read-only state, while its exact
+`term_` handle is the authorized nudge target. Scans include both supervised
+workers and ordinary terminals so the documented dispatch fallback stays
+visible.
+
 An explicit `nudge` is allowed only for an authorized target. Re-read native
 state immediately before sending. Do not repeat an identical nudge while the
 observed state is unchanged. There is deliberately no numeric cooldown or retry

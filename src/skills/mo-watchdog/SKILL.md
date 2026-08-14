@@ -13,7 +13,9 @@ Use `scripts/mo-watchdog.sh target --backend <backend> --session <id>` for one
 session or `scripts/mo-watchdog.sh scan` for all reachable supported backends.
 Observation is read-only. An explicit nudge additionally requires
 `--nudge <message>` and exact target authorization; the script re-reads native
-state and suppresses an identical nudge while state is unchanged.
+state and suppresses the nudge when that state changed. Avoiding another
+identical nudge against an unchanged state remains operator judgment across
+separate invocations.
 
 Do not inspect tracked project content or private provider state. Report the
 native locator, classified state and action. Pattern misses are refined from

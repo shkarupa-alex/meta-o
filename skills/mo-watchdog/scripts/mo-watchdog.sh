@@ -35,7 +35,14 @@ read_target() {
   WATCHDOG_SESSION=$2
   case "$WATCHDOG_BACKEND" in
     herdr) herdr agent get "$WATCHDOG_SESSION" 2>&1 ;;
-    orca) orca orchestration worker-show --dispatch "$WATCHDOG_SESSION" --json 2>&1 ;;
+    orca)
+      case "$WATCHDOG_SESSION" in
+        ctx_*) orca orchestration worker-show --dispatch "$WATCHDOG_SESSION" --json 2>&1 ;;
+        task_*) orca orchestration dispatch-show --task "$WATCHDOG_SESSION" --json 2>&1 ;;
+        term_*) orca terminal show --terminal "$WATCHDOG_SESSION" --json 2>&1 ;;
+        *) return 64 ;;
+      esac
+      ;;
     paseo) paseo inspect "$WATCHDOG_SESSION" --json 2>&1 ;;
     *) return 64 ;;
   esac
@@ -45,7 +52,10 @@ scan_backend() {
   WATCHDOG_BACKEND=$1
   case "$WATCHDOG_BACKEND" in
     herdr) herdr agent list 2>&1 ;;
-    orca) orca orchestration worker-list --json 2>&1 ;;
+    orca)
+      orca orchestration worker-list --json 2>&1
+      orca terminal list --json 2>&1
+      ;;
     paseo) paseo ls --json 2>&1 ;;
   esac
 }
@@ -87,9 +97,19 @@ WATCHDOG_SESSION=
 WATCHDOG_NUDGE=
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --backend) WATCHDOG_BACKEND=${2-}; shift 2 ;;
-    --session) WATCHDOG_SESSION=${2-}; shift 2 ;;
-    --nudge) WATCHDOG_NUDGE=${2-}; shift 2 ;;
+    --backend|--session|--nudge)
+      if [ "$#" -lt 2 ]; then
+        usage >&2
+        exit 64
+      fi
+      WATCHDOG_VALUE=$2
+      case "$1" in
+        --backend) WATCHDOG_BACKEND=$WATCHDOG_VALUE ;;
+        --session) WATCHDOG_SESSION=$WATCHDOG_VALUE ;;
+        --nudge) WATCHDOG_NUDGE=$WATCHDOG_VALUE ;;
+      esac
+      shift 2
+      ;;
     *) usage >&2; exit 64 ;;
   esac
 done
@@ -125,7 +145,13 @@ fi
 
 case "$WATCHDOG_BACKEND" in
   herdr) herdr agent prompt "$WATCHDOG_SESSION" "$WATCHDOG_NUDGE" --wait ;;
-  orca) orca orchestration send --to "dispatch:$WATCHDOG_SESSION" --subject Watchdog --body "$WATCHDOG_NUDGE" --json ;;
+  orca)
+    case "$WATCHDOG_SESSION" in
+      ctx_*) orca orchestration send --to "dispatch:$WATCHDOG_SESSION" --subject Watchdog --body "$WATCHDOG_NUDGE" --json ;;
+      term_*) orca terminal send --terminal "$WATCHDOG_SESSION" --text "$WATCHDOG_NUDGE" --enter --json ;;
+      *) usage >&2; exit 64 ;;
+    esac
+    ;;
   paseo) paseo send "$WATCHDOG_SESSION" --prompt "$WATCHDOG_NUDGE" --json ;;
 esac
 WATCHDOG_NUDGE_STATUS=$?

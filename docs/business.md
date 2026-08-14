@@ -8,7 +8,7 @@ of those.
 
 The framing is the half that gets quietly "tidied" into a summary, and a summary
 is exactly what cannot be re-read after the compression. The rules are in
-`shared/references/methodology.md §2.1`.
+`shared/references/methodology.md` section 2.
 
 ---
 
@@ -85,7 +85,7 @@ and, naming the artefact this file is:
 > почему это важно.
 
 The six rules that follow it there are reproduced as the normative text of
-`shared/references/methodology.md §2.1`.
+`shared/references/methodology.md` section 2.
 
 ### 6. Clarification — provider aliases are not wrappers — 2026-08-07
 

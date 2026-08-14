@@ -10,6 +10,11 @@ can be read; on packaged macOS this is
 companion missing only when neither source is readable. Do not install personal
 skills without explicit confirmation.
 
+Read the discovered companion guide completely before choosing a provider or
+creating a session, and follow its current preference-discovery requirements.
+A path check alone does not establish that the controlling agent knows Paseo's
+semantics.
+
 ## Sessions
 
 Start a visible background agent with an explicit provider, model, posture and

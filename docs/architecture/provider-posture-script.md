@@ -28,9 +28,9 @@ keeps personal shell behavior out of a guessed prose recipe.
 ## Safety boundary
 
 The script owns one process group and reads private NUL-framed child evidence.
-It does not print provider secrets or alias/function bodies. A profile can still
-detach a descendant with `setsid`; the portable containment limitation and next
-step remain in [Backlog](../backlog.md).
+It does not print provider secrets or alias/function bodies. Dynamic Claude
+catalog discovery separately requires a kernel-owned boundary; its current
+platform limitation and next step remain in [Backlog](../backlog.md).
 
 Personal wrapper or shell-profile changes require explicit user confirmation.
 The agent never dumps a protected definition; the user provides a confirmed

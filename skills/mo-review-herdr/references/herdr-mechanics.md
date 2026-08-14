@@ -19,6 +19,12 @@ herdr agent start <name> --kind opencode --pane <id> --timeout 300000 -- <args>
 
 Pass the selected model and unsandboxed posture using that harness's documented
 arguments. A successful start proves interactive readiness, not task success.
+Before the first prompt, confirm through public detection or visible output that
+the exact harness TUI and effective posture are present. A prompt receipt is not
+delivery proof: confirm the initial task appears once or produces a settled
+response. If public output proves the task never appeared, wait for true
+readiness and retry that exact initial prompt once. If delivery is ambiguous, do
+not resend it.
 
 ## Delivery, state and questions
 

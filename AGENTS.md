@@ -68,7 +68,7 @@ opinion, clarification, correction, preference and constraint — because turnin
 conversation into a spec is lossy compression. Every task/spec also carries all of
 those intents verbatim; a summary or a link to the framing does not replace them,
 and each new intent appends to both. See
-`shared/references/methodology.md §2.1`.
+`shared/references/methodology.md` section 2.
 
 A one-shot `APPROVE`/`DENY` that only authorizes an already named
 production/destructive E2E action or starts an explicitly requested watchdog is
@@ -77,7 +77,7 @@ request-bound compact header in current run evidence; never persist its opaque
 body or mutate tracked intent ledgers, because that would invalidate the exact
 candidate the action authorizes. Any accompanying preference, correction or
 scope change is a separate user intent and still appends verbatim to both
-ledgers. See `shared/references/methodology.md §2.1` and §7.
+ledgers. See `shared/references/methodology.md` sections 2 and 6.
 
 **Anything postponed, deliberately not done, blocked, or left unfixed for any
 reason goes into `docs/backlog.md`**, with its reason, its practical impact, and
