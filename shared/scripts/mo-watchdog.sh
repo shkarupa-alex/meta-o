@@ -121,6 +121,39 @@ remember_nudge() {
   mv "$WATCHDOG_TEMP" "$WATCHDOG_FILE"
 }
 
+# One atomic file per backend locator serializes the duplicate check, delivery
+# and digest update. A live owner suppresses a concurrent invocation; a dead
+# owner's exact stale lock is reclaimed without touching any session data.
+acquire_nudge_lock() {
+  WATCHDOG_LOCK_FILE=${WATCHDOG_FILE}.lock
+  WATCHDOG_LOCK_ATTEMPT=0
+  while [ "$WATCHDOG_LOCK_ATTEMPT" -lt 2 ]; do
+    if (set -C; /usr/bin/printf '%s\n' "$$" > "$WATCHDOG_LOCK_FILE") 2>/dev/null; then
+      chmod 600 "$WATCHDOG_LOCK_FILE" 2>/dev/null || true
+      return 0
+    fi
+    WATCHDOG_LOCK_OWNER=$(sed -n '1p' "$WATCHDOG_LOCK_FILE" 2>/dev/null)
+    case "$WATCHDOG_LOCK_OWNER" in
+      ''|*[!0-9]*) ;;
+      *)
+        if kill -0 "$WATCHDOG_LOCK_OWNER" 2>/dev/null; then
+          return 1
+        fi
+        ;;
+    esac
+    rm -f "$WATCHDOG_LOCK_FILE" 2>/dev/null || return 1
+    WATCHDOG_LOCK_ATTEMPT=$((WATCHDOG_LOCK_ATTEMPT + 1))
+  done
+  return 1
+}
+
+release_nudge_lock() {
+  if [ -f "$WATCHDOG_LOCK_FILE" ] && \
+    [ "$(sed -n '1p' "$WATCHDOG_LOCK_FILE")" = "$$" ]; then
+    rm -f "$WATCHDOG_LOCK_FILE"
+  fi
+}
+
 report_item() {
   WATCHDOG_BACKEND=$1
   WATCHDOG_LOCATOR=$2
@@ -274,17 +307,10 @@ if [ -z "$WATCHDOG_NUDGE" ]; then
   exit "$WATCHDOG_STATUS"
 fi
 
-# Re-read immediately before the only authorized action. Compare semantic
-# backend state, not an RPC envelope whose request IDs change on every read.
-WATCHDOG_AFTER=$(read_target "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION")
-WATCHDOG_AFTER_STATUS=$?
-WATCHDOG_STABLE_BEFORE=$(stable_snapshot "$WATCHDOG_BACKEND" "$WATCHDOG_BEFORE")
-WATCHDOG_STABLE_AFTER=$(stable_snapshot "$WATCHDOG_BACKEND" "$WATCHDOG_AFTER")
-if [ "$WATCHDOG_STATUS" -ne "$WATCHDOG_AFTER_STATUS" ] || \
-  [ "$WATCHDOG_STABLE_BEFORE" != "$WATCHDOG_STABLE_AFTER" ]; then
-  /usr/bin/printf 'backend=%s session=%s state=changed action=suppressed\n' \
-    "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION"
-  exit 2
+if [ "$WATCHDOG_STATUS" -ne 0 ]; then
+  /usr/bin/printf 'backend=%s session=%s status=%s state=%s action=observe-error\n' \
+    "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_STATUS" "$WATCHDOG_STATE"
+  exit "$WATCHDOG_STATUS"
 fi
 
 WATCHDOG_FILE=$(state_file)
@@ -294,14 +320,43 @@ if [ "$WATCHDOG_STATE_STATUS" -ne 0 ]; then
     "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_STATE"
   exit "$WATCHDOG_STATE_STATUS"
 fi
+if ! acquire_nudge_lock; then
+  /usr/bin/printf 'backend=%s session=%s state=%s action=concurrent-suppressed\n' \
+    "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_STATE"
+  exit 2
+fi
+
+# Re-read inside the per-locator critical section immediately before the only
+# authorized action. Compare semantic backend state, not a changing RPC envelope.
+WATCHDOG_AFTER=$(read_target "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION")
+WATCHDOG_AFTER_STATUS=$?
+if [ "$WATCHDOG_AFTER_STATUS" -ne 0 ]; then
+  release_nudge_lock
+  /usr/bin/printf 'backend=%s session=%s status=%s state=%s action=observe-error\n' \
+    "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_AFTER_STATUS" "$WATCHDOG_STATE"
+  exit "$WATCHDOG_AFTER_STATUS"
+fi
+WATCHDOG_STABLE_BEFORE=$(stable_snapshot "$WATCHDOG_BACKEND" "$WATCHDOG_BEFORE")
+WATCHDOG_STABLE_AFTER=$(stable_snapshot "$WATCHDOG_BACKEND" "$WATCHDOG_AFTER")
+if [ "$WATCHDOG_STABLE_BEFORE" != "$WATCHDOG_STABLE_AFTER" ]; then
+  release_nudge_lock
+  /usr/bin/printf 'backend=%s session=%s state=changed action=suppressed\n' \
+    "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION"
+  exit 2
+fi
 WATCHDOG_STATE_FINGERPRINT=$(
   /usr/bin/printf '%s\0%s\0%s' "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" \
     "$WATCHDOG_STABLE_AFTER" | digest
-) || exit 69
-WATCHDOG_MESSAGE_FINGERPRINT=$(/usr/bin/printf '%s' "$WATCHDOG_NUDGE" | digest) || exit 69
+) || { WATCHDOG_DIGEST_STATUS=$?; release_nudge_lock; exit "$WATCHDOG_DIGEST_STATUS"; }
+WATCHDOG_MESSAGE_FINGERPRINT=$(/usr/bin/printf '%s' "$WATCHDOG_NUDGE" | digest) || {
+  WATCHDOG_DIGEST_STATUS=$?
+  release_nudge_lock
+  exit "$WATCHDOG_DIGEST_STATUS"
+}
 if [ -f "$WATCHDOG_FILE" ] && \
   [ "$(sed -n '1p' "$WATCHDOG_FILE")" = "$WATCHDOG_STATE_FINGERPRINT" ] && \
   sed -n '2,$p' "$WATCHDOG_FILE" | grep -Fqx "$WATCHDOG_MESSAGE_FINGERPRINT"; then
+  release_nudge_lock
   /usr/bin/printf 'backend=%s session=%s state=%s action=duplicate-suppressed\n' \
     "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_STATE"
   exit 2
@@ -323,6 +378,7 @@ if [ "$WATCHDOG_NUDGE_STATUS" -eq 0 ]; then
   remember_nudge "$WATCHDOG_FILE" "$WATCHDOG_STATE_FINGERPRINT" \
     "$WATCHDOG_MESSAGE_FINGERPRINT" || WATCHDOG_NUDGE_STATUS=$?
 fi
+release_nudge_lock
 /usr/bin/printf 'backend=%s session=%s state=%s action=nudge status=%s\n' \
   "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_STATE" "$WATCHDOG_NUDGE_STATUS"
 exit "$WATCHDOG_NUDGE_STATUS"

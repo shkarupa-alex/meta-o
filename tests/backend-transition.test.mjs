@@ -1,7 +1,7 @@
 /** Protect the hard backend cutover, knowledge rules, and watchdog helper. */
 
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
   mkdtempSync,
@@ -28,6 +28,17 @@ function files(path) {
     const child = join(path, entry.name);
     if (entry.isDirectory()) return files(child);
     return entry.isFile() ? [child] : [];
+  });
+}
+
+function run(command, args, options) {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, options);
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => (stdout += chunk));
+    child.stderr.on("data", (chunk) => (stderr += chunk));
+    child.on("close", (status) => resolve({ status, stdout, stderr }));
   });
 }
 
@@ -257,6 +268,51 @@ fi
   );
   assert.equal(result.status, 2);
   assert.match(result.stdout, /action=duplicate-suppressed/);
+  assert.equal(readFileSync(log, "utf8").trim().split("\n").length, 1);
+});
+
+test("watchdog rejects failed observations and serializes identical concurrent nudges", async () => {
+  const root = mkdtempSync(join(tmpdir(), "mo-watchdog-lock-test-"));
+  temporary.push(root);
+  const fake = join(root, "herdr");
+  const log = join(root, "log");
+  writeFileSync(
+    fake,
+    `#!/bin/sh
+if [ "$1 $2" = "agent get" ]; then
+  if [ -n "\${WATCHDOG_READ_FAILURE-}" ]; then echo failed >&2; exit 7; fi
+  echo working
+elif [ "$1 $2" = "agent prompt" ]; then
+  sleep 1
+  printf '%s\\n' "$*" >> "$WATCHDOG_LOG"
+  echo sent
+else exit 2
+fi
+`,
+  );
+  chmodSync(fake, 0o755);
+  const script = join(ROOT, "shared", "scripts", "mo-watchdog.sh");
+  const args = ["target", "--backend", "herdr", "--session", "a", "--nudge", "continue"];
+  const env = {
+    ...process.env,
+    PATH: `${root}:/usr/bin:/bin`,
+    WATCHDOG_LOG: log,
+    WATCHDOG_STATE_DIR: join(root, "state"),
+  };
+  const failed = spawnSync(script, args, {
+    env: { ...env, WATCHDOG_READ_FAILURE: "1" },
+    encoding: "utf8",
+  });
+  assert.equal(failed.status, 7);
+  assert.match(failed.stdout, /status=7 state=failed action=observe-error/);
+  assert.equal(readdirSync(root).includes("log"), false);
+
+  const results = await Promise.all([
+    run(script, args, { env, encoding: "utf8" }),
+    run(script, args, { env, encoding: "utf8" }),
+  ]);
+  assert.deepEqual(results.map(({ status }) => status).sort(), [0, 2]);
+  assert.match(results.map(({ stdout }) => stdout).join("\n"), /action=concurrent-suppressed/);
   assert.equal(readFileSync(log, "utf8").trim().split("\n").length, 1);
 });
 

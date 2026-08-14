@@ -28,6 +28,10 @@ of with regular expressions. Classification uses scalar values rather than key
 names, and stable comparison excludes volatile Orca envelope IDs and Paseo
 `UpdatedAt`. Patterns will improve from real failures.
 
+A nudge requires two successful identical native reads. The helper serializes
+the per-locator duplicate check, delivery and digest update; a concurrent
+identical invocation is suppressed rather than allowed to race the state file.
+
 Never inspect provider-private transcripts, credentials or tracked project
 content. Report backend, session locator, observed state and action. Do not
 start, stop, delete or take ownership of sessions.

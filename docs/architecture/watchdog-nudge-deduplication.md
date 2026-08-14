@@ -15,6 +15,12 @@ identical reads: Orca's top-level RPC request/runtime IDs and Paseo's `UpdatedAt
 Native semantic fields such as Orca `lastOutputAt` remain significant. Herdr and
 Paseo delivery is nonblocking; subsequent observation owns completion.
 
+The helper accepts a nudge only after two successful identical reads. An atomic
+per-locator lock covers the duplicate check, native delivery and digest update,
+so concurrent invocations cannot both send before either persists its result.
+The lock contains only the local helper PID; a dead owner's exact stale lock is
+reclaimed on the next invocation.
+
 ## Business reason
 
 The user requires a watchdog that can nudge an agent stalled by an API limit or
