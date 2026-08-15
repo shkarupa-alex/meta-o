@@ -17,6 +17,9 @@ terminal connection/orphaning, while excluding RPC IDs and terminal
 repainting, not a state transition that should suppress delivery. Paseo excludes
 its refreshed `UpdatedAt`. Herdr and Paseo delivery is nonblocking; subsequent
 observation owns completion.
+The calling target or scan surface supplies the native item kind. The projection
+does not infer it from coincidental metadata keys, and it reads permission state
+only from the exact observation field rather than recursively searching options.
 
 The helper accepts a nudge only after two successful identical reads. A mature
 `flock` advisory lock covers the per-locator duplicate check, reservation and

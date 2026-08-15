@@ -123,9 +123,8 @@ stable_snapshot() {
                 worker: (.result.worker | {state, stage, last_error}),
                 observation: (.result.observation | {status}),
                 terminal: (.result.terminal | {connected, orphaned}),
-                permissions: [.. | objects
-                  | (.PendingPermissions? // .pending_permissions? // empty)
-                  | select(type == "array" and length > 0)]
+                permissions: (.result.observation
+                  | {PendingPermissions, pending_permissions})
               }
             '
             ;;
@@ -150,37 +149,35 @@ stable_snapshot() {
 # explicit semantic token because their meaning otherwise lives in the key.
 classification_text() {
   WATCHDOG_BACKEND=$1
-  WATCHDOG_TEXT=$2
+  WATCHDOG_KIND=$2
+  WATCHDOG_TEXT=$3
   if /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -e . >/dev/null 2>&1; then
     if [ "$WATCHDOG_BACKEND" = orca ]; then
-      /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -r '
+      /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -r --arg kind "$WATCHDOG_KIND" '
         def permissions:
-          [.. | objects | (.PendingPermissions? // .pending_permissions? // empty)
-            | select(type == "array" and length > 0)] | length > 0;
+          ((.result.observation.PendingPermissions?
+            // .result.observation.pending_permissions? // []) | length) > 0;
         def strings: map(select(type == "string")) | join(" ");
-        (if (((.result?.terminal? | type) == "object")
-             and ((.result?.dispatch? | type) != "object")
-             and ((.result?.worker? | type) != "object")) then .result.terminal
-         elif (type == "object" and has("handle")) then . else null end) as $terminal
-        | if $terminal != null then
+        if ($kind == "term" or $kind == "terminals") then
+          (if $kind == "term" then .result.terminal else . end) as $terminal
+          |
             if $terminal.orphaned == true then "terminal_orphaned"
             elif $terminal.connected == true then "terminal_connected"
             elif $terminal.connected == false then "terminal_disconnected"
             else "terminal_unknown" end
-          elif ((.result?.dispatch? | type) == "object"
-                and (.result?.worker? | type) == "object") then
+          elif $kind == "ctx" then
             ([.result.dispatch.status, .result.worker.state, .result.worker.stage,
               .result.observation.status]
              + (if ((.result.dispatch.status | test("failed|stopped"; "i"))
                        or (.result.worker.state | test("failed|stopped"; "i")))
                 then [.result.dispatch.last_failure, .result.worker.last_error] else [] end)
              + (if permissions then ["pending_permission"] else [] end)) | strings
-          elif ((.result?.dispatch? | type) == "object") then
+          elif $kind == "task" then
             ([.result.dispatch.status, .result.observation.status]
              + (if (.result.dispatch.status | test("failed|stopped"; "i"))
                 then [.result.dispatch.last_failure] else [] end)
              + (if permissions then ["pending_permission"] else [] end)) | strings
-          elif (type == "object" and (has("dispatchId") or has("workerState"))) then
+          elif $kind == "workers" then
             ([.workerState, .dispatchStatus]
              + (if (((.workerState? // "") | test("failed|stopped"; "i"))
                        or ((.dispatchStatus? // "") | test("failed|stopped"; "i")))
@@ -271,13 +268,14 @@ release_nudge_lock() {
 
 report_item() {
   WATCHDOG_BACKEND=$1
-  WATCHDOG_LOCATOR=$2
-  WATCHDOG_ITEM=$3
-  WATCHDOG_CLASSIFICATION=$(classification_text "$WATCHDOG_BACKEND" "$WATCHDOG_ITEM")
+  WATCHDOG_KIND=$2
+  WATCHDOG_LOCATOR=$3
+  WATCHDOG_ITEM=$4
+  WATCHDOG_CLASSIFICATION=$(classification_text "$WATCHDOG_BACKEND" "$WATCHDOG_KIND" "$WATCHDOG_ITEM")
   WATCHDOG_STATE=$(classify "$WATCHDOG_CLASSIFICATION")
-  if [ "$WATCHDOG_BACKEND" = orca ]; then
+  if [ "$WATCHDOG_BACKEND" = orca ] && [ "$WATCHDOG_KIND" = terminals ]; then
     WATCHDOG_LAST_OUTPUT_AT=$(
-      /usr/bin/printf '%s\n' "$WATCHDOG_ITEM" | jq -r 'if has("handle") then (.lastOutputAt // "unknown") else empty end'
+      /usr/bin/printf '%s\n' "$WATCHDOG_ITEM" | jq -r '.lastOutputAt // "unknown"'
     )
   else
     WATCHDOG_LAST_OUTPUT_AT=
@@ -327,7 +325,7 @@ scan_json_items() {
   fi
   /usr/bin/printf '%s\n' "$WATCHDOG_OUTPUT" | jq -c "($WATCHDOG_FILTER)[]" | while IFS= read -r WATCHDOG_ITEM; do
     WATCHDOG_LOCATOR=$(/usr/bin/printf '%s\n' "$WATCHDOG_ITEM" | jq -r "$WATCHDOG_LOCATOR_FILTER")
-    report_item "$WATCHDOG_BACKEND" "$WATCHDOG_LOCATOR" "$WATCHDOG_ITEM"
+    report_item "$WATCHDOG_BACKEND" "$WATCHDOG_SURFACE" "$WATCHDOG_LOCATOR" "$WATCHDOG_ITEM"
   done
 }
 
@@ -445,7 +443,13 @@ if [ "$WATCHDOG_STATUS" -eq 0 ] && \
   WATCHDOG_STATUS=65
   WATCHDOG_VALID=0
 fi
-WATCHDOG_CLASSIFICATION=$(classification_text "$WATCHDOG_BACKEND" "$WATCHDOG_BEFORE")
+case "$WATCHDOG_SESSION" in
+  ctx_*) WATCHDOG_KIND=ctx ;;
+  task_*) WATCHDOG_KIND=task ;;
+  term_*) WATCHDOG_KIND=term ;;
+  *) WATCHDOG_KIND=target ;;
+esac
+WATCHDOG_CLASSIFICATION=$(classification_text "$WATCHDOG_BACKEND" "$WATCHDOG_KIND" "$WATCHDOG_BEFORE")
 WATCHDOG_STATE=$(classify "$WATCHDOG_CLASSIFICATION")
 if [ "$WATCHDOG_VALID" -eq 0 ]; then
   WATCHDOG_STATE=unclassified

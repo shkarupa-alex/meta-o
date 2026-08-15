@@ -93,19 +93,19 @@ one settled assistant message and run normal plus three-to-four-screen
 request that complete-response surface upstream and do not use private provider
 state as a fallback.
 
-### Mixed-artifact language policy needs examples
+### Human-facing project knowledge is not yet in the user's language
 
-**Reason.** Human-facing knowledge now follows the user's language, while code,
-identifiers, commands, protocol literals and upstream names retain their
-technical language. Mixed artifacts such as API examples and diagnostics still
-have no agreed catalogue of examples.
+**Reason.** The user asked for README, business framing and documentation in the
+user's language while code-adjacent text stays English. Existing human-facing
+project knowledge remains predominantly English; translating it safely is a
+separate broad editorial change, and verbatim intent must remain untouched.
 
-**Practical impact.** An agent may make a locally reasonable but inconsistent
-language choice inside a mixed document; the core human/code boundary remains
-clear and usable.
+**Practical impact.** Russian-speaking users must read most project guidance in
+English, and agents can make inconsistent language choices in mixed artifacts.
 
-**Next step.** Collect concrete confusing mixed artifacts and add examples to
-the project setup contract without rewriting verbatim user intents.
+**Next step.** Translate README and human-facing knowledge to the current user's
+language, preserve verbatim intent and technical literals, then add mixed-artifact
+examples to the project setup contract.
 
 ### Claude catalog containment is macOS-only
 

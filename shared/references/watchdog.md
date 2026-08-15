@@ -46,6 +46,9 @@ state. Missing typed dispatch or worker state makes a targeted observation
 invalid. Terminal `preview`, `title` and `lastOutputAt` are diagnostics rather
 than stable-state inputs, so repainting cannot suppress a nudge forever;
 connection and orphaning flags remain semantic inputs.
+The caller supplies the known target or scan surface kind; field names such as
+`handle` cannot reclassify a worker item as a terminal. Only permission arrays on
+the native observation object participate, never similarly named launch metadata.
 
 A nudge requires two successful identical native reads. The helper serializes
 the per-locator duplicate check, reservation and delivery. It stores the message

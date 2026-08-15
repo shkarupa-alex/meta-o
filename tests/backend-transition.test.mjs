@@ -469,8 +469,9 @@ case "$*" in
   "orchestration worker-show --dispatch ctx_fixture --json")
     if [ -n "\${WATCHDOG_MALFORMED-}" ]; then echo not-json; exit 0; fi
     if [ -n "\${WATCHDOG_MISSING_STATE-}" ]; then echo '{"ok":true,"result":{"dispatch":{"id":"ctx_fixture"},"worker":{"dispatch_id":"ctx_fixture","worktree_id":"repo/idle"},"terminal":{"connected":true,"preview":"working"}}}'; exit 0; fi
+    if [ -n "\${WATCHDOG_PERMISSION-}" ]; then echo '{"ok":true,"result":{"dispatch":{"id":"ctx_fixture","status":"running"},"worker":{"dispatch_id":"ctx_fixture","state":"working","stage":"active"},"observation":{"status":"running","PendingPermissions":[{"id":"real"}]},"terminal":{"connected":true}}}'; exit 0; fi
     n=$(wc -l < "$WATCHDOG_LOG" | tr -d ' ')
-    printf '{"id":"request-%s","ok":true,"result":{"dispatch":{"id":"ctx_fixture","status":"running"},"worker":{"dispatch_id":"ctx_fixture","state":"working","stage":"active","worktree_id":"repo/error-monitor"},"observation":{"status":"running"},"terminal":{"handle":"term_worker","connected":false,"lastOutputAt":%s,"title":"spinner-%s","preview":"terminal_orphaned question overload %s"}},"_meta":{"runtimeId":"runtime-%s"}}\\n' "$n" "$n" "$n" "$n" "$n"
+    printf '{"id":"request-%s","ok":true,"result":{"dispatch":{"id":"ctx_fixture","status":"running"},"worker":{"dispatch_id":"ctx_fixture","state":"working","stage":"active","worktree_id":"repo/error-monitor","startOptions":{"pending_permissions":[{"id":"metadata-only-%s"}]}},"observation":{"status":"running"},"terminal":{"handle":"term_worker","connected":false,"lastOutputAt":%s,"title":"spinner-%s","preview":"terminal_orphaned question overload %s"}},"_meta":{"runtimeId":"runtime-%s"}}\\n' "$n" "$n" "$n" "$n" "$n" "$n"
     ;;
   "terminal show --terminal term_fixture --json")
     n=$(wc -l < "$WATCHDOG_LOG" | tr -d ' ')
@@ -478,7 +479,7 @@ case "$*" in
     ;;
   "orchestration send --to dispatch:ctx_fixture --subject Watchdog --body continue --json") echo '{"accepted":true}' ;;
   "terminal send --terminal term_fixture --text continue --enter --json") echo '{"accepted":true}' ;;
-  "orchestration worker-list --json") echo '{"result":{"workers":[{"dispatchId":"ctx_failed","workerState":"stopped","dispatchStatus":"failed","resource":{"releaseError":null}},{"dispatchId":"ctx_working","workerState":"working","dispatchStatus":"running","resource":{"releaseError":null}}]}}' ;;
+  "orchestration worker-list --json") echo '{"result":{"workers":[{"dispatchId":"ctx_failed","workerState":"stopped","dispatchStatus":"failed","resource":{"releaseError":null}},{"dispatchId":"ctx_working","workerState":"working","dispatchStatus":"running","handle":"metadata-only","resource":{"releaseError":null}}]}}' ;;
   "terminal list --json") echo '{"result":{"terminals":[{"handle":"term_active","status":"running","connected":true,"preview":"terminal_orphaned question overload"},{"handle":"term_done","connected":false,"preview":"completed"},{"handle":"term_disconnected","connected":false,"orphaned":true,"preview":"$ "},{"handle":"term_unknown","preview":"terminal_connected working"}]}}' ;;
   *) exit 2 ;;
 esac
@@ -504,6 +505,12 @@ esac
   });
   assert.equal(result.status, 65);
   assert.match(result.stdout, /status=65 state=unclassified action=observe-error/);
+  result = spawnSync(script, ["target", "--backend", "orca", "--session", "ctx_fixture"], {
+    env: { ...env, WATCHDOG_PERMISSION: "1" },
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /state=question action=observed/);
   result = spawnSync(script, ["target", "--backend", "orca", "--session", "ctx_fixture"], {
     env,
     encoding: "utf8",
