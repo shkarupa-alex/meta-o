@@ -260,6 +260,12 @@ later user answer, correction, preference and constraint verbatim.
 
 <!-- prettier-ignore-start -->
 
+> добивай
+
+<!-- prettier-ignore-end -->
+
+<!-- prettier-ignore-start -->
+
 ```text
 ниже 2 ревью
 

@@ -5,9 +5,10 @@
 Meta-O may retrieve the entire settled assistant response only through the
 selected backend's documented public native surface. Orca uses the complete
 `worker_done` orchestration message. Herdr still needs a proven public complete
-agent result, and Paseo still needs an identifiable complete settled assistant
-message from public `wait` output; until then their routes remain unsupported as
-recorded in the backlog. Backend mechanics record the exact installed commands.
+agent result. Paseo uses the complete text activity item associated with the
+latest known prompt in public `wait --json.message` output; the normal and long
+fixtures must qualify that item for every selected harness before each run can
+claim support. Backend mechanics record the exact installed commands.
 
 A whole-session view remains available for occasional diagnosis, but a terminal
 tail or bounded preview does not prove a complete final response. Long-response

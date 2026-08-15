@@ -76,15 +76,20 @@ process alone.
 
 ## Complete response and diagnostics
 
-`wait --json` proves only settlement unless its result also exposes one
-identifiable complete assistant message. A status such as `idle`, an "Agent is
-idle" summary or a bounded last-activity list is not the response. Qualify a
-settled-message field only after a normal fixture and a three-to-four-screen
-fixture contain intact begin/middle/end markers in that one field. `inspect` is
-a metadata and state surface; it need not repeat the final response. Installed
-Paseo 0.3.1 has not yet proved such a public complete-response field, so the
-route remains unsupported until the fixture passes. Do not reconstruct a result
-from private provider data.
+`wait --json` proves settlement and returns a public `message` timeline. Its
+`Last 5 activity items` bound limits the number of items, not the bytes within
+one text item. Locate the latest exact prompt as its `[User]` item and take the
+following unlabeled text item as that prompt's settled assistant response;
+labelled `[Thought]` items are not response bytes. If the latest prompt or its
+following text item is absent or ambiguous, retrieval is `unknown`.
+
+Qualify this boundary for every selected harness only after a normal fixture
+and a three-to-four-screen fixture contain intact begin/middle/end markers in
+that one item. Codex, Claude Code and OpenCode passed both fixtures through the
+Paseo 0.3.1 public `wait --json.message` surface on 2026-08-15; this observation
+does not waive the current run's fixtures. `inspect` is a metadata and state
+surface; it need not repeat the final response. Do not reconstruct a result from
+private provider data.
 
 `paseo logs <id>` and `paseo attach <id>` provide whole-session diagnostics.
 They do not establish a complete settled response unless the long fixture proves

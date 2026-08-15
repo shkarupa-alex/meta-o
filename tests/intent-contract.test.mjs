@@ -100,6 +100,12 @@ test("the native reviewer launch and file-path clarification is recorded twice",
   }
 });
 
+test("the decision to finish all three backend routes is recorded twice", () => {
+  for (const path of [intentPath, businessPath]) {
+    assert.ok(blockquotes(readFileSync(path, "utf8")).includes("добивай"));
+  }
+});
+
 test("methodology preserves product intent but excludes narrow run-control approvals", () => {
   const methodology = readFileSync(join(ROOT, "shared", "references", "methodology.md"), "utf8");
   assert.match(

@@ -90,14 +90,15 @@ test("backend mechanics use only the intended public result and diagnostic surfa
   assert.match(orca, /terminal wait .*--for tui-idle/);
   assert.match(orca, /dispatch --task <task-id> --to <handle> --inject/);
   assert.match(orca, /do not duplicate a posture flag/);
-  assert.match(paseo, /`wait --json` proves only settlement/);
-  assert.match(paseo, /bounded last-activity list is not the response/);
+  assert.match(paseo, /public `message` timeline/);
+  assert.match(paseo, /following unlabeled text item/);
+  assert.match(paseo, /limits the number of items, not the bytes/);
   assert.match(paseo, /paseo send <agent-id> --prompt <message> --no-wait --json/);
   assert.match(paseo, /never turn `send` into the wait/);
   assert.match(paseo, /retain the public `UpdatedAt` value/);
   assert.match(paseo, /non-idle state was observed/);
   assert.match(paseo, /An unchanged identity and idle state may be the\s+previous response/);
-  assert.match(paseo, /`inspect` is\s+a metadata and state surface/);
+  assert.match(paseo, /`inspect` is\s+a metadata and state\s+surface/);
   assert.match(paseo, /version-matched public application bundle/);
   assert.match(paseo, /Read the discovered companion guide completely/);
   assert.match(paseo, /paseo provider models <codex\|claude\|opencode> --json/);

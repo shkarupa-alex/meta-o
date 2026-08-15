@@ -76,23 +76,6 @@ classification cannot be advertised for the current Herdr control surface.
 public TUI and posture evidence. If no public Herdr surface can provide it, keep
 the harness unsupported and raise the missing detection capability upstream.
 
-### Paseo complete-response support lacks a qualified public field
-
-**Reason.** Installed Paseo 0.3.1 documents `wait` as waiting for an agent to
-become idle. Observed JSON contains idle status and a bounded recent-activity
-summary, not a separately identified complete settled assistant response. No
-normal and long boundary-marker fixture currently proves otherwise.
-
-**Practical impact.** Paseo orchestration and standalone review cannot be
-advertised as supported because normal or long reviewer output may be a preview
-or an earlier turn rather than the complete settled response.
-
-**Next step.** Identify a documented public Paseo field that represents exactly
-one settled assistant message and run normal plus three-to-four-screen
-`BEGIN`/`MIDDLE`/`END` fixtures. Remove this entry only when both pass; otherwise
-request that complete-response surface upstream and do not use private provider
-state as a fallback.
-
 ### Human-facing project knowledge is not yet in the user's language
 
 **Reason.** The user asked for README, business framing and documentation in the

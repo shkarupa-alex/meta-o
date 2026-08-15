@@ -359,6 +359,12 @@ The six rules that follow it there are reproduced as the normative text of
 <!-- markdownlint-enable MD009 MD012 MD028 MD031 MD040 -->
 <!-- prettier-ignore-end -->
 
+<!-- prettier-ignore-start -->
+
+> добивай
+
+<!-- prettier-ignore-end -->
+
 <!-- markdownlint-enable MD013 -->
 
 Editorial note, 2026-08-07: the quote records the diagnosis supplied in the
