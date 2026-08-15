@@ -469,7 +469,7 @@ case "$*" in
   "orchestration worker-show --dispatch ctx_fixture --json")
     if [ -n "\${WATCHDOG_MALFORMED-}" ]; then echo not-json; exit 0; fi
     n=$(wc -l < "$WATCHDOG_LOG" | tr -d ' ')
-    printf '{"id":"request-%s","ok":true,"result":{"dispatch":{"id":"ctx_fixture","status":"running"},"worker":{"dispatch_id":"ctx_fixture","state":"working"}},"_meta":{"runtimeId":"runtime-%s"}}\\n' "$n" "$n"
+    printf '{"id":"request-%s","ok":true,"result":{"dispatch":{"id":"ctx_fixture","status":"running"},"worker":{"dispatch_id":"ctx_fixture","state":"working"},"terminal":{"handle":"term_worker","connected":false,"preview":"terminal_orphaned question overload"}},"_meta":{"runtimeId":"runtime-%s"}}\\n' "$n" "$n"
     ;;
   "orchestration send --to dispatch:ctx_fixture --subject Watchdog --body continue --json") echo '{"accepted":true}' ;;
   "orchestration worker-list --json") echo '{"result":{"workers":[{"dispatchId":"ctx_failed","workerState":"stopped","dispatchStatus":"failed","resource":{"releaseError":null}},{"dispatchId":"ctx_working","workerState":"working","dispatchStatus":"running","resource":{"releaseError":null}}]}}' ;;
@@ -498,6 +498,12 @@ esac
   });
   assert.equal(result.status, 65);
   assert.match(result.stdout, /status=65 state=unclassified action=observe-error/);
+  result = spawnSync(script, ["target", "--backend", "orca", "--session", "ctx_fixture"], {
+    env,
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /state=working action=observed/);
   result = spawnSync(
     script,
     ["target", "--backend", "orca", "--session", "task_fixture", "--nudge", "continue"],

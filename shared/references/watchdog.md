@@ -39,6 +39,8 @@ process state plus `lastOutputAt`; connection is never promoted to agent
 without native process flags is `unclassified`. Any scan item without a native
 locator makes that surface an `observe-error` rather than an observed `unknown`
 session.
+For a `ctx_` worker envelope, the embedded terminal is diagnostic only: discard
+its preview and classify the dispatch, worker, observation and permission state.
 
 A nudge requires two successful identical native reads. The helper serializes
 the per-locator duplicate check, reservation and delivery. It stores the message
