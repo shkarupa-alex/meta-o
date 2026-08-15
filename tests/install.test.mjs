@@ -89,8 +89,9 @@ test("README distinguishes proven local and unproven remote installation", () =>
   assert.match(readme, /apm install \/path\/to\/meta-o/);
   assert.match(readme, /--skill mo-review-orca/);
   assert.match(readme, /Remote installation remains\s+unproven/);
-  assert.match(readme, /Live route qualification is currently incomplete/);
-  assert.match(readme, /must report\s+`needs_attention`, not support/);
+  assert.match(readme, /Each route is advertised only after its own live acceptance/);
+  assert.match(readme, /Herdr is\s+currently blocked/);
+  assert.match(readme, /Orca and Paseo expose qualified public response surfaces/);
   assert.match(readme, /narrow state exception/);
   assert.match(readme, /requires `jq`.*and `flock`/s);
 });
