@@ -525,8 +525,8 @@ esac
   for (const expected of [
     /backend=orca session=ctx_failed state=failed/,
     /backend=orca session=ctx_working state=working/,
-    /backend=orca session=term_active state=working/,
-    /backend=orca session=term_done state=completed/,
+    /backend=orca session=term_active state=connected last_output_at=unknown/,
+    /backend=orca session=term_done state=disconnected last_output_at=unknown/,
     /backend=orca session=term_disconnected state=failed/,
   ]) {
     assert.match(result.stdout, expected);
@@ -587,6 +587,33 @@ esac
     result.stdout,
     /backend=herdr surface=agents state=unclassified action=observe-error/,
   );
+});
+
+test("watchdog rejects scan items without a native locator", () => {
+  const root = mkdtempSync(join(tmpdir(), "mo-watchdog-missing-locator-test-"));
+  temporary.push(root);
+  const fake = join(root, "orca");
+  writeFileSync(
+    fake,
+    `#!/bin/sh
+case "$*" in
+  "orchestration worker-list --json") echo '{"result":{"workers":[]}}' ;;
+  "terminal list --json") echo '{"result":{"terminals":[{"connected":true,"lastOutputAt":123}]}}' ;;
+  *) exit 2 ;;
+esac
+`,
+  );
+  chmodSync(fake, 0o755);
+  const result = spawnSync(join(ROOT, "shared", "scripts", "mo-watchdog.sh"), ["scan"], {
+    env: { ...process.env, PATH: `${root}:${SYSTEM_PATH}` },
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 1);
+  assert.match(
+    result.stdout,
+    /backend=orca surface=terminals state=unclassified action=observe-error/,
+  );
+  assert.doesNotMatch(result.stdout, /session=unknown action=observed/);
 });
 
 test("watchdog reports Herdr agents separately and names an empty Paseo surface", () => {

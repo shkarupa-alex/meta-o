@@ -24,6 +24,12 @@ classify() {
   elif /usr/bin/printf '%s\n' "$WATCHDOG_COMPACT" | grep -Eiq '"(PendingPermissions|pending_permissions)":\[\{' || \
     /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'question|blocked|required input|pending.?permission'; then
     /usr/bin/printf 'question'
+  elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'terminal_orphaned'; then
+    /usr/bin/printf 'failed'
+  elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'terminal_disconnected'; then
+    /usr/bin/printf 'disconnected'
+  elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'terminal_connected'; then
+    /usr/bin/printf 'connected'
   elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'failed|error|lost|unknown|crash|stopped'; then
     /usr/bin/printf 'failed'
   elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'done|completed|idle|worker_done|succeeded'; then
@@ -124,9 +130,9 @@ classification_text() {
       + ((if ((.result?.terminal? | type) == "object") then .result.terminal
           elif (type == "object" and has("handle")) then . else null end) as $terminal
          | if $terminal == null then ""
-           elif $terminal.orphaned == true then " failed"
-           elif $terminal.connected == true then " working"
-           elif $terminal.connected == false then " completed"
+           elif $terminal.orphaned == true then " terminal_orphaned"
+           elif $terminal.connected == true then " terminal_connected"
+           elif $terminal.connected == false then " terminal_disconnected"
            else "" end)
     '
   else
@@ -208,8 +214,20 @@ report_item() {
   WATCHDOG_ITEM=$3
   WATCHDOG_CLASSIFICATION=$(classification_text "$WATCHDOG_ITEM")
   WATCHDOG_STATE=$(classify "$WATCHDOG_CLASSIFICATION")
-  /usr/bin/printf 'backend=%s session=%s state=%s action=observed\n' \
-    "$WATCHDOG_BACKEND" "$WATCHDOG_LOCATOR" "$WATCHDOG_STATE"
+  if [ "$WATCHDOG_BACKEND" = orca ]; then
+    WATCHDOG_LAST_OUTPUT_AT=$(
+      /usr/bin/printf '%s\n' "$WATCHDOG_ITEM" | jq -r 'if has("handle") then (.lastOutputAt // "unknown") else empty end'
+    )
+  else
+    WATCHDOG_LAST_OUTPUT_AT=
+  fi
+  if [ -n "$WATCHDOG_LAST_OUTPUT_AT" ]; then
+    /usr/bin/printf 'backend=%s session=%s state=%s last_output_at=%s action=observed\n' \
+      "$WATCHDOG_BACKEND" "$WATCHDOG_LOCATOR" "$WATCHDOG_STATE" "$WATCHDOG_LAST_OUTPUT_AT"
+  else
+    /usr/bin/printf 'backend=%s session=%s state=%s action=observed\n' \
+      "$WATCHDOG_BACKEND" "$WATCHDOG_LOCATOR" "$WATCHDOG_STATE"
+  fi
 }
 
 scan_json_items() {
@@ -238,6 +256,13 @@ scan_json_items() {
     /usr/bin/printf 'backend=%s surface=%s state=no-sessions action=observed\n' \
       "$WATCHDOG_BACKEND" "$WATCHDOG_SURFACE"
     return 0
+  fi
+  if ! /usr/bin/printf '%s\n' "$WATCHDOG_OUTPUT" | jq -e \
+    "($WATCHDOG_FILTER) | all(.[]; (($WATCHDOG_LOCATOR_FILTER) as \$locator | (\$locator | type) == \"string\" and \$locator != \"\" and \$locator != \"unknown\"))" \
+    >/dev/null 2>&1; then
+    /usr/bin/printf 'backend=%s surface=%s state=unclassified action=observe-error\n%s\n' \
+      "$WATCHDOG_BACKEND" "$WATCHDOG_SURFACE" "$WATCHDOG_OUTPUT"
+    return 1
   fi
   /usr/bin/printf '%s\n' "$WATCHDOG_OUTPUT" | jq -c "($WATCHDOG_FILTER)[]" | while IFS= read -r WATCHDOG_ITEM; do
     WATCHDOG_LOCATOR=$(/usr/bin/printf '%s\n' "$WATCHDOG_ITEM" | jq -r "$WATCHDOG_LOCATOR_FILTER")
