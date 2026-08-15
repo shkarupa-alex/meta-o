@@ -2,11 +2,10 @@
 
 Ten installable agent skills define routes that take a feature from a task or
 specification to one verified candidate commit using Herdr, Orca or Paseo
-sessions. Live route qualification is currently incomplete: Herdr and Paseo
-lack a proven public complete-response surface, and Orca's normal and long
-response fixtures have no retained current-run verdict. These routes must report
-`needs_attention`, not support, until the corresponding [Backlog](docs/backlog.md)
-entries are cleared.
+sessions. Each route is advertised only after its own live acceptance. Herdr is
+currently blocked because its public complete-response surface has not passed
+the required fixtures; Orca and Paseo expose qualified public response surfaces,
+but every candidate still needs its own current-run verdict.
 
 Meta-O is a skills-first methodology: it adds no orchestration CLI, provider
 proxy, daemon, general workflow state store or adapter layer. The watchdog has
@@ -49,11 +48,11 @@ for per-locator nudge serialization.
 | Skill                  | Purpose                                                           |
 | ---------------------- | ----------------------------------------------------------------- |
 | `mo-orchestrate-herdr` | Define the Herdr feature route; live acceptance is blocked.       |
-| `mo-orchestrate-orca`  | Define the Orca feature route; B8/B9 proof remains outstanding.   |
-| `mo-orchestrate-paseo` | Define the Paseo feature route; live acceptance is blocked.       |
+| `mo-orchestrate-orca`  | Define the Orca feature route through complete `worker_done`.     |
+| `mo-orchestrate-paseo` | Define the Paseo feature route through its public activity item.  |
 | `mo-review-herdr`      | Define standalone Herdr review; live acceptance is blocked.       |
-| `mo-review-orca`       | Define standalone Orca review; B8/B9 proof remains outstanding.   |
-| `mo-review-paseo`      | Define standalone Paseo review; live acceptance is blocked.       |
+| `mo-review-orca`       | Define standalone Orca review with complete response retrieval.   |
+| `mo-review-paseo`      | Define standalone Paseo review with complete response retrieval.  |
 | `mo-setup`             | Inspect and repair project/environment readiness.                 |
 | `mo-e2e`               | Run E2E scenarios that genuinely require an agent.                |
 | `mo-reuse`             | Research reuse before implementation when explicitly requested.   |

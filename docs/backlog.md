@@ -6,41 +6,31 @@ Every entry records its reason, practical impact and next step.
 
 ## Open
 
-### Orca cannot release four retained failed workers
+### Orca cannot release ten retained worker records
 
-**Reason.** Public `worker-list` now reports Dispatches `ctx_51a2a3d73a57`,
+**Reason.** Public `worker-list` still reports Dispatches `ctx_51a2a3d73a57`,
 `ctx_113a0d0eb712`, `ctx_7d5144f020ec` and `ctx_419d0a027239` as
 `dispatchStatus: failed`, `workerState: stopped`, `terminalState: retained` and
 `releaseState: not_requested`. On 2026-08-15 an exact
 `worker-release --dispatch` for the original pair returned
 `dispatch_inactive`, saying only a succeeded or failed worker can release. This
-contradicts the listed failed state, and a broad terminal close would violate
-ownership mechanics.
+contradicts the listed failed state. The B8/B9 run added three stopped failed
+composed-start records (`ctx_a05448f53df6`, `ctx_08d582eac77f`,
+`ctx_dad8f56f7236`) whose exact terminals were closed by `worker-stop`, plus
+three completed fallback records (`ctx_b45a883831c7`, `ctx_70186ba8a7b6`,
+`ctx_13bb5aa56425`) whose exact external terminals were closed after settlement.
+`worker-release` retains the latter three with reason `external_terminal` even
+after their terminals are gone.
 
-**Practical impact.** Four stopped terminals remain retained in Orca resource
-accounting. They do not run work, but scan continues to report them and their
-resources cannot be reclaimed through the documented safe command.
+**Practical impact.** Orca resource accounting reports ten retained records.
+The six B8/B9 terminals no longer run, but scan still reports their records; the
+original four stopped terminals and all ten accounting records cannot be
+reclaimed through the documented safe commands.
 
-**Next step.** Reproduce the state tuple and rejection against Orca's current
-version, then fix or report the upstream transition so `worker-release` accepts
-a stopped failed Dispatch. Release only these four exact Dispatches after the
-public command accepts them.
-
-### Orca complete-response fixtures lack a current-run verdict
-
-**Reason.** Orca's public `worker_done` message carries long reviewer bodies in
-observed runs, but no retained current-run report proves both the exact normal
-fixture and the three-to-four-screen `BEGIN`/`MIDDLE`/`END` fixture required by
-B8/B9. A long review body is not a substitute for the specified marker oracle.
-
-**Practical impact.** Orca orchestration and standalone review cannot be
-advertised as live-qualified under the current acceptance contract even though
-the public response field is structurally suitable and ordinary reviews work.
-
-**Next step.** Run B8 and B9 through Orca-managed native Codex, Claude Code and
-OpenCode workers, retain the exact current-run verdict in the final report, and
-remove this entry only if every complete `worker_done` body matches its oracle
-with all boundary markers intact.
+**Next step.** Fix or report both upstream transitions: release must accept a
+stopped failed owned Dispatch, and an external Dispatch whose exact terminal is
+already closed must leave retained accounting. Reclaim only the ten exact
+Dispatches above after the public command reports a safe release.
 
 ### Herdr complete-response support remains fixture-bound
 
