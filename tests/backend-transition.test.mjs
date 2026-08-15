@@ -473,7 +473,7 @@ case "$*" in
     ;;
   "orchestration send --to dispatch:ctx_fixture --subject Watchdog --body continue --json") echo '{"accepted":true}' ;;
   "orchestration worker-list --json") echo '{"result":{"workers":[{"dispatchId":"ctx_failed","workerState":"stopped","dispatchStatus":"failed","resource":{"releaseError":null}},{"dispatchId":"ctx_working","workerState":"working","dispatchStatus":"running","resource":{"releaseError":null}}]}}' ;;
-  "terminal list --json") echo '{"result":{"terminals":[{"handle":"term_active","status":"running","connected":true,"preview":"Ask for approval"},{"handle":"term_done","connected":false,"preview":"completed"},{"handle":"term_disconnected","connected":false,"orphaned":true,"preview":"$ "}]}}' ;;
+  "terminal list --json") echo '{"result":{"terminals":[{"handle":"term_active","status":"running","connected":true,"preview":"orca orchestration check --types question"},{"handle":"term_done","connected":false,"preview":"completed"},{"handle":"term_disconnected","connected":false,"orphaned":true,"preview":"$ "},{"handle":"term_unknown","preview":"working"}]}}' ;;
   *) exit 2 ;;
 esac
 `,
@@ -528,6 +528,7 @@ esac
     /backend=orca session=term_active state=connected last_output_at=unknown/,
     /backend=orca session=term_done state=disconnected last_output_at=unknown/,
     /backend=orca session=term_disconnected state=failed/,
+    /backend=orca session=term_unknown state=unclassified last_output_at=unknown/,
   ]) {
     assert.match(result.stdout, expected);
   }

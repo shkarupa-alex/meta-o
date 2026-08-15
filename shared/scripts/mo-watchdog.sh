@@ -19,17 +19,19 @@ usage() {
 classify() {
   WATCHDOG_TEXT=$1
   WATCHDOG_COMPACT=$(/usr/bin/printf '%s' "$WATCHDOG_TEXT" | tr -d '[:space:]')
-  if /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'rate.?limit|quota|too many requests|overload|capacity|inference.*busy'; then
-    /usr/bin/printf 'limit_or_overload'
-  elif /usr/bin/printf '%s\n' "$WATCHDOG_COMPACT" | grep -Eiq '"(PendingPermissions|pending_permissions)":\[\{' || \
-    /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'question|blocked|required input|pending.?permission'; then
-    /usr/bin/printf 'question'
-  elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'terminal_orphaned'; then
+  if /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'terminal_orphaned'; then
     /usr/bin/printf 'failed'
   elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'terminal_disconnected'; then
     /usr/bin/printf 'disconnected'
   elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'terminal_connected'; then
     /usr/bin/printf 'connected'
+  elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'terminal_unknown'; then
+    /usr/bin/printf 'unclassified'
+  elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'rate.?limit|quota|too many requests|overload|capacity|inference.*busy'; then
+    /usr/bin/printf 'limit_or_overload'
+  elif /usr/bin/printf '%s\n' "$WATCHDOG_COMPACT" | grep -Eiq '"(PendingPermissions|pending_permissions)":\[\{' || \
+    /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'question|blocked|required input|pending.?permission'; then
+    /usr/bin/printf 'question'
   elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'failed|error|lost|unknown|crash|stopped'; then
     /usr/bin/printf 'failed'
   elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'done|completed|idle|worker_done|succeeded'; then
@@ -133,7 +135,7 @@ classification_text() {
            elif $terminal.orphaned == true then " terminal_orphaned"
            elif $terminal.connected == true then " terminal_connected"
            elif $terminal.connected == false then " terminal_disconnected"
-           else "" end)
+           else " terminal_unknown" end)
     '
   else
     /usr/bin/printf '%s' "$WATCHDOG_TEXT"

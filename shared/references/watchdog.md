@@ -35,8 +35,10 @@ match the requested full ID or prefix. Malformed or mismatched output is an
 `observe-error`; it never reaches state persistence or nudge delivery. Orca
 terminal items report native `connected`, `disconnected` or failed-orphaned
 process state plus `lastOutputAt`; connection is never promoted to agent
-`working`. Any scan item without a native locator makes that surface an
-`observe-error` rather than an observed `unknown` session.
+`working`, and raw preview text never overrides those process tokens. A terminal
+without native process flags is `unclassified`. Any scan item without a native
+locator makes that surface an `observe-error` rather than an observed `unknown`
+session.
 
 A nudge requires two successful identical native reads. The helper serializes
 the per-locator duplicate check, reservation and delivery. It stores the message
