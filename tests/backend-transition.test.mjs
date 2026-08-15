@@ -473,7 +473,7 @@ case "$*" in
     ;;
   "orchestration send --to dispatch:ctx_fixture --subject Watchdog --body continue --json") echo '{"accepted":true}' ;;
   "orchestration worker-list --json") echo '{"result":{"workers":[{"dispatchId":"ctx_failed","workerState":"stopped","dispatchStatus":"failed","resource":{"releaseError":null}},{"dispatchId":"ctx_working","workerState":"working","dispatchStatus":"running","resource":{"releaseError":null}}]}}' ;;
-  "terminal list --json") echo '{"result":{"terminals":[{"handle":"term_active","status":"running","connected":true,"preview":"orca orchestration check --types question"},{"handle":"term_done","connected":false,"preview":"completed"},{"handle":"term_disconnected","connected":false,"orphaned":true,"preview":"$ "},{"handle":"term_unknown","preview":"working"}]}}' ;;
+  "terminal list --json") echo '{"result":{"terminals":[{"handle":"term_active","status":"running","connected":true,"preview":"terminal_orphaned question overload"},{"handle":"term_done","connected":false,"preview":"completed"},{"handle":"term_disconnected","connected":false,"orphaned":true,"preview":"$ "},{"handle":"term_unknown","preview":"terminal_connected working"}]}}' ;;
   *) exit 2 ;;
 esac
 `,

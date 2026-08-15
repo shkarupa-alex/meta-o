@@ -126,16 +126,18 @@ classification_text() {
   WATCHDOG_TEXT=$1
   if /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -e . >/dev/null 2>&1; then
     /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -r '
-      ([.. | scalars | select(. != null and . != false and . != true)] | map(tostring) | join(" "))
-      + (if (((.PendingPermissions? // .pending_permissions? // []) | length) > 0)
-         then " pending_permission" else "" end)
-      + ((if ((.result?.terminal? | type) == "object") then .result.terminal
-          elif (type == "object" and has("handle")) then . else null end) as $terminal
-         | if $terminal == null then ""
-           elif $terminal.orphaned == true then " terminal_orphaned"
-           elif $terminal.connected == true then " terminal_connected"
-           elif $terminal.connected == false then " terminal_disconnected"
-           else " terminal_unknown" end)
+      (if ((.result?.terminal? | type) == "object") then .result.terminal
+       elif (type == "object" and has("handle")) then . else null end) as $terminal
+      | if $terminal != null then
+          if $terminal.orphaned == true then "terminal_orphaned"
+          elif $terminal.connected == true then "terminal_connected"
+          elif $terminal.connected == false then "terminal_disconnected"
+          else "terminal_unknown" end
+        else
+          ([.. | scalars | select(. != null and . != false and . != true)] | map(tostring) | join(" "))
+          + (if (((.PendingPermissions? // .pending_permissions? // []) | length) > 0)
+             then " pending_permission" else "" end)
+        end
     '
   else
     /usr/bin/printf '%s' "$WATCHDOG_TEXT"
