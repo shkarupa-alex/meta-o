@@ -40,7 +40,12 @@ without native process flags is `unclassified`. Any scan item without a native
 locator makes that surface an `observe-error` rather than an observed `unknown`
 session.
 For a `ctx_` worker envelope, the embedded terminal is diagnostic only: discard
-its preview and classify the dispatch, worker, observation and permission state.
+its preview and classify only typed dispatch, worker, observation, error and
+permission fields. Paths, launch options and other scalar metadata cannot name a
+state. Missing typed dispatch or worker state makes a targeted observation
+invalid. Terminal `preview`, `title` and `lastOutputAt` are diagnostics rather
+than stable-state inputs, so repainting cannot suppress a nudge forever;
+connection and orphaning flags remain semantic inputs.
 
 A nudge requires two successful identical native reads. The helper serializes
 the per-locator duplicate check, reservation and delivery. It stores the message

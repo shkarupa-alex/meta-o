@@ -74,13 +74,16 @@ validate_target() {
       /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -e --arg locator "$WATCHDOG_SESSION" '
         .ok == true and (.result | type) == "object"
         and (.result.dispatch | type) == "object" and .result.dispatch.id == $locator
+        and (.result.dispatch.status | type) == "string"
         and (.result.worker | type) == "object" and .result.worker.dispatch_id == $locator
+        and (.result.worker.state | type) == "string"
       ' >/dev/null 2>&1
       ;;
     orca:task_*)
       /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -e --arg locator "$WATCHDOG_SESSION" '
         .ok == true and (.result.dispatch | type) == "object"
         and .result.dispatch.task_id == $locator
+        and (.result.dispatch.status | type) == "string"
       ' >/dev/null 2>&1
       ;;
     orca:term_*)
@@ -103,14 +106,37 @@ validate_target() {
 
 # Orca generates fresh RPC request/runtime IDs and Paseo refreshes `UpdatedAt`
 # on otherwise identical reads. Those observation fields cannot participate in
-# stale-state suppression. Semantic result fields, including Orca lastOutputAt,
-# remain.
+# stale-state suppression. Orca compares a typed semantic projection; terminal
+# preview, title and lastOutputAt are diagnostics and never gate delivery.
 stable_snapshot() {
   WATCHDOG_BACKEND=$1
-  WATCHDOG_TEXT=$2
+  WATCHDOG_SESSION=$2
+  WATCHDOG_TEXT=$3
   if /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -e . >/dev/null 2>&1; then
     case "$WATCHDOG_BACKEND" in
-      orca) /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -cS 'del(.id, ._meta.runtimeId)' ;;
+      orca)
+        case "$WATCHDOG_SESSION" in
+          ctx_*)
+            /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -cS '
+              {
+                dispatch: (.result.dispatch | {status, last_failure}),
+                worker: (.result.worker | {state, stage, last_error}),
+                observation: (.result.observation | {status}),
+                terminal: (.result.terminal | {connected, orphaned}),
+                permissions: [.. | objects
+                  | (.PendingPermissions? // .pending_permissions? // empty)
+                  | select(type == "array" and length > 0)]
+              }
+            '
+            ;;
+          term_*)
+            /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -cS '
+              {terminal: (.result.terminal | {connected, orphaned})}
+            '
+            ;;
+          *) /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -cS 'del(.id, ._meta.runtimeId)' ;;
+        esac
+        ;;
       paseo) /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -cS 'del(.UpdatedAt)' ;;
       *) /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -cS . ;;
     esac
@@ -123,29 +149,53 @@ stable_snapshot() {
 # and `connected: false` is not working. Pending-permission arrays need one
 # explicit semantic token because their meaning otherwise lives in the key.
 classification_text() {
-  WATCHDOG_TEXT=$1
+  WATCHDOG_BACKEND=$1
+  WATCHDOG_TEXT=$2
   if /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -e . >/dev/null 2>&1; then
-    /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -r '
-      . as $envelope
-      | (if (((.result?.terminal? | type) == "object")
+    if [ "$WATCHDOG_BACKEND" = orca ]; then
+      /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -r '
+        def permissions:
+          [.. | objects | (.PendingPermissions? // .pending_permissions? // empty)
+            | select(type == "array" and length > 0)] | length > 0;
+        def strings: map(select(type == "string")) | join(" ");
+        (if (((.result?.terminal? | type) == "object")
              and ((.result?.dispatch? | type) != "object")
              and ((.result?.worker? | type) != "object")) then .result.terminal
-       elif (type == "object" and has("handle")) then . else null end) as $terminal
-      | if $terminal != null then
-          if $terminal.orphaned == true then "terminal_orphaned"
-          elif $terminal.connected == true then "terminal_connected"
-          elif $terminal.connected == false then "terminal_disconnected"
-          else "terminal_unknown" end
-        else
-          (($envelope | del(.result.terminal))
-            | [.. | scalars | select(. != null and . != false and . != true)]
-            | map(tostring) | join(" "))
-          + (if ([$envelope | .. | objects
-                    | (.PendingPermissions? // .pending_permissions? // empty)
-                    | select(type == "array" and length > 0)] | length) > 0
-             then " pending_permission" else "" end)
-        end
-    '
+         elif (type == "object" and has("handle")) then . else null end) as $terminal
+        | if $terminal != null then
+            if $terminal.orphaned == true then "terminal_orphaned"
+            elif $terminal.connected == true then "terminal_connected"
+            elif $terminal.connected == false then "terminal_disconnected"
+            else "terminal_unknown" end
+          elif ((.result?.dispatch? | type) == "object"
+                and (.result?.worker? | type) == "object") then
+            ([.result.dispatch.status, .result.worker.state, .result.worker.stage,
+              .result.observation.status]
+             + (if ((.result.dispatch.status | test("failed|stopped"; "i"))
+                       or (.result.worker.state | test("failed|stopped"; "i")))
+                then [.result.dispatch.last_failure, .result.worker.last_error] else [] end)
+             + (if permissions then ["pending_permission"] else [] end)) | strings
+          elif ((.result?.dispatch? | type) == "object") then
+            ([.result.dispatch.status, .result.observation.status]
+             + (if (.result.dispatch.status | test("failed|stopped"; "i"))
+                then [.result.dispatch.last_failure] else [] end)
+             + (if permissions then ["pending_permission"] else [] end)) | strings
+          elif (type == "object" and (has("dispatchId") or has("workerState"))) then
+            ([.workerState, .dispatchStatus]
+             + (if (((.workerState? // "") | test("failed|stopped"; "i"))
+                       or ((.dispatchStatus? // "") | test("failed|stopped"; "i")))
+                then [.lastError, .resource.releaseError] else [] end)) | strings
+          else "" end
+      '
+    else
+      /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -r '
+        ([.. | scalars | select(. != null and . != false and . != true)]
+          | map(tostring) | join(" "))
+        + (if ([.. | objects | (.PendingPermissions? // .pending_permissions? // empty)
+                  | select(type == "array" and length > 0)] | length) > 0
+           then " pending_permission" else "" end)
+      '
+    fi
   else
     /usr/bin/printf '%s' "$WATCHDOG_TEXT"
   fi
@@ -223,7 +273,7 @@ report_item() {
   WATCHDOG_BACKEND=$1
   WATCHDOG_LOCATOR=$2
   WATCHDOG_ITEM=$3
-  WATCHDOG_CLASSIFICATION=$(classification_text "$WATCHDOG_ITEM")
+  WATCHDOG_CLASSIFICATION=$(classification_text "$WATCHDOG_BACKEND" "$WATCHDOG_ITEM")
   WATCHDOG_STATE=$(classify "$WATCHDOG_CLASSIFICATION")
   if [ "$WATCHDOG_BACKEND" = orca ]; then
     WATCHDOG_LAST_OUTPUT_AT=$(
@@ -327,7 +377,7 @@ if [ "$WATCHDOG_MODE" = scan ]; then
           '(.name // .pane_id // .terminal_id // "unknown")' herdr agent list || WATCHDOG_SCAN_STATUS=1
         ;;
       orca)
-        scan_command orca workers 'if (.result.workers? | type) == "array" then .result.workers elif (.workers? | type) == "array" then .workers else error("missing workers array") end' \
+        scan_command orca workers 'if (.result.workers? | type) == "array" then .result.workers elif (.workers? | type) == "array" then .workers else error("missing workers array") end | if all(.[]; (.dispatchId | type) == "string" and (.workerState | type) == "string" and (.dispatchStatus | type) == "string") then . else error("malformed worker state") end' \
           '(.dispatchId // .taskId // .agentTerminalHandle // "unknown")' \
           orca orchestration worker-list --json || WATCHDOG_SCAN_STATUS=1
         scan_command orca terminals 'if (.result.terminals? | type) == "array" then .result.terminals elif (.terminals? | type) == "array" then .terminals else error("missing terminals array") end' \
@@ -395,7 +445,7 @@ if [ "$WATCHDOG_STATUS" -eq 0 ] && \
   WATCHDOG_STATUS=65
   WATCHDOG_VALID=0
 fi
-WATCHDOG_CLASSIFICATION=$(classification_text "$WATCHDOG_BEFORE")
+WATCHDOG_CLASSIFICATION=$(classification_text "$WATCHDOG_BACKEND" "$WATCHDOG_BEFORE")
 WATCHDOG_STATE=$(classify "$WATCHDOG_CLASSIFICATION")
 if [ "$WATCHDOG_VALID" -eq 0 ]; then
   WATCHDOG_STATE=unclassified
@@ -444,8 +494,8 @@ if [ "$WATCHDOG_AFTER_STATUS" -ne 0 ]; then
     "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_AFTER_STATUS"
   exit "$WATCHDOG_AFTER_STATUS"
 fi
-WATCHDOG_STABLE_BEFORE=$(stable_snapshot "$WATCHDOG_BACKEND" "$WATCHDOG_BEFORE")
-WATCHDOG_STABLE_AFTER=$(stable_snapshot "$WATCHDOG_BACKEND" "$WATCHDOG_AFTER")
+WATCHDOG_STABLE_BEFORE=$(stable_snapshot "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_BEFORE")
+WATCHDOG_STABLE_AFTER=$(stable_snapshot "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_AFTER")
 if [ "$WATCHDOG_STABLE_BEFORE" != "$WATCHDOG_STABLE_AFTER" ]; then
   release_nudge_lock
   /usr/bin/printf 'backend=%s session=%s state=changed action=suppressed\n' \

@@ -10,10 +10,13 @@ unchanged. A new state replaces the prior message set. It stores no message,
 response, actor registry, candidate identity or gate result.
 
 The helper parses backend list JSON with `jq`, reports each native locator
-separately, and removes only observation metadata that changes on otherwise
-identical reads: Orca's top-level RPC request/runtime IDs and Paseo's `UpdatedAt`.
-Native semantic fields such as Orca `lastOutputAt` remain significant. Herdr and
-Paseo delivery is nonblocking; subsequent observation owns completion.
+separately, and compares a backend-specific semantic projection. For Orca that
+projection keeps typed dispatch, worker, observation and permission state plus
+terminal connection/orphaning, while excluding RPC IDs and terminal
+`preview`, `title` and `lastOutputAt`: those fields describe presentation and
+repainting, not a state transition that should suppress delivery. Paseo excludes
+its refreshed `UpdatedAt`. Herdr and Paseo delivery is nonblocking; subsequent
+observation owns completion.
 
 The helper accepts a nudge only after two successful identical reads. A mature
 `flock` advisory lock covers the per-locator duplicate check, reservation and
