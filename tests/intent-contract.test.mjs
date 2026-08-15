@@ -74,6 +74,17 @@ test("the complete latest review is duplicated byte-for-byte in both intent ledg
   assert.ok(businessReviews.includes(latest));
 });
 
+test("the latest acceptance review is duplicated byte-for-byte in both intent ledgers", () => {
+  const intentReviews = fencedText(readFileSync(intentPath, "utf8"));
+  const businessReviews = fencedText(readFileSync(businessPath, "utf8"));
+  const latest = intentReviews.find((record) =>
+    record.startsWith("1. [P1] Feature всё ещё не удовлетворяет собственному acceptance.\n"),
+  );
+  assert.match(latest, /Paseo nudge не проверяет соответствие ответа авторизованному locator/);
+  assert.match(latest, /B8\/B9[\s\S]*действительно прошли\?/);
+  assert.ok(businessReviews.includes(latest));
+});
+
 test("the reviewer-instance clarification is recorded twice", () => {
   const exact =
     "наши скилы каким-то образом намекают на то что для ревьюеров нужно создавать sh-скрипты и их выполнять? я подразумевал что ревьюеры будут запускаться как инстансы клода/кодекса и оркестратор будет им передавать текст прямо в поле ввода";

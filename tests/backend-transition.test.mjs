@@ -241,8 +241,9 @@ test("watchdog does not mistake empty Paseo permission metadata for a question",
     `#!/bin/sh
 if [ "$1" = inspect ]; then
   if [ -n "\${WATCHDOG_MALFORMED-}" ]; then echo not-json; exit 0; fi
+  if [ -n "\${WATCHDOG_WRONG_LOCATOR-}" ]; then echo '{"Id":"other-agent","Status":"idle"}'; exit 0; fi
   n=$(cat "$WATCHDOG_COUNT" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > "$WATCHDOG_COUNT"
-  printf '{"Status":"idle","UpdatedAt":"tick-%s","PendingPermissions":[],"AvailableModes":[{"label":"Default Permissions"}]}\\n' "$n"
+  printf '{"Id":"a-full-id","Status":"idle","UpdatedAt":"tick-%s","PendingPermissions":[],"AvailableModes":[{"label":"Default Permissions"}]}\\n' "$n"
 elif [ "$1" = send ]; then
   printf '%s\\n' "$*" >> "$WATCHDOG_LOG"
   printf '%s\\n' '{"accepted":true}'
@@ -276,6 +277,14 @@ fi
     join(ROOT, "shared", "scripts", "mo-watchdog.sh"),
     ["target", "--backend", "paseo", "--session", "a", "--nudge", "malformed"],
     { env: { ...env, WATCHDOG_MALFORMED: "1" }, encoding: "utf8" },
+  );
+  assert.equal(result.status, 65);
+  assert.match(result.stdout, /status=65 state=unclassified action=observe-error/);
+  assert.equal(existsSync(log), false);
+  result = spawnSync(
+    join(ROOT, "shared", "scripts", "mo-watchdog.sh"),
+    ["target", "--backend", "paseo", "--session", "a", "--nudge", "wrong-locator"],
+    { env: { ...env, WATCHDOG_WRONG_LOCATOR: "1" }, encoding: "utf8" },
   );
   assert.equal(result.status, 65);
   assert.match(result.stdout, /status=65 state=unclassified action=observe-error/);
@@ -518,7 +527,7 @@ esac
     /backend=orca session=ctx_working state=working/,
     /backend=orca session=term_active state=working/,
     /backend=orca session=term_done state=completed/,
-    /backend=orca session=term_disconnected state=unclassified/,
+    /backend=orca session=term_disconnected state=failed/,
   ]) {
     assert.match(result.stdout, expected);
   }

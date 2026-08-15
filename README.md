@@ -1,9 +1,17 @@
 # meta-o
 
-Ten installable agent skills take a feature from a task or specification to one
-verified candidate commit using Herdr, Orca or Paseo sessions. Meta-O is a
-skills-first methodology: it adds no orchestration CLI, provider proxy, daemon,
-state store or adapter layer.
+Ten installable agent skills define routes that take a feature from a task or
+specification to one verified candidate commit using Herdr, Orca or Paseo
+sessions. Live route qualification is currently incomplete: Herdr and Paseo
+lack a proven public complete-response surface, and Orca's normal and long
+response fixtures have no retained current-run verdict. These routes must report
+`needs_attention`, not support, until the corresponding [Backlog](docs/backlog.md)
+entries are cleared.
+
+Meta-O is a skills-first methodology: it adds no orchestration CLI, provider
+proxy, daemon, general workflow state store or adapter layer. The watchdog has
+one narrow state exception: bounded message and normalized-state hashes used
+only to suppress duplicate nudges across invocations.
 
 The project preserves the user's original request and later clarifications
 verbatim because a specification is lossy compression. One verified result is
@@ -33,17 +41,19 @@ apm install shkarupa-alex/meta-o
 
 Building requires Node.js 22 or newer. The provider-posture helper needs Bash
 3.2+, standard POSIX utilities, and Zsh when a Zsh launch matrix is requested.
+The watchdog additionally requires `jq` for native JSON validation and `flock`
+for per-locator nudge serialization.
 
 ## Skills
 
 | Skill                  | Purpose                                                           |
 | ---------------------- | ----------------------------------------------------------------- |
-| `mo-orchestrate-herdr` | Run a feature through Herdr.                                      |
-| `mo-orchestrate-orca`  | Run a feature through Orca.                                       |
-| `mo-orchestrate-paseo` | Run a feature through Paseo.                                      |
-| `mo-review-herdr`      | Standalone two-reviewer run inside Herdr.                         |
-| `mo-review-orca`       | Standalone two-reviewer run inside Orca.                          |
-| `mo-review-paseo`      | Standalone two-reviewer run inside Paseo.                         |
+| `mo-orchestrate-herdr` | Define the Herdr feature route; live acceptance is blocked.       |
+| `mo-orchestrate-orca`  | Define the Orca feature route; B8/B9 proof remains outstanding.   |
+| `mo-orchestrate-paseo` | Define the Paseo feature route; live acceptance is blocked.       |
+| `mo-review-herdr`      | Define standalone Herdr review; live acceptance is blocked.       |
+| `mo-review-orca`       | Define standalone Orca review; B8/B9 proof remains outstanding.   |
+| `mo-review-paseo`      | Define standalone Paseo review; live acceptance is blocked.       |
 | `mo-setup`             | Inspect and repair project/environment readiness.                 |
 | `mo-e2e`               | Run E2E scenarios that genuinely require an agent.                |
 | `mo-reuse`             | Research reuse before implementation when explicitly requested.   |

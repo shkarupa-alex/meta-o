@@ -30,8 +30,11 @@ than key names, and stable comparison excludes volatile Orca envelope IDs and
 Paseo `UpdatedAt`. Patterns will improve from real failures.
 
 A status-zero Orca or Paseo target read is trusted only when its native JSON
-envelope and locator-specific shape validate. Malformed output is an
-`observe-error`; it never reaches state persistence or nudge delivery.
+envelope and locator-specific shape validate. Paseo's returned agent ID must
+match the requested full ID or prefix. Malformed or mismatched output is an
+`observe-error`; it never reaches state persistence or nudge delivery. Orca
+terminal items derive a semantic marker from native `connected` and `orphaned`
+booleans instead of treating those field names as classification text.
 
 A nudge requires two successful identical native reads. The helper serializes
 the per-locator duplicate check, reservation and delivery. It stores the message

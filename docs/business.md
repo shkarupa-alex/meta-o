@@ -1316,3 +1316,60 @@ after every change.
 > но вызов клода/кодекса должен быть не из sh-скрипта а нативно внутри терминала/панели бекенда (herdr/orca/paseo)
 
 <!-- prettier-ignore-end -->
+
+<!-- prettier-ignore-start -->
+
+```text
+1. [P1] Feature всё ещё не удовлетворяет собственному acceptance.
+     Spec требует работоспособность всех трёх backend’ов и прямо говорит, что провал live acceptance блокирует feature (spec/2026-
+     08-14-backend-review-transition-final/spec.md:32). При этом backlog теперь фиксирует:
+      - Herdr orchestration/review как unsupported из-за отсутствия доказанного полного ответа (docs/backlog.md:27);
+      - Paseo orchestration/review как unsupported по той же причине (docs/backlog.md:61).
+
+     Это честная фиксация ограничений, но она означает, что критерии 3 и 5 (spec/2026-08-14-backend-review-transition-final/
+     spec.md:410) не выполнены. Одновременно README продолжает представлять Herdr и Paseo как рабочие маршруты (README.md:3,
+     README.md:41).
+
+  2. [P1] Paseo nudge не проверяет соответствие ответа авторизованному locator.
+     Ветка Paseo в shared/scripts/mo-watchdog.sh:84 проверяет только наличие строкового Status; ID агента с WATCHDOG_SESSION не
+     сравнивается. Поэтому стабильный status-zero JSON от другого агента или некорректного wrapper’а может разрешить nudge. Это
+     расходится с утверждением spec о locator-specific shape (spec/2026-08-14-backend-review-transition-final/spec.md:257). Тестовая
+     Paseo-envelope также вообще не содержит ID агента, поэтому не ловит проблему.
+
+  3. [P2] README не обновлён под новые runtime-зависимости и state exception.
+     Watchdog теперь требует jq и flock, но раздел установки README упоминает только зависимости posture-helper (README.md:34).
+     Кроме того, README всё ещё безусловно заявляет «no state store» (README.md:5, тогда как spec и AGENTS вводят persistent digest
+     как узкое исключение.
+
+---
+
+  Главное: фича не проходит собственную приёмку
+
+  Исполнитель не стал закрывать мой пункт «живую приёмку подтвердить нечем» — он пошёл и проверил, и записал отказы честно. В
+  беклоге теперь: у Herdr нет поля settled-ответа (agent read ограничен тем, что удержал терминал) → «both orchestration and
+  standalone-review routes remain unsupported»; у Paseo wait не отдаёт идентифицируемое полное сообщение → «cannot be advertised as
+  supported»; OpenCode в Herdr без публичного доказательства readiness; worker-release для зависших Orca-воркеров возвращает
+  dispatch_inactive. Строка про Herdr явно замещает строку 7 матрицы — моё прошлое возражение про её удаление снято.
+
+  Это честно, но по §Outcome спеки «A backend that fails live acceptance blocks the feature» и по критериям 3 и 5 фича в таком
+  состоянии не завершена. Правильный статус — needs_attention, и решение здесь ваше, продуктовое: добиваться публичной поверхности
+  полного ответа у Herdr/Paseo, сузить заявленный охват спеки до реально подтверждённых маршрутов, или принять беклог как раскрытие
+  и выпускать с оговоркой.
+
+  Новые находки
+
+  1. README противоречит беклогу. Витрина утверждает «take a feature… using Herdr, Orca or Paseo sessions», тогда как беклог
+  говорит, что эти маршруты рекламировать нельзя. Прецедент формулировки есть в том же файле — про remote installation. Нужна такая
+  же оговорка.
+  2. Строка беклога про Orca устарела в момент написания. Она называет два зависших dispatch, а живой скан показывает четыре:
+  добавились ctx_7d5144f020ec и ctx_419d0a027239 (видимо, от самих проверок этого раунда).
+  3. Все Orca-терминалы классифицируются как unclassified — подтверждено прогоном на четырёх. Классификация идёт по скалярным
+  значениям, а в terminal show нет токенов working/idle: смысл лежит в connected, orphaned и свежести lastOutputAt.
+  Документированный fallback-путь Orca виден в скане, но состояние о нём не сообщает ничего. Спека разрешает уточнять паттерны «from
+  observed failures» — вот наблюдённый отказ.
+  4. Мелочь: README не упоминает jq/flock в требованиях, хотя AGENTS.md/CLAUDE.md и project-setup.md их уже требуют.
+  5. Вопрос: Orca — единственный бекенд без строки о неподтверждённом полном ответе. B8/B9 (normal + длинный с BEGIN/MIDDLE/END) для
+  worker_done действительно прошли? Если нет — нужна такая же честная строка, иначе беклог асимметричен.
+```
+
+<!-- prettier-ignore-end -->

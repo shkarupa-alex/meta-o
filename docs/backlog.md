@@ -6,23 +6,41 @@ Every entry records its reason, practical impact and next step.
 
 ## Open
 
-### Orca cannot release two retained failed workers
+### Orca cannot release four retained failed workers
 
-**Reason.** Public `worker-list` reports Dispatches `ctx_51a2a3d73a57` and
-`ctx_113a0d0eb712` as `dispatchStatus: failed`, `workerState: stopped`,
-`terminalState: retained` and `releaseState: not_requested`. On 2026-08-15 an
-exact `worker-release --dispatch` for each returned `dispatch_inactive`, saying
-only a succeeded or failed worker can release. This contradicts the listed
-failed state, and a broad terminal close would violate ownership mechanics.
+**Reason.** Public `worker-list` now reports Dispatches `ctx_51a2a3d73a57`,
+`ctx_113a0d0eb712`, `ctx_7d5144f020ec` and `ctx_419d0a027239` as
+`dispatchStatus: failed`, `workerState: stopped`, `terminalState: retained` and
+`releaseState: not_requested`. On 2026-08-15 an exact
+`worker-release --dispatch` for the original pair returned
+`dispatch_inactive`, saying only a succeeded or failed worker can release. This
+contradicts the listed failed state, and a broad terminal close would violate
+ownership mechanics.
 
-**Practical impact.** Two stopped terminals remain retained in Orca resource
+**Practical impact.** Four stopped terminals remain retained in Orca resource
 accounting. They do not run work, but scan continues to report them and their
 resources cannot be reclaimed through the documented safe command.
 
 **Next step.** Reproduce the state tuple and rejection against Orca's current
 version, then fix or report the upstream transition so `worker-release` accepts
-a stopped failed Dispatch. Release only these two exact Dispatches after the
+a stopped failed Dispatch. Release only these four exact Dispatches after the
 public command accepts them.
+
+### Orca complete-response fixtures lack a current-run verdict
+
+**Reason.** Orca's public `worker_done` message carries long reviewer bodies in
+observed runs, but no retained current-run report proves both the exact normal
+fixture and the three-to-four-screen `BEGIN`/`MIDDLE`/`END` fixture required by
+B8/B9. A long review body is not a substitute for the specified marker oracle.
+
+**Practical impact.** Orca orchestration and standalone review cannot be
+advertised as live-qualified under the current acceptance contract even though
+the public response field is structurally suitable and ordinary reviews work.
+
+**Next step.** Run B8 and B9 through Orca-managed native Codex, Claude Code and
+OpenCode workers, retain the exact current-run verdict in the final report, and
+remove this entry only if every complete `worker_done` body matches its oracle
+with all boundary markers intact.
 
 ### Herdr complete-response support remains fixture-bound
 

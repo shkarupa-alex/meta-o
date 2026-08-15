@@ -82,8 +82,11 @@ validate_target() {
       ' >/dev/null 2>&1
       ;;
     paseo:*)
-      /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -e '
-        type == "object" and ((.Status? // .status?) | type) == "string"
+      /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -e --arg locator "$WATCHDOG_SESSION" '
+        type == "object"
+        and ((.Status? // .status?) | type) == "string"
+        and ((.Id? // .id? // .agentId?) as $id
+          | ($id | type) == "string" and ($id | startswith($locator)))
       ' >/dev/null 2>&1
       ;;
     *) return 1 ;;
@@ -118,6 +121,13 @@ classification_text() {
       ([.. | scalars | select(. != null and . != false and . != true)] | map(tostring) | join(" "))
       + (if (((.PendingPermissions? // .pending_permissions? // []) | length) > 0)
          then " pending_permission" else "" end)
+      + ((if ((.result?.terminal? | type) == "object") then .result.terminal
+          elif (type == "object" and has("handle")) then . else null end) as $terminal
+         | if $terminal == null then ""
+           elif $terminal.orphaned == true then " failed"
+           elif $terminal.connected == true then " working"
+           elif $terminal.connected == false then " completed"
+           else "" end)
     '
   else
     /usr/bin/printf '%s' "$WATCHDOG_TEXT"
