@@ -77,6 +77,8 @@ validate_target() {
         and (.result.dispatch.status | type) == "string"
         and (.result.worker | type) == "object" and .result.worker.dispatch_id == $locator
         and (.result.worker.state | type) == "string"
+        and ((.result.observation.PendingPermissions? // []) | type) == "array"
+        and ((.result.observation.pending_permissions? // []) | type) == "array"
       ' >/dev/null 2>&1
       ;;
     orca:task_*)
@@ -84,6 +86,8 @@ validate_target() {
         .ok == true and (.result.dispatch | type) == "object"
         and .result.dispatch.task_id == $locator
         and (.result.dispatch.status | type) == "string"
+        and ((.result.observation.PendingPermissions? // []) | type) == "array"
+        and ((.result.observation.pending_permissions? // []) | type) == "array"
       ' >/dev/null 2>&1
       ;;
     orca:term_*)
@@ -123,8 +127,10 @@ stable_snapshot() {
                 worker: (.result.worker | {state, stage, last_error}),
                 observation: (.result.observation | {status}),
                 terminal: (.result.terminal | {connected, orphaned}),
-                permissions: (.result.observation
-                  | {PendingPermissions, pending_permissions})
+                permissions: [
+                  .result.observation.PendingPermissions?,
+                  .result.observation.pending_permissions?
+                ] | map(select(type == "array"))
               }
             '
             ;;
@@ -155,9 +161,12 @@ classification_text() {
     if [ "$WATCHDOG_BACKEND" = orca ]; then
       /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -r --arg kind "$WATCHDOG_KIND" '
         def permissions:
-          ((.result.observation.PendingPermissions?
-            // .result.observation.pending_permissions? // []) | length) > 0;
+          ([.result.observation.PendingPermissions?,
+            .result.observation.pending_permissions?]
+            | map(select(type == "array")) | any(length > 0));
         def strings: map(select(type == "string")) | join(" ");
+        def successful: test("done|completed|idle|succeeded"; "i");
+        def failed: test("failed|error|lost|crash"; "i");
         if ($kind == "term" or $kind == "terminals") then
           (if $kind == "term" then .result.terminal else . end) as $terminal
           |
@@ -166,22 +175,26 @@ classification_text() {
             elif $terminal.connected == false then "terminal_disconnected"
             else "terminal_unknown" end
           elif $kind == "ctx" then
-            ([.result.dispatch.status, .result.worker.state, .result.worker.stage,
-              .result.observation.status]
-             + (if ((.result.dispatch.status | test("failed|stopped"; "i"))
-                       or (.result.worker.state | test("failed|stopped"; "i")))
-                then [.result.dispatch.last_failure, .result.worker.last_error] else [] end)
-             + (if permissions then ["pending_permission"] else [] end)) | strings
+            if permissions then "pending_permission"
+            elif (.result.dispatch.status | successful) then .result.dispatch.status
+            elif (.result.dispatch.status | failed) then
+              ([.result.dispatch.last_failure, .result.worker.last_error,
+                .result.dispatch.status] | strings)
+            else
+              ([.result.dispatch.status, .result.worker.state,
+                .result.worker.stage, .result.observation.status] | strings)
+            end
           elif $kind == "task" then
-            ([.result.dispatch.status, .result.observation.status]
-             + (if (.result.dispatch.status | test("failed|stopped"; "i"))
-                then [.result.dispatch.last_failure] else [] end)
-             + (if permissions then ["pending_permission"] else [] end)) | strings
+            if permissions then "pending_permission"
+            elif (.result.dispatch.status | successful) then .result.dispatch.status
+            elif (.result.dispatch.status | failed) then
+              ([.result.dispatch.last_failure, .result.dispatch.status] | strings)
+            else ([.result.dispatch.status, .result.observation.status] | strings) end
           elif $kind == "workers" then
-            ([.workerState, .dispatchStatus]
-             + (if (((.workerState? // "") | test("failed|stopped"; "i"))
-                       or ((.dispatchStatus? // "") | test("failed|stopped"; "i")))
-                then [.lastError, .resource.releaseError] else [] end)) | strings
+            if (.dispatchStatus | successful) then .dispatchStatus
+            elif (.dispatchStatus | failed) then
+              ([.lastError, .resource.releaseError, .dispatchStatus] | strings)
+            else ([.dispatchStatus, .workerState] | strings) end
           else "" end
       '
     else

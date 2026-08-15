@@ -11,7 +11,7 @@ name: meta-o
 version: 0.2.0
 type: skill
 description: >-
-  Skills-first agentic development workflow: one feature from spec to a
-  verified candidate commit over Herdr, Orca, or Paseo sessions, with two
-  independent reviews and no workflow engine of its own.
+  Skills-first workflow contracts for taking one feature from spec to a verified
+  candidate with two independent reviews and no workflow engine; each Herdr,
+  Orca, or Paseo route is advertised only after its own live acceptance.
 license: MIT
