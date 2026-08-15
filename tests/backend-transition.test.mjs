@@ -469,9 +469,10 @@ case "$*" in
   "orchestration worker-show --dispatch ctx_fixture --json")
     if [ -n "\${WATCHDOG_MALFORMED-}" ]; then echo not-json; exit 0; fi
     if [ -n "\${WATCHDOG_MISSING_STATE-}" ]; then echo '{"ok":true,"result":{"dispatch":{"id":"ctx_fixture"},"worker":{"dispatch_id":"ctx_fixture","worktree_id":"repo/idle"},"terminal":{"connected":true,"preview":"working"}}}'; exit 0; fi
-    if [ -n "\${WATCHDOG_MALFORMED_PERMISSION-}" ]; then echo '{"ok":true,"result":{"dispatch":{"id":"ctx_fixture","status":"running"},"worker":{"dispatch_id":"ctx_fixture","state":"working"},"observation":{"status":"running","PendingPermissions":"not-an-array"}}}'; exit 0; fi
+    if [ -n "\${WATCHDOG_PERMISSION_FIELD-}" ]; then printf '{"ok":true,"result":{"dispatch":{"id":"ctx_fixture","status":"running"},"worker":{"dispatch_id":"ctx_fixture","state":"working"},"observation":{"status":"running","%s":%s}}}\n' "$WATCHDOG_PERMISSION_FIELD" "$WATCHDOG_PERMISSION_VALUE"; exit 0; fi
     if [ -n "\${WATCHDOG_PERMISSION-}" ]; then echo '{"ok":true,"result":{"dispatch":{"id":"ctx_fixture","status":"running"},"worker":{"dispatch_id":"ctx_fixture","state":"working","stage":"active"},"observation":{"status":"running","PendingPermissions":[{"id":"real"}]},"terminal":{"connected":true}}}'; exit 0; fi
     if [ -n "\${WATCHDOG_SUCCEEDED-}" ]; then echo '{"ok":true,"result":{"dispatch":{"id":"ctx_fixture","status":"succeeded"},"worker":{"dispatch_id":"ctx_fixture","state":"stopped","stage":"process_stopped"},"observation":{"status":"exited"}}}'; exit 0; fi
+    if [ -n "\${WATCHDOG_IDLE_LIMIT-}" ]; then echo '{"ok":true,"result":{"dispatch":{"id":"ctx_fixture","status":"idle"},"worker":{"dispatch_id":"ctx_fixture","state":"working"},"observation":{"status":"rate_limit overload"}}}'; exit 0; fi
     n=$(wc -l < "$WATCHDOG_LOG" | tr -d ' ')
     printf '{"id":"request-%s","ok":true,"result":{"dispatch":{"id":"ctx_fixture","status":"running"},"worker":{"dispatch_id":"ctx_fixture","state":"working","stage":"active","worktree_id":"repo/error-monitor","startOptions":{"pending_permissions":[{"id":"metadata-only-%s"}]}},"observation":{"status":"running"},"terminal":{"handle":"term_worker","connected":false,"lastOutputAt":%s,"title":"spinner-%s","preview":"terminal_orphaned question overload %s"}},"_meta":{"runtimeId":"runtime-%s"}}\\n' "$n" "$n" "$n" "$n" "$n" "$n"
     ;;
@@ -507,12 +508,25 @@ esac
   });
   assert.equal(result.status, 65);
   assert.match(result.stdout, /status=65 state=unclassified action=observe-error/);
-  result = spawnSync(script, ["target", "--backend", "orca", "--session", "ctx_fixture"], {
-    env: { ...env, WATCHDOG_MALFORMED_PERMISSION: "1" },
-    encoding: "utf8",
-  });
-  assert.equal(result.status, 65);
-  assert.match(result.stdout, /status=65 state=unclassified action=observe-error/);
+  for (const field of ["PendingPermissions", "pending_permissions"]) {
+    for (const value of ['"not-an-array"', "{}", "null", "false"]) {
+      result = spawnSync(
+        script,
+        ["target", "--backend", "orca", "--session", "ctx_fixture", "--nudge", "invalid"],
+        {
+          env: {
+            ...env,
+            WATCHDOG_PERMISSION_FIELD: field,
+            WATCHDOG_PERMISSION_VALUE: value,
+          },
+          encoding: "utf8",
+        },
+      );
+      assert.equal(result.status, 65, `${field}=${value}: ${result.stderr}`);
+      assert.match(result.stdout, /status=65 state=unclassified action=observe-error/);
+    }
+  }
+  assert.doesNotMatch(readFileSync(log, "utf8"), /orchestration send/);
   result = spawnSync(script, ["target", "--backend", "orca", "--session", "ctx_fixture"], {
     env: { ...env, WATCHDOG_PERMISSION: "1" },
     encoding: "utf8",
@@ -525,6 +539,12 @@ esac
   });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /state=completed action=observed/);
+  result = spawnSync(script, ["target", "--backend", "orca", "--session", "ctx_fixture"], {
+    env: { ...env, WATCHDOG_IDLE_LIMIT: "1" },
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /state=limit_or_overload action=observed/);
   result = spawnSync(script, ["target", "--backend", "orca", "--session", "ctx_fixture"], {
     env,
     encoding: "utf8",

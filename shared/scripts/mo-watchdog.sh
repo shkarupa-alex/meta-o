@@ -77,8 +77,12 @@ validate_target() {
         and (.result.dispatch.status | type) == "string"
         and (.result.worker | type) == "object" and .result.worker.dispatch_id == $locator
         and (.result.worker.state | type) == "string"
-        and ((.result.observation.PendingPermissions? // []) | type) == "array"
-        and ((.result.observation.pending_permissions? // []) | type) == "array"
+        and (((.result.observation | type) != "object")
+          or ((.result.observation | has("PendingPermissions") | not)
+            or (.result.observation.PendingPermissions | type) == "array"))
+        and (((.result.observation | type) != "object")
+          or ((.result.observation | has("pending_permissions") | not)
+            or (.result.observation.pending_permissions | type) == "array"))
       ' >/dev/null 2>&1
       ;;
     orca:task_*)
@@ -86,8 +90,12 @@ validate_target() {
         .ok == true and (.result.dispatch | type) == "object"
         and .result.dispatch.task_id == $locator
         and (.result.dispatch.status | type) == "string"
-        and ((.result.observation.PendingPermissions? // []) | type) == "array"
-        and ((.result.observation.pending_permissions? // []) | type) == "array"
+        and (((.result.observation | type) != "object")
+          or ((.result.observation | has("PendingPermissions") | not)
+            or (.result.observation.PendingPermissions | type) == "array"))
+        and (((.result.observation | type) != "object")
+          or ((.result.observation | has("pending_permissions") | not)
+            or (.result.observation.pending_permissions | type) == "array"))
       ' >/dev/null 2>&1
       ;;
     orca:term_*)
@@ -165,7 +173,7 @@ classification_text() {
             .result.observation.pending_permissions?]
             | map(select(type == "array")) | any(length > 0));
         def strings: map(select(type == "string")) | join(" ");
-        def successful: test("done|completed|idle|succeeded"; "i");
+        def successful: test("done|completed|succeeded"; "i");
         def failed: test("failed|error|lost|crash"; "i");
         if ($kind == "term" or $kind == "terminals") then
           (if $kind == "term" then .result.terminal else . end) as $terminal
