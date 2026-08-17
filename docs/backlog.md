@@ -58,9 +58,12 @@ Dispatches above after the public command reports a safe release.
 **Reason.** Installed Herdr 0.8.0 exposes lifecycle metadata through `agent get`
 but no structured settled-response field. Its public `agent read
 --source recent-unwrapped` can retrieve only rows retained by the terminal; an
-alternate-screen harness may discard earlier rows. No backend-owned evidence
-currently proves the normal and long boundary-marker fixtures for all three
-harnesses.
+alternate-screen harness may discard or duplicate reconstructed rows. A live
+OpenCode 1.18.15 long fixture on Herdr 0.8.0 returned all 220 unique filler rows
+but duplicated the beginning fragment and 62 filler rows at 400 lines; a larger
+read repositioned beyond the response. Codex and Claude Code passed the same
+fixture, but no backend-owned evidence proves an exact complete response for
+OpenCode.
 
 **Practical impact.** Complete-response support cannot be advertised for Herdr,
 so both orchestration and standalone-review routes remain unsupported. This
@@ -68,24 +71,10 @@ durable capability entry supersedes disposition row 7 from the transition spec:
 the same missing response surface prevents live qualification of the standalone
 review skill.
 
-**Next step.** From a Herdr-managed pane, run normal and three-to-four-screen
-`BEGIN`/`MIDDLE`/`END` fixtures against Codex, Claude Code and OpenCode. Remove
-this entry only if one public read contains all markers for every harness; on a
-failure, request an upstream complete settled-response surface rather than using
-private transcripts or agent-authored result files.
-
-### Herdr OpenCode readiness lacks public detection evidence
-
-**Reason.** The live Herdr agent record supplied with the review reports
-`screen_detection_skipped: true` for OpenCode. That flag is not evidence of the
-exact TUI or effective unsandboxed posture.
-
-**Practical impact.** OpenCode launch readiness and reliable state
-classification cannot be advertised for the current Herdr control surface.
-
-**Next step.** Re-run OpenCode launch from a Herdr-managed pane and capture exact
-public TUI and posture evidence. If no public Herdr surface can provide it, keep
-the harness unsupported and raise the missing detection capability upstream.
+**Next step.** Request an upstream structured complete-response surface, or fix
+Herdr's OpenCode alternate-screen reconstruction so one public read returns each
+response byte exactly once. Re-run the normal and long fixtures afterward; do
+not substitute private transcripts or agent-authored result files.
 
 ### Human-facing project knowledge is not yet in the user's language
 

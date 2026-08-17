@@ -690,9 +690,9 @@ test("watchdog inventories Herdr workspaces, tabs and panes and scans Paseo glob
   const commands = {
     herdr: `#!/bin/sh
 case "$*" in
-  "workspace list") echo '{"result":{"workspaces":[{"workspace_id":"ws-1"}]}}' ;;
-  "tab list") echo '{"result":{"tabs":[{"tab_id":"tab-1"},{"tab_id":"tab-2"}]}}' ;;
-  "pane list") echo '{"result":{"panes":[{"pane_id":"pane-1"},{"pane_id":"pane-2"}]}}' ;;
+  "workspace list") echo '{"result":{"workspaces":[{"workspace_id":"ws-1","agent_status":"working"}]}}' ;;
+  "tab list") echo '{"result":{"tabs":[{"tab_id":"tab-1","agent_status":"working"},{"tab_id":"tab-2","agent_status":"done"}]}}' ;;
+  "pane list") echo '{"result":{"panes":[{"pane_id":"pane-1","agent_status":"working"},{"pane_id":"pane-2","agent_status":"done"}]}}' ;;
   "agent list") echo '{"result":{"agents":[{"name":"h-done","agent_status":"done"},{"name":"h-working","agent_status":"working"}]}}' ;;
   *) exit 2 ;;
 esac
@@ -717,11 +717,11 @@ if [ "$*" = "ls --global --json" ]; then echo '[]'; else exit 2; fi
     encoding: "utf8",
   });
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /backend=herdr session=ws-1 state=present surface=workspaces/);
-  assert.match(result.stdout, /backend=herdr session=tab-1 state=present surface=tabs/);
-  assert.match(result.stdout, /backend=herdr session=tab-2 state=present surface=tabs/);
-  assert.match(result.stdout, /backend=herdr session=pane-1 state=present surface=panes/);
-  assert.match(result.stdout, /backend=herdr session=pane-2 state=present surface=panes/);
+  assert.match(result.stdout, /backend=herdr session=ws-1 state=working surface=workspaces/);
+  assert.match(result.stdout, /backend=herdr session=tab-1 state=working surface=tabs/);
+  assert.match(result.stdout, /backend=herdr session=tab-2 state=completed surface=tabs/);
+  assert.match(result.stdout, /backend=herdr session=pane-1 state=working surface=panes/);
+  assert.match(result.stdout, /backend=herdr session=pane-2 state=completed surface=panes/);
   assert.match(result.stdout, /backend=herdr session=h-done state=completed/);
   assert.match(result.stdout, /backend=herdr session=h-working state=working/);
   assert.match(result.stdout, /backend=paseo surface=agents state=no-sessions/);

@@ -292,15 +292,8 @@ report_item() {
   WATCHDOG_KIND=$2
   WATCHDOG_LOCATOR=$3
   WATCHDOG_ITEM=$4
-  if [ "$WATCHDOG_BACKEND" = herdr ] && \
-    { [ "$WATCHDOG_KIND" = workspaces ] || [ "$WATCHDOG_KIND" = tabs ] || [ "$WATCHDOG_KIND" = panes ]; }; then
-    # These are inventory surfaces, not agent lifecycle surfaces. Presence is
-    # the only state their native list establishes without guessing from IDs.
-    WATCHDOG_STATE=present
-  else
-    WATCHDOG_CLASSIFICATION=$(classification_text "$WATCHDOG_BACKEND" "$WATCHDOG_KIND" "$WATCHDOG_ITEM")
-    WATCHDOG_STATE=$(classify "$WATCHDOG_CLASSIFICATION")
-  fi
+  WATCHDOG_CLASSIFICATION=$(classification_text "$WATCHDOG_BACKEND" "$WATCHDOG_KIND" "$WATCHDOG_ITEM")
+  WATCHDOG_STATE=$(classify "$WATCHDOG_CLASSIFICATION")
   if [ "$WATCHDOG_BACKEND" = orca ] && [ "$WATCHDOG_KIND" = terminals ]; then
     WATCHDOG_LAST_OUTPUT_AT=$(
       /usr/bin/printf '%s\n' "$WATCHDOG_ITEM" | jq -r '.lastOutputAt // "unknown"'
