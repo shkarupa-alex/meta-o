@@ -1,48 +1,46 @@
-# Watchdog nudge deduplication stores one private digest
+# Deduplication nudge watchdog хранит один private digest
 
-## Decision
+## Решение
 
-The pattern watchdog stores one mode-`0600` record per backend locator before an
-authorized nudge attempt. The record contains a digest of the backend, locator and
-normalized native state plus digests of messages already delivered in that
-state. A later invocation suppresses any repeated message while that state is
-unchanged. A new state replaces the prior message set. It stores no message,
-response, actor registry, candidate identity or gate result.
+Перед разрешённым nudge pattern watchdog хранит одну mode-`0600` запись на
+backend locator. Запись содержит digest backend, locator и normalized native
+state, а также digests сообщений, уже доставленных в этом state. Следующий запуск
+подавляет повтор сообщения, пока state не изменилось. Новое state заменяет
+предыдущий набор сообщений. Запись не хранит message, response, actor registry,
+candidate identity или gate result.
 
-The helper parses backend list JSON with `jq`, reports each native locator
-separately, and compares a backend-specific semantic projection. For Orca that
-projection keeps typed dispatch, worker, observation and permission state plus
-terminal connection/orphaning, while excluding RPC IDs and terminal
-`preview`, `title` and `lastOutputAt`: those fields describe presentation and
-repainting, not a state transition that should suppress delivery. Paseo excludes
-its refreshed `UpdatedAt`. Herdr and Paseo delivery is nonblocking; subsequent
-observation owns completion.
-The calling target or scan surface supplies the native item kind. The projection
-does not infer it from coincidental metadata keys, and it reads permission state
-only from the exact observation field rather than recursively searching options.
+Helper разбирает backend list JSON через `jq`, сообщает каждый native locator
+отдельно и сравнивает backend-specific semantic projection. Для Orca projection
+сохраняет typed dispatch, worker, observation и permission state вместе с
+terminal connection/orphaning, но исключает RPC IDs и terminal `preview`, `title`
+и `lastOutputAt`: это presentation и repainting, а не переход состояния, который
+должен блокировать delivery. Paseo исключает обновляемое `UpdatedAt`. Delivery в
+Herdr и Paseo nonblocking; дальнейший observe отвечает за completion.
+Вызывающая target- или scan-поверхность передаёт native item kind. Projection не
+угадывает его по случайным metadata keys и читает permission state только из
+точного observation field, а не рекурсивным поиском options.
 
-The helper accepts a nudge only after two successful identical reads. A mature
-`flock` advisory lock covers the per-locator duplicate check, reservation and
-native delivery, and the kernel releases ownership when a process exits. The
-message digest is reserved before delivery; a crash or nonzero backend result is
-ambiguous and remains suppressed until native state changes rather than risking
-a duplicate nudge. Sixteen distinct message digests in one unchanged state
-collapse to one saturation marker, keeping the record bounded while failing
-closed until state changes.
+Helper принимает nudge только после двух успешных одинаковых reads. Зрелый
+advisory lock `flock` охватывает duplicate check, reservation и native delivery
+для locator; kernel освобождает ownership при завершении process. Message digest
+резервируется до delivery: crash или nonzero backend result неоднозначны и
+остаются suppressed до изменения native state, чтобы не рисковать duplicate
+nudge. Шестнадцать разных message digests в одном неизменном state сворачиваются
+в один saturation marker: запись остаётся bounded и fail-closed до смены state.
 
-## Business reason
+## Бизнес-причина
 
-The user requires a watchdog that can nudge an agent stalled by an API limit or
-overloaded inference without itself waiting on that agent, and that does not
-repeat an identical nudge when separate watchdog invocations observe no state
-change. Without a durable fingerprint, a restarted observer cannot meet the
-second requirement. Without per-session parsing, a failed session can mask a
-working one and the user cannot identify the target that needs attention.
+Пользователю нужен watchdog, способный подтолкнуть агента, застрявшего на API
+limit или overloaded inference, не ожидая его ответа и не повторяя одинаковый
+nudge, когда отдельные запуски watchdog видят неизменное состояние. Без durable
+fingerprint перезапущенный observer не выполнит второе требование. Без parsing по
+сессиям failed session может скрыть working session, а пользователь не узнает,
+какой target требует внимания.
 
-## Boundary
+## Граница
 
-This narrow delivery fingerprint is the named exception to the project's
-general prohibition on state stores. It is not orchestration state and cannot
-resume or choose workflow work. Deleting it can cause a duplicate nudge but
-cannot lose product work or invalidate a candidate. The directory may be
-overridden with `WATCHDOG_STATE_DIR` for disposable testing.
+Этот узкий delivery fingerprint — именованное исключение из общего запрета на
+state stores. Это не orchestration state: он не возобновляет и не выбирает
+workflow work. Удаление может вызвать duplicate nudge, но не потерю product work
+или invalidation candidate. Для disposable testing каталог можно переопределить
+через `WATCHDOG_STATE_DIR`.

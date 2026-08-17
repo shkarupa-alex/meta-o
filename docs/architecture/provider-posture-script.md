@@ -1,37 +1,37 @@
-# Provider posture has one probe and required consumers
+# У provider posture один probe и обязательные consumers
 
-## Decision
+## Решение
 
-`shared/scripts/mo-posture.sh` owns the zsh/bash launch-resolution diagnostic.
-The build copies it byte-for-byte into all three orchestration skills and
-`mo-setup`, making each install standalone without adding a provider proxy.
+`shared/scripts/mo-posture.sh` — единственный владелец zsh/bash launch-resolution
+diagnostic. Сборка byte-for-byte копирует его во все три orchestration skills и
+`mo-setup`: каждая установка остаётся самодостаточной без provider proxy.
 
-Consumers run it directly from their installed directory:
+Consumers запускают его напрямую из установленного каталога:
 
 ```text
 scripts/mo-posture.sh --self-check --shell all
 scripts/mo-posture.sh --shell <zsh|bash|all> -- <selected-providers>
 ```
 
-The probe classifies command kind and first path across applicable shell modes.
-It never launches a provider, changes configuration, stores run state or decides
-backend support. Missing, divergent, malformed or incomplete evidence is not
-support. Actual harness readiness, model activation, trust, permission behavior
-and unsandboxed posture remain live checks.
+Probe классифицирует command kind и первый path во всех применимых shell modes.
+Он не запускает provider, не меняет configuration, не хранит run state и не
+решает, поддерживается ли backend. Missing, divergent, malformed или incomplete
+evidence не доказывает поддержку. Реальные harness readiness, model activation,
+trust, permission behavior и unsandboxed posture остаются live checks.
 
-## Business reason
+## Бизнес-причина
 
-Launch posture must be deterministic without wrapping native provider CLIs.
-Shipping the same bounded read-only helper to every consumer avoids drift and
-keeps personal shell behavior out of a guessed prose recipe.
+Launch posture должен быть детерминированным без wrapper над native provider CLI.
+Один bounded read-only helper у всех consumers предотвращает drift и не
+превращает личное shell behavior в угаданную prose-рецептуру.
 
-## Safety boundary
+## Граница безопасности
 
-The script owns one process group and reads private NUL-framed child evidence.
-It does not print provider secrets or alias/function bodies. Dynamic Claude
-catalog discovery separately requires a kernel-owned boundary; its current
-platform limitation and next step remain in [Backlog](../backlog.md).
+Script владеет одной process group и читает private NUL-framed child evidence.
+Он не печатает provider secrets или bodies alias/functions. Dynamic Claude model
+discovery отдельно использует документированный lifecycle Agent SDK и не
+накладывает на provider дополнительный platform-specific no-fork sandbox.
 
-Personal wrapper or shell-profile changes require explicit user confirmation.
-The agent never dumps a protected definition; the user provides a confirmed
-credential-free or redacted representation.
+Изменения личного wrapper или shell profile требуют явного подтверждения
+пользователя. Агент не печатает protected definition; пользователь передаёт
+подтверждённое credential-free или redacted представление.

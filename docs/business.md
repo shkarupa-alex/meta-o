@@ -1,18 +1,17 @@
-# Why Meta-O exists
+# Зачем существует Meta-O
 
-Two halves, and they must not be merged. **Part 1** is the business framing: what
-the user asked for, in their own words, kept verbatim and appended to as they say
-more. **Part 2** is the durable theses derived from it, in terms that have nothing
-to do with how anything is built; every decision in `docs/architecture/` cites one
-of those.
+У документа две части, и сливать их нельзя. **Часть 1** — business framing:
+дословные запросы пользователя, к которым добавляются последующие уточнения.
+**Часть 2** — устойчивые тезисы, не зависящие от способа реализации; на них
+ссылается каждое решение в `docs/architecture/`.
 
-The framing is the half that gets quietly "tidied" into a summary, and a summary
-is exactly what cannot be re-read after the compression. The rules are in
-`shared/references/methodology.md` section 2.
+Именно framing чаще всего незаметно «причёсывают» до summary, после чего исходный
+смысл уже нельзя восстановить. Правило описано в section 2 файла
+`shared/references/methodology.md`.
 
 ---
 
-## Part 1 — the business framing
+## Часть 1 — business framing
 
 Every request and clarification below is the user's message **as it was sent**:
 same language, same line breaks, nothing joined, nothing shortened. Where a
@@ -28,7 +27,7 @@ It was rewritten from the session transcript. That is worth leaving on the recor
 because it is the exact failure the rule exists to prevent, committed by the party
 that wrote the rule.
 
-### 1. The request that produced this generation — 2026-08-05
+### 1. Запрос, создавший это поколение — 2026-08-05
 
 > @spec/2026-07-24-ai-driven-development-workflow/README.md - вот эту спеку мы уже реализовали
 > но я просмотрел и в ней были сбиты акценты и получилось слишком "толсто"
@@ -37,7 +36,7 @@ that wrote the rule.
 > читай и превращай то что уже есть в то что надо по этой спеке
 > ничего не откладывай напотом
 
-### 2. Clarification — the model catalogs
+### 2. Уточнение — каталоги моделей
 
 > на всякий случай уточню: для получения списка моделей ты же использовал js/ts sdk наших cli агентов?
 > типа как тут /Users/alex/bitrix/skills/dist/brain-council
@@ -46,7 +45,7 @@ This corrected a real defect rather than asking a question: two of the three
 catalog probes had been guessed, and one of them — `claude models` — starts an
 agent turn on the prompt "models".
 
-### 3. Decision — the shipped licence
+### 3. Решение — поставляемая лицензия
 
 Asked as a question with three options, because a licence is the user's to choose:
 
@@ -55,7 +54,7 @@ Asked as a question with three options, because a licence is the user's to choos
 
 Answer: **MIT**, copyright Shkarupa Alex.
 
-### 4. Standing instruction — review findings
+### 4. Постоянная инструкция — замечания review
 
 Six rounds of independent reviews were handed over, each introduced only by its
 own line and nothing else. The first:
@@ -70,7 +69,7 @@ No triage instruction accompanied any of them. Read together with "ничего 
 откладывай напотом" from the first message, the standing expectation is that every
 real finding is closed in the same change.
 
-### 5. The framing rule itself
+### 5. Само правило framing
 
 From the user's own notes in `docs/references/my-opinion.md`, which is where this
 requirement entered the project:
@@ -87,7 +86,7 @@ and, naming the artefact this file is:
 The six rules that follow it there are reproduced as the normative text of
 `shared/references/methodology.md` section 2.
 
-### 6. Clarification — provider aliases are not wrappers — 2026-08-07
+### 6. Уточнение — provider aliases не являются wrappers — 2026-08-07
 
 <!-- markdownlint-disable MD013 -->
 
@@ -104,7 +103,7 @@ The six rules that follow it there are reproduced as the normative text of
 <!-- prettier-ignore-start -->
 <!-- markdownlint-disable MD009 MD012 MD028 MD031 MD040 -->
 
-### Backend transition and review skills — 2026-08-14
+### Переход backend и review skills — 2026-08-14
 
 > посмотри что у нас лежит в беклоге
 > плюс я хочу отказаться от поддержки omnigent - он слишком сырой
@@ -377,7 +376,7 @@ verified. The local cause is ordering, not absence: macOS `/etc/zprofile` runs
 before the user's `~/.zprofile`, whose later `brew shellenv` prepends
 `/opt/homebrew/bin` before `~/bin` for the login shell.
 
-### 7. Clarification — non-interactive proof and safe remediation — 2026-08-07
+### 7. Уточнение — non-interactive proof и безопасное исправление — 2026-08-07
 
 <!-- markdownlint-disable MD013 MD029 -->
 
@@ -429,7 +428,7 @@ four-mode matrix in `shared/references/methodology.md §2`. Shell probes remain
 diagnostic; a surface is not supported until the lookup is captured inside that
 actual backend, hook or harness environment.
 
-### 8. Clarification — `path_helper`, shell surfaces and safe probes — 2026-08-07
+### 8. Уточнение — `path_helper`, shell surfaces и безопасные probes — 2026-08-07
 
 <!-- markdownlint-disable MD013 -->
 
@@ -480,7 +479,7 @@ tied to either tool: the last applicable prepend wins, so the wrapper-directory
 prepend must follow every other `PATH` initializer in each startup file read by
 the surface, then the complete matrix and actual surface must be rechecked.
 
-### 9. Clarification — mandatory login probes and surface evidence — 2026-08-07
+### 9. Уточнение — обязательные login probes и surface evidence — 2026-08-07
 
 <!-- markdownlint-disable MD013 MD029 -->
 
@@ -528,7 +527,7 @@ the canonical matrix. The current probe forces shell builtins, validates each
 record, reports path divergence through its exit status, and still requires
 evidence from the actual launch surface before a supported verdict.
 
-### 10. Clarification — last-prepend invariant and executable probes — 2026-08-07
+### 10. Уточнение — last-prepend invariant и executable probes — 2026-08-07
 
 <!-- markdownlint-disable MD013 MD029 -->
 
@@ -575,7 +574,7 @@ evidence from the actual launch surface before a supported verdict.
 
 <!-- markdownlint-enable MD013 MD029 -->
 
-### 11. Clarification — profile noise and a shipped posture script — 2026-08-07
+### 11. Уточнение — шум profile и поставляемый posture script — 2026-08-07
 
 <!-- markdownlint-disable MD013 MD029 -->
 
@@ -626,7 +625,7 @@ The regression suite covers both shells, missing providers, whitespace paths,
 malformed and incomplete evidence, status-2 precedence and the named guard
 mutations.
 
-### 12. Clarification — command-kind divergence and diagnostic hardening — 2026-08-07
+### 12. Уточнение — расхождение command kind и усиление диагностики — 2026-08-07
 
 <!-- markdownlint-disable MD013 MD029 -->
 
@@ -676,7 +675,7 @@ because the private capture is deleted. The runner now isolates an outer
 `BASH_ENV`, validates dispatch primitives before lookup or record emission,
 terminates cleanly on signals, and has regression coverage for those boundaries.
 
-### 13. Clarification — inherited shell state and cleanup integrity — 2026-08-07
+### 13. Уточнение — inherited shell state и целостность cleanup — 2026-08-07
 
 <!-- markdownlint-disable MD013 MD029 -->
 
@@ -715,7 +714,7 @@ than being silently dropped, profile dispatch shadows return
 `MO_POSTURE_SHADOW`, and a direct-PID signal is forwarded to the managed child
 before cleanup.
 
-### 14. Clarification — fail-closed environment scan and runtime paths — 2026-08-07
+### 14. Уточнение — fail-closed environment scan и runtime paths — 2026-08-07
 
 <!-- markdownlint-disable MD013 MD029 -->
 
@@ -747,7 +746,7 @@ Signals sent only to the runner terminate and verify the measured shell's proces
 group, including a TERM-resistant background descendant, before private captures
 are removed.
 
-### 15. Clarification — quiescent evidence and deterministic shutdown — 2026-08-07
+### 15. Уточнение — quiescent evidence и deterministic shutdown — 2026-08-07
 
 <!-- markdownlint-disable MD013 MD029 -->
 
@@ -798,7 +797,7 @@ signals. Usage uses only Bash builtins, while the execution tool remains the
 owner of the bounded timeout. Deterministic regressions and selected mutants
 cover each of these guards.
 
-### 16. Clarification — owned process groups and behavioral shutdown guards — 2026-08-07
+### 16. Уточнение — owned process groups и behavioral shutdown guards — 2026-08-07
 
 <!-- markdownlint-disable MD013 MD029 -->
 
@@ -849,30 +848,30 @@ and `rm` from the system utility path.
 
 <!-- meta-o-later-user-intents-v1:start -->
 
-### 17. Implementation and clean-room convergence request — 2026-08-10
+### 17. Запрос на реализацию и clean-room convergence — 2026-08-10
 
 > /goal выполни разработку /Users/alex/Develop/meta-o/spec/2026-08-08-herdr-orchestrator-operational-corrections/spec-review.md и через clean-room subagent review добейся отстуствия замечаний
 
-### 18. Execution-route clarification — 2026-08-10
+### 18. Уточнение execution route — 2026-08-10
 
 > тебе не надо использовать скилл mo-herdr сейчас
 
-### 19. Clarification — user intents and the spec — 2026-08-10
+### 19. Уточнение — user intents и спецификация — 2026-08-10
 
 > Такой вопросик. В My Opinion посмотри, есть ли там раздел или ещё?
 > Про то, что нужно дословно передавать интенты пользователю.
 > Смысл в том, что я неоднократно наблюдаю большую проблему, что те интенты, которые пользователь высказывает, они в финальную спеку не попадают. То есть, нужно, чтобы, если пользователь какой-то, на какой-то вопрос ответил или какое-то мнение высказал, чтобы это дословно попадало в спеку обязательно. Вот есть там такое сейчас или нет?
 
-### 20. Decision — every user intent is verbatim in the spec — 2026-08-10
+### 20. Решение — каждый user intent дословно входит в спецификацию — 2026-08-10
 
 > давай укажем что и в спеку все интенты пользователя должны попадать дословно
 
-### 21. Decision — no agent-attribution commit trailer — 2026-08-10
+### 21. Решение — без agent-attribution commit trailer — 2026-08-10
 
 > я тут долго думал и понял что не нужен нам Assisted by в коммитах
 > убери упоминания этого из спеки
 
-### Questions and pause request — 2026-08-10
+### Вопросы и просьба остановиться — 2026-08-10
 
 > объясни что мы так долго делаем? в смысле почему так долго?
 > и давай пока сделаем паузу
@@ -899,7 +898,7 @@ and `rm` from the system utility path.
 
 > в нашей спеке есть что-то что подразумевает правки omnigent-скила или его тестирование?
 
-### Two supplied reviews — 2026-08-11
+### Два переданных review — 2026-08-11
 
 > ниже 2 ревью
 
@@ -976,12 +975,12 @@ and `rm` from the system utility path.
   документации, но означает, что сейчас можно принять только детерминированную часть, не работоспособность Herdr/Omnigent маршрутов.
 ```
 
-### Local-only correction request — 2026-08-11
+### Запрос на исправления только локально — 2026-08-11
 
 > давай уже без своих сабагентов когда исправишь все найденное
 > дальше я буду тебе скидывать замечания
 
-### Review corrections — 2026-08-11
+### Исправления по review — 2026-08-11
 
 > A. §1 методологии не знает о новом обязательном pre-activation входе. Раздел, который владеет границей активации, по-прежнему перечисляет только контракт проекта, opaque-локатор и §2.1-append: «Activation cannot
 > proceed while those copies differ or an applicable intent is absent». Про карту фикстур сказано только в §9 и в двух backend-скилах, хотя она блокирующая. Тот, кто следует §1, активируется без неё. Правка — одно
@@ -994,7 +993,7 @@ and `rm` from the system utility path.
 > Рекомендация (не дефект): контракт проекта требует, чтобы новая граница фиксировалась в docs/architecture/. Про новый входной формат там пока только сквозные упоминания «pre-activation row»; причина живёт в спеке
 > и §9. Двух строк в архитектуре хватит, чтобы правило соблюдалось буквально.
 
-### Project-instruction backlog request — 2026-08-12
+### Запрос backlog для project instructions — 2026-08-12
 
 > в беклог допиши что надо более формально описать что должно быть в agents/claude (то что реально нужно каждому агенту на каждом запуске и то что иначе не попадет в исполнителя)
 >
@@ -1007,7 +1006,7 @@ and `rm` from the system utility path.
 >
 > но файлы эти надо держать небольшими
 
-### Standalone knowledge and README backlog request — 2026-08-12
+### Запрос backlog для standalone knowledge и README — 2026-08-12
 
 > еще в беклог допиши что надо чтобы в ридми тоже были ссылки на docs
 > ну и чтобы в readme было человекопонятное описание проекта
@@ -1016,14 +1015,14 @@ and `rm` from the system utility path.
 > те чтобы человек работащий просто с агентами без наших скилов и без нашей методологии не испытывал проблем
 > и это надо будет сделать бизнес-правилом текущего проекта-методологии
 
-### Backlog is not progress — 2026-08-12
+### Backlog — не progress — 2026-08-12
 
 > а по этому чату допиши еще в беклог наблюдение
 > я заметил что агент использует backlog как прогресс, а так не задумано
 > в backlog надо писать только то что мы отложили потому что я так решил или потому что агент в рамках реализаци посчитал что в эту итерацию он это делать не хочет/не может
 > но явно не надо там фиксировать текущий прогресс (часто)
 
-### Language policy backlog request — 2026-08-12
+### Запрос backlog для language policy — 2026-08-12
 
 > еще в беклог допиши что надо навести порядок с языками
 > хочу чтобы readme/buisiness/docs писались на языке пользователя (по идее можно понять как раз на основе buisiness/readme)
@@ -1031,7 +1030,7 @@ and `rm` from the system utility path.
 
 <!-- meta-o-later-user-intents-v1:end -->
 
-### 22. Recovered original task description — 2026-08-10
+### 22. Восстановленное исходное описание задачи — 2026-08-10
 
 The complete task-description payload is retained as one accountable unit so
 that no report item, clarification, or project constraint can disappear through
@@ -1044,7 +1043,7 @@ payload remains historical intent and has no normative force.
 The following is the user's problem statement, preserved without choosing a
 solution in advance.
 
-## Initial report
+## Исходный отчёт
 
 - когда в herdr создаем исполнителя/ревьюреов хочу чтобы исполнитель запускался в соседней вертикальной панели, а ревьюеры в отдельной вкладке в двух вертикальных панелях
 - оркестратор стал сам читать спеку и проверять можно ли ее выполнить - так не надо, это должен делать исполнитель
@@ -1081,7 +1080,7 @@ The relevant existing business framing is in
 orchestrator, persistent visible sessions, meta-harness requirements, review
 handoff, and human involvement.
 
-## Clarifications
+## Уточнения
 
 The user previously launched ordinary Claude or Codex CLI processes in Herdr
 panes and asked the orchestrator to manage them. The desired result is ordinary
@@ -1099,7 +1098,7 @@ initial report:
 > я тут долго думал и понял что не нужен нам Assisted by в коммитах
 > убери упоминания этого из спеки
 
-## Project constraints
+## Ограничения проекта
 
 Follow the repository contract in `AGENTS.md`. In particular, skills and
 reasoning are the orchestration layer; no new orchestration CLI, daemon, state
@@ -1112,7 +1111,7 @@ proposal that decides how the affected requirements should fit together, names
 any genuine Herdr capability gap that should become an upstream issue, and avoids
 inventing project documentation or bookkeeping that the user did not request.
 
-## Later user intents (verbatim)
+## Последующие user intents (дословно)
 
 > /goal выполни разработку /Users/alex/Develop/meta-o/spec/2026-08-08-herdr-orchestrator-operational-corrections/spec-review.md и через clean-room subagent review добейся отстуствия замечаний
 
@@ -1130,85 +1129,84 @@ inventing project documentation or bookkeeping that the user did not request.
 
 <!-- markdownlint-enable MD013 -->
 
-### What that means for the product, in the user's terms
+### Что это значит для продукта словами пользователя
 
-- the previous generation was **too thick** — the fault was misplaced emphasis,
-  not missing features, so the fix is deletion plus a written methodology;
-- nothing is postponed to make a round look finished;
-- authority comes from the tool that owns the answer, never from a plausible
-  guess about its interface.
+- предыдущее поколение было **слишком толстым**: проблема была в смещённых
+  акцентах, а не в недостающих features, поэтому исправление — удаление лишнего и
+  записанная методология;
+- ничего не откладывается ради видимости завершённого раунда;
+- авторитетен инструмент, владеющий ответом, а не правдоподобная догадка о его
+  interface.
 
 ---
 
-## Part 2 — the durable theses
+## Часть 2 — устойчивые тезисы
 
-## A spec keeps the user's words, not only their interpreted requirements
+## Спецификация хранит слова пользователя, а не только интерпретацию требований
 
-The business framing remains the independent verbatim source, but every task/spec
-also carries every user intent word for word. Summaries, derived requirements and
-links are useful additions and never replacements. A later clarification appends
-to both documents before implementation continues, so a reviewer can detect both
-transport loss and a wrong interpretation.
+Business framing остаётся независимым дословным источником, но каждая task/spec
+тоже содержит каждый user intent слово в слово. Summary, derived requirements и
+links полезны только как дополнения, не замены. Последующее уточнение добавляется
+в оба документа до продолжения реализации, чтобы reviewer заметил и transport
+loss, и неверную интерпретацию.
 
-## A feature must be verifiably done, not plausibly done
+## Завершённость фичи должна быть доказана, а не выглядеть правдоподобно
 
-A model reports success it has not observed — not from malice, from the same
-optimism that makes a person say "that should work". The cost lands later, on
-whoever trusted the report.
+Модель сообщает об успехе, которого не наблюдала, не из злого умысла, а из того
+же оптимизма, с которым человек говорит «должно работать». Цена ошибки позже
+ложится на доверившегося отчёту.
 
-So "done" has to be a property of evidence: one named commit, checked by parties
-who each say what they checked. When the checks do not describe the same commit,
-the feature is not done, however confident anyone sounds.
+Поэтому `done` — свойство evidence: один именованный commit, проверенный сторонами,
+каждая из которых говорит, что именно проверила. Если checks описывают разные
+commits, фича не завершена, как бы уверенно ни звучал отчёт.
 
-## Human time is more expensive than tokens
+## Время человека дороже токенов
 
-A human is interrupted for product meaning, an irreversible action, credentials,
-a subscription change, a genuinely unresolvable dispute — and for nothing else.
-An orchestrator that asks "what should I do?" has pushed its own work onto the
-person it exists to serve. It states a hypothesis and asks one question.
+Человека прерывают только ради product meaning, необратимого действия,
+credentials, изменения subscription или действительно неразрешимого спора.
+Orchestrator с вопросом «что мне делать?» переложил свою работу на человека,
+которому должен служить. Он формулирует hypothesis и задаёт один вопрос.
 
-## One model is not enough
+## Одной модели недостаточно
 
-Two independent reviewers exist so that one model's blind spot is not the
-project's blind spot. At least one comes from a different vendor than the author.
-The moment the second review is derived from the first, both are one review, and
-the cross-vendor property that justified the cost is gone.
+Два независимых reviewers нужны, чтобы blind spot одной модели не стал blind spot
+проекта. Хотя бы один работает у другого vendor, чем author. Как только второй
+review производен от первого, они превращаются в один review и теряют cross-vendor
+свойство, оправдывавшее затраты.
 
-## Writing code is cheap; maintaining accumulated layers is not
+## Писать код дёшево, поддерживать накопленные слои — нет
 
-The expensive failure is not a syntax error. It is a working system that
-implements a misunderstood intent, or a second architecture growing quietly
-beside the first. So reviews carry an architecture lens and the blunt question
-_why does this need to exist at all?_ — and so does this project about its own
-code.
+Дорогой сбой — не syntax error, а работающая система, реализующая неверно понятый
+intent, либо вторая architecture, незаметно растущая рядом с первой. Поэтому в
+review есть architecture lens и прямой вопрос _зачем это вообще должно
+существовать?_ Этот проект задаёт тот же вопрос собственному code.
 
-## A control layer must earn its keep
+## Control layer обязан оправдывать своё существование
 
-The previous generation of Meta-O had a CLI, a state machine, a run store, gate
-receipts, snapshot digests, structured findings transport, session adapters, and
-installer scripts. Each was defensible on its own. Together they were a workflow
-engine that spent its attention on itself, wrapped CLIs the agent could already
-use, and had to be recovered before any feature could be.
+В предыдущем поколении Meta-O были CLI, state machine, run store, gate receipts,
+snapshot digests, structured findings transport, session adapters и installer
+scripts. Каждый элемент можно было защитить отдельно. Вместе они стали workflow
+engine, занятым самим собой: он оборачивал CLI, которыми агент уже умел
+пользоваться, и требовал recovery до начала любой фичи.
 
-The capability was already there: native `/goal`, native sessions and resume, a
-terminal multiplexer with its own control plane, Git. What was missing was a
-methodology, written down, that says who does what and what counts as evidence.
-That is what this project ships now.
+Нужные capabilities уже существовали: native `/goal`, native sessions и resume,
+terminal multiplexer с собственным control plane, Git. Не хватало записанной
+методологии: кто что делает и что считается evidence. Именно её теперь поставляет
+проект.
 
-## Deferred work that nobody wrote down does not exist
+## Не записанная отложенная работа не существует
 
-Anything postponed, blocked, or knowingly left unfixed goes into
-`docs/backlog.md` with its reason, its practical impact, and the next step. A
-decision that only lives in a session transcript is a decision the next session
-will make differently.
+Всё отложенное, заблокированное или сознательно неисправленное попадает в
+`docs/backlog.md` с причиной, практическим влиянием и следующим шагом. Решение,
+живущее только в transcript сессии, следующая сессия примет иначе.
 
-## The methodology is itself a project
+## Методология сама является проектом
 
-It gets the same treatment it prescribes: a contract it can be held to, gates it
-actually runs, and reflection only when something really failed — not a ritual
-after every change.
+Она получает тот же подход, который предписывает: проверяемый contract, реально
+запускаемые gates и reflection только после настоящего сбоя, а не как ритуал
+после каждого change.
 
-## Review feedback received on 2026-08-15
+## Замечания review, полученные 2026-08-15
 
 <!-- prettier-ignore-start -->
 
@@ -1485,6 +1483,20 @@ herdr двай я запущу в отдельной hedr-сессии, но т�
 и у нас укажи ссылки на эти issues
 
 используй gh
+```
+
+<!-- prettier-ignore-end -->
+
+<!-- prettier-ignore-start -->
+
+```text
+всё кроме 1 и 2 надо бы покопать/починить
+хотя пункт 6 мне не кажется проблемой - удаляй его сразу
+7 тоже удаляй - это на мне работа
+8 - оставляем, пока не делаем
+
+по 5-му пункту уточню: вот тут /Users/alex/bitrix/skills/src/brain-council/scripts у нас есть нормально реализованное получение списка моделей
+мы в текущем проекте иначе как-то сделали?
 ```
 
 <!-- prettier-ignore-end -->

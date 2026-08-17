@@ -1,25 +1,25 @@
-# Backend support boundary
+# Граница поддержки backend
 
-## Decision
+## Решение
 
-Herdr, Orca and Paseo integrations use their documented public native surfaces
-directly. Meta-O does not add an adapter layer, provider proxy, transcript reader
-or backend state store. Each backend has a fixed orchestration entry and a fixed
-standalone review entry because session semantics differ, while lifecycle and
-review standards remain shared authored references.
+Интеграции Herdr, Orca и Paseo напрямую используют документированные публичные
+native-поверхности. Meta-O не добавляет adapter layer, provider proxy, transcript
+reader или backend state store. У каждого backend фиксированы orchestration entry
+и standalone review entry, потому что семантика сессий различается; lifecycle- и
+review-стандарты остаются общими authored references.
 
-## Business reason
+## Бизнес-причина
 
-The product exists to coordinate tools that already have sessions and control
-planes, not to recreate them. A private transcript or inferred database can make
-an integration appear reliable while tying it to implementation details the
-backend does not promise. Separate entry skills keep native mechanics explicit;
-shared contracts prevent review and lifecycle standards from drifting.
+Продукт координирует инструменты, у которых уже есть sessions и control planes,
+а не создаёт их заново. Private transcript или inferred database может сделать
+интеграцию внешне надёжной, одновременно привязав её к implementation details,
+которые backend не обещает сохранять. Раздельные entry-скилы делают native-
+механику явной; общие контракты не дают review- и lifecycle-стандартам разойтись.
 
-## Consequences
+## Следствия
 
-A backend must publicly expose complete settled responses, long-response
-retrieval, questions, lifecycle state and whole-session diagnostics. A missing
-capability blocks support instead of activating a fallback. Version changes are
-diagnostic only; an observed break leads to a methodology improvement rather
-than automatic version requalification.
+Backend обязан публично предоставлять полные settled responses, получение long
+response, вопросы, lifecycle state и whole-session diagnostics. Отсутствующая
+возможность блокирует поддержку, а не включает fallback. Изменения версий лишь
+помогают диагностике; наблюдаемый сбой ведёт к улучшению методологии, а не к
+автоматической requalification версии.

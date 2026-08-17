@@ -1,61 +1,61 @@
-# End-to-end verification
+# Сквозная проверка
 
-`make mo-qc` is the deterministic product gate. `make mo-e2e` deliberately runs
-no agentic scenario: it prints this document's entry point and exits 2. A live
-actor runs applicable scenarios against one named full candidate SHA without
-changing it and reports human-readable evidence.
+`make mo-qc` — детерминированный product gate. `make mo-e2e` намеренно не
+запускает agentic-сценарии: он печатает точку входа этого документа и выходит с
+кодом 2. Live actor выполняет применимые сценарии на одном именованном полном
+candidate SHA, не меняет его и сообщает понятное человеку evidence.
 
-## Common evidence
+## Общее evidence
 
-Every scenario records backend, control version, companion-skill discovery,
-harness/model vendor, exact candidate SHA, action, observable public result and
-`PASS`, `FAIL` or `UNKNOWN`. A missing full verdict is `UNKNOWN` and is repeated;
-there is no partial pass. Private provider transcripts, hook stores and inferred
-session databases are forbidden evidence.
+Каждый сценарий фиксирует backend, версию control, discovery companion skill,
+harness/model vendor, точный candidate SHA, действие, наблюдаемый публичный
+результат и `PASS`, `FAIL` или `UNKNOWN`. Отсутствующий полный вердикт —
+`UNKNOWN`; такой сценарий повторяется, частичного pass нет. Private provider
+transcripts, hook stores и inferred session databases запрещены как evidence.
 
-Use a normal settled-response fixture and a three-to-four-screen fixture with
-recognizable `BEGIN`, `MIDDLE` and `END` markers. The whole-session view is
-tested separately as a diagnostic.
+Используйте normal settled-response fixture и fixture на три-четыре экрана с
+узнаваемыми markers `BEGIN`, `MIDDLE` и `END`. Whole-session view проверяется
+отдельно как диагностика.
 
-## Backend scenarios
+## Сценарии backend
 
-Run this matrix for Herdr, Orca and Paseo:
+Выполните эту матрицу для Herdr, Orca и Paseo:
 
-| ID  | Scenario                                                          | Proof                                                                |
-| --- | ----------------------------------------------------------------- | -------------------------------------------------------------------- |
-| B1  | Discover exact instance and working directory.                    | Native status/list output identifies both.                           |
-| B2  | Launch Codex unsandboxed.                                         | Public readiness and effective posture.                              |
-| B3  | Launch Claude Code unsandboxed.                                   | Public readiness and effective posture.                              |
-| B4  | Launch OpenCode unsandboxed.                                      | Public readiness and effective posture.                              |
-| B5  | Deliver initial `/goal` and ordinary follow-up.                   | Both appear once and produce distinct settled responses.             |
-| B6  | Ask and answer an ordinary question and a harness-UI question.    | Both public pending states/requests and both exact reply paths.      |
-| B7  | Distinguish working, completed, pending question and failed/lost. | Native state observations for all four.                              |
-| B8  | Retrieve complete normal settled response.                        | Exact expected response, not terminal inference.                     |
-| B9  | Retrieve complete long settled response.                          | Beginning, middle and end markers are intact.                        |
-| B10 | Inspect whole-session output.                                     | Documented diagnostic command reaches visible output.                |
-| B11 | Run two isolated reviewers concurrently.                          | Separate sessions, same SHA, different vendors, no peer bytes.       |
-| B12 | Release review pair atomically.                                   | Both unchanged private files reach executor in one ordinary message. |
-| B13 | Run standalone backend review.                                    | Backend-specific review entry creates only two reviewers.            |
-| B14 | Detect missing control and companion separately.                  | Actionable readiness output names the missing item.                  |
+| ID  | Сценарий                                                      | Доказательство                                                          |
+| --- | ------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| B1  | Найти точный instance и working directory.                    | Native status/list output идентифицирует оба.                           |
+| B2  | Запустить Codex unsandboxed.                                  | Public readiness и effective posture.                                   |
+| B3  | Запустить Claude Code unsandboxed.                            | Public readiness и effective posture.                                   |
+| B4  | Запустить OpenCode unsandboxed.                               | Public readiness и effective posture.                                   |
+| B5  | Передать начальный `/goal` и обычный follow-up.               | Оба появляются ровно один раз и дают разные settled responses.          |
+| B6  | Задать и ответить на обычный и harness-UI вопрос.             | Оба public pending states/requests и оба точных reply paths.            |
+| B7  | Различить working, completed, pending question и failed/lost. | Native state observations для всех четырёх.                             |
+| B8  | Получить полный normal settled response.                      | Точный ожидаемый ответ, не terminal inference.                          |
+| B9  | Получить полный long settled response.                        | Начальный, средний и конечный markers целы.                             |
+| B10 | Прочитать whole-session output.                               | Документированная diagnostic command достигает видимого output.         |
+| B11 | Параллельно запустить двух изолированных reviewers.           | Разные sessions, один SHA, разные vendors, нет peer bytes.              |
+| B12 | Атомарно передать пару reviews.                               | Два неизменённых private files доходят executor одним ordinary message. |
+| B13 | Выполнить standalone backend review.                          | Backend-specific review entry создаёт только двух reviewers.            |
+| B14 | Раздельно обнаружить отсутствующие control и companion.       | Actionable readiness output называет отсутствующий элемент.             |
 
-## Watchdog scenarios
+## Сценарии watchdog
 
-| ID  | Scenario                      | Proof                                                                          |
-| --- | ----------------------------- | ------------------------------------------------------------------------------ |
-| W1  | Target one session read-only. | Exact locator and classified native state; no prompt sent.                     |
-| W2  | Scan all reachable backends.  | Every session has its native locator and own state; an empty surface is named. |
-| W3  | Nudge one authorized target.  | Stable native state permits one nonblocking exact message.                     |
-| W4  | Suppress an unsafe repeat.    | Changed state or an unchanged duplicate prevents delivery.                     |
+| ID  | Сценарий                        | Доказательство                                                           |
+| --- | ------------------------------- | ------------------------------------------------------------------------ |
+| W1  | Read-only observe одной сессии. | Точный locator и classified native state; prompt не отправлен.           |
+| W2  | Scan всех доступных backend.    | У каждой сессии свой native locator и state; пустая поверхность названа. |
+| W3  | Nudge одной разрешённой цели.   | Stable native state разрешает одно nonblocking exact message.            |
+| W4  | Подавить небезопасный повтор.   | Изменённое state или неизменившийся duplicate блокирует delivery.        |
 
-## Installation scenarios
+## Сценарии установки
 
-Local disposable installation must prove exactly ten standalone skills and their
-owned references/scripts. Remote installation runs only after an already
-authorized publish; do not push merely to execute the fixture.
+Локальная установка в disposable-окружение должна доказать ровно десять
+самодостаточных скилов с принадлежащими им references/scripts. Remote installation
+выполняет владелец проекта после публикации; workflow не делает push ради fixture.
 
-## Documentation-only carry-forward
+## Carry-forward только для документации
 
-E2E may carry across a later documentation-only commit only when both final-SHA
-reviewers explicitly confirm that the change cannot affect executable behavior,
-skill or agent instructions, acceptance, or this contract. The final report
-names the tested SHA and reason. Any doubt reruns E2E.
+E2E можно перенести на более поздний docs-only commit, только если оба reviewer
+финального SHA явно подтвердили, что изменение не влияет на executable behavior,
+skill или agent instructions, acceptance или этот контракт. Финальный отчёт
+называет проверенный SHA и причину. При любом сомнении E2E запускается заново.

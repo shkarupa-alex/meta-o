@@ -1,17 +1,17 @@
-# Backend capabilities
+# Возможности backend
 
-Meta-O supports a backend only when its public native surface passes the common
-contract and live scenarios in [End-to-end verification](e2e.md). The required
-behavior is authored once in
-[Backend contract](../shared/references/backend-contract.md); backend mechanics
-provides the exact commands.
+Meta-O поддерживает backend только тогда, когда его публичная native-поверхность
+проходит общий контракт и live-сценарии документа [Сквозная проверка](e2e.md).
+Обязательное поведение имеет одного автора в
+[Backend contract](../shared/references/backend-contract.md), а backend-механика
+задаёт точные команды.
 
-Current-run support is not persisted here. Versions are diagnostic and are not
-pinned. A backend that loses complete settled-response retrieval, question
-handling or reliable state discrimination becomes unsupported until the observed
-failure is addressed.
+Поддержка конкретного запуска здесь не фиксируется. Версии диагностичны и не
+прибиты. Backend, потерявший извлечение полного settled response, обработку
+вопросов или надёжное различение состояний, становится неподдерживаемым до
+устранения наблюдаемого сбоя.
 
-## Required companions
+## Обязательные companions
 
 | Backend | Control              | Companion skill |
 | ------- | -------------------- | --------------- |
@@ -19,12 +19,11 @@ failure is addressed.
 | Orca    | `orca` or `orca-cli` | `orchestration` |
 | Paseo   | `paseo`              | `paseo`         |
 
-The control and companion are checked separately. A present executable does not
-prove that an agent knows the backend semantics. A backend's documented
-version-matched bundle counts as the companion source when the complete guide is
-readable and the controlling agent reads it before acting; installation into a
-personal harness directory is not required for that capability check.
+Control и companion проверяются отдельно. Наличие executable не доказывает, что
+агент знает семантику backend. Документированный version-matched bundle backend
+считается источником companion, если полный guide читается и controlling agent
+прочитал его до действий; установка в личный harness-каталог для этого не нужна.
 
-Control health and per-harness readiness are separate too. Paseo provider
-discovery or a direct public launch must prove each selected harness; a daemon
-that reports `reachable` does not override a provider server failing to boot.
+Control health и готовность каждого harness — тоже разные свойства. Paseo
+provider discovery или прямой публичный launch должны доказать каждый выбранный
+harness; daemon со статусом `reachable` не отменяет сбой запуска provider server.

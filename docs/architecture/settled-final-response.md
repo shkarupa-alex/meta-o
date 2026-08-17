@@ -1,42 +1,42 @@
-# Settled final responses stay on public backend surfaces
+# Settled final responses остаются на публичных поверхностях backend
 
-## Decision
+## Решение
 
-Meta-O may retrieve the entire settled assistant response only through the
-selected backend's documented public native surface. Orca uses the complete
-`worker_done` orchestration message. Herdr still needs a proven public complete
-agent result. Paseo uses the complete text activity item associated with the
-latest known prompt only after a public surface proves that boundary under real
-reviewer tool load. Its bounded `wait --json.message` activity window has not
-done so. `paseo logs <id> --filter text --tail 1` is a candidate, but normal and
-long tool-using fixtures must qualify it for every harness before support can be
-claimed. Backend mechanics record the exact installed commands.
+Meta-O получает весь settled assistant response только через документированную
+публичную native-поверхность выбранного backend. Orca использует полное
+orchestration message `worker_done`. Herdr всё ещё нужна доказанная публичная
+поверхность полного agent result. Paseo может использовать complete text activity
+item последнего известного prompt лишь после того, как публичная поверхность
+докажет эту границу под реальной reviewer-нагрузкой с инструментами. Bounded
+окно `wait --json.message` этого не доказало.
+`paseo logs <id> --filter text --tail 1` — кандидат, но до заявления поддержки он
+должен пройти normal и long tool-using fixtures на каждом harness. Backend-
+механика фиксирует точные команды установленной версии.
 
-A whole-session view remains available for occasional diagnosis, but a terminal
-tail or bounded preview does not prove a complete final response. Long-response
-acceptance requires recognizable beginning, middle and end content over roughly
-three to four screens.
+Whole-session view остаётся для редкой диагностики, но terminal tail или bounded
+preview не доказывают полный final response. Acceptance длинного ответа требует
+узнаваемое начало, середину и конец на объёме примерно трёх-четырёх экранов.
 
-## Business reason
+## Бизнес-причина
 
-Reviews are sound only when every reviewer byte reaches the executor. Private
-provider transcripts, hooks and inferred session databases are unstable
-implementation details and can silently select the wrong session or turn. Asking
-an agent to repeat its answer tests obedience rather than retrieval.
+Review достоверен только тогда, когда каждый byte reviewer доходит до executor.
+Private provider transcripts, hooks и inferred session databases — нестабильные
+implementation details, способные незаметно выбрать не ту сессию или turn.
+Просьба агенту повторить ответ проверяет послушание, а не retrieval.
 
-## Delivery consequence
+## Следствие для доставки
 
-Two independent review responses are stored unchanged in restrictive temporary
-files. Only after both are complete does one ordinary message give the executor
-both paths. The orchestrator does not merge, rank, summarize, hash, encode,
-split, truncate or judge their content. File or complete-read failure is
-`unknown`, never partial pass. Cleanup is best effort and targets only owned
-files.
+Два независимых review responses без изменений сохраняются в restrictive
+temporary files. Только после завершения обоих одно ordinary message передаёт
+executor оба path. Orchestrator не объединяет, не ранжирует, не суммирует, не
+хеширует, не кодирует, не делит, не обрезает и не оценивает content. Ошибка file
+или complete read — `unknown`, а не partial pass. Cleanup best effort и касается
+только принадлежащих запуску files.
 
-## Rejected
+## Отклонено
 
-- private provider transcripts, hooks, session databases and goal stores;
-- inline/headless direct provider invocation as a fallback;
-- completion markers or verdict files created only to satisfy Meta-O;
-- reconstruction from terminal snippets;
-- a provider-proxy or adapter service.
+- private provider transcripts, hooks, session databases и goal stores;
+- inline/headless direct provider invocation как fallback;
+- completion markers или verdict files, созданные только ради Meta-O;
+- реконструкция из terminal snippets;
+- provider-proxy или adapter service.

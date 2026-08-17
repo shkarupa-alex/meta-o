@@ -17,35 +17,35 @@ test("each backend gets the complete B1-B14 acceptance matrix", () => {
   for (const backend of ["Herdr", "Orca", "Paseo"]) assert.match(e2e, new RegExp(backend));
   for (const harness of ["Codex", "Claude Code", "OpenCode"])
     assert.match(e2e, new RegExp(harness));
-  assert.match(e2e, /`BEGIN`, `MIDDLE` and `END` markers/);
-  assert.match(e2e, /ordinary question and a harness-UI question/);
-  assert.match(e2e, /Both public pending states\/requests and both exact reply paths/);
+  assert.match(e2e, /markers `BEGIN`, `MIDDLE` и `END`/);
+  assert.match(e2e, /обычный и harness-UI вопрос/);
+  assert.match(e2e, /Оба public pending states\/requests и оба точных reply paths/);
   assert.match(
     e2e,
-    /Private provider transcripts, hook stores and inferred\s+session databases are forbidden evidence/,
+    /Private provider\s+transcripts, hook stores и inferred session databases запрещены как evidence/,
   );
 });
 
 test("watchdog and documentation carry-forward scenarios are explicit", () => {
   for (let index = 1; index <= 4; index += 1) assert.match(e2e, new RegExp(`\\| W${index}\\s+\\|`));
-  assert.match(e2e, /one nonblocking exact message/);
-  assert.match(e2e, /unchanged duplicate prevents delivery/);
-  assert.match(e2e, /both final-SHA\s+reviewers explicitly confirm/);
-  assert.match(e2e, /skill or agent instructions, acceptance, or this contract/);
+  assert.match(e2e, /одно nonblocking exact message/);
+  assert.match(e2e, /неизменившийся duplicate блокирует delivery/);
+  assert.match(e2e, /оба reviewer\s+финального SHA явно подтвердили/);
+  assert.match(e2e, /skill или agent instructions, acceptance или этот контракт/);
 });
 
 test("acceptance maps all major requirements to deterministic and live proof", () => {
   for (const phrase of [
-    "Exactly ten named skills",
-    "Herdr orchestration and review",
-    "Orca orchestration and review",
-    "Paseo orchestration and review",
-    "Codex, Claude Code and OpenCode",
-    "complete pair",
-    "backlog lenses",
+    "ровно десять именованных скилов",
+    "Orchestration и review через Herdr",
+    "Orchestration и review через Orca",
+    "Orchestration и review через Paseo",
+    "Codex, Claude Code и OpenCode",
+    "полной парой",
+    "backlog",
     "Pattern watchdog",
     "semantic Markdown labels",
-    "One final SHA",
+    "Один финальный SHA",
   ])
     assert.match(acceptance, new RegExp(phrase, "i"));
 });

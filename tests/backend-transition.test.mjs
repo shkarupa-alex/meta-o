@@ -140,9 +140,8 @@ test("every backlog deferral has reason, practical impact, and next step", () =>
   }
   assert.ok(entries.length > 0, "backlog must contain at least one real deferral");
   for (const entry of entries) {
-    for (const field of ["Reason.", "Practical impact.", "Next step."]) {
-      assert.match(entry.body, new RegExp(field.replace(".", "\\.")), `${entry.title}: ${field}`);
-    }
+    for (const field of ["Причина.", "Практическое влияние.", "Следующий шаг."])
+      assert.ok(entry.body.includes(field), `${entry.title}: ${field}`);
   }
   const titles = entries.map((entry) => entry.title).join("\n");
   assert.doesNotMatch(titles, /P1-P8|H13-H37|Omnigent|progress tracker|standalone project-entry/i);

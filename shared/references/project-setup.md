@@ -23,8 +23,13 @@ Inspect substance, not file presence. A ready project has:
 
 Human-facing project knowledge uses the user's language, inferred from the
 business framing unless the user chooses another. Code, identifiers, commands,
-protocol literals and upstream names remain in their technical language. Mixed
-artifact edge cases may be recorded as a narrower backlog question.
+protocol literals and upstream names remain in their technical language. For a
+Russian-speaking project, write a heading such as `## Установка`, but keep
+`make mo-qc`, `worker_done`, `needs_attention`, `Herdr` and file paths unchanged.
+In a table, translate explanatory columns such as `Назначение`, while preserving
+API field names and exact state values. Verbatim user intent always keeps its
+original language, including mixed-language messages. These examples resolve
+ordinary mixed artifacts; only a genuinely undecidable case belongs in backlog.
 
 Internal Markdown links use a label containing the target document's H1 title,
 not its path. Enforce resolution and labels with a mature Markdown AST/link

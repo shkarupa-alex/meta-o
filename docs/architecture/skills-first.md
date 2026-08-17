@@ -1,49 +1,50 @@
-# Skills and reasoning are the process orchestration layer
+# Скилы и reasoning — слой оркестрации процесса
 
-## Decision
+## Решение
 
-Meta-O has no executable router, finite-state-machine service, run registry,
-provider proxy, backend adapter or persisted orchestration state. Entry skills
-give the active agent a lifecycle, review standard and concrete native backend
-mechanics; agent reasoning selects the next safe action.
+В Meta-O нет executable router, finite-state-machine service, run registry,
+provider proxy, backend adapter или persisted orchestration state. Entry-скилы
+дают активному агенту lifecycle, review standard и конкретную native-механику
+backend; agent reasoning выбирает следующее безопасное действие.
 
-The orchestrator manages process and sessions but does not inspect, judge or edit
-product code. Executors, reviewers and E2E actors read the repository. The
-orchestrator may read task intent before activation and use Git metadata needed
-to identify one clean full candidate SHA.
+Orchestrator управляет процессом и сессиями, но не читает, не оценивает и не
+редактирует product code. Репозиторий читают executors, reviewers и E2E actors.
+До активации orchestrator может прочитать task intent и использовать Git metadata,
+нужные для идентификации одного чистого полного candidate SHA.
 
-## Business reason
+## Бизнес-причина
 
-The previous generation accumulated a second workflow engine around tools that
-already owned sessions, state and transport. Each extra receipt, registry,
-adapter and recovery protocol created another truth that could disagree with Git
-or the backend. The product exists to coordinate those tools, not replace them.
+Предыдущее поколение накопило второй workflow engine вокруг инструментов, уже
+владеющих sessions, state и transport. Каждый дополнительный receipt, registry,
+adapter и recovery protocol создавал ещё одну правду, способную разойтись с Git
+или backend. Продукт существует, чтобы координировать эти инструменты, а не
+заменять их.
 
-## Shared and backend-specific ownership
+## Общее и backend-specific владение
 
-`shared/references/methodology.md` owns lifecycle, autonomy, questions and
-completion. `review-protocol.md` owns common review and backlog semantics.
-`backend-contract.md` owns minimum observable capabilities. Herdr, Orca and
-Paseo mechanics own exact native commands. Separate fixed entry skills consume
-those references so backend semantics remain explicit without duplicating the
-standards.
+`shared/references/methodology.md` владеет lifecycle, autonomy, questions и
+completion. `review-protocol.md` владеет общей семантикой review и backlog.
+`backend-contract.md` владеет минимальными observable capabilities. Механики
+Herdr, Orca и Paseo владеют точными native commands. Отдельные фиксированные
+entry-скилы используют эти references: семантика backend остаётся явной, а
+стандарты не дублируются.
 
-## Evidence and restart
+## Evidence и restart
 
-One verified result is one full Git object ID. Any new commit invalidates every
-gate. Missing or unreadable evidence is `unknown` and repeated. Run evidence is
-human-readable and ephemeral; no manifest, receipt, digest, baseline, registry
-or external evidence sink is created. The watchdog's private delivery digest is
-not run evidence: it has the single external consumer and deletion semantics
-recorded in
-[Watchdog nudge deduplication stores one private digest](watchdog-nudge-deduplication.md).
+Один verified result — один полный Git object ID. Новый commit обнуляет каждый
+gate. Missing или unreadable evidence — `unknown`, его получают заново. Run
+evidence понятно человеку и эфемерно; manifest, receipt, digest, baseline,
+registry или external evidence sink не создаются. Private delivery digest
+watchdog не является run evidence: у него один внешний consumer и явная семантика
+удаления, описанная в
+[Deduplication nudge watchdog хранит один private digest](watchdog-nudge-deduplication.md).
 
-A restart begins a fresh run and reuses no prior gate or scratch state. This can
-repeat work, but it avoids a recovery database that might bless stale evidence.
+Restart начинает новый run и не переиспользует прежний gate или scratch state.
+Работа может повториться, зато recovery database не сможет одобрить stale evidence.
 
-## Human boundary
+## Граница человека
 
-The orchestrator decides technical, cheap and reversible matters and reports
-those decisions at the end. The user handles product meaning, credentials,
-subscriptions, irreversible actions and costly-to-change choices. An optional
-watchdog starts only by explicit request.
+Orchestrator самостоятельно принимает технические, дешёвые и обратимые решения
+и сообщает о них в конце. Пользователь решает вопросы product meaning,
+credentials, subscriptions, необратимых действий и дорогих в изменении choices.
+Необязательный watchdog запускается только по явному запросу.
