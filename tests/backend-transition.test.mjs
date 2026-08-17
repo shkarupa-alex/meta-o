@@ -243,7 +243,8 @@ if [ "$1" = inspect ]; then
   if [ -n "\${WATCHDOG_MALFORMED-}" ]; then echo not-json; exit 0; fi
   if [ -n "\${WATCHDOG_WRONG_LOCATOR-}" ]; then echo '{"Id":"other-agent","Status":"idle"}'; exit 0; fi
   n=$(cat "$WATCHDOG_COUNT" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > "$WATCHDOG_COUNT"
-  printf '{"Id":"a-full-id","Status":"idle","UpdatedAt":"tick-%s","PendingPermissions":[],"AvailableModes":[{"label":"Default Permissions"}]}\\n' "$n"
+  if [ -n "\${WATCHDOG_PERMISSION-}" ]; then permissions='[{"id":"permit-1"}]'; else permissions='[]'; fi
+  printf '{"Id":"a-full-id","Name":"lost error unknown reviewer","Status":"idle","UpdatedAt":"tick-%s","PendingPermissions":%s,"AvailableModes":[{"label":"Fix error handling"}]}\\n' "$n" "$permissions"
 elif [ "$1" = send ]; then
   printf '%s\\n' "$*" >> "$WATCHDOG_LOG"
   printf '%s\\n' '{"accepted":true}'
@@ -266,6 +267,13 @@ fi
   );
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /state=completed action=observed/);
+  result = spawnSync(
+    join(ROOT, "shared", "scripts", "mo-watchdog.sh"),
+    ["target", "--backend", "paseo", "--session", "a"],
+    { env: { ...env, WATCHDOG_PERMISSION: "1" }, encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /state=question action=observed/);
   result = spawnSync(
     join(ROOT, "shared", "scripts", "mo-watchdog.sh"),
     ["target", "--backend", "paseo", "--session", "a"],
@@ -690,10 +698,10 @@ test("watchdog inventories Herdr workspaces, tabs and panes and scans Paseo glob
   const commands = {
     herdr: `#!/bin/sh
 case "$*" in
-  "workspace list") echo '{"result":{"workspaces":[{"workspace_id":"ws-1","agent_status":"working"}]}}' ;;
-  "tab list") echo '{"result":{"tabs":[{"tab_id":"tab-1","agent_status":"working"},{"tab_id":"tab-2","agent_status":"done"}]}}' ;;
-  "pane list") echo '{"result":{"panes":[{"pane_id":"pane-1","agent_status":"working"},{"pane_id":"pane-2","agent_status":"done"}]}}' ;;
-  "agent list") echo '{"result":{"agents":[{"name":"h-done","agent_status":"done"},{"name":"h-working","agent_status":"working"}]}}' ;;
+  "workspace list") echo '{"result":{"workspaces":[{"workspace_id":"ws-1","name":"lost error workspace","agent_status":"working"}]}}' ;;
+  "tab list") echo '{"result":{"tabs":[{"tab_id":"tab-1","title":"Fix error handling","agent_status":"working"},{"tab_id":"tab-2","title":"lost reviewer","agent_status":"done"},{"tab_id":"tab-3","title":"Fix error handling","agent_status":"unknown"}]}}' ;;
+  "pane list") echo '{"result":{"panes":[{"pane_id":"pane-1","cwd":"/repo/error-handling","agent_status":"working"},{"pane_id":"pane-2","label":"lost output","agent_status":"done"}]}}' ;;
+  "agent list") echo '{"result":{"agents":[{"name":"error-reviewer","agent_status":"done"},{"name":"h-working","agent_status":"working"}]}}' ;;
   *) exit 2 ;;
 esac
 `,
@@ -720,9 +728,10 @@ if [ "$*" = "ls --global --json" ]; then echo '[]'; else exit 2; fi
   assert.match(result.stdout, /backend=herdr session=ws-1 state=working surface=workspaces/);
   assert.match(result.stdout, /backend=herdr session=tab-1 state=working surface=tabs/);
   assert.match(result.stdout, /backend=herdr session=tab-2 state=completed surface=tabs/);
+  assert.match(result.stdout, /backend=herdr session=tab-3 state=unclassified surface=tabs/);
   assert.match(result.stdout, /backend=herdr session=pane-1 state=working surface=panes/);
   assert.match(result.stdout, /backend=herdr session=pane-2 state=completed surface=panes/);
-  assert.match(result.stdout, /backend=herdr session=h-done state=completed/);
+  assert.match(result.stdout, /backend=herdr session=error-reviewer state=completed/);
   assert.match(result.stdout, /backend=herdr session=h-working state=working/);
   assert.match(result.stdout, /backend=paseo surface=agents state=no-sessions/);
 });

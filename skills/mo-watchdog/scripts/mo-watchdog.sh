@@ -32,8 +32,10 @@ classify() {
   elif /usr/bin/printf '%s\n' "$WATCHDOG_COMPACT" | grep -Eiq '"(PendingPermissions|pending_permissions)":\[\{' || \
     /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'question|blocked|required input|pending.?permission'; then
     /usr/bin/printf 'question'
-  elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'failed|error|lost|unknown|crash|stopped'; then
+  elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'failed|error|lost|crash|stopped'; then
     /usr/bin/printf 'failed'
+  elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq '(^|[^[:alnum:]_])unknown([^[:alnum:]_]|$)'; then
+    /usr/bin/printf 'unclassified'
   elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'done|completed|idle|worker_done|succeeded'; then
     /usr/bin/printf 'completed'
   elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'working|running|active|in_progress'; then
@@ -166,8 +168,9 @@ classification_text() {
   WATCHDOG_KIND=$2
   WATCHDOG_TEXT=$3
   if /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -e . >/dev/null 2>&1; then
-    if [ "$WATCHDOG_BACKEND" = orca ]; then
-      /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -r --arg kind "$WATCHDOG_KIND" '
+    case "$WATCHDOG_BACKEND" in
+      orca)
+        /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -r --arg kind "$WATCHDOG_KIND" '
         def permissions:
           ([.result.observation.PendingPermissions?,
             .result.observation.pending_permissions?]
@@ -204,16 +207,25 @@ classification_text() {
               ([.lastError, .resource.releaseError, .dispatchStatus] | strings)
             else ([.dispatchStatus, .workerState] | strings) end
           else "" end
-      '
-    else
-      /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -r '
-        ([.. | scalars | select(. != null and . != false and . != true)]
-          | map(tostring) | join(" "))
-        + (if ([.. | objects | (.PendingPermissions? // .pending_permissions? // empty)
-                  | select(type == "array" and length > 0)] | length) > 0
-           then " pending_permission" else "" end)
-      '
-    fi
+        '
+        ;;
+      herdr)
+        /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -r '
+          (.agent_status? // .status? // .result.agent_status?
+            // .result.agent.agent_status? // .result.agent.status?
+            // .result.status? // "")
+        '
+        ;;
+      paseo)
+        /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | jq -r '
+          ((.Status? // .status? // "") | tostring)
+          + (if ([.PendingPermissions?, .pending_permissions?]
+                    | map(select(type == "array")) | any(length > 0))
+             then " pending_permission" else "" end)
+        '
+        ;;
+      *) /usr/bin/printf '%s' "$WATCHDOG_TEXT" ;;
+    esac
   else
     /usr/bin/printf '%s' "$WATCHDOG_TEXT"
   fi

@@ -497,3 +497,36 @@ herdr двай я запущу в отдельной hedr-сессии, но т�
 ```
 
 <!-- prettier-ignore-end -->
+
+<!-- prettier-ignore-start -->
+
+```text
+1. [P1] Feature всё ещё не проходит обязательный acceptance. Теперь состояние описано честно, но Herdr и Paseo прямо объявлены
+     unsupported (README.md:5, docs/backlog.md:9, docs/backlog.md:56). Спецификация по-прежнему требует работающие orchestration и
+     standalone-review для всех трёх backend’ов, включая полные normal/long responses (spec/2026-08-14-backend-review-transition-
+     final/spec.md:407). Следовательно, 6b7a17ef1a0366d8d947c340fc157dd172193503 может иметь только статус needs_attention, пока не
+     квалифицированы Herdr и Paseo либо пользователь явно не изменит scope спецификации.
+
+  2. [P1] Новые Herdr scan-поверхности могут получать ложный failed. Для Herdr и Paseo классификатор собирает рекурсивно все scalar-
+     поля объекта, включая title, label, cwd и name (shared/scripts/mo-watchdog.sh:208). Затем слова error, lost и даже unknown
+     имеют приоритет над idle/working (shared/scripts/mo-watchdog.sh:35). Например, idle-панель с title Fix error handling будет
+     отмечена как failed; обычный Herdr tab с agent_status: unknown тоже станет failed. Нужны backend/kind-specific проекции: для
+     Herdr — прежде всего agent_status, для Paseo — status и точные permission-поля; unknown следует отображать как unclassified, а
+     не как доказанный failure. Тесты сейчас покрывают только working и done (tests/backend-transition.test.mjs:687).
+
+
+---
+
+  1. Мелкий рассинхрон в точке входа. src/skills/mo-orchestrate-paseo/SKILL.md всё ещё пишет: «do not claim support unless the
+  documented public wait result surface passes complete normal and long settled-response fixtures». Но механика только что
+  дисквалифицировала именно wait --json.message и назвала кандидатом фильтрованный лог. Агент, читающий SKILL.md первым, пойдёт
+  квалифицировать заведомо отвергнутую поверхность. Правка на одну фразу: либо назвать кандидатную поверхность, либо не называть
+  конкретную вовсе.
+
+  2. Заметка, не дефект. Строку про screen_detection_skipped: true у OpenCode слили в строку о полном ответе, и в её next step
+  readiness больше не упоминается — сама инструкция жива в herdr-mechanics.md. Пока маршрут Herdr заблокирован целиком, это
+  несущественно, но если поверхность ответа однажды починят, пробел по readiness исчезнет из беклога незаметно. Одно предложение в
+  next step это закрывает.
+```
+
+<!-- prettier-ignore-end -->

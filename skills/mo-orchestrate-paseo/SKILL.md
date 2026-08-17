@@ -15,7 +15,7 @@ completely. Read the purpose contract before constructing reviewer prompts.
 
 Use Paseo only. Confirm the control executable, upstream `paseo` companion
 skill, intended workspace and all public capabilities. In particular, do not
-claim support unless the documented public `wait` result surface passes complete
-normal and long settled-response fixtures. Follow the shared
+claim support unless a documented public complete-response surface passes
+tool-using normal and long settled-response fixtures. Follow the shared
 lifecycle without orchestrator code inspection or edits and return one verified
 full SHA or honest `needs_attention`.

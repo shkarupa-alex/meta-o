@@ -118,6 +118,17 @@ test("the latest Herdr and reviewer-load findings are duplicated byte-for-byte",
   assert.ok(businessReviews.includes(latest));
 });
 
+test("the latest acceptance and typed-classification review is recorded twice", () => {
+  const intentReviews = fencedText(readFileSync(intentPath, "utf8"));
+  const businessReviews = fencedText(readFileSync(businessPath, "utf8"));
+  const latest = intentReviews.find((record) =>
+    record.startsWith("1. [P1] Feature всё ещё не проходит обязательный acceptance"),
+  );
+  assert.match(latest, /backend\/kind-specific проекции/);
+  assert.match(latest, /Мелкий рассинхрон в точке входа/);
+  assert.ok(businessReviews.includes(latest));
+});
+
 test("methodology preserves product intent but excludes narrow run-control approvals", () => {
   const methodology = readFileSync(join(ROOT, "shared", "references", "methodology.md"), "utf8");
   assert.match(

@@ -74,7 +74,9 @@ review skill.
 **Next step.** Request an upstream structured complete-response surface, or fix
 Herdr's OpenCode alternate-screen reconstruction so one public read returns each
 response byte exactly once. Re-run the normal and long fixtures afterward; do
-not substitute private transcripts or agent-authored result files.
+not substitute private transcripts or agent-authored result files. The rerun
+must also reconfirm OpenCode readiness through exact public TUI or effective
+posture evidence; `screen_detection_skipped: true` alone is not proof.
 
 ### Human-facing project knowledge is not yet in the user's language
 
