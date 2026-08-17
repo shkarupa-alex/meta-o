@@ -1,151 +1,140 @@
-# One source owner, self-contained generated skills
+# Один владелец source, самодостаточные generated skills
 
-Because _a control layer must earn its keep_ and _deferred work that nobody wrote
-down does not exist_ — a divergent methodology copy or a helper that works only
-beside an ambient `node_modules` is a broken standalone skill.
+_Control layer обязан оправдывать своё существование_, а _не записанная
+отложенная работа не существует_. Поэтому разошедшаяся копия методологии или
+helper, работающий лишь рядом с ambient `node_modules`, — сломанный standalone
+skill.
 
-## The tension
+## Противоречие
 
-Two requirements pull in opposite directions:
+Два требования тянут в разные стороны:
 
-1. Each skill must install and run on its own. A single-skill install copies one
-   directory, so a reference, runtime package or licence outside that directory
-   is missing on arrival.
-2. Shared contracts and helper source must have one owner. Hand-maintained
-   copies drift, and a drifted methodology or executable protocol is worse than
-   none because every consumer believes its copy.
+1. Каждый skill должен устанавливаться и работать самостоятельно. Single-skill
+   install копирует один каталог, поэтому внешний reference, runtime package или
+   licence после установки отсутствует.
+2. У shared contracts и helper source должен быть один владелец. Ручные копии
+   расходятся; drift методологии или executable protocol хуже отсутствия, потому
+   что каждый consumer доверяет своей копии.
 
-## Source ownership and generated output
+## Владение source и generated output
 
-- `shared/references/` owns canonical shared prose.
-- `shared/scripts/mo-models.mjs` owns the model settings and catalogue source.
-- `shared/scripts/mo-posture.sh` owns the provider-resolution probe.
-- `shared/scripts/mo-watchdog.sh` owns the inference-independent observer.
-- `shared/licenses/` owns the notices required by packages redistributed inside
-  a generated helper.
-- `src/skills/<name>/` holds only that skill's `SKILL.md` and skill-owned
-  references.
-- `tools/build-skills.mjs` is the build-time owner of `SHARED_PLAN`, bundling,
-  licence mapping and the generated `skills/` tree.
+- `shared/references/` владеет канонической общей prose;
+- `shared/scripts/mo-models.mjs` владеет model settings и catalogue source;
+- `shared/scripts/mo-posture.sh` владеет provider-resolution probe;
+- `shared/scripts/mo-watchdog.sh` владеет inference-independent observer;
+- `shared/licenses/` владеет notices для packages внутри generated helper;
+- `src/skills/<name>/` содержит только `SKILL.md` этого skill и принадлежащие ему
+  references;
+- `tools/build-skills.mjs` во время сборки владеет `SHARED_PLAN`, bundling,
+  licence mapping и generated-деревом `skills/`.
 
-Most shared entries are copied byte-for-byte. `mo-models.mjs` is deliberately
-different: the source is bundled into the runtime file placed in all three
-`mo-orchestrate-<backend>` skills. All destinations are produced by the same
-build operation and must be byte-identical. Generated files are never
-hand-edited.
+Большинство shared entries копируется byte-for-byte. `mo-models.mjs` намеренно
+устроен иначе: source бандлится в runtime file всех трёх
+`mo-orchestrate-<backend>` skills. Все destinations создаёт одна build operation,
+и они обязаны быть byte-identical. Generated files не редактируются вручную.
 
-`make mo-qc` regenerates into a temporary tree and compares every path and byte
-with committed `skills/`. It also refuses source files that shadow a
-`SHARED_PLAN` destination. The built tree is committed because package managers
-install the repository's committed discovery tree.
+`make mo-qc` регенерирует временное дерево и сравнивает каждый path и byte с
+закоммиченным `skills/`. Он также запрещает source files, затеняющие destination
+из `SHARED_PLAN`. Built tree коммитится, потому что package managers устанавливают
+закоммиченное discovery tree репозитория.
 
-## The self-contained model helper
+## Самодостаточный model helper
 
-Claude catalogue discovery uses the Agent SDK's
-`Query.supportedModels()` surface, but an installed skill has no package-install
-step. The generated helper therefore bundles its runtime dependency instead of
-resolving a project, global or otherwise ambient `node_modules` at runtime.
+Claude catalogue discovery использует поверхность Agent SDK
+`Query.supportedModels()`, но у установленного skill нет package-install step.
+Поэтому generated helper бандлит runtime dependency и не ищет project, global
+или иной ambient `node_modules` во время выполнения.
 
-The build contract is:
+Контракт сборки:
 
-- `esbuild` exactly `0.25.12` as a build-only development dependency;
-- `@anthropic-ai/claude-agent-sdk` exactly `0.3.191` as the bundled runtime
-  dependency;
-- Node.js 22 ESM output, with bundling enabled, no externals, no minification and
-  no source map;
-- esbuild preserves symlinked package paths, so checkout/worktree/pnpm/cache
-  realpaths cannot change emitted source labels or leak developer/disposable
-  absolute paths into the bundle;
-- system Claude resolved through the established `PATH` scan; no provider
-  executable is vendored;
-- macOS Claude runs under a Seatbelt profile whose kernel-enforced
-  `deny process-fork` rule is proved by a bounded negative fixture before every
-  provider start; the provider therefore cannot create either an ordinary or a
-  detached descendant during catalogue discovery;
-- a probe-owned supervisor stays outside that no-fork boundary only long enough
-  to start the one sandboxed provider. Its private lifecycle fd is the cleanup
-  capability: the still-live group leader signals its own group, and no numeric
-  PID learned from a process-table snapshot is ever signalled. Catalogue success
-  is withheld until the supervisor's close event proves cleanup completed;
-- Linux, Windows and other POSIX Claude catalogue discovery fails closed before
-  provider start until an equivalent kernel-owned descendant boundary and live
-  compatibility fixture exist. A process group or repeated `ps` snapshot is not
-  containment because a concurrently spawned process can detach and a numeric
-  PID can be reused;
-- no unresolved live package import and no runtime `node_modules` requirement;
-- byte-identical generated helper output for all three orchestration skills, also
-  when rebuilt with a symlinked dependency layout.
+- `esbuild` строго `0.25.12` как build-only development dependency;
+- `@anthropic-ai/claude-agent-sdk` строго `0.3.191` как bundled runtime dependency;
+- Node.js 22 ESM output с bundling, без externals, minification и source map;
+- esbuild сохраняет symlinked package paths, поэтому realpaths checkout,
+  worktree, pnpm или cache не меняют emitted source labels и не раскрывают
+  developer/disposable absolute paths внутри bundle;
+- system Claude находится установленным `PATH` scan; provider executable не
+  vendored;
+- catalogue discovery следует тому же SDK lifecycle, что `brain-council`:
+  запускает transient streaming query с prompt, который ничего не yield,
+  вызывает `Query.supportedModels()`, затем закрывает query через `interrupt()` и
+  `return()`;
+- bounded timeout abort и закрывает query. Provider error, timeout или cleanup
+  failure дают unavailable catalogue и никогда не заменяются угаданными или
+  историческими model ids;
+- platform-specific process sandbox не участвует в model discovery. Helper
+  спрашивает documented catalogue SDK и не навязывает provider более сильный
+  no-fork contract, чем долгоживущий SDK consumer;
+- нет unresolved live package import и runtime-зависимости от `node_modules`;
+- generated helper byte-identical во всех трёх orchestration skills, в том числе
+  при rebuild с symlinked dependency layout.
 
-The measured bundle baseline is 999,247 bytes. The current 25% audited ceiling
-is 1,249,059 bytes. Crossing it fails the build and requires a fresh size and
-dependency audit; it is not silently accepted as ordinary generated churn.
+Измеренный bundle baseline — 996 043 bytes. Текущий audited ceiling +25% —
+1 245 054 bytes. Превышение ломает build и требует нового size/dependency audit;
+оно не принимается как обычный generated churn.
 
-The source helper and all three generated backend copies are smoke-tested. A
-disposable clone whose `node_modules` is a symlink must rebuild the exact
-committed bundle bytes without embedding either source-tree absolute path.
+Source helper и все три generated backend copies проходят smoke tests.
+Disposable clone с symlinked `node_modules` обязан собрать точные committed bytes
+без абсолютного path исходного или временного дерева.
 
-The external brain-council files cited by the specification are design
-references only. Source, build, tests, generated skills and runtime must work
-when `/Users/alex/bitrix/skills` does not exist.
+Внешние файлы `brain-council`, упомянутые спецификацией, — только design
+references. Source, build, tests, generated skills и runtime обязаны работать без
+`/Users/alex/bitrix/skills`.
 
-## Metafile and licence closure
+## Замыкание metafile и licences
 
-Bundling is accepted only when its dependency set is inspectable. Esbuild's
-metafile is reduced to package roots under `node_modules/` and compared exactly
-with the explicit build-owned licence plan. An unexpected package root or a
-licence-plan entry absent from the bundle fails generation.
+Bundling принимается только с обозримым набором dependencies. Metafile esbuild
+сводится к package roots в `node_modules` и точно сравнивается с явным
+build-owned licence plan. Неожиданный package root или отсутствующая в bundle
+запись licence plan ломают generation.
 
-The current redistributed package root is
-`@anthropic-ai/claude-agent-sdk`, mapped to
-`shared/licenses/claude-agent-sdk-LICENSE.md`. The build copies that notice into
-each generated skill that receives the bundle. Esbuild itself runs only during
-project development and is not embedded in the installed runtime helper.
+Текущий redistributed package root — `@anthropic-ai/claude-agent-sdk`,
+сопоставленный с `shared/licenses/claude-agent-sdk-LICENSE.md`. Build копирует
+notice в каждый generated skill, получающий bundle. Сам esbuild запускается
+только при разработке проекта и не входит в installed runtime helper.
 
-This mapping is explicit metadata in `SHARED_PLAN`: adding a runtime dependency
-must update distribution and licence ownership in the same change, before a
-generated tree can exist.
+Mapping является явной metadata в `SHARED_PLAN`: новая runtime dependency должна
+в том же change обновить distribution и licence ownership до появления generated
+tree.
 
-## Provider posture remains a copied leaf
+## Provider posture остаётся copied leaf
 
-`mo-posture.sh` is copied byte-for-byte into the three orchestration skills and
-`mo-setup`. It is a bounded read-only diagnostic leaf: it starts no provider,
-stores no run state and knows nothing about backend sessions. Duplication makes
-each skill standalone without creating a runtime shared package or backend
-adapter.
+`mo-posture.sh` byte-for-byte копируется в три orchestration skills и `mo-setup`.
+Это bounded read-only diagnostic leaf: он не запускает provider, не хранит run
+state и ничего не знает о backend sessions. Дублирование делает каждый skill
+standalone без runtime shared package или backend adapter.
 
-`mo-watchdog.sh` is copied only into `mo-watchdog`. It is a separately justified
-runtime leaf: observation must continue when cloud-model limits or overload
-prevent the orchestrator itself from progressing.
+`mo-watchdog.sh` копируется только в `mo-watchdog`. Это отдельно обоснованный
+runtime leaf: наблюдение должно продолжаться, когда cloud-model limits или
+overload мешают самому orchestrator двигаться дальше.
 
-## Why the installable tree is `skills/`
+## Почему installable tree называется `skills/`
 
-The authored tree cannot occupy the discovery path. With apm 0.27.0:
+Authored tree не может занимать discovery path. С apm 0.27.0:
 
-- `apm install ./dist` was refused because the exact directory contained no
-  accepted manifest;
-- `apm install <repo>` discovered `<root>/skills/<name>/SKILL.md` and therefore
-  installed an authored tree that lacked generated shared files.
+- `apm install ./dist` отклонялся, потому что точный каталог не содержал accepted
+  manifest;
+- `apm install <repo>` находил `<root>/skills/<name>/SKILL.md` и устанавливал
+  authored tree без generated shared files.
 
-The installable tree consequently owns `skills/` and authored sources live under
-`src/skills/` so discovery cannot reach them. Local and remote installation now
-resolve the same layout, and install tests assert both the whole bundle and
-single-skill shape.
+Поэтому installable tree владеет `skills/`, а authored sources находятся в
+`src/skills/`, куда discovery не доходит. Local и remote installation разрешают
+один layout; install tests проверяют whole bundle и single-skill shape.
 
 ## Frontmatter
 
-Only `name`, `description`, `license`, `compatibility`, `metadata` and
-`allowed-tools` are portable here. The build also requires `name` to match the
-directory. Packaging portability is a deterministic gate rather than a
-maintainer habit.
+Здесь переносимы только `name`, `description`, `license`, `compatibility`,
+`metadata` и `allowed-tools`. Build также требует совпадения `name` с каталогом.
+Packaging portability — deterministic gate, а не привычка maintainer.
 
-## Rejected
+## Отклонено
 
-- **A runtime shared package.** It breaks standalone skill installation.
-- **Ambient SDK resolution.** It makes catalogue behavior depend on the feature
-  repository or global machine state.
-- **Vendored provider executables or unresolved runtime imports.** They expand
-  the shipped trust and compatibility boundary.
-- **Unmapped bundle dependencies.** Redistribution without an explicit notice
-  owner is not auditable.
-- **Hand-maintained generated copies or installer scripts.** Existing package
-  managers and mechanical generation already own those responsibilities.
+- **Runtime shared package.** Ломает standalone skill installation.
+- **Ambient SDK resolution.** Делает catalogue behavior зависимым от feature
+  repository или global machine state.
+- **Vendored provider executables или unresolved runtime imports.** Расширяют
+  shipped trust и compatibility boundary.
+- **Unmapped bundle dependencies.** Redistribution без явного notice owner нельзя
+  аудировать.
+- **Ручные generated copies или installer scripts.** Эти обязанности уже
+  принадлежат package managers и mechanical generation.

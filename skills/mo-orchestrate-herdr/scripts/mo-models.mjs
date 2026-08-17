@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // shared/scripts/mo-models.mjs
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync as existsSync2,
@@ -19566,38 +19566,6 @@ var CATALOG_TIMEOUT_MS = Number.isSafeInteger(configuredCatalogTimeout) && confi
 var HOME = homedir();
 var SETTINGS_DIR = join(HOME, ".meta-o");
 var SETTINGS_FILE = join(SETTINGS_DIR, "models.json");
-var ACTIVE_CLAUDE_PROCESSES = /* @__PURE__ */ new Set();
-var SANDBOX_EXECUTABLE = "/usr/bin/sandbox-exec";
-var CLAUDE_SANDBOX_PROFILE = "(version 1)(allow default)(deny process-fork)";
-var CLAUDE_SUPERVISOR_SOURCE = String.raw`
-import { spawn } from "node:child_process";
-import { createReadStream } from "node:fs";
-
-const [sandbox, profile, command, ...args] = process.argv.slice(1);
-const control = createReadStream(null, { fd: 3, autoClose: false });
-let provider;
-let buffered = "";
-const stopGroup = () => process.kill(-process.pid, "SIGKILL");
-control.setEncoding("utf8");
-control.on("data", (chunk) => {
-  buffered += chunk;
-  if (buffered.includes("STOP\n")) {
-    stopGroup();
-    return;
-  }
-  if (!provider && buffered.includes("START\n")) {
-    provider = spawn(sandbox, ["-p", profile, command, ...args], {
-      cwd: process.cwd(),
-      env: process.env,
-      stdio: ["inherit", "inherit", "ignore"],
-    });
-    provider.on("error", () => process.stdout.end());
-    provider.on("exit", () => process.stdout.end());
-  }
-});
-control.on("end", stopGroup);
-control.on("error", stopGroup);
-`;
 var ROUTES = {
   claude: {
     catalog: { kind: "claude-sdk", exhaustive: false },
@@ -19781,105 +19749,9 @@ function resolveSystemClaude() {
   }
   return null;
 }
-function claudeContainment() {
-  if (process.platform !== "darwin" || !existsSync2(SANDBOX_EXECUTABLE)) {
-    return unavailable(
-      `kernel-owned Claude descendant containment is unavailable on ${process.platform}`
-    );
-  }
-  const proof = spawnSync(
-    SANDBOX_EXECUTABLE,
-    [
-      "-p",
-      CLAUDE_SANDBOX_PROFILE,
-      process.execPath,
-      "-e",
-      'const {spawnSync}=require("node:child_process");const r=spawnSync("/usr/bin/true");process.exit(r.error?.code==="EPERM"?0:71)'
-    ],
-    { stdio: "ignore", timeout: 1e3 }
-  );
-  return proof.status === 0 ? { available: true } : unavailable("macOS Seatbelt did not prove deny process-fork");
-}
-function spawnOwnedClaude(options) {
-  const child = spawn(
-    process.execPath,
-    [
-      "--input-type=module",
-      "--eval",
-      CLAUDE_SUPERVISOR_SOURCE,
-      SANDBOX_EXECUTABLE,
-      CLAUDE_SANDBOX_PROFILE,
-      options.command,
-      ...options.args
-    ],
-    {
-      cwd: options.cwd,
-      env: options.env,
-      detached: true,
-      stdio: ["pipe", "pipe", "ignore", "pipe"]
-    }
-  );
-  child.stdio[3].write("START\n");
-  const owned = {
-    child,
-    control: child.stdio[3],
-    stopped: false,
-    cleanup: null,
-    pid: child.pid,
-    stdin: child.stdin,
-    stdout: child.stdout,
-    get killed() {
-      return child.killed;
-    },
-    get exitCode() {
-      return child.exitCode;
-    },
-    kill: () => {
-      void stopOwnedClaudeProcess(owned);
-      return true;
-    },
-    on: (...args) => child.on(...args),
-    once: (...args) => child.once(...args),
-    off: (...args) => child.off(...args)
-  };
-  ACTIVE_CLAUDE_PROCESSES.add(owned);
-  options.signal.addEventListener("abort", () => stopOwnedClaudeProcess(owned), {
-    once: true
-  });
-  return owned;
-}
-function stopOwnedClaudeProcess(owned) {
-  if (owned.cleanup) return owned.cleanup;
-  if (owned.control.destroyed || !owned.control.writable) return Promise.resolve(false);
-  owned.stopped = true;
-  owned.cleanup = new Promise((resolve) => {
-    let settled = false;
-    const finish = (result) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      resolve(result);
-    };
-    const timeout = setTimeout(() => finish(false), 1e3);
-    owned.child.once("close", () => finish(true));
-    owned.control.write("STOP\n", (error) => {
-      if (error) finish(false);
-    });
-  });
-  return owned.cleanup;
-}
-async function stopOwnedClaudeProcesses() {
-  const stopped = await Promise.all(
-    [...ACTIVE_CLAUDE_PROCESSES].map((owned) => stopOwnedClaudeProcess(owned))
-  );
-  ACTIVE_CLAUDE_PROCESSES.clear();
-  return stopped.every(Boolean);
-}
 async function claudeSdkListing() {
   const claudeExecutable = resolveSystemClaude();
   if (!claudeExecutable) return unavailable("system claude executable not found on PATH");
-  const containment = claudeContainment();
-  if (!containment.available) return containment;
   const abortController = new AbortController();
   const neverPrompts = async function* () {
     await new Promise(() => {
@@ -19892,8 +19764,7 @@ async function claudeSdkListing() {
       permissionMode: "bypassPermissions",
       maxTurns: 1,
       pathToClaudeCodeExecutable: claudeExecutable,
-      abortController,
-      spawnClaudeCodeProcess: spawnOwnedClaude
+      abortController
     }
   });
   let listing;
@@ -19919,16 +19790,16 @@ async function claudeSdkListing() {
   } catch (error) {
     listingFailure = error;
   } finally {
-    cleanupFailure = !await stopOwnedClaudeProcesses();
     abortController.abort();
     const cleanup = [query.interrupt?.(), query.return?.(void 0)].filter(Boolean);
-    await Promise.race([
-      Promise.allSettled(cleanup),
-      new Promise((resolve) => setTimeout(resolve, 1e3))
+    const cleanupCompleted = await Promise.race([
+      Promise.allSettled(cleanup).then(() => true),
+      new Promise((resolve) => setTimeout(() => resolve(false), 1e3))
     ]);
+    if (!cleanupCompleted) cleanupFailure = new Error("SDK query did not close within 1000ms");
   }
   if (cleanupFailure) {
-    return unavailable("safe Claude cleanup failed: supervisor capability was lost");
+    return unavailable(`supportedModels() cleanup failed: ${cleanupFailure.message}`);
   }
   if (listingFailure) {
     return unavailable(`supportedModels() failed: ${listingFailure.message}`);

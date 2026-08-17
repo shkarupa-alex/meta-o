@@ -54,7 +54,7 @@ const BUNDLE_LICENSE_PLAN = {
 };
 
 /** The measured first bundle plus 25%; growth beyond it needs a fresh audit. */
-const MODEL_BUNDLE_BASELINE_BYTES = 999_247;
+const MODEL_BUNDLE_BASELINE_BYTES = 996_043;
 const MODEL_BUNDLE_MAX_BYTES = Math.ceil(MODEL_BUNDLE_BASELINE_BYTES * 1.25);
 
 /**
