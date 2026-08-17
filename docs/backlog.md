@@ -8,8 +8,8 @@ Every entry records its reason, practical impact and next step.
 
 ### Paseo complete-response support fails under reviewer tool load
 
-**Reason.** Paseo 0.3.1 `wait --json.message` exposes only its last five activity
-items. Real tool-using reviews filled those slots with `[Read]`, `[Shell]`,
+**Reason.** Paseo 0.3.1 and 0.4.0 `wait --json.message` expose only the last five
+activity items. Real tool-using reviews filled those slots with `[Read]`, `[Shell]`,
 `[Thought]`, unlabeled reasoning and final text, either evicting the exact user
 prompt or making the response boundary ambiguous. The earlier normal and long
 fixtures did not run repository tools and therefore did not qualify real review
@@ -25,7 +25,8 @@ rather than select a reasoning item or a stale/bounded activity item.
 public response field, with tool-using normal and three-to-four-screen
 `BEGIN`/`MIDDLE`/`END` fixtures on Codex, Claude Code and OpenCode. Remove this
 entry and advertise the routes only when every harness returns exactly its
-settled response.
+settled response. Track the missing unbounded turn identity and response surface
+in [getpaseo/paseo#3478](https://github.com/getpaseo/paseo/issues/3478).
 
 ### Orca cannot release ten retained worker records
 
@@ -77,6 +78,8 @@ response byte exactly once. Re-run the normal and long fixtures afterward; do
 not substitute private transcripts or agent-authored result files. The rerun
 must also reconfirm OpenCode readiness through exact public TUI or effective
 posture evidence; `screen_detection_skipped: true` alone is not proof.
+Track the duplicated OpenCode terminal reconstruction in
+[herdrdev/herdr#2893](https://github.com/herdrdev/herdr/issues/2893).
 
 ### Human-facing project knowledge is not yet in the user's language
 

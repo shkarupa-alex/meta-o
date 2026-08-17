@@ -129,6 +129,15 @@ test("the latest acceptance and typed-classification review is recorded twice", 
   assert.ok(businessReviews.includes(latest));
 });
 
+test("the request to file and link upstream issues is recorded twice", () => {
+  const intentReviews = fencedText(readFileSync(intentPath, "utf8"));
+  const businessReviews = fencedText(readFileSync(businessPath, "utf8"));
+  const latest = intentReviews.find((record) => record.startsWith("давай поступим так"));
+  assert.match(latest, /создай issues на английском/);
+  assert.match(latest, /используй gh/);
+  assert.ok(businessReviews.includes(latest));
+});
+
 test("methodology preserves product intent but excludes narrow run-control approvals", () => {
   const methodology = readFileSync(join(ROOT, "shared", "references", "methodology.md"), "utf8");
   assert.match(

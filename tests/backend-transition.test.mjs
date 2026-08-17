@@ -148,6 +148,12 @@ test("every backlog deferral has reason, practical impact, and next step", () =>
   assert.doesNotMatch(titles, /P1-P8|H13-H37|Omnigent|progress tracker|standalone project-entry/i);
 });
 
+test("blocked complete-response surfaces link their upstream reports", () => {
+  const backlog = readFileSync(join(ROOT, "docs", "backlog.md"), "utf8");
+  assert.match(backlog, /https:\/\/github\.com\/herdrdev\/herdr\/issues\/2893/);
+  assert.match(backlog, /https:\/\/github\.com\/getpaseo\/paseo\/issues\/3478/);
+});
+
 test("watchdog observes, rereads before nudge, and suppresses changed state", () => {
   const root = mkdtempSync(join(tmpdir(), "mo-watchdog-test-"));
   temporary.push(root);
