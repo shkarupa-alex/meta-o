@@ -19790,13 +19790,16 @@ async function claudeSdkListing() {
   } catch (error) {
     listingFailure = error;
   } finally {
-    abortController.abort();
-    const cleanup = [query.interrupt?.(), query.return?.(void 0)].filter(Boolean);
     const cleanupCompleted = await Promise.race([
-      Promise.allSettled(cleanup).then(() => true),
-      new Promise((resolve) => setTimeout(() => resolve(false), 1e3))
+      (async () => {
+        await query.interrupt?.().catch(() => void 0);
+        await query.return?.(void 0).catch(() => void 0);
+        return true;
+      })(),
+      new Promise((resolve) => setTimeout(() => resolve(false), 5e3))
     ]);
-    if (!cleanupCompleted) cleanupFailure = new Error("SDK query did not close within 1000ms");
+    abortController.abort();
+    if (!cleanupCompleted) cleanupFailure = new Error("SDK query did not close within 5000ms");
   }
   if (cleanupFailure) {
     return unavailable(`supportedModels() cleanup failed: ${cleanupFailure.message}`);

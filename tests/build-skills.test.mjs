@@ -2,7 +2,17 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -83,6 +93,59 @@ test("all orchestration skills carry one self-contained model helper and posture
       assert.notEqual(statSync(join(OUTPUT, name, "scripts", script)).mode & 0o111, 0);
     }
     assert.equal(existsSync(join(OUTPUT, name, "node_modules")), false);
+  }
+});
+
+test("the model helper is one platform-neutral bundle reproducible through symlinked dependencies", () => {
+  const helper = join(OUTPUT, "mo-orchestrate-herdr", "scripts", "mo-models.mjs");
+  const bundle = readFileSync(helper, "utf8");
+  assert.doesNotMatch(
+    bundle,
+    /(?:from\s*|import\s*\()\s*["']@anthropic-ai\/claude-agent-sdk["']/,
+    "the installed helper must not resolve the SDK from ambient node_modules",
+  );
+  assert.doesNotMatch(
+    bundle,
+    /@anthropic-ai\/claude-agent-sdk-(?:darwin|linux|win32)-/,
+    "a bundle built on one OS must not embed that OS's optional native package",
+  );
+  assert.doesNotMatch(bundle, new RegExp(ROOT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+
+  const portableRoot = mkdtempSync(join(tmpdir(), "meta-o-portable-build-"));
+  try {
+    for (const item of [
+      "tools",
+      "shared",
+      "src",
+      "package.json",
+      "apm.yml",
+      "README.md",
+      "LICENSE",
+    ])
+      cpSync(join(ROOT, item), join(portableRoot, item), { recursive: true });
+    symlinkSync(
+      join(ROOT, "node_modules"),
+      join(portableRoot, "node_modules"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    const rebuilt = spawnSync(process.execPath, [join(portableRoot, "tools", "build-skills.mjs")], {
+      cwd: portableRoot,
+      encoding: "utf8",
+    });
+    assert.equal(rebuilt.status, 0, `${rebuilt.stdout}${rebuilt.stderr}`);
+    const rebuiltHelper = readFileSync(
+      join(portableRoot, "skills", "mo-orchestrate-herdr", "scripts", "mo-models.mjs"),
+    );
+    assert.ok(
+      rebuiltHelper.equals(readFileSync(helper)),
+      "symlinked dependency layout changed bytes",
+    );
+    assert.doesNotMatch(
+      rebuiltHelper.toString("utf8"),
+      new RegExp(portableRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    );
+  } finally {
+    rmSync(portableRoot, { recursive: true, force: true });
   }
 });
 

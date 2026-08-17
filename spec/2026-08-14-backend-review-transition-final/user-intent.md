@@ -556,3 +556,11 @@ herdr двай я запущу в отдельной hedr-сессии, но т�
 ```
 
 <!-- prettier-ignore-end -->
+
+<!-- prettier-ignore-start -->
+
+```text
+Claude model discovery приведён к реализации brain-council: тот же Query.supportedModels(), затем interrupt() и return() // тут убедись что билдится/бандлится правильно - в brain council мы долго добивались чтобы скрипты были портируемыми на другие машины
+```
+
+<!-- prettier-ignore-end -->
