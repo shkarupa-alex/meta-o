@@ -1,7 +1,0 @@
-COUNCIL_EVENT {"ts":"2026-07-24T17:27:10.573Z","phase":"preflight","event":"warmup-ok","sessions":["fable51mxhigh"],"durationMs":5592}
-COUNCIL_EVENT {"ts":"2026-07-24T17:27:20.723Z","phase":"preflight","event":"warmup-ok","sessions":["gpt56solxhigh"],"durationMs":9202}
-COUNCIL_EVENT {"ts":"2026-07-24T17:27:20.725Z","phase":"premortem","event":"start","sessions":["fable51mxhigh","gpt56solxhigh"]}
-COUNCIL_EVENT {"ts":"2026-07-24T17:31:23.255Z","phase":"premortem","event":"analyzed","sessions":["fable51mxhigh"],"durationMs":242529}
-COUNCIL_EVENT {"ts":"2026-07-24T17:33:39.572Z","phase":"premortem","event":"analyzed","sessions":["gpt56solxhigh"],"durationMs":135412}
-COUNCIL_EVENT {"ts":"2026-07-24T17:33:39.575Z","phase":"premortem","event":"succeeded"}
-COUNCIL_EVENT {"ts":"2026-07-24T17:33:39.575Z","phase":"job","event":"succeeded"}
