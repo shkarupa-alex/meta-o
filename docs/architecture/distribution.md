@@ -69,8 +69,8 @@ Claude catalogue discovery использует поверхность Agent SDK
 - generated helper byte-identical во всех трёх orchestration skills, в том числе
   при rebuild с symlinked dependency layout.
 
-Измеренный bundle baseline — 996 075 bytes. Текущий audited ceiling +25% —
-1 245 094 bytes. Превышение ломает build и требует нового size/dependency audit;
+Измеренный bundle baseline — 996 053 bytes. Текущий audited ceiling +25% —
+1 245 067 bytes. Превышение ломает build и требует нового size/dependency audit;
 оно не принимается как обычный generated churn.
 
 Source helper и все три generated backend copies проходят smoke tests.

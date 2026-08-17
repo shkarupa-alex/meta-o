@@ -13,19 +13,17 @@
 
 ## Часть 1 — business framing
 
-Every request and clarification below is the user's message **as it was sent**:
-same language, same line breaks, nothing joined, nothing shortened. Where a
-message was a hand-off of review findings rather than a statement of intent, the
-instruction is quoted and the findings themselves are not: they are evidence, they
-travelled to the author verbatim by their own rule, and they live in the change
-that closed them. What is not allowed here is a summary standing in for something
-the user actually said.
+Каждый запрос и уточнение ниже — сообщение пользователя **в исходном виде**: тот
+же язык, те же переносы строк, ничего не соединено и не сокращено. Если сообщение
+передавало замечания review, а не формулировало intent, цитируется инструкция, но
+не сами замечания: они являются evidence, по собственному правилу дословно
+дошли до автора и живут в change, который их закрыл. Summary не может заменять
+реальные слова пользователя.
 
-The first draft of this section broke that on the day it was written — line breaks
-replaced by `/`, three of four clarifications rendered as a sentence about them.
-It was rewritten from the session transcript. That is worth leaving on the record,
-because it is the exact failure the rule exists to prevent, committed by the party
-that wrote the rule.
+Первая редакция этого раздела нарушила правило в день его появления: переносы
+заменились на `/`, а три из четырёх уточнений превратились в одно предложение.
+Раздел восстановили по transcript сессии. Этот случай оставлен в истории как
+точный пример сбоя, от которого защищает правило, допущенного его же автором.
 
 ### 1. Запрос, создавший это поколение — 2026-08-05
 
@@ -41,50 +39,49 @@ that wrote the rule.
 > на всякий случай уточню: для получения списка моделей ты же использовал js/ts sdk наших cli агентов?
 > типа как тут /Users/alex/bitrix/skills/dist/brain-council
 
-This corrected a real defect rather than asking a question: two of the three
-catalog probes had been guessed, and one of them — `claude models` — starts an
-agent turn on the prompt "models".
+Это исправило настоящий дефект, а не просто задало вопрос: два из трёх catalog
+probes были угаданы, причём `claude models` запускает agent turn с prompt `models`.
 
 ### 3. Решение — поставляемая лицензия
 
-Asked as a question with three options, because a licence is the user's to choose:
+Вопрос был задан с тремя вариантами, потому что лицензию выбирает пользователь:
 
 > Новая спека (§19) требует `dist/LICENSE` в поставке, но в репозитории сейчас нет
 > файла лицензии (`package.json` говорит UNLICENSED). Какую лицензию класть?
 
-Answer: **MIT**, copyright Shkarupa Alex.
+Ответ: **MIT**, copyright Shkarupa Alex.
 
 ### 4. Постоянная инструкция — замечания review
 
-Six rounds of independent reviews were handed over, each introduced only by its
-own line and nothing else. The first:
+Было передано шесть раундов независимых reviews; каждый вводился только отдельной
+строкой. Первый:
 
 > ниже 2 ревью
 
-The second, and then four more rounds under a bare `## Findings` heading:
+Второй, а затем ещё четыре раунда под простым заголовком `## Findings`:
 
 > Новые находки
 
-No triage instruction accompanied any of them. Read together with "ничего не
-откладывай напотом" from the first message, the standing expectation is that every
-real finding is closed in the same change.
+Отдельной triage-инструкции не было. Вместе с «ничего не откладывай напотом» из
+первого сообщения это задаёт постоянное правило: каждое реальное замечание
+закрывается в том же change.
 
 ### 5. Само правило framing
 
-From the user's own notes in `docs/references/my-opinion.md`, which is where this
-requirement entered the project:
+Из собственных заметок пользователя в `docs/references/my-opinion.md`, откуда это
+требование пришло в проект:
 
 > Поэтому спека не должна быть единственным источником пользовательского намерения.
 
-and, naming the artefact this file is:
+и с явным названием типа этого файла:
 
 > Этот материал я называю **бизнес-постановкой задачи**. В проекте он должен
 > попадать в `docs/business.md`. Это не техническая спека и не пересказ будущей
 > реализации. Это зафиксированный источник того, что человек хотел получить и
 > почему это важно.
 
-The six rules that follow it there are reproduced as the normative text of
-`shared/references/methodology.md` section 2.
+Следующие там шесть правил воспроизведены как нормативный текст section 2 файла
+`shared/references/methodology.md`.
 
 ### 6. Уточнение — provider aliases не являются wrappers — 2026-08-07
 
@@ -366,15 +363,15 @@ The six rules that follow it there are reproduced as the normative text of
 
 <!-- markdownlint-enable MD013 -->
 
-Editorial note, 2026-08-07: the quote records the diagnosis supplied in the
-operational report; it is not fixture evidence for this machine. Here the
-`~/bin/claude` wrapper itself carries the permission and prompt arguments, and
-the secret-safe interactive type probe finds no alias or function. The broader
-defect is still reproduced: `zsh -lc` bypasses `~/bin`, while `zsh -lic` reaches
-it, so Phase 0 P4a/P4b remain incomplete until the real backend environments are
-verified. The local cause is ordering, not absence: macOS `/etc/zprofile` runs
-before the user's `~/.zprofile`, whose later `brew shellenv` prepends
-`/opt/homebrew/bin` before `~/bin` for the login shell.
+Редакционная заметка, 2026-08-07: цитата фиксирует диагноз из operational report,
+а не fixture evidence этой машины. Здесь wrapper `~/bin/claude` сам содержит
+permission- и prompt-аргументы, а secret-safe interactive type probe не находит
+alias или function. Более общий дефект всё же воспроизводится: `zsh -lc` обходит
+`~/bin`, а `zsh -lic` достигает его, поэтому Phase 0 P4a/P4b не завершены до
+проверки реальных backend environments. Локальная причина — порядок, а не
+отсутствие: macOS `/etc/zprofile` выполняется до пользовательского `~/.zprofile`,
+где более поздний `brew shellenv` ставит `/opt/homebrew/bin` перед `~/bin` для
+login shell.
 
 ### 7. Уточнение — non-interactive proof и безопасное исправление — 2026-08-07
 
@@ -423,10 +420,10 @@ before the user's `~/.zprofile`, whose later `brew shellenv` prepends
 
 <!-- markdownlint-enable MD013 MD029 -->
 
-Editorial note, 2026-08-07: the two-command suggestion is superseded by the
-four-mode matrix in `shared/references/methodology.md §2`. Shell probes remain
-diagnostic; a surface is not supported until the lookup is captured inside that
-actual backend, hook or harness environment.
+Редакционная заметка, 2026-08-07: предложение из двух команд заменено
+four-mode matrix из `shared/references/methodology.md §2`. Shell probes остаются
+диагностикой; поверхность не поддерживается, пока lookup не получен внутри
+реального backend, hook или harness environment.
 
 ### 8. Уточнение — `path_helper`, shell surfaces и безопасные probes — 2026-08-07
 
@@ -472,12 +469,13 @@ actual backend, hook or harness environment.
 
 <!-- markdownlint-enable MD013 -->
 
-Editorial note, 2026-08-07: the quoted local diagnosis was later disproved.
-`path_helper` did not introduce `/opt/homebrew/bin`; the user's later
-`~/.zprofile` line running `brew shellenv` did. The durable remediation is not
-tied to either tool: the last applicable prepend wins, so the wrapper-directory
-prepend must follow every other `PATH` initializer in each startup file read by
-the surface, then the complete matrix and actual surface must be rechecked.
+Редакционная заметка, 2026-08-07: процитированный локальный диагноз позже был
+опровергнут. `/opt/homebrew/bin` добавил не `path_helper`, а более поздний запуск
+`brew shellenv` из пользовательского `~/.zprofile`. Устойчивое исправление не
+привязано ни к одному инструменту: побеждает последний применимый prepend,
+поэтому prepend каталога wrapper должен идти после всех остальных `PATH`
+initializers в каждом startup file этой поверхности; затем полная matrix и сама
+поверхность проверяются заново.
 
 ### 9. Уточнение — обязательные login probes и surface evidence — 2026-08-07
 
@@ -522,10 +520,10 @@ the surface, then the complete matrix and actual surface must be rechecked.
 
 <!-- markdownlint-enable MD013 MD029 -->
 
-Editorial note, 2026-08-07: all four modes remain mandatory for zsh and bash in
-the canonical matrix. The current probe forces shell builtins, validates each
-record, reports path divergence through its exit status, and still requires
-evidence from the actual launch surface before a supported verdict.
+Редакционная заметка, 2026-08-07: все четыре mode остаются обязательными для zsh
+и bash в canonical matrix. Текущий probe принудительно использует shell builtins,
+проверяет каждую запись, сообщает path divergence через exit status и по-прежнему
+требует evidence с реальной launch surface до supported verdict.
 
 ### 10. Уточнение — last-prepend invariant и executable probes — 2026-08-07
 
@@ -618,12 +616,11 @@ evidence from the actual launch surface before a supported verdict.
 
 <!-- markdownlint-enable MD013 MD029 -->
 
-Editorial note, 2026-08-07: the executable matrix now lives in the shipped
-`scripts/mo-posture.sh`. Profile stdout/stderr is separated from NUL-framed
-evidence and summarized without content; banners do not change the exit status.
-The regression suite covers both shells, missing providers, whitespace paths,
-malformed and incomplete evidence, status-2 precedence and the named guard
-mutations.
+Редакционная заметка, 2026-08-07: executable matrix теперь находится в
+поставляемом `scripts/mo-posture.sh`. Profile stdout/stderr отделён от NUL-framed
+evidence и суммируется без content; banners не меняют exit status. Regression
+suite покрывает обе shells, missing providers, paths с пробелами, malformed и
+incomplete evidence, приоритет status 2 и именованные guard mutations.
 
 ### 12. Уточнение — расхождение command kind и усиление диагностики — 2026-08-07
 
@@ -667,13 +664,13 @@ mutations.
 
 <!-- markdownlint-enable MD013 MD029 -->
 
-Editorial note, 2026-08-07: the matrix signature now includes both command kind
-and first executable path, `--shell all` emits one summary per shell, and the
-dead mode export is gone. Examples resolve the script through
-`<this-skill>/scripts/`; profile-noise inspection is an explicit local rerun
-because the private capture is deleted. The runner now isolates an outer
-`BASH_ENV`, validates dispatch primitives before lookup or record emission,
-terminates cleanly on signals, and has regression coverage for those boundaries.
+Редакционная заметка, 2026-08-07: signature matrix теперь включает command kind и
+первый executable path, `--shell all` выдаёт один summary на shell, а мёртвый
+mode export удалён. Примеры находят script через `<this-skill>/scripts/`;
+проверка profile noise является явным локальным rerun, потому что private capture
+удаляется. Runner изолирует внешний `BASH_ENV`, проверяет dispatch primitives до
+lookup или emission записи, корректно завершается по signals и имеет regression
+coverage этих границ.
 
 ### 13. Уточнение — inherited shell state и целостность cleanup — 2026-08-07
 
@@ -706,13 +703,12 @@ terminates cleanly on signals, and has regression coverage for those boundaries.
 
 <!-- markdownlint-enable MD013 MD029 -->
 
-Editorial note, 2026-08-07: the runner now enters through privileged
-`/bin/bash -p`, which imports no caller functions at all; an exported
-`trap` regression proves cleanup leaves no `mo-posture.*` directory. Unsafe
-inherited Bash option/function state returns `MO_POSTURE_ENVIRONMENT` rather
-than being silently dropped, profile dispatch shadows return
-`MO_POSTURE_SHADOW`, and a direct-PID signal is forwarded to the managed child
-before cleanup.
+Редакционная заметка, 2026-08-07: runner теперь входит через privileged
+`/bin/bash -p`, который не импортирует caller functions; regression с exported
+`trap` доказывает, что cleanup не оставляет каталог `mo-posture.*`. Unsafe
+inherited Bash option/function state возвращает `MO_POSTURE_ENVIRONMENT`, а не
+теряется молча; profile dispatch shadows возвращают `MO_POSTURE_SHADOW`, а signal
+по прямому PID пересылается managed child до cleanup.
 
 ### 14. Уточнение — fail-closed environment scan и runtime paths — 2026-08-07
 
@@ -737,14 +733,13 @@ before cleanup.
 
 <!-- markdownlint-enable MD013 MD029 -->
 
-Editorial note, 2026-08-07: the environment scan now writes NUL-framed output
-to the private directory and checks `/usr/bin/env -0` before parsing; failure is
-an explicit `environment-scan-failed` unknown rather than a clean result. The
-absolute `/bin/bash -p` startup and every other absolute runtime dependency are
-now declared in command usage, methodology, README and the architecture decision.
-Signals sent only to the runner terminate and verify the measured shell's process
-group, including a TERM-resistant background descendant, before private captures
-are removed.
+Редакционная заметка, 2026-08-07: environment scan пишет NUL-framed output в
+private directory и проверяет `/usr/bin/env -0` до parsing; сбой становится явным
+`environment-scan-failed` unknown, а не clean result. Absolute startup
+`/bin/bash -p` и остальные absolute runtime dependencies объявлены в command
+usage, methodology, README и architecture decision. Signals, отправленные только
+runner, завершают и проверяют process group измеряемой shell, включая
+TERM-resistant background descendant, до удаления private captures.
 
 ### 15. Уточнение — quiescent evidence и deterministic shutdown — 2026-08-07
 
@@ -788,14 +783,14 @@ are removed.
 
 <!-- markdownlint-enable MD013 MD029 -->
 
-Editorial note, 2026-08-07: normal completion now quiesces and verifies the
-measured process group before any capture is read. The environment scan is
-explicitly Bash-only and rejects both command failure and an empty successful
-stream. Signal traps precede temporary-directory creation, defer delivery across
-the directory and child launch windows, and remain idempotent under repeated
-signals. Usage uses only Bash builtins, while the execution tool remains the
-owner of the bounded timeout. Deterministic regressions and selected mutants
-cover each of these guards.
+Редакционная заметка, 2026-08-07: normal completion теперь quiesce и проверяет
+измеряемую process group до чтения любого capture. Environment scan явно
+Bash-only и отклоняет как command failure, так и пустой успешный stream. Signal
+traps устанавливаются до создания temporary directory, откладывают delivery в
+окнах создания каталога и запуска child и остаются idempotent при повторных
+signals. Usage использует только Bash builtins, а execution tool остаётся
+владельцем bounded timeout. Deterministic regressions и выбранные mutants
+покрывают каждый guard.
 
 ### 16. Уточнение — owned process groups и behavioral shutdown guards — 2026-08-07
 
@@ -837,12 +832,12 @@ cover each of these guards.
 
 <!-- markdownlint-enable MD013 MD029 -->
 
-Editorial note, 2026-08-07: the measured shell now reports through an unreaped
-process-group leader whose PID/PGID remains owned until every group signal has
-been sent; no numeric PGID is addressed after the anchor is reaped. Independent
-behavioral fixtures and mutants cover reentrant shutdown, unknown-on-unquiesce
-and quiescence before the first capture read. Command usage now names `mktemp`
-and `rm` from the system utility path.
+Редакционная заметка, 2026-08-07: измеряемая shell сообщает через unreaped
+process-group leader, чей PID/PGID остаётся owned до отправки всех group signals;
+после reap anchor numeric PGID больше не используется. Независимые behavioral
+fixtures и mutants покрывают reentrant shutdown, unknown-on-unquiesce и
+quiescence до первого чтения capture. Command usage явно называет `mktemp` и
+`rm` из system utility path.
 
 <!-- markdownlint-disable MD013 -->
 
@@ -1032,10 +1027,10 @@ and `rm` from the system utility path.
 
 ### 22. Восстановленное исходное описание задачи — 2026-08-10
 
-The complete task-description payload is retained as one accountable unit so
-that no report item, clarification, or project constraint can disappear through
-selection or re-heading. A sentence expressly superseded later inside this
-payload remains historical intent and has no normative force.
+Полный payload описания задачи хранится как одна accountable unit, чтобы ни один
+пункт отчёта, clarification или project constraint не исчез из-за selection или
+смены заголовка. Фраза, явно отменённая позже внутри payload, остаётся
+историческим intent и не имеет нормативной силы.
 
 ````meta-o-user-intents-v1 task-description.md
 # Task description
@@ -1505,6 +1500,15 @@ herdr двай я запущу в отдельной hedr-сессии, но т�
 
 ```text
 Claude model discovery приведён к реализации brain-council: тот же Query.supportedModels(), затем interrupt() и return() // тут убедись что билдится/бандлится правильно - в brain council мы долго добивались чтобы скрипты были портируемыми на другие машины
+```
+
+<!-- prettier-ignore-end -->
+
+<!-- prettier-ignore-start -->
+
+```text
+p.s.
+мои указания про удаление некоторый пунктов - имеют приоритет
 ```
 
 <!-- prettier-ignore-end -->

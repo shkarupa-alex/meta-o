@@ -564,3 +564,12 @@ Claude model discovery приведён к реализации brain-council: �
 ```
 
 <!-- prettier-ignore-end -->
+
+<!-- prettier-ignore-start -->
+
+```text
+p.s.
+мои указания про удаление некоторый пунктов - имеют приоритет
+```
+
+<!-- prettier-ignore-end -->

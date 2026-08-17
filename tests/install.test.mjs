@@ -84,15 +84,18 @@ test("every skill is individually installable with its complete owned files", { 
   }
 });
 
-test("README distinguishes proven local and unproven remote installation", () => {
+test("README states the proven local scope and the owner's remote responsibility", () => {
   const readme = run("sed -n '1,90p' README.md", ROOT).stdout;
   assert.match(readme, /apm install \/path\/to\/meta-o/);
   assert.match(readme, /--skill mo-review-orca/);
-  assert.match(readme, /Remote installation remains\s+unproven/);
-  assert.match(readme, /Each route is advertised only after its own live acceptance/);
-  assert.match(readme, /Herdr is\s+currently blocked/);
-  assert.match(readme, /Paseo is also blocked/);
-  assert.match(readme, /Orca exposes a\s+qualified public response surface/);
-  assert.match(readme, /narrow state exception/);
-  assert.match(readme, /requires `jq`.*and `flock`/s);
+  assert.match(
+    readme,
+    /Публикация и\s+проверка remote installation остаются ответственностью владельца проекта/,
+  );
+  assert.match(readme, /Маршрут считается поддерживаемым только после собственной live acceptance/);
+  assert.match(readme, /Сейчас Herdr заблокирован/);
+  assert.match(readme, /Paseo тоже заблокирован/);
+  assert.match(readme, /У Orca публичная поверхность ответа квалифицирована/);
+  assert.match(readme, /единственное узкое исключение/);
+  assert.match(readme, /требует `jq`.*и `flock`/s);
 });
