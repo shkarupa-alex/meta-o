@@ -18,6 +18,8 @@ test("each backend gets the complete B1-B14 acceptance matrix", () => {
   for (const harness of ["Codex", "Claude Code", "OpenCode"])
     assert.match(e2e, new RegExp(harness));
   assert.match(e2e, /`BEGIN`, `MIDDLE` and `END` markers/);
+  assert.match(e2e, /ordinary question and a harness-UI question/);
+  assert.match(e2e, /Both public pending states\/requests and both exact reply paths/);
   assert.match(
     e2e,
     /Private provider transcripts, hook stores and inferred\s+session databases are forbidden evidence/,

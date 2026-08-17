@@ -90,9 +90,14 @@ test("backend mechanics use only the intended public result and diagnostic surfa
   assert.match(orca, /terminal wait .*--for tui-idle/);
   assert.match(orca, /dispatch --task <task-id> --to <handle> --inject/);
   assert.match(orca, /do not duplicate a posture flag/);
-  assert.match(paseo, /public `message` timeline/);
-  assert.match(paseo, /following unlabeled text item/);
-  assert.match(paseo, /limits the number of items, not the bytes/);
+  assert.match(paseo, /last five\s+activity items/);
+  assert.match(
+    paseo,
+    /Never select a response merely because it is the\s+first or last unlabeled activity item/,
+  );
+  assert.match(paseo, /paseo logs <id> --filter text --tail 1/);
+  assert.match(paseo, /after actually running\s+non-mutating repository checks/);
+  assert.match(paseo, /both routes are unsupported/);
   assert.match(paseo, /paseo send <agent-id> --prompt <message> --no-wait --json/);
   assert.match(paseo, /never turn `send` into the wait/);
   assert.match(paseo, /retain the public `UpdatedAt` value/);

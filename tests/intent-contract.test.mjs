@@ -106,6 +106,18 @@ test("the decision to finish all three backend routes is recorded twice", () => 
   }
 });
 
+test("the latest Herdr and reviewer-load findings are duplicated byte-for-byte", () => {
+  const intentReviews = fencedText(readFileSync(intentPath, "utf8"));
+  const businessReviews = fencedText(readFileSync(businessPath, "utf8"));
+  const latest = intentReviews.find((record) =>
+    record.startsWith("ниже будут еще замечания от ревью"),
+  );
+  assert.match(latest, /Watchdog scan не сканирует все сессии\/вкладки\/панели/);
+  assert.match(latest, /квалификация Paseo не выдерживает реальной нагрузки ревьюера/);
+  assert.match(latest, /дай мне промпт которым запустить проверку/);
+  assert.ok(businessReviews.includes(latest));
+});
+
 test("methodology preserves product intent but excludes narrow run-control approvals", () => {
   const methodology = readFileSync(join(ROOT, "shared", "references", "methodology.md"), "utf8");
   assert.match(

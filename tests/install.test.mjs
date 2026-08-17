@@ -91,7 +91,8 @@ test("README distinguishes proven local and unproven remote installation", () =>
   assert.match(readme, /Remote installation remains\s+unproven/);
   assert.match(readme, /Each route is advertised only after its own live acceptance/);
   assert.match(readme, /Herdr is\s+currently blocked/);
-  assert.match(readme, /Orca and Paseo expose qualified public response surfaces/);
+  assert.match(readme, /Paseo is also blocked/);
+  assert.match(readme, /Orca exposes a\s+qualified public response surface/);
   assert.match(readme, /narrow state exception/);
   assert.match(readme, /requires `jq`.*and `flock`/s);
 });

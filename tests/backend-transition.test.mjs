@@ -592,10 +592,10 @@ esac
     /backend=orca session=ctx_failed state=failed/,
     /backend=orca session=ctx_working state=working/,
     /backend=orca session=ctx_succeeded state=completed/,
-    /backend=orca session=term_active state=connected last_output_at=unknown/,
-    /backend=orca session=term_done state=disconnected last_output_at=unknown/,
+    /backend=orca session=term_active state=connected surface=terminals last_output_at=unknown/,
+    /backend=orca session=term_done state=disconnected surface=terminals last_output_at=unknown/,
     /backend=orca session=term_disconnected state=failed/,
-    /backend=orca session=term_unknown state=unclassified last_output_at=unknown/,
+    /backend=orca session=term_unknown state=unclassified surface=terminals last_output_at=unknown/,
   ]) {
     assert.match(result.stdout, expected);
   }
@@ -684,15 +684,18 @@ esac
   assert.doesNotMatch(result.stdout, /session=unknown action=observed/);
 });
 
-test("watchdog reports Herdr agents separately and names an empty Paseo surface", () => {
+test("watchdog inventories Herdr workspaces, tabs and panes and scans Paseo globally", () => {
   const root = mkdtempSync(join(tmpdir(), "mo-watchdog-mixed-scan-test-"));
   temporary.push(root);
   const commands = {
     herdr: `#!/bin/sh
-if [ "$*" = "agent list" ]; then
-  echo '{"result":{"agents":[{"name":"h-done","agent_status":"done"},{"name":"h-working","agent_status":"working"}]}}'
-else exit 2
-fi
+case "$*" in
+  "workspace list") echo '{"result":{"workspaces":[{"workspace_id":"ws-1"}]}}' ;;
+  "tab list") echo '{"result":{"tabs":[{"tab_id":"tab-1"},{"tab_id":"tab-2"}]}}' ;;
+  "pane list") echo '{"result":{"panes":[{"pane_id":"pane-1"},{"pane_id":"pane-2"}]}}' ;;
+  "agent list") echo '{"result":{"agents":[{"name":"h-done","agent_status":"done"},{"name":"h-working","agent_status":"working"}]}}' ;;
+  *) exit 2 ;;
+esac
 `,
     orca: `#!/bin/sh
 case "$*" in
@@ -702,7 +705,7 @@ case "$*" in
 esac
 `,
     paseo: `#!/bin/sh
-if [ "$*" = "ls --json" ]; then echo '[]'; else exit 2; fi
+if [ "$*" = "ls --global --json" ]; then echo '[]'; else exit 2; fi
 `,
   };
   for (const [name, source] of Object.entries(commands)) {
@@ -714,6 +717,11 @@ if [ "$*" = "ls --json" ]; then echo '[]'; else exit 2; fi
     encoding: "utf8",
   });
   assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /backend=herdr session=ws-1 state=present surface=workspaces/);
+  assert.match(result.stdout, /backend=herdr session=tab-1 state=present surface=tabs/);
+  assert.match(result.stdout, /backend=herdr session=tab-2 state=present surface=tabs/);
+  assert.match(result.stdout, /backend=herdr session=pane-1 state=present surface=panes/);
+  assert.match(result.stdout, /backend=herdr session=pane-2 state=present surface=panes/);
   assert.match(result.stdout, /backend=herdr session=h-done state=completed/);
   assert.match(result.stdout, /backend=herdr session=h-working state=working/);
   assert.match(result.stdout, /backend=paseo surface=agents state=no-sessions/);

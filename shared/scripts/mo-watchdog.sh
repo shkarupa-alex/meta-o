@@ -292,8 +292,15 @@ report_item() {
   WATCHDOG_KIND=$2
   WATCHDOG_LOCATOR=$3
   WATCHDOG_ITEM=$4
-  WATCHDOG_CLASSIFICATION=$(classification_text "$WATCHDOG_BACKEND" "$WATCHDOG_KIND" "$WATCHDOG_ITEM")
-  WATCHDOG_STATE=$(classify "$WATCHDOG_CLASSIFICATION")
+  if [ "$WATCHDOG_BACKEND" = herdr ] && \
+    { [ "$WATCHDOG_KIND" = workspaces ] || [ "$WATCHDOG_KIND" = tabs ] || [ "$WATCHDOG_KIND" = panes ]; }; then
+    # These are inventory surfaces, not agent lifecycle surfaces. Presence is
+    # the only state their native list establishes without guessing from IDs.
+    WATCHDOG_STATE=present
+  else
+    WATCHDOG_CLASSIFICATION=$(classification_text "$WATCHDOG_BACKEND" "$WATCHDOG_KIND" "$WATCHDOG_ITEM")
+    WATCHDOG_STATE=$(classify "$WATCHDOG_CLASSIFICATION")
+  fi
   if [ "$WATCHDOG_BACKEND" = orca ] && [ "$WATCHDOG_KIND" = terminals ]; then
     WATCHDOG_LAST_OUTPUT_AT=$(
       /usr/bin/printf '%s\n' "$WATCHDOG_ITEM" | jq -r '.lastOutputAt // "unknown"'
@@ -302,11 +309,11 @@ report_item() {
     WATCHDOG_LAST_OUTPUT_AT=
   fi
   if [ -n "$WATCHDOG_LAST_OUTPUT_AT" ]; then
-    /usr/bin/printf 'backend=%s session=%s state=%s last_output_at=%s action=observed\n' \
-      "$WATCHDOG_BACKEND" "$WATCHDOG_LOCATOR" "$WATCHDOG_STATE" "$WATCHDOG_LAST_OUTPUT_AT"
+    /usr/bin/printf 'backend=%s session=%s state=%s surface=%s last_output_at=%s action=observed\n' \
+      "$WATCHDOG_BACKEND" "$WATCHDOG_LOCATOR" "$WATCHDOG_STATE" "$WATCHDOG_KIND" "$WATCHDOG_LAST_OUTPUT_AT"
   else
-    /usr/bin/printf 'backend=%s session=%s state=%s action=observed\n' \
-      "$WATCHDOG_BACKEND" "$WATCHDOG_LOCATOR" "$WATCHDOG_STATE"
+    /usr/bin/printf 'backend=%s session=%s state=%s surface=%s action=observed\n' \
+      "$WATCHDOG_BACKEND" "$WATCHDOG_LOCATOR" "$WATCHDOG_STATE" "$WATCHDOG_KIND"
   fi
 }
 
@@ -392,6 +399,12 @@ if [ "$WATCHDOG_MODE" = scan ]; then
     fi
     case "$WATCHDOG_BACKEND" in
       herdr)
+        scan_command herdr workspaces 'if (.result.workspaces? | type) == "array" then .result.workspaces elif (.workspaces? | type) == "array" then .workspaces else error("missing workspaces array") end' \
+          '(.workspace_id // .workspaceId // .id // .name // "unknown")' herdr workspace list || WATCHDOG_SCAN_STATUS=1
+        scan_command herdr tabs 'if (.result.tabs? | type) == "array" then .result.tabs elif (.tabs? | type) == "array" then .tabs else error("missing tabs array") end' \
+          '(.tab_id // .tabId // .id // .name // "unknown")' herdr tab list || WATCHDOG_SCAN_STATUS=1
+        scan_command herdr panes 'if (.result.panes? | type) == "array" then .result.panes elif (.panes? | type) == "array" then .panes else error("missing panes array") end' \
+          '(.pane_id // .paneId // .id // .terminal_id // .name // "unknown")' herdr pane list || WATCHDOG_SCAN_STATUS=1
         scan_command herdr agents 'if (.result.agents? | type) == "array" then .result.agents else error("missing agents array") end' \
           '(.name // .pane_id // .terminal_id // "unknown")' herdr agent list || WATCHDOG_SCAN_STATUS=1
         ;;
@@ -404,7 +417,7 @@ if [ "$WATCHDOG_MODE" = scan ]; then
         ;;
       paseo)
         scan_command paseo agents 'if type == "array" then . elif (.agents? | type) == "array" then .agents elif (.result.agents? | type) == "array" then .result.agents else error("missing agents array") end' \
-          '(.id // .agentId // .name // "unknown")' paseo ls --json || WATCHDOG_SCAN_STATUS=1
+          '(.id // .agentId // .name // "unknown")' paseo ls --global --json || WATCHDOG_SCAN_STATUS=1
         ;;
     esac
   done

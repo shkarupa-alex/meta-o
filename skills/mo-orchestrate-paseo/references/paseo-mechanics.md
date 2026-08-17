@@ -54,7 +54,7 @@ reviewer harness. Start both before waiting for either.
 paseo send <agent-id> --prompt <message> --no-wait --json
 paseo wait <agent-id> --timeout <seconds> --json
 paseo inspect <agent-id> --json
-paseo ls --json
+paseo ls --global --json
 paseo permit ls --json
 paseo permit allow <agent-id> <request-id> --json
 paseo permit deny <agent-id> <request-id> --json
@@ -76,24 +76,23 @@ process alone.
 
 ## Complete response and diagnostics
 
-`wait --json` proves settlement and returns a public `message` timeline. Its
-`Last 5 activity items` bound limits the number of items, not the bytes within
-one text item. Locate the latest exact prompt as its `[User]` item and take the
-following unlabeled text item as that prompt's settled assistant response;
-labelled `[Thought]` items are not response bytes. If the latest prompt or its
-following text item is absent or ambiguous, retrieval is `unknown`.
+`wait --json` proves settlement but its `message` contains only the last five
+activity items. Real reviewers can fill that window with `[Read]`, `[Shell]`,
+`[Thought]` and unlabeled reasoning items, evicting the prompt or making the
+assistant boundary ambiguous. Never select a response merely because it is the
+first or last unlabeled activity item. An absent or ambiguous boundary is
+`unknown`.
 
-Qualify this boundary for every selected harness only after a normal fixture
-and a three-to-four-screen fixture contain intact begin/middle/end markers in
-that one item. Codex, Claude Code and OpenCode passed both fixtures through the
-Paseo 0.3.1 public `wait --json.message` surface on 2026-08-15; this observation
-does not waive the current run's fixtures. `inspect` is a metadata and state
-surface; it need not repeat the final response. Do not reconstruct a result from
-private provider data.
-
-`paseo logs <id>` and `paseo attach <id>` provide whole-session diagnostics.
-They do not establish a complete settled response unless the long fixture proves
-the public output is complete.
+`paseo logs <id> --filter text --tail 1` is a promising documented public
+surface: it returned the intact final text of two tool-using reviewers observed
+on 2026-08-17. It is not qualified yet. Before using it for orchestration or
+standalone review, every selected harness must pass both a normal fixture and a
+three-to-four-screen begin/middle/end fixture after actually running
+non-mutating repository checks. The public result must contain exactly the
+settled response rather than thought or tool output. Until that evidence exists,
+Paseo complete-response retrieval is `unknown` and both routes are unsupported.
+`inspect` is a metadata and state surface; `paseo attach <id>` remains
+whole-session diagnosis. Do not reconstruct a result from private provider data.
 
 ## Cleanup
 

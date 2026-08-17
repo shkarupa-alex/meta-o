@@ -4,8 +4,10 @@ Ten installable agent skills define routes that take a feature from a task or
 specification to one verified candidate commit using Herdr, Orca or Paseo
 sessions. Each route is advertised only after its own live acceptance. Herdr is
 currently blocked because its public complete-response surface has not passed
-the required fixtures; Orca and Paseo expose qualified public response surfaces,
-but every candidate still needs its own current-run verdict.
+the required fixtures. Paseo is also blocked because its bounded activity window
+does not identify a complete response under reviewer tool load. Orca exposes a
+qualified public response surface, but every candidate still needs its own
+current-run verdict.
 
 Meta-O is a skills-first methodology: it adds no orchestration CLI, provider
 proxy, daemon, general workflow state store or adapter layer. The watchdog has
@@ -49,10 +51,10 @@ for per-locator nudge serialization.
 | ---------------------- | ----------------------------------------------------------------- |
 | `mo-orchestrate-herdr` | Define the Herdr feature route; live acceptance is blocked.       |
 | `mo-orchestrate-orca`  | Define the Orca feature route through complete `worker_done`.     |
-| `mo-orchestrate-paseo` | Define the Paseo feature route through its public activity item.  |
+| `mo-orchestrate-paseo` | Define the blocked Paseo route and its public native mechanics.   |
 | `mo-review-herdr`      | Define standalone Herdr review; live acceptance is blocked.       |
 | `mo-review-orca`       | Define standalone Orca review with complete response retrieval.   |
-| `mo-review-paseo`      | Define standalone Paseo review with complete response retrieval.  |
+| `mo-review-paseo`      | Define blocked standalone Paseo review mechanics.                 |
 | `mo-setup`             | Inspect and repair project/environment readiness.                 |
 | `mo-e2e`               | Run E2E scenarios that genuinely require an agent.                |
 | `mo-reuse`             | Research reuse before implementation when explicitly requested.   |

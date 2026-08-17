@@ -6,6 +6,27 @@ Every entry records its reason, practical impact and next step.
 
 ## Open
 
+### Paseo complete-response support fails under reviewer tool load
+
+**Reason.** Paseo 0.3.1 `wait --json.message` exposes only its last five activity
+items. Real tool-using reviews filled those slots with `[Read]`, `[Shell]`,
+`[Thought]`, unlabeled reasoning and final text, either evicting the exact user
+prompt or making the response boundary ambiguous. The earlier normal and long
+fixtures did not run repository tools and therefore did not qualify real review
+load. Public `paseo logs <id> --filter text --tail 1` returned the intact final
+text of two observed reviewers, but has not passed tool-using normal and long
+fixtures for all three harnesses.
+
+**Practical impact.** Paseo orchestration and standalone review remain
+unsupported: the route must report complete-response retrieval as `unknown`
+rather than select a reasoning item or a stale/bounded activity item.
+
+**Next step.** Qualify the documented public filtered-log surface, or another
+public response field, with tool-using normal and three-to-four-screen
+`BEGIN`/`MIDDLE`/`END` fixtures on Codex, Claude Code and OpenCode. Remove this
+entry and advertise the routes only when every harness returns exactly its
+settled response.
+
 ### Orca cannot release ten retained worker records
 
 **Reason.** Public `worker-list` still reports Dispatches `ctx_51a2a3d73a57`,

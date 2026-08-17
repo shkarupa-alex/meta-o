@@ -28,7 +28,7 @@ Run this matrix for Herdr, Orca and Paseo:
 | B3  | Launch Claude Code unsandboxed.                                   | Public readiness and effective posture.                              |
 | B4  | Launch OpenCode unsandboxed.                                      | Public readiness and effective posture.                              |
 | B5  | Deliver initial `/goal` and ordinary follow-up.                   | Both appear once and produce distinct settled responses.             |
-| B6  | Ask and answer an ordinary or harness-UI question.                | Public pending state/request and exact reply path.                   |
+| B6  | Ask and answer an ordinary question and a harness-UI question.    | Both public pending states/requests and both exact reply paths.      |
 | B7  | Distinguish working, completed, pending question and failed/lost. | Native state observations for all four.                              |
 | B8  | Retrieve complete normal settled response.                        | Exact expected response, not terminal inference.                     |
 | B9  | Retrieve complete long settled response.                          | Beginning, middle and end markers are intact.                        |
