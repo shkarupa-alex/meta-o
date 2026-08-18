@@ -12,6 +12,12 @@
 # first paths, 2 = incomplete or malformed evidence. A consistently missing
 # provider is recorded as missing but does not by itself make the matrix
 # structurally incomplete.
+#
+# Implements meta-o §A-POSTURE-01: one owned read-only probe serves every
+# consumer instead of a wrapper over the native provider CLI. The refusal to
+# print secrets, alias bodies or profile output is meta-o §A-POSTURE-02. The
+# ids are provenance of this file's owning repository, not a reference the
+# installing project has to resolve.
 
 usage() {
   builtin printf '%s\n' \

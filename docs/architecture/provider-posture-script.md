@@ -1,123 +1,46 @@
-# Provider posture has one probe and a required consumer
+# §A-POSTURE-01 — У provider posture один probe и обязательные consumers
 
-Because _a gate whose full verdict cannot be read is unknown_ and _the previous
-generation was too thick_ — launch resolution must be deterministic without
-becoming a provider proxy or orchestration runtime.
+## Решение
 
-## Decision
+`shared/scripts/mo-posture.sh` — единственный владелец zsh/bash launch-resolution
+diagnostic. Сборка byte-for-byte копирует его во все три orchestration skills и
+`mo-setup`: каждая установка остаётся самодостаточной без provider proxy.
 
-`shared/scripts/mo-posture.sh` owns the zsh/bash launch-resolution protocol. The
-build copies it byte-for-byte into `mo-herdr`, `mo-omnigent` and `mo-setup` so
-each installed skill is self-contained. The script diagnoses command kind and
-first executable path; it never launches a provider, changes configuration,
-stores run state or decides that an actor surface is supported.
-
-The backend skill is the consumer. Before actor creation it performs two
-separate commands from its own installed directory:
+Consumers запускают его напрямую из установленного каталога:
 
 ```text
 scripts/mo-posture.sh --self-check --shell all
 scripts/mo-posture.sh --shell <zsh|bash|all> -- <selected-providers>
 ```
 
-The first command syntax-checks both embedded child probes with the interpreters
-that will execute them. It does not inspect profiles and cannot substitute for
-the matrix. The second command measures every shell startup mode applicable to
-the planned launch parent.
+Probe классифицирует command kind и первый path во всех применимых shell modes.
+Он не запускает provider, не меняет configuration, не хранит run state и не
+решает, поддерживается ли backend. Missing, divergent, malformed или incomplete
+evidence не доказывает поддержку. Реальные harness readiness, model activation,
+trust, permission behavior и unsandboxed posture остаются live checks.
 
-Topology mutation requires both commands to succeed, a complete status-0 matrix
-for every applicable shell, and no selected provider whose accepted record says
-`type=missing` or `path=missing`. Status 1 is a real kind/path divergence; status
-2 is incomplete or unreadable evidence. Only the fixed classification, decoded
-command kind and first resolved path enter orchestrator context.
+## Бизнес-причина
 
-This consumer closes a former architecture gap: shipping a probe without making
-preflight use it left posture as advice. It still does not conflate resolution
-with launchability. Provider readiness, model activation, entitlement,
-workspace trust and permission behavior remain separate exact live fixtures.
+Launch posture должен быть детерминированным без wrapper над native provider CLI.
+Один bounded read-only helper у всех consumers предотвращает drift и не
+превращает личное shell behavior в угаданную prose-рецептуру.
 
-## Evidence contract
+Решение служит §B-PORTABILITY-01, §B-PORTABILITY-07 и §B-CONTROL-04: работа идёт
+на уже настроенном harness без прокси, чужой интерфейс не угадывается, а лишний
+управляющий слой не заводится. Если §A-POSTURE-01 отменяется, копии probe в
+четырёх скилах и его self-check удаляются, а диагностика возвращается в прозу
+каждого скила по отдельности.
 
-Each requested shell measures four explicit startup modes. A child records NUL
-framed provider name, command kind and first executable path into a private
-channel. The parent validates framing and emits unambiguous `MO_POSTURE` records
-with Bash `%q` encoding, plus one `MO_POSTURE_MATRIX` status per requested shell.
+## §A-POSTURE-02 — Граница безопасности
 
-Exit meanings are:
+Script владеет одной process group и читает private NUL-framed child evidence.
+Он не печатает provider secrets или bodies alias/functions. Dynamic Claude model
+discovery отдельно использует документированный lifecycle Agent SDK и не
+накладывает на provider дополнительный platform-specific no-fork sandbox.
 
-- 0 — command kinds and first paths are identical across all measured modes;
-- 1 — at least one accepted kind or path differs;
-- 2 — evidence is incomplete, malformed or unsafe to obtain.
+Изменения личного wrapper или shell profile требуют явного подтверждения
+пользователя. Агент не печатает protected definition; пользователь передаёт
+подтверждённое credential-free или redacted представление.
 
-A consistently missing provider can be structurally well-formed and still makes
-that selected provider unusable to the backend consumer. Matrix structure and
-launch support are deliberately separate judgements.
-
-Profile stdout and stderr travel outside the evidence channel and are reported
-only as presence markers. A greeting does not corrupt a matrix, and its bytes
-are never reproduced. A blocking profile, material initialization error or
-unreadable lookup makes the affected evidence unknown.
-
-## Startup safety
-
-The script is executed directly so its privileged `/bin/bash -p` shebang takes
-effect before caller-controlled Bash startup state can run. Prefixing it with
-`bash` bypasses that boundary and is unsupported.
-
-The runner requires `/bin/bash` 3.2+, `/usr/bin/printf`,
-`/usr/bin/false` and `/bin/sleep` at those absolute paths, with `mktemp` and
-`rm` from the system utility path. A requested Bash matrix also requires
-`/usr/bin/env -0`. Absence of that compatibility boundary is unknown rather than
-permission to substitute a different interpreter.
-
-`BASH_ENV` remains exported into measured child Bash modes. Inherited
-`SHELLOPTS`, `BASHOPTS` or exported Bash functions make a Bash matrix unknown:
-replaying arbitrary caller code is unsafe, while silently dropping it would
-measure a different launch. Validated builtins prevent profile functions,
-aliases or dispatch shadows from forging accepted records.
-
-Each measured shell runs under a process-group ownership anchor. Normal
-completion quiesces the group before captures are read; signal and failure paths
-terminate members that remain in that owned process group before the anchor is
-reaped. An owned-group member that cannot be quiesced makes the result unknown.
-This is not containment of arbitrary profile descendants: a profile can call
-`setsid` and escape into another session before cleanup. That deliberately open
-limitation, its impact, and the required kernel-owned next step are recorded in
-[`docs/backlog.md`](../backlog.md#provider-posture-profiles-can-detach-descendants-with-setsid).
-The private directory is removed through path-guarded cleanup.
-
-## Verification split
-
-Deterministic tests use a fixed fake `PATH`, fake shell/profile fixtures,
-malformed framing, inherited-state cases, dispatch shadows, process-group
-shutdown and status precedence. `make mo-lint` also runs the first self-check.
-
-Those tests prove the consumer and parser contract, not a real subscription
-surface. The live posture fixture separately returns the exact provider,
-version, backend launch parent, trust/permission cycle and first executable
-actually used through the current backend run/final result. Those facts are not
-written into the tracked fixture map or another receipt. Neither kind of
-evidence inherits the other's conclusion.
-
-The closed final result turns only exact fixture-backed posture into 3..67
-canonical support entries. Each uses the ordered seven-field key
-`backend,provider,provider-version,backend-version,surface,os,fixture`, SUPPORTED
-status, and an empty or singleton safe scenario-ID list. They are exactly one
-lifecycle-selected executor fact, two review-referenced facts and one
-scenario-referenced fact per derived name; unused facts are invalid. A posture diagnostic record
-alone cannot manufacture that support fact or a default E2E scenario. Final
-review/scenario records refer to a matched fact by the exact slash-join of these
-seven safe-ID values; a same-provider fact for another surface or fixture is not
-substitutable.
-
-## Rejected
-
-- **Prose-only shell snippets.** Fragile quoting needs one executable owner.
-- **A probe with no backend consumer.** Diagnostics that never gate topology do
-  not protect a run.
-- **Treating matrix status as provider launchability.** Resolution cannot prove
-  readiness, model activation, entitlement or trust.
-- **Wrapping provider CLIs.** The probe observes resolution and never becomes
-  the invocation path.
-- **Printing aliases, functions, profiles or wrapper bodies.** They may contain
-  credentials or private prompts and are unnecessary to classify kind/path.
+Это §B-HUMAN-01 в конкретном виде: личная конфигурация меняется только с явного
+подтверждения пользователя, а secrets не печатаются вообще.

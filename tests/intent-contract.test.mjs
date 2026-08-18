@@ -1,9 +1,11 @@
 /**
- * Keeps the task's complete source intent payload independently accountable.
+ * Protect how user intent survives: verbatim with the task, distilled in the framing.
  *
- * Markdown-it owns fenced-record and intent-unit recognition. The contract
- * compares the source payload itself, so adding, deleting, re-heading, or
- * rewriting an intent cannot be hidden by a maintained list of expected names.
+ * The finished feature's own ledger left the repository together with its spec,
+ * so these checks bind the rule to the permanent documentation instead of to one
+ * historical conversation, which is the only part that outlives an implementation.
+ *
+ * Protects §A-MEMORY-02.
  */
 
 import assert from "node:assert/strict";
@@ -12,175 +14,63 @@ import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import MarkdownIt from "markdown-it";
-
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const TASK = join(
-  ROOT,
-  "spec",
-  "2026-08-08-herdr-orchestrator-operational-corrections",
-  "task-description.md",
-);
-const SPEC = join(
-  ROOT,
-  "spec",
-  "2026-08-08-herdr-orchestrator-operational-corrections",
-  "spec-review.md",
-);
-const BUSINESS = join(ROOT, "docs", "business.md");
-const METHODOLOGY = join(ROOT, "shared", "references", "methodology.md");
-const RECORD_INFO = "meta-o-user-intents-v1 task-description.md";
-const LEDGER_START = "<!-- meta-o-later-user-intents-v1:start -->";
-const LEDGER_END = "<!-- meta-o-later-user-intents-v1:end -->";
-const markdown = new MarkdownIt();
+const contracts = ["AGENTS.md", "CLAUDE.md"].map((name) => [
+  name,
+  readFileSync(join(ROOT, name), "utf8"),
+]);
 
-/** Return AST tokens inside one exact heading, stopping at its next peer. */
-function sectionTokens(source, level, heading) {
-  const tokens = markdown.parse(source, {});
-  const tag = `h${level}`;
-  let start = -1;
-  for (let index = 0; index < tokens.length - 1; index += 1) {
-    if (
-      tokens[index].type === "heading_open" &&
-      tokens[index].tag === tag &&
-      tokens[index + 1].type === "inline" &&
-      tokens[index + 1].content === heading
-    ) {
-      start = index + 3;
-      break;
-    }
+test("both contract copies keep the spec from becoming the only source of intent", () => {
+  for (const [name, source] of contracts) {
+    assert.match(source, /\*\*The spec is never the only source of user intent\.\*\*/, name);
+    assert.match(source, /complete verbatim\s+ledger/, name);
+    assert.match(source, /travels with the\s+task\/spec/, name);
+    assert.match(source, /summary or a link does not replace that text/, name);
+    assert.match(source, /each new intent appends to it/, name);
   }
-  assert.notEqual(start, -1, `missing ${tag} ${heading}`);
+});
 
-  let end = tokens.length;
-  for (let index = start; index < tokens.length; index += 1) {
-    if (tokens[index].type !== "heading_open") continue;
-    if (Number(tokens[index].tag.slice(1)) <= level) {
-      end = index;
-      break;
-    }
+test("both contract copies keep the distilled framing and its ids", () => {
+  for (const [name, source] of contracts) {
+    assert.match(source, /holds the same intent distilled into stable theses/, name);
+    assert.match(source, /\*\*Every stable business thesis carries a unique id\.\*\*/, name);
   }
-  return tokens.slice(start, end);
-}
+});
 
-/** Return the only AST-recognized complete task payload in a target document. */
-function intentRecord(source, label) {
-  const records = markdown
-    .parse(source, {})
-    .filter((token) => token.type === "fence" && token.info === RECORD_INFO);
-  assert.equal(records.length, 1, `${label} must contain one complete task payload`);
-  return records[0].content;
-}
+test("both contract copies keep the dictation rule and its verbatim guarantee", () => {
+  for (const [name, source] of contracts) {
+    assert.match(source, /imperfect dictation/, name);
+    assert.match(source, /Preserve confirmed intent\s+verbatim/, name);
+    assert.match(source, /do not rewrite the original ledger entry/, name);
+  }
+});
 
-/** Compare one source payload with both independently tracked records. */
-function recordsMatch(source, business, spec) {
-  return (
-    intentRecord(business, "business framing") === source &&
-    intentRecord(spec, "final spec") === source
+test("methodology preserves product intent but excludes narrow run-control approvals", () => {
+  const methodology = readFileSync(join(ROOT, "shared", "references", "methodology.md"), "utf8");
+  assert.match(
+    methodology,
+    /append it verbatim\s+to the task ledger before implementation continues/,
   );
-}
-
-/** Derive ordered later-message payloads between AST-recognized ledger bounds. */
-function laterIntentRecords(source, label) {
-  const records = [];
-  let inside = false;
-  let opened = 0;
-  let closed = 0;
-  let quoteDepth = 0;
-  let current = [];
-
-  for (const token of markdown.parse(source, {})) {
-    if (token.content.trim() === LEDGER_START) {
-      assert.equal(inside, false, `${label} later-intent ledger must not nest`);
-      inside = true;
-      opened += 1;
-      continue;
-    }
-    if (token.content.trim() === LEDGER_END) {
-      assert.equal(quoteDepth, 0, `${label} ledger ended inside an intent`);
-      assert.equal(inside, true, `${label} later-intent ledger end has no start`);
-      inside = false;
-      closed += 1;
-      continue;
-    }
-    if (!inside) continue;
-    if (token.type === "blockquote_open") {
-      if (quoteDepth === 0) current = [];
-      quoteDepth += 1;
-    } else if (token.type === "blockquote_close") {
-      quoteDepth -= 1;
-      if (quoteDepth === 0) records.push(current.join("\n"));
-    } else if (quoteDepth > 0 && token.type === "inline") {
-      current.push(token.content);
-    }
-  }
-
-  assert.equal(opened, 1, `${label} must have one later-intent ledger start`);
-  assert.equal(closed, 1, `${label} must have one later-intent ledger end`);
-  assert.equal(inside, false, `${label} later-intent ledger must close`);
-  assert.ok(records.length > 0, `${label} later-intent ledger must not be empty`);
-  return records;
-}
-
-/** Derive one mutation location from every non-empty source line. */
-function intentMutationOffsets(source) {
-  const offsets = [];
-  let start = 0;
-  for (const line of source.split("\n")) {
-    const relative = line.search(/\S/u);
-    if (relative >= 0) offsets.push(start + relative);
-    start += line.length + 1;
-  }
-  assert.ok(offsets.length > 0, "task source must expose lines to mutate");
-  return offsets;
-}
-
-test("business and final spec retain the complete task-description payload", () => {
-  const task = readFileSync(TASK, "utf8");
-  const business = readFileSync(BUSINESS, "utf8");
-  const spec = readFileSync(SPEC, "utf8");
-
-  assert.equal(intentRecord(business, "business framing"), task);
-  assert.equal(intentRecord(spec, "final spec"), task);
+  assert.match(methodology, /record its settled\s+meaning in the project's business framing/);
+  assert.match(methodology, /verbatim ledger is the normative\s+copy while the task lives/);
+  assert.match(methodology, /Redact secrets while preserving\s+the sentence's meaning/);
+  assert.match(methodology, /one-shot\s+approval.*is\s+run control/is);
+  assert.match(methodology, /do not mutate\s+tracked intent ledgers/);
 });
 
-test("mutating any non-empty source line invalidates both accountable copies", () => {
-  const task = readFileSync(TASK, "utf8");
-  const business = readFileSync(BUSINESS, "utf8");
-  const spec = readFileSync(SPEC, "utf8");
-
-  for (const offset of intentMutationOffsets(task)) {
-    const mutated = `${task.slice(0, offset)}X${task.slice(offset + 1)}`;
-    assert.equal(recordsMatch(mutated, business, spec), false);
-  }
+test("the business framing says where the verbatim ledger lives and what it keeps", () => {
+  const business = readFileSync(join(ROOT, "docs", "business.md"), "utf8");
+  assert.match(business, /Дословные пользовательские интенты ведутся/);
+  assert.match(business, /вместе с задачей или\s+спецификацией/);
+  assert.match(business, /сохраняется смысл, а не\s+формулировка/);
 });
 
-test("every later intent is ordered identically in business and final spec", () => {
-  const business = laterIntentRecords(readFileSync(BUSINESS, "utf8"), "business framing");
-  const spec = laterIntentRecords(readFileSync(SPEC, "utf8"), "final spec");
-  assert.deepEqual(spec, business);
-
-  for (let index = 0; index < business.length; index += 1) {
-    const mutated = business.with(index, `${business[index]}X`);
-    assert.notDeepEqual(spec, mutated);
-  }
-});
-
-test("methodology §2.1 owns complete, credential-safe intent accounting", () => {
-  const methodology = readFileSync(METHODOLOGY, "utf8");
-  const section = sectionTokens(methodology, 3, "2.1 User intents (verbatim)")
-    .map((token) => token.content)
-    .join("\n");
-
-  assert.match(section, /complete task-description payload/);
-  assert.match(section, /explicitly bounded accountable ledger/);
-  assert.match(section, /before implementation continues/);
-  assert.match(section, /\[REDACTED: deployment token\]/);
-  assert.match(section, /sensitive value/);
-  for (const projectContract of ["AGENTS.md", "CLAUDE.md"]) {
-    assert.match(
-      readFileSync(join(ROOT, projectContract), "utf8"),
-      /shared\/references\/methodology\.md §2\.1/,
-    );
-  }
+test("the architecture layer owns the split between ledger and framing", () => {
+  const decision = readFileSync(
+    join(ROOT, "docs", "architecture", "knowledge-identifiers.md"),
+    "utf8",
+  );
+  assert.match(decision, /§A-MEMORY-02 — Дословный ledger живёт с задачей/);
+  assert.match(decision, /нормативен для исполнителя и ревьюеров/);
+  assert.match(decision, /Если §A-MEMORY-02 отменяется/);
 });

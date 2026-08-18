@@ -4,9 +4,3 @@
 # which is what keeps a committed build artefact honest.
 node_modules
 .DS_Store
-
-# Omnigent points a Codex harness at a throwaway CODEX_HOME inside the working
-# directory, so this appears during any run that uses that route and is gone when
-# the session ends. Ignored because a Phase 0 fixture run should not have to
-# remember to delete it before committing.
-.codex-tmp/

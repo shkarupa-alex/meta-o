@@ -1,24 +1,23 @@
 ---
 name: mo-watchdog
-description: Watch exactly one running orchestrator through its backend's native state, and tell the user only when something genuinely needs a human. Use when the user has agreed to start an observer for a long unattended run.
+description: Observe one target or scan all reachable Herdr, Orca, and Paseo sessions for limits, overload, failures, questions, work, and completion; nudge only an explicitly authorized exact target.
 license: MIT
 ---
 
-# Watch one orchestrator
+# Watch backend sessions
 
-Start only after the user explicitly requests it. Observe exactly one running
-orchestrator through its backend's native event/state surface.
+Read [Watchdog behavior](references/watchdog.md) completely. Start only after the
+user explicitly requests observation.
 
-Wait directly for native state change. Read no tracked project content, actor
-bodies, findings or private session state. Do not poll, nudge, prompt, resume,
-route, retry, start actors, run checks, store state or take over supervision.
+Use `scripts/mo-watchdog.sh target --backend <backend> --session <id>` for one
+session or `scripts/mo-watchdog.sh scan` for all reachable supported backends.
+Observation is read-only. An explicit nudge additionally requires
+`--nudge <message>` and exact target authorization; the script re-reads native
+state and suppresses the nudge when that state changed. It reserves a bounded
+private digest before delivery and suppresses the same message, an ambiguous
+attempt, or a saturated unchanged state across later invocations. Nudges return
+after native delivery; agent completion is observed separately.
 
-A native `done` is not automatically a human boundary: the orchestrator owns its
-next ordinary action. Report only when its public process state reaches a valid
-methodology `needs_attention` boundary. Include only backend locator, topology,
-role, blocker class, candidate and finding/scenario identifier where applicable;
-never paraphrase body prose.
-
-If the native surface cannot wake this observer reliably, the optional watchdog
-is unsupported. Do not add a polling helper, daemon, service, registry or state
-file. Stopping the watchdog never changes the feature run.
+Do not inspect tracked project content or private provider state. Report the
+native locator, classified state and action. Pattern misses are refined from
+observed failures rather than hidden behind a support claim.

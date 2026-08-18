@@ -10,9 +10,13 @@
  * workflow engine this methodology exists without.
  *
  * It never starts an agent and never reads stdin. It is a settings editor.
+ *
+ * Implements §A-DISTRIBUTION-02: the installed helper carries its own runtime
+ * instead of resolving an ambient `node_modules`. Keeping run state out of the
+ * file is §A-ORCHESTRATION-03.
  */
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -58,52 +62,6 @@ const CATALOG_TIMEOUT_MS =
 const HOME = homedir();
 const SETTINGS_DIR = join(HOME, ".meta-o");
 const SETTINGS_FILE = join(SETTINGS_DIR, "models.json");
-
-/** SDK processes owned by the one in-flight Claude catalogue query. */
-const ACTIVE_CLAUDE_PROCESSES = new Set();
-
-/** macOS Seatbelt is the only audited descendant boundary in this helper. */
-const SANDBOX_EXECUTABLE = "/usr/bin/sandbox-exec";
-const CLAUDE_SANDBOX_PROFILE = "(version 1)(allow default)(deny process-fork)";
-
-/**
- * Hold the process-group identity and apply the kernel no-fork boundary.
- *
- * The supervisor itself is outside Seatbelt so it can start exactly one
- * provider. `sandbox-exec` then applies `deny process-fork` before Claude runs.
- * Consequently Claude cannot create any child, detached or otherwise. Cleanup
- * is requested over fd 3; the still-live group leader signals its own group, so
- * no inspected numeric PID is ever promoted into a signalling capability.
- */
-const CLAUDE_SUPERVISOR_SOURCE = String.raw`
-import { spawn } from "node:child_process";
-import { createReadStream } from "node:fs";
-
-const [sandbox, profile, command, ...args] = process.argv.slice(1);
-const control = createReadStream(null, { fd: 3, autoClose: false });
-let provider;
-let buffered = "";
-const stopGroup = () => process.kill(-process.pid, "SIGKILL");
-control.setEncoding("utf8");
-control.on("data", (chunk) => {
-  buffered += chunk;
-  if (buffered.includes("STOP\n")) {
-    stopGroup();
-    return;
-  }
-  if (!provider && buffered.includes("START\n")) {
-    provider = spawn(sandbox, ["-p", profile, command, ...args], {
-      cwd: process.cwd(),
-      env: process.env,
-      stdio: ["inherit", "inherit", "ignore"],
-    });
-    provider.on("error", () => process.stdout.end());
-    provider.on("exit", () => process.stdout.end());
-  }
-});
-control.on("end", stopGroup);
-control.on("error", stopGroup);
-`;
 
 /**
  * Where each route's authoritative catalog comes from.
@@ -335,10 +293,30 @@ function lineListing(descriptor) {
  * about it. Separated from the spawn so the filter can be tested on a fixture.
  */
 export function parseCodexModels(text) {
-  const start = String(text).indexOf("{");
+  const source = String(text);
+  const start = source.indexOf("{");
+  let end = -1;
+  let depth = 0;
+  let quoted = false;
+  let escaped = false;
+  for (let index = start; index >= 0 && index < source.length; index += 1) {
+    const character = source[index];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') quoted = false;
+      continue;
+    }
+    if (character === '"') quoted = true;
+    else if (character === "{") depth += 1;
+    else if (character === "}" && --depth === 0) {
+      end = index + 1;
+      break;
+    }
+  }
   let parsed;
   try {
-    parsed = JSON.parse(start >= 0 ? String(text).slice(start) : String(text));
+    parsed = JSON.parse(start >= 0 && end > start ? source.slice(start, end) : source);
   } catch (error) {
     return unavailable(`codex debug models returned unparseable JSON: ${error.message}`);
   }
@@ -393,110 +371,6 @@ function resolveSystemClaude() {
   return null;
 }
 
-/** Prove that the kernel rejects a child fork before allowing Claude to start. */
-function claudeContainment() {
-  if (process.platform !== "darwin" || !existsSync(SANDBOX_EXECUTABLE)) {
-    return unavailable(
-      `kernel-owned Claude descendant containment is unavailable on ${process.platform}`,
-    );
-  }
-  const proof = spawnSync(
-    SANDBOX_EXECUTABLE,
-    [
-      "-p",
-      CLAUDE_SANDBOX_PROFILE,
-      process.execPath,
-      "-e",
-      'const {spawnSync}=require("node:child_process");const r=spawnSync("/usr/bin/true");process.exit(r.error?.code==="EPERM"?0:71)',
-    ],
-    { stdio: "ignore", timeout: 1_000 },
-  );
-  return proof.status === 0
-    ? { available: true }
-    : unavailable("macOS Seatbelt did not prove deny process-fork");
-}
-
-/** Start the one no-fork provider below a capability-held group supervisor. */
-function spawnOwnedClaude(options) {
-  const child = spawn(
-    process.execPath,
-    [
-      "--input-type=module",
-      "--eval",
-      CLAUDE_SUPERVISOR_SOURCE,
-      SANDBOX_EXECUTABLE,
-      CLAUDE_SANDBOX_PROFILE,
-      options.command,
-      ...options.args,
-    ],
-    {
-      cwd: options.cwd,
-      env: options.env,
-      detached: true,
-      stdio: ["pipe", "pipe", "ignore", "pipe"],
-    },
-  );
-  child.stdio[3].write("START\n");
-  const owned = {
-    child,
-    control: child.stdio[3],
-    stopped: false,
-    cleanup: null,
-    pid: child.pid,
-    stdin: child.stdin,
-    stdout: child.stdout,
-    get killed() {
-      return child.killed;
-    },
-    get exitCode() {
-      return child.exitCode;
-    },
-    kill: () => {
-      void stopOwnedClaudeProcess(owned);
-      return true;
-    },
-    on: (...args) => child.on(...args),
-    once: (...args) => child.once(...args),
-    off: (...args) => child.off(...args),
-  };
-  ACTIVE_CLAUDE_PROCESSES.add(owned);
-  options.signal.addEventListener("abort", () => stopOwnedClaudeProcess(owned), {
-    once: true,
-  });
-  return owned;
-}
-
-/** Ask the live owner to stop its group, then prove the owner actually closed. */
-function stopOwnedClaudeProcess(owned) {
-  if (owned.cleanup) return owned.cleanup;
-  if (owned.control.destroyed || !owned.control.writable) return Promise.resolve(false);
-  owned.stopped = true;
-  owned.cleanup = new Promise((resolve) => {
-    let settled = false;
-    const finish = (result) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      resolve(result);
-    };
-    const timeout = setTimeout(() => finish(false), 1_000);
-    owned.child.once("close", () => finish(true));
-    owned.control.write("STOP\n", (error) => {
-      if (error) finish(false);
-    });
-  });
-  return owned.cleanup;
-}
-
-/** Stop every owned group without ever signalling an inspected numeric PID. */
-async function stopOwnedClaudeProcesses() {
-  const stopped = await Promise.all(
-    [...ACTIVE_CLAUDE_PROCESSES].map((owned) => stopOwnedClaudeProcess(owned)),
-  );
-  ACTIVE_CLAUDE_PROCESSES.clear();
-  return stopped.every(Boolean);
-}
-
 /**
  * `query(...).supportedModels()` — the Claude route's only authoritative list.
  *
@@ -508,8 +382,6 @@ async function stopOwnedClaudeProcesses() {
 async function claudeSdkListing() {
   const claudeExecutable = resolveSystemClaude();
   if (!claudeExecutable) return unavailable("system claude executable not found on PATH");
-  const containment = claudeContainment();
-  if (!containment.available) return containment;
   const abortController = new AbortController();
   const neverPrompts = async function* () {
     await new Promise(() => {});
@@ -522,7 +394,6 @@ async function claudeSdkListing() {
       maxTurns: 1,
       pathToClaudeCodeExecutable: claudeExecutable,
       abortController,
-      spawnClaudeCodeProcess: spawnOwnedClaude,
     },
   });
   let listing;
@@ -553,16 +424,16 @@ async function claudeSdkListing() {
   } catch (error) {
     listingFailure = error;
   } finally {
-    cleanupFailure = !(await stopOwnedClaudeProcesses());
     abortController.abort();
     const cleanup = [query.interrupt?.(), query.return?.(undefined)].filter(Boolean);
-    await Promise.race([
-      Promise.allSettled(cleanup),
-      new Promise((resolve) => setTimeout(resolve, 1_000)),
+    const cleanupCompleted = await Promise.race([
+      Promise.allSettled(cleanup).then(() => true),
+      new Promise((resolve) => setTimeout(() => resolve(false), 1_000).unref?.()),
     ]);
+    if (!cleanupCompleted) cleanupFailure = new Error("SDK query did not close within 1000ms");
   }
   if (cleanupFailure) {
-    return unavailable("safe Claude cleanup failed: supervisor capability was lost");
+    return unavailable(`supportedModels() cleanup failed: ${cleanupFailure.message}`);
   }
   if (listingFailure) {
     return unavailable(`supportedModels() failed: ${listingFailure.message}`);
