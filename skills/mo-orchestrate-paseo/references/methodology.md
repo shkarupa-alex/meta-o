@@ -39,11 +39,12 @@ Before starting agents:
 
 If later user input changes product or deliverable meaning, append it verbatim
 to the task ledger and the project's business framing before implementation
-continues. Redact secrets while preserving the sentence's meaning. A one-shot
-approval that only authorizes an already named production/destructive E2E
-action or starts an explicitly requested watchdog is run control: keep only a
-credential-free, request-bound header in current run evidence and do not mutate
-tracked intent ledgers.
+continues. A thesis that settles in the business framing carries a unique stable
+id, so a later decision or module can name it. Redact secrets while preserving
+the sentence's meaning. A one-shot approval that only authorizes an already named
+production/destructive E2E action or starts an explicitly requested watchdog is
+run control: keep only a credential-free, request-bound header in current run
+evidence and do not mutate tracked intent ledgers.
 
 ## 3. Roles and task delivery
 

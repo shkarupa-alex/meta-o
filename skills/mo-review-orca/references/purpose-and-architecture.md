@@ -75,7 +75,28 @@ And, always, the blunt question: **"why does this entity need to exist at
 all?"** A component that survives that question is worth reviewing further; one
 that does not is the cheapest finding anybody will ever write.
 
-## 5. Documentation that is a program's input
+## 5. Knowledge levels and their ids
+
+Knowledge is layered: the business framing, the architecture decisions, the
+module, the symbol. Layers are only usable if a reader can walk them
+mechanically, so each one carries a stable identifier and names the layer above.
+
+- every self-contained business thesis carries a unique id, for example
+  `§B-<AREA>-<NN>`;
+- every architecture decision carries its own id, names in ordinary prose the
+  business ids it serves, and says what becomes redundant if it is cancelled;
+- a module purpose names the architecture id; a symbol names its module or the
+  same decision. Neither cites the business layer directly, because the chain
+  already passes through the decision;
+- ids are unique, stable and never reused, and the link reads as ordinary
+  prose, not as a `Derived from` block.
+
+Presence, uniqueness and resolution belong in the project's own blocking gate,
+parsed with a real Markdown AST. Ids belong to the project that owns those
+documents: text a project distributes to others must not carry ids the consumer
+will never be able to resolve.
+
+## 6. Documentation that is a program's input
 
 If Markdown has to be parsed programmatically, use a mature real AST library. A
 regex Markdown parser is not acceptable — it is the

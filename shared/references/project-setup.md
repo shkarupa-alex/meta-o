@@ -9,7 +9,9 @@ Inspect substance, not file presence. A ready project has:
 - business framing containing the original request and every later user intent
   verbatim, with secrets redacted rather than persisted;
 - one glossary meaning per project term;
-- architecture decisions citing their business reason;
+- architecture decisions citing their business reason, each thesis and each
+  decision carrying a unique stable id, and each decision naming the thesis ids
+  it serves;
 - a backlog containing only real deferrals, each with reason, practical impact
   and next step, never active progress;
 - E2E scenarios and an acceptance-to-proof mapping;
@@ -42,9 +44,9 @@ proposing changes. Require one deterministic non-mutating aggregate QC command.
 Use mature linters and project-owned configuration for complexity and function/
 module size when the language supports them. Require purpose explanations for
 significant first-party modules, exported APIs, classes, overloads and
-architecture boundaries; trivial accessors and generated glue need no ritual
-prose. A custom checker requires proof that a plugin/config solution is
-impossible.
+architecture boundaries, each naming the architecture decision id it implements;
+trivial accessors and generated glue need no ritual prose. A custom checker
+requires proof that a plugin/config solution is impossible.
 
 Reviewer checks do not mutate. Any diagnostic that can rewrite tracked files
 runs in a disposable location.

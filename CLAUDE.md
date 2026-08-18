@@ -45,32 +45,43 @@ shipped and do use real parsers, because this contract forbids hand-written ones
 
 Every first-party module, exported API, class, architecture boundary and overload
 declaration says **why it exists** — the invariant, responsibility or business
-role it serves, and what becomes wrong if it is deleted. Restating the
-implementation is not a purpose. Trivial accessors and generated glue get no
-ritual prose.
+role it serves, and what becomes wrong if it is deleted. It also names the
+`§A-*` architecture decision it implements, never the business layer directly.
+Restating the implementation is not a purpose. Trivial accessors and generated
+glue get no ritual prose.
 
 ## Knowledge
 
-| File                           | Holds                                                   |
-| ------------------------------ | ------------------------------------------------------- |
-| `docs/business.md`             | the recorded business framing, then why this exists     |
-| `docs/glossary.md`             | the vocabulary, one meaning per term                    |
-| `docs/architecture/`           | boundaries and decisions, each citing a business reason |
-| `docs/backlog.md`              | everything deferred, blocked or knowingly left unfixed  |
-| `docs/e2e.md`                  | what is verified end to end, and by whom                |
-| `docs/backend-capabilities.md` | the supported-backend behavior and companion map        |
-| `docs/acceptance.md`           | each spec criterion against what actually proves it     |
+| File                           | Holds                                                  |
+| ------------------------------ | ------------------------------------------------------ |
+| `docs/business.md`             | the recorded business framing, then why this exists    |
+| `docs/glossary.md`             | the vocabulary, one meaning per term                   |
+| `docs/architecture/`           | decisions, each with its own id and business ids       |
+| `docs/backlog.md`              | everything deferred, blocked or knowingly left unfixed |
+| `docs/e2e.md`                  | what is verified end to end, and by whom               |
+| `docs/backend-capabilities.md` | the supported-backend behavior and companion map       |
+| `docs/acceptance.md`           | each spec criterion against what actually proves it    |
 
 Knowledge is updated in the same change that made it new or false — not
 afterwards.
 
-**The spec is never the only source of user intent.** `docs/business.md` keeps the
-business framing verbatim — the original request and every later user answer,
-opinion, clarification, correction, preference and constraint — because turning a
-conversation into a spec is lossy compression. Every task/spec also carries all of
-those intents verbatim; a summary or a link to the framing does not replace them,
-and each new intent appends to both. See
-`shared/references/methodology.md` section 2.
+**The spec is never the only source of user intent.** The complete verbatim
+ledger — the original request and every later user answer, opinion,
+clarification, correction, preference and constraint — travels with the
+task/spec, because turning a conversation into a spec is lossy compression. A
+summary or a link does not replace that text, and each new intent appends to it.
+`docs/business.md` holds the same intent distilled into stable theses: the
+meaning survives, the wording need not, and only what outlives one
+implementation stays. See `shared/references/methodology.md` section 2.
+
+**Every stable business thesis carries a unique id.** `docs/business.md` gives
+each thesis a `§B-<AREA>-<NN>` anchor. Each architecture decision carries its
+own `§A-<AREA>-<NN>`, names in ordinary prose the theses it serves and says what
+becomes redundant if it is cancelled. A module or symbol purpose names the
+architecture id. Ids are unique, stable and never reused, so `rg` walks the
+chain in both directions. Shipped skill text carries no project ids; the
+non-distributed files and the bundled helper scripts do. See
+`docs/architecture/knowledge-identifiers.md`.
 
 A one-shot `APPROVE`/`DENY` that only authorizes an already named
 production/destructive E2E action or starts an explicitly requested watchdog is

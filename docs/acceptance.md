@@ -20,4 +20,5 @@
 | Pattern watchdog умеет scan по сессиям и безопасный nonblocking nudge.     | Тесты native JSON, stable envelope и cross-invocation deduplication. | W1–W4.                                                       |
 | Knowledge split и semantic Markdown labels корректны.                      | Markdown AST и тесты обязательных документов.                        | Не требуется.                                                |
 | Backlog разобран полностью.                                                | Тесты semantic fields и отсутствия удалённых progress rows.          | Финальные reviewers проверяют все строки.                    |
+| Каждый бизнес-тезис несёт уникальный id, и цепочка знаний не разорвана.    | Тест цепочки знаний в `make mo-qc`.                                  | Не требуется.                                                |
 | Один финальный SHA проходит QC и применимые E2E.                           | `make mo-qc` на этом SHA.                                            | E2E matrix или одобренный reviewers docs-only carry-forward. |

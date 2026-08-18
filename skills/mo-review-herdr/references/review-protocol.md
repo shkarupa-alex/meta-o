@@ -39,8 +39,11 @@ Each reviewer independently:
 4. runs relevant non-mutating checks;
 5. identifies correctness, security, regression, documentation and acceptance
    gaps;
-6. performs the backlog lens below;
-7. returns one complete settled response with candidate SHA, vendor, lens,
+6. checks that the knowledge chain is unbroken: every architecture decision
+   names existing business ids, every significant module names its decision, and
+   no reference dangles;
+7. performs the backlog lens below;
+8. returns one complete settled response with candidate SHA, vendor, lens,
    checks, findings and `PASS`, `FINDINGS` or `UNKNOWN`.
 
 Findings are actionable and cite paths or observable behavior. `PASS` means no
