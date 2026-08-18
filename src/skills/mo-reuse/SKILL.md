@@ -139,7 +139,10 @@ You saw the whole first page. The spec keeps only what a future reader needs.
 
 reuse | extend | build
 
-Chosen solution, rejected alternatives and constraints.
+Chosen solution, rejected alternatives and constraints. Keep the rejected
+alternatives in the spec — implementation regularly shows the chosen option is
+the worse one, and the reason is needed where the work happens. Up to three is
+enough; fewer is fine, three is not a target.
 ```
 
 **build** is a perfectly good decision. A forced reuse that fits badly costs more

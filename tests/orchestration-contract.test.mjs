@@ -62,6 +62,13 @@ test("shared review protocol owns concurrency, diversity, atomic delivery and ba
     assert.match(source, new RegExp(phrase));
   }
   assert.match(source, /Wait until both settled responses are complete before releasing either/);
+  assert.match(
+    source,
+    /significant business intent from the task\/spec and the ledger has\s+reached/,
+  );
+  assert.match(source, /replaces a separate\s+editorial pass/);
+  assert.match(source, /not every remark becomes a thesis/);
+  assert.match(source, /cycle closes when both reviewers return `PASS` on the same SHA/);
 });
 
 test("each fixed backend entry consumes the same shared contracts and its native mechanics", () => {

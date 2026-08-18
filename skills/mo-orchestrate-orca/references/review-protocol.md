@@ -42,8 +42,13 @@ Each reviewer independently:
 6. checks that the knowledge chain is unbroken: every architecture decision
    names existing business ids, every significant module names its decision, and
    no reference dangles;
-7. performs the backlog lens below;
-8. returns one complete settled response with candidate SHA, vendor, lens,
+7. checks that significant business intent from the task/spec and the ledger has
+   reached the project's business framing, and proposes wording for whatever has
+   not, preserving meaning rather than phrasing. This replaces a separate
+   editorial pass. Only intent that outlives this implementation belongs there;
+   not every remark becomes a thesis;
+8. performs the backlog lens below;
+9. returns one complete settled response with candidate SHA, vendor, lens,
    checks, findings and `PASS`, `FINDINGS` or `UNKNOWN`.
 
 Findings are actionable and cite paths or observable behavior. `PASS` means no
@@ -72,6 +77,10 @@ executables or reviewer launchers. File creation or complete-read failure is
 delivery failure. Cleanup is best effort.
 
 The executor owns fixes and a new commit. A new SHA requires two new independent
-reviews. Use judgment rather than finding identifiers, adjudication grammars or
-numeric review-round caps; stop with `needs_attention` only when the loop is no
-longer making progress or a human decision is genuinely required.
+reviews. The cycle closes when both reviewers return `PASS` on the same SHA;
+neither a single verdict nor an orchestrator's opinion that what remains is
+inconsequential substitutes for that agreement. Weigh the cost of another round
+against what it changes in the result, and use judgment rather than finding
+identifiers, adjudication grammars or numeric review-round caps; stop with
+`needs_attention` only when the loop is no longer making progress or a human
+decision is genuinely required.

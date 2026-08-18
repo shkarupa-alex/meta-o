@@ -42,7 +42,8 @@ to the task ledger before implementation continues, and record its settled
 meaning in the project's business framing. The verbatim ledger is the normative
 copy while the task lives; a distilled thesis never replaces it. A thesis that
 settles in the framing carries a unique stable id, so a later decision or module
-can name it. Redact secrets while preserving
+can name it. Reviewers confirm that this transfer happened and propose the
+wording, so no separate editorial pass exists. Redact secrets while preserving
 the sentence's meaning. A one-shot approval that only authorizes an already named
 production/destructive E2E action or starts an explicitly requested watchdog is
 run control: keep only a credential-free, request-bound header in current run
