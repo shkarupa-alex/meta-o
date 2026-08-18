@@ -61,7 +61,9 @@ test("setup checks controls, companions and every harness posture separately", (
 });
 
 test("knowledge policy covers verbatim intent, language, semantic links and backlog fields", () => {
-  assert.match(contract, /original request and every later user intent\s+verbatim/);
+  assert.match(contract, /preserves the meaning of the original request/);
+  assert.match(contract, /every\s+later user intent/);
+  assert.match(contract, /complete verbatim ledger stays with the task or spec/);
   assert.match(contract, /Human-facing project knowledge uses the user's language/);
   assert.match(contract, /label containing the target document's H1 title/);
   assert.match(contract, /mature Markdown AST\/link\s+tool, never a regex Markdown parser/);
