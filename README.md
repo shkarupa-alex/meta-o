@@ -129,7 +129,7 @@ make mo-e2e
 [Зачем существует Meta-O](docs/business.md), [Глоссарий](docs/glossary.md),
 [Возможности backend](docs/backend-capabilities.md),
 [Сквозная проверка](docs/e2e.md), [Карта acceptance](docs/acceptance.md),
-[Бэклог](docs/backlog.md) и
+[Бэклог](docs/backlog.md), [Грабли и команды проекта](docs/papercut.md) и
 [§A-ORCHESTRATION-01 — Скилы и reasoning — слой оркестрации процесса][skills-first].
 
 [skills-first]: docs/architecture/skills-first.md

@@ -61,6 +61,8 @@ glue get no ritual prose.
 | `docs/e2e.md`                  | what is verified end to end, and by whom               |
 | `docs/backend-capabilities.md` | the supported-backend behavior and companion map       |
 | `docs/acceptance.md`           | each spec criterion against what actually proves it    |
+| `docs/papercut.md`             | which command does the routine work, and what failed   |
+| `docs/references/`             | sources and archive, never current requirements        |
 
 Knowledge is updated in the same change that made it new or false — not
 afterwards.
@@ -135,6 +137,9 @@ verifiable increment instead of accumulating the whole task in one commit. Use
 `<type>: <what changed and why>` with `feat`, `fix`, `refactor`, `test`, `docs`, or
 `chore`. Reference an issue or specification when one exists, but neither is
 required.
+
+Do not add an agent-attribution trailer: no `Assisted-by`, no `Co-authored-by`,
+no tool advertisement in the message.
 
 The final verified result is one full Git object ID. Any subsequent commit
 invalidates its review and verification gates.
