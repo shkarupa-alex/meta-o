@@ -3,156 +3,128 @@
 `CLAUDE.md` is a byte-for-byte copy of this file. Change both together, or
 `make mo-qc` fails.
 
-## What this project is
+## Scope and outcomes
 
-Ten agent skills that run a whole feature from a spec to a verified candidate
-commit, using tools that already exist. There is no orchestration or
-provider-proxy CLI, no daemon, orchestration state store or adapter layer. The
-watchdog keeps only the narrow nudge-deduplication digest justified in
-`docs/architecture/watchdog-nudge-deduplication.md`; any broader state needs its
-own named reason in `docs/architecture/`.
+Meta-O is ten agent skills that run a feature from a spec to one verified
+candidate commit by using existing tools. It has no orchestration or
+provider-proxy CLI, daemon, adapter layer or general state store. The only stored
+orchestration-adjacent state is the narrow digest justified by
+[§A-WATCHDOG-01 — Deduplication nudge watchdog хранит один private digest](docs/architecture/watchdog-nudge-deduplication.md).
 
-Everything shipped is Markdown plus three self-contained helper files: the
-bundled `.mjs` settings helper and `.sh` provider-posture probe copied into the
-three orchestration skills, and the pattern watchdog `.sh` copied into
-`mo-watchdog`. The watchdog requires mature `jq` and `flock` controls. The posture
-helper is also copied into `mo-setup`. The build tool and the tests are not
-shipped and do use real parsers, because this contract forbids hand-written ones.
-
-## Desired outcomes
+The shipped product is Markdown plus three self-contained helpers: model
+settings, provider-posture diagnosis and the pattern watchdog. Build tools and
+tests are not shipped.
 
 - A verified result is one full Git SHA. Any new SHA invalidates every gate.
-- Two independent reviews, at least one from a different vendor than the author.
-- A gate whose full verdict cannot be read is `unknown` and is repeated. There is
-  no partial pass.
-- A human is interrupted only for product meaning, an irreversible action,
-  credentials, a subscription change, an unresolvable dispute, or to start the
-  optional watchdog.
+- Two independent reviewers inspect that SHA; at least one uses a different
+  vendor from the author.
+- An unreadable full verdict is `unknown` and is repeated; there is no partial pass.
+- Interrupt a human only for product meaning, irreversible actions, credentials,
+  subscription changes, unresolvable disputes or starting the optional watchdog.
 
-## Architecture
+## Decision hierarchy and architecture
 
-- **Skills and reasoning are the orchestration layer** — see
-  `docs/architecture/skills-first.md`.
-- **Settled final responses come through the backend's own surface only** — never a
-  provider's private transcripts, hooks or session database. See
-  `docs/architecture/settled-final-response.md`.
-- **`shared/` has one source owner; `skills/` is built, never hand-edited** — see
-  `docs/architecture/distribution.md`.
-- No native CLI is wrapped in a proxy script. No manifest, receipt, digest or
-  baseline is created without a named external consumer.
+When wording is ambiguous or a decision must be made, conform first to the
+business requirements in [Зачем существует Meta-O](docs/business.md).
+Architecture and implementation are subordinate to those requirements.
+
+- [§A-ORCHESTRATION-01 — Скилы и reasoning — слой оркестрации процесса](docs/architecture/skills-first.md):
+  skills and reasoning orchestrate; no workflow engine is added.
+- [§A-RESPONSE-01 — Settled final responses остаются на публичных поверхностях backend](docs/architecture/settled-final-response.md):
+  never substitute private transcripts, hooks or session databases.
+- [Один владелец source, самодостаточные generated skills](docs/architecture/distribution.md):
+  `shared/` owns common source and `skills/` is built, never hand-edited.
+- [§A-MEMORY-01 — Уровни знаний связаны уникальными id](docs/architecture/knowledge-identifiers.md):
+  business, decisions, modules and symbols remain traceable.
+
+No native CLI is wrapped in a project proxy. Do not create a manifest, receipt,
+digest or baseline without a named external consumer.
 
 ## Purpose
 
-Every first-party module, exported API, class, architecture boundary and overload
-declaration says **why it exists** — the invariant, responsibility or business
-role it serves, and what becomes wrong if it is deleted. It also names the
-`§A-*` architecture decision it implements, never the business layer directly.
-Restating the implementation is not a purpose. Trivial accessors and generated
-glue get no ritual prose.
+Every first-party module, exported API, class, architecture boundary and
+overload declaration explains why it exists, what invariant or responsibility
+it serves, and what becomes wrong if deleted. It names its `§A-*` decision,
+never the business layer directly. Restating implementation is not purpose;
+trivial accessors and generated glue need no ritual prose.
 
 ## Knowledge
 
-| File                           | Holds                                                  |
-| ------------------------------ | ------------------------------------------------------ |
-| `docs/business.md`             | the recorded business framing, then why this exists    |
-| `docs/glossary.md`             | the vocabulary, one meaning per term                   |
-| `docs/architecture/`           | decisions, each with its own id and business ids       |
-| `docs/backlog.md`              | everything deferred, blocked or knowingly left unfixed |
-| `docs/e2e.md`                  | what is verified end to end, and by whom               |
-| `docs/backend-capabilities.md` | the supported-backend behavior and companion map       |
-| `docs/acceptance.md`           | each acceptance criterion and what actually proves it  |
-| `docs/papercut.md`             | which command does the routine work, and what failed   |
-| `docs/references/`             | sources and archive, never current requirements        |
+| Document                                              | Role                                         |
+| ----------------------------------------------------- | -------------------------------------------- |
+| [Зачем существует Meta-O](docs/business.md)           | stable business framing and reasons          |
+| [meta-o](README.md)                                   | purpose, use, constraints and entry commands |
+| [Глоссарий](docs/glossary.md)                         | one meaning per project term                 |
+| [Карта acceptance](docs/acceptance.md)                | requirements and their actual proof          |
+| [Сквозная проверка](docs/e2e.md)                      | live scenarios and actors                    |
+| [Возможности backend](docs/backend-capabilities.md)   | support boundary and companion map           |
+| [Бэклог](docs/backlog.md)                             | real deferrals, never current progress       |
+| [Грабли и команды проекта](docs/papercut.md)          | routine commands and failed approaches       |
+| [Feature lifecycle](shared/references/methodology.md) | complete orchestration methodology           |
 
-Knowledge is updated in the same change that made it new or false — not
-afterwards.
+`docs/references/` is source material and archive, never current requirements.
+Update knowledge in the same change that made it new or false.
 
 **The spec is never the only source of user intent.** The complete verbatim
-ledger — the original request and every later user answer, opinion,
-clarification, correction, preference and constraint — travels with the
-task/spec, because turning a conversation into a spec is lossy compression. A
-summary or a link does not replace that text, and each new intent appends to it.
-`docs/business.md` holds the same intent distilled into stable theses: the
-meaning survives, the wording need not, and only what outlives one
-implementation stays. See `shared/references/methodology.md` section 2.
+ledger contains the original request and every later answer, opinion,
+clarification, correction, preference and constraint. It travels with the
+task/spec; a summary or a link does not replace that text; each new intent appends to it.
+The business framing holds the same intent distilled into stable theses:
+meaning survives, wording need not, and only durable intent stays.
 
-**Every stable business thesis carries a unique id.** `docs/business.md` gives
-each thesis a `§B-<AREA>-<NN>` anchor. Each architecture decision carries its
-own `§A-<AREA>-<NN>`, names in ordinary prose the theses it serves and says what
-becomes redundant if it is cancelled. A module or symbol purpose names the
-architecture id. Ids are unique, stable and never reused, so `rg` walks the
-chain in both directions. Shipped skill text carries no project ids; the
-non-distributed files and the bundled helper scripts do. See
-`docs/architecture/knowledge-identifiers.md`.
+**Every stable business thesis carries a unique id.** A thesis uses
+`§B-<AREA>-<NN>`; an architecture decision uses `§A-<AREA>-<NN>`, names the
+theses it serves and says what becomes redundant if cancelled. Module and symbol
+purpose names the architecture decision. IDs are unique, stable and never reused.
 
-A one-shot `APPROVE`/`DENY` that only authorizes an already named
-production/destructive E2E action or starts an explicitly requested watchdog is
-run control, not product or deliverable intent. Keep only its credential-free,
-request-bound compact header in current run evidence; never persist its opaque
-body or mutate tracked intent ledgers, because that would invalidate the exact
-candidate the action authorizes. Any accompanying preference, correction or
-scope change is a separate user intent and still appends verbatim to both
-ledgers. See `shared/references/methodology.md` sections 2 and 6.
+User input may come from imperfect dictation. If anomalous wording could
+materially change scope or outcome, ask the user instead of guessing.
+Preserve confirmed intent verbatim; do not rewrite the original ledger entry to
+hide the dictation error.
 
-User input may come from imperfect dictation and contain surprising recognition
-errors. When anomalous wording could materially change scope or outcome, ask the
-user instead of silently guessing a correction. Preserve confirmed intent
-verbatim; do not rewrite the original ledger entry to hide the dictation error.
+Anything postponed, deliberately omitted, blocked or left unfixed goes into
+[Бэклог](docs/backlog.md) with its reason, practical impact and next step.
+Temporary progress and gate state never go there.
 
-**Anything postponed, deliberately not done, blocked, or left unfixed for any
-reason goes into `docs/backlog.md`**, with its reason, its practical impact, and
-the next step if one is known. Current progress and temporary gate state never
-go there.
-
-Human-facing knowledge uses the user's language, inferred from the business
-framing unless the user asks otherwise. Code, identifiers, commands, protocol
-literals and upstream names remain in English.
+Human-facing knowledge uses the user's language. Code, identifiers, commands,
+protocol literals and upstream names remain in English.
 
 ## Commands
 
 ```bash
-make mo-qc          # the authoritative gate: lint, contract, built tree, tests, smoke
-make mo-lint        # markdown + formatting + node --check
+make mo-qc          # authoritative non-mutating aggregate gate
+make mo-lint        # Markdown, formatting, ESLint, syntax and posture self-checks
 make mo-test        # node --test over tests/
-make mo-smoke       # the helper boots and answers, under a throwaway HOME
+make mo-smoke       # helpers boot under a throwaway HOME
 make skills         # rebuild skills/ from src/skills/ + shared/
-make mo-e2e         # prints what an agent must run; exits 2
+make mo-e2e         # print agent-required scenarios and exit 2
 ```
 
-`mo-qc` must never rewrite what it judges. `prettier --write` and any other
-mutating command stay out of it.
-
-Reviewer checks are non-mutating. A diagnostic that can rewrite tracked files
-runs only in an isolated disposable location, never in the frozen candidate
-worktree.
+`mo-qc` and reviewer checks never rewrite the files they judge. Run a
+potentially mutating diagnostic only in an isolated disposable location, never
+in the frozen candidate worktree.
 
 ## Version control
 
-Never develop directly on `main`, `master`, `develop`, or `default`. Create each
-task branch from an up-to-date `develop` using `feature/<short-slug>` and use it for
-the whole task.
+Never develop directly on `main`, `master`, `develop` or `default`. Create
+each task branch from an up-to-date `develop` as `feature/<short-slug>`.
 
-Run the relevant checks before committing. Commit every coherent, independently
-verifiable increment instead of accumulating the whole task in one commit. Use
-`<type>: <what changed and why>` with `feat`, `fix`, `refactor`, `test`, `docs`, or
-`chore`. Reference an issue or specification when one exists, but neither is
-required.
+Run relevant checks before committing. Commit every coherent, independently
+verifiable increment instead of accumulating the whole task. Use
+`<type>: <what changed and why>` with `feat`, `fix`, `refactor`, `test`,
+`docs` or `chore`. Reference an issue or specification when one exists.
 
-Do not add an agent-attribution trailer: no `Assisted-by`, no `Co-authored-by`,
-no tool advertisement in the message.
+Do not add `Assisted-by`, `Co-authored-by` or other agent/tool attribution.
+The final verified result is one full Git object ID; any later commit invalidates
+its reviews and verification.
 
-The final verified result is one full Git object ID. Any subsequent commit
-invalidates its review and verification gates.
+## Repository conventions
 
-## Conventions
-
-- Skill frontmatter uses only `name`, `description`, `license`, `compatibility`,
-  `metadata`, `allowed-tools`. Any other key breaks packaging.
-- A skill's directory name and its `name:` must match.
-- Never edit a file under `skills/` — it is built. Never add a file to
-  `src/skills/<name>/` that shadows one in `shared/`.
-- Prefer a mature tool with a project-owned config over a checker written here. A
-  custom checker needs proof that a plugin or config solution is impossible, in
-  the commit message.
-- If Markdown must be parsed programmatically, use a real AST library. No regex
-  Markdown parsers.
+- Skill frontmatter allows only `name`, `description`, `license`,
+  `compatibility`, `metadata` and `allowed-tools`; directory and `name:`
+  must match.
+- Never edit `skills/`. Never shadow a `shared/` file from
+  `src/skills/<name>/`.
+- Prefer a mature tool with project-owned configuration. A custom checker needs
+  proof in its commit message that a plugin or configuration cannot solve it.
+- Parse Markdown programmatically only with a real AST library, never regex.

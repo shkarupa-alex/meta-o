@@ -76,6 +76,8 @@ test("removed backend and standalone legacy entry names survive only in protecte
 
 test("internal Markdown links resolve and use target H1 titles as labels", () => {
   const documents = [
+    join(ROOT, "AGENTS.md"),
+    join(ROOT, "CLAUDE.md"),
     join(ROOT, "README.md"),
     ...files(join(ROOT, "docs")).filter(
       (path) => extname(path) === ".md" && !path.startsWith(join(ROOT, "docs", "references")),
@@ -120,6 +122,31 @@ test("internal Markdown links resolve and use target H1 titles as labels", () =>
         );
       }
     }
+  }
+});
+
+test("entry contracts link every essential knowledge document", () => {
+  const expected = [
+    "docs/business.md",
+    "README.md",
+    "docs/glossary.md",
+    "docs/acceptance.md",
+    "docs/e2e.md",
+    "docs/backend-capabilities.md",
+    "docs/backlog.md",
+    "docs/papercut.md",
+    "shared/references/methodology.md",
+  ];
+  for (const name of ["AGENTS.md", "CLAUDE.md"]) {
+    const tokens = markdown.parse(readFileSync(join(ROOT, name), "utf8"), {});
+    const links = new Set(
+      tokens
+        .filter((entry) => entry.type === "inline")
+        .flatMap((entry) => entry.children ?? [])
+        .filter((entry) => entry.type === "link_open")
+        .map((entry) => entry.attrGet("href")),
+    );
+    for (const href of expected) assert.ok(links.has(href), `${name}: missing link ${href}`);
   }
 });
 

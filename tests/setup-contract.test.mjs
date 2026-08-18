@@ -84,3 +84,26 @@ test("entry files treat material dictation anomalies as questions, not silent co
   );
   assert.match(agents, /Preserve confirmed intent\s+verbatim/);
 });
+
+test("entry files make business requirements authoritative for decisions", () => {
+  for (const source of [agents, claude]) {
+    assert.match(
+      source,
+      /decision must be made[\s\S]*conform first to the\s+business requirements/,
+    );
+    assert.match(source, /\[Зачем существует Meta-O\]\(docs\/business\.md\)/);
+    assert.match(source, /Architecture and implementation are subordinate/);
+  }
+});
+
+test("entry files preserve the mandatory branch and commit contract", () => {
+  for (const source of [agents, claude]) {
+    assert.match(source, /Never develop directly on `main`, `master`, `develop` or `default`/);
+    assert.match(source, /up-to-date `develop` as `feature\/<short-slug>`/);
+    assert.match(source, /Commit every coherent, independently\s+verifiable increment/);
+    assert.match(source, /`<type>: <what changed and why>`/);
+    for (const type of ["feat", "fix", "refactor", "test", "docs", "chore"])
+      assert.match(source, new RegExp("`" + type + "`"));
+    assert.match(source, /Do not add `Assisted-by`, `Co-authored-by`/);
+  }
+});
