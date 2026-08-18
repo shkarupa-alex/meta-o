@@ -61,8 +61,8 @@ test("methodology preserves product intent but excludes narrow run-control appro
 test("the business framing says where the verbatim ledger lives and what it keeps", () => {
   const business = readFileSync(join(ROOT, "docs", "business.md"), "utf8");
   assert.match(business, /Дословные пользовательские интенты ведутся/);
-  assert.match(business, /вместе с задачей или спекой/);
-  assert.match(business, /сохраняется смысл, а не формулировка/);
+  assert.match(business, /вместе с задачей или\s+спецификацией/);
+  assert.match(business, /сохраняется смысл, а не\s+формулировка/);
 });
 
 test("the architecture layer owns the split between ledger and framing", () => {
