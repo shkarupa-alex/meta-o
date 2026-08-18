@@ -19,9 +19,10 @@ irreversible, credential, subscription, dispute and watchdog boundaries.
 
 ## Decision hierarchy and architecture
 
-When wording is ambiguous or a decision must be made, conform first to the
-business requirements in [Зачем существует Meta-O](docs/business.md).
-Architecture and implementation are subordinate to those requirements.
+Resolve contradictions in this order: business requirements in
+[Зачем существует Meta-O](docs/business.md) → architecture decisions →
+implementation. A lower layer cannot override a higher one; clarify or change
+the lower layer instead.
 
 - [§A-ORCHESTRATION-01 — Скилы и reasoning — слой оркестрации процесса](docs/architecture/skills-first.md)
 - [§A-RESPONSE-01 — Settled final responses остаются на публичных поверхностях backend](docs/architecture/settled-final-response.md)

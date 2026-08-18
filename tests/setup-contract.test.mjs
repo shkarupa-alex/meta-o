@@ -85,14 +85,12 @@ test("entry files treat material dictation anomalies as questions, not silent co
   assert.match(agents, /Preserve confirmed intent\s+verbatim/);
 });
 
-test("entry files make business requirements authoritative for decisions", () => {
+test("entry files define the contradiction-resolution hierarchy", () => {
   for (const source of [agents, claude]) {
-    assert.match(
-      source,
-      /decision must be made[\s\S]*conform first to the\s+business requirements/,
-    );
+    assert.match(source, /Resolve contradictions in this order/);
+    assert.match(source, /business requirements[\s\S]*architecture decisions[\s\S]*implementation/);
     assert.match(source, /\[Зачем существует Meta-O\]\(docs\/business\.md\)/);
-    assert.match(source, /Architecture and implementation are subordinate/);
+    assert.match(source, /lower layer cannot override a higher one/);
   }
 });
 
