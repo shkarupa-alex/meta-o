@@ -26,8 +26,8 @@ Inspect substance, not file presence. A ready project has:
 
 Human-facing project knowledge uses the user's language, inferred from the
 business framing unless the user chooses another. Code, identifiers, commands,
-protocol literals and upstream names remain in their technical language. For a
-Russian-speaking project, write a heading such as `## Установка`, but keep
+protocol literals and upstream names remain in English. For a Russian-speaking
+project, write a heading such as `## Установка`, but keep
 `make mo-qc`, `worker_done`, `needs_attention`, `Herdr` and file paths unchanged.
 In a table, translate explanatory columns such as `Назначение`, while preserving
 API field names and exact state values. Verbatim user intent always keeps its

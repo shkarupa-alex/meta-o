@@ -65,6 +65,7 @@ test("knowledge policy covers verbatim intent, language, semantic links and back
   assert.match(contract, /every\s+later user intent/);
   assert.match(contract, /complete verbatim ledger stays with the task or spec/);
   assert.match(contract, /Human-facing project knowledge uses the user's language/);
+  assert.match(contract, /upstream names remain in English/);
   assert.match(contract, /label containing the target document's H1 title/);
   assert.match(contract, /mature Markdown AST\/link\s+tool, never a regex Markdown parser/);
   for (const field of ["reason", "practical impact", "next step"])

@@ -106,7 +106,7 @@ go there.
 
 Human-facing knowledge uses the user's language, inferred from the business
 framing unless the user asks otherwise. Code, identifiers, commands, protocol
-literals and upstream names retain their technical language.
+literals and upstream names remain in English.
 
 ## Commands
 
