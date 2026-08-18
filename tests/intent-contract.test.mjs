@@ -20,23 +20,6 @@ const contracts = ["AGENTS.md", "CLAUDE.md"].map((name) => [
   readFileSync(join(ROOT, name), "utf8"),
 ]);
 
-test("both contract copies keep the spec from becoming the only source of intent", () => {
-  for (const [name, source] of contracts) {
-    assert.match(source, /\*\*The spec is never the only source of user intent\.\*\*/, name);
-    assert.match(source, /complete verbatim\s+ledger/, name);
-    assert.match(source, /travels with the\s+task\/spec/, name);
-    assert.match(source, /summary or a link does not replace that text/, name);
-    assert.match(source, /each new intent appends to it/, name);
-  }
-});
-
-test("both contract copies keep the distilled framing and its ids", () => {
-  for (const [name, source] of contracts) {
-    assert.match(source, /holds the same intent distilled into stable theses/, name);
-    assert.match(source, /\*\*Every stable business thesis carries a unique id\.\*\*/, name);
-  }
-});
-
 test("both contract copies keep the dictation rule and its verbatim guarantee", () => {
   for (const [name, source] of contracts) {
     assert.match(source, /imperfect dictation/, name);

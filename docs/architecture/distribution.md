@@ -92,6 +92,9 @@ references. Source, build, tests, generated skills и runtime обязаны р�
 
 Бандлинг и запрос каталога у SDK — это §B-PORTABILITY-07: список моделей берут у
 провайдера, а помощник обязан работать на чужой машине.
+Если §A-DISTRIBUTION-02 отменяется, bundled helper, его size ceiling и
+symlink-reproducibility checks становятся лишними; вместо них появляется
+явная runtime-зависимость installed skill.
 
 ## §A-DISTRIBUTION-03 — Замыкание metafile и licences
 
@@ -111,6 +114,9 @@ tree.
 
 Обозримый набор зависимостей и ломающийся build — §B-PORTABILITY-07 и
 §B-LONGEVITY-02: границу проверяет машина, а не глаз ревьюера.
+Если §A-DISTRIBUTION-03 отменяется, metafile audit, licence plan и копии notice
+становятся лишними; перераспределение bundle больше не имеет
+машинно доказанного licence closure.
 
 ## §A-DISTRIBUTION-04 — Provider posture остаётся copied leaf
 
@@ -124,6 +130,9 @@ runtime leaf: наблюдение должно продолжаться, ког
 overload мешают самому orchestrator двигаться дальше.
 
 Копии-листья держат §B-PORTABILITY-07, а отдельный watchdog-лист — §B-UPTIME-02.
+Если §A-DISTRIBUTION-04 отменяется, byte-copy этих helpers и проверки их
+автономности становятся лишними; consumers должны получить другую
+явную runtime-границу.
 
 ## §A-DISTRIBUTION-05 — Почему installable tree называется `skills/`
 
@@ -140,6 +149,8 @@ Authored tree не может занимать discovery path. С apm 0.27.0:
 
 Layout выбран по наблюдаемому поведению apm, а не по догадке о его интерфейсе, —
 §B-PORTABILITY-07.
+Если §A-DISTRIBUTION-05 отменяется, разделение `src/skills/` и `skills/`,
+install-layout tests и защита authored tree от discovery становятся лишними.
 
 ## §A-DISTRIBUTION-06 — Frontmatter
 
@@ -148,6 +159,9 @@ Layout выбран по наблюдаемому поведению apm, а н�
 Packaging portability — deterministic gate, а не привычка maintainer.
 
 Детерминированный gate вместо привычки — §B-LONGEVITY-02.
+Если §A-DISTRIBUTION-06 отменяется, frontmatter allowlist, name-directory check и
+соответствующие packaging tests становятся лишними; portability тогда
+отдаётся целиком внешнему packager.
 
 ## Отклонено
 

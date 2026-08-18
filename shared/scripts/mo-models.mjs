@@ -205,7 +205,7 @@ function readSettings() {
   try {
     parsed = JSON.parse(readFileSync(SETTINGS_FILE, "utf8"));
   } catch (error) {
-    throw new Error(`${SETTINGS_FILE} is not valid JSON: ${error.message}`);
+    throw new Error(`${SETTINGS_FILE} is not valid JSON: ${error.message}`, { cause: error });
   }
   if (parsed?.schemaVersion !== SCHEMA_VERSION) {
     return { settings: parsed ?? emptySettings(), foreignVersion: parsed?.schemaVersion ?? null };

@@ -129,6 +129,7 @@ function decisions() {
 /** Every module whose purpose must name the decision it implements. */
 function modules() {
   return [
+    join(ROOT, "eslint.config.mjs"),
     ...files(join(ROOT, "shared", "scripts")),
     ...files(join(ROOT, "tools")),
     ...files(join(ROOT, "tests")).filter((path) => path.endsWith(".test.mjs")),
@@ -159,6 +160,11 @@ test("every architecture decision carries a unique id and names an existing thes
     const cited = references(decision.body, match[1]).filter((id) => id.startsWith("§B-"));
     assert.ok(cited.length > 0, `${match[1]}: names no business thesis`);
     for (const id of cited) assert.ok(defined.has(id), `${match[1]}: cites unknown ${id}`);
+    assert.match(
+      decision.body,
+      new RegExp(`(?:${match[1]}[\\s\\S]{0,40}отмен|(?:Отмена|Без) ${match[1]})`),
+      `${match[1]}: does not say what becomes redundant if cancelled`,
+    );
   }
   assert.equal(new Set(ids).size, ids.length, "an architecture id is used twice");
   for (const path of files(ARCHITECTURE).filter((entry) => extname(entry) === ".md")) {

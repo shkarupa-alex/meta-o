@@ -22,6 +22,9 @@
 - `prettier` настроен с `proseWrap: preserve`: он не переносит прозу сам. Слишком
   длинную строку поймает `markdownlint` MD013 на сотом столбце, поэтому абзац
   переносят руками.
+- `eslint .` в `make mo-lint` проверяет correctness, complexity, nesting, размеры и
+  public JSDoc. Более свободные ceilings для self-contained model helper и tests записаны
+  явно в `eslint.config.mjs`; `--fix` в gate не входит.
 
 ## Окружение
 
