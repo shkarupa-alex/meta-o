@@ -6,8 +6,9 @@ This document owns the substantive checks performed by `mo-setup`.
 
 Inspect substance, not file presence. A ready project has:
 
-- business framing containing the original request and every later user intent
-  verbatim, with secrets redacted rather than persisted;
+- business framing that preserves the meaning of the original request and every
+  later user intent, with secrets redacted rather than persisted, while the
+  complete verbatim ledger stays with the task or spec that is still alive;
 - one glossary meaning per project term;
 - architecture decisions citing their business reason, each thesis and each
   decision carrying a unique stable id, and each decision naming the thesis ids

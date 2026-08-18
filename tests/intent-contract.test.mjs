@@ -49,8 +49,10 @@ test("methodology preserves product intent but excludes narrow run-control appro
   const methodology = readFileSync(join(ROOT, "shared", "references", "methodology.md"), "utf8");
   assert.match(
     methodology,
-    /append it verbatim\s+to the task ledger and the project's business framing before implementation\s+continues/,
+    /append it verbatim\s+to the task ledger before implementation continues/,
   );
+  assert.match(methodology, /record its settled\s+meaning in the project's business framing/);
+  assert.match(methodology, /verbatim ledger is the normative\s+copy while the task lives/);
   assert.match(methodology, /Redact secrets while preserving\s+the sentence's meaning/);
   assert.match(methodology, /one-shot\s+approval.*is\s+run control/is);
   assert.match(methodology, /do not mutate\s+tracked intent ledgers/);

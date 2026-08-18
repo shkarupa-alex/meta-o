@@ -38,9 +38,11 @@ Before starting agents:
    harnesses are Codex, Claude Code and OpenCode.
 
 If later user input changes product or deliverable meaning, append it verbatim
-to the task ledger and the project's business framing before implementation
-continues. A thesis that settles in the business framing carries a unique stable
-id, so a later decision or module can name it. Redact secrets while preserving
+to the task ledger before implementation continues, and record its settled
+meaning in the project's business framing. The verbatim ledger is the normative
+copy while the task lives; a distilled thesis never replaces it. A thesis that
+settles in the framing carries a unique stable id, so a later decision or module
+can name it. Redact secrets while preserving
 the sentence's meaning. A one-shot approval that only authorizes an already named
 production/destructive E2E action or starts an explicitly requested watchdog is
 run control: keep only a credential-free, request-bound header in current run
@@ -74,6 +76,12 @@ Watch the backend's ordinary public question and permission surfaces while an
 agent works. Answer technical, cheap and reversible choices when changing the
 choice later would cost roughly one agent-hour or less. Record every such
 decision for the final report.
+
+Wait on what the backend actually shows: the agent is no longer working and the
+worktree is clean. Do not wait on a derived sign such as a new SHA appearing or
+a pane counter advancing — a screen is already stale when it is read, and a
+condition that was impossible when it was set blocks the run until timeout.
+Re-read state at a sane interval measured in minutes, not seconds or hours.
 
 Ask the user about product meaning, credentials, subscriptions, irreversible
 actions, and choices that will become difficult, slow or expensive to change.
