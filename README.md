@@ -125,4 +125,6 @@ make mo-e2e
 [Возможности backend](docs/backend-capabilities.md),
 [Сквозная проверка](docs/e2e.md), [Карта acceptance](docs/acceptance.md),
 [Бэклог](docs/backlog.md) и
-[Скилы и reasoning — слой оркестрации процесса](docs/architecture/skills-first.md).
+[§A-ORCHESTRATION-01 — Скилы и reasoning — слой оркестрации процесса][skills-first].
+
+[skills-first]: docs/architecture/skills-first.md

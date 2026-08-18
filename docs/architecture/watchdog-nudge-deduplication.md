@@ -1,4 +1,4 @@
-# Deduplication nudge watchdog хранит один private digest
+# §A-WATCHDOG-01 — Deduplication nudge watchdog хранит один private digest
 
 ## Решение
 
@@ -36,6 +36,12 @@ nudge, когда отдельные запуски watchdog видят неиз
 fingerprint перезапущенный observer не выполнит второе требование. Без parsing по
 сессиям failed session может скрыть working session, а пользователь не узнает,
 какой target требует внимания.
+
+Это §B-UPTIME-02 и §B-UPTIME-03: наблюдатель существует ради лимитов и
+перегрузки, а пропущенное пробуждение считается дефектом. Именованное исключение
+из общего запрета на state store требует §B-CONTROL-04. Если §A-WATCHDOG-01
+отменяется, private digest, его lock и saturation marker удаляются целиком, а
+watchdog возвращается к повторяющемуся nudge на неизменном state.
 
 ## Граница
 

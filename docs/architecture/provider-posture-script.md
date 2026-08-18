@@ -1,4 +1,4 @@
-# У provider posture один probe и обязательные consumers
+# §A-POSTURE-01 — У provider posture один probe и обязательные consumers
 
 ## Решение
 
@@ -25,7 +25,13 @@ Launch posture должен быть детерминированным без w
 Один bounded read-only helper у всех consumers предотвращает drift и не
 превращает личное shell behavior в угаданную prose-рецептуру.
 
-## Граница безопасности
+Решение служит §B-PORTABILITY-01, §B-PORTABILITY-07 и §B-CONTROL-04: работа идёт
+на уже настроенном harness без прокси, чужой интерфейс не угадывается, а лишний
+управляющий слой не заводится. Если §A-POSTURE-01 отменяется, копии probe в
+четырёх скилах и его self-check удаляются, а диагностика возвращается в прозу
+каждого скила по отдельности.
+
+## §A-POSTURE-02 — Граница безопасности
 
 Script владеет одной process group и читает private NUL-framed child evidence.
 Он не печатает provider secrets или bodies alias/functions. Dynamic Claude model
@@ -35,3 +41,6 @@ discovery отдельно использует документированны
 Изменения личного wrapper или shell profile требуют явного подтверждения
 пользователя. Агент не печатает protected definition; пользователь передаёт
 подтверждённое credential-free или redacted представление.
+
+Это §B-HUMAN-01 в конкретном виде: личная конфигурация меняется только с явного
+подтверждения пользователя, а secrets не печатаются вообще.

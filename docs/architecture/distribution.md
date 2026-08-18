@@ -5,6 +5,10 @@ _Control layer обязан оправдывать своё существова
 helper, работающий лишь рядом с ambient `node_modules`, — сломанный standalone
 skill.
 
+Документ владеет решениями §A-DISTRIBUTION-01…§A-DISTRIBUTION-06. Все они служат
+§B-CONTROL-04 и §B-PORTABILITY-07: лишний слой обязан оправдываться, а
+поставляемый помощник обязан работать на чужой машине, а не только на авторской.
+
 ## Противоречие
 
 Два требования тянут в разные стороны:
@@ -16,7 +20,7 @@ skill.
    расходятся; drift методологии или executable protocol хуже отсутствия, потому
    что каждый consumer доверяет своей копии.
 
-## Владение source и generated output
+## §A-DISTRIBUTION-01 — Владение source и generated output
 
 - `shared/references/` владеет канонической общей prose;
 - `shared/scripts/mo-models.mjs` владеет model settings и catalogue source;
@@ -38,7 +42,12 @@ skill.
 из `SHARED_PLAN`. Built tree коммитится, потому что package managers устанавливают
 закоммиченное discovery tree репозитория.
 
-## Самодостаточный model helper
+Один владелец и механическая генерация следуют §B-PORTABILITY-07 и
+§B-LONGEVITY-01: ручная копия расходится и становится второй методологией,
+растущей рядом с первой. Без §A-DISTRIBUTION-01 генерация и byte-check лишние,
+но вместе с ними исчезает доказательство, что установленный скил полон.
+
+## §A-DISTRIBUTION-02 — Самодостаточный model helper
 
 Claude catalogue discovery использует поверхность Agent SDK
 `Query.supportedModels()`, но у установленного skill нет package-install step.
@@ -81,7 +90,10 @@ Disposable clone с symlinked `node_modules` обязан собрать точ�
 references. Source, build, tests, generated skills и runtime обязаны работать без
 `/Users/alex/bitrix/skills`.
 
-## Замыкание metafile и licences
+Бандлинг и запрос каталога у SDK — это §B-PORTABILITY-07: список моделей берут у
+провайдера, а помощник обязан работать на чужой машине.
+
+## §A-DISTRIBUTION-03 — Замыкание metafile и licences
 
 Bundling принимается только с обозримым набором dependencies. Metafile esbuild
 сводится к package roots в `node_modules` и точно сравнивается с явным
@@ -97,7 +109,10 @@ Mapping является явной metadata в `SHARED_PLAN`: новая runtim
 в том же change обновить distribution и licence ownership до появления generated
 tree.
 
-## Provider posture остаётся copied leaf
+Обозримый набор зависимостей и ломающийся build — §B-PORTABILITY-07 и
+§B-LONGEVITY-02: границу проверяет машина, а не глаз ревьюера.
+
+## §A-DISTRIBUTION-04 — Provider posture остаётся copied leaf
 
 `mo-posture.sh` byte-for-byte копируется в три orchestration skills и `mo-setup`.
 Это bounded read-only diagnostic leaf: он не запускает provider, не хранит run
@@ -108,7 +123,9 @@ standalone без runtime shared package или backend adapter.
 runtime leaf: наблюдение должно продолжаться, когда cloud-model limits или
 overload мешают самому orchestrator двигаться дальше.
 
-## Почему installable tree называется `skills/`
+Копии-листья держат §B-PORTABILITY-07, а отдельный watchdog-лист — §B-UPTIME-02.
+
+## §A-DISTRIBUTION-05 — Почему installable tree называется `skills/`
 
 Authored tree не может занимать discovery path. С apm 0.27.0:
 
@@ -121,11 +138,16 @@ Authored tree не может занимать discovery path. С apm 0.27.0:
 `src/skills/`, куда discovery не доходит. Local и remote installation разрешают
 один layout; install tests проверяют whole bundle и single-skill shape.
 
-## Frontmatter
+Layout выбран по наблюдаемому поведению apm, а не по догадке о его интерфейсе, —
+§B-PORTABILITY-07.
+
+## §A-DISTRIBUTION-06 — Frontmatter
 
 Здесь переносимы только `name`, `description`, `license`, `compatibility`,
 `metadata` и `allowed-tools`. Build также требует совпадения `name` с каталогом.
 Packaging portability — deterministic gate, а не привычка maintainer.
+
+Детерминированный gate вместо привычки — §B-LONGEVITY-02.
 
 ## Отклонено
 
