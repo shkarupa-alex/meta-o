@@ -69,5 +69,8 @@ credentials, subscriptions, необратимых действий и доро�
 
 Граница взята из §B-HUMAN-01 и §B-HUMAN-02: человека зовут только туда, где без
 него нельзя, и не назначают нянькой процесса.
+Если §A-ORCHESTRATION-04 отменяется, классификация human-only questions и
+ограничение на старт watchdog становятся лишними; процессу нужен другой
+явный owner решений и прерываний.
 
 [watchdog]: watchdog-nudge-deduplication.md
