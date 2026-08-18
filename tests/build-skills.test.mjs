@@ -1,4 +1,8 @@
-/** Protect the exact ten-skill distribution and shared source ownership. */
+/**
+ * Protect the exact ten-skill distribution and shared source ownership.
+ *
+ * Protects §A-DISTRIBUTION-01, §A-DISTRIBUTION-03 and §A-DISTRIBUTION-06.
+ */
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";

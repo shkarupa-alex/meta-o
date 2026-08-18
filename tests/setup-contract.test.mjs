@@ -1,4 +1,8 @@
-/** Protect substantive project setup and dependency/posture checks. */
+/**
+ * Protect substantive project setup and dependency/posture checks.
+ *
+ * Protects §A-BACKEND-01, §A-POSTURE-01 and §A-MEMORY-01.
+ */
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

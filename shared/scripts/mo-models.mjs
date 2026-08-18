@@ -10,6 +10,10 @@
  * workflow engine this methodology exists without.
  *
  * It never starts an agent and never reads stdin. It is a settings editor.
+ *
+ * Implements §A-DISTRIBUTION-02: the installed helper carries its own runtime
+ * instead of resolving an ambient `node_modules`. Keeping run state out of the
+ * file is §A-ORCHESTRATION-03.
  */
 
 import { spawnSync } from "node:child_process";

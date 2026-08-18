@@ -2,6 +2,9 @@
 # Observe public backend state without depending on cloud-model inference.
 # The helper exists because the orchestrator itself may be stalled by an API
 # limit or overload; without an external observer no actor can notify the user.
+#
+# Implements §A-WATCHDOG-01: one private per-locator digest suppresses a repeated
+# nudge while native state is unchanged, and nothing else is stored.
 
 set -u
 

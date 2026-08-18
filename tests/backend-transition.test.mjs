@@ -1,4 +1,8 @@
-/** Protect the hard backend cutover, knowledge rules, and watchdog helper. */
+/**
+ * Protect the hard backend cutover, knowledge rules, and watchdog helper.
+ *
+ * Protects §A-BACKEND-01, §A-MEMORY-01 and §A-WATCHDOG-01.
+ */
 
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";

@@ -18,6 +18,10 @@
  * lives under `src/` precisely so discovery cannot reach it.
  *
  * This is a build tool, not a runtime. Nothing installed imports it.
+ *
+ * Implements §A-DISTRIBUTION-01: one source owner, mechanical generation and a
+ * byte-exact `--check`. It also enforces §A-DISTRIBUTION-02 bundling,
+ * §A-DISTRIBUTION-03 licence closure and the §A-DISTRIBUTION-06 frontmatter gate.
  */
 
 import {

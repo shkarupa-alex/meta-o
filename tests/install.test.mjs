@@ -1,4 +1,8 @@
-/** Prove that apm discovers the generated ten-skill tree and standalone units. */
+/**
+ * Prove that apm discovers the generated ten-skill tree and standalone units.
+ *
+ * Protects §A-DISTRIBUTION-05 and §A-DISTRIBUTION-01.
+ */
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";

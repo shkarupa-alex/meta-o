@@ -5,6 +5,8 @@
  * tested by import. Everything that touches the settings file is tested through
  * the real CLI with HOME pointed at a temporary directory, because "does not
  * corrupt the user's settings" is a property of the process, not of a function.
+ *
+ * Protects §A-DISTRIBUTION-02.
  */
 
 import assert from "node:assert/strict";

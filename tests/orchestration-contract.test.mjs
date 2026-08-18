@@ -1,4 +1,9 @@
-/** Deterministic checks for the shared lifecycle and backend-specific mechanics. */
+/**
+ * Deterministic checks for the shared lifecycle and backend-specific mechanics.
+ *
+ * Protects §A-ORCHESTRATION-01, §A-ORCHESTRATION-02, §A-RESPONSE-01 and
+ * §A-RESPONSE-02.
+ */
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

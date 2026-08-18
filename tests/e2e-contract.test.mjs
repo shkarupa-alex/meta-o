@@ -1,4 +1,9 @@
-/** Bind agent-required verification docs, acceptance mapping and Make entry point. */
+/**
+ * Bind agent-required verification docs, acceptance mapping and Make entry point.
+ *
+ * Protects §A-ORCHESTRATION-03: a gate belongs to one SHA and its evidence is
+ * either complete or unknown.
+ */
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
