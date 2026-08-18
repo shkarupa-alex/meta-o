@@ -212,6 +212,20 @@ test("every first-party module names a decision and never the business layer", (
   }
 });
 
+test("a byte-copied helper names its owning project beside every id", () => {
+  // These headers install into foreign projects, where a bare id resolves to nothing.
+  for (const name of ["mo-posture.sh", "mo-watchdog.sh"]) {
+    const source = header(join(ROOT, "shared", "scripts", name));
+    const ids = references(source, name).filter((id) => id.startsWith("§A-"));
+    assert.ok(ids.length > 0, `${name}: purpose names no architecture decision`);
+    assert.equal(
+      source.match(/meta-o §A-/g)?.length ?? 0,
+      ids.length,
+      `${name}: an id travels without naming the project that owns it`,
+    );
+  }
+});
+
 test("distributed skill text carries no project ids", () => {
   const shipped = [
     ...files(join(ROOT, "skills")),

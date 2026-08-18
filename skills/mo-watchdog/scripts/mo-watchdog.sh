@@ -3,8 +3,10 @@
 # The helper exists because the orchestrator itself may be stalled by an API
 # limit or overload; without an external observer no actor can notify the user.
 #
-# Implements §A-WATCHDOG-01: one private per-locator digest suppresses a repeated
-# nudge while native state is unchanged, and nothing else is stored.
+# Implements meta-o §A-WATCHDOG-01: one private per-locator digest suppresses a
+# repeated nudge while native state is unchanged, and nothing else is stored.
+# The id is provenance of this file's owning repository, not a reference the
+# installing project has to resolve.
 
 set -u
 

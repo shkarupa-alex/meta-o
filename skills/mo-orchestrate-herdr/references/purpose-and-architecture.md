@@ -93,8 +93,10 @@ mechanically, so each one carries a stable identifier and names the layer above.
 
 Presence, uniqueness and resolution belong in the project's own blocking gate,
 parsed with a real Markdown AST. Ids belong to the project that owns those
-documents: text a project distributes to others must not carry ids the consumer
-will never be able to resolve.
+documents: distributed text must not carry a bare id the consumer cannot
+resolve. A source file copied verbatim into a distribution may keep its id as
+provenance, and then the id names its owning project, so a consumer reads a
+foreign coordinate instead of a dangling local reference.
 
 ## 6. Documentation that is a program's input
 

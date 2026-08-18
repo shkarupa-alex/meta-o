@@ -60,7 +60,7 @@ glue get no ritual prose.
 | `docs/backlog.md`              | everything deferred, blocked or knowingly left unfixed |
 | `docs/e2e.md`                  | what is verified end to end, and by whom               |
 | `docs/backend-capabilities.md` | the supported-backend behavior and companion map       |
-| `docs/acceptance.md`           | each spec criterion against what actually proves it    |
+| `docs/acceptance.md`           | each acceptance criterion and what actually proves it  |
 | `docs/papercut.md`             | which command does the routine work, and what failed   |
 | `docs/references/`             | sources and archive, never current requirements        |
 
