@@ -44,3 +44,6 @@ discovery отдельно использует документированны
 
 Это §B-HUMAN-01 в конкретном виде: личная конфигурация меняется только с явного
 подтверждения пользователя, а secrets не печатаются вообще.
+Если §A-POSTURE-02 отменяется, private evidence isolation, process-group
+cleanup и запрет на печать definitions становятся лишними; такой probe больше
+нельзя считать безопасным для personal configuration.

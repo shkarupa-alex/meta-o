@@ -42,7 +42,7 @@ test("setup inspects project substance and isolates tracked repair", () => {
 test("setup checks controls, companions and every harness posture separately", () => {
   for (const pair of [
     ["`herdr` plus `herdr`", /herdr/],
-    ["`orca`\/`orca-cli` plus upstream `orchestration`", /orchestration/],
+    ["`orca`/`orca-cli` plus upstream `orchestration`", /orchestration/],
     ["`paseo` plus upstream\\s+`paseo`", /paseo/],
   ])
     assert.match(setup, new RegExp(pair[0]));
@@ -83,4 +83,25 @@ test("entry files treat material dictation anomalies as questions, not silent co
     /imperfect dictation[\s\S]*materially change scope or outcome[\s\S]*ask the\s+user/,
   );
   assert.match(agents, /Preserve confirmed intent\s+verbatim/);
+});
+
+test("entry files define the contradiction-resolution hierarchy", () => {
+  for (const source of [agents, claude]) {
+    assert.match(source, /Resolve contradictions in this order/);
+    assert.match(source, /business requirements[\s\S]*architecture decisions[\s\S]*implementation/);
+    assert.match(source, /\[Зачем существует Meta-O\]\(docs\/business\.md\)/);
+    assert.match(source, /lower layer cannot override a higher one/);
+  }
+});
+
+test("entry files preserve the mandatory branch and commit contract", () => {
+  for (const source of [agents, claude]) {
+    assert.match(source, /Never develop directly on `main`, `master`, `develop` or `default`/);
+    assert.match(source, /up-to-date `develop` as `feature\/<short-slug>`/);
+    assert.match(source, /Commit every coherent, independently\s+verifiable increment/);
+    assert.match(source, /`<type>: <what changed and why>`/);
+    for (const type of ["feat", "fix", "refactor", "test", "docs", "chore"])
+      assert.match(source, new RegExp("`" + type + "`"));
+    assert.match(source, /Do not add `Assisted-by`, `Co-authored-by`/);
+  }
 });
