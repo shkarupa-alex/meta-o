@@ -129,6 +129,7 @@ function decisions() {
 /** Every module whose purpose must name the decision it implements. */
 function modules() {
   return [
+    join(ROOT, "eslint.config.mjs"),
     ...files(join(ROOT, "shared", "scripts")),
     ...files(join(ROOT, "tools")),
     ...files(join(ROOT, "tests")).filter((path) => path.endsWith(".test.mjs")),

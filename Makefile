@@ -14,6 +14,7 @@ mo-qc: mo-lint contract skills-check mo-test mo-smoke
 mo-lint:
 	npx --no-install markdownlint-cli2
 	npx --no-install prettier --check .
+	npx --no-install eslint .
 	node --check shared/scripts/mo-models.mjs
 	node --check skills/mo-orchestrate-herdr/scripts/mo-models.mjs
 	node --check skills/mo-orchestrate-orca/scripts/mo-models.mjs

@@ -42,7 +42,7 @@ test("setup inspects project substance and isolates tracked repair", () => {
 test("setup checks controls, companions and every harness posture separately", () => {
   for (const pair of [
     ["`herdr` plus `herdr`", /herdr/],
-    ["`orca`\/`orca-cli` plus upstream `orchestration`", /orchestration/],
+    ["`orca`/`orca-cli` plus upstream `orchestration`", /orchestration/],
     ["`paseo` plus upstream\\s+`paseo`", /paseo/],
   ])
     assert.match(setup, new RegExp(pair[0]));
