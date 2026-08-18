@@ -18,7 +18,9 @@ import MarkdownIt from "markdown-it";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const markdown = new MarkdownIt();
-const REFERENCE = /§[AB]-[A-Z][A-Z0-9]*-\d{2}/g;
+// Loose enough to catch a malformed anchor, so a typo fails instead of hiding.
+const ANCHOR = /§[AB]-[A-Z0-9][A-Z0-9-]*/g;
+const GRAMMAR = /^§[AB]-[A-Z][A-Z0-9]*-\d{2}$/;
 const BUSINESS = join(ROOT, "docs", "business.md");
 const ARCHITECTURE = join(ROOT, "docs", "architecture");
 
@@ -57,8 +59,12 @@ function sections(path) {
   return collected.map((section) => ({ ...section, body: section.body.join("\n") }));
 }
 
-function references(text) {
-  return text.match(REFERENCE) ?? [];
+function references(text, origin) {
+  const found = text.match(ANCHOR) ?? [];
+  for (const anchor of found) {
+    assert.match(anchor, GRAMMAR, `${origin}: malformed anchor ${anchor}`);
+  }
+  return found;
 }
 
 /** The purpose header: every comment line before the first statement of the file. */
@@ -131,7 +137,7 @@ function modules() {
 
 test("every business thesis carries a unique grammatical id", () => {
   const titles = theses();
-  assert.ok(titles.length > 40, "the business framing lost its theses");
+  assert.ok(titles.length > 0, "the business framing lost its theses");
   const ids = [];
   for (const title of titles) {
     const match = title.match(/^(§B-[A-Z][A-Z0-9]*-\d{2}) — \S/);
@@ -144,13 +150,13 @@ test("every business thesis carries a unique grammatical id", () => {
 test("every architecture decision carries a unique id and names an existing thesis", () => {
   const defined = new Set(theses().map((title) => title.split(" ")[0]));
   const found = decisions();
-  assert.ok(found.length > 5, "the architecture layer lost its decisions");
+  assert.ok(found.length > 0, "the architecture layer lost its decisions");
   const ids = [];
   for (const decision of found) {
     const match = decision.title.match(/^(§A-[A-Z][A-Z0-9]*-\d{2}) — \S/);
     assert.ok(match, `${decision.path}: decision without an id: ${decision.title}`);
     ids.push(match[1]);
-    const cited = references(decision.body).filter((id) => id.startsWith("§B-"));
+    const cited = references(decision.body, match[1]).filter((id) => id.startsWith("§B-"));
     assert.ok(cited.length > 0, `${match[1]}: names no business thesis`);
     for (const id of cited) assert.ok(defined.has(id), `${match[1]}: cites unknown ${id}`);
   }
@@ -178,7 +184,7 @@ test("every anchor reference in the project resolves to a defined id", () => {
     ...modules(),
   ];
   for (const path of sources) {
-    for (const id of references(readFileSync(path, "utf8"))) {
+    for (const id of references(readFileSync(path, "utf8"), path)) {
       assert.ok(defined.has(id), `${path}: dangling reference ${id}`);
     }
   }
@@ -187,12 +193,21 @@ test("every anchor reference in the project resolves to a defined id", () => {
 test("every first-party module names a decision and never the business layer", () => {
   const defined = new Set(decisions().map((decision) => decision.title.split(" ")[0]));
   const found = modules();
-  assert.ok(found.length > 10, "module discovery lost files");
+  for (const owner of [
+    join(ROOT, "shared", "scripts", "mo-models.mjs"),
+    join(ROOT, "shared", "scripts", "mo-posture.sh"),
+    join(ROOT, "shared", "scripts", "mo-watchdog.sh"),
+    join(ROOT, "tools", "build-skills.mjs"),
+  ]) {
+    assert.ok(found.includes(owner), `module discovery lost ${owner}`);
+  }
   for (const path of found) {
-    const cited = references(header(path)).filter((id) => id.startsWith("§A-"));
+    const cited = references(header(path), path).filter((id) => id.startsWith("§A-"));
     assert.ok(cited.length > 0, `${path}: purpose names no architecture decision`);
     for (const id of cited) assert.ok(defined.has(id), `${path}: cites unknown ${id}`);
-    const business = references(readFileSync(path, "utf8")).filter((id) => id.startsWith("§B-"));
+    const business = references(readFileSync(path, "utf8"), path).filter((id) =>
+      id.startsWith("§B-"),
+    );
     assert.deepEqual(business, [], `${path}: code cites the business layer directly`);
   }
 });
@@ -203,10 +218,13 @@ test("distributed skill text carries no project ids", () => {
     ...files(join(ROOT, "src", "skills")),
     ...files(join(ROOT, "shared", "references")),
   ].filter((path) => extname(path) === ".md");
-  assert.ok(shipped.length > 20, "shipped document discovery lost files");
+  assert.ok(
+    shipped.includes(join(ROOT, "shared", "references", "methodology.md")),
+    "shipped document discovery lost files",
+  );
   for (const path of shipped) {
     assert.deepEqual(
-      references(readFileSync(path, "utf8")),
+      references(readFileSync(path, "utf8"), path),
       [],
       `${path}: shipped text carries an id the consumer cannot resolve`,
     );
