@@ -60,7 +60,6 @@ test("removed backend and standalone legacy entry names survive only in protecte
     files(join(ROOT, name)),
   );
   for (const path of roots) {
-    if (path === join(ROOT, "docs", "business.md")) continue;
     if (path.startsWith(join(ROOT, "docs", "references"))) continue;
     const source = readFileSync(path, "utf8");
     assert.doesNotMatch(
@@ -85,9 +84,7 @@ test("internal Markdown links resolve and use target H1 titles as labels", () =>
     ...files(join(ROOT, "skills")).filter(
       (path) => extname(path) === ".md" && !path.split("/").includes("licenses"),
     ),
-    join(ROOT, "spec", "2026-08-14-backend-review-transition-final", "spec.md"),
-    join(ROOT, "spec", "2026-08-14-backend-review-transition-final", "user-intent.md"),
-  ].filter((path) => path !== join(ROOT, "docs", "business.md"));
+  ];
 
   for (const path of documents) {
     const tokens = markdown.parse(readFileSync(path, "utf8"), {});

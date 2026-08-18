@@ -1,4 +1,12 @@
-/** Protect the final task's complete verbatim ledger in both normative locations. */
+/**
+ * Protect how user intent survives: verbatim with the task, distilled in the framing.
+ *
+ * The finished feature's own ledger left the repository together with its spec,
+ * so these checks bind the rule to the permanent documentation instead of to one
+ * historical conversation, which is the only part that outlives an implementation.
+ *
+ * Protects §A-MEMORY-02.
+ */
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -6,136 +14,35 @@ import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import MarkdownIt from "markdown-it";
-
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const markdown = new MarkdownIt();
-const intentPath = join(
-  ROOT,
-  "spec",
-  "2026-08-14-backend-review-transition-final",
-  "user-intent.md",
-);
-const businessPath = join(ROOT, "docs", "business.md");
+const contracts = ["AGENTS.md", "CLAUDE.md"].map((name) => [
+  name,
+  readFileSync(join(ROOT, name), "utf8"),
+]);
 
-function blockquotes(source) {
-  const records = [];
-  let depth = 0;
-  let current = [];
-  for (const token of markdown.parse(source, {})) {
-    if (token.type === "blockquote_open") {
-      if (depth === 0) current = [];
-      depth += 1;
-    } else if (token.type === "blockquote_close") {
-      depth -= 1;
-      if (depth === 0) records.push(current.join("\n"));
-    } else if (depth > 0 && token.type === "inline") {
-      current.push(token.content);
-    }
-  }
-  return records;
-}
-
-function fencedText(source) {
-  return markdown
-    .parse(source, {})
-    .filter((token) => token.type === "fence" && token.info.trim() === "text")
-    .map((token) => token.content);
-}
-
-test("the complete final ledger appears byte-semantically and in order in business framing", () => {
-  const ledger = blockquotes(readFileSync(intentPath, "utf8"));
-  const business = blockquotes(readFileSync(businessPath, "utf8"));
-  assert.ok(ledger.length > 20, "the approved conversation was unexpectedly shortened");
-  let businessIndex = 0;
-  for (const record of ledger) {
-    businessIndex = business.indexOf(record, businessIndex);
-    assert.notEqual(businessIndex, -1, `missing verbatim intent: ${record.slice(0, 80)}`);
-    businessIndex += 1;
+test("both contract copies keep the spec from becoming the only source of intent", () => {
+  for (const [name, source] of contracts) {
+    assert.match(source, /\*\*The spec is never the only source of user intent\.\*\*/, name);
+    assert.match(source, /complete verbatim\s+ledger/, name);
+    assert.match(source, /travels with the\s+task\/spec/, name);
+    assert.match(source, /summary or a link does not replace that text/, name);
+    assert.match(source, /each new intent appends to it/, name);
   }
 });
 
-test("the current implementation request and no-workflow-skill preference are recorded twice", () => {
-  const exact =
-    "реализуй spec/2026-08-14-backend-review-transition-final/spec.md , вот тут мои интенты spec/2026-08-14-backend-review-transition-final/user-intent.md (при реализации скилы вроде mo-herdr тебе не нужно использовать)";
-  for (const path of [intentPath, businessPath])
-    assert.match(
-      readFileSync(path, "utf8"),
-      new RegExp(exact.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
-    );
-});
-
-test("the complete latest review is duplicated byte-for-byte in both intent ledgers", () => {
-  const intentReviews = fencedText(readFileSync(intentPath, "utf8"));
-  const businessReviews = fencedText(readFileSync(businessPath, "utf8"));
-  const latest = intentReviews.find((record) => record.startsWith("ниже 2 ревью\n"));
-  assert.match(latest, /^ниже 2 ревью\n/);
-  assert.match(latest, /Nudge watchdog для Orca не срабатывает никогда/);
-  assert.ok(businessReviews.includes(latest));
-});
-
-test("the latest acceptance review is duplicated byte-for-byte in both intent ledgers", () => {
-  const intentReviews = fencedText(readFileSync(intentPath, "utf8"));
-  const businessReviews = fencedText(readFileSync(businessPath, "utf8"));
-  const latest = intentReviews.find((record) =>
-    record.startsWith("1. [P1] Feature всё ещё не удовлетворяет собственному acceptance.\n"),
-  );
-  assert.match(latest, /Paseo nudge не проверяет соответствие ответа авторизованному locator/);
-  assert.match(latest, /B8\/B9[\s\S]*действительно прошли\?/);
-  assert.ok(businessReviews.includes(latest));
-});
-
-test("the reviewer-instance clarification is recorded twice", () => {
-  const exact =
-    "наши скилы каким-то образом намекают на то что для ревьюеров нужно создавать sh-скрипты и их выполнять? я подразумевал что ревьюеры будут запускаться как инстансы клода/кодекса и оркестратор будет им передавать текст прямо в поле ввода";
-  for (const path of [intentPath, businessPath])
-    assert.ok(readFileSync(path, "utf8").includes(exact));
-});
-
-test("the native reviewer launch and file-path clarification is recorded twice", () => {
-  const exact =
-    "оркестратор может передавать и путь к файлу с ревью/заданием - это не запрещено\nно вызов клода/кодекса должен быть не из sh-скрипта а нативно внутри терминала/панели бекенда (herdr/orca/paseo)";
-  for (const path of [intentPath, businessPath]) {
-    assert.ok(blockquotes(readFileSync(path, "utf8")).includes(exact));
+test("both contract copies keep the distilled framing and its ids", () => {
+  for (const [name, source] of contracts) {
+    assert.match(source, /holds the same intent distilled into stable theses/, name);
+    assert.match(source, /\*\*Every stable business thesis carries a unique id\.\*\*/, name);
   }
 });
 
-test("the decision to finish all three backend routes is recorded twice", () => {
-  for (const path of [intentPath, businessPath]) {
-    assert.ok(blockquotes(readFileSync(path, "utf8")).includes("добивай"));
+test("both contract copies keep the dictation rule and its verbatim guarantee", () => {
+  for (const [name, source] of contracts) {
+    assert.match(source, /imperfect dictation/, name);
+    assert.match(source, /Preserve confirmed intent\s+verbatim/, name);
+    assert.match(source, /do not rewrite the original ledger entry/, name);
   }
-});
-
-test("the latest Herdr and reviewer-load findings are duplicated byte-for-byte", () => {
-  const intentReviews = fencedText(readFileSync(intentPath, "utf8"));
-  const businessReviews = fencedText(readFileSync(businessPath, "utf8"));
-  const latest = intentReviews.find((record) =>
-    record.startsWith("ниже будут еще замечания от ревью"),
-  );
-  assert.match(latest, /Watchdog scan не сканирует все сессии\/вкладки\/панели/);
-  assert.match(latest, /квалификация Paseo не выдерживает реальной нагрузки ревьюера/);
-  assert.match(latest, /дай мне промпт которым запустить проверку/);
-  assert.ok(businessReviews.includes(latest));
-});
-
-test("the latest acceptance and typed-classification review is recorded twice", () => {
-  const intentReviews = fencedText(readFileSync(intentPath, "utf8"));
-  const businessReviews = fencedText(readFileSync(businessPath, "utf8"));
-  const latest = intentReviews.find((record) =>
-    record.startsWith("1. [P1] Feature всё ещё не проходит обязательный acceptance"),
-  );
-  assert.match(latest, /backend\/kind-specific проекции/);
-  assert.match(latest, /Мелкий рассинхрон в точке входа/);
-  assert.ok(businessReviews.includes(latest));
-});
-
-test("the request to file and link upstream issues is recorded twice", () => {
-  const intentReviews = fencedText(readFileSync(intentPath, "utf8"));
-  const businessReviews = fencedText(readFileSync(businessPath, "utf8"));
-  const latest = intentReviews.find((record) => record.startsWith("давай поступим так"));
-  assert.match(latest, /создай issues на английском/);
-  assert.match(latest, /используй gh/);
-  assert.ok(businessReviews.includes(latest));
 });
 
 test("methodology preserves product intent but excludes narrow run-control approvals", () => {
@@ -144,7 +51,24 @@ test("methodology preserves product intent but excludes narrow run-control appro
     methodology,
     /append it verbatim\s+to the task ledger and the project's business framing before implementation\s+continues/,
   );
-  assert.match(methodology, /Redact secrets while preserving the sentence's meaning/);
-  assert.match(methodology, /one-shot\s+approval.*is run control/is);
+  assert.match(methodology, /Redact secrets while preserving\s+the sentence's meaning/);
+  assert.match(methodology, /one-shot\s+approval.*is\s+run control/is);
   assert.match(methodology, /do not mutate\s+tracked intent ledgers/);
+});
+
+test("the business framing says where the verbatim ledger lives and what it keeps", () => {
+  const business = readFileSync(join(ROOT, "docs", "business.md"), "utf8");
+  assert.match(business, /Дословные пользовательские интенты ведутся/);
+  assert.match(business, /вместе с задачей или спекой/);
+  assert.match(business, /сохраняется смысл, а не формулировка/);
+});
+
+test("the architecture layer owns the split between ledger and framing", () => {
+  const decision = readFileSync(
+    join(ROOT, "docs", "architecture", "knowledge-identifiers.md"),
+    "utf8",
+  );
+  assert.match(decision, /§A-MEMORY-02 — Дословный ledger живёт с задачей/);
+  assert.match(decision, /нормативен для исполнителя и ревьюеров/);
+  assert.match(decision, /Если §A-MEMORY-02 отменяется/);
 });
