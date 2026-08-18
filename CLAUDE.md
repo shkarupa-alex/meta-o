@@ -6,21 +6,16 @@
 ## Scope and outcomes
 
 Meta-O is ten agent skills that run a feature from a spec to one verified
-candidate commit by using existing tools. It has no orchestration or
-provider-proxy CLI, daemon, adapter layer or general state store. The only stored
-orchestration-adjacent state is the narrow digest justified by
+candidate commit. Skills and reasoning orchestrate the work; the project adds
+no workflow engine or general state store. See
+[§A-ORCHESTRATION-01 — Скилы и reasoning — слой оркестрации процесса](docs/architecture/skills-first.md)
+and the narrow state exception in
 [§A-WATCHDOG-01 — Deduplication nudge watchdog хранит один private digest](docs/architecture/watchdog-nudge-deduplication.md).
 
-The shipped product is Markdown plus three self-contained helpers: model
-settings, provider-posture diagnosis and the pattern watchdog. Build tools and
-tests are not shipped.
-
-- A verified result is one full Git SHA. Any new SHA invalidates every gate.
-- Two independent reviewers inspect that SHA; at least one uses a different
-  vendor from the author.
-- An unreadable full verdict is `unknown` and is repeated; there is no partial pass.
-- Interrupt a human only for product meaning, irreversible actions, credentials,
-  subscription changes, unresolvable disputes or starting the optional watchdog.
+Under [Feature lifecycle](shared/references/methodology.md), one full Git SHA must
+pass QC, two independent vendor-diverse reviews and applicable E2E. An unreadable
+verdict is `unknown`, and humans are interrupted only at the named product,
+irreversible, credential, subscription, dispute and watchdog boundaries.
 
 ## Decision hierarchy and architecture
 
@@ -28,25 +23,19 @@ When wording is ambiguous or a decision must be made, conform first to the
 business requirements in [Зачем существует Meta-O](docs/business.md).
 Architecture and implementation are subordinate to those requirements.
 
-- [§A-ORCHESTRATION-01 — Скилы и reasoning — слой оркестрации процесса](docs/architecture/skills-first.md):
-  skills and reasoning orchestrate; no workflow engine is added.
-- [§A-RESPONSE-01 — Settled final responses остаются на публичных поверхностях backend](docs/architecture/settled-final-response.md):
-  never substitute private transcripts, hooks or session databases.
-- [Один владелец source, самодостаточные generated skills](docs/architecture/distribution.md):
-  `shared/` owns common source and `skills/` is built, never hand-edited.
-- [§A-MEMORY-01 — Уровни знаний связаны уникальными id](docs/architecture/knowledge-identifiers.md):
-  business, decisions, modules and symbols remain traceable.
+- [§A-ORCHESTRATION-01 — Скилы и reasoning — слой оркестрации процесса](docs/architecture/skills-first.md)
+- [§A-RESPONSE-01 — Settled final responses остаются на публичных поверхностях backend](docs/architecture/settled-final-response.md)
+- [Один владелец source, самодостаточные generated skills](docs/architecture/distribution.md)
+- [§A-MEMORY-01 — Уровни знаний связаны уникальными id](docs/architecture/knowledge-identifiers.md)
 
 No native CLI is wrapped in a project proxy. Do not create a manifest, receipt,
 digest or baseline without a named external consumer.
 
 ## Purpose
 
-Every first-party module, exported API, class, architecture boundary and
-overload declaration explains why it exists, what invariant or responsibility
-it serves, and what becomes wrong if deleted. It names its `§A-*` decision,
-never the business layer directly. Restating implementation is not purpose;
-trivial accessors and generated glue need no ritual prose.
+Significant first-party modules and public symbols explain why they exist and
+name their `§A-*` decision; see
+[Purpose and architecture contract](shared/references/purpose-and-architecture.md).
 
 ## Knowledge
 
@@ -64,18 +53,6 @@ trivial accessors and generated glue need no ritual prose.
 
 `docs/references/` is source material and archive, never current requirements.
 Update knowledge in the same change that made it new or false.
-
-**The spec is never the only source of user intent.** The complete verbatim
-ledger contains the original request and every later answer, opinion,
-clarification, correction, preference and constraint. It travels with the
-task/spec; a summary or a link does not replace that text; each new intent appends to it.
-The business framing holds the same intent distilled into stable theses:
-meaning survives, wording need not, and only durable intent stays.
-
-**Every stable business thesis carries a unique id.** A thesis uses
-`§B-<AREA>-<NN>`; an architecture decision uses `§A-<AREA>-<NN>`, names the
-theses it serves and says what becomes redundant if cancelled. Module and symbol
-purpose names the architecture decision. IDs are unique, stable and never reused.
 
 User input may come from imperfect dictation. If anomalous wording could
 materially change scope or outcome, ask the user instead of guessing.

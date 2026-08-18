@@ -136,6 +136,7 @@ test("entry contracts link every essential knowledge document", () => {
     "docs/backlog.md",
     "docs/papercut.md",
     "shared/references/methodology.md",
+    "shared/references/purpose-and-architecture.md",
   ];
   for (const name of ["AGENTS.md", "CLAUDE.md"]) {
     const tokens = markdown.parse(readFileSync(join(ROOT, name), "utf8"), {});
