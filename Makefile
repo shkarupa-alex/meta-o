@@ -15,9 +15,12 @@ mo-lint:
 	npx --no-install markdownlint-cli2
 	npx --no-install prettier --check .
 	node --check shared/scripts/mo-models.mjs
-	node --check skills/mo-herdr/scripts/mo-models.mjs
+	node --check skills/mo-orchestrate-herdr/scripts/mo-models.mjs
+	node --check skills/mo-orchestrate-orca/scripts/mo-models.mjs
+	node --check skills/mo-orchestrate-paseo/scripts/mo-models.mjs
 	node --check tools/build-skills.mjs
 	bash -n shared/scripts/mo-posture.sh
+	bash -n shared/scripts/mo-watchdog.sh
 	shared/scripts/mo-posture.sh --self-check --shell all
 
 format:
@@ -47,7 +50,7 @@ mo-smoke:
 	@set -e; smoke_dir=$$(mktemp -d); trap 'rm -rf "$$smoke_dir"' 0 HUP INT TERM; \
 		HOME=$$smoke_dir node shared/scripts/mo-models.mjs --help > /dev/null; \
 		HOME=$$smoke_dir node shared/scripts/mo-models.mjs --show > /dev/null; \
-		for backend in mo-herdr mo-omnigent; do \
+		for backend in mo-orchestrate-herdr mo-orchestrate-orca mo-orchestrate-paseo; do \
 			cp skills/$$backend/scripts/mo-models.mjs $$smoke_dir/$$backend.mjs; \
 			(cd $$smoke_dir && HOME=$$smoke_dir node ./$$backend.mjs --help > /dev/null); \
 			(cd $$smoke_dir && HOME=$$smoke_dir node ./$$backend.mjs --show > /dev/null); \
@@ -59,12 +62,10 @@ mo-smoke:
 mo-e2e:
 	@echo "AGENT_REQUIRED: not executed"
 	@echo
-	@echo "Docs:      docs/e2e.md, docs/phase-0-fixtures.md"
-	@echo "Fixtures:  I3/I5 — remote installation"
-	@echo "           P1-P8 — preimplementation external capability probes"
-	@echo "           H7b — host-window resize"
-	@echo "           H13-H37 — post-cutover Herdr acceptance"
-	@echo "           OM1-OM8 — Omnigent final fixtures"
+	@echo "Docs:      docs/e2e.md, docs/backend-capabilities.md"
+	@echo "Scenarios: B1-B14 — each Herdr, Orca, and Paseo backend"
+	@echo "           W1-W4 — watchdog target, scan, nudge, suppression"
+	@echo "           local and authorized remote installation"
 	@echo "Run:       execute the applicable scenarios without changing the frozen candidate"
 	@echo "Evidence:  keep exact SHA and per-scenario actor/provider facts in the current run/final result"
 	@echo "Ledger:    scenario definitions and support posture only; do not edit tracked docs for run evidence"

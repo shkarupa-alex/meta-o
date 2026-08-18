@@ -1,8 +1,8 @@
 # Purpose and architecture contract
 
 This file has one source owner — `shared/references/purpose-and-architecture.md`
-in the meta-o repository. The copies inside `mo-review` and `mo-setup` are
-produced mechanically. Never edit a copy.
+in the meta-o repository. The copy inside `mo-setup` is produced mechanically.
+Never edit that copy.
 
 Linters check that purpose is _present_ and _shaped_ correctly. Only a reviewer
 can check that it _means_ something. Both halves are required; neither
@@ -75,8 +75,31 @@ And, always, the blunt question: **"why does this entity need to exist at
 all?"** A component that survives that question is worth reviewing further; one
 that does not is the cheapest finding anybody will ever write.
 
-## 5. Documentation that is a program's input
+## 5. Knowledge levels and their ids
 
-If Markdown has to be parsed programmatically, use a real AST library found
-through `mo-reuse`. A regex Markdown parser is not acceptable — it is the
+Knowledge is layered: the business framing, the architecture decisions, the
+module, the symbol. Layers are only usable if a reader can walk them
+mechanically, so each one carries a stable identifier and names the layer above.
+
+- every self-contained business thesis carries a unique id, for example
+  `§B-<AREA>-<NN>`;
+- every architecture decision carries its own id, names in ordinary prose the
+  business ids it serves, and says what becomes redundant if it is cancelled;
+- a module purpose names the architecture id; a symbol names its module or the
+  same decision. Neither cites the business layer directly, because the chain
+  already passes through the decision;
+- ids are unique, stable and never reused, and the link reads as ordinary
+  prose, not as a `Derived from` block.
+
+Presence, uniqueness and resolution belong in the project's own blocking gate,
+parsed with a real Markdown AST. Ids belong to the project that owns those
+documents: distributed text must not carry a bare id the consumer cannot
+resolve. A source file copied verbatim into a distribution may keep its id as
+provenance, and then the id names its owning project, so a consumer reads a
+foreign coordinate instead of a dangling local reference.
+
+## 6. Documentation that is a program's input
+
+If Markdown has to be parsed programmatically, use a mature real AST library. A
+regex Markdown parser is not acceptable — it is the
 classic case of a home-grown checker that is wrong in ways nobody owns.

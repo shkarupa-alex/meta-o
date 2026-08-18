@@ -4,6 +4,8 @@
  * The script is copied into three independently installable skills, so these
  * fixtures exercise the source owner directly across real zsh/bash startup
  * modes, including the failure branches that decide whether evidence is known.
+ *
+ * Protects §A-POSTURE-01 and §A-POSTURE-02.
  */
 
 import assert from "node:assert/strict";

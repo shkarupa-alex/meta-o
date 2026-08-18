@@ -1,166 +1,149 @@
-# Backlog
+# Бэклог
 
-Only unfinished, deferred, blocked, knowingly unfixed, or unsupported work belongs here. Git
-is the history of completed work; resolved narratives are removed rather than retained as
-closed backlog entries.
+Здесь находится только намеренно отложенная, заблокированная, заведомо
+неисправленная или неподдерживаемая работа. Текущий прогресс и временное
+состояние gates остаются в локальных планах запуска. У каждой записи есть
+причина, практическое влияние и следующий шаг.
 
-## Open
+## Открыто
 
-### Provider-posture profiles can detach descendants with `setsid`
+### Полный ответ Paseo не выдерживает reviewer-нагрузку с инструментами
 
-**Reason.** The posture probe owns one process-group leader through quiescence, but a shell
-profile can call `setsid` and move a descendant into a different session and process group.
-The owned-group shutdown cannot address that escaped process, and process-table discovery
-would reintroduce the descendant-race and numeric-PID-reuse hazards that the helper was
-designed to avoid.
+**Причина.** В Paseo 0.3.1 и 0.4.0 `wait --json.message` показывает только пять
+последних activity items. В реальных reviews эти слоты заняли `[Read]`, `[Shell]`,
+`[Thought]`, неразмеченный reasoning и final text: точный prompt пользователя
+либо вытесняется, либо граница ответа становится неоднозначной. Ранние normal и
+long fixtures не запускали инструменты репозитория и поэтому не квалифицировали
+настоящую reviewer-нагрузку. Публичная команда
+`paseo logs <id> --filter text --tail 1` вернула полный final text двух
+наблюдавшихся reviewers, но ещё не прошла normal и long fixtures с инструментами
+для всех трёх harness.
 
-**Practical impact.** A hostile or accidentally detaching profile process can outlive the
-read-only diagnostic and continue using inherited resources after its matrix row is parsed.
-The posture result proves command resolution, not containment of arbitrary profile-launched
-processes; live provider readiness and support must continue to be established separately.
+**Практическое влияние.** Orchestration и standalone review через Paseo остаются
+неподдерживаемыми: маршрут обязан сообщать получение полного ответа как `unknown`,
+а не выбирать reasoning item или устаревший bounded activity item.
 
-**Next step.** Run each measured profile under a portable kernel-owned descendant-containment
-boundary, or reject session-changing descendants with equivalent fail-closed evidence. Add a
-`setsid` escape regression that proves no descendant remains before removing this item; do
-not add numeric-PID or process-table signalling as a workaround.
+**Следующий шаг.** Квалифицировать документированную публичную filtered-log
+поверхность или другое публичное response field с normal и трёх-
+четырёхэкранными `BEGIN`/`MIDDLE`/`END` fixtures, использующими инструменты, на
+Codex, Claude Code и OpenCode. Удалить запись и заявить поддержку маршрутов
+можно лишь тогда, когда каждый harness возвращает ровно свой settled response.
+Отсутствующие unbounded turn identity и response surface отслеживаются в
+[getpaseo/paseo#3478](https://github.com/getpaseo/paseo/issues/3478).
 
-### Claude catalogue discovery is unsupported outside macOS
+### Поддержка полного ответа Herdr остаётся ограниченной фикстурами
 
-**Reason.** Safe Claude catalogue discovery currently depends on macOS Seatbelt's
-kernel-enforced `deny process-fork` boundary. Linux, Windows, and other POSIX systems have
-no implemented equivalent with a passing live compatibility fixture; process groups and
-process-table snapshots cannot safely contain detached descendants or prevent PID-reuse
-races.
+**Причина.** Установленный Herdr 0.8.0 отдаёт lifecycle metadata через
+`agent get`, но не имеет structured settled-response field. Публичный
+`agent read --source recent-unwrapped` может вернуть только строки, сохранённые
+терминалом; alternate-screen harness способен потерять или продублировать
+восстановленные строки. Live long fixture OpenCode 1.18.15 на Herdr 0.8.0 вернула
+все 220 уникальных filler rows, но на 400 строках продублировала начальный
+fragment и 62 filler rows; больший read сместился за пределы ответа. Codex и
+Claude Code прошли ту же fixture, но backend-owned evidence не доказывает точный
+полный ответ OpenCode.
 
-**Practical impact.** On those platforms the Claude catalogue probe fails closed before
-starting the provider. Configured-model fallback can report `catalog_unknown`, but cannot
-use a live Claude catalogue to distinguish model absence or select a compatible catalogue
-pair.
+**Практическое влияние.** Поддержку полного ответа Herdr нельзя заявлять, поэтому
+и orchestration, и standalone-review routes остаются неподдерживаемыми. Эта
+устойчивая capability-запись заменяет disposition row 7 transition spec: одна и
+та же отсутствующая response surface блокирует live qualification standalone
+review skill.
 
-**Next step.** Implement a kernel-owned descendant-containment boundary for each target
-platform, prove that ordinary and detached descendant creation cannot escape it, and run a
-live catalogue/cleanup compatibility fixture. Remove this item only after the platform's
-provider start, catalogue result, timeout, and cleanup paths all pass without numeric-PID
-snapshot signalling.
+**Следующий шаг.** Запросить upstream structured complete-response surface либо
+исправить реконструкцию alternate screen OpenCode в Herdr так, чтобы один
+публичный read возвращал каждый byte ответа ровно один раз. Затем повторить
+normal и long fixtures; private transcripts и agent-authored result files не
+подменяют доказательство. Повтор также должен заново подтвердить OpenCode
+readiness через точное public TUI или effective posture evidence;
+`screen_detection_skipped: true` само по себе ничего не доказывает. Дублирование
+terminal reconstruction отслеживается в
+[herdrdev/herdr#2893](https://github.com/herdrdev/herdr/issues/2893).
 
-### Remote installation fixtures I3 and I5 have not run
+### Watchdog с локальной моделью не реализован
 
-**Reason.** The post-correction candidate has not been pushed by a separately authorized
-release action, so the advertised remote locator cannot install that exact tree. Local-path
-installation tests prove a different transport and cannot be reused as remote evidence.
+**Причина.** Эта фича намеренно сначала поставляет pattern-based shell observer.
+Второму watchdog на небольшой локальной модели через Ollama или LM Studio нужен
+конкретный контракт model/runtime и измеримая польза.
 
-**Practical impact.** Remote all-skill `npx skills add` discovery and remote `apm install`
-remain unsupported. The README may present their exact commands only as unproven fixtures,
-not as verified installation paths. No standalone `mo-review` runtime is advertised.
+**Практическое влияние.** Известные тексты limit, overload, question и failure
+можно классифицировать без cloud inference; новые или неоднозначные состояния
+по-прежнему должен интерпретировать человек.
 
-**Next step.** After the final candidate is pushed on explicit authority, run I3 and I5 from clean
-disposable projects. Return the public full SHA, client versions, exact installed file lists,
-cleanup and statuses through the current backend run/final result; do not append them to tracked
-fixture docs or another receipt sink. Remove this item in a later independently verified change
-only after reusable remote support posture is established. Do not push solely to run the fixtures.
+**Следующий шаг.** Сделать prototype одного local-only classifier на сохранённых
+credential-free backend states, сравнить его с pattern script и специфицировать
+реализацию только при существенном улучшении detection без daemon или
+persistent run state.
 
-### Standalone `mo-review` execution is unavailable
+### Цепочка id проверяется только до уровня модуля
 
-**Reason.** The shipped `mo-review` package has no qualified executable backend interface for
-actor launch, vendor selection, complete-turn retrieval, opaque relay, finding application,
-commits, or E2E. Those capabilities exist only inside the installed `mo-herdr` and
-`mo-omnigent` feature workflows; inventing an ambient subagent or private/headless fallback
-would violate the backend surface contract.
+**Причина.** Контракт требует, чтобы назначение модуля и символа называло
+архитектурное решение, но `tests/knowledge-chain.test.mjs` проверяет только
+заголовок модуля. Для символов в этом репозитории нужен настоящий парсер каждого
+языка, а зрелого плагина под смешанное дерево из `.mjs` и `.sh` пока не найдено;
+своего чекера контракт не разрешает без доказательства, что конфигурации не
+существует.
 
-**Practical impact.** `mo-review` is a reusable protocol component only. Installing or invoking
-it alone cannot start two reviews or apply findings, so callers must enter through a qualified
-backend skill or receive review-capability attention.
+**Практическое влияние.** Ссылка наверх у отдельной функции или класса держится
+на ревью, а не на гейте. Для текущего кода риск невелик: модулей немного и они
+маленькие, но в растущем репозитории разрыв на уровне символа гейт не заметит.
 
-**Next step.** Either design and package a real executable review-backend interface and pass
-its complete-turn, vendor-diversity, lifecycle, relay, and live fixture contract, or retain the
-protocol-only boundary and continue routing executable review requests through `mo-herdr` or
-`mo-omnigent`.
+**Следующий шаг.** Проверить, умеет ли выбранный линтер каждого языка требовать
+docstring с шаблоном ссылки (например, ESLint `require-jsdoc` с проектным
+правилом формата), и включить проверку через конфигурацию. Если ни один зрелый
+инструмент этого не умеет, записать причину и оставить уровень символа за ревью.
 
-### Herdr P1-P8 have not run in a real control plane
+### Якоря не снимаются при сборке, поэтому поставляемый Markdown их не несёт
 
-**Reason.** The implementation session has no `HERDR_ENV=1`, so it cannot create the required
-visible tabs, panes, and ordinary interactive actors or observe Herdr's public lifecycle
-honestly. Older inline/headless runs exercise a rejected surface and are not reusable evidence.
+**Причина.** Правильнее было бы разрешить `§A-*` в авторских скилах и снимать их
+при генерации `skills/`, но отдельный этап очистки перед поставкой — ещё один шаг
+сборки, способный незаметно разойтись с источником. Пока принято дешёвое решение:
+в дистрибутируемом Markdown якорей просто нет, и это проверяет гейт.
 
-**Practical impact.** Every exact Herdr provider/version/surface key remains unsupported. The
-Herdr actor surface cannot be adopted, and fewer than two proven reviewer vendors would stop
-the Herdr-specific cutover. In particular, the recipe's current exact lower-boundary literals
-`╭─ input ❯ ─╮` and `╭─ input › ─╮` and the authored golden captures are synthetic provisional
-inputs, not measurements; P6/H17 must confirm or replace them for the installed provider
-versions.
+**Практическое влияние.** Текст скилов не может сослаться на архитектурное
+решение даже там, где это помогло бы автору методологии. Ссылки наверх остаются
+только у скриптов и недистрибутируемых файлов.
 
-**Next step.** From a real interactive Herdr orchestrator pane, run P1-P8 in a scratch
-repository. Return the exact support key, commands, observations, cleanup and outcome through
-the current backend run/final result; never write a candidate-bound receipt into the fixture map.
-A later independently verified documentation change may update reusable support posture. A
-failure stays fail-closed and does not authorize inline, headless, SDK or private-transcript
-fallback.
+**Следующий шаг.** Если потребность появится, добавить в `tools/build-skills.mjs`
+детерминированное снятие якорей с байтовой проверкой того, что снят ровно якорь и
+ничего больше, и перевести гейт на проверку источника, а не поставки.
 
-### H7b and H13-H37 have not run against the post-cutover candidate
+### Семь решений не говорят, что станет лишним при их отмене
 
-**Reason.** These are candidate-bound agentic fixtures. They require the completed cutover, a
-green deterministic gate, a real Herdr environment, and one named full SHA. None of those live
-results exists yet.
+**Причина.** Контракт и поставляемая методология требуют этой фразы от каждого
+архитектурного решения. Её нет у семи решений:
+`§A-DISTRIBUTION-02`, `§A-DISTRIBUTION-03`, `§A-DISTRIBUTION-04`,
+`§A-DISTRIBUTION-05`, `§A-DISTRIBUTION-06`, `§A-POSTURE-02` и
+`§A-ORCHESTRATION-04`. Это не граница «головное решение против неголовного»:
+у `§A-MEMORY-02`, `§A-ORCHESTRATION-02`, `§A-ORCHESTRATION-03` и `§A-RESPONSE-02`
+фраза есть. Принцип принят раньше, чем реализован во всех местах.
 
-**Practical impact.** Topology, prompt acceptance, quiet goal settlement, interactive
-extraction, atomic review barrier, byte-identical relay, tracked-content firewall, waits,
-recovery, diversity, and same-SHA completion remain unproved in the installed product. No
-candidate can be presented for Herdr adoption.
+**Практическое влияние.** При отмене подрешения — например `§A-DISTRIBUTION-04` —
+не записано, какую зависимую цепочку можно удалить вместе с ним. Гейт этого не
+ловит: он проверяет якорь и ссылку на тезис, но не эту фразу.
 
-**Next step.** Freeze the first clean post-cutover SHA that passes `make mo-qc`, then run H7b
-and all applicable H13-H37 rows without changing it. Any new commit invalidates the entire
-evidence set and starts the run again.
+**Следующий шаг.** Дописать семь разделов — по объёму это один заход, а не
+работа «по мере правок», — и затем добавить проверку в тест цепочки знаний.
 
-### No final Omnigent route has passed OM1-OM8
+### Удаление тезиса и переиспользование id гейт не ловит
 
-**Reason.** The backend-neutral firewall and handoff contract changed. Earlier Omnigent runs
-used the old review/output behavior and cannot prove the final native route.
+**Причина.** Тест цепочки знаний судит текущее дерево: есть ли якорь у каждого
+тезиса, уникальны ли id, разрешима ли каждая ссылка. Отличить законное удаление
+тезиса от потери смысла можно только сравнением с зафиксированным прежним
+состоянием, а baseline без названного внешнего потребителя контракт запрещает. По
+той же причине не проверяется историческая половина правила «id стабилен и не
+переиспользуется»: она о прошлом файла, а не о его текущем виде.
 
-**Practical impact.** Omnigent support for candidate binding, sequential independent review,
-opaque finding transport, invalidation, native recovery, vocabulary, and narrow human
-attention remains unsupported.
+**Практическое влияние.** Тезис, названный хотя бы одним архитектурным решением,
+удалить молча нельзя: ссылка порвётся и гейт упадёт. Примерно половина тезисов
+такой защиты не имеет, и их пропажу должен заметить ревьюер по диффу. Точная доля
+здесь не приводится намеренно — число в прозе разъезжается с деревом при первой
+же правке ссылок, а гейт этого не видит. Риск тем заметнее, что после ухода
+реализованной спецификации постановка остаётся единственным постоянным носителем
+интентов.
 
-**Next step.** Run OM1-OM8 through one exact installed Omnigent route against the post-cutover
-candidate. Use only Omnigent's native session/output surfaces; if native continuity cannot be
-proven, keep the route unsupported rather than inventing Herdr-style evidence or reading a
-private store.
-
-### Hard-crash scratch residue can remain until operating-system cleanup
-
-**Reason.** Scratch transport deliberately has no run registry, daemon, cross-run ownership
-store, or recovery protocol. A controlled exit knows and deletes its one `0700` directory, but
-after a hard process or machine crash no new run has sufficient ownership evidence to discover
-and delete an older directory safely.
-
-**Practical impact.** Opaque reviewer or E2E bytes may remain in an OS temporary directory
-longer than the feature run. The directory is private (`0700`) and its files are private
-(`0600`), but deletion is delayed until the operating system's temporary-file policy removes
-it.
-
-**Next step.** Revisit only if measured OS cleanup policy is insufficient or a named external
-cleanup consumer requires stronger reclamation. Any solution must preserve content-free names
-and avoid a run registry or broad cross-run deletion.
-
-### Fixed E2E pane subdivision remains deliberately unspecified
-
-**Reason.** The accepted design requires a visible lazily created E2E actor but does not
-require a fixed multi-pane subdivision for its tab. No current consumer needs a stronger
-layout contract.
-
-**Practical impact.** E2E remains observable and candidate-bound, but its internal tab
-arrangement is not a portable UI promise.
-
-**Next step.** Define a fixed subdivision only when an exact E2E workflow demonstrates that
-visibility without it is insufficient.
-
-### Four upstream Herdr issue candidates await exact installed-version reproduction
-
-**Reason.** Logical last-turn retrieval, capture beyond 1000 rows, per-agent token/cache
-telemetry, and documented `state_change_seq` freshness would improve the surface, but a
-suspected gap is not evidence of an upstream defect.
-
-**Practical impact.** Meta-O must stay inside the current bounded extraction and diagnostic
-contract and cannot cite an upstream issue as a substitute for a failed local fixture.
-
-**Next step.** File an issue only after the exact installed version reproduces the specific gap with
-credential-safe public-surface evidence. Do not file rename or status claims without reproduction.
+**Следующий шаг.** Держать проверку на ревью: §B-FRAMING-01 и пункт 7 протокола
+обязывают ревьюера сверить, что существенные интенты дошли до постановки, а
+удаление тезиса видно в диффе. Если этого окажется мало, рассмотреть сравнение с
+merge-base ветки — исчезнувший относительно базы тезис требует явного объяснения
+в сообщении коммита. Это уже сравнение с историей, и его цену надо обосновать
+отдельно.

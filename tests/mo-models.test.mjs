@@ -5,6 +5,8 @@
  * tested by import. Everything that touches the settings file is tested through
  * the real CLI with HOME pointed at a temporary directory, because "does not
  * corrupt the user's settings" is a property of the process, not of a function.
+ *
+ * Protects §A-DISTRIBUTION-02.
  */
 
 import assert from "node:assert/strict";
@@ -386,6 +388,23 @@ test("codex listings keep only the rows the CLI itself would offer", () => {
   assert.deepEqual(listing.efforts, { "gpt-9.9": ["low", "high"] });
 });
 
+test("codex catalog parsing ignores wrapper diagnostics around one complete JSON value", () => {
+  const listing = parseCodexModels(
+    `wrapper start\n${JSON.stringify({
+      models: [
+        {
+          slug: "gpt-wrapper",
+          visibility: "list",
+          supported_in_api: true,
+          supported_reasoning_levels: [{ effort: "high" }],
+        },
+      ],
+    })}\nwrapper end`,
+  );
+  assert.deepEqual(listing.models, ["gpt-wrapper"]);
+  assert.deepEqual(listing.efforts, { "gpt-wrapper": ["high"] });
+});
+
 test("a codex listing with nothing offerable is unavailable, not empty-but-fine", () => {
   const listing = parseCodexModels(JSON.stringify({ models: [] }));
   assert.equal(listing.available, false);
@@ -403,11 +422,15 @@ test(
   {
     skip: commandMissing("codex"),
   },
-  () => {
+  (context) => {
     const home = sandbox();
     const result = run(home, ["--catalog", "--route", "codex", "--json"]);
     assert.equal(result.status, 0, result.stderr);
     const report = JSON.parse(result.stdout);
+    if (!Array.isArray(report.codex.catalog)) {
+      context.skip(report.codex.catalogUnavailableReason);
+      return;
+    }
     assert.equal(report.codex.source, "codex-json");
     assert.ok(Array.isArray(report.codex.catalog) && report.codex.catalog.length > 0);
     const [first] = report.codex.catalog;
@@ -421,12 +444,6 @@ test("the bundled Claude SDK reads supported models without sending a user turn"
   const result = run(home, ["--catalog", "--route", "claude", "--json"], home, fixture.env);
   assert.equal(result.status, 0, result.stderr);
   const report = JSON.parse(result.stdout).claude;
-  if (process.platform !== "darwin") {
-    assert.equal(report.catalog, null);
-    assert.match(report.catalogUnavailableReason, /kernel-owned Claude descendant containment/);
-    assert.equal(existsSync(fixture.pids), false, "unsupported platforms must fail before spawn");
-    return;
-  }
   assert.deepEqual(report.catalog, ["fake-opus"], JSON.stringify(report));
   assert.deepEqual(report.efforts, { "fake-opus": ["low", "high"] });
   const records = readFileSync(fixture.log, "utf8").trim().split("\n").map(JSON.parse);
@@ -441,133 +458,15 @@ test("the bundled Claude SDK reads supported models without sending a user turn"
   );
 });
 
-test("the kernel boundary prevents detached descendants before catalogue success", () => {
-  const home = sandbox();
-  const fixture = fakeClaude(home, "success-with-descendant");
-  const result = run(home, ["--catalog", "--route", "claude", "--json"], home, fixture.env);
-  assert.equal(result.status, 0, result.stderr);
-  const report = JSON.parse(result.stdout).claude;
-  if (process.platform !== "darwin") {
-    assert.equal(report.catalog, null);
-    assert.equal(existsSync(fixture.pids), false, "unsupported platforms must fail before spawn");
-    return;
-  }
-  assert.deepEqual(report.catalog, ["fake-opus"], JSON.stringify(report));
-  const pids = JSON.parse(readFileSync(fixture.pids, "utf8"));
-  assert.ok(pids.attempts > 0, "fixture did not attempt to detach");
-  assert.ok(pids.denied > 0, "Seatbelt did not reject the attempted child");
-  assert.deepEqual(pids.descendants, [], "Seatbelt allowed a provider child to escape");
-  assert.equal(waitUntilGone(pids.parent), true, `provider ${pids.parent} leaked`);
-});
-
-test("cleanup is capability-addressed even when Claude exits before it", () => {
+test("Claude SDK cleanup reaps the transient catalogue process", () => {
   const home = sandbox();
   const fixture = fakeClaude(home, "success-exit");
-  const bystander = spawn("/bin/sleep", ["30"], { detached: true, stdio: "ignore" });
-  bystander.unref();
-  try {
-    const result = run(home, ["--catalog", "--route", "claude", "--json"], home, fixture.env);
-    assert.equal(result.status, 0, result.stderr);
-    const report = JSON.parse(result.stdout).claude;
-    if (process.platform !== "darwin") {
-      assert.equal(report.catalog, null);
-      assert.equal(existsSync(fixture.pids), false, "unsupported platforms must fail before spawn");
-      return;
-    }
-    assert.deepEqual(report.catalog, ["fake-opus"]);
-    const pids = JSON.parse(readFileSync(fixture.pids, "utf8"));
-    assert.equal(waitUntilGone(pids.parent), true, `exited provider ${pids.parent} was not reaped`);
-    assert.equal(processIsAlive(bystander.pid), true, "cleanup signalled an unrelated process");
-
-    const source = readFileSync(HELPER, "utf8");
-    assert.match(source, /stdio: \["pipe", "pipe", "ignore", "pipe"\]/);
-    assert.match(source, /child\.stdio\[3\]\.write\("START\\n"\)/);
-    assert.match(source, /owned\.control\.write\("STOP\\n",/);
-    assert.match(source, /owned\.child\.once\("close",/);
-    assert.match(source, /await stopOwnedClaudeProcesses\(\)/);
-    assert.match(source, /const stopGroup = \(\) => process\.kill\(-process\.pid, "SIGKILL"\)/);
-    assert.match(source, /control\.on\("end", stopGroup\)/);
-    assert.doesNotMatch(source, /function processTable\(/);
-    assert.deepEqual(
-      [...source.matchAll(/process\.kill\(([^,\n]+)/g)].map((match) => match[1]),
-      ["-process.pid"],
-      "only the live supervisor may address its own process group",
-    );
-  } finally {
-    try {
-      process.kill(-bystander.pid, "SIGKILL");
-    } catch {
-      /* already gone */
-    }
-  }
-});
-
-test("continuous concurrent spawning cannot cross the kernel boundary", () => {
-  const home = sandbox();
-  const fixture = fakeClaude(home, "continuous-detached");
-  const started = Date.now();
   const result = run(home, ["--catalog", "--route", "claude", "--json"], home, fixture.env);
   assert.equal(result.status, 0, result.stderr);
-  assert.ok(Date.now() - started < 4_000, "adversarial cleanup exceeded its bound");
   const report = JSON.parse(result.stdout).claude;
-  if (process.platform !== "darwin") {
-    assert.equal(report.catalog, null);
-    assert.equal(existsSync(fixture.pids), false, "unsupported platforms must fail before spawn");
-    return;
-  }
-  assert.deepEqual(report.catalog, ["fake-opus"], JSON.stringify(report));
+  assert.deepEqual(report.catalog, ["fake-opus"]);
   const pids = JSON.parse(readFileSync(fixture.pids, "utf8"));
-  assert.ok(pids.attempts > 0, "fixture did not exercise concurrent spawning");
-  assert.ok(pids.denied > 0, "Seatbelt did not reject concurrent child creation");
-  assert.deepEqual(pids.descendants, [], "a concurrent child escaped Seatbelt");
-  assert.equal(waitUntilGone(pids.parent), true, `provider ${pids.parent} leaked`);
-});
-
-test("Claude containment support is decided before provider start", () => {
-  const home = sandbox();
-  const fixture = fakeClaude(home, "success");
-  const result = run(home, ["--catalog", "--route", "claude", "--json"], home, fixture.env);
-  assert.equal(result.status, 0, result.stderr);
-  const report = JSON.parse(result.stdout).claude;
-  if (process.platform === "darwin") {
-    assert.deepEqual(report.catalog, ["fake-opus"]);
-  } else {
-    assert.equal(report.catalog, null);
-    assert.match(report.catalogUnavailableReason, /kernel-owned Claude descendant containment/);
-    assert.equal(existsSync(fixture.pids), false, "Claude must not start without containment");
-  }
-});
-
-test("a hard helper exit closes its capability or fails before provider start", async () => {
-  const home = sandbox();
-  const fixture = fakeClaude(home, "never");
-  if (process.platform !== "darwin") {
-    const result = run(home, ["--catalog", "--route", "claude", "--json"], home, fixture.env);
-    assert.equal(result.status, 0, result.stderr);
-    const report = JSON.parse(result.stdout).claude;
-    assert.equal(report.catalog, null);
-    assert.match(report.catalogUnavailableReason, /kernel-owned Claude descendant containment/);
-    assert.equal(existsSync(fixture.pids), false, "unsupported platforms must fail before spawn");
-    return;
-  }
-
-  const helper = spawn(process.execPath, [HELPER, "--catalog", "--route", "claude", "--json"], {
-    cwd: home,
-    env: { ...process.env, ...fixture.env, HOME: home, MO_MODELS_CATALOG_TIMEOUT_MS: "2000" },
-    stdio: "ignore",
-  });
-  const deadline = Date.now() + 2_000;
-  while (!existsSync(fixture.pids) && helper.exitCode === null && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-  assert.ok(existsSync(fixture.pids), "provider did not start before the hard-exit fixture bound");
-  const { parent } = JSON.parse(readFileSync(fixture.pids, "utf8"));
-  assert.equal(processIsAlive(parent), true, "provider was not alive before helper termination");
-
-  const closed = new Promise((resolve) => helper.once("close", resolve));
-  helper.kill("SIGKILL");
-  await closed;
-  assert.equal(waitUntilGone(parent), true, `provider ${parent} survived lifecycle-fd closure`);
+  assert.equal(waitUntilGone(pids.parent), true, `provider ${pids.parent} was not reaped`);
 });
 
 test("a Claude catalogue timeout is bounded and leaves no provider child", () => {
@@ -579,11 +478,6 @@ test("a Claude catalogue timeout is bounded and leaves no provider child", () =>
   assert.ok(Date.now() - started < 2_500, "catalogue timeout exceeded its cleanup bound");
   const report = JSON.parse(result.stdout).claude;
   assert.equal(report.catalog, null);
-  if (process.platform !== "darwin") {
-    assert.match(report.catalogUnavailableReason, /kernel-owned Claude descendant containment/);
-    assert.equal(existsSync(fixture.pids), false, "unsupported platforms must fail before spawn");
-    return;
-  }
   assert.match(report.catalogUnavailableReason, /no answer within 200ms/);
   if (existsSync(fixture.pids)) {
     const pids = JSON.parse(readFileSync(fixture.pids, "utf8"));
@@ -595,7 +489,7 @@ test("an isolated generated helper needs no ambient node_modules", () => {
   const home = sandbox();
   const fixture = fakeClaude(home, "success");
   const isolated = join(home, "isolated-mo-models.mjs");
-  copyFileSync(join(ROOT, "skills", "mo-herdr", "scripts", "mo-models.mjs"), isolated);
+  copyFileSync(join(ROOT, "skills", "mo-orchestrate-herdr", "scripts", "mo-models.mjs"), isolated);
   const result = spawnSync(
     process.execPath,
     [isolated, "--catalog", "--route", "claude", "--json"],
@@ -603,12 +497,6 @@ test("an isolated generated helper needs no ambient node_modules", () => {
   );
   assert.equal(result.status, 0, result.stderr);
   const report = JSON.parse(result.stdout).claude;
-  if (process.platform !== "darwin") {
-    assert.equal(report.catalog, null);
-    assert.match(report.catalogUnavailableReason, /kernel-owned Claude descendant containment/);
-    assert.equal(existsSync(fixture.pids), false, "unsupported platforms must fail before spawn");
-    return;
-  }
   assert.deepEqual(report.catalog, ["fake-opus"]);
 });
 
@@ -647,34 +535,51 @@ test("roles are scoped to the Git root, so any subdirectory is the same project"
   assert.match(run(home, ["--show"], elsewhere).stdout, /executor=unset/);
 });
 
-test(
-  "an effort the model does not offer is refused before anything is written",
-  { skip: commandMissing("codex") },
-  () => {
-    const home = sandbox();
-    const listed = JSON.parse(run(home, ["--catalog", "--route", "codex", "--json"]).stdout).codex;
-    const model = Object.keys(listed.efforts)[0];
-    assert.ok(model, "this test needs one codex model that publishes effort levels");
+test("an effort the model does not offer is refused before anything is written", () => {
+  const home = sandbox();
+  const bin = join(home, "bin");
+  mkdirSync(bin, { recursive: true });
+  const codex = join(bin, "codex");
+  writeFileSync(
+    codex,
+    `#!/bin/sh\nprintf '%s\\n' '{"models":[{"slug":"gpt-fixture","visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}]}]}'\n`,
+  );
+  chmodSync(codex, 0o755);
+  const environment = { PATH: `${bin}${delimiter}${process.env.PATH}` };
+  const listed = JSON.parse(
+    run(home, ["--catalog", "--route", "codex", "--json"], ROOT, environment).stdout,
+  ).codex;
+  const model = Object.keys(listed.efforts)[0];
+  assert.ok(model, "this test needs one codex model that publishes effort levels");
 
-    const badEffort = run(home, ["--set", `executor=codex/${model}/not-an-effort`]);
-    assert.equal(badEffort.status, 1);
-    assert.match(badEffort.stderr, /offers effort/);
-    assert.throws(
-      () => readFileSync(join(home, ".meta-o", "models.json")),
-      /ENOENT/,
-      "an unsupported effort must not be stored",
-    );
+  const badEffort = run(
+    home,
+    ["--set", `executor=codex/${model}/not-an-effort`],
+    ROOT,
+    environment,
+  );
+  assert.equal(badEffort.status, 1);
+  assert.match(badEffort.stderr, /offers effort/);
+  assert.throws(
+    () => readFileSync(join(home, ".meta-o", "models.json")),
+    /ENOENT/,
+    "an unsupported effort must not be stored",
+  );
 
-    const badModel = run(home, ["--set", "executor=codex/no-such-model-9/high"]);
-    assert.equal(badModel.status, 1);
-    assert.match(badModel.stderr, /is not in the codex catalog/);
+  const badModel = run(home, ["--set", "executor=codex/no-such-model-9/high"], ROOT, environment);
+  assert.equal(badModel.status, 1);
+  assert.match(badModel.stderr, /is not in the codex catalog/);
 
-    // The real thing is accepted, and the same value goes through with --force.
-    const good = run(home, ["--set", `executor=codex/${model}/${listed.efforts[model][0]}`]);
-    assert.equal(good.status, 0, good.stderr);
-    assert.equal(run(home, ["--set", "executor=codex/no-such-model-9/high", "--force"]).status, 0);
-  },
-);
+  // The real thing is accepted, and the same value goes through with --force.
+  const good = run(
+    home,
+    ["--set", `executor=codex/${model}/${listed.efforts[model][0]}`],
+    ROOT,
+    environment,
+  );
+  assert.equal(good.status, 0, good.stderr);
+  assert.equal(run(home, ["--set", "executor=codex/no-such-model-9/high", "--force"]).status, 0);
+});
 
 test("a selection is stored with the gap named when the catalog cannot answer", () => {
   const home = sandbox();

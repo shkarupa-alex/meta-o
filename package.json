@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Skills-first agentic development workflow: seven mo-* skills, no workflow engine",
+  "description": "Skills-first agentic development workflow: ten mo-* skills, no workflow engine",
   "license": "MIT",
   "engines": {
     "node": ">=22.6"
