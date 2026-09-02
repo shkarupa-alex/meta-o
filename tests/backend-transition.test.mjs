@@ -5,7 +5,7 @@
  */
 
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -45,6 +45,17 @@ function exposeFlock(root) {
   symlinkSync(FLOCK, join(root, "flock"));
 }
 
+function run(command, args, options) {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, options);
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => (stdout += chunk));
+    child.stderr.on("data", (chunk) => (stderr += chunk));
+    child.on("close", (status) => resolve({ status, stdout, stderr }));
+  });
+}
+
 function fakeOrca(root) {
   const path = join(root, "orca");
   writeFileSync(
@@ -62,7 +73,8 @@ case "$*" in
   "terminal show --terminal term_fixture --json")
     echo '{"ok":true,"result":{"terminal":{"handle":"term_fixture","connected":true,"orphaned":false}}}'
     ;;
-  "orchestration send --to dispatch:ctx_fixture --subject Watchdog --body continue --json"|"terminal send --terminal term_fixture --text continue --enter --json")
+  "orchestration send --to dispatch:ctx_fixture --subject Watchdog --body "*" --json"|"terminal send --terminal term_fixture --text "*" --enter --json")
+    if [ -n "\${WATCHDOG_SLOW_SEND-}" ]; then sleep 1; fi
     printf '%s\n' "$*" >> "$WATCHDOG_LOG"; echo '{"accepted":true}'
     ;;
   "orchestration worker-list --json")
@@ -244,6 +256,46 @@ test("watchdog validates, nudges, deduplicates, and suppresses changed Orca stat
   result = spawnSync(script, args, { env: { ...env, WATCHDOG_MALFORMED: "1" }, encoding: "utf8" });
   assert.equal(result.status, 65);
   assert.match(result.stdout, /action=observe-error/);
+});
+
+test("watchdog serializes concurrent nudges and bounds unchanged-state history", async () => {
+  const root = mkdtempSync(join(tmpdir(), "mo-watchdog-orca-concurrency-"));
+  temporary.push(root);
+  exposeFlock(root);
+  fakeOrca(root);
+  const script = join(ROOT, "shared", "scripts", "mo-watchdog.sh");
+  const env = {
+    ...process.env,
+    PATH: `${root}:${SYSTEM_PATH}`,
+    WATCHDOG_LOG: join(root, "log"),
+    WATCHDOG_COUNT: join(root, "count"),
+    WATCHDOG_STATE_DIR: join(root, "state"),
+    WATCHDOG_SLOW_SEND: "1",
+  };
+  const base = ["target", "--backend", "orca", "--session", "ctx_fixture", "--nudge"];
+  const first = run(script, [...base, "first"], { env });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const second = await run(script, [...base, "second"], { env });
+  const accepted = await first;
+  assert.equal(accepted.status, 0, accepted.stderr);
+  assert.equal(second.status, 2, second.stderr);
+  assert.match(second.stdout, /action=concurrent-suppressed/);
+
+  const fastEnv = { ...env };
+  delete fastEnv.WATCHDOG_SLOW_SEND;
+  for (let index = 0; index < 14; index += 1) {
+    const result = spawnSync(script, [...base, `distinct-${index}`], {
+      env: fastEnv,
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 0, result.stderr);
+  }
+  const saturated = spawnSync(script, [...base, "saturated"], {
+    env: fastEnv,
+    encoding: "utf8",
+  });
+  assert.equal(saturated.status, 2, saturated.stderr);
+  assert.match(saturated.stdout, /action=saturation-suppressed/);
 });
 
 test("watchdog requires flock only for nudge delivery", () => {
