@@ -1,0 +1,1268 @@
+## Краткое решение
+
+Рекомендую программу из восьми спецификаций: отдельные контракты для переносимого `find-reuse`, жизненного цикла intent/spec, review core, Meta-O orchestration, публичных возможностей Orca, knowledge gates, watchdog-эксперимента и финального закрытия backlog. Такая декомпозиция оставляет Meta-O skills-first, не вводит workflow engine или общий state store и позволяет каждому исходному пункту получить единственного владельца, проверяемый результат и доказательство закрытия.
+
+Ниже:
+
+- `[R]` — уже принятое требование;
+- `[D]` — предлагаемое архитектурное решение;
+- `[H]` — гипотеза, которую нельзя превращать в правило до эксперимента.
+
+Это предложение одного судьи. Внешний council runtime не запускался: он создаёт артефакты и обращается к внешним моделям, что противоречит ограничению этого задания.
+
+---
+
+# 1. Архитектура программы
+
+## 1.1. Границы ответственности
+
+| Спецификация | Владелец результата | Канонический источник | Закрывает |
+|---|---|---|---|
+| `SP-01-find-reuse` | автор skills Meta-O | `src/skills/find-reuse/` и generic references самого skill | переименование и отвязку `mo-reuse`, обязательное независимое reuse research |
+| `SP-02-intent-spec-lifecycle` | методология Meta-O | `shared/references/methodology.md`, `mo-orchestrate-orca` | материализацию spec, сохранение исходного intent, временный progress, интеграцию `find-reuse`, удаление завершённой spec |
+| `SP-03-review-core` | review methodology | compact shared review core, `review-protocol.md`, `mo-review-orca` | competing review ideas, senior skill integration, review evaluation |
+| `SP-04-meta-o-orca-policy` | Meta-O orchestrator | `mo-orchestrate-orca`, `orca-mechanics.md`, E2E | локальную политику Orca: роли, ожидание, hot sessions, recovery, gates, authority |
+| `SP-05-orca-public-contract` | upstream Orca | публичный CLI/API Orca и upstream tests | дефекты транспорта, delivery/consumption, typed states, takeover, truthful lifecycle |
+| `SP-06-knowledge-integrity` | Meta-O quality gates | architecture docs, build и lint configuration | backlog по purpose links, anchors, removal/reuse history |
+| `SP-07-watchdog-evaluation` | Meta-O watchdog | `mo-watchdog`, watchdog ADR и evaluation dataset | local-model backlog и regression для capacity/reconnect/quota |
+| `SP-08-backlog-closure` | maintainer Meta-O | acceptance map, архив инцидентов и одноразовая closure matrix | доказанное обнуление обоих backlog-файлов |
+
+Это минимальное разумное число спецификаций:
+
+- переносимый skill нельзя смешивать с методологией Meta-O;
+- upstream Orca и Meta-O имеют разных владельцев;
+- review, knowledge integrity и watchdog имеют независимые критерии качества;
+- закрытие backlog — отдельная миграция доказательств, а не побочный эффект реализации.
+
+Один mega-spec был бы плохо проверяем и смешал бы владельцев. Отдельная specification на каждый инцидент превратилась бы в запрещённое дерево задач.
+
+## 1.2. Зависимости
+
+```text
+SP-01 find-reuse ───► SP-02 intent/spec lifecycle ───────────────┐
+                                                                │
+SP-03 review core ──► SP-04 Meta-O Orca policy ─► live E2E ─────┤
+                         ▲                                      │
+SP-05 Orca contract ─────┘                                      ├─► SP-08 closure
+                                                                │
+SP-06 knowledge integrity ──────────────────────────────────────┤
+SP-07 watchdog evaluation ──────────────────────────────────────┘
+```
+
+Критический путь:
+
+1. `SP-03` фиксирует, что именно считается review.
+2. `SP-05` делает публичный Orca-контракт наблюдаемым и надёжным.
+3. `SP-04` использует этот контракт без приватных обходов.
+4. Orca E2E подтверждает lifecycle на одном SHA.
+5. `SP-08` архивирует исходный ledger и очищает активный backlog.
+
+`SP-01 → SP-02`, `SP-06` и `SP-07` могут выполняться параллельно с upstream-работой.
+
+---
+
+# 2. Спецификации программы
+
+## SP-01 — переносимый `find-reuse`
+
+### Цель
+
+[R] Переименовать `mo-reuse` в `find-reuse` и превратить его в самостоятельный исследовательский skill, не знающий о Meta-O, `docs/business.md`, `docs/acceptance.md`, spec layout, Git-ветках или месте сохранения результата.
+
+### Результаты
+
+- `src/skills/find-reuse/SKILL.md`;
+- generic references с матрицей adapters, identity и quality gates;
+- удаление `src/skills/mo-reuse/`;
+- обновление README, build/install tests и ожидаемого списка skills;
+- отсутствие compatibility alias `mo-reuse`;
+- тест, запрещающий зависимости `find-reuse` от Meta-O-specific путей и терминов.
+
+[R] Создание `senior-python` и `senior-jsts` сюда не входит: они уже существуют.
+
+### Входной контракт
+
+```ts
+type FindReuseRequest = {
+  problem: string;
+  business_requirements: string[];
+  constraints: {
+    languages?: string[];
+    runtimes?: string[];
+    platforms?: string[];
+    package_managers?: string[];
+    allowed_licenses?: string[];
+    forbidden_licenses?: string[];
+    security?: string[];
+    performance?: string[];
+    integration?: string[];
+    forbidden_approaches?: string[];
+  };
+  repository_root?: string;
+  query_seeds?: string[];
+  depth?: "normal" | "deep";
+};
+```
+
+Обязательные поля:
+
+- `problem` — наблюдаемая задача, не название заранее выбранного решения;
+- `business_requirements` — generic требования пользователя;
+- `constraints` — только реально применимые ограничения.
+
+Skill не определяет путь результата, не редактирует spec и не делает commit.
+
+### Выходной контракт
+
+```ts
+type FindReuseReport = {
+  status: "reuse" | "extend" | "build" | "unknown";
+  search_scope: {
+    detected_ecosystems: string[];
+    queried_sources: string[];
+    skipped_sources: Array<{
+      source: string;
+      reason: "not_applicable" | "missing_tool" | "missing_auth" | "unavailable";
+      recovery?: string;
+    }>;
+  };
+  queries: Array<{
+    round: number;
+    source: string;
+    query: string;
+    result_count: number;
+    limitations?: string[];
+  }>;
+  candidate_families: CandidateFamily[];
+  decision: string;
+  rejected_alternatives: CandidateFamily[];
+  residual_unknowns: string[];
+};
+
+type CandidateFamily = {
+  identity: string;
+  repository?: RepositoryCandidate;
+  packages: PackageCandidate[];
+  evidence: string[];
+  signals: {
+    releases?: string;
+    maintenance?: string;
+    adoption?: string;
+    downloads?: string;
+    security?: string;
+    license?: string;
+    integration_cost?: string;
+  };
+  requirements_fit: "full" | "partial" | "none" | "unknown";
+};
+```
+
+Фактическая форма выхода — Markdown с обязательными секциями, а не tracked JSON или manifest.
+
+### Adapter contract
+
+Это instructional contract для модулей skill, не новый runtime:
+
+```ts
+interface SearchAdapter {
+  probe(): ProbeResult;
+  authProbe(): AuthResult | null;
+  search(query: string, limit?: number): CandidateStub[];
+  enrich(candidate: CandidateStub): CandidateSignals;
+}
+
+type ProbeResult =
+  | { status: "ready"; tool: string; version: string }
+  | { status: "missing"; install_instruction: string }
+  | { status: "unsupported"; reason: string };
+
+type AuthResult =
+  | { status: "authenticated"; account?: string }
+  | { status: "required"; login_instruction: string }
+  | { status: "not_required" };
+```
+
+Ошибки одного adapter не превращаются в пустую выдачу: источник получает `missing_tool`, `missing_auth` или `unavailable`.
+
+### Обязательный алгоритм
+
+1. Выделить capability queries из проблемы и требований.
+2. Найти локально уже используемые библиотеки и внутренние реализации.
+3. Определить экосистемы из manifests, lockfiles, языков и ограничений.
+4. Проверить tool и auth до каждого auth-dependent поиска.
+5. Выполнить 2–3 раунда:
+   - буквальный capability query;
+   - альтернативные термины/protocol names;
+   - интеграционные или domain-specific варианты.
+6. Построить union кандидатов без раннего popularity cutoff.
+7. Дедуплицировать до solution families.
+8. Обогатить finalists метриками source hosting и package registry.
+9. Проверить license, maintenance, releases, security и стоимость интеграции.
+10. Выдать `reuse`, `extend`, `build` либо честный `unknown`.
+
+Нельзя всегда добавлять Rust или другую экосистему. Cross-language поиск включается только при FFI, WASM, native-performance или явно допустимом внешнем сервисе.
+
+## 2.1. Coverage matrix `find-reuse`
+
+### Обязательное ядро
+
+| Область | Tool/auth probe | Arbitrary query | Enrichment |
+|---|---|---|---|
+| Локальный repository | `rg --version`; auth не нужен | `rg --files`; manifests/lockfiles; `rg -n "$QUERY"` и поиск dependency names | версия dependency, существующие adapters, лицензии и архитектурные ограничения |
+| GitHub | `gh --version`; `gh auth status`; при отсутствии `gh auth login --web` | `gh search repos "$QUERY" --sort stars --order desc --archived=false --limit 30 --json fullName,description,stargazersCount,forksCount,pushedAt,updatedAt,license,url,isArchived` | `gh api repos/{owner}/{repo}`; `gh api repos/{owner}/{repo}/releases/latest`; advisories/dependency data, если публично доступны |
+| GitLab | `glab --version`; `glab auth status`; `glab auth login --hostname gitlab.com` | `glab api projects --method GET -f search="$QUERY" -f order_by=star_count -f sort=desc -f simple=true -f per_page=30 -f archived=false` | `glab api projects/:id`; releases, tags, archive/license/activity |
+| npm | `npm --version`; public search без auth; private registry: `npm whoami --registry "$REGISTRY"`, затем `npm login --registry "$REGISTRY"` | `npm search "$QUERY" --json --searchlimit=30 --prefer-online` | `npm view "$PKG" name version description license repository homepage time dist-tags maintainers --json`; `https://api.npmjs.org/downloads/point/last-month/$ENCODED_PKG` |
+| PyPI | `python3 --version`; `python3 -m pip --version`; public auth не нужен | официальный Simple JSON: `curl -fsSL -H 'Accept: application/vnd.pypi.simple.v1+json' https://pypi.org/simple/`; локальный helper фильтрует normalized query tokens. Exact name: `python3 -m pip index versions "$NAME"` | `curl -fsS "https://pypi.org/pypi/$NAME/json"`; downloads: `curl -fsS "https://pypistats.org/api/packages/$NAME/recent"` |
+| crates.io | `cargo --version`; public auth не нужен | `cargo search "$QUERY" --limit 30` | `cargo info "$CRATE"`; `curl -fsS "https://crates.io/api/v1/crates/$CRATE"`; reverse dependencies API |
+| Go | `go version`; public auth не нужен | GitHub/GitLab с language filter плюс `https://pkg.go.dev/search?q=...`, разбираемый HTML parser, не regex | `go list -m -json -versions "$MODULE@latest"`; license/releases из canonical repository; downloads обозначаются как unavailable |
+| Maven/JVM | `curl`; public auth не нужен | `curl -fsSG https://search.maven.org/solrsearch/select --data-urlencode "q=$QUERY" --data rows=30 --data wt=json` | точный запрос `g:"GROUP" AND a:"ARTIFACT"`; versions/timestamps; downloads не выдумываются |
+| NuGet/.NET | `curl`; public auth не нужен | `curl -fsSG https://azuresearch-usnc.nuget.org/query --data-urlencode "q=$QUERY" --data take=30 --data prerelease=false` | registration API, versions, total downloads, repository metadata |
+| RubyGems | `gem --version`; public auth не нужен | `gem search --remote "$QUERY" --all` или `/api/v1/search.json?query=...` | `/api/v1/gems/$GEM.json`; reverse dependencies |
+| Packagist/PHP | `composer --version` либо `curl`; public auth не нужен | `composer search "$QUERY" --format=json` или `https://packagist.org/search.json?q=...` | Packagist package API: downloads, favers, versions, source repository |
+
+PyPI принципиально не описывается как несуществующий официальный semantic search API. Semantic discovery выполняется через hosting queries; официальный PyPI Simple API даёт name discovery, JSON API — точные metadata, а pypistats — явно внешний источник download metrics.
+
+### Расширяемые adapters
+
+Подключаются только по detected ecosystem или заданному scope:
+
+- Codeberg/Gitea:
+  `curl -fsSG https://codeberg.org/api/v1/repos/search --data-urlencode "q=$QUERY" --data-urlencode limit=30`;
+- Bitbucket;
+- Swift Package Index;
+- Hex;
+- pub.dev;
+- Conan/vcpkg;
+- private GitHub/GitLab/npm registries.
+
+Они не входят в обязательное ядро, чтобы skill не стал бесконечным каталогом.
+
+### Установка отсутствующих инструментов
+
+Skill никогда не запускает installer. Он:
+
+1. определяет ОС и доступный package manager;
+2. печатает одну точную команду, например `brew install gh`, `brew install glab`, `brew install node`, `brew install go`, `brew install composer`;
+3. добавляет официальный manual-install URL, если системного package manager нет;
+4. отмечает источник как не исследованный;
+5. продолжает по остальным источникам;
+6. не утверждает полноту результата.
+
+### Identity и дедупликация
+
+```text
+repository:
+  repo:<host>:<numeric-project-id>
+  fallback: repo-url:<normalized-canonical-url>
+
+package:
+  pkg:<ecosystem>:<normalized-name>
+
+family:
+  family:<canonical-repository-id>
+```
+
+Правила:
+
+- GitHub owner/repository case-insensitive, `.git` и default ports удаляются;
+- PyPI нормализуется по PEP 503: `[-_.]+ → -`, lowercase;
+- fork/mirror остаётся отдельным repository, пока API или metadata не укажут authoritative upstream;
+- monorepo packages не схлопываются друг с другом;
+- package и repository связываются `published_from`, но не становятся одной сущностью;
+- сомнительное совпадение получает `possible_same_as`, а не автоматическое объединение;
+- каждый finalist обогащается одновременно registry- и repository-сигналами.
+
+---
+
+## SP-02 — intent, spec и временный progress
+
+### Цель
+
+Зафиксировать единый lifecycle без task tree и без записи текущего прогресса в backlog.
+
+### Контракт первого increment
+
+Первый commit исполнителя содержит:
+
+1. одну tracked specification;
+2. исходный user ledger дословно;
+3. короткий `Implementation checklist` из 3–10 проверяемых outcomes;
+4. только действительно новые durable business intents, перенесённые в `docs/business.md`;
+5. раздел `Reuse research` для существенной custom capability.
+
+Оркестратор не редактирует этот increment. Исполнитель владеет всеми product/spec commits.
+
+### Интеграция `find-reuse`
+
+Meta-O передаёт в skill generic request, собранный из:
+
+- исходного intent;
+- применимых business requirements;
+- архитектурных ограничений;
+- detected repository context.
+
+`find-reuse` возвращает Markdown. Исполнитель встраивает его в `## Reuse research`. Решение `build` допустимо только после зафиксированных кандидатов и причин отказа. `unknown` допустим при tool/auth gap, но блокирует необратимый выбор реализации, если этот источник был необходим.
+
+### Завершение specification
+
+После реализации и пользовательского решения о готовности к merge:
+
+1. durable знания уже перенесены в business/architecture/acceptance/papercut;
+2. временная spec, verbatim ledger и checklist удаляются отдельным commit;
+3. final reviewers получают исходный intent из точного parent Git blob либо private temporary copy;
+4. новый deletion SHA снова проходит QC и две review;
+5. E2E переносится только по существующему узкому docs-only правилу и только при подтверждении отсутствия runtime effect.
+
+Так исходный intent не становится вечным progress store, но сохраняется в Git history.
+
+### Acceptance
+
+- тест подтверждает наличие verbatim ledger и checklist в первом increment;
+- orchestrator не меняет spec;
+- reuse section либо содержит отчёт, либо явный `not_applicable`;
+- после финального удаления durable requirements доступны без чтения удалённой spec;
+- Git history позволяет byte-exact восстановление ledger.
+
+---
+
+## SP-03 — portable review core и evaluation
+
+### Цель
+
+Разделить метод review на компактное ядро, language/risk lenses и внешнюю orchestration policy.
+
+### Стадии review
+
+#### 1. Grounding
+
+Reviewer обязан проверить:
+
+- exact candidate SHA и clean worktree;
+- intent/spec/verbatim ledger;
+- repository instructions;
+- diff;
+- reachable callers, callees, schemas, config и tests.
+
+Git history, prior PR/comments и code comments читаются по risk trigger: при неоднозначном intent, удалённой защите, подозрительном workaround или необходимости provenance. Они не являются безусловным prompt wall.
+
+#### 2. Risk mapping
+
+Из компактной taxonomy активируются только применимые классы: correctness, boundary/error handling, state/concurrency, security, data compatibility, operational behavior, language-specific hazards.
+
+#### 3. Broad discovery
+
+Собирается union кандидатов без severity или confidence cutoff. Нулевая выдача валидна.
+
+#### 4. Verification/falsification
+
+```ts
+type EvidenceState = "confirmed" | "supported" | "unproven" | "refuted";
+```
+
+Для кандидата проверяются:
+
+- reachable path;
+- действующие guards;
+- реальные framework/runtime semantics;
+- focused non-mutating test или reproducer;
+- counter-evidence.
+
+#### 5. Causality
+
+```ts
+type ChangeCausality = "introduced" | "exposed" | "pre_existing";
+```
+
+Blocking finding обязан быть вызван или усилен diff либо нарушать обязательное требование текущей spec. Соседняя pre-existing проблема может попасть в backlog lens, но не выдаётся за regression.
+
+#### 6. Severity policy
+
+Severity `P0–P3` присваивается только после evidence. Numeric confidence:
+
+- допустим как evaluation diagnostic;
+- может отправить finding на дополнительную проверку;
+- не может превратить `unproven` в finding;
+- не является lifecycle gate.
+
+Публикуются только `confirmed` и достаточно конкретные `supported` findings. `unproven`, влияющий на verdict, даёт `UNKNOWN`, а не искусственный finding.
+
+#### 7. Reporting
+
+```ts
+type ReviewVerdict = {
+  candidate_sha: string;
+  vendor_family: string;
+  model: string;
+  mode: "fast" | "deep" | "follow_up";
+  verdict: "PASS" | "FINDINGS" | "UNKNOWN";
+  findings: Finding[];
+  checks_run: string[];
+  limitations: string[];
+};
+
+type Finding = {
+  severity: "P0" | "P1" | "P2" | "P3";
+  location: string;
+  invariant: string;
+  trigger_path: string;
+  impact: string;
+  evidence: string;
+  causality: ChangeCausality;
+  smallest_fix: string;
+  proof_after_fix: string;
+};
+```
+
+### Review modes
+
+- `fast`: optional clean-room advisory review до candidate. Может использовать один executor-owned subagent. Не является lifecycle gate.
+- `deep`: два независимых vendor-diverse reviewer.
+- `follow_up`: те же hot reviewer sessions, но новая независимая execution на новом SHA. Reviewer видит собственные прежние findings и новый diff, но не peer output.
+- существенное изменение semantics после fixes автоматически возвращает полный `deep`.
+
+[R] Gate всегда требует два независимых vendor-diverse PASS на одном SHA. Специализированные subagents внутри review не считаются дополнительными независимыми gate reviewers.
+
+### Интеграция `senior-python` и `senior-jsts`
+
+- skills добавляются в build/install/README expected set;
+- reviewer может подключить соответствующий skill как language lens;
+- отсутствие language skill не ломает standalone установку `mo-review-orca`;
+- mixed Python/JS change может активировать оба;
+- ни один из них не получает право переписать всю реализацию;
+- создание самих skills не входит в программу.
+
+### Независимость invocation
+
+`mo-review-orca` должен запускаться только явно пользователем либо `mo-orchestrate-orca`. Generic запрос «review this code» не должен автоматически загружать Meta-O lifecycle.
+
+### QC
+
+- полный `make mo-qc` исполняется один раз как отдельный gate;
+- reviewers выполняют focused non-mutating checks;
+- process-sensitive suites не запускаются параллельно в одном worktree;
+- потенциально mutating diagnostic выполняется только в disposable worktree;
+- запрещены фоновые `nohup`, `&` и оставленные processes.
+
+### Оценка Claude plugin
+
+Полезно перенести:
+
+- repository instructions;
+- history/PR/comment lanes по trigger;
+- повторную eligibility check;
+- отсутствие комментария при чистом результате.
+
+Не переносить:
+
+- расхождение README «4 агента» и команды «5 агентов»;
+- GitHub-only `gh` assumptions;
+- shallow changed-lines-only analysis;
+- `confidence >= 80` как замену evidence;
+- предположение, что CI уже проверил build;
+- автоматическую внешнюю публикацию;
+- принудительный subagent fan-out.
+
+### Review evaluation
+
+[H] Дополнительные specialists, verifier и двухвендорный union могут увеличить recall. Это проверяется, а не утверждается.
+
+Dataset:
+
+- реальные исторические bugs/hotfixes;
+- accepted review findings;
+- controlled mutations;
+- clean negative changes;
+- минимум 20–40 cases в первом corpus;
+- повтор каждого nondeterministic configuration 3–5 раз.
+
+Configurations:
+
+1. minimal core;
+2. concise core;
+3. текущий длинный protocol;
+4. core + language/risk lens;
+5. core + verifier;
+6. core + specialist;
+7. двухвендорный union.
+
+Metrics:
+
+- precision;
+- recall;
+- severity-weighted recall;
+- unique validated findings;
+- false positives и duplicate rate;
+- time-to-first-finding;
+- total latency;
+- tokens/cost;
+- finding retention after verification;
+- run-to-run variance.
+
+Начальный adoption rule, явно отмеченный как калибровочная гипотеза:
+
+- precision не ниже `0.70`;
+- P0/P1 recall не хуже baseline более чем на `5 pp`;
+- новая lane даёт не менее `10%` относительного прироста severity-weighted recall;
+- стоимость не выше `2×` baseline без отдельного product rationale.
+
+Persistent `findings.json` или review state store не создаются. Evaluation report — исследовательское доказательство; действующее решение переносится в review core/ADR.
+
+Автоматическое правило «три minor-only раунда → PASS» отвергается: оно противоречит требованию двух PASS и запрету универсального round cap.
+
+---
+
+## SP-04 — Meta-O policy поверх Orca
+
+### Ролевая модель
+
+В одном feature run существуют максимум:
+
+- один hot executor session;
+- один hot review-A session;
+- один hot review-B session.
+
+Пример ownership names:
+
+```text
+meta-o:<run>:executor
+meta-o:<run>:review-a:<route>
+meta-o:<run>:review-b:<route>
+```
+
+Meta-O управляет только точными handles, созданными этим run. User-owned tabs и чужие sessions не закрываются.
+
+```ts
+type ActiveRole = {
+  role: "executor" | "review_a" | "review_b";
+  terminal_id: string;
+  dispatch_id?: string;
+  route: {
+    provider: string;
+    model: string;
+    effort: string;
+  };
+  context_epoch: number;
+};
+```
+
+Это conceptual view публичного Orca state, а не новая база Meta-O.
+
+### Readiness и model selection
+
+До первого dispatch:
+
+1. branch/worktree проверяются через Git;
+2. bundled `mo-models.mjs` выдаёт точные route IDs;
+3. `mo-posture.sh` проверяет provider posture;
+4. setup владеет PATH/wrapper configuration;
+5. orchestrator передаёт bare provider name без posture flags;
+6. auth проверяется нативным provider/Orca surface;
+7. vendor diversity и harness coverage подтверждены.
+
+Запрещены:
+
+- guessed aliases;
+- automatic OpenCode fallback;
+- смена model/effort без пользовательского выбора;
+- вывод readiness из одного transport receipt.
+
+### Hot session contract
+
+- session сохраняется между review/remediation rounds;
+- каждый SHA получает новую review execution внутри той же session;
+- first review — clean context;
+- follow-up получает только собственные предыдущие findings;
+- замена создаётся только после попытки восстановить тот же session;
+- одновременно не существует два активных reviewer одного role;
+- superseded exact handle освобождается после подтверждённой замены либо объявляется `cleanup_pending`;
+- sessions закрываются только после `PASS + PASS`, genuine `needs_attention` или отмены пользователем.
+
+### Waiting и wakeup
+
+Во время активного lifecycle orchestrator не выдаёт final response.
+
+Wait loop:
+
+1. seed cursor из текущего mailbox delivery state;
+2. ждать durable message либо максимум 10 минут;
+3. раннее сообщение немедленно будит orchestrator;
+4. обработать весь FIFO batch;
+5. ack обработанные сообщения;
+6. re-arm wait;
+7. timeout создаёт один checkpoint, но не означает failure.
+
+Нельзя выводить liveness из:
+
+- repaint/cursor;
+- stale title;
+- heartbeat frequency;
+- `continuation`;
+- одного последних четырёх сообщений.
+
+Если host не умеет сохранять wait через turn boundary, capability объявляется unsupported; skill не обещает watchdog, которого нет.
+
+### Task semantics
+
+```ts
+type TaskKind =
+  | "work_package"
+  | "review_execution"
+  | "remediation"
+  | "gate";
+
+type TaskOutcome =
+  | { status: "completed"; evidence: string[] }
+  | { status: "failed"; reason: string; evidence: string[] }
+  | { status: "needs_attention"; boundary: string; evidence: string[] };
+```
+
+Завершение review slice не означает завершение feature. Успешный cleanup не превращает incomplete mandatory phase в success. External gate не освобождает исполнителя от local preparation.
+
+### Delivery и owner decisions
+
+Сообщение с решением владельца считается применённым только после `consumed`, а не после `queued`. Если worker завершился до consumption, результат не принимается как учитывающий решение.
+
+### SHA
+
+SHA копируется из Git byte-for-byte и проверяется:
+
+```bash
+git cat-file -e "$CANDIDATE_SHA^{commit}"
+git rev-parse "$CANDIDATE_SHA^{commit}"
+```
+
+Нельзя реконструировать или угадывать SHA по abbreviated output.
+
+### Recovery
+
+При quota, reconnect, provider refusal или output block:
+
+1. сохраняется exact session;
+2. новая parallel session не создаётся;
+3. ожидается typed recovery state;
+4. output refusal повторяется через safe body-file/structured minimal response;
+5. если публичный settled response недоступен — verdict `UNKNOWN`;
+6. private transcript не используется как authority.
+
+### Compaction
+
+После `context_compacted` worker перечитывает:
+
+- `AGENTS.md`;
+- current specification;
+- applicable review core;
+- exact candidate SHA.
+
+Результат со старым `context_epoch`, не подтвердивший reload, считается `UNKNOWN`.
+
+### Authority и unsafe operations
+
+Каждый task получает envelope:
+
+```ts
+type AuthorityEnvelope = {
+  allowed_paths: string[];
+  allowed_resources: string[];
+  allowed_actions: string[];
+  forbidden_effects: string[];
+  approval_boundaries: string[];
+};
+```
+
+Нельзя вводить broad запрет, блокирующий обязательный live path. Но операции вне worktree, удаление чужих containers/tabs и неописанные destructive effects требуют пользовательского решения.
+
+Поскольку harness должен оставаться unsandboxed, Meta-O не притворяется, что технически предотвратил эффект. Он требует публичной observability, preflight и fail-closed outcome.
+
+---
+
+## SP-05 — публичные возможности Orca
+
+Эта спецификация реализуется upstream Orca, не proxy внутри Meta-O.
+
+### Start/dispatch truthfulness
+
+`worker-start` и `dispatch --inject` должны возвращать:
+
+```ts
+type DispatchReceipt = {
+  terminal_id: string;
+  dispatch_id: string;
+  requested_route: Route;
+  effective_route: Route;
+  agent_detected: boolean;
+  input_state: "queued" | "accepted" | "rejected";
+  worktree?: {
+    path: string;
+    branch: string;
+    head_sha: string;
+  };
+};
+```
+
+Lifecycle messages не принимаются до `agent_detected=true`. Bare shell не может напечатать fabricated `worker_done` и быть принят как worker.
+
+Folder workspace вместо Git worktree должен дать typed failure, а не пустой metadata receipt.
+
+### Messaging
+
+```text
+send --dispatch <id> \
+     --type <ordinary|question|answer|guidance|cancel> \
+     --body-file <path> \
+     [--require-consumption]
+```
+
+Результат:
+
+```ts
+type DeliveryResult = {
+  message_id: string;
+  delivery: "queued" | "delivered" | "consumed" | "rejected";
+  reason?: string;
+};
+```
+
+`worker_done` не может закрыть execution, пока обязательное owner message остаётся не consumed.
+
+CLI help обязан перечислять допустимые types; неизвестные `normal` и `coordinator_guidance` отклоняются до dispatch.
+
+### Settled response
+
+- единственный authoritative settled result — `worker_done`;
+- body принимается через `--body-file` или stdin без shell interpolation;
+- `reportPath` допустим только как transport attachment с проверенной полнотой;
+- TUI может показывать severity summary, но не становится второй authority;
+- long response должен быть byte-complete на публичной Orca surface.
+
+### Typed runtime events
+
+```ts
+type WorkerEvent =
+  | { type: "working" }
+  | { type: "question"; question_id: string; body: string }
+  | { type: "permission"; request_id: string; body: string }
+  | { type: "quota_wait"; vendor: string; reset_at?: string }
+  | { type: "transport_reconnecting"; since: string; attempts: number; last_error: string }
+  | { type: "provider_refusal"; stage: "input" | "output"; reason: string }
+  | { type: "context_compacted"; epoch: number }
+  | { type: "completed"; result_id: string }
+  | { type: "failed"; reason: string }
+  | { type: "lost"; reason: string };
+```
+
+Terminal repaint и model text не заменяют typed event.
+
+### Durable wait
+
+```text
+check --wait --run <run-id> --timeout 600
+check --ack --run <run-id> --through <sequence>
+```
+
+Требования:
+
+- FIFO oldest-unacked delivery;
+- wait имеет durable `wait_id`;
+- reconnect не теряет delivery;
+- `runtime_unavailable` отличается от transport reconnect;
+- batch не обрезается произвольным «latest N».
+
+### Resource lifecycle
+
+Низкоуровневые и composed resources получают один uniform handle:
+
+```text
+worker-retain --terminal <id>
+worker-release --terminal <id>
+```
+
+Результат idempotent:
+
+```ts
+type ReleaseResult = {
+  state: "released" | "already_absent" | "retained";
+  effect_applied: boolean;
+};
+```
+
+### Coordinator takeover
+
+```text
+run-use --takeover \
+  --run <run-id> \
+  --coordinator-terminal <terminal-id> \
+  --expected-generation <n>
+```
+
+Операция атомарно повышает coordinator generation, сохраняя workers, tasks и mailbox. Это state Orca как владельца transport/control plane, не Meta-O state store.
+
+### Остальные обязательные capabilities
+
+- `dispatch-show --dispatch <id>` отдельно от task lookup;
+- terminal input state `empty|nonempty`;
+- inject отклоняется или очищается явно, без stray `B`;
+- account/quota state связывается с exact dispatch;
+- question/reply из native provider UI проецируются в публичные typed события;
+- command/effect observation для destructive side effects;
+- provider capability mismatch не может сопровождаться успешным body.
+
+### Orca E2E additions
+
+Добавить сценарии:
+
+- authenticity против bare-shell/fabricated completion;
+- exact effective route и no posture duplication;
+- Git worktree receipt;
+- durable FIFO wait/reconnect;
+- consumption-required delivery;
+- long byte-exact result;
+- hot reuse, retain и idempotent cleanup;
+- typed quota/reconnect/refusal/compaction;
+- coordinator takeover;
+- question bridge;
+- unsafe effect observation;
+- incomplete mandatory phase остаётся failed.
+
+Пока эти E2E не проходят на публичном surface, связанные пункты backlog нельзя считать закрытыми.
+
+---
+
+## SP-06 — knowledge integrity
+
+### 6.1. Purpose links для public symbols
+
+Machine rule:
+
+- first-party JS exported functions/classes и top-level shell functions должны иметь purpose comment;
+- comment объясняет «зачем»;
+- comment содержит существующий `§A-*`;
+- transient review IDs и `§B-*` в source comments запрещены.
+
+Implementation sequence:
+
+1. выполнить `find-reuse` для ESLint/tree-sitter/ast-grep rules;
+2. использовать mature configured tool, если fixture corpus покрывается полностью;
+3. если конфигурации недостаточно, commit message фиксирует доказательство, почему plugin/config не решают задачу;
+4. минимальный custom checker использует JavaScript и Bash AST, не regex.
+
+Fixtures должны включать:
+
+- exported function с корректной ссылкой;
+- отсутствующий comment;
+- dangling architecture ID;
+- nested/private helper;
+- multiline shell function;
+- misleading review-item ID;
+- generated/fixture exclusions.
+
+### 6.2. Anchors в authored и generated skills
+
+[D] В authored Markdown `§A-*` разрешаются и проверяются. При `make skills` они удаляются только из prose text nodes.
+
+Build использует реальный Markdown AST:
+
+1. найти text-node spans с architecture anchors;
+2. не трогать inline code и fenced code;
+3. применить удаления в обратном порядке byte offsets;
+4. проверить, что прочий output byte-identical;
+5. проверить отсутствие anchors в generated distribution.
+
+Manifest удалённых anchors не создаётся: потребитель — build output, доказательство — tests.
+
+### 6.3. Историческое удаление и reuse IDs
+
+Git является source и consumer; baseline-файл не нужен.
+
+Gate сравнивает merge base, branch commits и current tree:
+
+- dangling references запрещены;
+- ID, использованный ранее для другого удалённого решения, нельзя ввести снова;
+- удаление ID требует commit trailer:
+
+```text
+Knowledge-Removal: §A-EXAMPLE-01 | superseded by §A-EXAMPLE-02
+```
+
+- remove/re-add внутри одной branch также обнаруживается;
+- content edit существующего ID разрешён;
+- семантическая подмена смысла под тем же ID остаётся reviewer check: AST может проверить identity, но не смысл.
+
+Acceptance использует disposable Git repository с последовательностями add/edit/remove/reuse.
+
+---
+
+## SP-07 — watchdog и local-model experiment
+
+### Сначала regression
+
+Текущий pattern уже должен распознавать `capacity`; добавляется дословный fixture:
+
+```text
+Selected model is at capacity
+```
+
+Проверяется:
+
+- классификация;
+- nudge deduplication;
+- отсутствие повторного nudge без изменения digest;
+- корректное восстановление после смены состояния.
+
+### Local-model evaluation
+
+[R] Это не новый daemon и не замена существующему pattern classifier.
+
+Прототип:
+
+```text
+node tools/eval-watchdog-classifier.mjs \
+  --runtime ollama \
+  --model <exact-installed-id> \
+  --dataset <path> \
+  --json
+```
+
+Предусловия:
+
+- `ollama` уже установлен;
+- exact model виден в `ollama list`;
+- network disabled;
+- отсутствие runtime/model даёт точную install/pull инструкцию, но не выполняет её.
+
+Dataset содержит credential-free публичные Orca states:
+
+- quota;
+- capacity;
+- reconnect;
+- input/output refusal;
+- working;
+- question;
+- completion;
+- repaint/heartbeat hard negatives;
+- неоднозначные и неизвестные примеры.
+
+Go/no-go:
+
+- нижняя граница 95% bootstrap CI улучшения macro-F1 на ambiguous/unseen ≥ `10 pp`;
+- actionable false-positive rate хуже pattern не более чем на `1 pp`;
+- ни один известный pattern class не теряет recall;
+- p95 ≤ `1 s` на указанной reference machine;
+- runtime/model failure не блокирует pattern path.
+
+Если критерии выполнены, модель вызывается только после `pattern=unclassified` и не переопределяет typed/pattern match. Если нет — ADR фиксирует доказанный отказ и reversal trigger. Оба исхода честно закрывают backlog item.
+
+---
+
+## SP-08 — архивирование и обнуление backlog
+
+### Миграция ledger
+
+Исходный `docs/backlog-issues-real-runs.md` переносится byte-for-byte в:
+
+```text
+docs/references/resolved-orca-real-runs-2026.md
+```
+
+Архив явно маркируется как historical evidence, не current requirements. Если для маркировки нужен заголовок, он помещается в отдельный index/reference entry, а не меняет байты исходного ledger.
+
+Проверка:
+
+```bash
+cmp \
+  <(git show <source-sha>:docs/backlog-issues-real-runs.md) \
+  docs/references/resolved-orca-real-runs-2026.md
+```
+
+После этого текущий ledger удаляется либо остаётся zero-entry stub со ссылкой на архив. `docs/backlog.md` сохраняет правила ведения и пустой `## Открыто`.
+
+Тест backlog меняется так:
+
+- больше не требует `entries.length > 0`;
+- при наличии будущих entries по-прежнему требует cause, impact и next step;
+- не запрещает появление честного нового backlog в будущем.
+
+---
+
+# 3. Lossless inventory
+
+В closure specification каждому исходному элементу присваивается стабильный inventory key. Key хранится только до завершения программы; постоянный источник после закрытия — business/architecture/acceptance/tests/archive/Git.
+
+## 3.1. Верхнеуровневый backlog
+
+| ID | Исходное содержание | Владелец | Закрытие |
+|---|---|---|---|
+| `B-01` | local-model watchdog | `SP-07` | go/no-go evaluation и ADR; regression exact capacity |
+| `B-02` | knowledge chain только module-level | `SP-06` | AST purpose gate для public symbols |
+| `B-03` | anchors не удаляются из distribution | `SP-06` | source validation + AST stripping + byte-preservation tests |
+| `B-04` | историческое removal/reuse IDs не ловится | `SP-06` | merge-base/history fixtures и removal trailer |
+| `B-05` | реальные Orca/review failures | `SP-02`–`SP-05`, `SP-07` | public contract, orchestration policy и live E2E |
+
+## 3.2. Встроенные wishes из `B-05`
+
+| ID | Wish | Владелец/решение |
+|---|---|---|
+| `BW-01` | readiness, cadence, wakeup | `SP-04` + `SP-05` durable wait |
+| `BW-02` | единый model selection helper | `SP-04`, обязательный `mo-models.mjs` preflight |
+| `BW-03` | без duplicate sessions, сначала recovery | `SP-04` hot role invariant |
+| `BW-04` | exact models, no guessed aliases | `SP-04`; effective route от `SP-05` |
+| `BW-05` | setup владеет posture | `SP-04`; bare provider invocation |
+| `BW-06` | senior Python/JS skills | `SP-03`; интеграция существующих skills |
+| `BW-07` | первый commit со spec/checklist | `SP-02` |
+| `BW-08` | durable business intent в первом commit | `SP-02` |
+| `BW-09` | severity и «3 minor rounds» | `SP-03`; severity принята, auto-pass отклонён |
+| `BW-10` | deep research, short/long prompt, subagents | `SP-03` evaluation |
+| `BW-11` | source links только к durable decisions | `SP-06` |
+| `BW-12` | fast pre-review | `SP-03`; advisory only |
+| `BW-13` | review skill только direct invocation | `SP-03` |
+| `BW-14` | role-based tab ownership | `SP-04` |
+| `BW-15` | full report через Orca, short TUI summary | `SP-04` + `SP-05` |
+| `BW-16` | exact capacity nudge | `SP-07` |
+| `BW-17` | весь real-runs ledger должен быть обработан | `SP-08` |
+
+## 3.3. Первичный реальный запуск: `RR-01`–`RR-33`
+
+| Inventory keys | Тема | Primary owner | Proof |
+|---|---|---|---|
+| `RR-01`, `RR-07`, `RR-08`, `RR-11` | CLI/worktree/agent authenticity и truthful receipt | `SP-05` | authenticity и Git worktree E2E |
+| `RR-02`, `RR-03`, `RR-10` | bounded reading, правильная branch, Git как authority | `SP-04` | orchestrator fixtures |
+| `RR-04`, `RR-05`, `RR-06`, `RR-09`, `RR-32` | materialization/ownership intent и spec | `SP-02` | first-increment acceptance |
+| `RR-12`, `RR-13`, `RR-14`, `RR-15`, `RR-16` | auth/readiness и guessed commands | `SP-04` | native probe table и failure fixtures |
+| `RR-17`, `RR-19`, `RR-29`, `RR-30`, `RR-31` | пользовательский выбор exact model/effort, helper discovery | `SP-04` | route-selection tests |
+| `RR-18`, `RR-27` | stale account/model metadata | `SP-05` | requested/effective route и refresh E2E |
+| `RR-20`, `RR-21`, `RR-22` | receipt не proof; bare shell/fake completion | `SP-05` | `agent_detected`/authenticity E2E |
+| `RR-23`, `RR-24`, `RR-26` | лишние workers и unapproved fallback | `SP-04` | exact three-role topology |
+| `RR-25` | cleanup/stop/release semantics | `SP-05` | idempotent release E2E |
+| `RR-28` | wait без usable handle | `SP-05` | durable wait handle |
+| `RR-33` | replacement executor лишился initial `/goal` | `SP-04` | first-effective-dispatch rule |
+
+## 3.4. Повторные реальные инциденты: `RI-01`–`RI-51`
+
+| Inventory keys | Тема | Primary owner | Proof |
+|---|---|---|---|
+| `RI-01`, `RI-03`, `RI-06` | question/role ownership и partial task ≠ run completion | `SP-04` | task-kind/outcome fixtures |
+| `RI-02`, `RI-08`, `RI-17` | missed wakeup, mailbox есть, lifecycle не продолжился | `SP-04` | cancellable wait scenario |
+| `RI-04` | direct context contamination и cleanup race | `SP-05` | typed delivery + idempotent cleanup |
+| `RI-05`, `RI-44`, `RI-51` | hot sessions закрывались, дубли и stale resources | `SP-04` | role invariant через несколько rounds |
+| `RI-07` | resume/duplicate flag failure | `SP-05` | CLI validation и exact-handle fixture |
+| `RI-09`, `RI-22`, `RI-49`, `RI-49a` | quota скрыта или доступна только непублично | `SP-05` | typed quota event на public surface |
+| `RI-10`, `RI-14`, `RI-16` | retain failures | `SP-05` | uniform retain/release handle |
+| `RI-11` | review attempt budget confusion | `SP-04` | slice/remediation/gate distinction |
+| `RI-12` | compaction не наблюдается | `SP-05` | typed epoch; reload enforcement в `SP-04` |
+| `RI-13` | TUI final против `worker_done` | `SP-04` | единственная authority |
+| `RI-15`, `RI-27`, `RI-29` | input/output refusal, включая блок safe summary | `SP-05` | typed refusal и body-file fallback |
+| `RI-18` | incomplete `reportPath`, shell interpolation | `SP-05` | byte-exact long body test |
+| `RI-19` | бесконечный reconnect, но session восстановима | `SP-05` | reconnect state и same-session recovery |
+| `RI-20` | task/dispatch CLI ambiguity | `SP-05` | отдельный `dispatch-show` |
+| `RI-21` | work package, review slice и gate смешаны | `SP-04` | typed `TaskKind` |
+| `RI-23`, `RI-30` | придуманные message types | `SP-05` | enumerated CLI types |
+| `RI-24` | guidance отправлена, но не consumed | `SP-05` | `--require-consumption` |
+| `RI-25` | выдуманный full SHA | `SP-04` | Git object verification |
+| `RI-26`, `RI-28`, `RI-31`, `RI-32` | background/parallel QC загрязняет worktree/processes | `SP-03` | serialized QC и disposable test fixtures |
+| `RI-33`, `RI-34` | destructive restore и egress/config provenance | `SP-04` | authority/preflight fixtures |
+| `RI-35` | wait сообщает runtime unavailable при живом runtime | `SP-05` | transport/runtime split |
+| `RI-36` | incomplete mandatory phase объявлена success | `SP-04` | outcome completeness test |
+| `RI-37` | diagnostic имел implicit side effect | `SP-04` | command-effect preflight |
+| `RI-38` | posture flags повторились, recursive PATH wrapper | `SP-04` | setup-owned posture test |
+| `RI-39` | повтор bare-shell/fake `worker_done` | `SP-05` | тот же authenticity root, отдельный regression case |
+| `RI-40` | capability rejection и одновременно delivered body | `SP-05` | mutually consistent status/body |
+| `RI-41` | удалены чужие containers | `SP-04` | exact authority envelope |
+| `RI-42` | чрезмерный запрет блокировал обязательный live path | `SP-04` | narrow authority fixture |
+| `RI-43` | решение потеряно из-за polling latest-four | `SP-04` | full FIFO processing |
+| `RI-45` | stray input перед inject | `SP-05` | terminal input-state fixture |
+| `RI-46` | heartbeat threshold не соответствует cadence | `SP-04` | heartbeat не authority |
+| `RI-47` | monitor не seeded и повторяет старое | `SP-04` | initial cursor/delivery seed |
+| `RI-48` | latest cursor изменяется от repaint | `SP-04` | cursor не liveness |
+| `RI-50` | потерян coordinator pane, takeover невозможен | `SP-05` | atomic coordinator takeover |
+
+Повторы не удаляются:
+
+- `RI-02/08/17` — три отдельных проявления wakeup;
+- `RI-09/22/49` — три разные поверхности quota;
+- `RI-10/14/16` — независимые retain failures;
+- `RI-15/27/29` — разные стадии output refusal;
+- `RI-26/28/31/32` — разные способы process contamination;
+- `RI-05/44/51` — разные hot-session/cleanup regressions;
+- `RR-21/22` и `RI-39` — повтор bare-shell defect после уже известного случая.
+
+В closure matrix они имеют отдельные строки, но могут ссылаться на один `merged_into` root cause и один implementation contract.
+
+---
+
+# 4. Порядок реализации
+
+## Phase 1 — безопасные автономные increments
+
+1. `SP-01`: rename и generic `find-reuse`.
+2. `SP-06`: knowledge gates.
+3. `SP-07`: capacity regression и local-model go/no-go.
+4. `SP-03`: compact review core и integration существующих senior skills.
+
+Каждый increment заканчивается отдельным commit и relevant tests.
+
+## Phase 2 — intent/review methodology
+
+5. `SP-02`: first-increment spec lifecycle и внешний вызов `find-reuse`.
+6. Review evaluation сравнивает core/prompt variants и фиксирует принятый вариант.
+
+## Phase 3 — Orca
+
+7. Из `SP-05` создаются upstream issues и реализации по capability groups:
+   - authenticity/worktree;
+   - delivery/wait;
+   - settled response;
+   - typed recovery;
+   - retain/takeover/effect observation.
+8. Каждый capability group проходит upstream tests.
+9. `SP-04` обновляет Meta-O только после появления публичного upstream contract.
+10. Live Orca E2E проверяет полный цикл.
+
+Meta-O не должен компенсировать upstream defect private transcript, wrapper proxy или собственным transport state.
+
+## Phase 4 — закрытие
+
+11. `SP-08` строит closure matrix.
+12. Raw ledger переносится byte-for-byte в архив.
+13. Активные backlog entries удаляются.
+14. Последний SHA проходит QC, две независимые review и применимый E2E.
+15. После пользовательского решения о merge временная program spec удаляется, и новый SHA снова проходит обязательные gates.
+
+---
+
+# 5. Machine-checkable Definition of Done
+
+Программа считается завершённой только если одновременно истинны все условия:
+
+1. Closure matrix содержит ровно:
+   - `B-01`–`B-05`;
+   - `BW-01`–`BW-17`;
+   - `RR-01`–`RR-33`;
+   - `RI-01`–`RI-51`;
+   - отдельную строку `RI-49a`.
+
+2. У каждой строки есть:
+
+```ts
+type ClosureRow = {
+  id: string;
+  source_locator: string;
+  owner_spec: string;
+  disposition:
+    | "implemented"
+    | "merged_duplicate"
+    | "upstream_fixed"
+    | "hypothesis_rejected"
+    | "context_only";
+  durable_destination: string;
+  proof: string[];
+  merged_into?: string;
+};
+```
+
+3. Нет orphan IDs, duplicate primary owners и disposition без proof.
+
+4. Исторический ledger byte-identical исходному Git blob.
+
+5. `docs/backlog.md` не содержит открытых `###` entries, но сохраняет правила будущего backlog.
+
+6. `docs/backlog-issues-real-runs.md` не содержит активных incidents; полный исходный текст доступен в historical archive и Git.
+
+7. Repository scan не находит действующих ссылок на `mo-reuse`, кроме historical archive.
+
+8. `find-reuse`, `senior-python` и `senior-jsts` входят в generated/install/README contract.
+
+9. `find-reuse` не содержит зависимостей от Meta-O paths, commits или spec layout.
+
+10. Knowledge fixtures подтверждают:
+    - purpose links public symbols;
+    - dangling ID rejection;
+    - anchor stripping только из prose;
+    - removal/reuse history detection.
+
+11. Watchdog имеет:
+    - exact capacity regression;
+    - зафиксированный local-model go/no-go;
+    - отсутствие нового daemon/general state.
+
+12. Review evaluation завершён, а принятый core соответствует evidence-first policy.
+
+13. Все новые Orca public-contract E2E проходят без private transcript.
+
+14. На одном полном SHA проходят:
+
+```bash
+make mo-qc
+make mo-test
+make mo-smoke
+```
+
+15. На том же SHA получены два независимых vendor-diverse `PASS`.
+
+16. Применимые E2E относятся к тому же SHA либо имеют документированное допустимое docs-only carry-forward.
+
+17. Final result называет:
+    - exact full SHA;
+    - QC evidence;
+    - оба review verdict;
+    - E2E evidence;
+    - отсутствие unresolved строк closure matrix.
+
+18. Проверка backlog не содержит постоянного assertion «backlog всегда пуст»: будущие честные entries остаются допустимыми.
+
+Closure matrix и program checklist удаляются вместе с временной spec после завершения. Они не становятся новым manifest или general state store.
+
+---
+
+# 6. Отвергнутые альтернативы
+
+- Возврат Herdr/Paseo — вне области и запрещён принятым решением.
+- Один monolithic mega-spec — смешивает upstream, methodology и quality-gate ownership.
+- Specification на каждый incident — создаёт запрещённое task tree.
+- Permanent review findings database — общий workflow state без внешнего потребителя.
+- Четыре или пять обязательных reviewers — не доказано и не заменяет business gate из двух vendor-diverse reviewers.
+- Голосование и `confidence >= 80` — не заменяют evidence.
+- Принудительный subagent fan-out — сначала должен доказать пользу на evaluation corpus.
+- «Три minor-only раунда → PASS» — противоречит независимым PASS и отсутствию универсального round cap.
+- Private transcript как fallback — нарушает settled-response architecture.
+- Автоматическая установка tools, login или fallback provider — выходит за authorization boundaries.
+- Compatibility alias `mo-reuse` — не имеет именованного потребителя.
+- Всегда искать Rust — раздувает search и не следует требованиям задачи.
+- Sandbox как обещание безопасности — противоречит unsandboxed harness posture; применяется authority envelope и публичное наблюдение эффектов.
+- Переписывание ledger в «чистую» ретроспективу — скрывает исходные формулировки и повторы.
+
+---
+
+# 7. Риски и меры
+
+| Риск | Мера |
+|---|---|
+| Upstream Orca задерживает критический путь | отдельный `SP-05`; backlog не очищается до публичного upstream proof |
+| Evaluation переобучится на известные bugs | mutations, clean negatives, repetitions и held-out cases |
+| `find-reuse` adapters устареют | малое обязательное ядро, auth/tool probes, explicit `unknown`, adapters по detected ecosystem |
+| Архив начнут читать как current requirements | размещение в `docs/references/`, явный historical status, durable требования перенесены в normative docs |
+| Удаление spec лишит final review intent | exact parent Git blob/private temporary copy |
+| Hot sessions потеряют context после compaction | typed `context_epoch` и обязательное перечитывание file-backed contracts |
+| QC снова загрязнится параллельными процессами | один отдельный full QC gate, focused reviewer checks, disposable diagnostics |
+| Local model внесёт nondeterminism или сетевую утечку | one-shot, exact installed model, network disabled, pattern-first и fail-safe fallback |
+| Closure test навсегда запретит новый backlog | permanent test разрешает новые корректно оформленные entries |
+| Unsafe действия невозможно полностью предотвратить | exact authority envelope, preflight, public effect events и `UNKNOWN` при отсутствии наблюдаемости |
+
+---
+
+# 8. Консервативные предположения и реальные внешние решения
+
+Проектирование исходит из следующих предположений:
+
+- исправления upstream Orca допустимы как часть программы; локальный Meta-O proxy не создаётся;
+- полный raw ledger можно перенести в `docs/references/` как ненормативный byte-identical archive;
+- Ollama используется только как первый local-model evaluation runtime;
+- пользовательские `senior-python` и `senior-jsts` принимаются как существующий вход, но должны пройти обычные build/install/QC checks;
+- калибровочные review/watchdog thresholds являются пересматриваемыми evaluation policy, а не вечными бизнес-требованиями.
+
+При реализации внешнего действия потребуют отдельного пользовательского решения только уже предусмотренные границы:
+
+- создание upstream Orca issues или изменения другого repository;
+- установка отсутствующего CLI либо загрузка Ollama model;
+- выбор exact provider/model/effort и восстановление credentials/subscription;
+- destructive или production E2E action.
+
+Архитектурно неразрешённых вопросов внутри программы нет: каждый спорный review/watchdog вариант либо имеет принятый контракт, либо закрывается заранее определённым экспериментом и go/no-go доказательством.

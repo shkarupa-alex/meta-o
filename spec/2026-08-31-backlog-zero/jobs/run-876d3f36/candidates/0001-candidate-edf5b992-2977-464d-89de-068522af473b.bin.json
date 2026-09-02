@@ -1,0 +1,12 @@
+{
+  "candidateId": "candidate-edf5b992-2977-464d-89de-068522af473b",
+  "jobId": "run-876d3f36",
+  "generation": 1,
+  "phase": "approach",
+  "round": 0,
+  "activeSetRevision": 1,
+  "judge": "gpt56solhigh",
+  "createdBy": "provider",
+  "path": "jobs/run-876d3f36/candidates/0001-candidate-edf5b992-2977-464d-89de-068522af473b.bin",
+  "sha256": "a6e5abccfd7d1d60fb216e87f45e1287458048775156ae0d9a021689e6ed71df"
+}

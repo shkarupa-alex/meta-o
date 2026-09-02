@@ -1,0 +1,226 @@
+{
+  "target_id": "spec-review",
+  "approval_score": 5,
+  "would_adopt": false,
+  "summary": "Focused correction полностью закрыла FIND-SR-006 и STALE-ACCOUNT-SURFACE-09: review core теперь определяет modes, stage order, evidence states, severity и report schema, а readiness различает native auth, stale Orca projection и live launch. Остальные 23 именованных findings остаются открытыми или частично закрытыми. Кроме того, обязательная TUI-проекция создаёт новую блокирующую регрессию: диагностический terminal output способен аннулировать успешно доставленный authoritative worker_done. Подход из четырёх specs сохраняется; нужен bounded orchestrator/spec fix, а не повторная генерация proposals.",
+  "phase": "spec-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "FIND-SR-001",
+      "severity": "major",
+      "area": "provenance",
+      "description": "Program base commit не доказывает существование всех обязательных входов программы.",
+      "evidence": "§1 фиксирует только commit 41a489... и два blobs, тогда как senior skills и review research являются отдельными обязательными входами и не привязаны к воспроизводимым Git objects.",
+      "required_change": "Зафиксировать для каждого обязательного входа существующий commit/blob identity либо определить отдельный воспроизводимый input bundle, не меняя Orca-only base."
+    },
+    {
+      "id": "FIND-SR-002",
+      "severity": "major",
+      "area": "inventory",
+      "description": "Lossless inventory по-прежнему не материализован в самой спецификации.",
+      "evidence": "Appendix A отображает только крупные headings, а §4.5 обещает построить node-level map позднее; проверяемой карты каждого текущего paragraph/list item к obligation и proof сейчас нет.",
+      "required_change": "Включить в Spec 4 полный implementation-ready inventory либо однозначный generated inventory contract с корректными selectors для обоих source blobs."
+    },
+    {
+      "id": "FIND-SR-003",
+      "severity": "major",
+      "area": "final proof",
+      "description": "Машинное доказательство биекции удаляется до SHA, на котором заявляется окончательный DoD.",
+      "evidence": "§4.5 и §4.7 требуют удалить closure map и backlog-closure test, тогда как §4.8 требует доказательства lossless closure на deletion SHA.",
+      "required_change": "Определить двухфазный proof: immutable pre-deletion proof artifact с named permanent consumer либо final verifier, способный воспроизвести биекцию из provenance blobs без удалённой карты."
+    },
+    {
+      "id": "FIND-SR-004",
+      "severity": "major",
+      "area": "dependencies",
+      "description": "Между Specs 2 и 3 остаётся скрытый цикл.",
+      "evidence": "Spec 2 зависит от Orca readiness Spec 3, а полный E2E Spec 3 требует review lifecycle и pair settlement из Spec 2.",
+      "required_change": "Разделить зависимости на явно именованные readiness и integration milestones с односторонними acceptance outputs."
+    },
+    {
+      "id": "FIND-SR-005",
+      "severity": "major",
+      "area": "find-reuse",
+      "description": "Portable find-reuse не имеет полного read-only execution и Meta-O integration contract.",
+      "evidence": "§1.3–1.7 не определяют алгоритм applicability, запрет repository writes, mapping внешнего Meta-O context в request и destination report, а таблица содержит сокращённые или абстрактные commands.",
+      "required_change": "Добавить pure/read-only authority contract, deterministic applicability rules, полный external consumer mapping в Spec 2 и executable argv/API definitions для обязательных adapters."
+    },
+    {
+      "id": "FIND-SR-007",
+      "severity": "major",
+      "area": "model configuration",
+      "description": "Источник approved harness/model/effort остаётся неопределённым.",
+      "evidence": "§2.6 ссылается на user-approved mo-setup posture/config, но не задаёт schema, path, resolution order, validation или поведение при отсутствии конфигурации.",
+      "required_change": "Назвать существующий authoritative consumer/configuration surface и определить его schema, lookup, validation и typed failure contract."
+    },
+    {
+      "id": "FIND-SR-008",
+      "severity": "major",
+      "area": "Orca lifecycle",
+      "description": "RequiredObservation не покрывает полную delivery и recovery state machine.",
+      "evidence": "§3.4 не представляет queued/active, sent/delivered/consumed/acknowledged, input/output blocked, unknown_effect и post-compaction continuation как типизированные состояния или переходы.",
+      "required_change": "Определить native-state projection и допустимые переходы, включая precedence вопросов, compaction recovery, refusal after work и confirmation semantics."
+    },
+    {
+      "id": "FIND-SR-009",
+      "severity": "major",
+      "area": "skill evals",
+      "description": "Требование evals для всех skills сведено к изменяемым skills.",
+      "evidence": "§4 общего contract и acceptance Specs 1–4 требуют runs преимущественно для changed skills; отсутствует полный inventory и representative cases для всех текущих public skills.",
+      "required_change": "Добавить program-wide skill inventory с owner spec, positive/negative/degraded cases и явным blocking/advisory статусом каждого skill."
+    },
+    {
+      "id": "FIND-SR-010",
+      "severity": "major",
+      "area": "knowledge contracts",
+      "description": "Anchor stripping и historical-ID traversal остаются недостаточно определёнными.",
+      "evidence": "§4.3 не задаёт полную annotation grammar и допустимые Markdown contexts; §4.4 не определяет cutoff seed, merge-parent semantics, shallow-clone behavior и точную проверку owning decision.",
+      "required_change": "Добавить grammar/context schema, selected AST library and round-trip invariant, а также детерминированный Git DAG algorithm с error cases."
+    },
+    {
+      "id": "FIND-SR-011",
+      "severity": "major",
+      "area": "upstream closure",
+      "description": "Подтверждённая capability boundary заявлена как closure, но отсутствует среди допустимых dispositions.",
+      "evidence": "§1 допускает закрытие подтверждённой upstream boundary; §4.6 разрешает только upstream-fixed и public-workaround-proven, а §3.12 оставляет spec blocked до fix/workaround.",
+      "required_change": "Унифицировать одно правило: либо capability boundary является architecture-rejected с ADR и proof, либо программа остаётся blocked; одинаково отразить это в goal, dispositions и DoD."
+    },
+    {
+      "id": "FIND-SR-012",
+      "severity": "major",
+      "area": "decomposition",
+      "description": "Нет implementation-ready critical path из малых независимых increments.",
+      "evidence": "§2 определяет четыре большие specs и coarse order, но не перечисляет deliverable, dependency, proof и merge boundary для небольших increments.",
+      "required_change": "Добавить milestone matrix внутри четырёх specs без создания дополнительных spec documents."
+    },
+    {
+      "id": "INVENTORY-LOSS-01",
+      "severity": "major",
+      "area": "inventory",
+      "description": "Уникальные требования внутри крупных backlog entries всё ещё могут быть потеряны.",
+      "evidence": "Appendix A остаётся coarse map, а будущая AST inventory описана без уже проверенного source-node set.",
+      "required_change": "Материализовать полное множество source locators и обязательную row schema до начала disposition."
+    },
+    {
+      "id": "PROVENANCE-FRAGILE-02",
+      "severity": "major",
+      "area": "provenance",
+      "description": "Closure зависит от неполного набора Git provenance references.",
+      "evidence": "Указанные base/blob IDs не покрывают обязательные untracked или более поздние research и skill inputs.",
+      "required_change": "Зафиксировать воспроизводимую provenance identity каждого обязательного источника."
+    },
+    {
+      "id": "FIND-REUSE-ORPHAN-03",
+      "severity": "major",
+      "area": "find-reuse integration",
+      "description": "Результат portable find-reuse не имеет полного именованного Meta-O consumer path.",
+      "evidence": "§1.1 обещает integration в Spec 2, но Spec 2 не определяет invocation trigger, request construction, report validation и insertion destination.",
+      "required_change": "Добавить в Spec 2 внешний integration contract от feature intent до validated find-reuse report и durable spec section."
+    },
+    {
+      "id": "DOD-UNREACHABLE-04",
+      "severity": "major",
+      "area": "Definition of Done",
+      "description": "Final DoD остаётся недостижимым и невоспроизводимым на одном SHA.",
+      "evidence": "Final SHA должен доказать удалённую closure map/test, допускает documentation carry-forward для live E2E и одновременно блокируется неопределённой upstream capability boundary.",
+      "required_change": "Определить точную final-gate sequence и доступные на final SHA proof inputs без ослабления same-SHA rules."
+    },
+    {
+      "id": "AST-INFEASIBLE-05",
+      "severity": "major",
+      "area": "AST transformation",
+      "description": "Заявленный byte/semantic preservation contract не реализуем из приведённого TextNode API.",
+      "evidence": "§4.3 одновременно разрешает нормализацию whitespace, требует сохранения всех остальных bytes и оперирует offsets внутри TextNode без определения source positions, serialization и inline-node boundaries.",
+      "required_change": "Задать конкретную annotation grammar, AST/token representation, serializer и проверяемую canonicalization policy."
+    },
+    {
+      "id": "JSDOC-ALREADY-DONE-06",
+      "severity": "major",
+      "area": "symbol purpose",
+      "description": "Spec не отделяет уже существующий JSDoc gate от новой backlog-работы.",
+      "evidence": "§4.2 повторяет требование JSDoc для public symbols, но не задаёт точный incremental rule для обязательного architecture identifier, symbol eligibility и legacy migration.",
+      "required_change": "Зафиксировать существующий baseline и описать только новый ESLint rule/config, precise symbol scope, migration set и positive/negative fixtures."
+    },
+    {
+      "id": "BIJECTION-UNSAT-07",
+      "severity": "major",
+      "area": "closure bijection",
+      "description": "Формальная биекция остаётся внутренне несогласованной.",
+      "evidence": "§4.5 говорит о nodes после ## Открыто для двух документов, хотя real-runs имеет другую структуру; упоминает adopted row, которого нет в dispositions; затем удаляет consumer доказательства.",
+      "required_change": "Задать отдельные root selectors для каждого blob, точную row-state schema и воспроизводимое final proof."
+    },
+    {
+      "id": "HOT-REVIEWER-CONTRACT-08",
+      "severity": "major",
+      "area": "review lifecycle",
+      "description": "Hot reviewer lifecycle всё ещё условен и не имеет backend-level контракта.",
+      "evidence": "§2.6 требует сохранять reviewer hot только если backend capability поддерживает это, но не определяет required capability, retention/re-dispatch semantics или blocking outcome при её отсутствии.",
+      "required_change": "Определить exact native capability, ownership transitions, replacement behavior и acceptance при unavailable retention."
+    },
+    {
+      "id": "ADAPTER-CMD-UNGATED-10",
+      "severity": "major",
+      "area": "find-reuse adapters",
+      "description": "Матрица adapters содержит неполные и version-sensitive commands без обязательного qualification gate.",
+      "evidence": "§1.6 использует ellipses, абстрактные server API/exact package API и команды, доступность которых зависит от версии; §1.10 делает live probes optional.",
+      "required_change": "Для обязательного ядра привести точные argv/API requests, minimum supported versions, output parsers и blocking contract fixtures."
+    },
+    {
+      "id": "FINAL-GATE-SCOPE-11",
+      "severity": "major",
+      "area": "final gate",
+      "description": "Добавленные DoD bullets расширили coverage, но не исправили scope и ordering final gate.",
+      "evidence": "§2.9 выполняет cleanup после прежних PASS/E2E, §4.7 удаляет proof artifacts, а §4.8 допускает carry-forward вместо однозначного same-SHA applicability rule.",
+      "required_change": "Определить единственный deletion SHA, полный набор заново запускаемых gates и строгие условия допустимости внешнего immutable evidence."
+    },
+    {
+      "id": "QWEN-CONSTANT-12",
+      "severity": "major",
+      "area": "local model profile",
+      "description": "Qwen profile задан человеческим названием, а не исполнимой configured identity.",
+      "evidence": "§3.9 требует exact Qwen 3.8 27B UD-Q4-KM, но не задаёт OpenCode provider/model identifier, immutable weight digest, context configuration или command/profile locator.",
+      "required_change": "Определить executable profile schema и exact effective-identity verification без превращения модели в скрытый hard-coded fallback."
+    },
+    {
+      "id": "LEDGER-GAPS-13",
+      "severity": "major",
+      "area": "decision ledger",
+      "description": "Decision Ledger дополнен решениями коррекции, но остаётся неполным относительно normative body.",
+      "evidence": "В adopted/rejected tables отсутствуют отдельные решения о shell enforcement boundary, source-only anchors, historical trailers, review report authority, unknown_effect retry, account refresh и несколькие другие body-level choices.",
+      "required_change": "Провести machine-reviewable body-to-ledger audit: каждая adopted normative decision и каждый rejected/deferred option должны иметь ровно одну ledger entry и source."
+    },
+    {
+      "id": "REGRESSION-TUI-AUTHORITY-01",
+      "severity": "critical",
+      "area": "review delivery",
+      "description": "Коррекция сделала ненадёжную terminal projection частью authoritative settlement.",
+      "evidence": "§2.6 одновременно объявляет worker_done единственным authoritative report и переводит delivery в UNKNOWN при missing/mismatched TUI line; исправление требуется тем же worker после worker_done, хотя Dispatch capability может уже быть отозвана.",
+      "required_change": "Оставить worker_done единственным delivery authority. Проверять TUI projection как отдельный UX acceptance outcome; mismatch должен исправляться и блокировать общий feature acceptance при необходимости, но не аннулировать принятый report и не использовать terminal text как lifecycle evidence."
+    }
+  ],
+  "non_blocking_findings": [
+    {
+      "id": "NB-CORRECTION-01",
+      "severity": "minor",
+      "area": "review report",
+      "description": "Для UNKNOWN header полезно явно определить, должны ли P0–P3 counts быть нулевыми или отсутствовать.",
+      "evidence": "Текущий Projection всегда требует counts, но UNKNOWN может не иметь завершённого finding body.",
+      "required_change": "Зафиксировать canonical UNKNOWN projection в report fixtures."
+    }
+  ],
+  "assumptions": [
+    "FIND-SR-006 считается закрытым только в части review modes, stage order, evidence, severity и report contract; новая TUI-регрессия учитывается отдельным finding.",
+    "STALE-ACCOUNT-SURFACE-09 считается закрытым, поскольку correction добавляет freshness classification, native auth evidence, exact live launch и отдельные acceptance outcomes.",
+    "Все остальные исправления могут быть выполнены bounded-коррекцией существующих четырёх specs и не требуют пересмотра frozen product boundaries.",
+    "Prior council artifacts under spec/** не читались и не использовались."
+  ],
+  "round": 2,
+  "reviewer": "gpt56solhigh",
+  "judge": {
+    "slug": "gpt56solhigh",
+    "model": "gpt-5.6-sol",
+    "route": "codex-sdk",
+    "effort": "high"
+  }
+}
