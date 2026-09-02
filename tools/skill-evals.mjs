@@ -205,6 +205,26 @@ function rejectSensitiveOrMachineLocal(value, label) {
   visit(value);
 }
 
+function validateCriticalIdentity(envelope) {
+  const model = envelope.effective.model.toLowerCase();
+  const harness = envelope.harness?.name?.toLowerCase() ?? "";
+  const quantization =
+    envelope.harness?.quantization?.toLowerCase().replace(/[^a-z0-9]/gu, "") ?? "";
+  const context = Number(envelope.harness?.context);
+  const qualified = [
+    envelope.effective.route === "opencode",
+    harness.includes("opencode"),
+    /qwen[^\n]*3[._-]?8[^\n]*27b/u.test(model),
+    quantization.includes("q4km"),
+    Number.isSafeInteger(context),
+    context >= 32768,
+  ];
+  if (qualified.every(Boolean)) return;
+  throw new Error(
+    `${envelope.skill}: critical evidence is not the qualified Qwen 3.8 27B OpenCode profile`,
+  );
+}
+
 function validateActorIdentity(envelope, document) {
   for (const side of ["requested", "effective"]) {
     for (const field of ["route", "model", "effort"]) {
@@ -215,23 +235,7 @@ function validateActorIdentity(envelope, document) {
     throw new Error(`${envelope.skill}: requested/effective identity mismatch`);
   }
   if (document.policy === "critical") {
-    const model = envelope.effective.model.toLowerCase();
-    const harness = envelope.harness?.name?.toLowerCase() ?? "";
-    const quantization =
-      envelope.harness?.quantization?.toLowerCase().replace(/[^a-z0-9]/gu, "") ?? "";
-    const context = Number(envelope.harness?.context);
-    if (
-      envelope.effective.route !== "opencode" ||
-      !harness.includes("opencode") ||
-      !/qwen[^\n]*3[._-]?8[^\n]*27b/u.test(model) ||
-      !quantization.includes("q4km") ||
-      !Number.isSafeInteger(context) ||
-      context < 32768
-    ) {
-      throw new Error(
-        `${envelope.skill}: critical evidence is not the qualified Qwen 3.8 27B OpenCode profile`,
-      );
-    }
+    validateCriticalIdentity(envelope);
     return;
   }
   const role = {
