@@ -1,0 +1,142 @@
+#!/usr/bin/env node
+
+/**
+ * Produce sanitized live evidence for find-reuse production adapter descriptors.
+ *
+ * Protects §A-REUSE-01.
+ */
+
+import { spawnSync } from "node:child_process";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { executeHttp, loadDescriptors, validateDescriptors } from "./adapter-contract.mjs";
+
+const SAMPLE = {
+  github: { query: "json parser", package: "cli/cli" },
+  gitlab: { query: "json parser", package: "gitlab-org/cli" },
+  npm: { query: "json parser", package: "lodash" },
+  pypi: { query: "http client", package: "requests" },
+  "crates-io": { query: "json parser", package: "serde" },
+  "go-modules": {
+    query: "http router",
+    package: "github.com/stretchr/testify",
+    escaped_module: "github.com/stretchr/testify",
+  },
+  "maven-central": {
+    query: "g:org.junit.jupiter",
+    package: "org.junit.jupiter:junit-jupiter",
+  },
+  nuget: { query: "newtonsoft json", package: "Newtonsoft.Json" },
+  rubygems: { query: "http router", package: "rack" },
+  packagist: { query: "logger", package: "monolog/monolog" },
+  osv: { query: "lodash", package: "lodash" },
+};
+
+function sanitized(value) {
+  return String(value ?? "")
+    .trim()
+    .split("\n")[0]
+    .slice(0, 200);
+}
+
+function probe(descriptor, argv, kind) {
+  const [command, ...args] = argv;
+  const result = spawnSync(command, args, {
+    encoding: "utf8",
+    shell: false,
+    timeout: 15_000,
+  });
+  if (result.error?.code === "ENOENT") {
+    return { adapter: descriptor.id, kind, command: argv, status: "tool_missing" };
+  }
+  return {
+    adapter: descriptor.id,
+    kind,
+    command: argv,
+    status: result.status === 0 ? "ok" : "adapter_unsupported",
+    result: sanitized(result.stdout || result.stderr),
+  };
+}
+
+async function nugetValues(values, baseUrl) {
+  const response = await fetch(new URL("/v3/index.json", baseUrl), {
+    signal: AbortSignal.timeout(15_000),
+  });
+  const index = await response.json();
+  const resource = index.resources.find(({ "@type": type }) =>
+    String(type).startsWith("SearchQueryService"),
+  );
+  if (!resource?.["@id"]) throw new Error("NuGet index has no SearchQueryService");
+  return { ...values, search_query_service: resource["@id"] };
+}
+
+async function verifyHttp(descriptor, evidence) {
+  let values = SAMPLE[descriptor.id];
+  if (!values) return [];
+  if (descriptor.id === "nuget") values = await nugetValues(values, descriptor.base_url);
+  const failures = [];
+  const operations = descriptor.operations.filter(({ transport }) => transport.startsWith("http_"));
+  for (const operation of operations) {
+    let result;
+    try {
+      result = await executeHttp(operation, values, {
+        baseUrl: descriptor.base_url,
+        body: { package: { name: "lodash", ecosystem: "npm" } },
+        timeoutMs: 30_000,
+      });
+    } catch (error) {
+      const status = "source_unavailable";
+      evidence.push({
+        adapter: descriptor.id,
+        kind: operation.transport,
+        command: operation.argv_or_url,
+        status,
+        result: sanitized(error.message),
+      });
+      failures.push(`${descriptor.id}: ${operation.argv_or_url.join(" ")} => ${status}`);
+      continue;
+    }
+    const expected = operation.success.http_status.includes(result.status);
+    const status = expected && !result.error ? "ok" : (result.error ?? "source_unavailable");
+    evidence.push({
+      adapter: descriptor.id,
+      kind: operation.transport,
+      command: operation.argv_or_url,
+      status,
+      http_status: result.status,
+    });
+    if (status !== "ok")
+      failures.push(`${descriptor.id}: ${operation.argv_or_url.join(" ")} => ${status}`);
+  }
+  return failures;
+}
+
+/** §A-REUSE-01 verifies installed probes and public HTTP operations, returning sanitized evidence. */
+export async function verifyLive(descriptors = loadDescriptors()) {
+  const failures = validateDescriptors(descriptors);
+  const evidence = [];
+  for (const descriptor of descriptors) {
+    for (const [kind, argv] of [
+      ["version_probe", descriptor.version_probe],
+      ["capability_probe", descriptor.capability_probe],
+    ]) {
+      const item = probe(descriptor, argv, kind);
+      evidence.push(item);
+      if (item.status === "adapter_unsupported") failures.push(`${descriptor.id}: ${kind} failed`);
+    }
+    failures.push(...(await verifyHttp(descriptor, evidence)));
+  }
+  return {
+    contract: "find-reuse.live-adapters.v1",
+    timestamp: new Date().toISOString(),
+    evidence,
+    failures,
+  };
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const report = await verifyLive();
+  console.log(JSON.stringify(report, null, 2));
+  if (report.failures.length > 0) process.exitCode = 1;
+}

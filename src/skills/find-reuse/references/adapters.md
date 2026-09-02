@@ -1,5 +1,10 @@
 # Source adapter contract
 
+The normative machine-readable records are
+[`adapters.json`](adapters.json). This document explains applicability and
+interpretation; commands must be taken from the matching descriptor, not
+reconstructed from prose.
+
 Every operation below is run only after its executable/version and exact
 subcommand or endpoint capability have been probed. Arguments are passed
 separately; placeholders are never shell-expanded. Production base URLs are
@@ -14,7 +19,10 @@ typed errors: `tool_missing`, `auth_missing`, `rate_limited`,
 
 Changing `last_verified` requires the separate network-enabled
 `make mo-live-adapters` evidence command. Offline QC never pretends to verify a
-live service.
+live service. The live report records every exact probe, detected version,
+timestamp, HTTP status and typed gap without credentials or response bodies.
+Missing local tools remain explicit evidence; a present-but-unsupported probe or
+failed production endpoint makes the command fail.
 
 ## Required discovery and enrichment
 

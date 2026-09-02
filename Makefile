@@ -4,7 +4,7 @@
 # authoritative gate, it rewrites nothing, and every gate under it is a mature
 # tool or a plain shell comparison rather than a checker this project wrote.
 
-.PHONY: mo-qc mo-lint mo-test mo-smoke mo-e2e skills skills-check format contract
+.PHONY: mo-qc mo-lint mo-test mo-smoke mo-e2e mo-live-adapters skills skills-check format contract
 
 # The authoritative gate.
 mo-qc: mo-lint contract skills-check mo-test mo-smoke
@@ -19,7 +19,10 @@ mo-lint:
 	node --check skills/mo-orchestrate-orca/scripts/mo-models.mjs
 	node --check skills/mo-review-orca/scripts/mo-models.mjs
 	node --check tools/build-skills.mjs
+	node --check tools/adapter-contract.mjs
 	node --check tools/knowledge-history.mjs
+	node --check tools/live-adapters.mjs
+	node tools/adapter-contract.mjs --validate
 	bash -n shared/scripts/mo-posture.sh
 	bash -n shared/scripts/mo-watchdog.sh
 	shared/scripts/mo-posture.sh --self-check --shell all
@@ -72,3 +75,8 @@ mo-e2e:
 	@echo "Ledger:    scenario definitions and support posture only; do not edit tracked docs for run evidence"
 	@echo "Cleanup:   stop every provider session you started, including on failure"
 	@exit 2
+
+# Network-enabled maintainer evidence. Missing local tools are reported; a
+# present-but-unsupported probe or a failed production endpoint blocks.
+mo-live-adapters:
+	node tools/live-adapters.mjs
