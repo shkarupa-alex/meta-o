@@ -12,7 +12,8 @@ contract and acceptance-to-proof mapping. Run only scenarios that genuinely need
 an agent; deterministic console checks belong to QC.
 
 Reject a candidate that is not an exact frozen 40-hex SHA before launching an
-actor. When a required environment or approved actor profile is unavailable,
+actor, preserve it unchanged, and record `NOT_RUN` with the exact validation
+reason. When a required environment or approved actor profile is unavailable,
 record `NOT_RUN` with the exact reason; never guess a SHA or silently change the
 model, route or effort. A documentation-only successor may reuse earlier live
 proof only when the project's mapping defines an explicit carry-forward rule and
