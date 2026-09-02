@@ -19,6 +19,9 @@ private digest before delivery and suppresses the same message, an ambiguous
 attempt, or a saturated unchanged state across later invocations. Nudges return
 after native delivery; agent completion is observed separately.
 
+Treat malformed or stale native state as a typed unsafe observation: report it,
+fail closed, and do not nudge or guess the target state.
+
 Do not inspect tracked project content or private provider state. Report the
 native locator, classified state and action. Pattern misses are refined from
 observed failures rather than hidden behind a support claim.
