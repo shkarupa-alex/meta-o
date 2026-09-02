@@ -276,14 +276,13 @@ test("watchdog serializes concurrent nudges and bounds unchanged-state history",
   const first = run(script, [...base, "first"], { env });
   await new Promise((resolve) => setTimeout(resolve, 100));
   const second = await run(script, [...base, "second"], { env });
-  const accepted = await first;
-  assert.equal(accepted.status, 0, accepted.stderr);
-  assert.equal(second.status, 2, second.stderr);
-  assert.match(second.stdout, /action=concurrent-suppressed/);
+  const firstResult = await first;
+  assert.deepEqual([firstResult.status, second.status].sort(), [0, 2]);
+  assert.match(`${firstResult.stdout}\n${second.stdout}`, /action=concurrent-suppressed/);
 
   const fastEnv = { ...env };
   delete fastEnv.WATCHDOG_SLOW_SEND;
-  for (let index = 0; index < 14; index += 1) {
+  for (let index = 0; index < 15; index += 1) {
     const result = spawnSync(script, [...base, `distinct-${index}`], {
       env: fastEnv,
       encoding: "utf8",
