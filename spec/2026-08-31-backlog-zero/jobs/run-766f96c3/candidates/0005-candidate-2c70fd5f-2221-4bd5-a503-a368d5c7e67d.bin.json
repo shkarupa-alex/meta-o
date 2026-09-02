@@ -1,0 +1,12 @@
+{
+  "candidateId": "candidate-2c70fd5f-2221-4bd5-a503-a368d5c7e67d",
+  "jobId": "run-766f96c3",
+  "generation": 5,
+  "phase": "spec-refinement",
+  "round": 1,
+  "activeSetRevision": 1,
+  "judge": "spec-author",
+  "createdBy": "provider",
+  "path": "jobs/run-766f96c3/candidates/0005-candidate-2c70fd5f-2221-4bd5-a503-a368d5c7e67d.bin",
+  "sha256": "9aa3c9c0c0a238a2467249e845e87d7048fd432a676d7cde111ac91fb739bc74"
+}
