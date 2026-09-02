@@ -99,7 +99,6 @@ test("Herdr and Paseo survive only as README history", () => {
   }
   for (const path of files(join(ROOT, "docs"))) {
     if (path.startsWith(join(ROOT, "docs", "references"))) continue;
-    if (path === join(ROOT, "docs", "backlog-issues-real-runs.md")) continue;
     assert.doesNotMatch(readFileSync(path, "utf8"), forbidden, path);
   }
   const readme = readFileSync(join(ROOT, "README.md"), "utf8");
@@ -183,8 +182,8 @@ test("entry contracts link every essential knowledge document", () => {
   }
 });
 
-test("every backlog deferral has reason, practical impact, and next step", () => {
-  const tokens = markdown.parse(readFileSync(join(ROOT, "docs", "backlog.md"), "utf8"), {});
+function backlogEntries(source) {
+  const tokens = markdown.parse(source, {});
   const entries = [];
   for (let index = 0; index < tokens.length; index += 1) {
     if (tokens[index].type !== "heading_open" || tokens[index].tag !== "h3") continue;
@@ -199,8 +198,24 @@ test("every backlog deferral has reason, practical impact, and next step", () =>
     }
     entries.push({ title, body: body.join("\n") });
   }
-  assert.ok(entries.length > 0, "backlog must contain at least one real deferral");
-  for (const entry of entries) {
+  return { entries, tokens };
+}
+
+test("the backlog schema accepts empty state and validates every future deferral", () => {
+  const source = readFileSync(join(ROOT, "docs", "backlog.md"), "utf8");
+  const { entries, tokens } = backlogEntries(source);
+  const headings = tokens
+    .filter((entry) => entry.type === "heading_open")
+    .map((entry) => tokens[tokens.indexOf(entry) + 1].content);
+  assert.deepEqual(headings, ["Бэклог", "Открыто"]);
+  assert.deepEqual(entries, []);
+
+  const future = backlogEntries(
+    "# Бэклог\n\n## Открыто\n\n### Deferred\n\n**Причина.** R\n\n" +
+      "**Практическое влияние.** I\n\n**Следующий шаг.** N\n",
+  ).entries;
+  assert.equal(future.length, 1);
+  for (const entry of [...entries, ...future]) {
     for (const field of ["Причина.", "Практическое влияние.", "Следующий шаг."]) {
       assert.ok(entry.body.includes(field), `${entry.title}: ${field}`);
     }

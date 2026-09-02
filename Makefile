@@ -20,13 +20,16 @@ mo-lint:
 	node --check skills/mo-review-orca/scripts/mo-models.mjs
 	node --check tools/build-skills.mjs
 	node --check tools/adapter-contract.mjs
-	node --check tools/backlog-closure.mjs
 	node --check tools/knowledge-history.mjs
 	node --check tools/live-adapters.mjs
 	node tools/adapter-contract.mjs --validate
 	bash -n shared/scripts/mo-posture.sh
 	bash -n shared/scripts/mo-watchdog.sh
-	shared/scripts/mo-posture.sh --self-check --shell all
+	@set -e; for shell_name in bash zsh; do \
+		if command -v $$shell_name >/dev/null 2>&1; then \
+			shared/scripts/mo-posture.sh --self-check --shell $$shell_name; \
+		else echo "mo-posture self-check skipped: $$shell_name is not installed"; fi; \
+	done
 
 format:
 	npx --no-install prettier --write .

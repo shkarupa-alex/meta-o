@@ -27,3 +27,15 @@
 | Remediation использует hot roles, final proof — fresh pair.                | Lifecycle contract assertions.                                       | Orca review-loop scenario на exact SHA.                      |
 | Model actor запускается только по применимости на low-cost profile.        | `tests/model-testing-policy.test.mjs`.                               | Requested/effective identity named applicable scenario.      |
 | Qwen/OpenCode управляет lifecycle, но не пишет product code.               | Ownership и projection fixtures.                                     | Critical Qwen profile suite на exact SHA.                    |
+
+## Провенанс закрытия backlog
+
+| Источник         | Frozen blob                                |
+| ---------------- | ------------------------------------------ |
+| Backlog ledger   | `8d11d1107eb5875235c2830e6503f7e1265317d7` |
+| Real-runs ledger | `c75859372fa7d794269cc6dcc8834c069ddd8096` |
+
+Lossless AST closure зафиксирован коммитом
+`163692c833369ca0c5941fa29917366ccbbf908f`; blob полной карты —
+`40891dc9e6637ac11f95e67da9c5160424076649`. Постоянное доказательство:
+`node --test tests/backlog-provenance.test.mjs`.
