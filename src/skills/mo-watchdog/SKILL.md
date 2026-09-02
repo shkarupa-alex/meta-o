@@ -1,13 +1,14 @@
 ---
 name: mo-watchdog
-description: Observe one target or scan reachable Orca sessions for limits, overload, failures, questions, work, and completion; nudge only an explicitly authorized exact target.
+description: Observe one target or scan reachable Orca sessions for limits, overload, failures, questions, work, and completion. Use only when the user explicitly names Meta-O watchdog or mo-watchdog; nudge only an explicitly authorized exact target.
 license: MIT
 ---
 
 # Watch backend sessions
 
 Read [Watchdog behavior](references/watchdog.md) completely. Start only after the
-user explicitly requests observation.
+user explicitly names Meta-O watchdog or `mo-watchdog`; a generic monitoring
+question does not activate this skill.
 
 Use `scripts/mo-watchdog.sh target --backend orca --session <id>` for one
 session or `scripts/mo-watchdog.sh scan` for all reachable Orca sessions.
