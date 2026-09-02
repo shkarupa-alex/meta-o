@@ -1,0 +1,12 @@
+{
+  "candidateId": "candidate-50b27fa5-5fc8-4e28-99dd-7948735316ab",
+  "jobId": "run-766f96c3",
+  "generation": 3,
+  "phase": "spec-review",
+  "round": 1,
+  "judge": "opus1mhigh",
+  "activeSetRevision": 1,
+  "createdBy": "provider",
+  "path": "jobs/run-766f96c3/candidates/0003-candidate-50b27fa5-5fc8-4e28-99dd-7948735316ab.bin",
+  "sha256": "58d4c92fe4d6dcf4b6552b0a826a9f7784e3348e0e014d6522316add3d21ce97"
+}

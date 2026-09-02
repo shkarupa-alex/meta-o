@@ -1,0 +1,71 @@
+{
+  "target_id": "proposal-2",
+  "approval_score": 7,
+  "would_adopt": true,
+  "summary": "Доктрина закрытия переписана в жёсткую форму и стала лучшей частью пары: носителем закрытия может быть только положительный инвариант собственного поведения Meta-O, любая проба-компенсация понижена до раздела ## Diagnostic accelerators (non-normative) со структурным тестом (ни acceptance, ни E2E, ни тест на него не ссылаются), инвариант честной деградации сформулирован без упоминания Orca и проверяется B17 с отключёнными акселераторами, а issue наверх стал обязательным полем строки границы с литералом no-public-tracker и машинным capability-boundary.test.mjs — это точное исполнение §B-PORTABILITY-06, где обязанность и доказательство разведены. Конфликт со счётчиками по-прежнему решён на правильном слое (словарь slice/remediation, severity делает «остались только P3» наблюдаемым, поправка к §B-REVIEW-03 подготовлена как открытое решение владельца), find-reuse и review-дизайн детальнее конкурента. Остаются четыре вещи: DoD не доказывает losslessness против источника (биекция оперирует самообъявленными id, байтовых локаторов нет, ledger удаляется без записанного source commit/blob OID); DoD п.2 (биекция) противоречит п.6 (дубль не имеет своей строки); S9 меняет проекцию watchdog (классификация low-level Dispatch по семантике терминала, паттерны по TUI-строкам), что правит §A-WATCHDOG-01 и watchdog.md без записанной поправки и вдобавок конфликтует с собственным Q2; и в карте по-прежнему нет пяти наблюдений первой секции ledger, включая потерю initial /goal у replacement executor. Плюс правило про отклонённую доставку в исходном инциденте дало бы needs_attention там, где реальный запуск завершился успешно.",
+  "phase": "approach-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "P2-DOD-NOT-LOSSLESS",
+      "severity": "major",
+      "area": "program-closure",
+      "description": "Биекция DoD п.2 связывает инвентарные id самой программы со строками acceptance, но ни один указатель не привязан к байтам исходных файлов; при этом ledger по п.1 удаляется, и в дереве не остаётся ни source commit, ни blob OID исходных файлов.",
+      "evidence": "DoD п.1 («docs/backlog-issues-real-runs.md отсутствует») и п.2 (биекция «инвентарный id §3 → ровно одна строка acceptance»); в §12 сказано лишь, что файл удаляется последним коммитом после проверки резолвимости указателей.",
+      "required_change": "Импортировать байтовые локаторы (git-mdast:<blob-oid>:<path>@bytes=<start>:<end>), зафиксировать source commit 41a4898… и blob OID обоих файлов в acceptance или архиве и добавить в backlog-closure.test.mjs проверку, что каждый AST-узел исходных файлов покрыт ровно одной строкой."
+    },
+    {
+      "id": "P2-DOD-BIJECTION-VS-DUPLICATES",
+      "severity": "major",
+      "area": "program-closure",
+      "description": "DoD п.2 требует ровно одну строку acceptance на каждый инвентарный id и отсутствие осиротевших строк, тогда как п.6 закрывает дубль ссылкой на строку выжившего пункта, то есть без собственной строки. Один тест не может выполнять оба условия.",
+      "evidence": "DoD п.2 и п.6 в §18.",
+      "required_change": "Переписать правило в терминах survivor-строк: биекция по выжившим пунктам плюс обязательная колонка merged_from со списком id дублей и сохранённой distinct-evidence фразой каждого."
+    },
+    {
+      "id": "P2-WATCHDOG-PROJECTION-CONFLICT",
+      "severity": "major",
+      "area": "decision-hierarchy",
+      "description": "S9 вводит классификацию low-level injected Dispatch по семантике точного терминала и паттерны по строкам TUI, что противоречит действующему правилу проекции состояния watchdog; поправка к владеющему решению не записана. Дополнительно это чтение по собственному критерию Q2 является акселератором, на который ни один тест ссылаться не вправе, тогда как закрытие B5.25/R-C#49 идёт именно тестами.",
+      "evidence": "§A-WATCHDOG-01 исключает terminal preview/title/lastOutputAt из семантической проекции; shared/references/watchdog.md:40-44 — «For a `ctx_` worker envelope, the embedded terminal is diagnostic only: discard its preview and classify only typed dispatch, worker, observation, error…»; §16 отводит §A-WATCHDOG-02 только под локальную модель и семантику queued.",
+      "required_change": "Записать поправку к §A-WATCHDOG-01 (или новое решение, явно её сужающее) и провести в §2.2 границу: чтение native surfaces наблюдателем — его назначение по §B-UPTIME-02, а не акселератор; указать, какие именно поверхности остаются нормативными для watchdog."
+    },
+    {
+      "id": "P2-INVENTORY-GAPS",
+      "severity": "major",
+      "area": "inventory",
+      "description": "В карте root causes отсутствуют наблюдения первой секции ledger: старт на develop вместо feature-ветки, две записи про ownership материализации спеки, wait без usable handle и потеря initial /goal у фактически работающего replacement executor. Последнее правило в документе не встречается вовсе.",
+      "evidence": "docs/backlog-issues-real-runs.md, последний буллет секции 2026-08-24: «У фактически работающего executor отсутствует initial /goal… Replacement task оркестратор ошибочно оформил как follow-up без /goal». В §3.3 покрыты #1,2,5,7,8,10,11,12-19,20-27,29-32; #3,6,9,28,33 строк не имеют.",
+      "required_change": "Добавить недостающие наблюдения в §3.3 с owner-спекой и доказательством; для /goal — правило в S5/S7: replacement до первого реально принятого turn считается initial delivery и несёт /goal; задним числом /goal не эмулируется."
+    },
+    {
+      "id": "P2-REJECTED-DELIVERY-TOO-STRICT",
+      "severity": "minor",
+      "area": "review-lifecycle",
+      "description": "Требование считать вердикт при dispatch_capability_invalid неполученным и перезапрашивать его у той же горячей сессии в реальном инциденте привело бы к needs_attention: сессия висела в компакции и дважды не прошла readiness, тогда как фактический запуск успешно завершился передачей байтово полного отчёта свежей сессии.",
+      "evidence": "docs/backlog-issues-real-runs.md, «Recovery одного Claude-review оставил две видимые Claude-вкладки»: два полных FINDINGS-отчёта lifecycle-rejected с dispatch_capability_invalid, recovery Dispatch завершился failed/agent_readiness timeout, результат сохранён byte-for-byte и передан свежему supervised reviewer.",
+      "required_change": "Добавить квалифицирующий путь по аналогии с уже существующей в backend-contract.md квалификацией terminal read: публично доставленный байтово полный payload с проверяемой целостностью и снятым служебным префиксом допустим, если валидного перезапроса у той же сессии нет; иначе needs_attention."
+    },
+    {
+      "id": "P2-ACCEPTANCE-SCALE",
+      "severity": "minor",
+      "area": "knowledge-structure",
+      "description": "Строка acceptance на каждый закрытый пункт превращает документ уровня требований в реестр инцидентов и спорит с его собственной преамбулой.",
+      "evidence": "docs/acceptance.md — 14 строк уровня требований и оговорка «Вердикты текущего запуска остаются в финальном отчёте, а не в этом отслеживаемом файле»; карта §3 содержит порядка 115-160 пунктов.",
+      "required_change": "Агрегировать закрытие до уровня требований в acceptance.md, а построчную привязку инцидент→доказательство держать в одном историческом index с байтовыми локаторами."
+    }
+  ],
+  "assumptions": [
+    "Сквозная нумерация наблюдений R-A#1..#33 трактуется как порядок буллетов секции 2026-08-24; на этой трактовке основан вывод о пропуске #3, #6, #9, #28, #33",
+    "Предполагаю, что удаление ledger в DoD п.1 означает удаление файла из дерева при сохранении в Git-истории, а не переписывание",
+    "Проверял выборочно процитированные §B-координаты и цитаты methodology; все совпали, поэтому остальные считаю добросовестными"
+  ],
+  "round": 3,
+  "reviewer": "opus1mhigh",
+  "judge": {
+    "slug": "opus1mhigh",
+    "model": "opus[1m]",
+    "route": "claude-agent-sdk",
+    "effort": "high"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "candidateId": "candidate-06575ca3-03e3-4f54-8f69-3675f6a7e058",
+  "jobId": "run-766f96c3",
+  "generation": 2,
+  "phase": "spec-review",
+  "round": 1,
+  "activeSetRevision": 1,
+  "judge": "gpt56solhigh",
+  "parentCandidateId": "candidate-12f2b33f-9456-41b6-88d2-1084880fedb9",
+  "createdBy": "orchestrator_wrapper",
+  "path": "jobs/run-766f96c3/candidates/0002-candidate-06575ca3-03e3-4f54-8f69-3675f6a7e058.bin",
+  "sha256": "bc59f49825a1eddc5e0de16139d026abec6ba7f43f7da5b0fa05b9bb1e334371"
+}

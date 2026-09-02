@@ -1,0 +1,27 @@
+# User decision ledger (append-only chronological events)
+
+- [decision-799a01cb-de2a-4e56-b804-f713f9e9f5ca] active: Использовать gpt-5.6-sol/high и Claude Opus 1M/high. (source: response-annotations-2026-09-02)
+- [decision-e209cc5a-7479-4928-a6ff-ecf454e47887] active: Поддерживать только Orca; Herdr и Paseo удалить и исключить из программы. (source: response-annotations-2026-09-02)
+- [decision-335e5c51-200d-41da-afc6-0805eff6b8f2] active: senior-python и senior-jsts уже созданы пользователем в src и не являются backlog-работой. (source: response-annotations-2026-09-02)
+- [decision-192ec5c4-9ca6-40e3-a746-01f45e66b803] active: Переименовать mo-reuse в find-reuse; сделать skill независимым от Meta-O, а invocation и destination определить во внешней методологии. (source: response-annotations-2026-09-02)
+- [decision-5813f2b8-a68a-479a-bc4f-075d55ef8bd8] active: После реализации программы текущий backlog должен быть пуст, без потери исходных требований и инцидентов. (source: response-annotations-2026-09-02)
+- authority confirmed by response-annotations-2026-09-02; active: [decision-799a01cb-de2a-4e56-b804-f713f9e9f5ca], [decision-e209cc5a-7479-4928-a6ff-ecf454e47887], [decision-335e5c51-200d-41da-afc6-0805eff6b8f2], [decision-192ec5c4-9ca6-40e3-a746-01f45e66b803], [decision-5813f2b8-a68a-479a-bc4f-075d55ef8bd8]
+- [judges] active: Использовать gpt-5.6-sol/high и Claude Opus 1M/high. (source: response-annotation-1)
+- [backend-scope] active: Поддерживать только Orca; Herdr и Paseo исключены. (source: response-annotation-2)
+- [senior-skills] active: senior-python и senior-jsts уже созданы и не являются backlog-работой. (source: user-followup-senior-skills)
+- [find-reuse] active: find-reuse независим от Meta-O; invocation/destination определяются внешней методологией. (source: user-followup-find-reuse)
+- [backlog-goal] active: После реализации текущий backlog пуст без потери intent/evidence. (source: initial-user-request)
+- [all-skill-evals] active: Спроектировать evals для всех skills; Qwen 3.8 27B UD-Q4-KM через OpenCode на RTX 4090 — доступный дешёвый основной кандидат, DeepSeek 4 Flash — необязательный теоретический comparator; разработка будет на GPU-машине. (source: user-skill-evals-2026-09-02)
+- authority confirmed by user-skill-evals-2026-09-02; active: [judges], [backend-scope], [senior-skills], [find-reuse], [backlog-goal], [all-skill-evals]
+- [judges] active: Использовать gpt-5.6-sol/high и Claude Opus 1M/high. (source: response-annotation-1)
+- [backend-scope] active: Поддерживать только Orca; Herdr и Paseo исключены. (source: response-annotation-2)
+- [senior-skills] active: senior-python и senior-jsts уже созданы и не являются backlog-работой. (source: user-followup-senior-skills)
+- [find-reuse] active: find-reuse независим от Meta-O; invocation/destination определяются внешней методологией. (source: user-followup-find-reuse)
+- [backlog-goal] active: После реализации текущий backlog пуст без потери intent/evidence. (source: initial-user-request)
+- [all-skill-evals] active: Спроектировать evals для всех skills; Qwen 3.8 27B UD-Q4-KM через OpenCode на RTX 4090 — доступный дешёвый основной кандидат, DeepSeek 4 Flash — необязательный теоретический comparator; разработка будет на GPU-машине. (source: user-skill-evals-2026-09-02)
+- [review-p3-policy] active: Все P3 передаются исполнителю и исправляются либо явно отклоняются с причиной; отдельного review-round только ради P3 не требуется, а settlement требует два PASS на final same SHA. (source: response-annotations-p3-2026-09-02)
+- [bounded-skill-evals] active: Evals являются требованием по skills: для оркестратора критичны, для остальных желательны и выполняются несколько раз, без бесконечной калибровки. (source: response-annotations-evals-2026-09-02)
+- [durable-behavior-intent] active: Повторяющиеся представления пользователя о хорошем и плохом поведении должны стать устойчивыми business requirements, чтобы будущие review не повторяли старые ошибки; бизнес-смысл можно изменить по явному решению пользователя. (source: user-business-requirements-2026-09-02)
+- [local-qwen-business-intent] active: Как минимум оркестратор должен уметь работать через локальный Qwen/OpenCode, чтобы постоянный monitoring не расходовал подписочные токены Claude/Codex; это бизнес-интент, а не только eval convenience. (source: user-local-qwen-orchestrator-2026-09-02)
+- [four-spec-packaging] active: Девять аналитических областей надо упаковать в четыре самостоятельные спеки, чтобы документы не были крупнее самих skills; предварительные идеи и критика судей должны быть сохранены и переданы судьям при дальнейшей проверке. (source: user-approved-four-specs-2026-09-02)
+- authority confirmed by user-approved-four-specs-2026-09-02; active: [judges], [backend-scope], [senior-skills], [find-reuse], [backlog-goal], [all-skill-evals], [review-p3-policy], [bounded-skill-evals], [durable-behavior-intent], [local-qwen-business-intent], [four-spec-packaging]
