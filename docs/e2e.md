@@ -87,9 +87,11 @@ Validator связывает evidence с Git tree revision каждого skill,
 три case result, равенство requested/effective identity, low-cost testing policy,
 Qwen/OpenCode для critical orchestrator, полную metadata harness и отсутствие
 secret/transcript/absolute-machine-path fields. Любой `FAIL`, `UNKNOWN`,
-`NOT_RUN` или `NOT_APPLICABLE` делает live-команду ненулевой; для advisory cases
-инженер отдельно решает semantic finding, но executable safety/contract failure
-остаётся блокирующим. Evidence хранится в текущем run/final result, не в Git.
+`FAIL`, `UNKNOWN` или `NOT_RUN` делает live-команду ненулевой. Обоснованный
+`NOT_APPLICABLE` обязан содержать observation с применённым правилом и остаётся
+валидным завершением неприменимого case; для advisory cases инженер отдельно
+решает semantic finding, но executable safety/contract failure остаётся
+блокирующим. Evidence хранится в текущем run/final result, не в Git.
 
 ## Сценарии watchdog
 

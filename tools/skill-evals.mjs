@@ -215,9 +215,22 @@ function validateActorIdentity(envelope, document) {
     throw new Error(`${envelope.skill}: requested/effective identity mismatch`);
   }
   if (document.policy === "critical") {
-    const identity = `${envelope.effective.route}/${envelope.effective.model}`.toLowerCase();
-    if (!identity.includes("opencode") || !identity.includes("qwen")) {
-      throw new Error(`${envelope.skill}: critical evidence is not Qwen/OpenCode`);
+    const model = envelope.effective.model.toLowerCase();
+    const harness = envelope.harness?.name?.toLowerCase() ?? "";
+    const quantization =
+      envelope.harness?.quantization?.toLowerCase().replace(/[^a-z0-9]/gu, "") ?? "";
+    const context = Number(envelope.harness?.context);
+    if (
+      envelope.effective.route !== "opencode" ||
+      !harness.includes("opencode") ||
+      !/qwen[^\n]*3[._-]?8[^\n]*27b/u.test(model) ||
+      !quantization.includes("q4km") ||
+      !Number.isSafeInteger(context) ||
+      context < 32768
+    ) {
+      throw new Error(
+        `${envelope.skill}: critical evidence is not the qualified Qwen 3.8 27B OpenCode profile`,
+      );
     }
     return;
   }
@@ -264,6 +277,9 @@ function validateResults(envelope, document) {
     if (!Array.isArray(result.observations)) {
       throw new Error(`${result.caseId}: observations missing`);
     }
+    if (result.verdict !== "PASS" && result.observations.length === 0) {
+      throw new Error(`${result.caseId}: non-PASS verdict needs an observation`);
+    }
   }
 }
 
@@ -282,7 +298,9 @@ function validateEnvelope(root, corpus, envelope, candidate) {
   validateHarness(envelope);
   validateResults(envelope, document);
   rejectSensitiveOrMachineLocal(envelope, envelope.skill);
-  return envelope.results.filter(({ verdict }) => verdict !== "PASS");
+  return envelope.results.filter(({ verdict }) =>
+    new Set(["FAIL", "UNKNOWN", "NOT_RUN"]).has(verdict),
+  );
 }
 
 /** §A-EVAL-01 verifies exact identity, completeness and redaction of live eval evidence. */

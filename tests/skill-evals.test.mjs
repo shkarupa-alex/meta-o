@@ -39,7 +39,7 @@ function envelope(skill, policy = "advisory") {
       version: "fixture-1",
       profileVersion: "fixture-profile-1",
       quantization: policy === "critical" ? "UD-Q4-KM" : "provider-managed",
-      context: "fixture-context",
+      context: policy === "critical" ? "32768" : "fixture-context",
       sampling: "fixture-defaults",
       toolPermissions: ["read", "shell-readonly"],
     },
@@ -91,12 +91,28 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
     () => validateEvidence(ROOT, envelope("find-reuse"), HEAD, true),
     /missing skill evidence/,
   );
+
+  const wrongCriticalModel = envelope("mo-orchestrate-orca", "critical");
+  wrongCriticalModel.requested.model = "remote/qwen2-7b";
+  wrongCriticalModel.effective.model = "remote/qwen2-7b";
+  wrongCriticalModel.harness.context = "1";
+  assert.throws(
+    () => validateEvidence(ROOT, wrongCriticalModel, HEAD),
+    /qualified Qwen 3\.8 27B OpenCode profile/,
+  );
 });
 
-test("a non-PASS result is structurally valid but makes the live gate fail", () => {
+test("blocking verdicts fail the live gate while evidenced inapplicability is accepted", () => {
   const evidence = envelope("find-reuse");
   evidence.results[2].verdict = "UNKNOWN";
   assert.deepEqual(validateEvidence(ROOT, evidence, HEAD).nonPass, [evidence.results[2]]);
+
+  evidence.results[2].verdict = "NOT_APPLICABLE";
+  evidence.results[2].observations = ["documented applicability rule did not select this case"];
+  assert.deepEqual(validateEvidence(ROOT, evidence, HEAD).nonPass, []);
+
+  evidence.results[2].observations = [];
+  assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /needs an observation/);
 });
 
 test("the CLI exposes a bounded prompt without launching a model", () => {
