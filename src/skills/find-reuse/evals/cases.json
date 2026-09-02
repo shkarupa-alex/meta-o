@@ -7,7 +7,7 @@
     {
       "id": "find-reuse.positive",
       "class": "positive",
-      "scenario": "The user explicitly asks for reuse research for a named dependency problem.",
+      "scenario": "The user explicitly supplies a valid find-reuse.request.v1 document and asks for reuse research for a named dependency problem.",
       "must": ["activate find-reuse", "produce read-only evidence with coverage gaps"],
       "mustNot": ["edit repository files", "install tools or request credentials"]
     },

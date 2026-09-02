@@ -7,7 +7,7 @@
     {
       "id": "mo-review-orca.positive",
       "class": "positive",
-      "scenario": "The user explicitly requests a Meta-O Orca review of one full candidate SHA.",
+      "scenario": "The user explicitly requests a Meta-O Orca review and supplies one full candidate SHA, intent source, scope, deep mode, and two approved vendor-diverse reviewer selections.",
       "must": ["create exactly two independent vendor-diverse reviewers", "settle only a complete same-SHA pair"],
       "mustNot": ["share peer report bytes", "edit the candidate"]
     },
