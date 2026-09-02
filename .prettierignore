@@ -2,6 +2,8 @@
 # reformatting a copy would break the byte-identity that check depends on.
 skills/
 node_modules/
+dist/
+templates/
 
 # Council transcripts and proposals are historical artefacts, kept verbatim.
 spec/

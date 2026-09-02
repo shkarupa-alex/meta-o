@@ -23,12 +23,23 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { after, test } from "node:test";
+import { after, test as nodeTest } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SCRIPT = join(ROOT, "shared", "scripts", "mo-posture.sh");
+const HAS_ZSH = spawnSync("/bin/sh", ["-c", "command -v zsh"], { encoding: "utf8" }).status === 0;
+const ZSH_DEPENDENT =
+  /^(?:the posture script and both child probes|profile output|privileged startup|the Bash-only environment|zsh |a consistently missing provider|executable paths|a forged|an incomplete shell|wrong provider|invalid command|relative executable|incompatible missing|executable kind|all mode|the launch-window|reentrant shutdown|two TERM|selected mutation)/u;
 const temporary = [];
+
+function test(name, body) {
+  return nodeTest(
+    name,
+    { skip: !HAS_ZSH && ZSH_DEPENDENT.test(name) ? "zsh is not installed" : false },
+    body,
+  );
+}
 
 after(() => {
   for (const path of temporary) rmSync(path, { recursive: true, force: true });

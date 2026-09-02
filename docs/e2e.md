@@ -1,21 +1,20 @@
 # Сквозная проверка
 
-`make mo-qc` — детерминированный product gate. `make mo-e2e` намеренно не
-запускает agentic-сценарии: он печатает точку входа этого документа и выходит с
-кодом 2. Live actor выполняет применимые сценарии на одном именованном полном
-candidate SHA, не меняет его и сообщает понятное человеку evidence.
+`make mo-qc` — детерминированный product gate. `make mo-e2e` намеренно не запускает
+agentic-сценарии: он печатает точку входа этого документа и выходит с кодом 2. Live actor выполняет
+применимые сценарии на одном именованном полном candidate SHA, не меняет его и сообщает понятное
+человеку evidence.
 
 ## Общее evidence
 
-Каждый сценарий фиксирует backend, версию control, discovery companion skill,
-harness/model vendor, requested/effective route/model/effort, точный candidate SHA, действие, наблюдаемый публичный
-результат и `PASS`, `FAIL` или `UNKNOWN`. Отсутствующий полный вердикт —
-`UNKNOWN`; такой сценарий повторяется, частичного pass нет. Private provider
-transcripts, hook stores и inferred session databases запрещены как evidence.
+Каждый сценарий фиксирует backend, версию control, discovery companion skill, harness/model vendor,
+requested/effective route/model/effort, точный candidate SHA, действие, наблюдаемый публичный
+результат и `PASS`, `FAIL` или `UNKNOWN`. Отсутствующий полный вердикт — `UNKNOWN`; такой сценарий
+повторяется, частичного pass нет. Private provider transcripts, hook stores и inferred session
+databases запрещены как evidence.
 
-Используйте normal settled-response fixture и fixture на три-четыре экрана с
-узнаваемыми markers `BEGIN`, `MIDDLE` и `END`. Whole-session view проверяется
-отдельно как диагностика.
+Используйте normal settled-response fixture и fixture на три-четыре экрана с узнаваемыми markers
+`BEGIN`, `MIDDLE` и `END`. Whole-session view проверяется отдельно как диагностика.
 
 ## Сценарии backend
 
@@ -48,13 +47,12 @@ transcripts, hook stores и inferred session databases запрещены как
 
 ## Model actors для eval skills
 
-Каждый model-backed case сначала доказывает применимость: named behavior нельзя
-равноценно проверить deterministic fixture. Для обычного skill выполняются 2–3
-bounded positive/forbidden/degraded cases. Claude использует `sonnet5/low`, Codex
-— `gpt-5.6-terra/low`, OpenCode comparator — настроенную effective identity
-`deepseek 4 flash`. Неприменимый case получает `not_applicable`; отсутствующая
-настройка — `blocked|not_run`. Более дорогого fallback нет. Qwen из B22 остаётся
-отдельным критическим orchestration actor.
+Каждый model-backed case сначала доказывает применимость: named behavior нельзя равноценно проверить
+deterministic fixture. Для обычного skill выполняются 2–3 bounded positive/forbidden/degraded cases.
+Claude использует `sonnet5/low`, Codex — `gpt-5.6-terra/low`, OpenCode comparator — настроенную
+effective identity `deepseek 4 flash`. Неприменимый case получает `not_applicable`; отсутствующая
+настройка — `blocked|not_run`. Более дорогого fallback нет. Qwen из B22 остаётся отдельным
+критическим orchestration actor.
 
 ## Сценарии watchdog
 
@@ -67,13 +65,13 @@ bounded positive/forbidden/degraded cases. Claude использует `sonnet5/
 
 ## Сценарии установки
 
-Локальная установка в disposable-окружение должна доказать точный набор
-самодостаточных скилов с принадлежащими им references/scripts. Remote installation
-выполняет владелец проекта после публикации; workflow не делает push ради fixture.
+Локальная установка в disposable-окружение должна доказать точный набор самодостаточных скилов с
+принадлежащими им references/scripts. Remote installation выполняет владелец проекта после
+публикации; workflow не делает push ради fixture.
 
 ## Carry-forward только для документации
 
-E2E можно перенести на более поздний docs-only commit, только если оба reviewer
-финального SHA явно подтвердили, что изменение не влияет на executable behavior,
-skill или agent instructions, acceptance или этот контракт. Финальный отчёт
-называет проверенный SHA и причину. При любом сомнении E2E запускается заново.
+E2E можно перенести на более поздний docs-only commit, только если оба reviewer финального SHA явно
+подтвердили, что изменение не влияет на executable behavior, skill или agent instructions,
+acceptance или этот контракт. Финальный отчёт называет проверенный SHA и причину. При любом сомнении
+E2E запускается заново.

@@ -20,6 +20,7 @@ mo-lint:
 	node --check skills/mo-review-orca/scripts/mo-models.mjs
 	node --check tools/build-skills.mjs
 	node --check tools/adapter-contract.mjs
+	node --check tools/backlog-closure.mjs
 	node --check tools/knowledge-history.mjs
 	node --check tools/live-adapters.mjs
 	node tools/adapter-contract.mjs --validate

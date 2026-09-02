@@ -129,7 +129,10 @@ test("internal Markdown links resolve and use target H1 titles as labels", () =>
         const href = child.attrGet("href");
         if (!href || /^(?:https?:|mailto:|#)/.test(href)) continue;
         const target = resolve(dirname(path), href.split("#")[0]);
-        assert.equal(extname(target), ".md", `${path}: non-Markdown internal link ${href}`);
+        if (extname(target) !== ".md") {
+          assert.ok(existsSync(target), `${path}: missing linked asset ${href}`);
+          continue;
+        }
         const targetTokens = markdown.parse(readFileSync(target, "utf8"), {});
         const h1 = targetTokens.findIndex(
           (entry) => entry.type === "heading_open" && entry.tag === "h1",
