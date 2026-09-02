@@ -63,6 +63,7 @@ async function nugetValues(values, baseUrl) {
   const response = await fetch(new URL("/v3/index.json", baseUrl), {
     signal: AbortSignal.timeout(15_000),
   });
+  if (!response.ok) throw new Error(`NuGet index returned HTTP ${response.status}`);
   const index = await response.json();
   const resource = index.resources.find(({ "@type": type }) =>
     String(type).startsWith("SearchQueryService"),
@@ -71,17 +72,46 @@ async function nugetValues(values, baseUrl) {
   return { ...values, search_query_service: resource["@id"] };
 }
 
-async function verifyHttp(descriptor, evidence) {
+/** §A-REUSE-01 resolves production or the descriptor's explicitly named fixture override. */
+export function resolveBaseUrl(descriptor, environment = process.env) {
+  const override = descriptor.test_base_url_env
+    ? environment[descriptor.test_base_url_env]
+    : undefined;
+  return override?.trim() || descriptor.base_url;
+}
+
+function typedHttpFailure(error) {
+  return error instanceof SyntaxError ? "malformed" : "source_unavailable";
+}
+
+/** §A-REUSE-01 exercises one descriptor and appends only sanitized HTTP evidence. */
+export async function verifyHttp(descriptor, evidence, environment = process.env) {
   let values = SAMPLE[descriptor.id];
   if (!values) return [];
-  if (descriptor.id === "nuget") values = await nugetValues(values, descriptor.base_url);
   const failures = [];
+  const baseUrl = resolveBaseUrl(descriptor, environment);
+  if (descriptor.id === "nuget") {
+    try {
+      values = await nugetValues(values, baseUrl);
+    } catch (error) {
+      const status = typedHttpFailure(error);
+      evidence.push({
+        adapter: descriptor.id,
+        kind: "http_get",
+        command: ["/v3/index.json"],
+        status,
+        result: sanitized(error.message),
+      });
+      failures.push(`${descriptor.id}: /v3/index.json => ${status}`);
+      return failures;
+    }
+  }
   const operations = descriptor.operations.filter(({ transport }) => transport.startsWith("http_"));
   for (const operation of operations) {
     let result;
     try {
       result = await executeHttp(operation, values, {
-        baseUrl: descriptor.base_url,
+        baseUrl,
         body: { package: { name: "lodash", ecosystem: "npm" } },
         timeoutMs: 30_000,
       });
