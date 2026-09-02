@@ -1,0 +1,13 @@
+{
+  "candidateId": "candidate-2f6e2e65-42b1-4c3f-afc1-ba940df23f4e",
+  "jobId": "run-766f96c3",
+  "generation": 9,
+  "phase": "spec-review",
+  "round": 2,
+  "activeSetRevision": 1,
+  "judge": "opus1mhigh",
+  "parentCandidateId": "candidate-9e17ef37-401d-4a15-a697-414c1bf80bef",
+  "createdBy": "orchestrator_wrapper",
+  "path": "jobs/run-766f96c3/candidates/0009-candidate-2f6e2e65-42b1-4c3f-afc1-ba940df23f4e.bin",
+  "sha256": "7fdbd0fe43772f84e7e3bb13f121e38c4aca1c7bb6442f30c9f3cc625433e905"
+}
