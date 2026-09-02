@@ -34,6 +34,7 @@ import {
   readdirSync,
   realpathSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { isBuiltin } from "node:module";
 import { tmpdir } from "node:os";
@@ -42,11 +43,58 @@ import { fileURLToPath } from "node:url";
 
 import yaml from "js-yaml";
 import { buildSync } from "esbuild";
+import { fromMarkdown } from "mdast-util-from-markdown";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SKILLS_SRC = join(ROOT, "src", "skills");
 const SHARED_SRC = join(ROOT, "shared");
 const OUTPUT = join(ROOT, "skills");
+
+const SOURCE_ANCHOR = /^<!-- mo:source-anchor (§A-[A-Z][A-Z0-9-]*-[0-9]{2}) -->$/;
+
+/**
+ * Remove source-only architecture markers without serializing the Markdown.
+ *
+ * Positional deletion preserves every authored byte except the marker and one
+ * optional adjacent ASCII space. Parsing first is load-bearing: text that only
+ * resembles a marker inside code, prose or a malformed comment must stop the
+ * build instead of silently changing the published instructions.
+ *
+ * Implements §A-MEMORY-01.
+ */
+function stripSourceAnchors(source, label = "Markdown source") {
+  const tree = fromMarkdown(source);
+  const spans = [];
+  const visit = (node) => {
+    if (node.type === "html" && String(node.value).includes("mo:source-anchor")) {
+      if (!SOURCE_ANCHOR.test(node.value)) {
+        throw new Error(
+          `${label} has malformed source anchor at line ${node.position?.start.line}`,
+        );
+      }
+      spans.push([node.position.start.offset, node.position.end.offset]);
+    }
+    for (const child of node.children ?? []) visit(child);
+  };
+  visit(tree);
+
+  for (let offset = source.indexOf("mo:source-anchor"); offset >= 0;) {
+    if (!spans.some(([start, end]) => offset >= start && offset < end)) {
+      throw new Error(`${label} has source anchor outside a standalone HTML marker`);
+    }
+    offset = source.indexOf("mo:source-anchor", offset + 1);
+  }
+
+  let result = source;
+  for (const [rawStart, rawEnd] of spans.sort((left, right) => right[0] - left[0])) {
+    let start = rawStart;
+    let end = rawEnd;
+    if (start > 0 && result[start - 1] === " " && result[start - 2] !== "\n") start -= 1;
+    else if (result[end] === " " && result[end + 1] !== "\n") end += 1;
+    result = result.slice(0, start) + result.slice(end);
+  }
+  return result;
+}
 
 /**
  * The runtime package in the settings bundle and the licence that makes its
@@ -353,6 +401,12 @@ function build(outputRoot) {
       if (source === "scripts/mo-models.mjs") bundleModels(to);
       else cpSync(from, to);
     }
+    for (const relative of walk(join(outputRoot, name)).filter((path) => path.endsWith(".md"))) {
+      const destination = join(outputRoot, name, relative);
+      const source = readFileSync(destination, "utf8");
+      const stripped = stripSourceAnchors(source, `src/generated ${name}/${relative}`);
+      if (stripped !== source) writeFileSync(destination, stripped);
+    }
   }
 
   return names;
@@ -441,5 +495,6 @@ export {
   diffTrees,
   frontmatter,
   packageRoot,
+  stripSourceAnchors,
   walk,
 };

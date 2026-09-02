@@ -67,12 +67,14 @@ test("apm installs exactly the complete generated tree", { skip }, () => {
 
 test("every skill is individually installable with its complete owned files", { skip }, () => {
   for (const skill of [
+    "find-reuse",
     "mo-orchestrate-orca",
     "mo-review-orca",
     "mo-setup",
     "mo-e2e",
-    "mo-reuse",
     "mo-watchdog",
+    "senior-jsts",
+    "senior-python",
   ]) {
     const installed = install(skill);
     assert.deepEqual(

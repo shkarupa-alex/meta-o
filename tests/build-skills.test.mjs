@@ -21,18 +21,26 @@ import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { ALLOWED_FRONTMATTER, SHARED_PLAN, frontmatter, walk } from "../tools/build-skills.mjs";
+import {
+  ALLOWED_FRONTMATTER,
+  SHARED_PLAN,
+  frontmatter,
+  stripSourceAnchors,
+  walk,
+} from "../tools/build-skills.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SOURCES = join(ROOT, "src", "skills");
 const OUTPUT = join(ROOT, "skills");
 const EXPECTED = [
+  "find-reuse",
   "mo-e2e",
   "mo-orchestrate-orca",
-  "mo-reuse",
   "mo-review-orca",
   "mo-setup",
   "mo-watchdog",
+  "senior-jsts",
+  "senior-python",
 ];
 
 function directories(path) {
@@ -175,4 +183,27 @@ test("watchdog is shipped executable and source/build file sets agree", () => {
     0,
   );
   assert.ok(walk(OUTPUT).length > EXPECTED.length);
+});
+
+test("source anchors are stripped positionally and malformed placements fail closed", () => {
+  const source = "Before <!-- mo:source-anchor §A-MEMORY-01 --> after `§A-X-01`.\n";
+  assert.equal(stripSourceAnchors(source), "Before after `§A-X-01`.\n");
+  assert.throws(
+    () => stripSourceAnchors("`<!-- mo:source-anchor §A-MEMORY-01 -->`\n"),
+    /outside a standalone HTML marker/,
+  );
+  assert.throws(
+    () => stripSourceAnchors("<!-- mo:source-anchor §A-memory-01 -->\n"),
+    /malformed source anchor/,
+  );
+});
+
+test("find-reuse is portable and the retired name is absent", () => {
+  const source = walk(join(SOURCES, "find-reuse"))
+    .filter((path) => path.endsWith(".md"))
+    .map((path) => readFileSync(join(SOURCES, "find-reuse", path), "utf8"))
+    .join("\n");
+  assert.doesNotMatch(source, /Meta-O|docs\/business\.md|docs\/acceptance\.md|mo-reuse/);
+  assert.equal(existsSync(join(SOURCES, "mo-reuse")), false);
+  assert.equal(existsSync(join(OUTPUT, "mo-reuse")), false);
 });

@@ -36,7 +36,7 @@ import { fileURLToPath } from "node:url";
 import { query as claudeQuery } from "@anthropic-ai/claude-agent-sdk";
 
 /** The role names a run addresses. Anything else is a typo, not a new role. */
-const ROLES = ["executor", "researcher", "reviewerA", "reviewerB", "e2eTester"];
+const ROLES = ["orchestrator", "executor", "researcher", "reviewerA", "reviewerB", "e2eTester"];
 
 /** Only this schema is understood; a newer file is left strictly alone. */
 const SCHEMA_VERSION = 1;

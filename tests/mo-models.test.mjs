@@ -233,7 +233,14 @@ test("show reports every role and writes nothing", () => {
   const home = sandbox();
   const result = run(home, ["--show"]);
   assert.equal(result.status, 0, result.stderr);
-  for (const role of ["executor", "researcher", "reviewerA", "reviewerB", "e2eTester"]) {
+  for (const role of [
+    "orchestrator",
+    "executor",
+    "researcher",
+    "reviewerA",
+    "reviewerB",
+    "e2eTester",
+  ]) {
     assert.match(result.stdout, new RegExp(`${role}=unset`));
   }
   assert.equal(run(home, ["--show"]).status, 0);

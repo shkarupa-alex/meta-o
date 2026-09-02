@@ -19556,7 +19556,7 @@ function uz(e, t) {
 }
 
 // shared/scripts/mo-models.mjs
-var ROLES = ["executor", "researcher", "reviewerA", "reviewerB", "e2eTester"];
+var ROLES = ["orchestrator", "executor", "researcher", "reviewerA", "reviewerB", "e2eTester"];
 var SCHEMA_VERSION = 1;
 var HISTORY_MAX_AGE_DAYS = 31;
 var HISTORY_MAX_SESSIONS = 10;
