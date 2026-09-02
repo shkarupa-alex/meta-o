@@ -4,10 +4,10 @@
 # authoritative gate, it rewrites nothing, and every gate under it is a mature
 # tool or a plain shell comparison rather than a checker this project wrote.
 
-.PHONY: mo-qc mo-lint mo-test mo-smoke mo-e2e mo-live-adapters skills skills-check format contract
+.PHONY: mo-qc mo-lint mo-test mo-smoke mo-e2e mo-eval-cases mo-live-adapters skills skills-check format contract
 
 # The authoritative gate.
-mo-qc: mo-lint contract skills-check mo-test mo-smoke
+mo-qc: mo-lint contract skills-check mo-eval-cases mo-test mo-smoke
 	@echo "mo-qc ok"
 
 # markdownlint and prettier judge; `make format` is the half that rewrites.
@@ -22,6 +22,7 @@ mo-lint:
 	node --check tools/adapter-contract.mjs
 	node --check tools/knowledge-history.mjs
 	node --check tools/live-adapters.mjs
+	node --check tools/skill-evals.mjs
 	node tools/adapter-contract.mjs --validate
 	bash -n shared/scripts/mo-posture.sh
 	bash -n shared/scripts/mo-watchdog.sh
@@ -73,12 +74,18 @@ mo-e2e:
 	@echo "Docs:      docs/e2e.md, docs/backend-capabilities.md"
 	@echo "Scenarios: B1-B22 — Orca backend and Qwen profile"
 	@echo "           W1-W4 — watchdog target, scan, nudge, suppression"
+	@echo "           24 embedded cases — positive/forbidden/degraded for 8 skills"
 	@echo "           local and authorized remote installation"
 	@echo "Run:       execute the applicable scenarios without changing the frozen candidate"
 	@echo "Evidence:  keep exact SHA and per-scenario actor/provider facts in the current run/final result"
 	@echo "Ledger:    scenario definitions and support posture only; do not edit tracked docs for run evidence"
 	@echo "Cleanup:   stop every provider session you started, including on failure"
 	@exit 2
+
+# Offline corpus/schema check. Live actors consume prompts and return untracked
+# JSON evidence through the explicit commands in docs/e2e.md.
+mo-eval-cases:
+	node tools/skill-evals.mjs --check
 
 # Network-enabled maintainer evidence. Missing local tools are reported; a
 # present-but-unsupported probe or a failed production endpoint blocks.

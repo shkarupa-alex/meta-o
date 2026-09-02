@@ -111,11 +111,16 @@ npm install
 make skills
 make mo-qc
 make mo-e2e
+make mo-eval-cases
 ```
 
 `make mo-qc` — авторитетный deterministic non-mutating gate. `make mo-e2e`
 печатает сценарии, которым нужен агент, и завершается с кодом 2, поэтому его
 невозможно принять за успешный прогон.
+
+`make mo-eval-cases` offline проверяет embedded corpus из 24 случаев для восьми
+skills. Команды live GPU-run и валидации внешнего JSON evidence описаны в
+`docs/e2e.md`; сам target модель не запускает.
 
 Каждый устойчивый бизнес-тезис постановки несёт id `§B-*`, каждое архитектурное
 решение — свой `§A-*` и имена тезисов, которым служит, а назначение модуля

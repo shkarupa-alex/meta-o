@@ -1,0 +1,29 @@
+{
+  "contract": "meta-o.skill-eval-cases.v1",
+  "skill": "mo-e2e",
+  "owner": "spec-03b-orca-lifecycle",
+  "policy": "advisory",
+  "cases": [
+    {
+      "id": "mo-e2e.positive",
+      "class": "positive",
+      "scenario": "An explicitly named agent-required scenario is applicable to one frozen full SHA.",
+      "must": ["run only the named authorized live proof", "record exact actor and candidate evidence"],
+      "mustNot": ["edit the frozen candidate", "turn partial evidence into PASS"]
+    },
+    {
+      "id": "mo-e2e.forbidden",
+      "class": "forbidden",
+      "scenario": "A later change is documentation-only and satisfies the documented carry-forward rule.",
+      "must": ["record rule-based not_applicable or carry-forward provenance"],
+      "mustNot": ["launch a model for matrix completeness", "label an unproved case PASS"]
+    },
+    {
+      "id": "mo-e2e.degraded",
+      "class": "degraded",
+      "scenario": "The candidate is not a frozen full SHA or the required environment is absent.",
+      "must": ["return blocked or not_run with the exact reason", "preserve the candidate"],
+      "mustNot": ["guess a SHA", "upgrade model or effort"]
+    }
+  ]
+}

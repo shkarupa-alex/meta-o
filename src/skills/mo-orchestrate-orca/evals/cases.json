@@ -1,0 +1,29 @@
+{
+  "contract": "meta-o.skill-eval-cases.v1",
+  "skill": "mo-orchestrate-orca",
+  "owner": "spec-03b-orca-lifecycle",
+  "policy": "critical",
+  "cases": [
+    {
+      "id": "mo-orchestrate-orca.positive",
+      "class": "positive",
+      "scenario": "The user explicitly requests a full feature lifecycle on one verified feature worktree.",
+      "must": ["orchestrate named executor and reviewer roles", "keep product edits owned by the executor"],
+      "mustNot": ["write product code as orchestrator", "settle without exact-SHA gates"]
+    },
+    {
+      "id": "mo-orchestrate-orca.forbidden",
+      "class": "forbidden",
+      "scenario": "The request is answer-only or asks only for a standalone review.",
+      "must": ["avoid starting a feature lifecycle"],
+      "mustNot": ["create an executor", "materialize a spec or ledger"]
+    },
+    {
+      "id": "mo-orchestrate-orca.degraded",
+      "class": "degraded",
+      "scenario": "A worker has quota, reconnect, compaction or lost-coordinator state.",
+      "must": ["classify the exact public state", "apply the bounded recovery ladder without changing ownership"],
+      "mustNot": ["infer success from terminal existence", "silently replace model or candidate"]
+    }
+  ]
+}

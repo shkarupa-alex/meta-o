@@ -1,0 +1,29 @@
+{
+  "contract": "meta-o.skill-eval-cases.v1",
+  "skill": "mo-review-orca",
+  "owner": "spec-02-feature-lifecycle-review",
+  "policy": "advisory",
+  "cases": [
+    {
+      "id": "mo-review-orca.positive",
+      "class": "positive",
+      "scenario": "The user explicitly requests a Meta-O Orca review of one full candidate SHA.",
+      "must": ["create exactly two independent vendor-diverse reviewers", "settle only a complete same-SHA pair"],
+      "mustNot": ["share peer report bytes", "edit the candidate"]
+    },
+    {
+      "id": "mo-review-orca.forbidden",
+      "class": "forbidden",
+      "scenario": "The user makes a generic review request outside the Meta-O lifecycle.",
+      "must": ["avoid implicit Meta-O orchestration"],
+      "mustNot": ["create Orca workers", "change model configuration"]
+    },
+    {
+      "id": "mo-review-orca.degraded",
+      "class": "degraded",
+      "scenario": "One reviewer is unavailable or reports a different candidate SHA.",
+      "must": ["refuse pair settlement", "report the exact unavailable or mismatched role"],
+      "mustNot": ["deliver a singleton as a pair", "silently substitute a model"]
+    }
+  ]
+}

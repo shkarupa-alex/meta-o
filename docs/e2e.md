@@ -54,6 +54,43 @@ effective identity `deepseek 4 flash`. Неприменимый case получ�
 настройка — `blocked|not_run`. Более дорогого fallback нет. Qwen из B22 остаётся отдельным
 критическим orchestration actor.
 
+### Embedded corpus и live-команда
+
+Каждый installable skill владеет `evals/cases.json` с тремя bounded cases:
+`positive`, `forbidden`, `degraded`. `make mo-eval-cases` проверяет точный набор
+из 8 skills / 24 cases offline и ничего не запускает. Generated skill получает
+тот же corpus через обычный `make skills`.
+
+Live-run выполняется из чистого checkout frozen candidate. Сначала runner
+создаёт один bounded prompt с instruction bundle и уже заполненной metadata
+матрицей; модель должна вернуть только JSON evidence envelope:
+
+```bash
+node tools/skill-evals.mjs --prompt <skill> \
+  --candidate <full-sha> \
+  --route <route> --model <provider/model> --effort <level> \
+  --harness <name> --harness-version <version> \
+  --profile-version <profile-version> --quantization <value> \
+  --context <value> --sampling <value> \
+  --tool-permissions <comma-separated> --repetition 1
+```
+
+Prompt передают user-approved harness без изменения checkout. Ответ сохраняют
+во внешнем untracked JSON-файле и проверяют:
+
+```bash
+node tools/skill-evals.mjs --validate-evidence <evidence.json> \
+  --candidate <full-sha> --require-all
+```
+
+Validator связывает evidence с Git tree revision каждого skill, требует ровно
+три case result, равенство requested/effective identity, low-cost testing policy,
+Qwen/OpenCode для critical orchestrator, полную metadata harness и отсутствие
+secret/transcript/absolute-machine-path fields. Любой `FAIL`, `UNKNOWN`,
+`NOT_RUN` или `NOT_APPLICABLE` делает live-команду ненулевой; для advisory cases
+инженер отдельно решает semantic finding, но executable safety/contract failure
+остаётся блокирующим. Evidence хранится в текущем run/final result, не в Git.
+
 ## Сценарии watchdog
 
 | ID  | Сценарий                        | Доказательство                                                           |

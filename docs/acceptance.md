@@ -25,8 +25,8 @@
 | `find-reuse` переносим и fail-closed при неполном поиске.                  | Build portability и contract fixtures.                               | Named adapter evidence через `make mo-live-adapters`.        |
 | Review читает diff до risk map и различает modes/P0–P3.                    | `tests/orchestration-contract.test.mjs`.                             | Два полных `worker_done` с requested/effective mode.         |
 | Remediation использует hot roles, final proof — fresh pair.                | Lifecycle contract assertions.                                       | Orca review-loop scenario на exact SHA.                      |
-| Model actor запускается только по применимости на low-cost profile.        | `tests/model-testing-policy.test.mjs`.                               | Requested/effective identity named applicable scenario.      |
-| Qwen/OpenCode управляет lifecycle, но не пишет product code.               | Ownership и projection fixtures.                                     | Critical Qwen profile suite на exact SHA.                    |
+| Model actor запускается только по применимости на low-cost profile.        | `tests/model-testing-policy.test.mjs`, `tests/skill-evals.test.mjs`. | Валидированный envelope 24 embedded cases на exact SHA.      |
+| Qwen/OpenCode управляет lifecycle, но не пишет product code.               | Ownership, projection и critical-corpus fixtures.                    | Critical Qwen profile suite на exact SHA.                    |
 
 ## Провенанс закрытия backlog
 
