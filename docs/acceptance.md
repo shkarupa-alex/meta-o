@@ -35,7 +35,7 @@
 | Backlog ledger   | `8d11d1107eb5875235c2830e6503f7e1265317d7` |
 | Real-runs ledger | `c75859372fa7d794269cc6dcc8834c069ddd8096` |
 
-Lossless AST closure зафиксирован коммитом
-`163692c833369ca0c5941fa29917366ccbbf908f`; blob полной карты —
+Итоговый lossless AST closure после review-remediation зафиксирован коммитом
+`d612ebdbc0adb0f64a15b5f72342f13d5dd9e127`; blob полной карты —
 `40891dc9e6637ac11f95e67da9c5160424076649`. Постоянное доказательство:
 `node --test tests/backlog-provenance.test.mjs`.
