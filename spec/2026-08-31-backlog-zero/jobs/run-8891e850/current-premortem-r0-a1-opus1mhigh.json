@@ -1,0 +1,12 @@
+{
+  "jobId": "run-8891e850",
+  "slot": {
+    "phase": "premortem",
+    "round": 0,
+    "activeSetRevision": 1,
+    "judge": "opus1mhigh"
+  },
+  "candidateId": "candidate-9e31c0f0-9d96-4a61-b5bf-fa51d6254480",
+  "promotedBy": "runtime",
+  "validationSha256": "b83edc1c9357855e6304d02dd25f193ac7ae2c1489650ba374d23710479053f1"
+}

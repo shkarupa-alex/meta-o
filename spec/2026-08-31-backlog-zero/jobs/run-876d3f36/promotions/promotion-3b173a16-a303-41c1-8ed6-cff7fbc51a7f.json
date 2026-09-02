@@ -1,0 +1,12 @@
+{
+  "jobId": "run-876d3f36",
+  "slot": {
+    "phase": "approach",
+    "round": 2,
+    "activeSetRevision": 1,
+    "judge": "opus1mhigh"
+  },
+  "candidateId": "candidate-535ecaa1-1df8-40a7-9551-0160c78a4e32",
+  "promotedBy": "runtime",
+  "validationSha256": "c0b26388d830f4a1a987204e81e498098056c8fd983e64d64045b57fe9e46dd0"
+}
