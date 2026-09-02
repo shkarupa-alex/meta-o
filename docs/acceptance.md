@@ -36,6 +36,17 @@
 | Real-runs ledger | `c75859372fa7d794269cc6dcc8834c069ddd8096` |
 
 Итоговый lossless AST closure после review-remediation зафиксирован коммитом
-`30ceb23505d15b99a0cbdba39c21ec1619595627`; blob полной карты —
-`40891dc9e6637ac11f95e67da9c5160424076649`. Постоянное доказательство:
+`f59b0228208a3d8581d0ce14d0465e176fd2fd55`; blob полной карты —
+`d811c9c4a237587ce75f822021f5b29f9b5cf83b`. Те же координаты доступны гейту
+без разбора prose или Markdown-таблиц:
+
+```yaml
+backlog_closure:
+  backlog_blob: 8d11d1107eb5875235c2830e6503f7e1265317d7
+  real_runs_blob: c75859372fa7d794269cc6dcc8834c069ddd8096
+  closure_sha: f59b0228208a3d8581d0ce14d0465e176fd2fd55
+  map_blob: d811c9c4a237587ce75f822021f5b29f9b5cf83b
+```
+
+Постоянное доказательство:
 `node --test tests/backlog-provenance.test.mjs`.

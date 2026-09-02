@@ -19618,7 +19618,7 @@ function testingPolicyError(role, value) {
     const normalizedModel = selection.model.toLowerCase().replace(/[^a-z0-9]+/gu, " ").trim();
     const namesApprovedProfile = normalizedModel === "sonnet" || normalizedModel === "sonnet5" || normalizedModel.includes("sonnet") && /(?:^| )5(?: |$)/u.test(normalizedModel);
     if (selection.route !== "claude" || selection.effort !== "low" || !namesApprovedProfile) {
-      return "testClaude must identify the configured sonnet5 profile through claude at low effort";
+      return "testClaude must identify the configured sonnet5/low profile through claude";
     }
   } else if (role === "testCodex") {
     if (selection.route !== "codex" || selection.model !== "gpt-5.6-terra" || selection.effort !== "low") {

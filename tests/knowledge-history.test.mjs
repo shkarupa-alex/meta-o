@@ -151,7 +151,7 @@ test("an authorized branch deletion survives a no-ff merge without a merge trail
   git(state.root, ["switch", "-q", "master"]);
   writeFileSync(
     join(state.root, "docs", "architecture", "main.md"),
-    "# §A-MAIN-02 — Main\n\nServes nothing.\n",
+    `# §${"A-MAIN-02"} — Main\n\nServes nothing.\n`,
   );
   commit(state.root, "unrelated main change");
   git(state.root, ["merge", "--no-ff", "-qm", "merge authorized deletion", "remove-id"]);

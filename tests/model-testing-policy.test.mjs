@@ -59,7 +59,7 @@ test("the Claude testing profile resolves real Sonnet ids instead of a hard-code
   assert.equal(testingPolicyError("testClaude", "claude/sonnet/low"), null);
   assert.equal(testingPolicyError("testClaude", "claude/claude-sonnet-5/low"), null);
   assert.equal(testingPolicyError("testClaude", "claude/sonnet5/low"), null);
-  assert.match(testingPolicyError("testClaude", "claude/sonnet/medium"), /low effort/u);
+  assert.match(testingPolicyError("testClaude", "claude/sonnet/medium"), /sonnet5\/low/u);
   assert.match(testingPolicyError("testClaude", "claude/opus-5/low"), /sonnet5\/low/u);
 });
 
