@@ -96,6 +96,16 @@ function stripSourceAnchors(source, label = "Markdown source") {
   return result;
 }
 
+/** Strip architecture markers from every Markdown file in one generated skill. */
+function stripGeneratedAnchors(skillRoot, name) {
+  for (const relative of walk(skillRoot).filter((path) => path.endsWith(".md"))) {
+    const destination = join(skillRoot, relative);
+    const source = readFileSync(destination, "utf8");
+    const stripped = stripSourceAnchors(source, `src/generated ${name}/${relative}`);
+    if (stripped !== source) writeFileSync(destination, stripped);
+  }
+}
+
 /**
  * The runtime package in the settings bundle and the licence that makes its
  * redistribution terms inspectable. Any new metafile package root must acquire
@@ -403,12 +413,7 @@ function build(outputRoot) {
       if (source === "scripts/mo-models.mjs") bundleModels(to);
       else cpSync(from, to);
     }
-    for (const relative of walk(join(outputRoot, name)).filter((path) => path.endsWith(".md"))) {
-      const destination = join(outputRoot, name, relative);
-      const source = readFileSync(destination, "utf8");
-      const stripped = stripSourceAnchors(source, `src/generated ${name}/${relative}`);
-      if (stripped !== source) writeFileSync(destination, stripped);
-    }
+    stripGeneratedAnchors(join(outputRoot, name), name);
   }
 
   return names;

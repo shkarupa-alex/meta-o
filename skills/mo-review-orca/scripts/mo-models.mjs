@@ -19556,7 +19556,17 @@ function uz(e, t) {
 }
 
 // shared/scripts/mo-models.mjs
-var ROLES = ["orchestrator", "executor", "researcher", "reviewerA", "reviewerB", "e2eTester"];
+var ROLES = [
+  "orchestrator",
+  "executor",
+  "researcher",
+  "reviewerA",
+  "reviewerB",
+  "e2eTester",
+  "testClaude",
+  "testCodex",
+  "testOpenCode"
+];
 var SCHEMA_VERSION = 1;
 var HISTORY_MAX_AGE_DAYS = 31;
 var HISTORY_MAX_SESSIONS = 10;
@@ -19601,6 +19611,22 @@ function parseSelection(value) {
     model: parts.slice(1, -1).join("/"),
     effort: parts[parts.length - 1]
   };
+}
+function testingPolicyError(role, value) {
+  const selection = typeof value === "string" ? parseSelection(value) : value;
+  const exact = {
+    testClaude: { route: "claude", model: "sonnet5", effort: "low" },
+    testCodex: { route: "codex", model: "gpt-5.6-terra", effort: "low" }
+  };
+  if (Object.hasOwn(exact, role)) {
+    const expected = exact[role];
+    if (selection.route !== expected.route || selection.model !== expected.model || selection.effort !== expected.effort) {
+      return `${role} must be ${expected.route}/${expected.model}/${expected.effort}`;
+    }
+  } else if (role === "testOpenCode" && (selection.route !== "opencode" || selection.effort !== "low")) {
+    return "testOpenCode must be an explicitly configured opencode profile at low effort";
+  }
+  return null;
 }
 function projectRoot(path) {
   const resolved = realpathSync2(path);
@@ -20001,6 +20027,8 @@ async function commandSet(settings, key, assignments, useDefaults, force) {
     }
     const value = assignment.slice(index + 1);
     parseSelection(value);
+    const policyError = testingPolicyError(role, value);
+    if (policyError) throw new Error(policyError);
     return { role, value };
   });
   if (force) {
@@ -20240,5 +20268,6 @@ export {
   familyAndGeneration,
   findUpgrade,
   parseCodexModels,
-  parseSelection
+  parseSelection,
+  testingPolicyError
 };

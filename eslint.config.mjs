@@ -21,7 +21,7 @@ const sizeRules = {
 };
 
 export default [
-  { ignores: ["node_modules/**", "skills/**"] },
+  { ignores: ["node_modules/**", "skills/**", "dist/**", "templates/**"] },
   js.configs.recommended,
   {
     files: ["**/*.mjs"],
@@ -39,6 +39,18 @@ export default [
         {
           publicOnly: true,
           require: { ClassDeclaration: true, FunctionDeclaration: true },
+        },
+      ],
+      "jsdoc/match-description": [
+        "error",
+        {
+          contexts: [
+            "ExportNamedDeclaration > FunctionDeclaration",
+            "ExportDefaultDeclaration > FunctionDeclaration",
+            "ExportNamedDeclaration > ClassDeclaration",
+            "ExportDefaultDeclaration > ClassDeclaration",
+          ],
+          matchDescription: "(?:^|\\s)§A-[A-Z](?:[A-Z0-9]|-)*-[0-9]{2}(?=$|\\s|\\.|,|;|:|\\))",
         },
       ],
     },

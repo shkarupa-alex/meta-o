@@ -36,7 +36,17 @@ import { fileURLToPath } from "node:url";
 import { query as claudeQuery } from "@anthropic-ai/claude-agent-sdk";
 
 /** The role names a run addresses. Anything else is a typo, not a new role. */
-const ROLES = ["orchestrator", "executor", "researcher", "reviewerA", "reviewerB", "e2eTester"];
+const ROLES = [
+  "orchestrator",
+  "executor",
+  "researcher",
+  "reviewerA",
+  "reviewerB",
+  "e2eTester",
+  "testClaude",
+  "testCodex",
+  "testOpenCode",
+];
 
 /** Only this schema is understood; a newer file is left strictly alone. */
 const SCHEMA_VERSION = 1;
@@ -118,7 +128,7 @@ const ROUTES = {
 // ---------------------------------------------------------------------------
 
 /**
- * Split `route/model/effort` without breaking model ids that contain slashes.
+ * §A-DISTRIBUTION-02 splits `route/model/effort` without breaking model ids with slashes.
  *
  * `opencode/opencode/big-pickle/high` is a real selection: the route is the
  * first segment, the effort the last, and everything between is the model id.
@@ -141,6 +151,31 @@ export function parseSelection(value) {
     model: parts.slice(1, -1).join("/"),
     effort: parts[parts.length - 1],
   };
+}
+
+/** §A-EVAL-01 rejects testing selections outside the approved low-cost routes. */
+export function testingPolicyError(role, value) {
+  const selection = typeof value === "string" ? parseSelection(value) : value;
+  const exact = {
+    testClaude: { route: "claude", model: "sonnet5", effort: "low" },
+    testCodex: { route: "codex", model: "gpt-5.6-terra", effort: "low" },
+  };
+  if (Object.hasOwn(exact, role)) {
+    const expected = exact[role];
+    if (
+      selection.route !== expected.route ||
+      selection.model !== expected.model ||
+      selection.effort !== expected.effort
+    ) {
+      return `${role} must be ${expected.route}/${expected.model}/${expected.effort}`;
+    }
+  } else if (
+    role === "testOpenCode" &&
+    (selection.route !== "opencode" || selection.effort !== "low")
+  ) {
+    return "testOpenCode must be an explicitly configured opencode profile at low effort";
+  }
+  return null;
 }
 
 /**
@@ -285,7 +320,7 @@ function lineListing(descriptor) {
 }
 
 /**
- * Turn `codex debug models` output into a listing.
+ * §A-DISTRIBUTION-02 turns `codex debug models` output into a listing.
  *
  * Only rows the CLI itself would offer are kept: `visibility: "list"` and
  * `supported_in_api`. An internal or retired slug would otherwise be proposed as
@@ -526,7 +561,7 @@ function dedupe(values) {
 // ---------------------------------------------------------------------------
 
 /**
- * Split a model id into a family and a comparable generation.
+ * §A-DISTRIBUTION-02 splits a model id into a family and comparable generation.
  *
  * `claude-opus-4-8` is family `claude-opus` at 4.8; `gpt-5.6` is family `gpt`
  * at 5.6. Anything without a trailing numeric generation has none, and takes no
@@ -552,7 +587,7 @@ function compareGenerations(a, b) {
 }
 
 /**
- * Propose a successor only within the same family.
+ * §A-DISTRIBUTION-02 proposes a successor only within the same family.
  *
  * A newer release generation of what the user already chose is evidence. A
  * sibling family — opus to sonnet, or the reverse — is a different trade-off
@@ -709,6 +744,8 @@ async function commandSet(settings, key, assignments, useDefaults, force) {
     }
     const value = assignment.slice(index + 1);
     parseSelection(value);
+    const policyError = testingPolicyError(role, value);
+    if (policyError) throw new Error(policyError);
     return { role, value };
   });
 

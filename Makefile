@@ -19,6 +19,7 @@ mo-lint:
 	node --check skills/mo-orchestrate-orca/scripts/mo-models.mjs
 	node --check skills/mo-review-orca/scripts/mo-models.mjs
 	node --check tools/build-skills.mjs
+	node --check tools/knowledge-history.mjs
 	bash -n shared/scripts/mo-posture.sh
 	bash -n shared/scripts/mo-watchdog.sh
 	shared/scripts/mo-posture.sh --self-check --shell all

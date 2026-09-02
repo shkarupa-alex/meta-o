@@ -19,11 +19,11 @@
 
 Граница поставки проходит по тому, что установит чужой проект:
 
-- дистрибутируемый Markdown скилов — `src/skills/*/SKILL.md` и
-  `shared/references/*.md` — якорей не несёт. Правильнее было бы разрешить их в
-  источнике и снимать при сборке, но отдельный этап очистки перед поставкой
-  стоит дороже пользы: он способен разойтись с источником незаметно. Решение
-  отложено, и причина записана в бэклоге;
+- source Markdown может содержать standalone HTML marker
+  `<!-- mo:source-anchor <architecture-id> -->`. Сборка разбирает Markdown positional AST
+  и удаляет точный byte span marker справа налево, не сериализуя документ.
+  Обычные упоминания id не удаляются; marker в code/prose/link или malformed
+  marker останавливает сборку. Generated skills не содержат project ids;
 - helper-скрипты, которые сборка копирует побайтово — `mo-posture.sh` и
   `mo-watchdog.sh`, — несут `§A-*` в чужой проект сознательно. Id здесь
   провенанс кода, поэтому в шапке он всегда назван вместе с проектом-владельцем
@@ -36,6 +36,27 @@
 - недистрибутируемые файлы (`tools/`, `tests/`) называют `§A-*` всегда;
 - поставляемая методология требует того же от любого проекта общими словами.
   Конкретные id принадлежат проекту, а не поставке.
+
+Для `.mjs` exported function/class declarations несут JSDoc, который объясняет
+purpose и называет `§A-*`; это проверяет `eslint-plugin-jsdoc`. Для `.sh` нет
+выбранного зрелого parser/linter, надёжно проверяющего semantic purpose каждой
+function. Поэтому shell имеет machine-checked module header и обязательный
+symbol-level review substantive functions. Собственный regex parser не создаётся.
+
+Исторический cutoff — reproducible program input commit
+`75a95f87efe6cea53167fa3f8d8c3b09a7c7ad96`. `tools/knowledge-history.mjs`
+перечисляет полный DAG через `git rev-list --topo-order --reverse --parents`,
+читает blobs через Git object interface и проверяет каждый parent edge. Silent
+deletion или semantic reuse после cutoff требует trailer:
+
+```text
+Knowledge-ID-Change: remove <id> via <architecture-id>
+Knowledge-ID-Change: reuse <id> via <architecture-id>
+```
+
+Trailer разрешает изменение только когда указанное решение существует в том же
+commit и явно называет изменяемый id. Недостижимый cutoff даёт
+`history_unavailable`; merge-base остаётся лишь дешёвым branch guard.
 
 ## §A-MEMORY-02 — Дословный ledger живёт с задачей, постановка хранит тезисы
 
@@ -77,7 +98,9 @@ ledger уходит из проекта. Иначе постановка выр�
 и требует: у каждого тезиса есть якорь, все id уникальны, каждое `§A-*` называет
 существующий `§B-*`, каждый первичный модуль кода называет существующий `§A-*` и
 не ссылается на `§B-*` напрямую, висячих ссылок нет, а дистрибутируемый текст
-скилов якорей не содержит. Отдельная проверка требует, чтобы в шапке побайтово
+generated skills якорей не содержит, а source использует только positional
+markers. `tests/knowledge-history.test.mjs` проверяет полный DAG от cutoff.
+Отдельная проверка требует, чтобы в шапке побайтово
 копируемого скрипта рядом с каждым `§A-*` стояло имя проекта-владельца.
 
 ## Чего решение не требует

@@ -31,6 +31,7 @@ import {
   findUpgrade,
   parseCodexModels,
   parseSelection,
+  testingPolicyError,
 } from "../shared/scripts/mo-models.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -240,11 +241,26 @@ test("show reports every role and writes nothing", () => {
     "reviewerA",
     "reviewerB",
     "e2eTester",
+    "testClaude",
+    "testCodex",
+    "testOpenCode",
   ]) {
     assert.match(result.stdout, new RegExp(`${role}=unset`));
   }
   assert.equal(run(home, ["--show"]).status, 0);
   assert.throws(() => readFileSync(join(home, ".meta-o", "models.json")), /ENOENT/);
+});
+
+test("testing profiles fail closed above the approved cost", () => {
+  assert.equal(testingPolicyError("testClaude", "claude/sonnet5/low"), null);
+  assert.equal(testingPolicyError("testCodex", "codex/gpt-5.6-terra/low"), null);
+  assert.equal(testingPolicyError("testOpenCode", "opencode/provider/deepseek-id/low"), null);
+  assert.match(testingPolicyError("testClaude", "claude/opus/high"), /sonnet5\/low/);
+  assert.match(testingPolicyError("testCodex", "codex/gpt-5.6-sol/high"), /terra\/low/);
+  assert.match(
+    testingPolicyError("testOpenCode", "opencode/provider/deepseek-id/high"),
+    /low effort/,
+  );
 });
 
 test("set then show round-trips through the settings file", () => {
