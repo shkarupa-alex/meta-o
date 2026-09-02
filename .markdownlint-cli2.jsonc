@@ -12,8 +12,6 @@
     "spec/**",
     "docs/references/**",
     "docs/research/**",
-    "docs/backlog.md",
-    "docs/backlog-issues-real-runs.md",
     "shared/licenses/**",
   ],
   "config": {
