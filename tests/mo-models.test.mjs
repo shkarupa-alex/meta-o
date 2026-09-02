@@ -254,12 +254,16 @@ test("show reports every role and writes nothing", () => {
 test("testing profiles fail closed above the approved cost", () => {
   assert.equal(testingPolicyError("testClaude", "claude/sonnet5/low"), null);
   assert.equal(testingPolicyError("testCodex", "codex/gpt-5.6-terra/low"), null);
-  assert.equal(testingPolicyError("testOpenCode", "opencode/provider/deepseek-id/low"), null);
+  assert.equal(testingPolicyError("testOpenCode", "opencode/provider/deepseek-v4-flash/low"), null);
   assert.match(testingPolicyError("testClaude", "claude/opus/high"), /sonnet5\/low/);
   assert.match(testingPolicyError("testCodex", "codex/gpt-5.6-sol/high"), /terra\/low/);
   assert.match(
-    testingPolicyError("testOpenCode", "opencode/provider/deepseek-id/high"),
-    /low effort/,
+    testingPolicyError("testOpenCode", "opencode/provider/deepseek-v4-flash/high"),
+    /deepseek 4 flash.*low effort/,
+  );
+  assert.match(
+    testingPolicyError("testOpenCode", "opencode/provider/qwen3.8-27b/low"),
+    /deepseek 4 flash/,
   );
 });
 

@@ -10,6 +10,8 @@ import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { testingPolicyError } from "../shared/scripts/mo-models.mjs";
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (...parts) => readFileSync(join(ROOT, ...parts), "utf8");
 
@@ -41,4 +43,12 @@ test("generated methodology removes the source-only architecture marker", () => 
   const generated = read("skills", "mo-orchestrate-orca", "references", "methodology.md");
   assert.match(source, /mo:source-anchor §A-EVAL-01/);
   assert.doesNotMatch(generated, /mo:source-anchor|§A-EVAL-01/);
+});
+
+test("OpenCode testing identity cannot silently select the Qwen orchestrator", () => {
+  assert.equal(testingPolicyError("testOpenCode", "opencode/local/deepseek-4-flash/low"), null);
+  assert.match(
+    testingPolicyError("testOpenCode", "opencode/local/qwen3.8-27b/low"),
+    /deepseek 4 flash/,
+  );
 });

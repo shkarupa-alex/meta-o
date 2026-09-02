@@ -83,6 +83,14 @@ test("silent deletion and semantic reuse fail closed", () => {
   );
   commit(state.root, "reuse without authorization");
   assert.match(verifyHistory(state.root, state.cutoff).join("\n"), /semantic reuse/);
+
+  state = fixture();
+  writeFileSync(
+    join(state.root, "docs", "business.md"),
+    `# Business\n\n### ${BUSINESS_ID} — Original meaning\n\nDifferent requirement with the same heading.\n`,
+  );
+  commit(state.root, "reuse body without changing heading");
+  assert.match(verifyHistory(state.root, state.cutoff).join("\n"), /semantic reuse/);
 });
 
 test("a trailer works only through a same-commit architecture decision", () => {
@@ -103,12 +111,12 @@ test("a trailer works only through a same-commit architecture decision", () => {
     `# Business\n\n### ${BUSINESS_ID} — Different meaning\n\nChanged.\n`,
   );
   writeFileSync(
-    join(state.root, "docs", "architecture", "decision.md"),
-    `# ${ARCHITECTURE_ID} — Decision\n\n${ARCHITECTURE_ID} changes ${BUSINESS_ID} because its meaning changed.\n`,
+    join(state.root, "docs", "architecture", "authorization.md"),
+    `# ${MISSING_ARCHITECTURE_ID} — Authorization\n\n${MISSING_ARCHITECTURE_ID} changes ${BUSINESS_ID} because its meaning changed.\n`,
   );
   commit(
     state.root,
-    `authorize reuse\n\nKnowledge-ID-Change: reuse ${BUSINESS_ID} via ${ARCHITECTURE_ID}`,
+    `authorize reuse\n\nKnowledge-ID-Change: reuse ${BUSINESS_ID} via ${MISSING_ARCHITECTURE_ID}`,
   );
   assert.deepEqual(verifyHistory(state.root, state.cutoff), []);
 });

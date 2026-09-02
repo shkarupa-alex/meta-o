@@ -34,20 +34,47 @@ function text(node) {
   return (node.children ?? []).map(text).join("");
 }
 
+function semanticNode(node) {
+  if (Array.isArray(node)) return node.map(semanticNode);
+  if (!node || typeof node !== "object") return node;
+  return Object.fromEntries(
+    Object.entries(node)
+      .filter(([key]) => key !== "position")
+      .map(([key, value]) => [key, semanticNode(value)]),
+  );
+}
+
 /** §A-MEMORY-01 extracts knowledge definitions from a real Markdown AST. */
 export function definitions(markdown, path) {
   const found = new Map();
   const visit = (node) => {
-    if (node.type === "heading") {
-      const heading = text(node).trim();
-      const match = heading.match(ID);
-      if (match) {
-        const id = match[0];
-        if (found.has(id)) throw new Error(`${path}: duplicate ${id}`);
-        found.set(id, { id, kind: match[1], heading, path });
+    const children = node.children ?? [];
+    for (let index = 0; index < children.length; index += 1) {
+      const child = children[index];
+      if (child.type === "heading") {
+        const heading = text(child).trim();
+        const match = heading.match(ID);
+        if (match) {
+          const id = match[0];
+          if (found.has(id)) throw new Error(`${path}: duplicate ${id}`);
+          let end = index + 1;
+          while (
+            end < children.length &&
+            !(children[end].type === "heading" && children[end].depth <= child.depth)
+          ) {
+            end += 1;
+          }
+          found.set(id, {
+            id,
+            kind: match[1],
+            heading,
+            path,
+            semantic: JSON.stringify(semanticNode(children.slice(index, end))),
+          });
+        }
       }
+      visit(child);
     }
-    for (const child of node.children ?? []) visit(child);
   };
   visit(fromMarkdown(markdown));
   return found;
@@ -98,7 +125,7 @@ function authorized(root, commit, action, id, current) {
 }
 
 /** §A-MEMORY-01 compares one parent edge and reports unauthorized loss or reuse. */
-export function edgeViolations(root, parent, commit, siblingParents = []) {
+export function edgeViolations(root, parent, commit, siblingParents = [], enforceSemantic = true) {
   const before = snapshot(root, parent);
   const after = snapshot(root, commit);
   const siblings = siblingParents.map((sha) => snapshot(root, sha));
@@ -110,9 +137,9 @@ export function edgeViolations(root, parent, commit, siblingParents = []) {
   }
   for (const [id, entry] of after) {
     const prior = before.get(id);
-    const sameFromSibling = siblings.some((map) => map.get(id)?.heading === entry.heading);
-    const changed = prior && prior.heading !== entry.heading;
-    if (changed && !authorized(root, commit, "reuse", id, after)) {
+    const sameFromSibling = siblings.some((map) => map.get(id)?.semantic === entry.semantic);
+    const changed = prior && prior.semantic !== entry.semantic;
+    if (enforceSemantic && changed && !authorized(root, commit, "reuse", id, after)) {
       errors.push(`${parent}..${commit}: semantic reuse ${id}`);
     }
     if (!prior && !sameFromSibling) continue;
@@ -130,15 +157,34 @@ export function verifyHistory(root, cutoff) {
     .split("\n")
     .filter(Boolean);
   const errors = [];
+  const activation = git(
+    root,
+    [
+      "log",
+      "--diff-filter=A",
+      "--reverse",
+      "--format=%H",
+      `${cutoff}..HEAD`,
+      "--",
+      "tools/knowledge-history.mjs",
+    ],
+    true,
+  )
+    ?.trim()
+    .split("\n")[0];
   for (const line of lines) {
     const [commit, ...parents] = line.split(" ");
     for (const parent of parents) {
+      const enforceSemantic =
+        !activation ||
+        git(root, ["merge-base", "--is-ancestor", activation, parent], true) !== null;
       errors.push(
         ...edgeViolations(
           root,
           parent,
           commit,
           parents.filter((sha) => sha !== parent),
+          enforceSemantic,
         ),
       );
     }

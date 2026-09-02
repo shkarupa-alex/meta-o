@@ -169,11 +169,18 @@ export function testingPolicyError(role, value) {
     ) {
       return `${role} must be ${expected.route}/${expected.model}/${expected.effort}`;
     }
-  } else if (
-    role === "testOpenCode" &&
-    (selection.route !== "opencode" || selection.effort !== "low")
-  ) {
-    return "testOpenCode must be an explicitly configured opencode profile at low effort";
+  } else if (role === "testOpenCode") {
+    const normalizedModel = selection.model.toLowerCase().replace(/[^a-z0-9]+/g, " ");
+    const namesApprovedProfile =
+      normalizedModel.includes("deepseek") &&
+      /(?:^| )v?4(?: |$)/u.test(normalizedModel) &&
+      normalizedModel.includes("flash");
+    if (selection.route !== "opencode" || selection.effort !== "low" || !namesApprovedProfile) {
+      return (
+        "testOpenCode must identify the configured deepseek 4 flash profile " +
+        "through opencode at low effort"
+      );
+    }
   }
   return null;
 }
