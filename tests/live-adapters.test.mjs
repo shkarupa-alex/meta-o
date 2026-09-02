@@ -1,3 +1,9 @@
+/**
+ * Keep named live-adapter fixtures and bootstrap failures deterministic.
+ *
+ * Protects §A-REUSE-01.
+ */
+
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { test } from "node:test";
