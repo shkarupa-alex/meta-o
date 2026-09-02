@@ -2,7 +2,7 @@
 
 Статус: implementation-ready solo amendment.
 
-Эта поправка нормативно дополняет [программу обнуления backlog](../2026-08-31-backlog-zero/2026-09-02-backlog-zero-council-brainstorm.md) и её четыре спеки. Она не меняет состав council judges задним числом и не заменяет критический Qwen/OpenCode profile из Spec 3.
+Эта поправка входит в канонический [implementation package](../2026-09-02-backlog-zero/2026-09-02-backlog-zero-implementation.md) и нормативно дополняет запечатанную [программу обнуления backlog](../2026-08-31-backlog-zero/2026-09-02-backlog-zero-council-brainstorm.md) с её четырьмя спеками. Она не меняет состав council judges задним числом и не заменяет критический Qwen/OpenCode profile из Spec 3.
 
 ## Требование
 
