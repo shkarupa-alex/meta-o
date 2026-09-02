@@ -1,0 +1,12 @@
+{
+  "jobId": "run-876d3f36",
+  "slot": {
+    "phase": "approach",
+    "round": 0,
+    "activeSetRevision": 1,
+    "judge": "gpt56solhigh"
+  },
+  "candidateId": "candidate-edf5b992-2977-464d-89de-068522af473b",
+  "promotedBy": "runtime",
+  "validationSha256": "84316b9c0bcaebf5af6605325481e14347a4cc37ae920a29b02ea223183a8b37"
+}
