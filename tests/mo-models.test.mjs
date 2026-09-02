@@ -489,7 +489,7 @@ test("an isolated generated helper needs no ambient node_modules", () => {
   const home = sandbox();
   const fixture = fakeClaude(home, "success");
   const isolated = join(home, "isolated-mo-models.mjs");
-  copyFileSync(join(ROOT, "skills", "mo-orchestrate-herdr", "scripts", "mo-models.mjs"), isolated);
+  copyFileSync(join(ROOT, "skills", "mo-orchestrate-orca", "scripts", "mo-models.mjs"), isolated);
   const result = spawnSync(
     process.execPath,
     [isolated, "--catalog", "--route", "claude", "--json"],

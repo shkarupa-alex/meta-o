@@ -70,16 +70,6 @@ const MODEL_BUNDLE_MAX_BYTES = Math.ceil(MODEL_BUNDLE_BASELINE_BYTES * 1.25);
  * watchdog owns only its methodology-independent observer helper.
  */
 const SHARED_PLAN = {
-  "mo-orchestrate-herdr": [
-    ["references/methodology.md", "references/methodology.md"],
-    ["references/backend-contract.md", "references/backend-contract.md"],
-    ["references/review-protocol.md", "references/review-protocol.md"],
-    ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
-    ["references/herdr-mechanics.md", "references/herdr-mechanics.md"],
-    ["scripts/mo-models.mjs", "scripts/mo-models.mjs", { bundleLicenses: BUNDLE_LICENSE_PLAN }],
-    ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],
-    ["licenses/claude-agent-sdk-LICENSE.md", "licenses/claude-agent-sdk-LICENSE.md"],
-  ],
   "mo-orchestrate-orca": [
     ["references/methodology.md", "references/methodology.md"],
     ["references/backend-contract.md", "references/backend-contract.md"],
@@ -90,33 +80,11 @@ const SHARED_PLAN = {
     ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],
     ["licenses/claude-agent-sdk-LICENSE.md", "licenses/claude-agent-sdk-LICENSE.md"],
   ],
-  "mo-orchestrate-paseo": [
-    ["references/methodology.md", "references/methodology.md"],
-    ["references/backend-contract.md", "references/backend-contract.md"],
-    ["references/review-protocol.md", "references/review-protocol.md"],
-    ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
-    ["references/paseo-mechanics.md", "references/paseo-mechanics.md"],
-    ["scripts/mo-models.mjs", "scripts/mo-models.mjs", { bundleLicenses: BUNDLE_LICENSE_PLAN }],
-    ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],
-    ["licenses/claude-agent-sdk-LICENSE.md", "licenses/claude-agent-sdk-LICENSE.md"],
-  ],
-  "mo-review-herdr": [
-    ["references/backend-contract.md", "references/backend-contract.md"],
-    ["references/review-protocol.md", "references/review-protocol.md"],
-    ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
-    ["references/herdr-mechanics.md", "references/herdr-mechanics.md"],
-  ],
   "mo-review-orca": [
     ["references/backend-contract.md", "references/backend-contract.md"],
     ["references/review-protocol.md", "references/review-protocol.md"],
     ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
     ["references/orca-mechanics.md", "references/orca-mechanics.md"],
-  ],
-  "mo-review-paseo": [
-    ["references/backend-contract.md", "references/backend-contract.md"],
-    ["references/review-protocol.md", "references/review-protocol.md"],
-    ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
-    ["references/paseo-mechanics.md", "references/paseo-mechanics.md"],
   ],
   "mo-setup": [
     ["references/project-setup.md", "references/project-setup.md"],
@@ -350,7 +318,7 @@ function build(outputRoot) {
     }
   }
 
-  for (const consumer of ["mo-orchestrate-herdr", "mo-orchestrate-orca", "mo-orchestrate-paseo"]) {
+  for (const consumer of ["mo-orchestrate-orca"]) {
     const plan = SHARED_PLAN[consumer];
     const helper = plan.find(([source]) => source === "scripts/mo-models.mjs");
     const declared = Object.keys(helper?.[2]?.bundleLicenses ?? {}).sort();

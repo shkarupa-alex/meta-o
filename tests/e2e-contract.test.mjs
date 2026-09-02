@@ -16,10 +16,10 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const e2e = readFileSync(join(ROOT, "docs", "e2e.md"), "utf8");
 const acceptance = readFileSync(join(ROOT, "docs", "acceptance.md"), "utf8");
 
-test("each backend gets the complete B1-B14 acceptance matrix", () => {
+test("Orca gets the complete B1-B14 acceptance matrix", () => {
   for (let index = 1; index <= 14; index += 1)
     assert.match(e2e, new RegExp(`\\| B${index}\\s+\\|`));
-  for (const backend of ["Herdr", "Orca", "Paseo"]) assert.match(e2e, new RegExp(backend));
+  assert.match(e2e, /Выполните эту матрицу для Orca/);
   for (const harness of ["Codex", "Claude Code", "OpenCode"])
     assert.match(e2e, new RegExp(harness));
   assert.match(e2e, /markers `BEGIN`, `MIDDLE` и `END`/);
@@ -41,10 +41,8 @@ test("watchdog and documentation carry-forward scenarios are explicit", () => {
 
 test("acceptance maps all major requirements to deterministic and live proof", () => {
   for (const phrase of [
-    "ровно десять именованных скилов",
-    "Orchestration и review через Herdr",
+    "точный именованный набор скилов",
     "Orchestration и review через Orca",
-    "Orchestration и review через Paseo",
     "Codex, Claude Code и OpenCode",
     "полной парой",
     "backlog",

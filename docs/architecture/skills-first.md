@@ -31,10 +31,10 @@ adapter и recovery protocol создавал ещё одну правду, сп
 
 `shared/references/methodology.md` владеет lifecycle, autonomy, questions и
 completion. `review-protocol.md` владеет общей семантикой review и backlog.
-`backend-contract.md` владеет минимальными observable capabilities. Механики
-Herdr, Orca и Paseo владеют точными native commands. Отдельные фиксированные
-entry-скилы используют эти references: семантика backend остаётся явной, а
-стандарты не дублируются.
+`backend-contract.md` владеет минимальными observable capabilities.
+`orca-mechanics.md` владеет точными native commands. Отдельные orchestration и
+review entry-skills используют эти references: механика backend остаётся явной,
+а стандарты не дублируются.
 
 Раздельные entry при общем протоколе — это §B-REVIEW-04, а запрет дублировать
 стандарты — §B-CONTROL-04. Без §A-ORCHESTRATION-02 общие references лишаются

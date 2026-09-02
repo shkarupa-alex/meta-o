@@ -1,8 +1,7 @@
 # Backend contract
 
-This document defines the minimum public observable behavior required from
-Herdr, Orca and Paseo. A backend-specific mechanics file says how its native
-surface demonstrates each capability.
+This document defines the minimum public observable behavior required from Orca.
+The Orca mechanics file says how its native surface demonstrates each capability.
 
 ## Required capabilities
 
@@ -39,16 +38,14 @@ Declare and check the control executable separately from the companion skill:
 
 | Backend | Control executable/package | Required companion skill |
 | ------- | -------------------------- | ------------------------ |
-| Herdr   | `herdr`                    | upstream `herdr`         |
 | Orca    | `orca-cli` / `orca`        | upstream `orchestration` |
-| Paseo   | `paseo`                    | upstream `paseo`         |
 
 Retain upstream names. In particular, do not invent a Meta-O alias for Orca's
 `orchestration` skill.
 
 ## Acceptance probe
 
-For each backend, record current-run human-readable evidence for:
+For Orca, record current-run human-readable evidence for:
 
 1. instance/workspace discovery;
 2. all three harness launch postures;

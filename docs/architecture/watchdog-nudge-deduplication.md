@@ -14,8 +14,8 @@ Helper разбирает backend list JSON через `jq`, сообщает к
 сохраняет typed dispatch, worker, observation и permission state вместе с
 terminal connection/orphaning, но исключает RPC IDs и terminal `preview`, `title`
 и `lastOutputAt`: это presentation и repainting, а не переход состояния, который
-должен блокировать delivery. Paseo исключает обновляемое `UpdatedAt`. Delivery в
-Herdr и Paseo nonblocking; дальнейший observe отвечает за completion.
+должен блокировать delivery. Delivery в Orca nonblocking; дальнейший observe
+отвечает за completion.
 Вызывающая target- или scan-поверхность передаёт native item kind. Projection не
 угадывает его по случайным metadata keys и читает permission state только из
 точного observation field, а не рекурсивным поиском options.

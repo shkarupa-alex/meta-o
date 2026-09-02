@@ -41,23 +41,17 @@ test("setup inspects project substance and isolates tracked repair", () => {
 
 test("setup checks controls, companions and every harness posture separately", () => {
   for (const pair of [
-    ["`herdr` plus `herdr`", /herdr/],
-    ["`orca`/`orca-cli` plus upstream `orchestration`", /orchestration/],
-    ["`paseo` plus upstream\\s+`paseo`", /paseo/],
+    ["`orca`/`orca-cli` separately from the upstream\\s+`orchestration`", /orchestration/],
   ])
     assert.match(setup, new RegExp(pair[0]));
   assert.match(contract, /codex claude opencode/);
   assert.match(contract, /Missing, divergent or unreadable posture is not support/);
-  assert.match(contract, /Detect the active backend/);
-  assert.match(contract, /unsupported or ambiguous environments/);
-  assert.match(contract, /Orca exposes its\s+version-matched `orchestration` guide/);
-  assert.match(contract, /Paseo may expose\s+its version-matched `paseo` guide/);
-  assert.match(setup, /installed or version-matched bundled\s+Paseo guide/);
+  assert.match(contract, /Detect Orca/);
+  assert.match(contract, /unsupported\s+or ambiguous environments/);
+  assert.match(contract, /Orca exposes\s+its version-matched `orchestration` guide/);
   assert.match(contract, /Backend-wide health does not prove harness readiness/);
-  assert.match(contract, /native\s+provider discovery for Codex, Claude Code and OpenCode/);
-  assert.match(setup, /daemon health alone is insufficient/);
   assert.match(setup, /check mature `jq` and `flock` dependencies/);
-  assert.match(contract, /require `jq` and `flock` separately\s+from the three backend controls/);
+  assert.match(contract, /require `jq` and `flock` separately\s+from the Orca control/);
 });
 
 test("knowledge policy covers verbatim intent, language, semantic links and backlog fields", () => {

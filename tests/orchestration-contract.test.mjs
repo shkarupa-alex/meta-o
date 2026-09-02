@@ -71,8 +71,8 @@ test("shared review protocol owns concurrency, diversity, atomic delivery and ba
   assert.match(source, /cycle closes when both reviewers return `PASS` on the same SHA/);
 });
 
-test("each fixed backend entry consumes the same shared contracts and its native mechanics", () => {
-  for (const backend of ["herdr", "orca", "paseo"]) {
+test("Orca entries consume the shared contracts and native mechanics", () => {
+  for (const backend of ["orca"]) {
     const orchestrator = skill(`mo-orchestrate-${backend}`);
     const review = skill(`mo-review-${backend}`);
     assert.match(orchestrator, /references\/methodology\.md/);
@@ -85,49 +85,18 @@ test("each fixed backend entry consumes the same shared contracts and its native
 });
 
 test("backend mechanics use only the intended public result and diagnostic surfaces", () => {
-  const herdr = shared("herdr-mechanics.md");
   const orca = shared("orca-mechanics.md");
-  const paseo = shared("paseo-mechanics.md");
-  for (const source of [herdr, orca, paseo]) {
+  for (const source of [orca]) {
     assert.match(source, /accessible file path/);
     assert.match(source, /shell script that\s+invokes the\s+reviewer harness/);
   }
-  assert.match(herdr, /herdr agent (?:get|read|wait|prompt)/);
-  assert.match(herdr, /`--lines 120`, then increase to 200 and\s+400/);
-  assert.match(herdr, /discarded by a harness alternate screen/);
-  assert.match(herdr, /result\s+is `unknown`/);
   assert.match(orca, /complete `worker_done` body/);
   assert.match(orca, /Do not use `worker-read --source transcript`/);
   assert.match(orca, /`ready` and `input_accepted` is only a transport/);
   assert.match(orca, /terminal wait .*--for tui-idle/);
   assert.match(orca, /dispatch --task <task-id> --to <handle> --inject/);
   assert.match(orca, /do not duplicate a posture flag/);
-  assert.match(paseo, /last five\s+activity items/);
-  assert.match(
-    paseo,
-    /Never select a response merely because it is the\s+first or last unlabeled activity item/,
-  );
-  assert.match(paseo, /paseo logs <id> --filter text --tail 1/);
-  assert.match(paseo, /after actually running\s+non-mutating repository checks/);
-  assert.match(paseo, /both routes are unsupported/);
-  assert.match(paseo, /paseo send <agent-id> --prompt <message> --no-wait --json/);
-  assert.match(paseo, /never turn `send` into the wait/);
-  assert.match(paseo, /retain the public `UpdatedAt` value/);
-  assert.match(paseo, /non-idle state was observed/);
-  assert.match(paseo, /An unchanged identity and idle state may be the\s+previous response/);
-  assert.match(paseo, /`inspect` is\s+a metadata and state\s+surface/);
-  assert.match(paseo, /version-matched public application bundle/);
-  assert.match(paseo, /Read the discovered companion guide completely/);
-  assert.match(paseo, /paseo provider models <codex\|claude\|opencode> --json/);
-  assert.match(paseo, /provider-discovery failure is actionable readiness evidence/);
-  assert.doesNotMatch(skill("mo-orchestrate-paseo"), /public `wait` result surface/);
-  assert.match(
-    skill("mo-orchestrate-paseo"),
-    /documented public complete-response surface passes\s+tool-using normal and long/,
-  );
-  assert.match(herdr, /`herdr agent read --source recent-unwrapped`/);
-  assert.match(herdr, /prompt receipt is not\s+delivery proof/i);
-  for (const source of [herdr, orca, paseo]) {
+  for (const source of [orca]) {
     assert.match(source, /three-to-four-screen|three-to-four-screen|three-to-four/);
     assert.match(source, /whole-session|Whole-session|whole session/);
     assert.doesNotMatch(source, /private provider transcript.*use|inferred session database.*use/i);

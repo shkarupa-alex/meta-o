@@ -28,7 +28,7 @@ Human-facing project knowledge uses the user's language, inferred from the
 business framing unless the user chooses another. Code, identifiers, commands,
 protocol literals and upstream names remain in English. For a Russian-speaking
 project, write a heading such as `## Установка`, but keep
-`make mo-qc`, `worker_done`, `needs_attention`, `Herdr` and file paths unchanged.
+`make mo-qc`, `worker_done`, `needs_attention`, `Orca` and file paths unchanged.
 In a table, translate explanatory columns such as `Назначение`, while preserving
 API field names and exact state values. Verbatim user intent always keeps its
 original language, including mixed-language messages. These examples resolve
@@ -54,18 +54,13 @@ runs in a disposable location.
 
 ## Backend and harness readiness
 
-Detect the active backend from its native environment and status surface. Report
-unsupported or ambiguous environments rather than guessing. When explicitly
-asked, check all three backend controls and companion skills from
-[Backend contract](backend-contract.md).
+Detect Orca from its native environment and status surface. Report unsupported
+or ambiguous environments rather than guessing. When explicitly asked, check
+the control and companion skill from [Backend contract](backend-contract.md).
 
-Companion discovery is backend-native and remains separate from executable
-discovery. Herdr may expose an installed `herdr` skill, Orca exposes its
-version-matched `orchestration` guide through `orca skills`, and Paseo may expose
-its version-matched `paseo` guide either in an active harness directory or its
-public application bundle. Name which source was found. Do not require copying
-a readable bundled guide into personal configuration merely to make the check
-pass.
+Companion discovery remains separate from executable discovery. Orca exposes
+its version-matched `orchestration` guide through `orca skills`. Name the exact
+source found; do not substitute an unrelated personal copy.
 
 Run the bundled posture helper for Codex, Claude Code and OpenCode in applicable
 launch-parent shells:
@@ -79,14 +74,11 @@ Missing, divergent or unreadable posture is not support. Check workspace trust,
 hooks and wrappers without printing secrets. Personal configuration changes
 require explicit confirmation.
 
-Backend-wide health does not prove harness readiness. For Paseo, inspect native
-provider discovery for Codex, Claude Code and OpenCode and distinguish an empty
-catalog from a command failure. Report a missing provider-managed working
-directory or failed server boot as the concrete missing capability; do not
-create personal Paseo state or restart its daemon without explicit confirmation.
+Backend-wide health does not prove harness readiness. Use Orca's documented
+launch and observation surfaces to verify every selected harness.
 
 When `mo-watchdog` is installed or expected, require `jq` and `flock` separately
-from the three backend controls. Missing JSON parsing or kernel-released locking
+from the Orca control. Missing JSON parsing or kernel-released locking
 makes safe scan or nudge delivery unavailable; report that dependency rather
 than treating backend output or concurrency as best effort.
 

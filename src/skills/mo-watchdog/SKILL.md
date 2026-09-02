@@ -1,6 +1,6 @@
 ---
 name: mo-watchdog
-description: Observe one target or scan all reachable Herdr, Orca, and Paseo sessions for limits, overload, failures, questions, work, and completion; nudge only an explicitly authorized exact target.
+description: Observe one target or scan reachable Orca sessions for limits, overload, failures, questions, work, and completion; nudge only an explicitly authorized exact target.
 license: MIT
 ---
 
@@ -9,8 +9,8 @@ license: MIT
 Read [Watchdog behavior](references/watchdog.md) completely. Start only after the
 user explicitly requests observation.
 
-Use `scripts/mo-watchdog.sh target --backend <backend> --session <id>` for one
-session or `scripts/mo-watchdog.sh scan` for all reachable supported backends.
+Use `scripts/mo-watchdog.sh target --backend orca --session <id>` for one
+session or `scripts/mo-watchdog.sh scan` for all reachable Orca sessions.
 Observation is read-only. An explicit nudge additionally requires
 `--nudge <message>` and exact target authorization; the script re-reads native
 state and suppresses the nudge when that state changed. It reserves a bounded

@@ -1,5 +1,5 @@
 /**
- * Protect the exact ten-skill distribution and shared source ownership.
+ * Protect the exact skill distribution and shared source ownership.
  *
  * Protects §A-DISTRIBUTION-01, §A-DISTRIBUTION-03 and §A-DISTRIBUTION-06.
  */
@@ -28,13 +28,9 @@ const SOURCES = join(ROOT, "src", "skills");
 const OUTPUT = join(ROOT, "skills");
 const EXPECTED = [
   "mo-e2e",
-  "mo-orchestrate-herdr",
   "mo-orchestrate-orca",
-  "mo-orchestrate-paseo",
   "mo-reuse",
-  "mo-review-herdr",
   "mo-review-orca",
-  "mo-review-paseo",
   "mo-setup",
   "mo-watchdog",
 ];
@@ -46,7 +42,7 @@ function directories(path) {
     .sort();
 }
 
-test("the committed installable tree is a fresh ten-skill build", () => {
+test("the committed installable tree is a fresh exact build", () => {
   const result = spawnSync(process.execPath, [join(ROOT, "tools", "build-skills.mjs"), "--check"], {
     cwd: ROOT,
     encoding: "utf8",
@@ -101,7 +97,7 @@ test("all orchestration skills carry one self-contained model helper and posture
 });
 
 test("the model helper is one platform-neutral bundle reproducible through symlinked dependencies", () => {
-  const helper = join(OUTPUT, "mo-orchestrate-herdr", "scripts", "mo-models.mjs");
+  const helper = join(OUTPUT, "mo-orchestrate-orca", "scripts", "mo-models.mjs");
   const bundle = readFileSync(helper, "utf8");
   assert.doesNotMatch(
     bundle,
@@ -138,7 +134,7 @@ test("the model helper is one platform-neutral bundle reproducible through symli
     });
     assert.equal(rebuilt.status, 0, `${rebuilt.stdout}${rebuilt.stderr}`);
     const rebuiltHelper = readFileSync(
-      join(portableRoot, "skills", "mo-orchestrate-herdr", "scripts", "mo-models.mjs"),
+      join(portableRoot, "skills", "mo-orchestrate-orca", "scripts", "mo-models.mjs"),
     );
     assert.ok(
       rebuiltHelper.equals(readFileSync(helper)),
@@ -154,7 +150,7 @@ test("the model helper is one platform-neutral bundle reproducible through symli
 });
 
 test("review and setup packages carry every contract their entry skill routes to", () => {
-  for (const backend of ["herdr", "orca", "paseo"]) {
+  for (const backend of ["orca"]) {
     for (const entry of [`mo-review-${backend}`, `mo-orchestrate-${backend}`]) {
       assert.equal(
         existsSync(join(OUTPUT, entry, "references", "purpose-and-architecture.md")),

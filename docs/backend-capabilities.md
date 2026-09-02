@@ -15,15 +15,13 @@ Meta-O поддерживает backend только тогда, когда ег
 
 | Backend | Control              | Companion skill |
 | ------- | -------------------- | --------------- |
-| Herdr   | `herdr`              | `herdr`         |
 | Orca    | `orca` or `orca-cli` | `orchestration` |
-| Paseo   | `paseo`              | `paseo`         |
 
 Control и companion проверяются отдельно. Наличие executable не доказывает, что
 агент знает семантику backend. Документированный version-matched bundle backend
 считается источником companion, если полный guide читается и controlling agent
 прочитал его до действий; установка в личный harness-каталог для этого не нужна.
 
-Control health и готовность каждого harness — тоже разные свойства. Paseo
-provider discovery или прямой публичный launch должны доказать каждый выбранный
-harness; daemon со статусом `reachable` не отменяет сбой запуска provider server.
+Control health и готовность каждого harness — тоже разные свойства. Orca
+readiness должен доказать каждый выбранный harness; общий status control plane
+не отменяет сбой запуска provider.

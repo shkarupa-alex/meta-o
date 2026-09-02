@@ -16,9 +16,7 @@ mo-lint:
 	npx --no-install prettier --check .
 	npx --no-install eslint .
 	node --check shared/scripts/mo-models.mjs
-	node --check skills/mo-orchestrate-herdr/scripts/mo-models.mjs
 	node --check skills/mo-orchestrate-orca/scripts/mo-models.mjs
-	node --check skills/mo-orchestrate-paseo/scripts/mo-models.mjs
 	node --check tools/build-skills.mjs
 	bash -n shared/scripts/mo-posture.sh
 	bash -n shared/scripts/mo-watchdog.sh
@@ -44,14 +42,14 @@ skills:
 mo-test:
 	node --test "tests/*.test.mjs"
 
-# Do the source helper and both shipped backend copies boot and answer? Under a throwaway HOME, because
+# Do the source helper and shipped Orca copy boot and answer? Under a throwaway HOME, because
 # this gate judges the repository: a settings file the developer happens to have
 # — or a corrupt one — must not decide whether an unmodified checkout is green.
 mo-smoke:
 	@set -e; smoke_dir=$$(mktemp -d); trap 'rm -rf "$$smoke_dir"' 0 HUP INT TERM; \
 		HOME=$$smoke_dir node shared/scripts/mo-models.mjs --help > /dev/null; \
 		HOME=$$smoke_dir node shared/scripts/mo-models.mjs --show > /dev/null; \
-		for backend in mo-orchestrate-herdr mo-orchestrate-orca mo-orchestrate-paseo; do \
+		for backend in mo-orchestrate-orca; do \
 			cp skills/$$backend/scripts/mo-models.mjs $$smoke_dir/$$backend.mjs; \
 			(cd $$smoke_dir && HOME=$$smoke_dir node ./$$backend.mjs --help > /dev/null); \
 			(cd $$smoke_dir && HOME=$$smoke_dir node ./$$backend.mjs --show > /dev/null); \
@@ -64,7 +62,7 @@ mo-e2e:
 	@echo "AGENT_REQUIRED: not executed"
 	@echo
 	@echo "Docs:      docs/e2e.md, docs/backend-capabilities.md"
-	@echo "Scenarios: B1-B14 — each Herdr, Orca, and Paseo backend"
+	@echo "Scenarios: B1-B14 — Orca backend"
 	@echo "           W1-W4 — watchdog target, scan, nudge, suppression"
 	@echo "           local and authorized remote installation"
 	@echo "Run:       execute the applicable scenarios without changing the frozen candidate"

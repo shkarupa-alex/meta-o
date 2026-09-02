@@ -5,8 +5,8 @@
 
 ## Scope and outcomes
 
-Meta-O is ten agent skills that run a feature from a spec to one verified
-candidate commit. Skills and reasoning orchestrate the work; the project adds
+Meta-O is a set of agent skills that runs a feature from a spec to one verified
+candidate commit through Orca. Skills and reasoning orchestrate the work; the project adds
 no workflow engine or general state store. See
 [§A-ORCHESTRATION-01 — Скилы и reasoning — слой оркестрации процесса](docs/architecture/skills-first.md)
 and the narrow state exception in

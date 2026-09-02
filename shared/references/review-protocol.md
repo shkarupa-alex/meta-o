@@ -1,7 +1,7 @@
 # Review protocol
 
-This document owns the common review semantics used by all three backend entry
-skills. Backend mechanics owns session creation, waiting, questions and complete
+This document owns the review semantics shared by Orca orchestration and
+standalone review. Backend mechanics owns session creation, waiting, questions and complete
 response retrieval.
 
 ## Inputs and independence
