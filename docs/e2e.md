@@ -86,8 +86,8 @@ node tools/skill-evals.mjs --validate-evidence <evidence.json> \
 Validator связывает evidence с Git tree revision каждого skill, требует ровно
 три case result, равенство requested/effective identity, low-cost testing policy,
 Qwen/OpenCode для critical orchestrator, полную metadata harness и отсутствие
-secret/transcript/absolute-machine-path fields. Любой `FAIL`, `UNKNOWN`,
-`FAIL`, `UNKNOWN` или `NOT_RUN` делает live-команду ненулевой. Обоснованный
+secret/transcript/absolute-machine-path fields. Любой `FAIL`, `UNKNOWN` или
+`NOT_RUN` делает live-команду ненулевой. Обоснованный
 `NOT_APPLICABLE` обязан содержать observation с применённым правилом и остаётся
 валидным завершением неприменимого case; для advisory cases инженер отдельно
 решает semantic finding, но executable safety/contract failure остаётся
