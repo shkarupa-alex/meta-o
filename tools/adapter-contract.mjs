@@ -91,6 +91,14 @@ function validateDescriptor(descriptor, label, errors) {
   operations.forEach((operation, index) =>
     validateOperation(operation, `${label}[${index}]`, errors),
   );
+  const covered = new Set(
+    operations.flatMap((operation) => [operation.capability, ...(operation.provides ?? [])]),
+  );
+  for (const capability of descriptor.capabilities ?? []) {
+    if (!covered.has(capability)) {
+      errors.push(`${label}: declared capability ${capability} has no exact operation`);
+    }
+  }
 }
 
 function validateDescriptorArrays(descriptor, label, errors) {
@@ -133,6 +141,13 @@ function validateDescriptorMetadata(descriptor, label, errors) {
 
 function validateOperation(operation, label, errors) {
   if (!ALLOWED_CAPABILITIES.has(operation?.capability)) errors.push(`${label}: invalid capability`);
+  if (
+    operation?.provides !== undefined &&
+    (!nonemptyStrings(operation.provides) ||
+      operation.provides.some((capability) => !ALLOWED_CAPABILITIES.has(capability)))
+  ) {
+    errors.push(`${label}: provides must contain known capabilities`);
+  }
   if (!ALLOWED_TRANSPORTS.has(operation?.transport)) errors.push(`${label}: invalid transport`);
   if (!nonemptyStrings(operation?.argv_or_url))
     errors.push(`${label}: argv_or_url must be non-empty strings`);

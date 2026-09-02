@@ -1,5 +1,14 @@
 # §A-MEMORY-01 — Уровни знаний связаны уникальными id
 
+```yaml
+knowledge_id_change:
+  action: reuse
+  id: §A-MEMORY-01
+  reason: Историческая проверка усилена для merge DAG и явной авторизации изменений.
+  new_boundary: Решение теперь задаёт структуру authorization record и merge-edge semantics.
+  references_updated: true
+```
+
 ## Решение
 
 Каждый самостоятельный тезис в [Зачем существует Meta-O](../business.md) несёт
@@ -9,7 +18,7 @@
 цепочка уже проходит через решение.
 
 Идентификатор уникален, стабилен и не переиспользуется. Грамматика —
-`§[AB]-[A-Z][A-Z0-9]*-\d{2}`; латиница здесь технический идентификатор, а не
+`§[AB]-[A-Z][A-Z0-9-]*-\d{2}`; латиница здесь технический идентификатор, а не
 человекочитаемый текст. Служебных блоков вида `Derived from` или `Implemented by`
 нет: связь читается как обычное предложение.
 
@@ -44,7 +53,13 @@ function. Поэтому shell имеет machine-checked module header и об�
 symbol-level review substantive functions. Собственный regex parser не создаётся.
 
 Исторический cutoff — reproducible program input commit
-`75a95f87efe6cea53167fa3f8d8c3b09a7c7ad96`. `tools/knowledge-history.mjs`
+`75a95f87efe6cea53167fa3f8d8c3b09a7c7ad96`:
+
+```yaml
+program_input_sha: 75a95f87efe6cea53167fa3f8d8c3b09a7c7ad96
+```
+
+`tools/knowledge-history.mjs`
 перечисляет полный DAG через `git rev-list --topo-order --reverse --parents`,
 читает blobs через Git object interface и проверяет каждый parent edge. Silent
 deletion или semantic reuse после cutoff требует trailer:
@@ -55,7 +70,19 @@ Knowledge-ID-Change: reuse <id> via <architecture-id>
 ```
 
 Trailer разрешает изменение только когда указанное решение существует в том же
-commit и явно называет изменяемый id. Недостижимый cutoff даёт
+commit и содержит machine-readable YAML-блок с действием, id, непустыми причиной
+и новой semantic boundary, а также `references_updated: true`:
+
+```yaml
+knowledge_id_change:
+  action: reuse
+  id: <business-id>
+  reason: Требование разделено на две независимо проверяемые части.
+  new_boundary: Старый id теперь обозначает только первую часть.
+  references_updated: true
+```
+
+Недостижимый cutoff даёт
 `history_unavailable`; merge-base остаётся лишь дешёвым branch guard.
 
 ## §A-MEMORY-02 — Дословный ledger живёт с задачей, постановка хранит тезисы
@@ -78,6 +105,21 @@ ledger уходит из проекта. Иначе постановка выр�
 Если §A-MEMORY-02 отменяется, сведение становится лишним: постановка снова растёт
 дословной перепиской, и проект теряет единственный документ, который человек
 действительно читает целиком.
+
+## §A-MEMORY-03 — Удалённый backlog сохраняет проверяемый Git-провенанс
+
+Временная closure map существует только в checkpoint-коммите и связывает каждый
+AST node frozen ledger с явно назначенным obligation, owner, disposition и
+реальным proof. После удаления program artifacts `docs/acceptance.md` сохраняет
+source blob ids, closure commit, map blob и постоянную команду проверки.
+`tests/backlog-provenance.test.mjs` проверяет достижимость объектов, точную
+разрешённую deletion delta и существование каждого durable proof path. Он не
+считает структурную биекцию доказательством семантического закрытия.
+
+Это решение служит §B-MEMORY-03, §B-MEMORY-04, §B-PROOF-01 и
+§B-LONGEVITY-04. Если §A-MEMORY-03 отменяется, временная map, ссылки на Git
+objects и постоянный provenance test удаляются вместе: оставлять непроверяемый
+receipt без потребителя запрещено.
 
 ## Бизнес-причина
 

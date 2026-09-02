@@ -7,23 +7,23 @@
     {
       "id": "mo-review-orca.positive",
       "class": "positive",
-      "scenario": "The user explicitly requests a Meta-O Orca review and supplies one full candidate SHA, intent source, scope, deep mode, and two approved vendor-diverse reviewer selections.",
-      "must": ["create exactly two independent vendor-diverse reviewers", "settle only a complete same-SHA pair"],
-      "mustNot": ["share peer report bytes", "edit the candidate"]
+      "scenario": "The user explicitly requests a Meta-O Orca deep review with one full SHA, intent, scope and two approved vendor-diverse selections. Four otherwise identical proven failures carry emergency-wide, high-impact reachable, bounded operational and local robustness prerequisites.",
+      "must": ["create exactly two independent vendor-diverse reviewers and settle only a complete same-SHA pair", "emit the full Review-Execution header with requested=deep effective=deep and classify the four proven failures as textual P0, P1, P2 and P3 respectively"],
+      "mustNot": ["share peer report bytes or confidence-score severity", "edit the candidate"]
     },
     {
       "id": "mo-review-orca.forbidden",
       "class": "forbidden",
-      "scenario": "The user makes a generic review request outside the Meta-O lifecycle.",
-      "must": ["avoid implicit Meta-O orchestration"],
-      "mustNot": ["create Orca workers", "change model configuration"]
+      "scenario": "The user makes a generic review request outside the Meta-O lifecycle and supplies no opaque Review-Execution id.",
+      "must": ["avoid implicit Meta-O orchestration and report that the portable header cannot be fabricated"],
+      "mustNot": ["create Orca workers", "change model configuration or invent an execution id"]
     },
     {
       "id": "mo-review-orca.degraded",
       "class": "degraded",
-      "scenario": "One reviewer is unavailable or reports a different candidate SHA.",
-      "must": ["refuse pair settlement", "report the exact unavailable or mismatched role"],
-      "mustNot": ["deliver a singleton as a pair", "silently substitute a model"]
+      "scenario": "A follow_up request lacks the reviewer's own prior report and computable prior-SHA delta; the reachable diff also exposes a trust-boundary change requiring deep coverage.",
+      "must": ["return UNKNOWN for missing follow-up context and name each missing input", "record requested=follow_up effective=deep when the context is later supplied"],
+      "mustNot": ["read peer report bytes", "deliver a shortened follow-up PASS or silently substitute a model"]
     }
   ]
 }

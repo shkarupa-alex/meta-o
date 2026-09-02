@@ -9,7 +9,7 @@ import { createServer } from "node:http";
 import { test } from "node:test";
 
 import { loadDescriptors } from "../tools/adapter-contract.mjs";
-import { resolveBaseUrl, verifyHttp } from "../tools/live-adapters.mjs";
+import { resolveBaseUrl, verifyHttp, verifyRequiredTool } from "../tools/live-adapters.mjs";
 
 async function withServer(handler, callback) {
   const server = createServer(handler);
@@ -73,4 +73,11 @@ test("NuGet bootstrap failure becomes typed sanitized evidence", async () => {
       assert.doesNotMatch(evidence[0].result, /SECRET-SECOND-LINE/u);
     },
   );
+});
+
+test("an absent required tool is blocking typed evidence", () => {
+  const descriptor = { id: "fixture" };
+  const result = verifyRequiredTool(descriptor, "meta-o-certainly-missing-tool");
+  assert.equal(result.status, "tool_missing");
+  assert.deepEqual(result.command, ["meta-o-certainly-missing-tool", "--version"]);
 });

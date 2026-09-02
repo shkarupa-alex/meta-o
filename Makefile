@@ -29,7 +29,7 @@ mo-lint:
 	@set -e; for shell_name in bash zsh; do \
 		if command -v $$shell_name >/dev/null 2>&1; then \
 			shared/scripts/mo-posture.sh --self-check --shell $$shell_name; \
-		else echo "mo-posture self-check skipped: $$shell_name is not installed"; fi; \
+		else echo "mo-posture self-check blocked: $$shell_name is not installed" >&2; exit 1; fi; \
 	done
 
 format:
@@ -50,6 +50,7 @@ skills:
 	node tools/build-skills.mjs
 
 mo-test:
+	@command -v zsh >/dev/null 2>&1 || { echo "mo-test blocked: zsh is required for the cross-shell contract" >&2; exit 1; }
 	node --test "tests/*.test.mjs"
 
 # Do the source helper and shipped Orca copy boot and answer? Under a throwaway HOME, because

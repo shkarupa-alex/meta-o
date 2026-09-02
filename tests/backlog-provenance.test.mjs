@@ -1,7 +1,7 @@
 /**
  * Preserve auditable proof after temporary backlog closure artifacts are deleted.
  *
- * Protects §A-MEMORY-02.
+ * Protects §A-MEMORY-03.
  */
 
 import assert from "node:assert/strict";

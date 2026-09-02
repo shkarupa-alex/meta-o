@@ -91,12 +91,13 @@ esac
 }
 
 test("Herdr and Paseo survive only as README history", () => {
-  const forbidden = /mo-(?:orchestrate|review)-(?:herdr|paseo)|(?:herdr|paseo)-mechanics\.md/i;
+  const forbidden = /\b(?:herdr|paseo)\b/iu;
   for (const root of ["src", "shared", "skills", "tools"]) {
     for (const path of files(join(ROOT, root))) {
       assert.doesNotMatch(readFileSync(path, "utf8"), forbidden, path);
     }
   }
+  assert.doesNotMatch(readFileSync(join(ROOT, "apm.yml"), "utf8"), forbidden, "apm.yml");
   for (const path of files(join(ROOT, "docs"))) {
     if (path.startsWith(join(ROOT, "docs", "references"))) continue;
     assert.doesNotMatch(readFileSync(path, "utf8"), forbidden, path);

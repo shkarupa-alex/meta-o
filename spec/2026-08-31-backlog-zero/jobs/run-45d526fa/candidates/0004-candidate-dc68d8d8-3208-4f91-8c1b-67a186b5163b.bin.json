@@ -1,0 +1,12 @@
+{
+  "candidateId": "candidate-dc68d8d8-3208-4f91-8c1b-67a186b5163b",
+  "jobId": "run-45d526fa",
+  "generation": 4,
+  "phase": "approach-review",
+  "round": 1,
+  "judge": "gpt56solhigh-for-opus1mhigh",
+  "activeSetRevision": 1,
+  "createdBy": "provider",
+  "path": "jobs/run-45d526fa/candidates/0004-candidate-dc68d8d8-3208-4f91-8c1b-67a186b5163b.bin",
+  "sha256": "05f38be31ecce5c27eb5486066c04df4cb896418abc329fa79b0500e8138bd90"
+}

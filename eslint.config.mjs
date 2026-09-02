@@ -53,6 +53,14 @@ export default [
           matchDescription: "(?:^|\\s)§A-[A-Z](?:[A-Z0-9]|-)*-[0-9]{2}(?=$|\\s|\\.|,|;|:|\\))",
         },
       ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "ExportNamedDeclaration[source=null] > ExportSpecifier",
+          message:
+            "Use an inline named export so the symbol-level purpose gate can inspect its declaration.",
+        },
+      ],
     },
   },
   {

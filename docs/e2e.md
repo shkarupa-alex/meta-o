@@ -62,8 +62,9 @@ effective identity `deepseek 4 flash`. Неприменимый case получ�
 тот же corpus через обычный `make skills`.
 
 Live-run выполняется из чистого checkout frozen candidate. Сначала runner
-создаёт один bounded prompt с instruction bundle и уже заполненной metadata
-матрицей; модель должна вернуть только JSON evidence envelope:
+создаёт один bounded prompt с instruction bundle, неизменяемыми входными
+metadata и незаполненными execution/result полями. Модель получает effective
+identity только из native harness result и возвращает JSON evidence envelope:
 
 ```bash
 node tools/skill-evals.mjs --prompt <skill> \
@@ -80,13 +81,17 @@ Prompt передают user-approved harness без изменения checkout
 
 ```bash
 node tools/skill-evals.mjs --validate-evidence <evidence.json> \
-  --candidate <full-sha> --require-all
+  --candidate <full-sha> --require-all \
+  --critical-profile <configured-orchestrator-route/model/effort>
 ```
 
-Validator связывает evidence с Git tree revision каждого skill, требует ровно
-три case result, равенство requested/effective identity, low-cost testing policy,
-Qwen/OpenCode для critical orchestrator, полную metadata harness и отсутствие
-secret/transcript/absolute-machine-path fields. Любой `FAIL`, `UNKNOWN` или
+Validator связывает evidence с Git tree revision каждого skill и digest точных
+case/requested/harness inputs, требует native execution id/interval/exit status,
+observed effective identity и отдельное evidence для каждого `must`/`mustNot`
+oracle. `PASS` не предзаполняется и невозможен при пустом observation или
+неподтверждённом oracle. Critical identity сравнивается с явно переданным
+user-owned orchestrator profile, а не с hard-coded display label. Полные
+transcripts, secrets и absolute machine paths запрещены. Любой `FAIL`, `UNKNOWN` или
 `NOT_RUN` делает live-команду ненулевой. Обоснованный
 `NOT_APPLICABLE` обязан содержать observation с применённым правилом и остаётся
 валидным завершением неприменимого case; для advisory cases инженер отдельно

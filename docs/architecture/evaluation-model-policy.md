@@ -2,6 +2,20 @@
 
 Статус: принято.
 
+```yaml
+knowledge_id_changes:
+  - action: reuse
+    id: §A-EVAL-01
+    reason: Решение дополнено проверкой native execution identity и read-path policy.
+    new_boundary: Решение определяет и выбор профиля, и доказательство фактического запуска.
+    references_updated: true
+  - action: reuse
+    id: §B-EVAL-01
+    reason: Бизнес-тезис уточнён после отделения локальной orchestration capability.
+    new_boundary: Тезис относится только к low-cost testing actors, а не к orchestrator.
+    references_updated: true
+```
+
 ## Решение
 
 Детерминированный test/fixture является первым способом доказательства. Model
@@ -21,7 +35,8 @@ actor запускается только для named scenario, который 
 requested/effective identity, harness version и результат, но не secrets или
 полные transcripts.
 
-Решение служит §B-EVAL-01, §B-CONTROL-01 и §B-PORTABILITY-07.
+Решение служит §B-EVAL-01, §B-CONTROL-01, §B-PORTABILITY-07 и
+§B-PORTABILITY-08.
 
 ## Если §A-EVAL-01 отменяется
 

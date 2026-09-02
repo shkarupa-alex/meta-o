@@ -187,8 +187,12 @@ test("watchdog is shipped executable and source/build file sets agree", () => {
 });
 
 test("source anchors are stripped positionally and malformed placements fail closed", () => {
-  const source = "Before <!-- mo:source-anchor §A-MEMORY-01 --> after `§A-MEMORY-01`.\n";
-  assert.equal(stripSourceAnchors(source), "Before after `§A-MEMORY-01`.\n");
+  const source = "Before.\n\n<!-- mo:source-anchor §A-MEMORY-01 -->\n\nAfter `§A-MEMORY-01`.\n";
+  assert.equal(stripSourceAnchors(source), "Before.\n\nAfter `§A-MEMORY-01`.\n");
+  assert.throws(
+    () => stripSourceAnchors("Before <!-- mo:source-anchor §A-MEMORY-01 --> after.\n"),
+    /outside a standalone HTML marker/,
+  );
   assert.throws(
     () => stripSourceAnchors("`<!-- mo:source-anchor §A-MEMORY-01 -->`\n"),
     /outside a standalone HTML marker/,

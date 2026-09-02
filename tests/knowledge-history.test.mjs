@@ -5,19 +5,34 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
+import { fromMarkdown } from "mdast-util-from-markdown";
+
 import { git, verifyHistory } from "../tools/knowledge-history.mjs";
 
-const PROGRAM_INPUT_SHA = "75a95f87efe6cea53167fa3f8d8c3b09a7c7ad96";
 const BUSINESS_ID = `§${"B-FIXTURE-01"}`;
 const ARCHITECTURE_ID = `§${"A-FIXTURE-01"}`;
 const MISSING_ARCHITECTURE_ID = `§${"A-MISSING-01"}`;
 const roots = [];
 after(() => roots.forEach((root) => rmSync(root, { recursive: true, force: true })));
+
+function programInputSha() {
+  const document = readFileSync(
+    join(process.cwd(), "docs", "architecture", "knowledge-identifiers.md"),
+    "utf8",
+  );
+  const blocks = fromMarkdown(document).children.filter(({ type }) => type === "code");
+  const match = blocks
+    .flatMap(({ value }) => value.split("\n"))
+    .map((line) => line.match(/^program_input_sha: ([a-f0-9]{40})$/u))
+    .find(Boolean);
+  assert.ok(match, "§A-MEMORY-01 lost its structured program_input_sha");
+  return match[1];
+}
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "mo-knowledge-history-"));
@@ -45,7 +60,7 @@ function commit(root, message) {
 }
 
 test("the real history is reachable and valid from program input", () => {
-  assert.deepEqual(verifyHistory(process.cwd(), PROGRAM_INPUT_SHA), []);
+  assert.deepEqual(verifyHistory(process.cwd(), programInputSha()), []);
 });
 
 test("rename and merge DAG preserve ids without authorization", () => {
@@ -112,12 +127,34 @@ test("a trailer works only through a same-commit architecture decision", () => {
   );
   writeFileSync(
     join(state.root, "docs", "architecture", "authorization.md"),
-    `# ${MISSING_ARCHITECTURE_ID} — Authorization\n\n${MISSING_ARCHITECTURE_ID} changes ${BUSINESS_ID} because its meaning changed.\n`,
+    `# ${MISSING_ARCHITECTURE_ID} — Authorization\n\n\`\`\`yaml\nknowledge_id_change:\n  action: reuse\n  id: ${BUSINESS_ID}\n  reason: The fixture meaning changed.\n  new_boundary: The id now names the replacement meaning.\n  references_updated: true\n\`\`\`\n`,
   );
   commit(
     state.root,
     `authorize reuse\n\nKnowledge-ID-Change: reuse ${BUSINESS_ID} via ${MISSING_ARCHITECTURE_ID}`,
   );
+  assert.deepEqual(verifyHistory(state.root, state.cutoff), []);
+});
+
+test("an authorized branch deletion survives a no-ff merge without a merge trailer", () => {
+  const state = fixture();
+  git(state.root, ["switch", "-qc", "remove-id"]);
+  writeFileSync(join(state.root, "docs", "business.md"), "# Business\n");
+  writeFileSync(
+    join(state.root, "docs", "architecture", "authorization.md"),
+    `# ${MISSING_ARCHITECTURE_ID} — Authorization\n\n\`\`\`yaml\nknowledge_id_change:\n  action: remove\n  id: ${BUSINESS_ID}\n  reason: The fixture requirement is obsolete.\n  new_boundary: No replacement requirement remains.\n  references_updated: true\n\`\`\`\n`,
+  );
+  commit(
+    state.root,
+    `authorize deletion\n\nKnowledge-ID-Change: remove ${BUSINESS_ID} via ${MISSING_ARCHITECTURE_ID}`,
+  );
+  git(state.root, ["switch", "-q", "master"]);
+  writeFileSync(
+    join(state.root, "docs", "architecture", "main.md"),
+    "# §A-MAIN-02 — Main\n\nServes nothing.\n",
+  );
+  commit(state.root, "unrelated main change");
+  git(state.root, ["merge", "--no-ff", "-qm", "merge authorized deletion", "remove-id"]);
   assert.deepEqual(verifyHistory(state.root, state.cutoff), []);
 });
 

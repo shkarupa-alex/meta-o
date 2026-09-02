@@ -5,7 +5,9 @@
  */
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -51,4 +53,42 @@ test("OpenCode testing identity cannot silently select the Qwen orchestrator", (
     testingPolicyError("testOpenCode", "opencode/local/qwen3.8-27b/low"),
     /deepseek 4 flash/,
   );
+});
+
+test("the Claude testing profile resolves real Sonnet ids instead of a hard-coded label", () => {
+  assert.equal(testingPolicyError("testClaude", "claude/sonnet/low"), null);
+  assert.equal(testingPolicyError("testClaude", "claude/claude-sonnet-5/low"), null);
+  assert.equal(testingPolicyError("testClaude", "claude/sonnet5/low"), null);
+  assert.match(testingPolicyError("testClaude", "claude/sonnet/medium"), /low effort/u);
+  assert.match(testingPolicyError("testClaude", "claude/opus-5/low"), /sonnet5\/low/u);
+});
+
+test("the consumed show path rejects hand-written expensive or invalid selections", () => {
+  const home = mkdtempSync(join(tmpdir(), "mo-model-policy-"));
+  try {
+    const settings = join(home, ".meta-o");
+    mkdirSync(settings);
+    const run = (defaults) => {
+      writeFileSync(join(settings, "models.json"), JSON.stringify({ schemaVersion: 1, defaults }));
+      return spawnSync(
+        process.execPath,
+        [join(ROOT, "shared", "scripts", "mo-models.mjs"), "--show"],
+        {
+          encoding: "utf8",
+          env: { ...process.env, HOME: home },
+        },
+      );
+    };
+    let result = run({ testClaude: "claude/opus-5/high" });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /testClaude.*sonnet5\/low/u);
+    result = run({ testCodex: "codex/gpt-5.6-sol/high" });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /testCodex must be/u);
+    result = run({ reviewerA: "bogusroute/model/high" });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /unknown route/u);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 });

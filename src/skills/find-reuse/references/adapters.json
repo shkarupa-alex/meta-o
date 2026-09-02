@@ -79,6 +79,23 @@
         "output": "json",
         "success": { "exit_codes": [0] },
         "errors": { "ENOENT": "tool_missing", "4": "auth_missing", "429": "rate_limited", "parse": "malformed" }
+      },
+      {
+        "capability": "maintenance",
+        "provides": ["releases"],
+        "transport": "argv",
+        "argv_or_url": ["gh", "repo", "view", "{package}", "--json", "pushedAt,licenseInfo,issues,releases"],
+        "output": "json",
+        "success": { "exit_codes": [0] },
+        "errors": { "ENOENT": "tool_missing", "4": "auth_missing", "429": "rate_limited", "parse": "malformed" }
+      },
+      {
+        "capability": "security",
+        "transport": "argv",
+        "argv_or_url": ["gh", "api", "repos/{package}/security-advisories"],
+        "output": "json",
+        "success": { "exit_codes": [0] },
+        "errors": { "ENOENT": "tool_missing", "4": "auth_missing", "429": "rate_limited", "parse": "malformed" }
       }
     ],
     "unavailable_fields": ["downloads", "reverse_dependencies"],
@@ -118,6 +135,23 @@
         "output": "json",
         "success": { "exit_codes": [0] },
         "errors": { "ENOENT": "tool_missing", "401": "auth_missing", "429": "rate_limited", "parse": "malformed" }
+      },
+      {
+        "capability": "maintenance",
+        "provides": ["releases"],
+        "transport": "argv",
+        "argv_or_url": ["glab", "api", "projects/{encoded_package}"],
+        "output": "json",
+        "success": { "exit_codes": [0] },
+        "errors": { "ENOENT": "tool_missing", "401": "auth_missing", "429": "rate_limited", "parse": "malformed" }
+      },
+      {
+        "capability": "security",
+        "transport": "argv",
+        "argv_or_url": ["glab", "api", "projects/{encoded_package}/vulnerability_findings"],
+        "output": "json",
+        "success": { "exit_codes": [0] },
+        "errors": { "ENOENT": "tool_missing", "401": "auth_missing", "429": "rate_limited", "parse": "malformed" }
       }
     ],
     "unavailable_fields": ["downloads", "reverse_dependencies"],
@@ -152,6 +186,7 @@
       },
       {
         "capability": "exact_lookup",
+        "provides": ["releases", "maintenance"],
         "transport": "argv",
         "argv_or_url": ["npm", "view", "{package}", "--json"],
         "output": "json",
@@ -190,6 +225,7 @@
     "operations": [
       {
         "capability": "exact_lookup",
+        "provides": ["releases", "maintenance"],
         "transport": "http_get",
         "argv_or_url": ["/pypi/{encoded_package}/json"],
         "output": "json",
@@ -243,6 +279,7 @@
       },
       {
         "capability": "exact_lookup",
+        "provides": ["downloads", "releases", "maintenance"],
         "transport": "http_get",
         "argv_or_url": ["/api/v1/crates/{encoded_package}"],
         "output": "json",
@@ -273,6 +310,7 @@
     "operations": [
       {
         "capability": "exact_lookup",
+        "provides": ["maintenance"],
         "transport": "argv",
         "argv_or_url": ["go", "list", "-m", "-versions", "{package}"],
         "output": "text",
@@ -295,9 +333,9 @@
     "id": "maven-central",
     "ecosystems": ["java", "kotlin", "scala"],
     "capabilities": ["name_search", "exact_lookup", "releases", "maintenance"],
-    "required_tools": ["curl"],
-    "version_probe": ["curl", "--version"],
-    "capability_probe": ["curl", "--help", "all"],
+    "required_tools": ["node"],
+    "version_probe": ["node", "--version"],
+    "capability_probe": ["node", "--help"],
     "install_help": {
       "macos": "brew install curl",
       "debian": "sudo apt-get install curl",
@@ -310,8 +348,17 @@
     "operations": [
       {
         "capability": "name_search",
+        "provides": ["releases", "maintenance"],
         "transport": "http_get",
         "argv_or_url": ["/solrsearch/select?q={encoded_query}&rows=30&wt=json"],
+        "output": "json",
+        "success": { "http_status": [200] },
+        "errors": { "401": "auth_missing", "429": "rate_limited", "5xx": "source_unavailable", "parse": "malformed" }
+      },
+      {
+        "capability": "exact_lookup",
+        "transport": "http_get",
+        "argv_or_url": ["/solrsearch/select?q={encoded_package}&rows=30&wt=json"],
         "output": "json",
         "success": { "http_status": [200] },
         "errors": { "401": "auth_missing", "429": "rate_limited", "5xx": "source_unavailable", "parse": "malformed" }
@@ -341,6 +388,7 @@
     "operations": [
       {
         "capability": "name_search",
+        "provides": ["exact_lookup", "downloads", "releases", "maintenance"],
         "transport": "argv",
         "argv_or_url": ["dotnet", "package", "search", "{query}", "--format", "json"],
         "output": "json",
@@ -403,6 +451,7 @@
       },
       {
         "capability": "exact_lookup",
+        "provides": ["downloads", "releases", "maintenance"],
         "transport": "http_get",
         "argv_or_url": ["/api/v1/gems/{encoded_package}.json"],
         "output": "json",
@@ -449,6 +498,7 @@
       },
       {
         "capability": "exact_lookup",
+        "provides": ["downloads", "releases", "maintenance", "reverse_dependencies"],
         "transport": "http_get",
         "argv_or_url": ["/packages/{package_path}.json"],
         "output": "json",

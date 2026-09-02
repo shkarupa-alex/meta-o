@@ -16,9 +16,10 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { fromMarkdown } from "mdast-util-from-markdown";
+import yaml from "js-yaml";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const ID = /^§([AB])-[A-Z][A-Z0-9]*-\d{2}(?=\s|$)/;
+const ID = /^§([AB])-[A-Z][A-Z0-9-]*-\d{2}(?=\s|$)/;
 
 /** §A-MEMORY-01 runs one bounded Git command and returns its exact stdout. */
 export function git(root, args, allowMissing = false) {
@@ -115,13 +116,46 @@ function trailers(root, commit) {
     .map((match) => ({ action: match[1], id: match[2], via: match[3] }));
 }
 
+function authorizationRecord(markdown, architectureId, action, id) {
+  const children = fromMarkdown(markdown).children;
+  const start = children.findIndex(
+    (node) => node.type === "heading" && text(node).trim().startsWith(architectureId),
+  );
+  if (start < 0) return null;
+  const depth = children[start].depth;
+  const section = children.slice(
+    start + 1,
+    children.findIndex(
+      (node, index) => index > start && node.type === "heading" && node.depth <= depth,
+    ) === -1
+      ? children.length
+      : children.findIndex(
+          (node, index) => index > start && node.type === "heading" && node.depth <= depth,
+        ),
+  );
+  const block = section.find((node) => node.type === "code" && node.lang === "yaml");
+  if (!block) return null;
+  const parsed = yaml.load(block.value);
+  const records = parsed?.knowledge_id_changes ?? [parsed?.knowledge_id_change].filter(Boolean);
+  return records.find((record) => record?.action === action && record?.id === id) ?? null;
+}
+
 function authorized(root, commit, action, id, current) {
   const match = trailers(root, commit).find((entry) => entry.action === action && entry.id === id);
-  if (!match || !/^§A-[A-Z][A-Z0-9]*-\d{2}$/.test(match.via)) return false;
+  if (!match || !/^§A-[A-Z][A-Z0-9-]*-\d{2}$/.test(match.via)) return false;
   const owner = current.get(match.via);
   if (!owner || owner.kind !== "A") return false;
   const decision = git(root, ["show", `${commit}:${owner.path}`]);
-  return decision.includes(id) && decision.includes(match.via);
+  const record = authorizationRecord(decision, match.via, action, id);
+  return (
+    record?.action === action &&
+    record?.id === id &&
+    typeof record.reason === "string" &&
+    record.reason.trim().length > 0 &&
+    typeof record.new_boundary === "string" &&
+    record.new_boundary.trim().length > 0 &&
+    record.references_updated === true
+  );
 }
 
 /** §A-MEMORY-01 compares one parent edge and reports unauthorized loss or reuse. */
@@ -131,7 +165,8 @@ export function edgeViolations(root, parent, commit, siblingParents = [], enforc
   const siblings = siblingParents.map((sha) => snapshot(root, sha));
   const errors = [];
   for (const id of before.keys()) {
-    if (!after.has(id) && !authorized(root, commit, "remove", id, after)) {
+    const deletionInherited = siblings.some((map) => !map.has(id));
+    if (!after.has(id) && !deletionInherited && !authorized(root, commit, "remove", id, after)) {
       errors.push(`${parent}..${commit}: silent deletion ${id}`);
     }
   }
@@ -139,10 +174,14 @@ export function edgeViolations(root, parent, commit, siblingParents = [], enforc
     const prior = before.get(id);
     const sameFromSibling = siblings.some((map) => map.get(id)?.semantic === entry.semantic);
     const changed = prior && prior.semantic !== entry.semantic;
-    if (enforceSemantic && changed && !authorized(root, commit, "reuse", id, after)) {
+    if (
+      enforceSemantic &&
+      changed &&
+      !sameFromSibling &&
+      !authorized(root, commit, "reuse", id, after)
+    ) {
       errors.push(`${parent}..${commit}: semantic reuse ${id}`);
     }
-    if (!prior && !sameFromSibling) continue;
   }
   return errors;
 }

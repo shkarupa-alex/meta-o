@@ -10,7 +10,12 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { executeHttp, loadDescriptors, validateDescriptors } from "./adapter-contract.mjs";
+import {
+  executeArgv,
+  executeHttp,
+  loadDescriptors,
+  validateDescriptors,
+} from "./adapter-contract.mjs";
 
 const SAMPLE = {
   github: { query: "json parser", package: "cli/cli" },
@@ -30,7 +35,7 @@ const SAMPLE = {
   nuget: { query: "newtonsoft json", package: "Newtonsoft.Json" },
   rubygems: { query: "http router", package: "rack" },
   packagist: { query: "logger", package: "monolog/monolog" },
-  osv: { query: "lodash", package: "lodash" },
+  osv: { query: "lodash", package: "lodash", lockfile: "package-lock.json" },
 };
 
 function sanitized(value) {
@@ -57,6 +62,52 @@ function probe(descriptor, argv, kind) {
     status: result.status === 0 ? "ok" : "adapter_unsupported",
     result: sanitized(result.stdout || result.stderr),
   };
+}
+
+/** §A-REUSE-01 turns an absent declared executable into blocking typed evidence. */
+export function verifyRequiredTool(descriptor, tool) {
+  const result = spawnSync(tool, ["--version"], {
+    encoding: "utf8",
+    shell: false,
+    timeout: 15_000,
+  });
+  return {
+    adapter: descriptor.id,
+    kind: "required_tool",
+    command: [tool, "--version"],
+    status: result.error
+      ? result.error.code === "ENOENT"
+        ? "tool_missing"
+        : "adapter_unsupported"
+      : "ok",
+  };
+}
+
+/** §A-REUSE-01 executes every declared argv operation so live coverage cannot stop at help probes. */
+export function verifyArgv(descriptor, evidence, environment = process.env) {
+  const values = SAMPLE[descriptor.id];
+  if (!values) return [];
+  const failures = [];
+  for (const operation of descriptor.operations.filter(({ transport }) => transport === "argv")) {
+    const result = executeArgv(operation, values, { env: environment, cwd: process.cwd() });
+    const status =
+      result.error?.code === "ENOENT"
+        ? "tool_missing"
+        : operation.success.exit_codes.includes(result.status)
+          ? "ok"
+          : (operation.errors?.[String(result.status)] ?? "adapter_unsupported");
+    evidence.push({
+      adapter: descriptor.id,
+      kind: "argv",
+      command: operation.argv_or_url,
+      status,
+      result: sanitized(result.stdout || result.stderr || result.error?.message),
+    });
+    if (status !== "ok") {
+      failures.push(`${descriptor.id}: ${operation.argv_or_url.join(" ")} => ${status}`);
+    }
+  }
+  return failures;
 }
 
 async function nugetValues(values, baseUrl) {
@@ -147,14 +198,24 @@ export async function verifyLive(descriptors = loadDescriptors()) {
   const failures = validateDescriptors(descriptors);
   const evidence = [];
   for (const descriptor of descriptors) {
-    for (const [kind, argv] of [
+    for (const tool of descriptor.required_tools) {
+      const item = verifyRequiredTool(descriptor, tool);
+      evidence.push(item);
+      if (item.status !== "ok") failures.push(`${descriptor.id}: required tool ${tool} missing`);
+    }
+    const probes = [
       ["version_probe", descriptor.version_probe],
       ["capability_probe", descriptor.capability_probe],
-    ]) {
+      ...(descriptor.auth_required === "always" && descriptor.auth_probe
+        ? [["auth_probe", descriptor.auth_probe]]
+        : []),
+    ];
+    for (const [kind, argv] of probes) {
       const item = probe(descriptor, argv, kind);
       evidence.push(item);
-      if (item.status === "adapter_unsupported") failures.push(`${descriptor.id}: ${kind} failed`);
+      if (item.status !== "ok") failures.push(`${descriptor.id}: ${kind} => ${item.status}`);
     }
+    failures.push(...verifyArgv(descriptor, evidence));
     failures.push(...(await verifyHttp(descriptor, evidence)));
   }
   return {

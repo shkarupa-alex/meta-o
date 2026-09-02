@@ -36,6 +36,14 @@ test("all required adapters satisfy the executable descriptor schema", () => {
   assert.equal(new Set(descriptors.map(({ id }) => id)).size, descriptors.length);
 });
 
+test("a declared capability without an exact operation fails closed", () => {
+  const mutated = structuredClone(descriptors);
+  mutated.find(({ id }) => id === "npm").operations = mutated
+    .find(({ id }) => id === "npm")
+    .operations.map((operation) => ({ ...operation, provides: undefined }));
+  assert.match(validateDescriptors(mutated).join("\n"), /npm: declared capability releases/u);
+});
+
 test("argv templates preserve hostile input as one literal argument", () => {
   const root = mkdtempSync(join(tmpdir(), "mo-adapter-argv-"));
   roots.push(root);

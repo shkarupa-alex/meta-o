@@ -62,19 +62,24 @@ const SOURCE_ANCHOR = /^<!-- mo:source-anchor (§A-[A-Z][A-Z0-9-]*-[0-9]{2}) -->
  *
  * Implements §A-MEMORY-01.
  */
-function stripSourceAnchors(source, label = "Markdown source") {
+export function stripSourceAnchors(source, label = "Markdown source") {
   const tree = fromMarkdown(source);
   const spans = [];
-  const visit = (node) => {
+  const visit = (node, parent = null) => {
     if (node.type === "html" && String(node.value).includes("mo:source-anchor")) {
       if (!SOURCE_ANCHOR.test(node.value)) {
         throw new Error(
           `${label} has malformed source anchor at line ${node.position?.start.line}`,
         );
       }
+      if (parent?.type !== "root") {
+        throw new Error(
+          `${label} has source anchor outside a standalone HTML marker at line ${node.position?.start.line}`,
+        );
+      }
       spans.push([node.position.start.offset, node.position.end.offset]);
     }
-    for (const child of node.children ?? []) visit(child);
+    for (const child of node.children ?? []) visit(child, node);
   };
   visit(tree);
 
@@ -89,8 +94,11 @@ function stripSourceAnchors(source, label = "Markdown source") {
   for (const [rawStart, rawEnd] of spans.sort((left, right) => right[0] - left[0])) {
     let start = rawStart;
     let end = rawEnd;
-    if (start > 0 && result[start - 1] === " " && result[start - 2] !== "\n") start -= 1;
-    else if (result[end] === " " && result[end + 1] !== "\n") end += 1;
+    if (result[start - 1] === "\n") {
+      start -= 1;
+      if (result[start - 1] === "\r") start -= 1;
+    }
+    if (result[end] === "\n") end += 1;
     result = result.slice(0, start) + result.slice(end);
   }
   return result;
@@ -111,13 +119,13 @@ function stripGeneratedAnchors(skillRoot, name) {
  * redistribution terms inspectable. Any new metafile package root must acquire
  * an explicit entry here or the build fails before a generated tree can exist.
  */
-const BUNDLE_LICENSE_PLAN = {
+export const BUNDLE_LICENSE_PLAN = {
   "@anthropic-ai/claude-agent-sdk": "licenses/claude-agent-sdk-LICENSE.md",
 };
 
 /** The measured first bundle plus 25%; growth beyond it needs a fresh audit. */
-const MODEL_BUNDLE_BASELINE_BYTES = 996_053;
-const MODEL_BUNDLE_MAX_BYTES = Math.ceil(MODEL_BUNDLE_BASELINE_BYTES * 1.25);
+export const MODEL_BUNDLE_BASELINE_BYTES = 996_053;
+export const MODEL_BUNDLE_MAX_BYTES = Math.ceil(MODEL_BUNDLE_BASELINE_BYTES * 1.25);
 
 /**
  * Which shared file lands in which skill.
@@ -127,7 +135,7 @@ const MODEL_BUNDLE_MAX_BYTES = Math.ceil(MODEL_BUNDLE_BASELINE_BYTES * 1.25);
  * plus the shared contracts they consume. Setup owns project readiness and the
  * watchdog owns only its methodology-independent observer helper.
  */
-const SHARED_PLAN = {
+export const SHARED_PLAN = {
   "mo-orchestrate-orca": [
     ["references/methodology.md", "references/methodology.md"],
     ["references/backend-contract.md", "references/backend-contract.md"],
@@ -159,7 +167,8 @@ const SHARED_PLAN = {
 };
 
 /** Return the package root represented by an esbuild metafile input path. */
-function packageRoot(input) {
+/** §A-DISTRIBUTION-02 identifies bundled third-party roots for licence closure. */
+export function packageRoot(input) {
   const marker = "node_modules/";
   const offset = input.lastIndexOf(marker);
   if (offset < 0) return null;
@@ -219,7 +228,7 @@ function bundleModels(destination) {
  * any of them. Portability across Claude Code, Codex, OpenCode, apm and
  * `npx skills` costs exactly this list, and none of the extensions are needed.
  */
-const ALLOWED_FRONTMATTER = new Set([
+export const ALLOWED_FRONTMATTER = new Set([
   "name",
   "description",
   "license",
@@ -243,7 +252,7 @@ const ALLOWED_FRONTMATTER = new Set([
  * All three are hand-maintained at the repository root, so the build only checks
  * that they are there — it never generates them.
  */
-const REQUIRED_AT_ROOT = [
+export const REQUIRED_AT_ROOT = [
   ["apm.yml", "apm refuses a root without it"],
   ["README.md", "the install test reads the advertised commands from it"],
   ["LICENSE", "an installed copy has no other statement of its terms"],
@@ -255,8 +264,8 @@ function fail(message) {
   return false;
 }
 
-/** Every file under a directory, as paths relative to it, sorted. */
-function walk(directory, prefix = "") {
+/** §A-DISTRIBUTION-01 gives build and parity checks one deterministic file inventory. */
+export function walk(directory, prefix = "") {
   const found = [];
   for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) =>
     a.name < b.name ? -1 : 1,
@@ -269,7 +278,7 @@ function walk(directory, prefix = "") {
 }
 
 /**
- * Parse a frontmatter block with a real YAML parser.
+ * §A-DISTRIBUTION-01 parses a frontmatter block with a real YAML parser.
  *
  * A hand-rolled line reader stood here and was wrong in a way that matters: two
  * `name:` lines were accepted and the first silently won, so a skill could pass
@@ -288,7 +297,7 @@ function walk(directory, prefix = "") {
  * both go through it. Convenience wrappers stood here briefly and re-created the
  * defect they were meant to prevent: a second place deciding what `name` means.
  */
-function frontmatter(text) {
+export function frontmatter(text) {
   if (!text.startsWith("---\n")) return { error: "no frontmatter block" };
   const end = text.indexOf("\n---\n", 3);
   if (end < 0) return { error: "no frontmatter block" };
@@ -355,7 +364,8 @@ function validateSkill(name) {
  * `<repo>/skills`, and anything extra in there would be offered to the skill
  * manager as an eighth skill.
  */
-function build(outputRoot) {
+/** §A-DISTRIBUTION-01 materializes the one-source skill tree into a disposable destination. */
+export function build(outputRoot) {
   const names = readdirSync(SKILLS_SRC, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
@@ -420,7 +430,8 @@ function build(outputRoot) {
 }
 
 /** Compare two trees byte-for-byte and list every difference. */
-function diffTrees(expectedRoot, actualRoot) {
+/** §A-DISTRIBUTION-01 explains every byte-level drift between a fresh build and distribution. */
+export function diffTrees(expectedRoot, actualRoot) {
   if (!existsSync(actualRoot)) return ["skills/ does not exist"];
   const expected = walk(expectedRoot);
   const actual = walk(actualRoot);
@@ -490,18 +501,3 @@ function invokedDirectly() {
 }
 
 if (invokedDirectly()) main();
-
-export {
-  ALLOWED_FRONTMATTER,
-  BUNDLE_LICENSE_PLAN,
-  MODEL_BUNDLE_BASELINE_BYTES,
-  MODEL_BUNDLE_MAX_BYTES,
-  REQUIRED_AT_ROOT,
-  SHARED_PLAN,
-  build,
-  diffTrees,
-  frontmatter,
-  packageRoot,
-  stripSourceAnchors,
-  walk,
-};

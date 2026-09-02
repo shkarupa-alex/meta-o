@@ -1,0 +1,63 @@
+{
+  "target_id": "proposal-1",
+  "approval_score": 6,
+  "would_adopt": false,
+  "summary": "Ревизия закрыла мою главную прошлую претензию: два легальных пути закрытия дефекта Orca с обязательным upstream issue, восемью условиями квалификации workaround, диспозицией temporary_workaround с removal probe и честным DoD п.30; §5.10 (квалифицированный public terminal read) я специально проверял и он буквально совпадает с действующим backend-contract.md, то есть это не послабление §A-RESPONSE-01, а применение уже записанного правила. Локаторная механика (git-mdast с blob OID и byte range, покрытие каждого AST-узла, cmp архива против git show <blob-oid>) остаётся единственным в паре механизмом, доказывающим отсутствие потерь. Но два дефекта прошлого раунда не тронуты. Первый — критический и проверен эмпирически: full reachable-history gate отвергает собственный репозиторий, потому что коммит 24d01c9 удалил §B-CONTROL-01/§B-TRUST-01/§B-WORKFLOW-01..03 без trailer, а §B-CONTROL-01 позднее введён снова (2b3b040) и присутствует на HEAD; при этом приведённая команда rev-list с pathspec не видит старый путь docs/knowledge/ и по умолчанию упрощает историю, так что в другой трактовке гейт не ловит заявленный класс. Второй — DoD п.4 (фиксированные BW-01..17) несовместим с п.5 (нет orphan nodes): в области пожеланий docs/backlog.md ~50 блочных узлов, а девять ##-секций лежат вне записи B-05, к которой предложение их приписывает. Плюс BW-09 отклонён без ссылки на §B-REVIEW-03 и без валидной диспозиции, §A-MEMORY-01 и §B-SESSION-01 снова не названы.",
+  "phase": "approach-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "P1-HISTORY-GATE-SELF-REJECT",
+      "severity": "critical",
+      "area": "knowledge-integrity",
+      "description": "Full reachable-history gate (SP-06 §8.3) в предъявленном виде валит текущий репозиторий: ID удалялся без trailer и позднее переиспользован; исключения и baseline предложение себе запрещает. В альтернативной трактовке та же команда пропускает этот класс, потому что не учитывает переименование путей и по умолчанию применяет history simplification при pathspec.",
+      "evidence": "git rev-list по knowledge paths: коммит 24d01c9 («Rebuild meta-o as seven skills») теряет §B-CONTROL-01, §B-TRUST-01, §B-WORKFLOW-01..03; §B-CONTROL-01 ранее существовал в docs/knowledge/business.md и снова присутствует на HEAD (docs/business.md:318, введён 2b3b040). Команда предложения: `git rev-list --reverse --topo-order HEAD -- docs/business.md docs/architecture` (без --full-history, без учёта docs/knowledge/).",
+      "required_change": "Либо перейти на merge-base сравнение (вариант, названный самим backlog как следующий шаг), либо явно зафиксировать historical cutoff commit с обоснованием и использовать rename-aware обход с --full-history; в любом случае показать зелёный прогон на существующей истории до включения в mo-qc."
+    },
+    {
+      "id": "P1-BW-EXTRACTION-INCONSISTENT",
+      "severity": "major",
+      "area": "inventory",
+      "description": "Фиксированный набор BW-01..BW-17 несовместим с требованием покрытия каждого исходного AST-узла: пожелания пользователя занимают около пятидесяти блочных узлов, причём девять ##-секций структурно являются сиблингами ## Открыто, а не частью записи B-05.",
+      "evidence": "Заголовки docs/backlog.md: ## Открыто (8); ### записи (10, 25, 43, 58, 82); ## Про ревью (154), ## Еще про ревью (160), ## Про важные штуки (199), ## Быстрое ревью (203), ## Скилл ревью (210), ## Названия вкладок (216), ## Вербозность (223), ## 31.08.26 (228), ## Ошибки набитые (234). Подсчёт блочных узлов в строках 82-238: ~50.",
+      "required_change": "Переопределить extractor по фактической структуре (включить все ##-секции вне «Открыто»), пересчитать множество BW-*, и синхронизировать DoD п.4/п.5/п.8 так, чтобы очистка проверялась по узлам, а не только по ###-entries."
+    },
+    {
+      "id": "P1-BW09-NO-DISPOSITION",
+      "severity": "major",
+      "area": "review-policy",
+      "description": "Запрет правила «три minor rounds → PASS» по существу верен, но не опирается на названную координату бизнес-слоя, не предлагает наблюдаемого признака исчерпания цикла и не имеет валидной диспозиции в собственном enum: hypothesis_rejected требует evaluation report/ADR, context_only — только для факта запуска без вытекающего требования.",
+      "evidence": "§B-REVIEW-03 («Противовесом служит целесообразность, а не счётчик раундов… отдельный счётчик не нужен») и methodology.md:117 («Use judgment rather than finding IDs, round caps or retry counters») в тексте P1 не названы; §10.3 задаёт proof для каждой диспозиции; §4.6 лишь запрещает правило.",
+      "required_change": "Назвать §B-REVIEW-03/methodology как основание, ввести наблюдаемый признак исчерпания (оба вердикта без находок выше P3 при сохранении двух независимых PASS) и добавить диспозицию для нормативно отклонённого пользовательского пожелания с обязательным rationale, либо вынести поправку владельцу."
+    },
+    {
+      "id": "P1-AMEMORY01-AND-SESSION01",
+      "severity": "minor",
+      "area": "decision-hierarchy",
+      "description": "Не исправлено третий раунд подряд: anchor stripping меняет содержание §A-MEMORY-01, но владеющее решение не названо; fast-режим с executor-owned clean-room субагентом не согласован с §B-SESSION-01.",
+      "evidence": "docs/architecture/knowledge-identifiers.md §A-MEMORY-01: «дистрибутируемый Markdown скилов… якорей не несёт… Решение отложено»; docs/business.md:428 §B-SESSION-01 «Долгоживущие видимые сессии вместо одноразовых субагентов»; P1 §8.2 и §4.2 их не упоминают.",
+      "required_change": "Назвать §A-MEMORY-01 как изменяемое решение с новой формулировкой границы поставки; записать явное исключение (или отказ) для невидимого advisory-субагента со ссылкой на §B-SESSION-01."
+    },
+    {
+      "id": "P1-FINDREUSE-GO",
+      "severity": "minor",
+      "area": "find-reuse",
+      "description": "Команда `go list -m -json -versions \"$MODULE@latest\"` вне модуля завершается ошибкой; отмечалось в двух предыдущих раундах и не устранено.",
+      "evidence": "Таблица §2.7, строка Go.",
+      "required_change": "Использовать module proxy (https://proxy.golang.org/<module>/@v/list, /@latest) либо выполнение внутри временного модуля."
+    }
+  ],
+  "assumptions": [
+    "Проверка истории выполнена read-only на текущем worktree feature/orca-only (HEAD 41a4898); предполагаю исполнение программы поверх этой истории, а не переписанной",
+    "Под «всей достижимой историей» в SP-06 §8.3 понимается история репозитория, а не только текущей ветки после squash",
+    "Предполагаю, что docs/backlog.md на старте программы совпадает с текущим файлом (5 ###-записей и 9 ##-секций)"
+  ],
+  "round": 3,
+  "reviewer": "opus1mhigh",
+  "judge": {
+    "slug": "opus1mhigh",
+    "model": "opus[1m]",
+    "route": "claude-agent-sdk",
+    "effort": "high"
+  }
+}

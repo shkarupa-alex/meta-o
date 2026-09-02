@@ -8,22 +8,42 @@
       "id": "mo-orchestrate-orca.positive",
       "class": "positive",
       "scenario": "The user explicitly requests a full feature lifecycle on one verified feature worktree.",
-      "must": ["orchestrate named executor and reviewer roles", "keep product edits owned by the executor"],
-      "mustNot": ["write product code as orchestrator", "settle without exact-SHA gates"]
+      "must": [
+        "orchestrate exactly one named executor followed by one vendor-diverse reviewer pair",
+        "keep product edits owned by the executor and bind Review-Execution to one full verified SHA",
+        "deliver task and report bytes without shell interpolation and wake on an early worker_done"
+      ],
+      "mustNot": [
+        "write product code as orchestrator",
+        "settle without exact-SHA gates",
+        "accept a worker_done fabricated by a bare shell"
+      ]
     },
     {
       "id": "mo-orchestrate-orca.forbidden",
       "class": "forbidden",
       "scenario": "The request is answer-only or asks only for a standalone review.",
-      "must": ["avoid starting a feature lifecycle"],
-      "mustNot": ["create an executor", "materialize a spec or ledger"]
+      "must": ["avoid starting a feature lifecycle and report the request as inapplicable"],
+      "mustNot": [
+        "create an executor",
+        "materialize a spec or ledger",
+        "invent a lifecycle execution identity"
+      ]
     },
     {
       "id": "mo-orchestrate-orca.degraded",
       "class": "degraded",
-      "scenario": "A worker has quota, reconnect, compaction or lost-coordinator state.",
-      "must": ["classify the exact public state", "apply the bounded recovery ladder without changing ownership"],
-      "mustNot": ["infer success from terminal existence", "silently replace model or candidate"]
+      "scenario": "One run presents quota, another reconnecting, another capacity, another compaction, and a fifth refuses after doing work.",
+      "must": [
+        "return distinct typed outcomes for quota, reconnecting, capacity, compaction and output_blocked_after_work",
+        "apply the bounded same-task recovery ladder without changing ownership",
+        "reject a fake or wrong candidate SHA before review"
+      ],
+      "mustNot": [
+        "infer success from terminal existence",
+        "silently replace model or candidate",
+        "collapse the five states into one generic failure"
+      ]
     }
   ]
 }

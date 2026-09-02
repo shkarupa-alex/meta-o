@@ -14,7 +14,7 @@
     {
       "id": "mo-watchdog.forbidden",
       "class": "forbidden",
-      "scenario": "The user asks a generic monitoring question without naming Herdr or Meta-O watchdog use.",
+      "scenario": "The user asks a generic monitoring question without explicitly requesting Meta-O watchdog use.",
       "must": ["avoid activating the watchdog"],
       "mustNot": ["scan sessions", "send a prompt"]
     },

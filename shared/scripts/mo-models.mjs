@@ -156,18 +156,25 @@ export function parseSelection(value) {
 /** §A-EVAL-01 rejects testing selections outside the approved low-cost routes. */
 export function testingPolicyError(role, value) {
   const selection = typeof value === "string" ? parseSelection(value) : value;
-  const exact = {
-    testClaude: { route: "claude", model: "sonnet5", effort: "low" },
-    testCodex: { route: "codex", model: "gpt-5.6-terra", effort: "low" },
-  };
-  if (Object.hasOwn(exact, role)) {
-    const expected = exact[role];
+  if (role === "testClaude") {
+    const normalizedModel = selection.model
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/gu, " ")
+      .trim();
+    const namesApprovedProfile =
+      normalizedModel === "sonnet" ||
+      normalizedModel === "sonnet5" ||
+      (normalizedModel.includes("sonnet") && /(?:^| )5(?: |$)/u.test(normalizedModel));
+    if (selection.route !== "claude" || selection.effort !== "low" || !namesApprovedProfile) {
+      return "testClaude must identify the configured sonnet5/low profile through claude";
+    }
+  } else if (role === "testCodex") {
     if (
-      selection.route !== expected.route ||
-      selection.model !== expected.model ||
-      selection.effort !== expected.effort
+      selection.route !== "codex" ||
+      selection.model !== "gpt-5.6-terra" ||
+      selection.effort !== "low"
     ) {
-      return `${role} must be ${expected.route}/${expected.model}/${expected.effort}`;
+      return "testCodex must be codex/gpt-5.6-terra/low";
     }
   } else if (role === "testOpenCode") {
     const normalizedModel = selection.model.toLowerCase().replace(/[^a-z0-9]+/g, " ");
@@ -183,6 +190,14 @@ export function testingPolicyError(role, value) {
     }
   }
   return null;
+}
+
+function validateEffectiveRoles(roles) {
+  for (const [role, value] of Object.entries(roles)) {
+    const selection = parseSelection(value);
+    const policyError = testingPolicyError(role, selection);
+    if (policyError) throw new Error(policyError);
+  }
 }
 
 /**
@@ -622,6 +637,7 @@ export function findUpgrade(current, availableModels) {
 /** One line with every role — the default startup question, not a report. */
 function commandShow(settings, key, asJson) {
   const roles = effectiveRoles(settings, key);
+  validateEffectiveRoles(roles);
   if (asJson) {
     process.stdout.write(`${JSON.stringify({ roles }, null, 2)}\n`);
     return;
