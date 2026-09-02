@@ -63,7 +63,7 @@ mo-e2e:
 	@echo "AGENT_REQUIRED: not executed"
 	@echo
 	@echo "Docs:      docs/e2e.md, docs/backend-capabilities.md"
-	@echo "Scenarios: B1-B14 — Orca backend"
+	@echo "Scenarios: B1-B22 — Orca backend and Qwen profile"
 	@echo "           W1-W4 — watchdog target, scan, nudge, suppression"
 	@echo "           local and authorized remote installation"
 	@echo "Run:       execute the applicable scenarios without changing the frozen candidate"

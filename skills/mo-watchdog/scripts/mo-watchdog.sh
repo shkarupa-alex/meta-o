@@ -32,8 +32,16 @@ classify() {
     /usr/bin/printf 'connected'
   elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'terminal_unknown'; then
     /usr/bin/printf 'unclassified'
-  elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'rate.?limit|quota|too many requests|overload|capacity|inference.*busy'; then
-    /usr/bin/printf 'limit_or_overload'
+  elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'selected model is at capacity|(^|[^[:alpha:]])capacity([^[:alpha:]]|$)'; then
+    /usr/bin/printf 'capacity'
+  elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'rate.?limit|quota|too many requests|subscription limit'; then
+    /usr/bin/printf 'quota'
+  elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'reconnecting|connection retry'; then
+    /usr/bin/printf 'reconnecting'
+  elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'overload|inference.*busy'; then
+    /usr/bin/printf 'overload'
+  elif /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'refused|refusal|output_blocked_after_work'; then
+    /usr/bin/printf 'refused'
   elif /usr/bin/printf '%s\n' "$WATCHDOG_COMPACT" | grep -Eiq '"(PendingPermissions|pending_permissions)":\[\{' || \
     /usr/bin/printf '%s\n' "$WATCHDOG_TEXT" | grep -Eiq 'question|blocked|required input|pending.?permission'; then
     /usr/bin/printf 'question'

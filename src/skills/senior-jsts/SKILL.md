@@ -88,12 +88,12 @@ For implementation, produce the requested outcome, explain only consequential de
 
 | Concern | Read |
 |---|---|
-| ownership, boundaries, Clean Architecture tools, evolution, reuse, migrations | [boundaries-and-evolution.md](references/boundaries-and-evolution.md) |
-| persistence, effects, retries, async/concurrency, streams and resources | [data-concurrency-and-effects.md](references/data-concurrency-and-effects.md) |
-| tests, legacy work, operations, performance, rollout, durable learning | [testing-maintenance-and-operations.md](references/testing-maintenance-and-operations.md) |
-| authorization, tenancy, injection/sinks, secrets, dependencies | [security-and-trust.md](references/security-and-trust.md) |
-| local design/readability, JS/TS idioms, runtime types, modules, errors, packages, and Zod criteria | [jsts-runtime-and-ecosystem.md](references/jsts-runtime-and-ecosystem.md) |
-| components, state/effects, SSR/hydration, accessibility, browser performance | [frontend-and-browser.md](references/frontend-and-browser.md) |
+| ownership, boundaries, Clean Architecture tools, evolution, reuse, migrations | [Boundaries and evolution](references/boundaries-and-evolution.md) |
+| persistence, effects, retries, async/concurrency, streams and resources | [Data, concurrency, and effects](references/data-concurrency-and-effects.md) |
+| tests, legacy work, operations, performance, rollout, durable learning | [Testing, maintenance, and operations](references/testing-maintenance-and-operations.md) |
+| authorization, tenancy, injection/sinks, secrets, dependencies | [Security and trust](references/security-and-trust.md) |
+| local design/readability, JS/TS idioms, runtime types, modules, errors, packages, and Zod criteria | [JavaScript and TypeScript runtime and ecosystem](references/jsts-runtime-and-ecosystem.md) |
+| components, state/effects, SSR/hydration, accessibility, browser performance | [Frontend and browser](references/frontend-and-browser.md) |
 
 In mixed Python/JS/TS work, use both skills only when the contract or implementation crosses languages. Synthesize one source of truth, serialization/validation and compatibility rules, and combined verification—not two unrelated local answers.
 

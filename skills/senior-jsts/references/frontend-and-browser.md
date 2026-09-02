@@ -41,7 +41,7 @@ Do not flag every missing ARIA attribute; unnecessary or incorrect ARIA can redu
 
 ## Browser security and privacy
 
-Route security-sensitive sinks to [security-and-trust.md](security-and-trust.md). Remember that client code/config is observable, URL/storage/DOM/postMessage values are untrusted by default, third-party scripts share powerful context, and analytics/error capture can leak sensitive data. Decide cookie/CORS/CSRF/CSP/token behavior from the actual server/browser trust model rather than a generic checklist.
+Route security-sensitive sinks to [Security and trust](security-and-trust.md). Remember that client code/config is observable, URL/storage/DOM/postMessage values are untrusted by default, third-party scripts share powerful context, and analytics/error capture can leak sensitive data. Decide cookie/CORS/CSRF/CSP/token behavior from the actual server/browser trust model rather than a generic checklist.
 
 ## Rendering, network, and bundle performance
 

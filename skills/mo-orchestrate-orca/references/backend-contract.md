@@ -18,6 +18,32 @@ A supported backend can, through documented public commands:
   recognizable beginning, middle and end markers;
 - expose a whole-session view for occasional diagnosis.
 
+Every observed lifecycle event must bind the expected instance, Run, task,
+Dispatch and optional terminal to one harness process. It exposes transport,
+delivery, work and outcome independently. Required values are:
+
+```text
+process: running | stopped | lost | unknown
+transport: created | queued | active | stopped | unknown
+delivery: not_sent | sent | delivered | consumed | acknowledged | unknown
+work: idle | working | input_blocked | output_blocked_after_work | completed | failed | unknown
+outcome: none | succeeded | failed | quota | capacity | reconnecting | compacted | refused | unknown_effect | unknown
+```
+
+Malformed identity or fields are `unknown`. `sent|queued|delivered` never proves
+consumption. Acknowledgement follows processing of the complete delivery batch.
+`input_blocked` may be rebriefed or replaced; `output_blocked_after_work` must not
+repeat product work and needs the settled response or `needs_attention`.
+
+Effectful native operations expose a stable operation/target id, idempotency
+semantics and authoritative confirmation. A receipt is not an effect.
+`unknown_effect` is never retried automatically.
+
+Readiness keeps three observations separate: provider-native auth, Orca account
+projection with `updatedAt`, and a real selected-harness launch whose requested
+and effective model/effort match. A projection older than a successful native
+auth is stale, not proof of missing credentials.
+
 Only the settled assistant response is the primary retrieval unit. Whole-session
 output is diagnostic and cannot replace a missing complete final response.
 Bounded previews, private provider transcripts, provider hooks, inferred session

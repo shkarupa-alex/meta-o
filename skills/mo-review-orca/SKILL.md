@@ -8,8 +8,8 @@ license: MIT
 
 Read [Portable review protocol](references/review-protocol.md),
 [Backend contract](references/backend-contract.md),
-[Orca mechanics](references/orca-mechanics.md), and
-[Purpose contract](references/purpose-and-architecture.md) completely.
+[Orca native mechanics](references/orca-mechanics.md), and
+[Purpose and architecture contract](references/purpose-and-architecture.md) completely.
 
 Accept only an exact 40-hex `candidate_sha`, intent source, scope, mode and two
 user-approved reviewer selections. Read selections through bundled

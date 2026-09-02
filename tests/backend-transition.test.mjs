@@ -64,7 +64,7 @@ function fakeOrca(root) {
 case "$*" in
   "orchestration worker-show --dispatch ctx_fixture --json")
     if [ -n "\${WATCHDOG_MALFORMED-}" ]; then echo not-json; exit 0; fi
-    stage=active
+    stage=\${WATCHDOG_STAGE_TEXT:-active}
     if [ -n "\${WATCHDOG_CHANGED-}" ]; then
       n=$(cat "$WATCHDOG_COUNT" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > "$WATCHDOG_COUNT"; stage="changed-$n"
     fi
@@ -219,6 +219,31 @@ test("watchdog accepts only Orca targets", () => {
   assert.equal(missing.status, 64);
 });
 
+test("watchdog keeps capacity, quota, reconnecting and refusal distinct", () => {
+  const root = mkdtempSync(join(tmpdir(), "mo-watchdog-states-"));
+  temporary.push(root);
+  fakeOrca(root);
+  const script = join(ROOT, "shared", "scripts", "mo-watchdog.sh");
+  const cases = [
+    ["Selected model is at capacity. Please try a different model.", "capacity"],
+    ["subscription quota limit; reset at 12:00", "quota"],
+    ["Reconnecting…", "reconnecting"],
+    ["output_blocked_after_work refused", "refused"],
+  ];
+  for (const [text, expected] of cases) {
+    const result = spawnSync(script, ["target", "--backend", "orca", "--session", "ctx_fixture"], {
+      env: {
+        ...process.env,
+        PATH: `${root}:${SYSTEM_PATH}`,
+        WATCHDOG_STAGE_TEXT: text,
+      },
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, new RegExp(`state=${expected}`));
+  }
+});
+
 test("watchdog validates, nudges, deduplicates, and suppresses changed Orca state", () => {
   const root = mkdtempSync(join(tmpdir(), "mo-watchdog-orca-target-"));
   temporary.push(root);
@@ -301,9 +326,10 @@ test("watchdog requires flock only for nudge delivery", () => {
   const root = mkdtempSync(join(tmpdir(), "mo-watchdog-no-flock-"));
   temporary.push(root);
   fakeOrca(root);
+  symlinkSync("/usr/bin/jq", join(root, "jq"));
   const env = {
     ...process.env,
-    PATH: `${root}:${SYSTEM_PATH}`,
+    PATH: root,
     WATCHDOG_LOG: join(root, "log"),
     WATCHDOG_COUNT: join(root, "count"),
     WATCHDOG_STATE_DIR: join(root, "state"),

@@ -2,7 +2,7 @@
 
 This document owns the lifecycle shared by every Meta-O orchestrator. Backend
 commands belong to that backend's mechanics. Review standards belong to
-[Review protocol](review-protocol.md).
+[Portable review protocol](review-protocol.md).
 
 ## 1. Boundaries
 

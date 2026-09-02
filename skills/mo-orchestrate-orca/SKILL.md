@@ -8,7 +8,7 @@ license: MIT
 
 Read [Feature lifecycle](references/methodology.md),
 [Backend contract](references/backend-contract.md),
-[Review protocol](references/review-protocol.md),
+[Portable review protocol](references/review-protocol.md),
 [Orca native mechanics](references/orca-mechanics.md), and
 [Purpose and architecture contract](references/purpose-and-architecture.md)
 completely. Read the purpose contract before constructing reviewer prompts.

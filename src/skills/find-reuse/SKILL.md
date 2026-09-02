@@ -10,8 +10,8 @@ This skill is a portable report producer. It knows no caller-specific paths, fea
 lifecycle, destination document or commit policy. It never writes repository
 files, installs tools, logs in, or asks for credential values.
 
-Read [request and report contracts](references/contracts.md) and
-[source adapters](references/adapters.md) completely before searching.
+Read [Request and report contracts](references/contracts.md) and
+[Source adapter contract](references/adapters.md) completely before searching.
 
 ## Input
 

@@ -88,11 +88,11 @@ For implementation, produce the requested outcome, explain only consequential de
 
 | Concern | Read |
 |---|---|
-| ownership, boundaries, Clean Architecture tools, evolution, reuse, migrations | [boundaries-and-evolution.md](references/boundaries-and-evolution.md) |
-| persistence, transactions, effects, retries, concurrency, resources | [data-concurrency-and-effects.md](references/data-concurrency-and-effects.md) |
-| tests, legacy work, operations, performance, rollout, durable learning | [testing-maintenance-and-operations.md](references/testing-maintenance-and-operations.md) |
-| authorization, tenancy, injection, unsafe I/O, secrets, dependencies | [security-and-trust.md](references/security-and-trust.md) |
-| local design/readability, Python typing/runtime/packaging/idioms, and conditional library choices | [python-runtime-and-ecosystem.md](references/python-runtime-and-ecosystem.md) |
+| ownership, boundaries, Clean Architecture tools, evolution, reuse, migrations | [Boundaries and evolution](references/boundaries-and-evolution.md) |
+| persistence, transactions, effects, retries, concurrency, resources | [Data, concurrency, and effects](references/data-concurrency-and-effects.md) |
+| tests, legacy work, operations, performance, rollout, durable learning | [Testing, maintenance, and operations](references/testing-maintenance-and-operations.md) |
+| authorization, tenancy, injection, unsafe I/O, secrets, dependencies | [Security and trust](references/security-and-trust.md) |
+| local design/readability, Python typing/runtime/packaging/idioms, and conditional library choices | [Python runtime and ecosystem](references/python-runtime-and-ecosystem.md) |
 
 In mixed Python/JS/TS work, use both language skills only when the contract or implementation crosses languages. Synthesize one source of truth, serialization/validation rules, compatibility obligations, and combined verification; do not settle for two unrelated local answers.
 

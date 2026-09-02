@@ -9,6 +9,18 @@ session (`target`) or enumerate every reachable Orca session (`scan`).
 Observation is read-only by default. Match regular expressions for limit,
 overload, failure, question, working and completion states.
 
+Classify `Selected model is at capacity`, quota/limit (including an available
+reset time), endless reconnecting, refusal, question, failure and completion as
+distinct outcomes. Seed the current typed state before reporting a change.
+Queued nudge and delivered nudge are different; a receipt is never delivery.
+Deterministic high-severity patterns take priority over ambiguous evidence.
+
+An optional local classifier is a bounded credential-free experiment only for
+ambiguous sanitized structured observations. Network is denied, output is an
+enum plus evidence, and false positives/negatives, latency and resources are
+compared with the deterministic baseline. Non-inferiority failure rejects the
+experiment; deterministic classification remains supported.
+
 For Orca, a supervised worker uses its `ctx_` Dispatch locator. A low-level
 injected task uses its `task_` locator for read-only state, while its exact
 `term_` handle is the authorized nudge target. Scans include both supervised

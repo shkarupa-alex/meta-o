@@ -28,7 +28,7 @@ the lower layer instead.
 - [§A-RESPONSE-01 — Settled final responses остаются на публичных поверхностях backend](docs/architecture/settled-final-response.md)
 - [Один владелец source, самодостаточные generated skills](docs/architecture/distribution.md)
 - [§A-MEMORY-01 — Уровни знаний связаны уникальными id](docs/architecture/knowledge-identifiers.md)
-- [§A-EVAL-01 — Model actors запускаются только по применимости](docs/architecture/evaluation-model-policy.md)
+- [§A-EVAL-01 — Model actors запускаются только по применимости и на approved profile](docs/architecture/evaluation-model-policy.md)
 
 No native CLI is wrapped in a project proxy. Do not create a manifest, receipt,
 digest or baseline without a named external consumer.
