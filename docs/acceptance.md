@@ -22,3 +22,8 @@
 | Backlog разобран полностью.                                                | Тесты semantic fields и отсутствия удалённых progress rows.          | Финальные reviewers проверяют все строки.                    |
 | Каждый бизнес-тезис несёт уникальный id, и цепочка знаний не разорвана.    | Тест цепочки знаний в `make mo-qc`.                                  | Не требуется.                                                |
 | Один финальный SHA проходит QC и применимые E2E.                           | `make mo-qc` на этом SHA.                                            | E2E matrix или одобренный reviewers docs-only carry-forward. |
+| `find-reuse` переносим и fail-closed при неполном поиске.                  | Build portability и contract fixtures.                               | Named adapter evidence через `make mo-live-adapters`.        |
+| Review читает diff до risk map и различает modes/P0–P3.                    | `tests/orchestration-contract.test.mjs`.                             | Два полных `worker_done` с requested/effective mode.         |
+| Remediation использует hot roles, final proof — fresh pair.                | Lifecycle contract assertions.                                       | Orca review-loop scenario на exact SHA.                      |
+| Model actor запускается только по применимости на low-cost profile.        | `tests/model-testing-policy.test.mjs`.                               | Requested/effective identity named applicable scenario.      |
+| Qwen/OpenCode управляет lifecycle, но не пишет product code.               | Ownership и projection fixtures.                                     | Critical Qwen profile suite на exact SHA.                    |

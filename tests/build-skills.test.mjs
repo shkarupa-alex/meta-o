@@ -84,7 +84,8 @@ test("every declared shared file is copied byte-for-byte and never shadowed", ()
       );
       const built = readFileSync(join(OUTPUT, skill, destination));
       if (source !== "scripts/mo-models.mjs") {
-        assert.ok(built.equals(readFileSync(join(ROOT, "shared", source))));
+        const authored = readFileSync(join(ROOT, "shared", source), "utf8");
+        assert.equal(built.toString("utf8"), stripSourceAnchors(authored, source));
       }
     }
   }
@@ -186,8 +187,8 @@ test("watchdog is shipped executable and source/build file sets agree", () => {
 });
 
 test("source anchors are stripped positionally and malformed placements fail closed", () => {
-  const source = "Before <!-- mo:source-anchor §A-MEMORY-01 --> after `§A-X-01`.\n";
-  assert.equal(stripSourceAnchors(source), "Before after `§A-X-01`.\n");
+  const source = "Before <!-- mo:source-anchor §A-MEMORY-01 --> after `§A-MEMORY-01`.\n";
+  assert.equal(stripSourceAnchors(source), "Before after `§A-MEMORY-01`.\n");
   assert.throws(
     () => stripSourceAnchors("`<!-- mo:source-anchor §A-MEMORY-01 -->`\n"),
     /outside a standalone HTML marker/,

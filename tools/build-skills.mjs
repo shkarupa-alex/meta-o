@@ -133,6 +133,8 @@ const SHARED_PLAN = {
     ["references/review-protocol.md", "references/review-protocol.md"],
     ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
     ["references/orca-mechanics.md", "references/orca-mechanics.md"],
+    ["scripts/mo-models.mjs", "scripts/mo-models.mjs", { bundleLicenses: BUNDLE_LICENSE_PLAN }],
+    ["licenses/claude-agent-sdk-LICENSE.md", "licenses/claude-agent-sdk-LICENSE.md"],
   ],
   "mo-setup": [
     ["references/project-setup.md", "references/project-setup.md"],

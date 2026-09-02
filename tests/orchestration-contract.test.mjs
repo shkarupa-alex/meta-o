@@ -44,31 +44,45 @@ test("question and delegated-decision boundaries match the user contract", () =>
   assert.match(source, /Recommend an executor from a different model vendor/);
 });
 
-test("shared review protocol owns concurrency, diversity, atomic delivery and backlog lens", () => {
+test("portable review protocol owns ordered evidence, modes, severity and deferral lens", () => {
   const source = shared("review-protocol.md");
-  assert.match(source, /Start reviewer A and reviewer B concurrently/);
-  assert.match(source, /native interactive Codex, Claude Code or OpenCode instances/);
-  assert.match(source, /review\s+brief or its accessible file path/);
-  assert.match(source, /Do not create or execute a shell script to\s+invoke the reviewer harness/);
-  assert.match(source, /different model vendors/);
-  assert.match(source, /at least one differs from the executor vendor/);
-  assert.match(source, /read all of `docs\/backlog.md`/);
-  for (const phrase of [
-    "reason",
-    "practical impact",
-    "next step",
-    "not being used as a progress tracker",
-  ]) {
+  const stages = [
+    "Grounding",
+    "Change discovery",
+    "Risk mapping",
+    "Candidate discovery",
+    "Candidate verification",
+    "Causality",
+    "Severity",
+    "Reporting",
+  ];
+  let offset = -1;
+  for (const stage of stages) {
+    const next = source.indexOf(stage, offset + 1);
+    assert.ok(next > offset, `${stage} follows the previous stage`);
+    offset = next;
+  }
+  for (const phrase of ["fast", "deep", "follow_up", "P0", "P1", "P2", "P3"]) {
     assert.match(source, new RegExp(phrase));
   }
-  assert.match(source, /Wait until both settled responses are complete before releasing either/);
-  assert.match(
-    source,
-    /significant business intent from the task\/spec and the ledger has\s+reached/,
-  );
-  assert.match(source, /replaces a separate\s+editorial pass/);
-  assert.match(source, /not every remark becomes a thesis/);
-  assert.match(source, /cycle closes when both reviewers return `PASS` on the same SHA/);
+  assert.match(source, /read the diff before constructing the initial risk map/);
+  assert.match(source, /An empty backlog is valid/);
+  assert.match(source, /reason, practical impact and next step/);
+  assert.doesNotMatch(source, /Meta-O|docs\/backlog\.md/);
+});
+
+test("lifecycle and Orca review own pair settlement outside the portable core", () => {
+  const methodology = shared("methodology.md");
+  const review = skill("mo-review-orca");
+  assert.match(methodology, /Start both reviewer sessions concurrently/i);
+  assert.match(methodology, /same candidate SHA/);
+  assert.match(methodology, /both\s+complete settled final responses/);
+  assert.match(methodology, /same-SHA passes/);
+  assert.match(review, /vendor-diverse pair/);
+  assert.match(review, /Wait for both full reports/);
+  assert.match(review, /Keep remediation reviewers hot/);
+  assert.match(review, /fresh independent sessions/);
+  assert.match(review, /five\s+paired review\/fix attempts/);
 });
 
 test("Orca entries consume the shared contracts and native mechanics", () => {

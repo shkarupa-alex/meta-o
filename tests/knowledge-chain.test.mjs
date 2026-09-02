@@ -232,14 +232,14 @@ test("a byte-copied helper names its owning project beside every id", () => {
   }
 });
 
-test("distributed skill text carries no project ids", () => {
-  const shipped = [
-    ...files(join(ROOT, "skills")),
+test("generated skills carry no project ids and sources use only explicit markers", () => {
+  const shipped = files(join(ROOT, "skills")).filter((path) => extname(path) === ".md");
+  const sources = [
     ...files(join(ROOT, "src", "skills")),
     ...files(join(ROOT, "shared", "references")),
   ].filter((path) => extname(path) === ".md");
   assert.ok(
-    shipped.includes(join(ROOT, "shared", "references", "methodology.md")),
+    sources.includes(join(ROOT, "shared", "references", "methodology.md")),
     "shipped document discovery lost files",
   );
   for (const path of shipped) {
@@ -248,5 +248,15 @@ test("distributed skill text carries no project ids", () => {
       [],
       `${path}: shipped text carries an id the consumer cannot resolve`,
     );
+  }
+  for (const path of sources) {
+    const source = readFileSync(path, "utf8");
+    for (const id of references(source, path)) {
+      assert.match(
+        source,
+        new RegExp(`<!-- mo:source-anchor ${id.replace("§", "§")} -->`),
+        `${path}: source id is not an explicit source-only marker`,
+      );
+    }
   }
 });

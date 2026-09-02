@@ -37,6 +37,24 @@ Before starting agents:
 5. Confirm the selected harness can run unsandboxed in this backend. Supported
    harnesses are Codex, Claude Code and OpenCode.
 
+The executor's first coherent commit materializes a temporary feature bundle:
+the accepted specification, `user-ledger.md` and a short `checklist.md` of
+observable outcomes, tests/knowledge, applicable E2E and two final review passes.
+The checklist is not a task graph. The executor owns and commits these files;
+the orchestrator may read them but never edits product/spec commits.
+
+Before writing the ledger, replace an identified token, password, private key or
+credential-bearing URL with `[REDACTED:<kind>]`. If a value might be a secret and
+classification would change its meaning, stop with `needs_attention` before any
+commit. Never guess or collect the value in chat.
+
+For a substantial new component or approved technology change, build a
+`find-reuse.request.v1` from generic requirements. Run `find-reuse` only when the
+user explicitly requested it or accepted one opt-in offer. Validate its complete
+`find-reuse.report.v1`, store it verbatim under `## Reuse research`, and commit
+that spec-only increment before product code. `unknown|blocked` never silently
+becomes permission to build.
+
 If later user input changes product or deliverable meaning, append it verbatim
 to the task ledger before implementation continues, and record its settled
 meaning in the project's business framing. The verbatim ledger is the normative
@@ -51,8 +69,11 @@ evidence and do not mutate tracked intent ledgers.
 
 ## 3. Roles and task delivery
 
-Agree the executor, two reviewers, E2E actor when applicable, models and effort
-with the user. Recommend an executor from a different model vendor than the
+Read executor, orchestrator, reviewer and E2E role selections from the bundled
+`mo-models.mjs --show --project <root>` schema 1 settings. Project roles override
+global defaults. An unset, invalid or unavailable selection is a typed readiness
+failure; do not choose a fallback harness, model or effort. Agree the roles with
+the user. Recommend an executor from a different model vendor than the
 orchestrator by default; vendor diversity improves the chance that the
 orchestrator can help when an executor misses a premise. Reviewers use different
 vendors, and at least one reviewer vendor differs from the executor.
@@ -66,6 +87,11 @@ Prefix only the initial executor task with `/goal`. A harness that implements
 the command may apply native goal behavior; another harness may treat the whole
 message as ordinary task text. Do not detect or emulate `/goal`. Follow-ups,
 review findings and standalone review prompts are ordinary messages.
+
+Before substantive implementation, the executor maps every durable normative
+intent to an existing business id, a new compact thesis, or an explicitly
+approved meaning change. Incidents, commands and temporary workarounds belong
+in architecture, papercuts or tests, not the business framing.
 
 The executor owns all product changes. It commits coherent independently
 verifiable increments and returns a clean full candidate SHA. The orchestrator
@@ -104,6 +130,11 @@ surface. Deliver the review brief through the backend's ordinary prompt, input,
 task-injection or message field, either as inline text or an accessible file
 path. Never create or execute a shell script to invoke the reviewer harness.
 
+The first required pair uses `deep`. Remediation uses `follow_up`, giving each
+reviewer only its own prior report and finding dispositions; peer bytes remain
+forbidden. `fast` is advisory or explicitly standalone. Any profile escalates in
+place to `deep` when the portable protocol detects broad or high-risk semantics.
+
 Wait for both complete settled final responses. Save them unchanged in two
 private temporary files with restrictive permissions. A failure to retrieve or
 write either complete response is `unknown`, never a partial review pass. These
@@ -114,9 +145,12 @@ If both pass, continue to verification. If either finds work, wait until both
 are complete, then send one ordinary message to the executor containing both
 temporary-file paths. Do not merge, rank, hash, encode, split, truncate or
 summarize their responses. The executor fixes or responds and commits a new SHA;
-review that new SHA with two fresh independent reviews. Use judgment rather than
-finding IDs, round caps or retry counters. If a loop stops making progress,
-clarify the task, change approach or stop with `needs_attention`.
+keep both remediation reviewer sessions hot and review the delta with
+`follow_up`. Deliver every P3, but do not start a separate round only for P3. A
+substantive slice has at most five paired review/fix attempts; a remediation SHA
+does not reset it. This local budget never replaces two final same-SHA passes.
+After attempt five, complete the active remediation, then move to the next
+substantive slice or stop with `needs_attention` when no progress path remains.
 
 Standalone `mo-review-<backend>` follows the same review barrier on the current
 candidate, creates only the two reviewer sessions, never uses `/goal`, and
@@ -134,11 +168,28 @@ or subscription boundaries require the user's explicit authorization for the
 exact named action. An unreadable or incomplete gate is `unknown` and is
 repeated; there is no partial pass.
 
+<!-- mo:source-anchor §A-EVAL-01 -->
+
+When a named scenario genuinely needs a model actor, deterministic proof remains
+preferred. Use only the user-approved low-cost test selection: Claude
+`sonnet5/low`, Codex `gpt-5.6-terra/low`, or the configured OpenCode profile for
+`deepseek 4 flash`; record requested and effective identity. A missing profile is
+`blocked|not_run`, and a deterministic scenario is `not_applicable`. Never raise
+model cost/effort or fall back automatically. These test actors do not replace
+the critical local Qwen/OpenCode orchestrator profile.
+
 Any executable or instruction change creates a new SHA and invalidates all
 gates. Return failures to the executor as ordinary messages and restart from the
 new candidate.
 
 ## 7. Completion and cleanup
+
+After the review loop, applicable E2E and the user's merge decision, the executor
+harvests durable knowledge and removes the temporary spec, ledger and checklist.
+Repeat deterministic gates on the deletion SHA. Release only owned hot reviewer
+resources, then create two fresh independent reviewers with no prior reports for
+the one final same-SHA proof. Repeat only E2E that cannot carry forward under
+section 8.
 
 Before success, prove that the same full candidate SHA has:
 
