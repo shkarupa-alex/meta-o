@@ -35,18 +35,10 @@
 | Backlog ledger   | `8d11d1107eb5875235c2830e6503f7e1265317d7` |
 | Real-runs ledger | `c75859372fa7d794269cc6dcc8834c069ddd8096` |
 
-Итоговый lossless AST closure после review-remediation зафиксирован коммитом
-`f59b0228208a3d8581d0ce14d0465e176fd2fd55`; blob полной карты —
-`d811c9c4a237587ce75f822021f5b29f9b5cf83b`. Те же координаты доступны гейту
-без разбора prose или Markdown-таблиц:
-
-```yaml
-backlog_closure:
-  backlog_blob: 8d11d1107eb5875235c2830e6503f7e1265317d7
-  real_runs_blob: c75859372fa7d794269cc6dcc8834c069ddd8096
-  closure_sha: f59b0228208a3d8581d0ce14d0465e176fd2fd55
-  map_blob: d811c9c4a237587ce75f822021f5b29f9b5cf83b
-```
-
-Постоянное доказательство:
-`node --test tests/backlog-provenance.test.mjs`.
+Закрытие переоткрыто после review findings на
+`50c8574f3404bd20e9e5eb28fd9baa04d8d3bc7b`: прежняя карта оставляла два context
+node без конкретного obligation, proof families не были obligation-level, а
+постоянный тест сравнивал `closure_sha..HEAD` и потому запрещал любой следующий
+коммит. Пока новый `closure_sha` не зафиксирован, доказательством остаётся
+временный consumer `node --test tests/backlog-closure.test.mjs`, а постоянных
+координат закрытия в этом документе нет.
