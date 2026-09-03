@@ -274,11 +274,36 @@ test("source anchors are stripped positionally and malformed placements fail clo
 });
 
 test("find-reuse is portable and the retired name is absent", () => {
-  const source = walk(join(SOURCES, "find-reuse"))
-    .filter((path) => path.endsWith(".md"))
-    .map((path) => readFileSync(join(SOURCES, "find-reuse", path), "utf8"))
-    .join("\n");
-  assert.doesNotMatch(source, /Meta-O|docs\/business\.md|docs\/acceptance\.md|mo-reuse/);
+  // The installed copy is what has to be portable, so both trees are scanned,
+  // and every shipped file is, not only the Markdown ones.
+  const files = [SOURCES, OUTPUT].flatMap((tree) =>
+    walk(join(tree, "find-reuse")).map((path) => ({
+      path: join(tree, "find-reuse", path),
+      relative: path,
+      source: readFileSync(join(tree, "find-reuse", path), "utf8"),
+    })),
+  );
+  assert.ok(files.length >= 10);
+  const OWNER = /meta-o|docs\/business\.md|docs\/acceptance\.md|mo-reuse/iu;
+  for (const { path, relative, source } of files) {
+    // The embedded eval corpus is this project's own test asset and names the
+    // corpus contract it is validated against; it carries no instruction the
+    // installed skill reads. Everything the skill actually reads must resolve
+    // in any project, so it may not name this one in any case.
+    if (relative === "evals/cases.json") {
+      assert.equal(source.match(OWNER)?.[0], "meta-o", path);
+      assert.match(source, /"contract": "meta-o\.skill-eval-cases\.v1"/u, path);
+      continue;
+    }
+    assert.doesNotMatch(source, OWNER, path);
+    // Caller-side semantics may be disclaimed but never instructed: an
+    // instruction about the feature lifecycle, a destination document or a
+    // commit belongs to the caller, not to a portable report producer.
+    for (const sentence of source.split(/(?<=[.!?])\s+/u)) {
+      if (!/\b(?:lifecycle|destination|commit\w*)\b/iu.test(sentence)) continue;
+      assert.match(sentence, /\b(?:no|not|never)\b/iu, `${path}: ${sentence.trim()}`);
+    }
+  }
   assert.equal(existsSync(join(SOURCES, "mo-reuse")), false);
   assert.equal(existsSync(join(OUTPUT, "mo-reuse")), false);
 });

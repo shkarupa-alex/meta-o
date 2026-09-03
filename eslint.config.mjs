@@ -38,7 +38,16 @@ export default [
         "error",
         {
           publicOnly: true,
-          require: { ClassDeclaration: true, FunctionDeclaration: true },
+          // An exported arrow or function expression is as public as a
+          // declaration, and leaving it out made the gate depend on which
+          // syntax the author happened to pick.
+          require: {
+            ArrowFunctionExpression: true,
+            ClassDeclaration: true,
+            ClassExpression: true,
+            FunctionDeclaration: true,
+            FunctionExpression: true,
+          },
         },
       ],
       "jsdoc/match-description": [
@@ -49,6 +58,12 @@ export default [
             "ExportDefaultDeclaration > FunctionDeclaration",
             "ExportNamedDeclaration > ClassDeclaration",
             "ExportDefaultDeclaration > ClassDeclaration",
+            "ExportNamedDeclaration > VariableDeclaration > VariableDeclarator > ArrowFunctionExpression",
+            "ExportNamedDeclaration > VariableDeclaration > VariableDeclarator > FunctionExpression",
+            "ExportNamedDeclaration > VariableDeclaration > VariableDeclarator > ClassExpression",
+            "ExportDefaultDeclaration > ArrowFunctionExpression",
+            "ExportDefaultDeclaration > FunctionExpression",
+            "ExportDefaultDeclaration > ClassExpression",
           ],
           matchDescription: "(?:^|\\s)§A-[A-Z](?:[A-Z0-9]|-)*-[0-9]{2}(?=$|\\s|\\.|,|;|:|\\))",
         },

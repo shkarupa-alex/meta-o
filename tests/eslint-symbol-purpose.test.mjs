@@ -26,6 +26,32 @@ test("trailing export specifiers cannot bypass declaration inspection", async ()
   assert.ok(result.some(({ ruleId }) => ruleId === "no-restricted-syntax"));
 });
 
+test("an exported expression cannot escape the gate by not being a declaration", async () => {
+  for (const source of [
+    "export const load = () => 1;\n",
+    "export const load = function () { return 1; };\n",
+    "export default () => 1;\n",
+  ]) {
+    const result = await messages(source);
+    assert.ok(
+      result.some(({ ruleId }) => ruleId === "jsdoc/require-jsdoc"),
+      source,
+    );
+  }
+  const described = await messages("/** Loads a value. */\nexport const load = () => 1;\n");
+  assert.ok(described.some(({ ruleId }) => ruleId === "jsdoc/match-description"));
+  const decided = await messages(
+    "/** §A-MEMORY-01 keeps the fixture tied to its governing decision. */\n" +
+      "export const load = () => 1;\n",
+  );
+  assert.deepEqual(
+    decided.filter(({ ruleId }) =>
+      new Set(["jsdoc/require-jsdoc", "jsdoc/match-description"]).has(ruleId),
+    ),
+    [],
+  );
+});
+
 test("an inline export with a purpose decision passes the symbol rules", async () => {
   const result = await messages(
     "/** §A-MEMORY-01 keeps the fixture tied to its governing decision. */\n" +
