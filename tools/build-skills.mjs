@@ -92,26 +92,15 @@ export function stripSourceAnchors(source, label = "Markdown source") {
     offset = source.indexOf("mo:source-anchor", offset + 1);
   }
 
+  // Exactly the marker spans, right to left: every other byte of the source,
+  // including the line terminator the marker sits on, is published unchanged.
+  // A marker's residue is therefore controlled by where it is authored, not by
+  // widening the removal.
   let result = source;
   for (const [start, end] of spans.sort((left, right) => right[0] - left[0])) {
-    const [from, to] = markerLine(result, start, end);
-    result = result.slice(0, from) + result.slice(to);
+    result = result.slice(0, start) + result.slice(end);
   }
   return result;
-}
-
-/**
- * Widen a marker span to its own line, but only when a blank line already
- * delimits the marker on both sides. Removing just the span left the blank
- * lines of the old separator behind, so a standalone marker shipped as three
- * consecutive blank lines; removing the line unconditionally would instead
- * join the neighbours of a marker that interrupts a paragraph into one block.
- */
-function markerLine(source, start, end) {
-  const blankBefore = start >= 2 && source.slice(start - 2, start) === "\n\n";
-  const blankAfter =
-    source[end] === "\n" && (source[end + 1] === "\n" || end + 1 === source.length);
-  return blankBefore && blankAfter ? [start - 1, end + 1] : [start, end];
 }
 
 /** Strip architecture markers from every Markdown file in one generated skill. */

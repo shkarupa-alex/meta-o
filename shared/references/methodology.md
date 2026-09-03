@@ -188,7 +188,6 @@ agent-required scenarios through `mo-e2e`. Production, destructive, credential
 or subscription boundaries require the user's explicit authorization for the
 exact named action. An unreadable or incomplete gate is `unknown` and is
 repeated; there is no partial pass.
-
 <!-- mo:source-anchor §A-EVAL-01 -->
 
 When a named scenario genuinely needs a model actor, deterministic proof remains
