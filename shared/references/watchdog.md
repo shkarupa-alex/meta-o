@@ -5,10 +5,21 @@ observing backend sessions when cloud-model limits or overloaded inference stop
 the orchestrator itself from progressing.
 
 Start it only after the user explicitly asks. It may observe one selected
-session (`target`) or enumerate every reachable session on all supported
-backends (`scan`). Observation is read-only by default. Match backend-specific
-regular expressions for limit, overload, failure, question, working and
-completion states.
+session (`target`) or enumerate every reachable Orca session (`scan`).
+Observation is read-only by default. Match regular expressions for limit,
+overload, failure, question, working and completion states.
+
+Classify `Selected model is at capacity`, quota/limit (including an available
+reset time), endless reconnecting, refusal, question, failure and completion as
+distinct outcomes. Seed the current typed state before reporting a change.
+Queued nudge and delivered nudge are different; a receipt is never delivery.
+Deterministic high-severity patterns take priority over ambiguous evidence.
+
+An optional local classifier is a bounded credential-free experiment only for
+ambiguous sanitized structured observations. Network is denied, output is an
+enum plus evidence, and false positives/negatives, latency and resources are
+compared with the deterministic baseline. Non-inferiority failure rejects the
+experiment; deterministic classification remains supported.
 
 For Orca, a supervised worker uses its `ctx_` Dispatch locator. A low-level
 injected task uses its `task_` locator for read-only state, while its exact
@@ -22,16 +33,15 @@ observed state is unchanged. There is deliberately no numeric cooldown or retry
 count. An authorized delivery attempt first reserves only mode-`0600` state and
 message digests keyed by backend and locator under the user state directory; a
 changed state replaces its prior message set. It stores no prompt, response,
-candidate, gate or actor registry. Herdr and Paseo nudges are nonblocking, and
-completion is observed separately. The helper requires `jq` so native JSON is parsed per session instead
+candidate, gate or actor registry. Delivery is nonblocking, and completion is
+observed separately. The helper requires `jq` so native JSON is parsed per session instead
 of with regular expressions, and `flock` so process exit releases per-locator
 delivery ownership through the kernel. Classification uses scalar values rather
-than key names, and stable comparison excludes volatile Orca envelope IDs and
-Paseo `UpdatedAt`. Patterns will improve from real failures.
+than key names, and stable comparison excludes volatile Orca envelope IDs.
+Patterns will improve from real failures.
 
-A status-zero Orca or Paseo target read is trusted only when its native JSON
-envelope and locator-specific shape validate. Paseo's returned agent ID must
-match the requested full ID or prefix. Malformed or mismatched output is an
+A status-zero Orca target read is trusted only when its native JSON envelope and
+locator-specific shape validate. Malformed or mismatched output is an
 `observe-error`; it never reaches state persistence or nudge delivery. Orca
 terminal items report native `connected`, `disconnected` or failed-orphaned
 process state plus `lastOutputAt`; connection is never promoted to agent

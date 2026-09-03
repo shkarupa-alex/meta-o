@@ -36,7 +36,17 @@ import { fileURLToPath } from "node:url";
 import { query as claudeQuery } from "@anthropic-ai/claude-agent-sdk";
 
 /** The role names a run addresses. Anything else is a typo, not a new role. */
-const ROLES = ["executor", "researcher", "reviewerA", "reviewerB", "e2eTester"];
+const ROLES = [
+  "orchestrator",
+  "executor",
+  "researcher",
+  "reviewerA",
+  "reviewerB",
+  "e2eTester",
+  "testClaude",
+  "testCodex",
+  "testOpenCode",
+];
 
 /** Only this schema is understood; a newer file is left strictly alone. */
 const SCHEMA_VERSION = 1;
@@ -118,7 +128,7 @@ const ROUTES = {
 // ---------------------------------------------------------------------------
 
 /**
- * Split `route/model/effort` without breaking model ids that contain slashes.
+ * §A-DISTRIBUTION-02 splits `route/model/effort` without breaking model ids with slashes.
  *
  * `opencode/opencode/big-pickle/high` is a real selection: the route is the
  * first segment, the effort the last, and everything between is the model id.
@@ -141,6 +151,58 @@ export function parseSelection(value) {
     model: parts.slice(1, -1).join("/"),
     effort: parts[parts.length - 1],
   };
+}
+
+// §A-EVAL-01: an approved testing profile has to name one exact provider model
+// id at the approved effort. A floating alias resolves to whatever the provider
+// ships next — possibly a far more expensive model — and a substring test on the
+// generation digit also matches the tail of a release date, which is how
+// `claude-sonnet-4-5-20250929` and `deepseek-v3-4-flash` passed as the approved
+// generation. The provider prefix stays free-form because the real ids live in
+// the user's configuration and are not hardcoded here.
+const TESTING_PROFILES = {
+  testClaude: {
+    route: "claude",
+    effort: "low",
+    id: /^(?:claude-)?sonnet-?5(?:[.-]\d+)?(?:-\d{8})?$/u,
+    requirement: "testClaude must name an exact sonnet5/low model id through claude",
+  },
+  testCodex: {
+    route: "codex",
+    effort: "low",
+    id: /^gpt-5\.6-terra$/u,
+    requirement: "testCodex must be codex/gpt-5.6-terra/low",
+  },
+  testOpenCode: {
+    route: "opencode",
+    effort: "low",
+    id: /^deepseek-?v?4(?:[.-]\d+)?-flash$/u,
+    requirement:
+      "testOpenCode must name an exact deepseek 4 flash model id " +
+      "through opencode at low effort",
+  },
+};
+
+/** §A-EVAL-01 rejects testing selections outside the approved low-cost routes. */
+export function testingPolicyError(role, value) {
+  const profile = TESTING_PROFILES[role];
+  if (!profile) return null;
+  const selection = typeof value === "string" ? parseSelection(value) : value;
+  // An OpenCode selection carries `provider/model`; the id is the last segment.
+  const identifier = selection.model.split("/").pop() ?? "";
+  const namesApprovedProfile = profile.id.test(identifier.toLowerCase());
+  if (selection.route !== profile.route || selection.effort !== profile.effort) {
+    return profile.requirement;
+  }
+  return namesApprovedProfile ? null : profile.requirement;
+}
+
+function validateEffectiveRoles(roles) {
+  for (const [role, value] of Object.entries(roles)) {
+    const selection = parseSelection(value);
+    const policyError = testingPolicyError(role, selection);
+    if (policyError) throw new Error(policyError);
+  }
 }
 
 /**
@@ -285,7 +347,7 @@ function lineListing(descriptor) {
 }
 
 /**
- * Turn `codex debug models` output into a listing.
+ * §A-DISTRIBUTION-02 turns `codex debug models` output into a listing.
  *
  * Only rows the CLI itself would offer are kept: `visibility: "list"` and
  * `supported_in_api`. An internal or retired slug would otherwise be proposed as
@@ -526,7 +588,7 @@ function dedupe(values) {
 // ---------------------------------------------------------------------------
 
 /**
- * Split a model id into a family and a comparable generation.
+ * §A-DISTRIBUTION-02 splits a model id into a family and comparable generation.
  *
  * `claude-opus-4-8` is family `claude-opus` at 4.8; `gpt-5.6` is family `gpt`
  * at 5.6. Anything without a trailing numeric generation has none, and takes no
@@ -552,7 +614,7 @@ function compareGenerations(a, b) {
 }
 
 /**
- * Propose a successor only within the same family.
+ * §A-DISTRIBUTION-02 proposes a successor only within the same family.
  *
  * A newer release generation of what the user already chose is evidence. A
  * sibling family — opus to sonnet, or the reverse — is a different trade-off
@@ -580,6 +642,7 @@ export function findUpgrade(current, availableModels) {
 /** One line with every role — the default startup question, not a report. */
 function commandShow(settings, key, asJson) {
   const roles = effectiveRoles(settings, key);
+  validateEffectiveRoles(roles);
   if (asJson) {
     process.stdout.write(`${JSON.stringify({ roles }, null, 2)}\n`);
     return;
@@ -709,6 +772,8 @@ async function commandSet(settings, key, assignments, useDefaults, force) {
     }
     const value = assignment.slice(index + 1);
     parseSelection(value);
+    const policyError = testingPolicyError(role, value);
+    if (policyError) throw new Error(policyError);
     return { role, value };
   });
 

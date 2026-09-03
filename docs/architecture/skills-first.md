@@ -1,5 +1,20 @@
 # §A-ORCHESTRATION-01 — Скилы и reasoning — слой оркестрации процесса
 
+```yaml
+knowledge_id_changes:
+  - action: reuse
+    id: §A-ORCHESTRATION-01
+    reason: >-
+      Решение запрещало собственный proxy/driver, но не говорило, чем тогда
+      доказываются real-run incident families, и §3.9 читалась как требование
+      несуществующего fake-Orca replay для поведения агента.
+    new_boundary: >-
+      Решение теперь задаёт границу детерминированной регрессии: fake-контроль
+      покрывает публично наблюдаемые families, остальные — именованное
+      утверждение о правиле инструкции плюс named live E2E.
+    references_updated: true
+```
+
 ## Решение
 
 В Meta-O нет executable router, finite-state-machine service, run registry,
@@ -11,6 +26,15 @@ Orchestrator управляет процессом и сессиями, но н�
 редактирует product code. Репозиторий читают executors, reviewers и E2E actors.
 До активации orchestrator может прочитать task intent и использовать Git metadata,
 нужные для идентификации одного чистого полного candidate SHA.
+
+Отсюда следует граница детерминированной регрессии. Fake-контроль воспроизводит
+ровно те real-run incident families, которые видны на публичной поверхности
+backend через единственного исполняемого consumer этого проекта — watchdog.
+Остальные families принадлежат поведению агента: их регрессия — именованное
+утверждение о конкретном правиле поставляемой инструкции плюс named live E2E
+scenario. Собственный driver, replay proxy или state machine для их
+воспроизведения запрещены этим же решением, поэтому «нет fake-Orca прогона» —
+принятое ограничение, а не отложенная работа.
 
 ## Бизнес-причина
 
@@ -31,10 +55,10 @@ adapter и recovery protocol создавал ещё одну правду, сп
 
 `shared/references/methodology.md` владеет lifecycle, autonomy, questions и
 completion. `review-protocol.md` владеет общей семантикой review и backlog.
-`backend-contract.md` владеет минимальными observable capabilities. Механики
-Herdr, Orca и Paseo владеют точными native commands. Отдельные фиксированные
-entry-скилы используют эти references: семантика backend остаётся явной, а
-стандарты не дублируются.
+`backend-contract.md` владеет минимальными observable capabilities.
+`orca-mechanics.md` владеет точными native commands. Отдельные orchestration и
+review entry-skills используют эти references: механика backend остаётся явной,
+а стандарты не дублируются.
 
 Раздельные entry при общем протоколе — это §B-REVIEW-04, а запрет дублировать
 стандарты — §B-CONTROL-04. Без §A-ORCHESTRATION-02 общие references лишаются

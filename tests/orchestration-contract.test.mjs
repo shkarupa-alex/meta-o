@@ -36,6 +36,19 @@ test("lifecycle keeps the orchestrator out of product code and binds every gate 
   assert.doesNotMatch(source, /MO_[A-Z0-9_]+/);
 });
 
+test("the architecture says how a real-run incident family is regressed", () => {
+  const decision = readFileSync(join(ROOT, "docs", "architecture", "skills-first.md"), "utf8");
+  // Without this boundary the critical-suite requirement reads as a demand for
+  // a fake-Orca replay of agent behaviour, which needs the very driver this
+  // decision forbids.
+  assert.match(decision, /Fake-контроль воспроизводит/u);
+  assert.match(decision, /единственного исполняемого consumer этого проекта — watchdog/u);
+  assert.match(decision, /именованное\s+утверждение о конкретном правиле поставляемой инструкции/u);
+  assert.match(decision, /принятое ограничение, а не отложенная работа/u);
+  const obligations = readFileSync(join(ROOT, "tests", "closure-obligations.test.mjs"), "utf8");
+  assert.match(obligations, /fixtures\/orca-control\.mjs/u);
+});
+
 test("question and delegated-decision boundaries match the user contract", () => {
   const source = shared("methodology.md");
   assert.match(source, /roughly one agent-hour or less/);
@@ -44,35 +57,49 @@ test("question and delegated-decision boundaries match the user contract", () =>
   assert.match(source, /Recommend an executor from a different model vendor/);
 });
 
-test("shared review protocol owns concurrency, diversity, atomic delivery and backlog lens", () => {
+test("portable review protocol owns ordered evidence, modes, severity and deferral lens", () => {
   const source = shared("review-protocol.md");
-  assert.match(source, /Start reviewer A and reviewer B concurrently/);
-  assert.match(source, /native interactive Codex, Claude Code or OpenCode instances/);
-  assert.match(source, /review\s+brief or its accessible file path/);
-  assert.match(source, /Do not create or execute a shell script to\s+invoke the reviewer harness/);
-  assert.match(source, /different model vendors/);
-  assert.match(source, /at least one differs from the executor vendor/);
-  assert.match(source, /read all of `docs\/backlog.md`/);
-  for (const phrase of [
-    "reason",
-    "practical impact",
-    "next step",
-    "not being used as a progress tracker",
-  ]) {
+  const stages = [
+    "Grounding",
+    "Change discovery",
+    "Risk mapping",
+    "Candidate discovery",
+    "Candidate verification",
+    "Causality",
+    "Severity",
+    "Reporting",
+  ];
+  let offset = -1;
+  for (const stage of stages) {
+    const next = source.indexOf(stage, offset + 1);
+    assert.ok(next > offset, `${stage} follows the previous stage`);
+    offset = next;
+  }
+  for (const phrase of ["fast", "deep", "follow_up", "P0", "P1", "P2", "P3"]) {
     assert.match(source, new RegExp(phrase));
   }
-  assert.match(source, /Wait until both settled responses are complete before releasing either/);
-  assert.match(
-    source,
-    /significant business intent from the task\/spec and the ledger has\s+reached/,
-  );
-  assert.match(source, /replaces a separate\s+editorial pass/);
-  assert.match(source, /not every remark becomes a thesis/);
-  assert.match(source, /cycle closes when both reviewers return `PASS` on the same SHA/);
+  assert.match(source, /read the diff before constructing the initial risk map/);
+  assert.match(source, /An empty backlog is valid/);
+  assert.match(source, /reason, practical impact and next step/);
+  assert.doesNotMatch(source, /Meta-O|docs\/backlog\.md/);
 });
 
-test("each fixed backend entry consumes the same shared contracts and its native mechanics", () => {
-  for (const backend of ["herdr", "orca", "paseo"]) {
+test("lifecycle and Orca review own pair settlement outside the portable core", () => {
+  const methodology = shared("methodology.md");
+  const review = skill("mo-review-orca");
+  assert.match(methodology, /Start both reviewer sessions concurrently/i);
+  assert.match(methodology, /same candidate SHA/);
+  assert.match(methodology, /both\s+complete settled final responses/);
+  assert.match(methodology, /same-SHA passes/);
+  assert.match(review, /vendor-diverse pair/);
+  assert.match(review, /Wait for both full reports/);
+  assert.match(review, /Keep remediation reviewers hot/);
+  assert.match(review, /fresh independent sessions/);
+  assert.match(review, /five\s+paired review\/fix attempts/);
+});
+
+test("Orca entries consume the shared contracts and native mechanics", () => {
+  for (const backend of ["orca"]) {
     const orchestrator = skill(`mo-orchestrate-${backend}`);
     const review = skill(`mo-review-${backend}`);
     assert.match(orchestrator, /references\/methodology\.md/);
@@ -85,49 +112,18 @@ test("each fixed backend entry consumes the same shared contracts and its native
 });
 
 test("backend mechanics use only the intended public result and diagnostic surfaces", () => {
-  const herdr = shared("herdr-mechanics.md");
   const orca = shared("orca-mechanics.md");
-  const paseo = shared("paseo-mechanics.md");
-  for (const source of [herdr, orca, paseo]) {
+  for (const source of [orca]) {
     assert.match(source, /accessible file path/);
     assert.match(source, /shell script that\s+invokes the\s+reviewer harness/);
   }
-  assert.match(herdr, /herdr agent (?:get|read|wait|prompt)/);
-  assert.match(herdr, /`--lines 120`, then increase to 200 and\s+400/);
-  assert.match(herdr, /discarded by a harness alternate screen/);
-  assert.match(herdr, /result\s+is `unknown`/);
   assert.match(orca, /complete `worker_done` body/);
   assert.match(orca, /Do not use `worker-read --source transcript`/);
   assert.match(orca, /`ready` and `input_accepted` is only a transport/);
   assert.match(orca, /terminal wait .*--for tui-idle/);
   assert.match(orca, /dispatch --task <task-id> --to <handle> --inject/);
   assert.match(orca, /do not duplicate a posture flag/);
-  assert.match(paseo, /last five\s+activity items/);
-  assert.match(
-    paseo,
-    /Never select a response merely because it is the\s+first or last unlabeled activity item/,
-  );
-  assert.match(paseo, /paseo logs <id> --filter text --tail 1/);
-  assert.match(paseo, /after actually running\s+non-mutating repository checks/);
-  assert.match(paseo, /both routes are unsupported/);
-  assert.match(paseo, /paseo send <agent-id> --prompt <message> --no-wait --json/);
-  assert.match(paseo, /never turn `send` into the wait/);
-  assert.match(paseo, /retain the public `UpdatedAt` value/);
-  assert.match(paseo, /non-idle state was observed/);
-  assert.match(paseo, /An unchanged identity and idle state may be the\s+previous response/);
-  assert.match(paseo, /`inspect` is\s+a metadata and state\s+surface/);
-  assert.match(paseo, /version-matched public application bundle/);
-  assert.match(paseo, /Read the discovered companion guide completely/);
-  assert.match(paseo, /paseo provider models <codex\|claude\|opencode> --json/);
-  assert.match(paseo, /provider-discovery failure is actionable readiness evidence/);
-  assert.doesNotMatch(skill("mo-orchestrate-paseo"), /public `wait` result surface/);
-  assert.match(
-    skill("mo-orchestrate-paseo"),
-    /documented public complete-response surface passes\s+tool-using normal and long/,
-  );
-  assert.match(herdr, /`herdr agent read --source recent-unwrapped`/);
-  assert.match(herdr, /prompt receipt is not\s+delivery proof/i);
-  for (const source of [herdr, orca, paseo]) {
+  for (const source of [orca]) {
     assert.match(source, /three-to-four-screen|three-to-four-screen|three-to-four/);
     assert.match(source, /whole-session|Whole-session|whole session/);
     assert.doesNotMatch(source, /private provider transcript.*use|inferred session database.*use/i);

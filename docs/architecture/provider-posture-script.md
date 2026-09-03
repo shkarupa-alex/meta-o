@@ -3,7 +3,7 @@
 ## Решение
 
 `shared/scripts/mo-posture.sh` — единственный владелец zsh/bash launch-resolution
-diagnostic. Сборка byte-for-byte копирует его во все три orchestration skills и
+diagnostic. Сборка byte-for-byte копирует его в `mo-orchestrate-orca` и
 `mo-setup`: каждая установка остаётся самодостаточной без provider proxy.
 
 Consumers запускают его напрямую из установленного каталога:
@@ -28,7 +28,7 @@ Launch posture должен быть детерминированным без w
 Решение служит §B-PORTABILITY-01, §B-PORTABILITY-07 и §B-CONTROL-04: работа идёт
 на уже настроенном harness без прокси, чужой интерфейс не угадывается, а лишний
 управляющий слой не заводится. Если §A-POSTURE-01 отменяется, копии probe в
-четырёх скилах и его self-check удаляются, а диагностика возвращается в прозу
+двух скилах и его self-check удаляются, а диагностика возвращается в прозу
 каждого скила по отдельности.
 
 ## §A-POSTURE-02 — Граница безопасности

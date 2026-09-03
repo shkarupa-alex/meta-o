@@ -33,9 +33,8 @@ skill.
   licence mapping и generated-деревом `skills/`.
 
 Большинство shared entries копируется byte-for-byte. `mo-models.mjs` намеренно
-устроен иначе: source бандлится в runtime file всех трёх
-`mo-orchestrate-<backend>` skills. Все destinations создаёт одна build operation,
-и они обязаны быть byte-identical. Generated files не редактируются вручную.
+устроен иначе: source бандлится в runtime file `mo-orchestrate-orca`. Generated
+files не редактируются вручную.
 
 `make mo-qc` регенерирует временное дерево и сравнивает каждый path и byte с
 закоммиченным `skills/`. Он также запрещает source files, затеняющие destination
@@ -82,7 +81,7 @@ Claude catalogue discovery использует поверхность Agent SDK
 1 245 067 bytes. Превышение ломает build и требует нового size/dependency audit;
 оно не принимается как обычный generated churn.
 
-Source helper и все три generated backend copies проходят smoke tests.
+Source helper и generated Orca copy проходят smoke tests.
 Disposable clone с symlinked `node_modules` обязан собрать точные committed bytes
 без абсолютного path исходного или временного дерева.
 
@@ -120,7 +119,7 @@ tree.
 
 ## §A-DISTRIBUTION-04 — Provider posture остаётся copied leaf
 
-`mo-posture.sh` byte-for-byte копируется в три orchestration skills и `mo-setup`.
+`mo-posture.sh` byte-for-byte копируется в `mo-orchestrate-orca` и `mo-setup`.
 Это bounded read-only diagnostic leaf: он не запускает provider, не хранит run
 state и ничего не знает о backend sessions. Дублирование делает каждый skill
 standalone без runtime shared package или backend adapter.

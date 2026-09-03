@@ -93,4 +93,4 @@ in `docs/architecture/` — not in a silently widened ignore list.
 - Do not create a brownfield baseline automatically. A baseline is admitted only
   if adoption is otherwise practically impossible.
 - Do not write a regex Markdown parser. If Markdown must be parsed
-  programmatically, find a real AST library through `mo-reuse`.
+  programmatically, find a real AST library through `find-reuse`.

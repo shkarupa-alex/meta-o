@@ -4,10 +4,10 @@
 # authoritative gate, it rewrites nothing, and every gate under it is a mature
 # tool or a plain shell comparison rather than a checker this project wrote.
 
-.PHONY: mo-qc mo-lint mo-test mo-smoke mo-e2e skills skills-check format contract
+.PHONY: mo-qc mo-lint mo-test mo-smoke mo-e2e mo-eval-cases mo-live-adapters skills skills-check format contract
 
 # The authoritative gate.
-mo-qc: mo-lint contract skills-check mo-test mo-smoke
+mo-qc: mo-lint contract skills-check mo-eval-cases mo-test mo-smoke
 	@echo "mo-qc ok"
 
 # markdownlint and prettier judge; `make format` is the half that rewrites.
@@ -16,13 +16,21 @@ mo-lint:
 	npx --no-install prettier --check .
 	npx --no-install eslint .
 	node --check shared/scripts/mo-models.mjs
-	node --check skills/mo-orchestrate-herdr/scripts/mo-models.mjs
 	node --check skills/mo-orchestrate-orca/scripts/mo-models.mjs
-	node --check skills/mo-orchestrate-paseo/scripts/mo-models.mjs
+	node --check skills/mo-review-orca/scripts/mo-models.mjs
 	node --check tools/build-skills.mjs
+	node --check tools/adapter-contract.mjs
+	node --check tools/knowledge-history.mjs
+	node --check tools/live-adapters.mjs
+	node --check tools/skill-evals.mjs
+	node tools/adapter-contract.mjs --validate
 	bash -n shared/scripts/mo-posture.sh
 	bash -n shared/scripts/mo-watchdog.sh
-	shared/scripts/mo-posture.sh --self-check --shell all
+	@set -e; for shell_name in bash zsh; do \
+		if command -v $$shell_name >/dev/null 2>&1; then \
+			shared/scripts/mo-posture.sh --self-check --shell $$shell_name; \
+		else echo "mo-posture self-check blocked: $$shell_name is not installed" >&2; exit 1; fi; \
+	done
 
 format:
 	npx --no-install prettier --write .
@@ -42,16 +50,17 @@ skills:
 	node tools/build-skills.mjs
 
 mo-test:
+	@command -v zsh >/dev/null 2>&1 || { echo "mo-test blocked: zsh is required for the cross-shell contract" >&2; exit 1; }
 	node --test "tests/*.test.mjs"
 
-# Do the source helper and both shipped backend copies boot and answer? Under a throwaway HOME, because
+# Do the source helper and shipped Orca copy boot and answer? Under a throwaway HOME, because
 # this gate judges the repository: a settings file the developer happens to have
 # — or a corrupt one — must not decide whether an unmodified checkout is green.
 mo-smoke:
 	@set -e; smoke_dir=$$(mktemp -d); trap 'rm -rf "$$smoke_dir"' 0 HUP INT TERM; \
 		HOME=$$smoke_dir node shared/scripts/mo-models.mjs --help > /dev/null; \
 		HOME=$$smoke_dir node shared/scripts/mo-models.mjs --show > /dev/null; \
-		for backend in mo-orchestrate-herdr mo-orchestrate-orca mo-orchestrate-paseo; do \
+		for backend in mo-orchestrate-orca mo-review-orca; do \
 			cp skills/$$backend/scripts/mo-models.mjs $$smoke_dir/$$backend.mjs; \
 			(cd $$smoke_dir && HOME=$$smoke_dir node ./$$backend.mjs --help > /dev/null); \
 			(cd $$smoke_dir && HOME=$$smoke_dir node ./$$backend.mjs --show > /dev/null); \
@@ -64,11 +73,22 @@ mo-e2e:
 	@echo "AGENT_REQUIRED: not executed"
 	@echo
 	@echo "Docs:      docs/e2e.md, docs/backend-capabilities.md"
-	@echo "Scenarios: B1-B14 — each Herdr, Orca, and Paseo backend"
+	@echo "Scenarios: B1-B22 — Orca backend and Qwen profile"
 	@echo "           W1-W4 — watchdog target, scan, nudge, suppression"
+	@echo "           24 embedded cases — positive/forbidden/degraded for 8 skills"
 	@echo "           local and authorized remote installation"
 	@echo "Run:       execute the applicable scenarios without changing the frozen candidate"
 	@echo "Evidence:  keep exact SHA and per-scenario actor/provider facts in the current run/final result"
 	@echo "Ledger:    scenario definitions and support posture only; do not edit tracked docs for run evidence"
 	@echo "Cleanup:   stop every provider session you started, including on failure"
 	@exit 2
+
+# Offline corpus/schema check. Live actors consume prompts and return untracked
+# JSON evidence through the explicit commands in docs/e2e.md.
+mo-eval-cases:
+	node tools/skill-evals.mjs --check
+
+# Network-enabled maintainer evidence. Missing local tools are reported; a
+# present-but-unsupported probe or a failed production endpoint blocks.
+mo-live-adapters:
+	node tools/live-adapters.mjs

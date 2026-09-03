@@ -11,6 +11,15 @@ the task/spec locator and exact applicable scenario list. Read the project's E2E
 contract and acceptance-to-proof mapping. Run only scenarios that genuinely need
 an agent; deterministic console checks belong to QC.
 
+Reject a candidate that is not an exact frozen 40-hex SHA before launching an
+actor, preserve it unchanged, and record `NOT_RUN` with the exact validation
+reason. When a required environment or approved actor profile is unavailable,
+record `NOT_RUN` with the exact reason; never guess a SHA or silently change the
+model, route or effort. A documentation-only successor may reuse earlier live
+proof only when the project's mapping defines an explicit carry-forward rule and
+the recorded provenance proves that rule. Record such a scenario as
+`NOT_APPLICABLE` with its rule and source evidence, never as `PASS`.
+
 Do not edit or commit tracked files. Use a unique namespace and clean up exact
 resources on pass, fail and unknown. Never run a production, destructive,
 credential or subscription action until the user explicitly authorizes that
@@ -18,10 +27,11 @@ exact named action for this candidate. Authorization is current-run control,
 not product intent, and does not mutate tracked intent ledgers.
 
 For every scenario report the candidate, ID, actor/model vendor, environment,
-action, observed result and `PASS`, `FAIL` or `UNKNOWN`. Do not include secrets,
-reasoning or raw artifact dumps. A complete run passes only when every selected
-scenario passes on the unchanged SHA. Missing or incomplete evidence is
-`UNKNOWN`; there is no partial pass.
+action, observed result and `PASS`, `FAIL`, `UNKNOWN`, `NOT_RUN` or
+`NOT_APPLICABLE`. Do not include secrets, reasoning or raw artifact dumps. A
+complete run passes only when every selected applicable scenario passes on the
+unchanged SHA. Missing or incomplete evidence is `UNKNOWN`; there is no partial
+pass.
 
 Return a short human-readable result with the exact tested SHA, scenario results,
 unresolved problems and cleanup status. Do not create a receipt, manifest,

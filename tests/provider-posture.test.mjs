@@ -23,12 +23,20 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { after, test } from "node:test";
+import { after, test as nodeTest } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SCRIPT = join(ROOT, "shared", "scripts", "mo-posture.sh");
+const ZSH_LOOKUP = spawnSync("/bin/sh", ["-c", "command -v zsh"], { encoding: "utf8" });
+const HAS_ZSH = ZSH_LOOKUP.status === 0;
+const ZSH_EXECUTABLE = ZSH_LOOKUP.stdout.trim();
 const temporary = [];
+
+const test = nodeTest;
+function zshTest(name, body) {
+  return nodeTest(name, { skip: !HAS_ZSH ? "zsh is not installed" : false }, body);
+}
 
 after(() => {
   for (const path of temporary) rmSync(path, { recursive: true, force: true });
@@ -45,6 +53,7 @@ function fixture() {
 function providerBin(root, name, providers = ["claude", "codex", "opencode"]) {
   const bin = join(root, name);
   mkdirSync(bin);
+  if (HAS_ZSH) symlinkSync(ZSH_EXECUTABLE, join(bin, "zsh"));
   for (const provider of providers) {
     const executable = join(bin, provider);
     writeFileSync(executable, "#!/bin/sh\nexit 0\n");
@@ -240,6 +249,9 @@ function assertRecords(result, shell, expectedStatus, expectedType = /command|fi
 
 function writeZshProfiles(home, ordinaryPath, options = {}) {
   const common = [
+    process.env.MO_TEST_ZSH_MODULE_PATH
+      ? `module_path=(${JSON.stringify(process.env.MO_TEST_ZSH_MODULE_PATH)} $module_path)`
+      : "",
     `export PATH=${JSON.stringify(`${ordinaryPath}:/usr/bin:/bin`)}`,
     "whence() { print -r -- PRIVATE_SENTINEL; }",
     options.stdoutNoise ? `printf '%s\\n' ${JSON.stringify(options.stdoutNoise)}` : "",
@@ -327,7 +339,7 @@ async function waitUntilProcessGone(pid, timeout = 2_000) {
   return !processIsAlive(pid);
 }
 
-test("the posture script and both child probes have valid syntax", () => {
+zshTest("the posture script and both child probes have valid syntax", () => {
   const syntax = spawnSync("bash", ["-n", SCRIPT], { encoding: "utf8" });
   assert.equal(syntax.status, 0, syntax.stderr);
   const selfCheck = spawnSync(SCRIPT, ["--self-check", "--shell", "all"], {
@@ -349,7 +361,7 @@ test("the process-group ownership anchor is reaped after every PGID operation", 
   assert.doesNotMatch(stopFunction.slice(waitOffset), /builtin kill .*process_group/);
 });
 
-test("profile output is summarized as noise and lookup functions cannot shadow builtins", () => {
+zshTest("profile output is summarized as noise and lookup functions cannot shadow builtins", () => {
   const { home, root } = fixture();
   const bin = providerBin(root, "wrapper-bin");
   writeZshProfiles(home, bin, { stdoutNoise: "Welcome back, Alex" });
@@ -403,26 +415,29 @@ test("an outer BASH_ENV is isolated and restored only for measured Bash modes", 
   assert.match(result.stdout, /MO_POSTURE_MATRIX shell=bash status=1/);
 });
 
-test("privileged startup ignores an exported trap function and still cleans profile captures", () => {
-  const { home, root } = fixture();
-  const bin = providerBin(root, "wrapper-bin");
-  const scratch = join(root, "tmp");
-  mkdirSync(scratch);
-  writeZshProfiles(home, bin, { stdoutNoise: "PRIVATE_PROFILE_OUTPUT" });
+zshTest(
+  "privileged startup ignores an exported trap function and still cleans profile captures",
+  () => {
+    const { home, root } = fixture();
+    const bin = providerBin(root, "wrapper-bin");
+    const scratch = join(root, "tmp");
+    mkdirSync(scratch);
+    writeZshProfiles(home, bin, { stdoutNoise: "PRIVATE_PROFILE_OUTPUT" });
 
-  const result = runThroughExportedFunction("trap", "zsh", {
-    HOME: home,
-    ZDOTDIR: home,
-    PATH: `${bin}:/usr/bin:/bin`,
-    TMPDIR: scratch,
-  });
-  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-  assert.doesNotMatch(
-    `${result.stdout}${result.stderr}`,
-    /INHERITED_FUNCTION_SENTINEL|PRIVATE_PROFILE_OUTPUT/,
-  );
-  assert.deepEqual(readdirSync(scratch), []);
-});
+    const result = runThroughExportedFunction("trap", "zsh", {
+      HOME: home,
+      ZDOTDIR: home,
+      PATH: `${bin}:/usr/bin:/bin`,
+      TMPDIR: scratch,
+    });
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.doesNotMatch(
+      `${result.stdout}${result.stderr}`,
+      /INHERITED_FUNCTION_SENTINEL|PRIVATE_PROFILE_OUTPUT/,
+    );
+    assert.deepEqual(readdirSync(scratch), []);
+  },
+);
 
 test("an inherited Bash function makes the Bash matrix explicitly unknown", () => {
   const { home, root } = fixture();
@@ -511,7 +526,7 @@ test("a successful but empty Bash environment scan is still unknown", () => {
   );
 });
 
-test("the Bash-only environment scan is not part of a Zsh matrix", () => {
+zshTest("the Bash-only environment scan is not part of a Zsh matrix", () => {
   const { home, root } = fixture();
   const bin = providerBin(root, "wrapper-bin");
   writeZshProfiles(home, bin);
@@ -567,7 +582,7 @@ for (const [variable, value] of [
   });
 }
 
-test("zsh alias changes command kind even when the first path is unchanged", () => {
+zshTest("zsh alias changes command kind even when the first path is unchanged", () => {
   const { home, root } = fixture();
   const bin = providerBin(root, "wrapper-bin");
   writeZshProfiles(home, bin, {
@@ -601,30 +616,33 @@ test("bash function changes command kind even when the first path is unchanged",
 
 for (const shell of ["zsh", "bash"]) {
   for (const primitive of ["builtin", "command", "printf"]) {
-    test(`${shell} fails closed when ${primitive} is a profile function`, () => {
-      const { home, root } = fixture();
-      const bin = providerBin(root, "wrapper-bin");
-      const shadow = `${primitive}() { echo PRIVATE_DISPATCH_SENTINEL; }`;
-      const environment = { HOME: home, PATH: `${bin}:/usr/bin:/bin` };
-      if (shell === "zsh") {
-        writeZshProfiles(home, bin, { zshenvExtra: shadow });
-        environment.ZDOTDIR = home;
-      } else {
-        writeBashProfiles(home, bin, { bashEnvExtra: shadow, profileExtra: shadow });
-        environment.BASH_ENV = join(home, ".bash_env");
-      }
+    (shell === "zsh" ? zshTest : test)(
+      `${shell} fails closed when ${primitive} is a profile function`,
+      () => {
+        const { home, root } = fixture();
+        const bin = providerBin(root, "wrapper-bin");
+        const shadow = `${primitive}() { echo PRIVATE_DISPATCH_SENTINEL; }`;
+        const environment = { HOME: home, PATH: `${bin}:/usr/bin:/bin` };
+        if (shell === "zsh") {
+          writeZshProfiles(home, bin, { zshenvExtra: shadow });
+          environment.ZDOTDIR = home;
+        } else {
+          writeBashProfiles(home, bin, { bashEnvExtra: shadow, profileExtra: shadow });
+          environment.BASH_ENV = join(home, ".bash_env");
+        }
 
-      const result = runMatrix(shell, environment);
-      assert.equal(result.status, 2, `${result.stdout}\n${result.stderr}`);
-      assert.match(result.stdout, new RegExp(`MO_POSTURE_MATRIX shell=${shell} status=2`));
-      assert.match(result.stderr, new RegExp(`MO_POSTURE_SHADOW shell=${shell} mode=`));
-      assert.doesNotMatch(`${result.stdout}${result.stderr}`, /PRIVATE_DISPATCH_SENTINEL/);
-    });
+        const result = runMatrix(shell, environment);
+        assert.equal(result.status, 2, `${result.stdout}\n${result.stderr}`);
+        assert.match(result.stdout, new RegExp(`MO_POSTURE_MATRIX shell=${shell} status=2`));
+        assert.match(result.stderr, new RegExp(`MO_POSTURE_SHADOW shell=${shell} mode=`));
+        assert.doesNotMatch(`${result.stdout}${result.stderr}`, /PRIVATE_DISPATCH_SENTINEL/);
+      },
+    );
   }
 }
 
 for (const shell of ["zsh", "bash"]) {
-  test(`${shell} exits one when first paths diverge`, () => {
+  (shell === "zsh" ? zshTest : test)(`${shell} exits one when first paths diverge`, () => {
     const { home, root } = fixture();
     const ordinary = providerBin(root, "ordinary-bin");
     const login = providerBin(root, "login-bin");
@@ -644,7 +662,7 @@ for (const shell of ["zsh", "bash"]) {
   });
 }
 
-test("a consistently missing provider is explicit while the matrix exits zero", () => {
+zshTest("a consistently missing provider is explicit while the matrix exits zero", () => {
   const { home, root } = fixture();
   const bin = providerBin(root, "wrapper-bin", ["claude", "codex"]);
   writeZshProfiles(home, bin);
@@ -663,7 +681,7 @@ test("a consistently missing provider is explicit while the matrix exits zero", 
   );
 });
 
-test("executable paths containing whitespace remain valid and unambiguous", () => {
+zshTest("executable paths containing whitespace remain valid and unambiguous", () => {
   const { home, root } = fixture();
   const bin = providerBin(root, "Agent Tools");
   writeZshProfiles(home, bin);
@@ -677,7 +695,7 @@ test("executable paths containing whitespace remain valid and unambiguous", () =
   assert.match(result.stdout, /Agent\\ Tools\/claude/);
 });
 
-test("a forged or malformed record produces status two without disclosure", () => {
+zshTest("a forged or malformed record produces status two without disclosure", () => {
   const { home, root } = fixture();
   const bin = providerBin(root, "wrapper-bin");
   writeZshProfiles(home, bin, {
@@ -694,7 +712,7 @@ test("a forged or malformed record produces status two without disclosure", () =
   assert.match(result.stdout, /type=invalid path=invalid/);
 });
 
-test("an incomplete shell mode produces status two", () => {
+zshTest("an incomplete shell mode produces status two", () => {
   const { home, root } = fixture();
   const bin = providerBin(root, "wrapper-bin");
   writeZshProfiles(home, bin, { zprofileExtra: "exit 7" });
@@ -768,7 +786,7 @@ for (const [label, records] of [
     ],
   ],
 ]) {
-  test(`${label} produces status two`, () => {
+  zshTest(`${label} produces status two`, () => {
     const { home, root } = fixture();
     const bin = providerBin(root, "wrapper-bin");
     writeZshProfiles(home, bin, { zprofileExtra: zshExitRecordOverride(records) });
@@ -805,7 +823,7 @@ test("a Bash file kind without a path produces status two", () => {
   assert.match(result.stdout, /type=invalid path=invalid/);
 });
 
-test("all mode reports a separate status for each shell", () => {
+zshTest("all mode reports a separate status for each shell", () => {
   const { home, root } = fixture();
   const ordinary = providerBin(root, "ordinary-bin");
   const zshLogin = providerBin(root, "zsh-login-bin");
@@ -823,7 +841,7 @@ test("all mode reports a separate status for each shell", () => {
   assert.match(result.stdout, /MO_POSTURE_MATRIX shell=bash status=0/);
 });
 
-test("all mode gives unknown precedence across shells", () => {
+zshTest("all mode gives unknown precedence across shells", () => {
   const { home, root } = fixture();
   const ordinary = providerBin(root, "ordinary-bin");
   const zshLogin = providerBin(root, "zsh-login-bin");
@@ -911,7 +929,7 @@ test("a TERM after traps but before temporary-directory creation exits 143 witho
   assert.deepEqual(readdirSync(scratch), []);
 });
 
-test("the launch-window guard captures the child before honoring TERM", () => {
+zshTest("the launch-window guard captures the child before honoring TERM", () => {
   const { home, root } = fixture();
   const bin = providerBin(root, "wrapper-bin");
   const scratch = join(root, "tmp");
@@ -936,7 +954,7 @@ test("the launch-window guard captures the child before honoring TERM", () => {
   assert.deepEqual(readdirSync(scratch), []);
 });
 
-test("reentrant shutdown preserves the first signal status", async () => {
+zshTest("reentrant shutdown preserves the first signal status", async () => {
   const { home, root } = fixture();
   const bin = providerBin(root, "wrapper-bin");
   const scratch = join(root, "tmp");
@@ -1016,58 +1034,61 @@ test("process-group quiescence happens before the first evidence read", () => {
   assertRecords(result, "bash", 0);
 });
 
-test("two TERM signals to only the runner keep code 143 and stop its descendant group", async () => {
-  const { home, root } = fixture();
-  const bin = providerBin(root, "wrapper-bin");
-  const scratch = join(root, "tmp");
-  const descendantPidFile = join(root, "descendant.pid");
-  mkdirSync(scratch);
-  writeZshProfiles(home, bin, {
-    zprofileExtra: [
-      "/bin/sh -c 'trap \"\" TERM; while :; do sleep 1; done' &",
-      `printf '%s\\n' $! >${JSON.stringify(descendantPidFile)}`,
-      "wait",
-    ].join("\n"),
-  });
+zshTest(
+  "two TERM signals to only the runner keep code 143 and stop its descendant group",
+  async () => {
+    const { home, root } = fixture();
+    const bin = providerBin(root, "wrapper-bin");
+    const scratch = join(root, "tmp");
+    const descendantPidFile = join(root, "descendant.pid");
+    mkdirSync(scratch);
+    writeZshProfiles(home, bin, {
+      zprofileExtra: [
+        "/bin/sh -c 'trap \"\" TERM; while :; do sleep 1; done' &",
+        `printf '%s\\n' $! >${JSON.stringify(descendantPidFile)}`,
+        "wait",
+      ].join("\n"),
+    });
 
-  const child = spawn(SCRIPT, ["--shell", "zsh"], {
-    cwd: ROOT,
-    env: {
-      ...process.env,
-      HOME: home,
-      ZDOTDIR: home,
-      PATH: `${bin}:/usr/bin:/bin`,
-      TMPDIR: scratch,
-    },
-    stdio: "ignore",
-  });
-  const deadline = Date.now() + 5_000;
-  let descendantPid;
-  while (descendantPid === undefined) {
-    try {
-      descendantPid = Number.parseInt(readFileSync(descendantPidFile, "utf8"), 10);
-    } catch (error) {
-      if (error.code !== "ENOENT") throw error;
+    const child = spawn(SCRIPT, ["--shell", "zsh"], {
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        HOME: home,
+        ZDOTDIR: home,
+        PATH: `${bin}:/usr/bin:/bin`,
+        TMPDIR: scratch,
+      },
+      stdio: "ignore",
+    });
+    const deadline = Date.now() + 5_000;
+    let descendantPid;
+    while (descendantPid === undefined) {
+      try {
+        descendantPid = Number.parseInt(readFileSync(descendantPidFile, "utf8"), 10);
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+      assert.ok(Date.now() < deadline, "profile did not report its descendant PID");
+      await new Promise((resolve) => setTimeout(resolve, 25));
     }
-    assert.ok(Date.now() < deadline, "profile did not report its descendant PID");
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  assert.ok(Number.isSafeInteger(descendantPid) && descendantPid > 1);
-  assert.ok(processIsAlive(descendantPid), "profile descendant was not running before TERM");
-  child.kill("SIGTERM");
-  await new Promise((resolve) => setTimeout(resolve, 10));
-  child.kill("SIGTERM");
-  const outcome = await waitForExit(child);
-  assert.equal(outcome.code, 143, JSON.stringify(outcome));
-  assert.deepEqual(readdirSync(scratch), []);
-  assert.equal(
-    await waitUntilProcessGone(descendantPid),
-    true,
-    "profile descendant survived runner TERM",
-  );
-});
+    assert.ok(Number.isSafeInteger(descendantPid) && descendantPid > 1);
+    assert.ok(processIsAlive(descendantPid), "profile descendant was not running before TERM");
+    child.kill("SIGTERM");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    child.kill("SIGTERM");
+    const outcome = await waitForExit(child);
+    assert.equal(outcome.code, 143, JSON.stringify(outcome));
+    assert.deepEqual(readdirSync(scratch), []);
+    assert.equal(
+      await waitUntilProcessGone(descendantPid),
+      true,
+      "profile descendant survived runner TERM",
+    );
+  },
+);
 
-test("selected mutation campaign reports every tried guard and zero survivors", async () => {
+zshTest("selected mutation campaign reports every tried guard and zero survivors", async () => {
   const survivors = [];
   let tried = 0;
   const recordMutation = (name, killed) => {

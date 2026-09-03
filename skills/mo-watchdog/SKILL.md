@@ -1,22 +1,26 @@
 ---
 name: mo-watchdog
-description: Observe one target or scan all reachable Herdr, Orca, and Paseo sessions for limits, overload, failures, questions, work, and completion; nudge only an explicitly authorized exact target.
+description: Observe one target or scan reachable Orca sessions for limits, overload, failures, questions, work, and completion. Use only when the user explicitly names Meta-O watchdog or mo-watchdog; nudge only an explicitly authorized exact target.
 license: MIT
 ---
 
 # Watch backend sessions
 
 Read [Watchdog behavior](references/watchdog.md) completely. Start only after the
-user explicitly requests observation.
+user explicitly names Meta-O watchdog or `mo-watchdog`; a generic monitoring
+question does not activate this skill.
 
-Use `scripts/mo-watchdog.sh target --backend <backend> --session <id>` for one
-session or `scripts/mo-watchdog.sh scan` for all reachable supported backends.
+Use `scripts/mo-watchdog.sh target --backend orca --session <id>` for one
+session or `scripts/mo-watchdog.sh scan` for all reachable Orca sessions.
 Observation is read-only. An explicit nudge additionally requires
 `--nudge <message>` and exact target authorization; the script re-reads native
 state and suppresses the nudge when that state changed. It reserves a bounded
 private digest before delivery and suppresses the same message, an ambiguous
 attempt, or a saturated unchanged state across later invocations. Nudges return
 after native delivery; agent completion is observed separately.
+
+Treat malformed or stale native state as a typed unsafe observation: report it,
+fail closed, and do not nudge or guess the target state.
 
 Do not inspect tracked project content or private provider state. Report the
 native locator, classified state and action. Pattern misses are refined from

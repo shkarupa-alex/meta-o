@@ -3,15 +3,8 @@
 ## Решение
 
 Meta-O получает весь settled assistant response только через документированную
-публичную native-поверхность выбранного backend. Orca использует полное
-orchestration message `worker_done`. Herdr всё ещё нужна доказанная публичная
-поверхность полного agent result. Paseo может использовать complete text activity
-item последнего известного prompt лишь после того, как публичная поверхность
-докажет эту границу под реальной reviewer-нагрузкой с инструментами. Bounded
-окно `wait --json.message` этого не доказало.
-`paseo logs <id> --filter text --tail 1` — кандидат, но до заявления поддержки он
-должен пройти normal и long tool-using fixtures на каждом harness. Backend-
-механика фиксирует точные команды установленной версии.
+публичную native-поверхность Orca — полное orchestration message `worker_done`.
+Orca-механика фиксирует точные команды установленной версии.
 
 Whole-session view остаётся для редкой диагностики, но terminal tail или bounded
 preview не доказывают полный final response. Acceptance длинного ответа требует

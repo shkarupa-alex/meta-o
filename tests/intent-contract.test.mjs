@@ -41,6 +41,33 @@ test("methodology preserves product intent but excludes narrow run-control appro
   assert.match(methodology, /do not mutate\s+tracked intent ledgers/);
 });
 
+test("ledger redaction names every kind it handles and the false positive it must not", () => {
+  const methodology = readFileSync(join(ROOT, "shared", "references", "methodology.md"), "utf8");
+  // Spec 2 moved this duty from the retired reuse skill to lifecycle
+  // materialization, and it is only a duty if each named kind is covered.
+  for (const kind of [
+    /\btoken\b/,
+    /\bpassword\b/,
+    /private key/,
+    /credential-bearing URL/,
+    /\[REDACTED:<kind>\]/,
+  ]) {
+    assert.match(methodology, kind, String(kind));
+  }
+  assert.match(methodology, /stop with `needs_attention` before any\s+commit/);
+  assert.match(methodology, /Never guess or collect the value in chat/);
+  // The other half of the rule: an ordinary identifier that merely looks like a
+  // credential must survive, or redaction corrupts the normative ledger.
+  assert.match(methodology, /only\s+resembles a secret/);
+  assert.match(methodology, /stays verbatim/);
+  const generated = readFileSync(
+    join(ROOT, "skills", "mo-orchestrate-orca", "references", "methodology.md"),
+    "utf8",
+  );
+  assert.match(generated, /\[REDACTED:<kind>\]/);
+  assert.match(generated, /only\s+resembles a secret/);
+});
+
 test("the business framing says where the verbatim ledger lives and what it keeps", () => {
   const business = readFileSync(join(ROOT, "docs", "business.md"), "utf8");
   assert.match(business, /Дословные пользовательские интенты ведутся/);

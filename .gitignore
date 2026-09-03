@@ -4,3 +4,10 @@
 # which is what keeps a committed build artefact honest.
 node_modules
 .DS_Store
+
+# Build output of the retired TypeScript implementation and Python bytecode from
+# the templates on other branches. A candidate checkout must stay clean, because
+# §2.8 of the review contract turns a dirty worktree into `unknown`.
+dist/
+__pycache__/
+*.pyc
