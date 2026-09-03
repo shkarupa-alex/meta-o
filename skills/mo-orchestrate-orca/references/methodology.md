@@ -168,6 +168,8 @@ or subscription boundaries require the user's explicit authorization for the
 exact named action. An unreadable or incomplete gate is `unknown` and is
 repeated; there is no partial pass.
 
+
+
 When a named scenario genuinely needs a model actor, deterministic proof remains
 preferred. Use only the user-approved low-cost test selection: Claude
 `sonnet5/low`, Codex `gpt-5.6-terra/low`, or the configured OpenCode profile for

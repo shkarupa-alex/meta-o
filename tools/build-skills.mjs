@@ -55,10 +55,12 @@ const SOURCE_ANCHOR = /^<!-- mo:source-anchor (§A-[A-Z][A-Z0-9-]*-[0-9]{2}) -->
 /**
  * Remove source-only architecture markers without serializing the Markdown.
  *
- * Positional deletion preserves every authored byte except the marker and one
- * optional adjacent ASCII space. Parsing first is load-bearing: text that only
- * resembles a marker inside code, prose or a malformed comment must stop the
- * build instead of silently changing the published instructions.
+ * Positional deletion preserves every authored byte except the marker span, so
+ * the block structure around the marker survives byte for byte. Taking the
+ * adjacent line breaks too would join the blocks the marker stood between and
+ * silently rewrite the published instruction. Parsing first is load-bearing:
+ * text that only resembles a marker inside code, prose or a malformed comment
+ * must stop the build instead of changing the published instructions.
  *
  * Implements §A-MEMORY-01.
  */
@@ -91,14 +93,7 @@ export function stripSourceAnchors(source, label = "Markdown source") {
   }
 
   let result = source;
-  for (const [rawStart, rawEnd] of spans.sort((left, right) => right[0] - left[0])) {
-    let start = rawStart;
-    let end = rawEnd;
-    if (result[start - 1] === "\n") {
-      start -= 1;
-      if (result[start - 1] === "\r") start -= 1;
-    }
-    if (result[end] === "\n") end += 1;
+  for (const [start, end] of spans.sort((left, right) => right[0] - left[0])) {
     result = result.slice(0, start) + result.slice(end);
   }
   return result;

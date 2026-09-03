@@ -21,6 +21,8 @@ import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { fromMarkdown } from "mdast-util-from-markdown";
+
 import {
   ALLOWED_FRONTMATTER,
   SHARED_PLAN,
@@ -186,9 +188,77 @@ test("watchdog is shipped executable and source/build file sets agree", () => {
   assert.ok(walk(OUTPUT).length > EXPECTED.length);
 });
 
+function semantic(node) {
+  if (Array.isArray(node)) return node.map(semantic);
+  if (!node || typeof node !== "object") return node;
+  return Object.fromEntries(
+    Object.entries(node)
+      .filter(([key]) => key !== "position")
+      .map(([key, value]) => [key, semantic(value)]),
+  );
+}
+
+function markerSpans(source) {
+  const spans = [];
+  const visit = (node) => {
+    if (node.type === "html" && String(node.value).includes("mo:source-anchor")) {
+      spans.push([node.position.start.offset, node.position.end.offset]);
+    }
+    for (const child of node.children ?? []) visit(child);
+  };
+  visit(fromMarkdown(source));
+  return spans;
+}
+
+/**
+ * The published instruction must differ from its source by the marker nodes and
+ * nothing else, so this compares the reparsed trees rather than a hand-written
+ * expected string: an expectation written by hand is what let the stripper eat
+ * the line breaks around a marker and merge two blocks into one.
+ */
+function assertOnlyMarkersRemoved(source) {
+  const result = stripSourceAnchors(source);
+  const expected = fromMarkdown(source);
+  expected.children = expected.children.filter(
+    (node) => !(node.type === "html" && String(node.value).includes("mo:source-anchor")),
+  );
+  assert.deepEqual(semantic(fromMarkdown(result)), semantic(expected));
+  assert.doesNotMatch(result, /mo:source-anchor/);
+  let retained = "";
+  let cursor = 0;
+  for (const [start, end] of markerSpans(source)) {
+    retained += source.slice(cursor, start);
+    cursor = end;
+  }
+  retained += source.slice(cursor);
+  assert.equal(result, retained);
+  return result;
+}
+
 test("source anchors are stripped positionally and malformed placements fail closed", () => {
-  const source = "Before.\n\n<!-- mo:source-anchor §A-MEMORY-01 -->\n\nAfter `§A-MEMORY-01`.\n";
-  assert.equal(stripSourceAnchors(source), "Before.\n\nAfter `§A-MEMORY-01`.\n");
+  assertOnlyMarkersRemoved(
+    "Before.\n\n<!-- mo:source-anchor §A-MEMORY-01 -->\n\nAfter `§A-MEMORY-01`.\n",
+  );
+  // A comment interrupts a paragraph in CommonMark, so these are two blocks in
+  // the source and must stay two blocks in the published instruction.
+  const tight = assertOnlyMarkersRemoved("Before\n<!-- mo:source-anchor §A-MEMORY-01 -->\nAfter\n");
+  assert.equal(tight, "Before\n\nAfter\n");
+  assert.throws(
+    () => stripSourceAnchors("<!-- mo:source-anchor §A-MEMORY-01 --> \n"),
+    /malformed source anchor/,
+  );
+  assert.throws(
+    () => stripSourceAnchors(" <!-- mo:source-anchor §A-MEMORY-01 -->\n"),
+    /malformed source anchor/,
+  );
+  assertOnlyMarkersRemoved(
+    "# Title\n\n<!-- mo:source-anchor §A-MEMORY-01 -->\n\n- item\n\n" +
+      "<!-- mo:source-anchor §A-EVAL-01 -->\n\nTail.\n",
+  );
+  for (const relative of walk(join(ROOT, "shared", "references"))) {
+    const authored = readFileSync(join(ROOT, "shared", "references", relative), "utf8");
+    if (authored.includes("mo:source-anchor")) assertOnlyMarkersRemoved(authored);
+  }
   assert.throws(
     () => stripSourceAnchors("Before <!-- mo:source-anchor §A-MEMORY-01 --> after.\n"),
     /outside a standalone HTML marker/,
