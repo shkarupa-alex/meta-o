@@ -153,43 +153,48 @@ export function parseSelection(value) {
   };
 }
 
+// §A-EVAL-01: an approved testing profile has to name one exact provider model
+// id at the approved effort. A floating alias resolves to whatever the provider
+// ships next — possibly a far more expensive model — and a substring test on the
+// generation digit also matches the tail of a release date, which is how
+// `claude-sonnet-4-5-20250929` and `deepseek-v3-4-flash` passed as the approved
+// generation. The provider prefix stays free-form because the real ids live in
+// the user's configuration and are not hardcoded here.
+const TESTING_PROFILES = {
+  testClaude: {
+    route: "claude",
+    effort: "low",
+    id: /^(?:claude-)?sonnet-?5(?:[.-]\d+)?(?:-\d{8})?$/u,
+    requirement: "testClaude must name an exact sonnet5/low model id through claude",
+  },
+  testCodex: {
+    route: "codex",
+    effort: "low",
+    id: /^gpt-5\.6-terra$/u,
+    requirement: "testCodex must be codex/gpt-5.6-terra/low",
+  },
+  testOpenCode: {
+    route: "opencode",
+    effort: "low",
+    id: /^deepseek-?v?4(?:[.-]\d+)?-flash$/u,
+    requirement:
+      "testOpenCode must name an exact deepseek 4 flash model id " +
+      "through opencode at low effort",
+  },
+};
+
 /** §A-EVAL-01 rejects testing selections outside the approved low-cost routes. */
 export function testingPolicyError(role, value) {
+  const profile = TESTING_PROFILES[role];
+  if (!profile) return null;
   const selection = typeof value === "string" ? parseSelection(value) : value;
-  if (role === "testClaude") {
-    const normalizedModel = selection.model
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/gu, " ")
-      .trim();
-    const namesApprovedProfile =
-      normalizedModel === "sonnet" ||
-      normalizedModel === "sonnet5" ||
-      (normalizedModel.includes("sonnet") && /(?:^| )5(?: |$)/u.test(normalizedModel));
-    if (selection.route !== "claude" || selection.effort !== "low" || !namesApprovedProfile) {
-      return "testClaude must identify the configured sonnet5/low profile through claude";
-    }
-  } else if (role === "testCodex") {
-    if (
-      selection.route !== "codex" ||
-      selection.model !== "gpt-5.6-terra" ||
-      selection.effort !== "low"
-    ) {
-      return "testCodex must be codex/gpt-5.6-terra/low";
-    }
-  } else if (role === "testOpenCode") {
-    const normalizedModel = selection.model.toLowerCase().replace(/[^a-z0-9]+/g, " ");
-    const namesApprovedProfile =
-      normalizedModel.includes("deepseek") &&
-      /(?:^| )v?4(?: |$)/u.test(normalizedModel) &&
-      normalizedModel.includes("flash");
-    if (selection.route !== "opencode" || selection.effort !== "low" || !namesApprovedProfile) {
-      return (
-        "testOpenCode must identify the configured deepseek 4 flash profile " +
-        "through opencode at low effort"
-      );
-    }
+  // An OpenCode selection carries `provider/model`; the id is the last segment.
+  const identifier = selection.model.split("/").pop() ?? "";
+  const namesApprovedProfile = profile.id.test(identifier.toLowerCase());
+  if (selection.route !== profile.route || selection.effort !== profile.effort) {
+    return profile.requirement;
   }
-  return null;
+  return namesApprovedProfile ? null : profile.requirement;
 }
 
 function validateEffectiveRoles(roles) {

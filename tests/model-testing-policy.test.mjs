@@ -38,6 +38,8 @@ test("lifecycle makes model actors named, applicable and fail closed", () => {
   assert.match(methodology, /`blocked\|not_run`/);
   assert.match(methodology, /`not_applicable`/);
   assert.match(methodology, /Never raise\s+model cost\/effort or fall back automatically/);
+  assert.match(methodology, /floating family alias/);
+  assert.match(methodology, /launch\.requested == launch\.effective/);
 });
 
 test("generated methodology removes the source-only architecture marker", () => {
@@ -55,12 +57,31 @@ test("OpenCode testing identity cannot silently select the Qwen orchestrator", (
   );
 });
 
-test("the Claude testing profile resolves real Sonnet ids instead of a hard-coded label", () => {
-  assert.equal(testingPolicyError("testClaude", "claude/sonnet/low"), null);
-  assert.equal(testingPolicyError("testClaude", "claude/claude-sonnet-5/low"), null);
-  assert.equal(testingPolicyError("testClaude", "claude/sonnet5/low"), null);
+test("the testing profiles accept an exact model id and reject a floating alias", () => {
+  for (const accepted of [
+    "claude/sonnet5/low",
+    "claude/claude-sonnet-5/low",
+    "claude/claude-sonnet-5-20260401/low",
+  ]) {
+    assert.equal(testingPolicyError("testClaude", accepted), null, accepted);
+  }
+  // A bare family name is whatever the provider ships next, so it cannot prove
+  // the approved profile even though it reads like it.
+  assert.match(testingPolicyError("testClaude", "claude/sonnet/low"), /exact/u);
+  // The generation digit must be the model's own, not the tail of a date or of
+  // an older generation's version pair.
+  assert.match(
+    testingPolicyError("testClaude", "claude/claude-sonnet-4-5-20250929/low"),
+    /sonnet5\/low/u,
+  );
   assert.match(testingPolicyError("testClaude", "claude/sonnet/medium"), /sonnet5\/low/u);
   assert.match(testingPolicyError("testClaude", "claude/opus-5/low"), /sonnet5\/low/u);
+  assert.match(testingPolicyError("testCodex", "codex/gpt-5.6/low"), /gpt-5\.6-terra/u);
+  assert.match(
+    testingPolicyError("testOpenCode", "opencode/deepseek/deepseek-v3-4-flash/low"),
+    /deepseek 4 flash/u,
+  );
+  assert.equal(testingPolicyError("executor", "codex/gpt-5.6-sol/medium"), null);
 });
 
 test("the consumed show path rejects hand-written expensive or invalid selections", () => {

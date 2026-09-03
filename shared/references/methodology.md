@@ -78,6 +78,14 @@ orchestrator by default; vendor diversity improves the chance that the
 orchestrator can help when an executor misses a premise. Reviewers use different
 vendors, and at least one reviewer vendor differs from the executor.
 
+An approved selection names an exact provider model id. A floating family alias
+such as `opus` or `sonnet` is not enough: it resolves to whatever the provider
+currently ships, which may be a different generation or a far more expensive
+model tomorrow. Resolve the configured id against the route catalogue with
+`mo-models.mjs --catalog --route <route>`, and treat the role as approved only
+once a real launch reports `launch.requested == launch.effective` for model and
+effort.
+
 Give the executor a short task, normally two to five sentences. For a large
 task, include the accessible path to the specification; it need not be
 repository-relative or tracked. Include the complete user-intent ledger by path

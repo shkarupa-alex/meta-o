@@ -19612,26 +19612,36 @@ function parseSelection(value) {
     effort: parts[parts.length - 1]
   };
 }
-function testingPolicyError(role, value) {
-  const selection = typeof value === "string" ? parseSelection(value) : value;
-  if (role === "testClaude") {
-    const normalizedModel = selection.model.toLowerCase().replace(/[^a-z0-9]+/gu, " ").trim();
-    const namesApprovedProfile = normalizedModel === "sonnet" || normalizedModel === "sonnet5" || normalizedModel.includes("sonnet") && /(?:^| )5(?: |$)/u.test(normalizedModel);
-    if (selection.route !== "claude" || selection.effort !== "low" || !namesApprovedProfile) {
-      return "testClaude must identify the configured sonnet5/low profile through claude";
-    }
-  } else if (role === "testCodex") {
-    if (selection.route !== "codex" || selection.model !== "gpt-5.6-terra" || selection.effort !== "low") {
-      return "testCodex must be codex/gpt-5.6-terra/low";
-    }
-  } else if (role === "testOpenCode") {
-    const normalizedModel = selection.model.toLowerCase().replace(/[^a-z0-9]+/g, " ");
-    const namesApprovedProfile = normalizedModel.includes("deepseek") && /(?:^| )v?4(?: |$)/u.test(normalizedModel) && normalizedModel.includes("flash");
-    if (selection.route !== "opencode" || selection.effort !== "low" || !namesApprovedProfile) {
-      return "testOpenCode must identify the configured deepseek 4 flash profile through opencode at low effort";
-    }
+var TESTING_PROFILES = {
+  testClaude: {
+    route: "claude",
+    effort: "low",
+    id: /^(?:claude-)?sonnet-?5(?:[.-]\d+)?(?:-\d{8})?$/u,
+    requirement: "testClaude must name an exact sonnet5/low model id through claude"
+  },
+  testCodex: {
+    route: "codex",
+    effort: "low",
+    id: /^gpt-5\.6-terra$/u,
+    requirement: "testCodex must be codex/gpt-5.6-terra/low"
+  },
+  testOpenCode: {
+    route: "opencode",
+    effort: "low",
+    id: /^deepseek-?v?4(?:[.-]\d+)?-flash$/u,
+    requirement: "testOpenCode must name an exact deepseek 4 flash model id through opencode at low effort"
   }
-  return null;
+};
+function testingPolicyError(role, value) {
+  const profile = TESTING_PROFILES[role];
+  if (!profile) return null;
+  const selection = typeof value === "string" ? parseSelection(value) : value;
+  const identifier = selection.model.split("/").pop() ?? "";
+  const namesApprovedProfile = profile.id.test(identifier.toLowerCase());
+  if (selection.route !== profile.route || selection.effort !== profile.effort) {
+    return profile.requirement;
+  }
+  return namesApprovedProfile ? null : profile.requirement;
 }
 function validateEffectiveRoles(roles) {
   for (const [role, value] of Object.entries(roles)) {
