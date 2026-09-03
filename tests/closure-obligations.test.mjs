@@ -35,7 +35,6 @@ const DOCS = {
   caps: read("docs", "backend-capabilities.md"),
   acc: read("docs", "acceptance.md"),
   biz: read("docs", "business.md"),
-  glos: read("docs", "glossary.md"),
   wclass: read("docs", "architecture", "watchdog-local-classifier.md"),
   wdedup: read("docs", "architecture", "watchdog-nudge-deduplication.md"),
   ident: read("docs", "architecture", "knowledge-identifiers.md"),
@@ -43,6 +42,7 @@ const DOCS = {
   ensem: read("docs", "architecture", "review-ensemble-boundary.md"),
   reuse: read("docs", "architecture", "reuse-evidence.md"),
   jsgate: read("docs", "architecture", "javascript-quality-gate.md"),
+  post: read("docs", "architecture", "provider-posture-script.md"),
   settled: read("docs", "architecture", "settled-final-response.md"),
   first: read("docs", "architecture", "skills-first.md"),
   frskill: read("src", "skills", "find-reuse", "SKILL.md"),
@@ -82,7 +82,7 @@ const OBLIGATIONS = [
     "O-BL-01",
     "a local watchdog classifier stays a bounded rejected experiment",
     {
-      wclass: [/эксперимент|experiment/iu],
+      wclass: [/Статус: принято, эксперимент отклонён архитектурно/u],
       wdog: [/optional local classifier is a bounded credential-free experiment/],
     },
   ],
@@ -91,7 +91,8 @@ const OBLIGATIONS = [
     "symbol-level purpose reaches every exported declaration and names the shell boundary",
     {
       ident: [/exported function\/class declarations несут JSDoc/, /machine-checked module header/],
-      jsgate: [/jsdoc/i],
+      jsgate: [/JSDoc у public API и classes/u],
+      purp: [/a module purpose names the architecture id; a symbol names its module or the/],
     },
   ],
   [
@@ -99,6 +100,13 @@ const OBLIGATIONS = [
     "generated skills contain no source-only architecture anchor",
     {
       ident: [/mo:source-anchor/],
+    },
+    () => {
+      const generated = spawnSync("git", ["ls-files", "skills"], { cwd: ROOT, encoding: "utf8" })
+        .stdout.split("\n")
+        .filter((path) => path.endsWith(".md"));
+      assert.ok(generated.length > 0, "no generated skill document is tracked");
+      for (const path of generated) assert.doesNotMatch(read(path), /mo:source-anchor/u);
     },
   ],
   [
@@ -113,7 +121,7 @@ const OBLIGATIONS = [
     "a real review run has a pair barrier, hot remediation and a fresh final pair",
     {
       life: [/keep both remediation reviewer sessions hot/, /two fresh independent reviewers/],
-      e2e: [/B19/],
+      e2e: [/Запустить fresh final review pair/u],
     },
   ],
   [
@@ -131,14 +139,20 @@ const OBLIGATIONS = [
     "O-BL-07",
     "an ensemble of reviewers stays deferred behind a registered differential eval",
     {
-      ensem: [/differential/iu],
+      ensem: [
+        /differential eval остаётся условием только для будущего пересмотра границы, не\s+отложенной обязательной работой/u,
+        /Отмена §A-REVIEW-02 требует pre-registered differential eval/u,
+      ],
     },
   ],
   [
     "O-BL-08",
     "production comments cite durable contracts, never review finding ids",
     {
-      rev: [/never finding ids/],
+      rev: [
+        /never finding ids/,
+        /Comments in production\s+code must cite durable business\/architecture contracts/,
+      ],
     },
   ],
   [
@@ -153,7 +167,10 @@ const OBLIGATIONS = [
     "O-BL-10",
     "the review skill runs only on an explicit request",
     {
-      revskill: [/description:.*review/is],
+      revskill: [
+        /description: Independently review one exact candidate with two vendor-diverse Orca workers/,
+        /Accept only an exact 40-hex `candidate_sha`, intent source, scope, mode and two\s+user-approved reviewer selections/,
+      ],
     },
   ],
   [
@@ -188,8 +205,11 @@ const OBLIGATIONS = [
     "O-BL-14",
     "the raw real-runs ledger closes through a lossless map, not a summary",
     {
-      ident: [/§A-MEMORY-03/, /closure map/i],
-      acc: [/Frozen blob/],
+      ident: [
+        /Временная closure map существует только в checkpoint-коммите/u,
+        /Он не\s+считает структурную биекцию доказательством семантического закрытия/u,
+      ],
+      acc: [/Карта даёт каждому obligation\s+собственную executable proof command/u],
     },
   ],
 
@@ -217,7 +237,10 @@ const OBLIGATIONS = [
     "O-RR-003",
     "the lifecycle starts only in a clean feature branch based on current develop",
     {
-      life: [/clean `feature\/<short-slug>` task branch based on an up-to-date/],
+      life: [
+        /clean `feature\/<short-slug>` task branch based on an up-to-date/,
+        /never develop on `main`, `master`, `develop` or `default`/,
+      ],
     },
   ],
   [
@@ -262,7 +285,7 @@ const OBLIGATIONS = [
     "O-RR-009",
     "provider auth is probed through the current CLI surface, not wrapper help",
     {
-      proj: [/posture/i],
+      proj: [/Missing, divergent or unreadable posture is not support/],
       mech: [/documented provider-native auth status command/],
     },
   ],
@@ -280,7 +303,10 @@ const OBLIGATIONS = [
     "O-RR-011",
     "fresh native auth over a stale projection still needs one exact approved launch",
     {
-      mech: [/A verified launch yields readiness with `stale_account_cache`/],
+      mech: [
+        /A verified launch yields readiness with `stale_account_cache`/,
+        /only a documented read-only refresh\/recheck and one exact approved live launch/,
+      ],
     },
   ],
   [
@@ -289,6 +315,9 @@ const OBLIGATIONS = [
     {
       life: [/floating family alias/, /launch\.requested == launch\.effective/],
       mech: [/`launch\.requested == launch\.effective` for model and effort/],
+      evalp: [
+        /сверяет requested\/effective route, model и effort и не\s+делает автоматический fallback/u,
+      ],
     },
   ],
   [
@@ -303,7 +332,10 @@ const OBLIGATIONS = [
     "O-RR-014",
     "a bare shell cannot settle work with a fabricated completion",
     {
-      mech: [/`worker_done` from a bare shell or expired Dispatch cannot\s+settle work/],
+      mech: [
+        /`worker_done` from a bare shell or expired Dispatch cannot\s+settle work/,
+        /Public capability belongs to the exact Dispatch\/turn\/process and expires on\s+exit or replacement/,
+      ],
     },
   ],
   [
@@ -338,7 +370,7 @@ const OBLIGATIONS = [
     "O-RR-018",
     "the bundled model helper is a named preflight dependency of the entry skill",
     {
-      orcskill: [/mo-models\.mjs/],
+      orcskill: [/Read role selections with bundled `scripts\/mo-models\.mjs --show --project/],
       life: [/`mo-models\.mjs --show --project <root>`/],
     },
   ],
@@ -347,7 +379,9 @@ const OBLIGATIONS = [
     "the orchestrator edits no task, ledger, business or delivery artifact",
     {
       life: [/It does not inspect, judge\s+or edit product code/],
-      first: [/orchestrat/i],
+      first: [
+        /Orchestrator управляет процессом и сессиями, но не читает, не оценивает и не\s+редактирует product code/u,
+      ],
     },
   ],
   [
@@ -368,7 +402,7 @@ const OBLIGATIONS = [
     {
       bcon: [/expose agent and harness-UI questions and accept an answer/],
       life: [/ordinary public question and permission surfaces/],
-      e2e: [/B6/],
+      e2e: [/Задать и ответить на обычный и harness-UI вопрос/u],
     },
   ],
   [
@@ -377,7 +411,7 @@ const OBLIGATIONS = [
     {
       mech: [/An early message must wake the wait/],
       life: [/Re-read state at a sane interval measured in minutes/],
-      e2e: [/B16/],
+      e2e: [/Разбудить blocking wait early и обработать quiet timeout/u],
     },
   ],
   [
@@ -392,7 +426,10 @@ const OBLIGATIONS = [
     "O-RR-024",
     "contaminated isolation is repaired by an exact replacement, not by broadening authority",
     {
-      mech: [/preserve the decision and create an exact replacement when isolation is needed/],
+      mech: [
+        /A direct user message contaminates the prior isolated role/,
+        /preserve the decision and create an exact replacement when isolation is needed/,
+      ],
     },
   ],
   [
@@ -429,7 +466,7 @@ const OBLIGATIONS = [
     "a ready completion wakes the coordinator without a user ping",
     {
       mech: [/orca orchestration check --wait/],
-      e2e: [/B16/],
+      e2e: [/Event будит wait; timeout создаёт один checkpoint без restart/u],
     },
   ],
   [
@@ -453,7 +490,10 @@ const OBLIGATIONS = [
     "O-RR-031",
     "the per-slice attempt budget does not reset and does not replace settlement",
     {
-      life: [/at most five paired review\/fix attempts; a remediation SHA\s+does not reset it/],
+      life: [
+        /at most five paired review\/fix attempts; a remediation SHA\s+does not reset it/,
+        /After attempt five, complete the active remediation, then move to the next/,
+      ],
     },
   ],
   [
@@ -480,6 +520,9 @@ const OBLIGATIONS = [
     {
       mech: [/A low-level injected terminal is not a supervised worker resource/],
       wdog: [/`term_` handle is the authorized nudge target/],
+      wdedup: [
+        /Перед разрешённым nudge pattern watchdog хранит одну mode-`0600` запись на\s+backend locator/u,
+      ],
     },
   ],
   [
@@ -496,6 +539,7 @@ const OBLIGATIONS = [
     {
       mech: [
         /A failed or uncertain worker follows the exact recovery action in its\s+public receipt/,
+        /Keep the executor and remediation reviewers in their exact owned terminals/,
       ],
     },
   ],
@@ -516,7 +560,7 @@ const OBLIGATIONS = [
     {
       mech: [/require the worker to place its full final response in that\s+message/],
       life: [/Do not merge, rank, hash, encode, split, truncate or\s+summarize their responses/],
-      e2e: [/B9/],
+      e2e: [/Начальный, средний и конечный markers целы/u],
     },
   ],
   [
@@ -558,7 +602,10 @@ const OBLIGATIONS = [
     "O-RR-043",
     "an ordinary follow-up uses the documented message surface only",
     {
-      mech: [/Use\s+`orchestration send --to dispatch:<id>` for ordinary follow-ups/],
+      mech: [
+        /Use\s+`orchestration send --to dispatch:<id>` for ordinary follow-ups/,
+        /Use the exact returned run, task, dispatch and terminal identities/,
+      ],
     },
   ],
   [
@@ -583,8 +630,14 @@ const OBLIGATIONS = [
     "O-RR-046",
     "a reviewer never backgrounds or overlaps the full quality gate",
     {
-      life: [/Reviewer diagnostics are non-mutating/],
-      rev: [/Never edit the candidate or run a\s+mutating formatter\/fixer in its worktree/],
+      life: [
+        /It runs in the foreground to a terminal exit\s+status, one run at a time per candidate worktree, and never through `nohup`, `&`\s+or another detached form whose immediate `0` is not a suite result/,
+      ],
+      rev: [
+        /run at most one full\s+gate per candidate, in the foreground/,
+        /Never launch it with `nohup`, `&` or another detached form/,
+        /A detached, overlapped or unreaped run is `UNKNOWN` for this\s+reviewer/,
+      ],
     },
   ],
   [
@@ -599,8 +652,14 @@ const OBLIGATIONS = [
     "O-RR-048",
     "the deterministic gate leaves no descendant process behind",
     {
-      jsgate: [/process|gate/i],
-      life: [/without modifying\s+the worktree/],
+      life: [
+        /A repeated\s+run is independent proof only once the previous run's descendants are gone/,
+      ],
+      rev: [
+        /wait for the exact process this review owns and confirm it left no\s+orphan descendant/,
+        /a host-sensitive failure under those conditions is not reported as\s+a candidate finding without clean process evidence/,
+      ],
+      post: [/Script владеет одной process group и читает private NUL-framed child evidence/u],
     },
   ],
   [
@@ -636,8 +695,12 @@ const OBLIGATIONS = [
     "O-RR-052",
     "two reviewers cannot run the host-sensitive full gate concurrently",
     {
-      life: [/Run the project's deterministic QC on the frozen candidate without modifying/],
-      acc: [/QC/],
+      life: [
+        /the orchestrator owns the sequencing of that\s+gate between them: it serializes the runs through one shared lock or gives each\s+reviewer its own worktree/,
+        /never starts a second full gate against a\s+worktree that already has one running/,
+      ],
+      rev: [/only after the caller grants the\s+shared lock or a worktree of your own/],
+      acc: [/Host-sensitive full gate сериализован, foreground и без orphan-процессов/u],
     },
   ],
   [
@@ -654,7 +717,7 @@ const OBLIGATIONS = [
     "O-RR-054",
     "discovery origin and the pinned inventory must agree before an external call",
     {
-      reuse: [/adapter/i],
+      reuse: [/хранит обязательные source adapters как данные/u],
       frskill: [/Reject an absent or unknown contract before\s+searching/],
     },
   ],
@@ -683,6 +746,9 @@ const OBLIGATIONS = [
       life: [
         /any diagnostic capable of\s+rewriting tracked files runs only in an isolated disposable copy/,
       ],
+      rev: [
+        /Targeted read-only checks are always allowed; report their exact command and\s+environment/,
+      ],
     },
   ],
   [
@@ -690,7 +756,7 @@ const OBLIGATIONS = [
     "a known wrapper posture failure is applied instead of rediscovered",
     {
       mech: [/Respect launch wrappers/],
-      proj: [/wrapper|posture/i],
+      proj: [/Check workspace trust,\s+hooks and wrappers without printing secrets/],
     },
   ],
   [
@@ -711,6 +777,9 @@ const OBLIGATIONS = [
     {
       mech: [
         /Public capability belongs to the exact Dispatch\/turn\/process and expires on\s+exit or replacement/,
+      ],
+      bcon: [
+        /`input_blocked` may be rebriefed or replaced; `output_blocked_after_work` must not\s+repeat product work/,
       ],
     },
   ],
@@ -758,7 +827,10 @@ const OBLIGATIONS = [
     "O-RR-065",
     "an injected prompt requires a verified idle harness input first",
     {
-      mech: [/orca terminal wait --terminal <handle> --for tui-idle/],
+      mech: [
+        /orca terminal wait --terminal <handle> --for tui-idle/,
+        /wait for `tui-idle`, and inject the task into that terminal/,
+      ],
     },
   ],
   [
@@ -775,7 +847,10 @@ const OBLIGATIONS = [
     "O-RR-067",
     "an observer seeds the current typed state before reporting a change",
     {
-      wdog: [/Seed the current typed state before reporting a change/],
+      wdog: [
+        /Seed the current typed state before reporting a change/,
+        /Queued nudge and delivered nudge are different; a receipt is never delivery/,
+      ],
     },
   ],
   [
@@ -816,7 +891,7 @@ const OBLIGATIONS = [
     "a lost coordinator pane is taken over through authorized public run state",
     {
       mech: [/retain exact run\/task\/dispatch\/terminal locators in current reasoning/],
-      e2e: [/B21|takeover/i],
+      e2e: [/Effect остаётся unknown; exact-owned cleanup сохраняет соседние ресурсы/u],
     },
   ],
   [
@@ -845,4 +920,54 @@ test("every obligation id is unique and addressable by its own name pattern", ()
   const ids = OBLIGATIONS.map(([id]) => id);
   assert.equal(new Set(ids).size, ids.length);
   for (const id of ids) assert.match(id, /^O-(?:BL|RR)-\d{2,3}$/u);
+});
+
+// A rule quoted from the shipped bundle proves an obligation; a keyword short
+// enough to appear by accident does not. The retired map closed 514 rows with a
+// command that never touched them, and a prettily named test asserting `/QC/`
+// repeats that at the scale of one row, so the shape of each proof is checked
+// too: either two quoted rules, or one rule plus an executable probe.
+const LITERAL_FLOOR = 12;
+
+function branches(pattern) {
+  const parts = [];
+  let depth = 0;
+  let current = "";
+  let escaped = false;
+  for (const character of pattern.source) {
+    if (escaped) {
+      escaped = false;
+      current += character;
+      continue;
+    }
+    if (character === "\\") {
+      escaped = true;
+      current += character;
+      continue;
+    }
+    if (character === "(" || character === "[") depth += 1;
+    if (character === ")" || character === "]") depth -= 1;
+    if (character === "|" && depth === 0) {
+      parts.push(current);
+      current = "";
+      continue;
+    }
+    current += character;
+  }
+  return [...parts, current];
+}
+
+test("every obligation proof quotes a specific rule instead of a keyword", () => {
+  const weak = [];
+  for (const [id, , requires, probe] of OBLIGATIONS) {
+    const patterns = Object.values(requires).flat();
+    if (patterns.length < 2 && !probe) weak.push(`${id} rests on one pattern without a probe`);
+    for (const pattern of patterns) {
+      for (const branch of branches(pattern)) {
+        const literal = branch.replace(/\\./gu, "").replace(/[^\p{L}\p{N}]/gu, "");
+        if (literal.length < LITERAL_FLOOR) weak.push(`${id}: ${pattern} matches on "${branch}"`);
+      }
+    }
+  }
+  assert.deepEqual(weak, []);
 });
