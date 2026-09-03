@@ -72,9 +72,9 @@ not require an entry merely to fill a category.
 ## Diagnostics
 
 Targeted read-only checks are always allowed; report their exact command and
-environment. The project's full gate is host-sensitive, so run at most one full
-gate per candidate, in the foreground, and only after the caller grants the
-shared lock or a worktree of your own.
+environment. The project's full gate is host-sensitive, so run one full gate at
+a time, in the foreground, and only after the caller grants the shared lock or a
+worktree of your own. A remediation SHA is a new candidate and gets its own run.
 
 Never launch it with `nohup`, `&` or another detached form. Before reading an
 exit status, wait for the exact process this review owns and confirm it left no

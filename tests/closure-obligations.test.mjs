@@ -634,7 +634,7 @@ const OBLIGATIONS = [
         /It runs in the foreground to a terminal exit\s+status, one run at a time per candidate worktree, and never through `nohup`, `&`\s+or another detached form whose immediate `0` is not a suite result/,
       ],
       rev: [
-        /run at most one full\s+gate per candidate, in the foreground/,
+        /run one full gate at\s+a time, in the foreground/,
         /Never launch it with `nohup`, `&` or another detached form/,
         /A detached, overlapped or unreaped run is `UNKNOWN` for this\s+reviewer/,
       ],
@@ -699,7 +699,7 @@ const OBLIGATIONS = [
         /the orchestrator owns the sequencing of that\s+gate between them: it serializes the runs through one shared lock or gives each\s+reviewer its own worktree/,
         /never starts a second full gate against a\s+worktree that already has one running/,
       ],
-      rev: [/only after the caller grants the\s+shared lock or a worktree of your own/],
+      rev: [/only after the caller grants the shared lock or a\s+worktree of your own/],
       acc: [/Host-sensitive full gate сериализован, foreground и без orphan-процессов/u],
     },
   ],
