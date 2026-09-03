@@ -77,6 +77,8 @@ read_target() {
 # A successful exit is not sufficient for JSON backends: wrappers and broken
 # controls can print diagnostics with status zero. Require the native target
 # envelope before any observation is trusted or any nudge can be delivered.
+# `observation` must be absent, null or an object: a scalar there passes every
+# field check and then breaks the snapshot the stability comparison depends on.
 validate_target() {
   WATCHDOG_BACKEND=$1
   WATCHDOG_SESSION=$2
@@ -89,6 +91,8 @@ validate_target() {
         and (.result.dispatch.status | type) == "string"
         and (.result.worker | type) == "object" and .result.worker.dispatch_id == $locator
         and (.result.worker.state | type) == "string"
+        and ((.result | has("observation") | not) or (.result.observation | type) == "null"
+          or (.result.observation | type) == "object")
         and (((.result.observation | type) != "object")
           or ((.result.observation | has("PendingPermissions") | not)
             or (.result.observation.PendingPermissions | type) == "array"))
@@ -102,6 +106,8 @@ validate_target() {
         .ok == true and (.result.dispatch | type) == "object"
         and .result.dispatch.task_id == $locator
         and (.result.dispatch.status | type) == "string"
+        and ((.result | has("observation") | not) or (.result.observation | type) == "null"
+          or (.result.observation | type) == "object")
         and (((.result.observation | type) != "object")
           or ((.result.observation | has("PendingPermissions") | not)
             or (.result.observation.PendingPermissions | type) == "array"))
@@ -509,8 +515,22 @@ if [ "$WATCHDOG_AFTER_STATUS" -ne 0 ]; then
     "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_AFTER_STATUS"
   exit "$WATCHDOG_AFTER_STATUS"
 fi
+# A snapshot that could not be built is not an unchanged snapshot. Without this
+# check two failed projections compare equal as empty strings and the nudge is
+# delivered against state nobody could read.
 WATCHDOG_STABLE_BEFORE=$(stable_snapshot "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_BEFORE")
-WATCHDOG_STABLE_AFTER=$(stable_snapshot "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_AFTER")
+WATCHDOG_SNAPSHOT_STATUS=$?
+if [ "$WATCHDOG_SNAPSHOT_STATUS" -eq 0 ]; then
+  WATCHDOG_STABLE_AFTER=$(stable_snapshot "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" "$WATCHDOG_AFTER")
+  WATCHDOG_SNAPSHOT_STATUS=$?
+fi
+if [ "$WATCHDOG_SNAPSHOT_STATUS" -ne 0 ] || [ -z "$WATCHDOG_STABLE_BEFORE" ] || \
+  [ -z "$WATCHDOG_STABLE_AFTER" ]; then
+  release_nudge_lock
+  /usr/bin/printf 'backend=%s session=%s status=%s state=unclassified action=observe-error\n' \
+    "$WATCHDOG_BACKEND" "$WATCHDOG_SESSION" 65
+  exit 65
+fi
 if [ "$WATCHDOG_STABLE_BEFORE" != "$WATCHDOG_STABLE_AFTER" ]; then
   release_nudge_lock
   /usr/bin/printf 'backend=%s session=%s state=changed action=suppressed\n' \

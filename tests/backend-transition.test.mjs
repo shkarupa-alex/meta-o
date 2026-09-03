@@ -64,6 +64,14 @@ function fakeOrca(root) {
 case "$*" in
   "orchestration worker-show --dispatch ctx_fixture --json")
     if [ -n "\${WATCHDOG_MALFORMED-}" ]; then echo not-json; exit 0; fi
+    if [ -n "\${WATCHDOG_SCALAR_OBSERVATION-}" ]; then
+      echo '{"ok":true,"result":{"dispatch":{"id":"ctx_fixture","status":"running"},"worker":{"dispatch_id":"ctx_fixture","state":"working"},"observation":"malformed"}}'
+      exit 0
+    fi
+    if [ -n "\${WATCHDOG_SCALAR_TERMINAL-}" ]; then
+      echo '{"ok":true,"result":{"dispatch":{"id":"ctx_fixture","status":"running"},"worker":{"dispatch_id":"ctx_fixture","state":"working"},"terminal":"malformed"}}'
+      exit 0
+    fi
     stage=\${WATCHDOG_STAGE_TEXT:-active}
     if [ -n "\${WATCHDOG_CHANGED-}" ]; then
       n=$(cat "$WATCHDOG_COUNT" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > "$WATCHDOG_COUNT"; stage="changed-$n"
@@ -300,6 +308,41 @@ test("watchdog validates, nudges, deduplicates, and suppresses changed Orca stat
   result = spawnSync(script, args, { env: { ...env, WATCHDOG_MALFORMED: "1" }, encoding: "utf8" });
   assert.equal(result.status, 65);
   assert.match(result.stdout, /action=observe-error/);
+});
+
+test("a malformed native observation blocks the nudge instead of shaping it", () => {
+  const root = mkdtempSync(join(tmpdir(), "mo-watchdog-orca-malformed-"));
+  temporary.push(root);
+  exposeFlock(root);
+  fakeOrca(root);
+  const log = join(root, "log");
+  const env = {
+    ...process.env,
+    PATH: `${root}:${SYSTEM_PATH}`,
+    WATCHDOG_LOG: log,
+    WATCHDOG_COUNT: join(root, "count"),
+    WATCHDOG_STATE_DIR: join(root, "state"),
+  };
+  const script = join(ROOT, "shared", "scripts", "mo-watchdog.sh");
+  const args = ["target", "--backend", "orca", "--session", "ctx_fixture", "--nudge", "continue"];
+  // A scalar `observation` satisfies every field the envelope check reads, and
+  // then the stability projection cannot index it.
+  let result = spawnSync(script, args, {
+    env: { ...env, WATCHDOG_SCALAR_OBSERVATION: "1" },
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 65);
+  assert.match(result.stdout, /action=observe-error/);
+  assert.equal(existsSync(log), false);
+  // A member the envelope check does not type still has to fail closed rather
+  // than compare two unbuildable snapshots as equal.
+  result = spawnSync(script, args, {
+    env: { ...env, WATCHDOG_SCALAR_TERMINAL: "1" },
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 65);
+  assert.match(result.stdout, /action=observe-error/);
+  assert.equal(existsSync(log), false);
 });
 
 test("watchdog serializes concurrent nudges and bounds unchanged-state history", async () => {
