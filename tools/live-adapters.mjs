@@ -3,6 +3,11 @@
 /**
  * Produce sanitized live evidence for find-reuse production adapter descriptors.
  *
+ * This is an evidence producer, not a rule: it invokes real third-party tools
+ * against real endpoints and strips their output down to what may be recorded.
+ * No linter or plugin performs an outbound call on the project's behalf, and
+ * this stays out of the offline gate for that reason.
+ *
  * Protects §A-REUSE-01.
  */
 

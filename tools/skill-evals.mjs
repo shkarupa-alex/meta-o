@@ -6,6 +6,14 @@
  * prompt for an explicitly selected harness and validates the returned JSON in
  * an external, untracked location.
  *
+ * A schema validator with project-owned configuration would cover the shape of
+ * one file and none of what actually fails: the corpus has to equal the skill
+ * inventory on disk, a case id has to agree with its own class, an envelope's
+ * candidate has to be a reachable Git object, and its effective identity has to
+ * satisfy the same approved-profile function the settings helper enforces. No
+ * schema language expresses those, so a schema would add a dependency and a
+ * second source of truth for the same contract without removing this code.
+ *
  * Implements §A-EVAL-01.
  */
 

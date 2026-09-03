@@ -3,6 +3,12 @@
 /**
  * Validate and exercise the find-reuse adapter data without a shell.
  *
+ * The descriptors' shape is the smaller half of the contract. The gate has to
+ * run each descriptor's documented argv and probe its endpoint through the Node
+ * HTTP client, so that a descriptor cannot claim a capability the tool does not
+ * have. A linter or schema validator cannot execute anything, and running the
+ * argv through a shell is exactly the interpolation this project forbids.
+ *
  * Protects §A-REUSE-01.
  */
 

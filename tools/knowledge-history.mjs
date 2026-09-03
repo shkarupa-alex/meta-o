@@ -7,6 +7,11 @@
  * therefore reads every historical Markdown blob through Git and parses headings
  * with mdast. It creates no baseline or state file.
  *
+ * No Markdown linter, ESLint plugin or hook reads earlier commits: they judge
+ * the working tree. The subject here is the commit graph itself — one deletion
+ * per parent edge, one authorization trailer per commit, one citation per tree
+ * — so there is nothing a mature tool's configuration could be pointed at.
+ *
  * Implements §A-MEMORY-01.
  */
 
