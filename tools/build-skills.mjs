@@ -94,9 +94,24 @@ export function stripSourceAnchors(source, label = "Markdown source") {
 
   let result = source;
   for (const [start, end] of spans.sort((left, right) => right[0] - left[0])) {
-    result = result.slice(0, start) + result.slice(end);
+    const [from, to] = markerLine(result, start, end);
+    result = result.slice(0, from) + result.slice(to);
   }
   return result;
+}
+
+/**
+ * Widen a marker span to its own line, but only when a blank line already
+ * delimits the marker on both sides. Removing just the span left the blank
+ * lines of the old separator behind, so a standalone marker shipped as three
+ * consecutive blank lines; removing the line unconditionally would instead
+ * join the neighbours of a marker that interrupts a paragraph into one block.
+ */
+function markerLine(source, start, end) {
+  const blankBefore = start >= 2 && source.slice(start - 2, start) === "\n\n";
+  const blankAfter =
+    source[end] === "\n" && (source[end + 1] === "\n" || end + 1 === source.length);
+  return blankBefore && blankAfter ? [start - 1, end + 1] : [start, end];
 }
 
 /** Strip architecture markers from every Markdown file in one generated skill. */

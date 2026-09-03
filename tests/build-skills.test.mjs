@@ -227,8 +227,16 @@ function assertOnlyMarkersRemoved(source) {
   let retained = "";
   let cursor = 0;
   for (const [start, end] of markerSpans(source)) {
-    retained += source.slice(cursor, start);
-    cursor = end;
+    // Independently modelled, not imported: a standalone marker takes its own
+    // line with it so the published copy keeps exactly one blank line, and a
+    // marker interrupting a paragraph keeps the line break that separates it.
+    const standalone =
+      start >= 2 &&
+      source.slice(start - 2, start) === "\n\n" &&
+      source[end] === "\n" &&
+      (source[end + 1] === "\n" || end + 1 === source.length);
+    retained += source.slice(cursor, standalone ? start - 1 : start);
+    cursor = standalone ? end + 1 : end;
   }
   retained += source.slice(cursor);
   assert.equal(result, retained);
@@ -236,8 +244,15 @@ function assertOnlyMarkersRemoved(source) {
 }
 
 test("source anchors are stripped positionally and malformed placements fail closed", () => {
-  assertOnlyMarkersRemoved(
+  const standalone = assertOnlyMarkersRemoved(
     "Before.\n\n<!-- mo:source-anchor §A-MEMORY-01 -->\n\nAfter `§A-MEMORY-01`.\n",
+  );
+  // The blank lines that delimited the marker are its own separator: leaving
+  // both behind shipped three consecutive blank lines to the installed skill.
+  assert.equal(standalone, "Before.\n\nAfter `§A-MEMORY-01`.\n");
+  assert.equal(
+    stripSourceAnchors("# Title\n\n<!-- mo:source-anchor §A-EVAL-01 -->\n"),
+    "# Title\n",
   );
   // A comment interrupts a paragraph in CommonMark, so these are two blocks in
   // the source and must stay two blocks in the published instruction.
@@ -271,6 +286,11 @@ test("source anchors are stripped positionally and malformed placements fail clo
     () => stripSourceAnchors("<!-- mo:source-anchor §A-memory-01 -->\n"),
     /malformed source anchor/,
   );
+  // markdownlint and prettier both exclude the generated tree, so the shipped
+  // bytes need their own guard against a marker's leftover blank line.
+  for (const relative of walk(OUTPUT).filter((path) => path.endsWith(".md"))) {
+    assert.doesNotMatch(readFileSync(join(OUTPUT, relative), "utf8"), /\n\n\n/u, relative);
+  }
 });
 
 test("find-reuse is portable and the retired name is absent", () => {
