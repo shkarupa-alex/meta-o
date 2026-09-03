@@ -7,7 +7,6 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import {
-  chmodSync,
   existsSync,
   mkdtempSync,
   readFileSync,
@@ -15,7 +14,6 @@ import {
   rmSync,
   statSync,
   symlinkSync,
-  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
@@ -24,9 +22,9 @@ import { fileURLToPath } from "node:url";
 
 import MarkdownIt from "markdown-it";
 
+import { SYSTEM_PATH, exposeFlock, fakeOrca } from "./fixtures/orca-control.mjs";
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const SYSTEM_PATH = "/usr/bin:/bin";
-const FLOCK = spawnSync("/bin/sh", ["-c", "command -v flock"], { encoding: "utf8" }).stdout.trim();
 const markdown = new MarkdownIt({ html: true, linkify: true });
 const temporary = [];
 after(() => temporary.forEach((path) => rmSync(path, { recursive: true, force: true })));
@@ -40,11 +38,6 @@ function files(path) {
   });
 }
 
-function exposeFlock(root) {
-  assert.notEqual(FLOCK, "", "test host must provide flock");
-  symlinkSync(FLOCK, join(root, "flock"));
-}
-
 function run(command, args, options) {
   return new Promise((resolve) => {
     const child = spawn(command, args, options);
@@ -54,48 +47,6 @@ function run(command, args, options) {
     child.stderr.on("data", (chunk) => (stderr += chunk));
     child.on("close", (status) => resolve({ status, stdout, stderr }));
   });
-}
-
-function fakeOrca(root) {
-  const path = join(root, "orca");
-  writeFileSync(
-    path,
-    `#!/bin/sh
-case "$*" in
-  "orchestration worker-show --dispatch ctx_fixture --json")
-    if [ -n "\${WATCHDOG_MALFORMED-}" ]; then echo not-json; exit 0; fi
-    if [ -n "\${WATCHDOG_SCALAR_OBSERVATION-}" ]; then
-      echo '{"ok":true,"result":{"dispatch":{"id":"ctx_fixture","status":"running"},"worker":{"dispatch_id":"ctx_fixture","state":"working"},"observation":"malformed"}}'
-      exit 0
-    fi
-    if [ -n "\${WATCHDOG_SCALAR_TERMINAL-}" ]; then
-      echo '{"ok":true,"result":{"dispatch":{"id":"ctx_fixture","status":"running"},"worker":{"dispatch_id":"ctx_fixture","state":"working"},"terminal":"malformed"}}'
-      exit 0
-    fi
-    stage=\${WATCHDOG_STAGE_TEXT:-active}
-    if [ -n "\${WATCHDOG_CHANGED-}" ]; then
-      n=$(cat "$WATCHDOG_COUNT" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > "$WATCHDOG_COUNT"; stage="changed-$n"
-    fi
-    printf '{"ok":true,"result":{"dispatch":{"id":"ctx_fixture","status":"running"},"worker":{"dispatch_id":"ctx_fixture","state":"working","stage":"%s"},"observation":{"status":"running"}}}\n' "$stage"
-    ;;
-  "terminal show --terminal term_fixture --json")
-    echo '{"ok":true,"result":{"terminal":{"handle":"term_fixture","connected":true,"orphaned":false}}}'
-    ;;
-  "orchestration send --to dispatch:ctx_fixture --subject Watchdog --body "*" --json"|"terminal send --terminal term_fixture --text "*" --enter --json")
-    if [ -n "\${WATCHDOG_SLOW_SEND-}" ]; then sleep 1; fi
-    printf '%s\n' "$*" >> "$WATCHDOG_LOG"; echo '{"accepted":true}'
-    ;;
-  "orchestration worker-list --json")
-    if [ -n "\${WATCHDOG_BAD_SCAN-}" ]; then echo '"wrong"'; else echo '{"result":{"workers":[{"dispatchId":"ctx_working","workerState":"working","dispatchStatus":"running"}]}}'; fi
-    ;;
-  "terminal list --json")
-    echo '{"result":{"terminals":[{"handle":"term_active","connected":true,"lastOutputAt":123}]}}'
-    ;;
-  *) exit 2 ;;
-esac
-`,
-  );
-  chmodSync(path, 0o755);
 }
 
 test("Herdr and Paseo survive only as README history", () => {

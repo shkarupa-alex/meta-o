@@ -11,10 +11,14 @@
  */
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
+
+import { SYSTEM_PATH, fakeOrca } from "./fixtures/orca-control.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (...parts) => readFileSync(join(ROOT, ...parts), "utf8");
@@ -45,6 +49,32 @@ const DOCS = {
   orcskill: read("src", "skills", "mo-orchestrate-orca", "SKILL.md"),
   revskill: read("src", "skills", "mo-review-orca", "SKILL.md"),
 };
+
+const temporary = [];
+after(() => temporary.forEach((path) => rmSync(path, { recursive: true, force: true })));
+
+/**
+ * Replay one real-run incident family against the fake public control. The
+ * watchdog is the executable Orca consumer this project owns, so a family the
+ * public surface exposes is proven by running it, not only by reading the rule
+ * that governs it.
+ */
+function observe(session, environment) {
+  const root = mkdtempSync(join(tmpdir(), "mo-closure-observe-"));
+  temporary.push(root);
+  fakeOrca(root);
+  return spawnSync(
+    join(ROOT, "shared", "scripts", "mo-watchdog.sh"),
+    ["target", "--backend", "orca", "--session", session],
+    { env: { ...process.env, PATH: `${root}:${SYSTEM_PATH}`, ...environment }, encoding: "utf8" },
+  );
+}
+
+function observedState(text) {
+  const result = observe("ctx_fixture", { WATCHDOG_STAGE_TEXT: text });
+  assert.equal(result.status, 0, result.stderr);
+  return result.stdout;
+}
 
 const OBLIGATIONS = [
   // docs/backlog.md
@@ -151,6 +181,8 @@ const OBLIGATIONS = [
       wdog: [/Selected model is at capacity/],
       bcon: [/capacity \| reconnecting/],
     },
+    () =>
+      assert.match(observedState("Selected model is at capacity. Try another."), /state=capacity/u),
   ],
   [
     "O-BL-14",
@@ -407,6 +439,7 @@ const OBLIGATIONS = [
       bcon: [/quota \| capacity/],
       wdog: [/quota\/limit \(including an available\s+reset time\)/],
     },
+    () => assert.match(observedState("subscription quota limit; reset at 12:00"), /state=quota/u),
   ],
   [
     "O-RR-030",
@@ -493,6 +526,7 @@ const OBLIGATIONS = [
       bcon: [/reconnecting \| compacted/],
       wdog: [/endless reconnecting/],
     },
+    () => assert.match(observedState("Reconnecting…"), /state=reconnecting/u),
   ],
   [
     "O-RR-040",
@@ -559,6 +593,7 @@ const OBLIGATIONS = [
     {
       bcon: [/output_blocked_after_work/],
     },
+    () => assert.match(observedState("output_blocked_after_work refused"), /state=refused/u),
   ],
   [
     "O-RR-048",
@@ -574,6 +609,11 @@ const OBLIGATIONS = [
     {
       mech: [/Sanitize each structured\s+observation and cap it at 8000 tokens/],
       bcon: [/Malformed identity or fields are `unknown`/],
+    },
+    () => {
+      const result = observe("ctx_fixture", { WATCHDOG_MALFORMED: "1" });
+      assert.equal(result.status, 65);
+      assert.match(result.stdout, /action=observe-error/u);
     },
   ],
   [
@@ -746,6 +786,12 @@ const OBLIGATIONS = [
         /connection is never promoted to agent\s+`working`, and raw preview text never overrides those process tokens/,
       ],
     },
+    () => {
+      const result = observe("term_fixture", {});
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /state=connected/u);
+      assert.doesNotMatch(result.stdout, /state=working/u);
+    },
   ],
   [
     "O-RR-069",
@@ -782,7 +828,7 @@ const OBLIGATIONS = [
   ],
 ];
 
-for (const [id, summary, requires] of OBLIGATIONS) {
+for (const [id, summary, requires, probe] of OBLIGATIONS) {
   test(`${id} ${summary}`, () => {
     const checks = Object.entries(requires);
     assert.ok(checks.length > 0, `${id} has no proof`);
@@ -791,6 +837,7 @@ for (const [id, summary, requires] of OBLIGATIONS) {
       assert.ok(source, `${id}: unknown document ${key}`);
       for (const pattern of patterns) assert.match(source, pattern, `${id}: ${key} ${pattern}`);
     }
+    probe?.();
   });
 }
 

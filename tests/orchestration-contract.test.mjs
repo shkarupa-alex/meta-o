@@ -36,6 +36,19 @@ test("lifecycle keeps the orchestrator out of product code and binds every gate 
   assert.doesNotMatch(source, /MO_[A-Z0-9_]+/);
 });
 
+test("the architecture says how a real-run incident family is regressed", () => {
+  const decision = readFileSync(join(ROOT, "docs", "architecture", "skills-first.md"), "utf8");
+  // Without this boundary the critical-suite requirement reads as a demand for
+  // a fake-Orca replay of agent behaviour, which needs the very driver this
+  // decision forbids.
+  assert.match(decision, /Fake-контроль воспроизводит/u);
+  assert.match(decision, /единственного исполняемого consumer этого проекта — watchdog/u);
+  assert.match(decision, /именованное\s+утверждение о конкретном правиле поставляемой инструкции/u);
+  assert.match(decision, /принятое ограничение, а не отложенная работа/u);
+  const obligations = readFileSync(join(ROOT, "tests", "closure-obligations.test.mjs"), "utf8");
+  assert.match(obligations, /fixtures\/orca-control\.mjs/u);
+});
+
 test("question and delegated-decision boundaries match the user contract", () => {
   const source = shared("methodology.md");
   assert.match(source, /roughly one agent-hour or less/);
