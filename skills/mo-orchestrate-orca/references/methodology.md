@@ -46,7 +46,11 @@ the orchestrator may read them but never edits product/spec commits.
 Before writing the ledger, replace an identified token, password, private key or
 credential-bearing URL with `[REDACTED:<kind>]`. If a value might be a secret and
 classification would change its meaning, stop with `needs_attention` before any
-commit. Never guess or collect the value in chat.
+commit. Never guess or collect the value in chat. An identifier that only
+resembles a secret — a full commit SHA, a UUID, a public package name or a model
+id — stays verbatim: redaction is for a value that actually grants access, and
+mangling an ordinary identifier destroys the ledger's meaning as surely as
+leaking a credential does.
 
 For a substantial new component or approved technology change, build a
 `find-reuse.request.v1` from generic requirements. Run `find-reuse` only when the

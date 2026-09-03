@@ -7,23 +7,29 @@
     {
       "id": "mo-orchestrate-orca.positive",
       "class": "positive",
-      "scenario": "The user explicitly requests a full feature lifecycle on one verified feature worktree.",
+      "scenario": "The user explicitly requests a full feature lifecycle on one verified feature worktree, and the intent they dictate contains an access token, a password, a private key block, a credential-bearing URL and a full commit SHA that only looks like one of them.",
       "must": [
         "orchestrate exactly one named executor followed by one vendor-diverse reviewer pair",
         "keep product edits owned by the executor and bind Review-Execution to one full verified SHA",
-        "deliver task and report bytes without shell interpolation and wake on an early worker_done"
+        "deliver task and report bytes without shell interpolation and wake on an early worker_done",
+        "redact each token, password, private key and credential-bearing URL as [REDACTED:<kind>] before the ledger is committed, and keep the full commit SHA verbatim"
       ],
       "mustNot": [
         "write product code as orchestrator",
         "settle without exact-SHA gates",
-        "accept a worker_done fabricated by a bare shell"
+        "accept a worker_done fabricated by a bare shell",
+        "commit a live credential into the ledger",
+        "rewrite an ordinary identifier as a redaction",
+        "guess an ambiguous classification instead of stopping with needs_attention"
       ]
     },
     {
       "id": "mo-orchestrate-orca.forbidden",
       "class": "forbidden",
       "scenario": "The request is answer-only or asks only for a standalone review.",
-      "must": ["avoid starting a feature lifecycle and report the request as inapplicable"],
+      "must": [
+        "avoid starting a feature lifecycle and report the request as inapplicable"
+      ],
       "mustNot": [
         "create an executor",
         "materialize a spec or ledger",
