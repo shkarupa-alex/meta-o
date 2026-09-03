@@ -174,6 +174,15 @@ Run the project's deterministic QC on the frozen candidate without modifying
 the worktree. Reviewer diagnostics are non-mutating; any diagnostic capable of
 rewriting tracked files runs only in an isolated disposable copy.
 
+The full gate is host-sensitive. It runs in the foreground to a terminal exit
+status, one run at a time per candidate worktree, and never through `nohup`, `&`
+or another detached form whose immediate `0` is not a suite result. A repeated
+run is independent proof only once the previous run's descendants are gone.
+Reviewers analyse in parallel, but the orchestrator owns the sequencing of that
+gate between them: it serializes the runs through one shared lock or gives each
+reviewer its own worktree, and never starts a second full gate against a
+worktree that already has one running.
+
 Read the project's E2E and acceptance-to-proof documents. Run applicable
 agent-required scenarios through `mo-e2e`. Production, destructive, credential
 or subscription boundaries require the user's explicit authorization for the

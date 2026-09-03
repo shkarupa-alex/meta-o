@@ -69,6 +69,19 @@ needs a reason, practical impact and next step, and must not be used as a
 progress tracker. Review changed entries and related existing deferrals, but do
 not require an entry merely to fill a category.
 
+## Diagnostics
+
+Targeted read-only checks are always allowed; report their exact command and
+environment. The project's full gate is host-sensitive, so run at most one full
+gate per candidate, in the foreground, and only after the caller grants the
+shared lock or a worktree of your own.
+
+Never launch it with `nohup`, `&` or another detached form. Before reading an
+exit status, wait for the exact process this review owns and confirm it left no
+orphan descendant. A detached, overlapped or unreaped run is `UNKNOWN` for this
+reviewer, and a host-sensitive failure under those conditions is not reported as
+a candidate finding without clean process evidence.
+
 ## Report
 
 Return one complete textual report with:
