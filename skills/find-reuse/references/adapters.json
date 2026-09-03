@@ -1,0 +1,549 @@
+[
+  {
+    "id": "local-git",
+    "ecosystems": ["any"],
+    "capabilities": ["semantic_search", "maintenance"],
+    "required_tools": ["git", "rg"],
+    "version_probe": ["git", "--version"],
+    "capability_probe": ["rg", "--help"],
+    "install_help": {
+      "macos": "xcode-select --install && brew install ripgrep",
+      "debian": "sudo apt-get install git ripgrep",
+      "windows": "winget install Git.Git BurntSushi.ripgrep.MSVC",
+      "other": "Install Git and ripgrep from their official distributions"
+    },
+    "base_url": "local://repository",
+    "auth_required": "never",
+    "operations": [
+      {
+        "capability": "semantic_search",
+        "transport": "argv",
+        "argv_or_url": ["rg", "-n", "-i", "{query}", "."],
+        "output": "text",
+        "success": { "exit_codes": [0, 1] },
+        "errors": {
+          "ENOENT": "tool_missing",
+          "2": "source_unavailable",
+          "unsupported": "adapter_unsupported",
+          "parse": "malformed"
+        }
+      },
+      {
+        "capability": "maintenance",
+        "transport": "argv",
+        "argv_or_url": ["git", "log", "-S", "{query}", "--oneline", "--all"],
+        "output": "text",
+        "success": { "exit_codes": [0] },
+        "errors": {
+          "ENOENT": "tool_missing",
+          "128": "source_unavailable",
+          "unsupported": "adapter_unsupported",
+          "parse": "malformed"
+        }
+      }
+    ],
+    "unavailable_fields": ["downloads", "reverse_dependencies"],
+    "last_verified": "2026-09-02"
+  },
+  {
+    "id": "github",
+    "ecosystems": ["any"],
+    "capabilities": ["semantic_search", "releases", "maintenance", "security"],
+    "required_tools": ["gh"],
+    "version_probe": ["gh", "--version"],
+    "capability_probe": ["gh", "search", "repos", "--help"],
+    "install_help": {
+      "macos": "brew install gh",
+      "debian": "Install gh from https://github.com/cli/cli/blob/trunk/docs/install_linux.md",
+      "windows": "winget install GitHub.cli",
+      "other": "Install gh from https://cli.github.com/"
+    },
+    "base_url": "https://api.github.com",
+    "test_base_url_env": "FIND_REUSE_GITHUB_BASE_URL",
+    "auth_required": "always",
+    "auth_probe": ["gh", "auth", "status"],
+    "login_help": "gh auth login",
+    "operations": [
+      {
+        "capability": "semantic_search",
+        "transport": "argv",
+        "argv_or_url": ["gh", "search", "repos", "{query}", "--limit", "30", "--json", "fullName,description,stargazersCount,pushedAt,license,url,isArchived"],
+        "output": "json",
+        "success": { "exit_codes": [0] },
+        "errors": { "ENOENT": "tool_missing", "4": "auth_missing", "429": "rate_limited", "parse": "malformed" }
+      },
+      {
+        "capability": "semantic_search",
+        "transport": "argv",
+        "argv_or_url": ["gh", "search", "code", "{query}", "--limit", "30", "--json", "repository,path,url"],
+        "output": "json",
+        "success": { "exit_codes": [0] },
+        "errors": { "ENOENT": "tool_missing", "4": "auth_missing", "429": "rate_limited", "parse": "malformed" }
+      },
+      {
+        "capability": "maintenance",
+        "provides": ["releases"],
+        "transport": "argv",
+        "argv_or_url": ["gh", "repo", "view", "{package}", "--json", "pushedAt,licenseInfo,issues,releases"],
+        "output": "json",
+        "success": { "exit_codes": [0] },
+        "errors": { "ENOENT": "tool_missing", "4": "auth_missing", "429": "rate_limited", "parse": "malformed" }
+      },
+      {
+        "capability": "security",
+        "transport": "argv",
+        "argv_or_url": ["gh", "api", "repos/{package}/security-advisories"],
+        "output": "json",
+        "success": { "exit_codes": [0] },
+        "errors": { "ENOENT": "tool_missing", "4": "auth_missing", "429": "rate_limited", "parse": "malformed" }
+      }
+    ],
+    "unavailable_fields": ["downloads", "reverse_dependencies"],
+    "last_verified": "2026-09-02"
+  },
+  {
+    "id": "gitlab",
+    "ecosystems": ["any"],
+    "capabilities": ["semantic_search", "releases", "maintenance", "security"],
+    "required_tools": ["glab"],
+    "version_probe": ["glab", "--version"],
+    "capability_probe": ["glab", "repo", "search", "--help"],
+    "install_help": {
+      "macos": "brew install glab",
+      "debian": "Install glab from https://gitlab.com/gitlab-org/cli/-/releases",
+      "windows": "winget install GLab.GLab",
+      "other": "Install glab from https://gitlab.com/gitlab-org/cli"
+    },
+    "base_url": "https://gitlab.com/api/v4",
+    "test_base_url_env": "FIND_REUSE_GITLAB_BASE_URL",
+    "auth_required": "always",
+    "auth_probe": ["glab", "auth", "status"],
+    "login_help": "glab auth login",
+    "operations": [
+      {
+        "capability": "semantic_search",
+        "transport": "argv",
+        "argv_or_url": ["glab", "repo", "search", "{query}", "--page", "1", "--per-page", "30", "--output", "json"],
+        "output": "json",
+        "success": { "exit_codes": [0] },
+        "errors": { "ENOENT": "tool_missing", "401": "auth_missing", "429": "rate_limited", "parse": "malformed" }
+      },
+      {
+        "capability": "semantic_search",
+        "transport": "argv",
+        "argv_or_url": ["glab", "api", "search?scope=blobs&search={encoded_query}"],
+        "output": "json",
+        "success": { "exit_codes": [0] },
+        "errors": { "ENOENT": "tool_missing", "401": "auth_missing", "429": "rate_limited", "parse": "malformed" }
+      },
+      {
+        "capability": "maintenance",
+        "provides": ["releases"],
+        "transport": "argv",
+        "argv_or_url": ["glab", "api", "projects/{encoded_package}"],
+        "output": "json",
+        "success": { "exit_codes": [0] },
+        "errors": { "ENOENT": "tool_missing", "401": "auth_missing", "429": "rate_limited", "parse": "malformed" }
+      },
+      {
+        "capability": "security",
+        "transport": "argv",
+        "argv_or_url": ["glab", "api", "projects/{encoded_package}/vulnerability_findings"],
+        "output": "json",
+        "success": { "exit_codes": [0] },
+        "errors": { "ENOENT": "tool_missing", "401": "auth_missing", "429": "rate_limited", "parse": "malformed" }
+      }
+    ],
+    "unavailable_fields": ["downloads", "reverse_dependencies"],
+    "last_verified": "2026-09-02"
+  },
+  {
+    "id": "npm",
+    "ecosystems": ["javascript", "typescript"],
+    "capabilities": ["name_search", "exact_lookup", "downloads", "releases", "maintenance"],
+    "required_tools": ["node", "npm"],
+    "version_probe": ["npm", "--version"],
+    "capability_probe": ["npm", "search", "--help"],
+    "install_help": {
+      "macos": "brew install node",
+      "debian": "Install Node.js from https://nodejs.org/en/download/package-manager",
+      "windows": "winget install OpenJS.NodeJS.LTS",
+      "other": "Install Node.js and npm from https://nodejs.org/"
+    },
+    "base_url": "https://api.npmjs.org",
+    "test_base_url_env": "FIND_REUSE_NPM_BASE_URL",
+    "auth_required": "private_only",
+    "auth_probe": ["npm", "whoami"],
+    "login_help": "npm login",
+    "operations": [
+      {
+        "capability": "name_search",
+        "transport": "argv",
+        "argv_or_url": ["npm", "search", "{query}", "--json", "--searchlimit=30"],
+        "output": "json",
+        "success": { "exit_codes": [0] },
+        "errors": { "ENOENT": "tool_missing", "E401": "auth_missing", "E429": "rate_limited", "parse": "malformed" }
+      },
+      {
+        "capability": "exact_lookup",
+        "provides": ["releases", "maintenance"],
+        "transport": "argv",
+        "argv_or_url": ["npm", "view", "{package}", "--json"],
+        "output": "json",
+        "success": { "exit_codes": [0] },
+        "errors": { "ENOENT": "tool_missing", "E401": "auth_missing", "E429": "rate_limited", "parse": "malformed" }
+      },
+      {
+        "capability": "downloads",
+        "transport": "http_get",
+        "argv_or_url": ["/downloads/point/last-month/{encoded_package}"],
+        "output": "json",
+        "success": { "http_status": [200] },
+        "errors": { "401": "auth_missing", "429": "rate_limited", "5xx": "source_unavailable", "parse": "malformed" }
+      }
+    ],
+    "unavailable_fields": ["security", "reverse_dependencies"],
+    "last_verified": "2026-09-02"
+  },
+  {
+    "id": "pypi",
+    "ecosystems": ["python"],
+    "capabilities": ["exact_lookup", "downloads", "releases", "maintenance"],
+    "required_tools": ["python", "pypistats"],
+    "version_probe": ["python", "-m", "pip", "--version"],
+    "capability_probe": ["python", "-m", "pip", "index", "versions", "--help"],
+    "install_help": {
+      "macos": "brew install python && python -m pip install pypistats",
+      "debian": "sudo apt-get install python3 python3-pip && python3 -m pip install --user pypistats",
+      "windows": "winget install Python.Python.3.13 && py -m pip install pypistats",
+      "other": "Install Python/pip, then pypistats from https://pypistats.org/"
+    },
+    "base_url": "https://pypi.org",
+    "test_base_url_env": "FIND_REUSE_PYPI_BASE_URL",
+    "auth_required": "private_only",
+    "login_help": "Configure the named private index using its official credential mechanism",
+    "operations": [
+      {
+        "capability": "exact_lookup",
+        "provides": ["releases", "maintenance"],
+        "transport": "http_get",
+        "argv_or_url": ["/pypi/{encoded_package}/json"],
+        "output": "json",
+        "success": { "http_status": [200] },
+        "errors": { "401": "auth_missing", "429": "rate_limited", "5xx": "source_unavailable", "parse": "malformed" }
+      },
+      {
+        "capability": "downloads",
+        "transport": "argv",
+        "argv_or_url": ["pypistats", "recent", "{package}", "--json"],
+        "output": "json",
+        "success": { "exit_codes": [0] },
+        "errors": { "ENOENT": "tool_missing", "401": "auth_missing", "429": "rate_limited", "parse": "malformed" }
+      }
+    ],
+    "unavailable_fields": ["semantic_search", "reverse_dependencies", "security"],
+    "last_verified": "2026-09-02"
+  },
+  {
+    "id": "crates-io",
+    "ecosystems": ["rust"],
+    "capabilities": ["name_search", "exact_lookup", "downloads", "releases", "maintenance"],
+    "required_tools": ["cargo"],
+    "version_probe": ["cargo", "--version"],
+    "capability_probe": ["cargo", "search", "--help"],
+    "install_help": {
+      "macos": "brew install rustup && rustup-init",
+      "debian": "Install rustup from https://rustup.rs/",
+      "windows": "winget install Rustlang.Rustup",
+      "other": "Install Rust and Cargo from https://rustup.rs/"
+    },
+    "base_url": "https://crates.io",
+    "test_base_url_env": "FIND_REUSE_CRATES_BASE_URL",
+    "auth_required": "never",
+    "operations": [
+      {
+        "capability": "name_search",
+        "transport": "argv",
+        "argv_or_url": ["cargo", "search", "{query}", "--limit", "30"],
+        "output": "text",
+        "success": { "exit_codes": [0] },
+        "errors": { "ENOENT": "tool_missing", "401": "auth_missing", "429": "rate_limited", "parse": "malformed" }
+      },
+      {
+        "capability": "name_search",
+        "transport": "http_get",
+        "argv_or_url": ["/api/v1/crates?q={encoded_query}&per_page=30"],
+        "output": "json",
+        "success": { "http_status": [200] },
+        "errors": { "401": "auth_missing", "429": "rate_limited", "5xx": "source_unavailable", "parse": "malformed" }
+      },
+      {
+        "capability": "exact_lookup",
+        "provides": ["downloads", "releases", "maintenance"],
+        "transport": "http_get",
+        "argv_or_url": ["/api/v1/crates/{encoded_package}"],
+        "output": "json",
+        "success": { "http_status": [200] },
+        "errors": { "401": "auth_missing", "429": "rate_limited", "5xx": "source_unavailable", "parse": "malformed" }
+      }
+    ],
+    "unavailable_fields": ["reverse_dependencies", "security"],
+    "last_verified": "2026-09-02"
+  },
+  {
+    "id": "go-modules",
+    "ecosystems": ["go"],
+    "capabilities": ["exact_lookup", "releases", "maintenance"],
+    "required_tools": ["go"],
+    "version_probe": ["go", "version"],
+    "capability_probe": ["go", "help", "list"],
+    "install_help": {
+      "macos": "brew install go",
+      "debian": "Install Go from https://go.dev/doc/install",
+      "windows": "winget install GoLang.Go",
+      "other": "Install Go from https://go.dev/doc/install"
+    },
+    "base_url": "https://proxy.golang.org",
+    "test_base_url_env": "FIND_REUSE_GO_BASE_URL",
+    "auth_required": "private_only",
+    "login_help": "Configure GOPRIVATE and source-host authentication without exposing credentials",
+    "operations": [
+      {
+        "capability": "exact_lookup",
+        "provides": ["maintenance"],
+        "transport": "argv",
+        "argv_or_url": ["go", "list", "-m", "-versions", "{package}"],
+        "output": "text",
+        "success": { "exit_codes": [0] },
+        "errors": { "ENOENT": "tool_missing", "auth": "auth_missing", "429": "rate_limited", "parse": "malformed" }
+      },
+      {
+        "capability": "releases",
+        "transport": "http_get",
+        "argv_or_url": ["/{escaped_module}/@v/list"],
+        "output": "text",
+        "success": { "http_status": [200] },
+        "errors": { "401": "auth_missing", "429": "rate_limited", "5xx": "source_unavailable", "parse": "malformed" }
+      }
+    ],
+    "unavailable_fields": ["semantic_search", "downloads", "reverse_dependencies", "security"],
+    "last_verified": "2026-09-02"
+  },
+  {
+    "id": "maven-central",
+    "ecosystems": ["java", "kotlin", "scala"],
+    "capabilities": ["name_search", "exact_lookup", "releases", "maintenance"],
+    "required_tools": ["node"],
+    "version_probe": ["node", "--version"],
+    "capability_probe": ["node", "--help"],
+    "install_help": {
+      "macos": "brew install curl",
+      "debian": "sudo apt-get install curl",
+      "windows": "winget install cURL.cURL",
+      "other": "Install an HTTP client such as curl"
+    },
+    "base_url": "https://search.maven.org",
+    "test_base_url_env": "FIND_REUSE_MAVEN_BASE_URL",
+    "auth_required": "never",
+    "operations": [
+      {
+        "capability": "name_search",
+        "provides": ["releases", "maintenance"],
+        "transport": "http_get",
+        "argv_or_url": ["/solrsearch/select?q={encoded_query}&rows=30&wt=json"],
+        "output": "json",
+        "success": { "http_status": [200] },
+        "errors": { "401": "auth_missing", "429": "rate_limited", "5xx": "source_unavailable", "parse": "malformed" }
+      },
+      {
+        "capability": "exact_lookup",
+        "transport": "http_get",
+        "argv_or_url": ["/solrsearch/select?q={encoded_package}&rows=30&wt=json"],
+        "output": "json",
+        "success": { "http_status": [200] },
+        "errors": { "401": "auth_missing", "429": "rate_limited", "5xx": "source_unavailable", "parse": "malformed" }
+      }
+    ],
+    "unavailable_fields": ["downloads", "reverse_dependencies", "security"],
+    "last_verified": "2026-09-02"
+  },
+  {
+    "id": "nuget",
+    "ecosystems": ["dotnet"],
+    "capabilities": ["name_search", "exact_lookup", "downloads", "releases", "maintenance"],
+    "required_tools": ["dotnet"],
+    "version_probe": ["dotnet", "--info"],
+    "capability_probe": ["dotnet", "package", "search", "--help"],
+    "install_help": {
+      "macos": "brew install --cask dotnet-sdk",
+      "debian": "Install .NET SDK from https://learn.microsoft.com/dotnet/core/install/linux",
+      "windows": "winget install Microsoft.DotNet.SDK.10",
+      "other": "Install the .NET SDK from https://dotnet.microsoft.com/download"
+    },
+    "base_url": "https://api.nuget.org",
+    "test_base_url_env": "FIND_REUSE_NUGET_BASE_URL",
+    "auth_required": "private_only",
+    "auth_probe": ["dotnet", "nuget", "list", "source"],
+    "login_help": "Configure only the named private source with dotnet nuget add source",
+    "operations": [
+      {
+        "capability": "name_search",
+        "provides": ["exact_lookup", "downloads", "releases", "maintenance"],
+        "transport": "argv",
+        "argv_or_url": ["dotnet", "package", "search", "{query}", "--format", "json"],
+        "output": "json",
+        "success": { "exit_codes": [0] },
+        "errors": { "ENOENT": "tool_missing", "401": "auth_missing", "429": "rate_limited", "parse": "malformed" }
+      },
+      {
+        "capability": "name_search",
+        "transport": "http_get",
+        "argv_or_url": ["/v3/index.json"],
+        "output": "json",
+        "success": { "http_status": [200] },
+        "errors": { "401": "auth_missing", "429": "rate_limited", "5xx": "source_unavailable", "parse": "malformed" }
+      },
+      {
+        "capability": "name_search",
+        "transport": "http_get",
+        "argv_or_url": ["{search_query_service}?q={encoded_query}&take=30"],
+        "output": "json",
+        "success": { "http_status": [200] },
+        "errors": { "401": "auth_missing", "429": "rate_limited", "5xx": "source_unavailable", "parse": "malformed" }
+      }
+    ],
+    "unavailable_fields": ["reverse_dependencies", "security"],
+    "last_verified": "2026-09-02"
+  },
+  {
+    "id": "rubygems",
+    "ecosystems": ["ruby"],
+    "capabilities": ["name_search", "exact_lookup", "downloads", "releases", "maintenance"],
+    "required_tools": ["ruby", "gem"],
+    "version_probe": ["gem", "--version"],
+    "capability_probe": ["gem", "search", "--help"],
+    "install_help": {
+      "macos": "brew install ruby",
+      "debian": "sudo apt-get install ruby-full",
+      "windows": "winget install RubyInstallerTeam.RubyWithDevKit.3.4",
+      "other": "Install Ruby and RubyGems from https://www.ruby-lang.org/"
+    },
+    "base_url": "https://rubygems.org",
+    "test_base_url_env": "FIND_REUSE_RUBYGEMS_BASE_URL",
+    "auth_required": "private_only",
+    "login_help": "Configure credentials only for the explicitly named private gem source",
+    "operations": [
+      {
+        "capability": "name_search",
+        "transport": "argv",
+        "argv_or_url": ["gem", "search", "{query}", "--remote", "--all"],
+        "output": "text",
+        "success": { "exit_codes": [0] },
+        "errors": { "ENOENT": "tool_missing", "401": "auth_missing", "429": "rate_limited", "parse": "malformed" }
+      },
+      {
+        "capability": "name_search",
+        "transport": "http_get",
+        "argv_or_url": ["/api/v1/search.json?query={encoded_query}"],
+        "output": "json",
+        "success": { "http_status": [200] },
+        "errors": { "401": "auth_missing", "429": "rate_limited", "5xx": "source_unavailable", "parse": "malformed" }
+      },
+      {
+        "capability": "exact_lookup",
+        "provides": ["downloads", "releases", "maintenance"],
+        "transport": "http_get",
+        "argv_or_url": ["/api/v1/gems/{encoded_package}.json"],
+        "output": "json",
+        "success": { "http_status": [200] },
+        "errors": { "401": "auth_missing", "429": "rate_limited", "5xx": "source_unavailable", "parse": "malformed" }
+      }
+    ],
+    "unavailable_fields": ["reverse_dependencies", "security"],
+    "last_verified": "2026-09-02"
+  },
+  {
+    "id": "packagist",
+    "ecosystems": ["php"],
+    "capabilities": ["name_search", "exact_lookup", "downloads", "releases", "maintenance", "reverse_dependencies"],
+    "required_tools": ["php", "composer"],
+    "version_probe": ["composer", "--version"],
+    "capability_probe": ["composer", "search", "--help"],
+    "install_help": {
+      "macos": "brew install php composer",
+      "debian": "sudo apt-get install php-cli composer",
+      "windows": "Install PHP and Composer from https://getcomposer.org/download/",
+      "other": "Install PHP and Composer from https://getcomposer.org/"
+    },
+    "base_url": "https://packagist.org",
+    "test_base_url_env": "FIND_REUSE_PACKAGIST_BASE_URL",
+    "auth_required": "private_only",
+    "login_help": "Configure authentication only for the explicitly named private Composer repository",
+    "operations": [
+      {
+        "capability": "name_search",
+        "transport": "argv",
+        "argv_or_url": ["composer", "search", "{query}", "--format=json"],
+        "output": "json",
+        "success": { "exit_codes": [0] },
+        "errors": { "ENOENT": "tool_missing", "401": "auth_missing", "429": "rate_limited", "parse": "malformed" }
+      },
+      {
+        "capability": "name_search",
+        "transport": "http_get",
+        "argv_or_url": ["/search.json?q={encoded_query}"],
+        "output": "json",
+        "success": { "http_status": [200] },
+        "errors": { "401": "auth_missing", "429": "rate_limited", "5xx": "source_unavailable", "parse": "malformed" }
+      },
+      {
+        "capability": "exact_lookup",
+        "provides": ["downloads", "releases", "maintenance", "reverse_dependencies"],
+        "transport": "http_get",
+        "argv_or_url": ["/packages/{package_path}.json"],
+        "output": "json",
+        "success": { "http_status": [200] },
+        "errors": { "401": "auth_missing", "429": "rate_limited", "5xx": "source_unavailable", "parse": "malformed" }
+      }
+    ],
+    "unavailable_fields": ["security"],
+    "last_verified": "2026-09-02"
+  },
+  {
+    "id": "osv",
+    "ecosystems": ["any"],
+    "capabilities": ["security"],
+    "required_tools": ["osv-scanner"],
+    "version_probe": ["osv-scanner", "--version"],
+    "capability_probe": ["osv-scanner", "--help"],
+    "install_help": {
+      "macos": "brew install osv-scanner",
+      "debian": "Install osv-scanner from https://google.github.io/osv-scanner/installation/",
+      "windows": "Install osv-scanner from https://google.github.io/osv-scanner/installation/",
+      "other": "Install osv-scanner from https://google.github.io/osv-scanner/installation/"
+    },
+    "base_url": "https://api.osv.dev",
+    "test_base_url_env": "FIND_REUSE_OSV_BASE_URL",
+    "auth_required": "never",
+    "operations": [
+      {
+        "capability": "security",
+        "transport": "argv",
+        "argv_or_url": ["osv-scanner", "--format", "json", "--lockfile", "{lockfile}"],
+        "output": "json",
+        "success": { "exit_codes": [0, 1] },
+        "errors": { "ENOENT": "tool_missing", "401": "auth_missing", "429": "rate_limited", "parse": "malformed" }
+      },
+      {
+        "capability": "security",
+        "transport": "http_post",
+        "argv_or_url": ["/v1/query"],
+        "output": "json",
+        "success": { "http_status": [200] },
+        "errors": { "401": "auth_missing", "429": "rate_limited", "5xx": "source_unavailable", "parse": "malformed" }
+      }
+    ],
+    "unavailable_fields": [],
+    "last_verified": "2026-09-02"
+  }
+]

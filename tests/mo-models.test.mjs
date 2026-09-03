@@ -31,6 +31,7 @@ import {
   findUpgrade,
   parseCodexModels,
   parseSelection,
+  testingPolicyError,
 } from "../shared/scripts/mo-models.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -233,11 +234,37 @@ test("show reports every role and writes nothing", () => {
   const home = sandbox();
   const result = run(home, ["--show"]);
   assert.equal(result.status, 0, result.stderr);
-  for (const role of ["executor", "researcher", "reviewerA", "reviewerB", "e2eTester"]) {
+  for (const role of [
+    "orchestrator",
+    "executor",
+    "researcher",
+    "reviewerA",
+    "reviewerB",
+    "e2eTester",
+    "testClaude",
+    "testCodex",
+    "testOpenCode",
+  ]) {
     assert.match(result.stdout, new RegExp(`${role}=unset`));
   }
   assert.equal(run(home, ["--show"]).status, 0);
   assert.throws(() => readFileSync(join(home, ".meta-o", "models.json")), /ENOENT/);
+});
+
+test("testing profiles fail closed above the approved cost", () => {
+  assert.equal(testingPolicyError("testClaude", "claude/sonnet5/low"), null);
+  assert.equal(testingPolicyError("testCodex", "codex/gpt-5.6-terra/low"), null);
+  assert.equal(testingPolicyError("testOpenCode", "opencode/provider/deepseek-v4-flash/low"), null);
+  assert.match(testingPolicyError("testClaude", "claude/opus/high"), /sonnet5\/low/);
+  assert.match(testingPolicyError("testCodex", "codex/gpt-5.6-sol/high"), /terra\/low/);
+  assert.match(
+    testingPolicyError("testOpenCode", "opencode/provider/deepseek-v4-flash/high"),
+    /deepseek 4 flash.*low effort/,
+  );
+  assert.match(
+    testingPolicyError("testOpenCode", "opencode/provider/qwen3.8-27b/low"),
+    /deepseek 4 flash/,
+  );
 });
 
 test("set then show round-trips through the settings file", () => {
@@ -489,7 +516,7 @@ test("an isolated generated helper needs no ambient node_modules", () => {
   const home = sandbox();
   const fixture = fakeClaude(home, "success");
   const isolated = join(home, "isolated-mo-models.mjs");
-  copyFileSync(join(ROOT, "skills", "mo-orchestrate-herdr", "scripts", "mo-models.mjs"), isolated);
+  copyFileSync(join(ROOT, "skills", "mo-orchestrate-orca", "scripts", "mo-models.mjs"), isolated);
   const result = spawnSync(
     process.execPath,
     [isolated, "--catalog", "--route", "claude", "--json"],

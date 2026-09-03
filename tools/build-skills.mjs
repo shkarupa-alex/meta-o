@@ -34,6 +34,7 @@ import {
   readdirSync,
   realpathSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { isBuiltin } from "node:module";
 import { tmpdir } from "node:os";
@@ -42,24 +43,88 @@ import { fileURLToPath } from "node:url";
 
 import yaml from "js-yaml";
 import { buildSync } from "esbuild";
+import { fromMarkdown } from "mdast-util-from-markdown";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SKILLS_SRC = join(ROOT, "src", "skills");
 const SHARED_SRC = join(ROOT, "shared");
 const OUTPUT = join(ROOT, "skills");
 
+const SOURCE_ANCHOR = /^<!-- mo:source-anchor (§A-[A-Z][A-Z0-9-]*-[0-9]{2}) -->$/;
+
+/**
+ * Remove source-only architecture markers without serializing the Markdown.
+ *
+ * Positional deletion preserves every authored byte except the marker span, so
+ * the block structure around the marker survives byte for byte. Taking the
+ * adjacent line breaks too would join the blocks the marker stood between and
+ * silently rewrite the published instruction. Parsing first is load-bearing:
+ * text that only resembles a marker inside code, prose or a malformed comment
+ * must stop the build instead of changing the published instructions.
+ *
+ * Implements §A-MEMORY-01.
+ */
+export function stripSourceAnchors(source, label = "Markdown source") {
+  const tree = fromMarkdown(source);
+  const spans = [];
+  const visit = (node, parent = null) => {
+    if (node.type === "html" && String(node.value).includes("mo:source-anchor")) {
+      if (!SOURCE_ANCHOR.test(node.value)) {
+        throw new Error(
+          `${label} has malformed source anchor at line ${node.position?.start.line}`,
+        );
+      }
+      if (parent?.type !== "root") {
+        throw new Error(
+          `${label} has source anchor outside a standalone HTML marker at line ${node.position?.start.line}`,
+        );
+      }
+      spans.push([node.position.start.offset, node.position.end.offset]);
+    }
+    for (const child of node.children ?? []) visit(child, node);
+  };
+  visit(tree);
+
+  for (let offset = source.indexOf("mo:source-anchor"); offset >= 0;) {
+    if (!spans.some(([start, end]) => offset >= start && offset < end)) {
+      throw new Error(`${label} has source anchor outside a standalone HTML marker`);
+    }
+    offset = source.indexOf("mo:source-anchor", offset + 1);
+  }
+
+  // Exactly the marker spans, right to left: every other byte of the source,
+  // including the line terminator the marker sits on, is published unchanged.
+  // A marker's residue is therefore controlled by where it is authored, not by
+  // widening the removal.
+  let result = source;
+  for (const [start, end] of spans.sort((left, right) => right[0] - left[0])) {
+    result = result.slice(0, start) + result.slice(end);
+  }
+  return result;
+}
+
+/** Strip architecture markers from every Markdown file in one generated skill. */
+function stripGeneratedAnchors(skillRoot, name) {
+  for (const relative of walk(skillRoot).filter((path) => path.endsWith(".md"))) {
+    const destination = join(skillRoot, relative);
+    const source = readFileSync(destination, "utf8");
+    const stripped = stripSourceAnchors(source, `src/generated ${name}/${relative}`);
+    if (stripped !== source) writeFileSync(destination, stripped);
+  }
+}
+
 /**
  * The runtime package in the settings bundle and the licence that makes its
  * redistribution terms inspectable. Any new metafile package root must acquire
  * an explicit entry here or the build fails before a generated tree can exist.
  */
-const BUNDLE_LICENSE_PLAN = {
+export const BUNDLE_LICENSE_PLAN = {
   "@anthropic-ai/claude-agent-sdk": "licenses/claude-agent-sdk-LICENSE.md",
 };
 
 /** The measured first bundle plus 25%; growth beyond it needs a fresh audit. */
-const MODEL_BUNDLE_BASELINE_BYTES = 996_053;
-const MODEL_BUNDLE_MAX_BYTES = Math.ceil(MODEL_BUNDLE_BASELINE_BYTES * 1.25);
+export const MODEL_BUNDLE_BASELINE_BYTES = 996_053;
+export const MODEL_BUNDLE_MAX_BYTES = Math.ceil(MODEL_BUNDLE_BASELINE_BYTES * 1.25);
 
 /**
  * Which shared file lands in which skill.
@@ -69,17 +134,7 @@ const MODEL_BUNDLE_MAX_BYTES = Math.ceil(MODEL_BUNDLE_BASELINE_BYTES * 1.25);
  * plus the shared contracts they consume. Setup owns project readiness and the
  * watchdog owns only its methodology-independent observer helper.
  */
-const SHARED_PLAN = {
-  "mo-orchestrate-herdr": [
-    ["references/methodology.md", "references/methodology.md"],
-    ["references/backend-contract.md", "references/backend-contract.md"],
-    ["references/review-protocol.md", "references/review-protocol.md"],
-    ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
-    ["references/herdr-mechanics.md", "references/herdr-mechanics.md"],
-    ["scripts/mo-models.mjs", "scripts/mo-models.mjs", { bundleLicenses: BUNDLE_LICENSE_PLAN }],
-    ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],
-    ["licenses/claude-agent-sdk-LICENSE.md", "licenses/claude-agent-sdk-LICENSE.md"],
-  ],
+export const SHARED_PLAN = {
   "mo-orchestrate-orca": [
     ["references/methodology.md", "references/methodology.md"],
     ["references/backend-contract.md", "references/backend-contract.md"],
@@ -90,33 +145,13 @@ const SHARED_PLAN = {
     ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],
     ["licenses/claude-agent-sdk-LICENSE.md", "licenses/claude-agent-sdk-LICENSE.md"],
   ],
-  "mo-orchestrate-paseo": [
-    ["references/methodology.md", "references/methodology.md"],
-    ["references/backend-contract.md", "references/backend-contract.md"],
-    ["references/review-protocol.md", "references/review-protocol.md"],
-    ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
-    ["references/paseo-mechanics.md", "references/paseo-mechanics.md"],
-    ["scripts/mo-models.mjs", "scripts/mo-models.mjs", { bundleLicenses: BUNDLE_LICENSE_PLAN }],
-    ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],
-    ["licenses/claude-agent-sdk-LICENSE.md", "licenses/claude-agent-sdk-LICENSE.md"],
-  ],
-  "mo-review-herdr": [
-    ["references/backend-contract.md", "references/backend-contract.md"],
-    ["references/review-protocol.md", "references/review-protocol.md"],
-    ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
-    ["references/herdr-mechanics.md", "references/herdr-mechanics.md"],
-  ],
   "mo-review-orca": [
     ["references/backend-contract.md", "references/backend-contract.md"],
     ["references/review-protocol.md", "references/review-protocol.md"],
     ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
     ["references/orca-mechanics.md", "references/orca-mechanics.md"],
-  ],
-  "mo-review-paseo": [
-    ["references/backend-contract.md", "references/backend-contract.md"],
-    ["references/review-protocol.md", "references/review-protocol.md"],
-    ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
-    ["references/paseo-mechanics.md", "references/paseo-mechanics.md"],
+    ["scripts/mo-models.mjs", "scripts/mo-models.mjs", { bundleLicenses: BUNDLE_LICENSE_PLAN }],
+    ["licenses/claude-agent-sdk-LICENSE.md", "licenses/claude-agent-sdk-LICENSE.md"],
   ],
   "mo-setup": [
     ["references/project-setup.md", "references/project-setup.md"],
@@ -131,7 +166,8 @@ const SHARED_PLAN = {
 };
 
 /** Return the package root represented by an esbuild metafile input path. */
-function packageRoot(input) {
+/** §A-DISTRIBUTION-02 identifies bundled third-party roots for licence closure. */
+export function packageRoot(input) {
   const marker = "node_modules/";
   const offset = input.lastIndexOf(marker);
   if (offset < 0) return null;
@@ -191,7 +227,7 @@ function bundleModels(destination) {
  * any of them. Portability across Claude Code, Codex, OpenCode, apm and
  * `npx skills` costs exactly this list, and none of the extensions are needed.
  */
-const ALLOWED_FRONTMATTER = new Set([
+export const ALLOWED_FRONTMATTER = new Set([
   "name",
   "description",
   "license",
@@ -215,7 +251,7 @@ const ALLOWED_FRONTMATTER = new Set([
  * All three are hand-maintained at the repository root, so the build only checks
  * that they are there — it never generates them.
  */
-const REQUIRED_AT_ROOT = [
+export const REQUIRED_AT_ROOT = [
   ["apm.yml", "apm refuses a root without it"],
   ["README.md", "the install test reads the advertised commands from it"],
   ["LICENSE", "an installed copy has no other statement of its terms"],
@@ -227,8 +263,8 @@ function fail(message) {
   return false;
 }
 
-/** Every file under a directory, as paths relative to it, sorted. */
-function walk(directory, prefix = "") {
+/** §A-DISTRIBUTION-01 gives build and parity checks one deterministic file inventory. */
+export function walk(directory, prefix = "") {
   const found = [];
   for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) =>
     a.name < b.name ? -1 : 1,
@@ -241,7 +277,7 @@ function walk(directory, prefix = "") {
 }
 
 /**
- * Parse a frontmatter block with a real YAML parser.
+ * §A-DISTRIBUTION-01 parses a frontmatter block with a real YAML parser.
  *
  * A hand-rolled line reader stood here and was wrong in a way that matters: two
  * `name:` lines were accepted and the first silently won, so a skill could pass
@@ -260,7 +296,7 @@ function walk(directory, prefix = "") {
  * both go through it. Convenience wrappers stood here briefly and re-created the
  * defect they were meant to prevent: a second place deciding what `name` means.
  */
-function frontmatter(text) {
+export function frontmatter(text) {
   if (!text.startsWith("---\n")) return { error: "no frontmatter block" };
   const end = text.indexOf("\n---\n", 3);
   if (end < 0) return { error: "no frontmatter block" };
@@ -327,7 +363,8 @@ function validateSkill(name) {
  * `<repo>/skills`, and anything extra in there would be offered to the skill
  * manager as an eighth skill.
  */
-function build(outputRoot) {
+/** §A-DISTRIBUTION-01 materializes the one-source skill tree into a disposable destination. */
+export function build(outputRoot) {
   const names = readdirSync(SKILLS_SRC, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
@@ -350,7 +387,7 @@ function build(outputRoot) {
     }
   }
 
-  for (const consumer of ["mo-orchestrate-herdr", "mo-orchestrate-orca", "mo-orchestrate-paseo"]) {
+  for (const consumer of ["mo-orchestrate-orca"]) {
     const plan = SHARED_PLAN[consumer];
     const helper = plan.find(([source]) => source === "scripts/mo-models.mjs");
     const declared = Object.keys(helper?.[2]?.bundleLicenses ?? {}).sort();
@@ -385,13 +422,15 @@ function build(outputRoot) {
       if (source === "scripts/mo-models.mjs") bundleModels(to);
       else cpSync(from, to);
     }
+    stripGeneratedAnchors(join(outputRoot, name), name);
   }
 
   return names;
 }
 
 /** Compare two trees byte-for-byte and list every difference. */
-function diffTrees(expectedRoot, actualRoot) {
+/** §A-DISTRIBUTION-01 explains every byte-level drift between a fresh build and distribution. */
+export function diffTrees(expectedRoot, actualRoot) {
   if (!existsSync(actualRoot)) return ["skills/ does not exist"];
   const expected = walk(expectedRoot);
   const actual = walk(actualRoot);
@@ -461,17 +500,3 @@ function invokedDirectly() {
 }
 
 if (invokedDirectly()) main();
-
-export {
-  ALLOWED_FRONTMATTER,
-  BUNDLE_LICENSE_PLAN,
-  MODEL_BUNDLE_BASELINE_BYTES,
-  MODEL_BUNDLE_MAX_BYTES,
-  REQUIRED_AT_ROOT,
-  SHARED_PLAN,
-  build,
-  diffTrees,
-  frontmatter,
-  packageRoot,
-  walk,
-};

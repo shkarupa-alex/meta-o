@@ -20,7 +20,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const markdown = new MarkdownIt();
 // Loose enough to catch a malformed anchor, so a typo fails instead of hiding.
 const ANCHOR = /§[AB]-[A-Z0-9][A-Z0-9-]*/g;
-const GRAMMAR = /^§[AB]-[A-Z][A-Z0-9]*-\d{2}$/;
+const GRAMMAR = /^§[AB]-[A-Z][A-Z0-9-]*-\d{2}$/;
 const BUSINESS = join(ROOT, "docs", "business.md");
 const ARCHITECTURE = join(ROOT, "docs", "architecture");
 
@@ -113,7 +113,7 @@ function decisions() {
     const stack = [];
     for (const section of sections(path)) {
       while (stack.length > 0 && stack.at(-1).level >= section.level) stack.pop();
-      const own = section.title.match(/^§A-[A-Z][A-Z0-9]*-\d{2}/);
+      const own = section.title.match(/^§A-[A-Z][A-Z0-9-]*-\d{2}/);
       if (own) {
         const decision = { path, title: section.title, body: [] };
         owners.set(own[0], decision);
@@ -141,7 +141,7 @@ test("every business thesis carries a unique grammatical id", () => {
   assert.ok(titles.length > 0, "the business framing lost its theses");
   const ids = [];
   for (const title of titles) {
-    const match = title.match(/^(§B-[A-Z][A-Z0-9]*-\d{2}) — \S/);
+    const match = title.match(/^(§B-[A-Z][A-Z0-9-]*-\d{2}) — \S/);
     assert.ok(match, `thesis without an id: ${title}`);
     ids.push(match[1]);
   }
@@ -154,7 +154,7 @@ test("every architecture decision carries a unique id and names an existing thes
   assert.ok(found.length > 0, "the architecture layer lost its decisions");
   const ids = [];
   for (const decision of found) {
-    const match = decision.title.match(/^(§A-[A-Z][A-Z0-9]*-\d{2}) — \S/);
+    const match = decision.title.match(/^(§A-[A-Z][A-Z0-9-]*-\d{2}) — \S/);
     assert.ok(match, `${decision.path}: decision without an id: ${decision.title}`);
     ids.push(match[1]);
     const cited = references(decision.body, match[1]).filter((id) => id.startsWith("§B-"));
@@ -232,14 +232,14 @@ test("a byte-copied helper names its owning project beside every id", () => {
   }
 });
 
-test("distributed skill text carries no project ids", () => {
-  const shipped = [
-    ...files(join(ROOT, "skills")),
+test("generated skills carry no project ids and sources use only explicit markers", () => {
+  const shipped = files(join(ROOT, "skills")).filter((path) => extname(path) === ".md");
+  const sources = [
     ...files(join(ROOT, "src", "skills")),
     ...files(join(ROOT, "shared", "references")),
   ].filter((path) => extname(path) === ".md");
   assert.ok(
-    shipped.includes(join(ROOT, "shared", "references", "methodology.md")),
+    sources.includes(join(ROOT, "shared", "references", "methodology.md")),
     "shipped document discovery lost files",
   );
   for (const path of shipped) {
@@ -248,5 +248,14 @@ test("distributed skill text carries no project ids", () => {
       [],
       `${path}: shipped text carries an id the consumer cannot resolve`,
     );
+  }
+  for (const path of sources) {
+    const source = readFileSync(path, "utf8");
+    for (const id of references(source, path)) {
+      assert.ok(
+        source.includes(`<!-- mo:source-anchor ${id} -->`),
+        `${path}: source id is not an explicit source-only marker`,
+      );
+    }
   }
 });

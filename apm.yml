@@ -12,6 +12,6 @@ version: 0.2.0
 type: skill
 description: >-
   Skills-first workflow contracts for taking one feature from spec to a verified
-  candidate with two independent reviews and no workflow engine; each Herdr,
-  Orca, or Paseo route is advertised only after its own live acceptance.
+  candidate with two independent reviews and no workflow engine; the Orca route
+  is advertised only after its own live acceptance.
 license: MIT

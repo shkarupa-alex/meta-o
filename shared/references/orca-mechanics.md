@@ -5,6 +5,29 @@ the public `orca ... --help` surface. Require a ready `orca status --json`, a
 current registered worktree, and the upstream `orchestration` companion skill
 listed by `orca skills list --json`.
 
+## Readiness evidence
+
+Run focused, bounded probes rather than one large agent-context dump:
+
+1. verify `orca status --json` belongs to the intended instance/worktree;
+2. verify the version-matched `orchestration` companion;
+3. run the selected provider's documented provider-native auth status command;
+4. read `orca account list --json`, including `updatedAt`, and classify freshness;
+5. read the approved selection from bundled `mo-models.mjs`;
+6. use the first real role Dispatch as the live launch probe when possible;
+7. prove the real harness process consumed the task and
+   `launch.requested == launch.effective` for model and effort;
+8. retain exact run/task/dispatch/terminal locators in current reasoning.
+
+If fresh native auth is newer than cached `missing-credentials|unavailable`, use
+only a documented read-only refresh/recheck and one exact approved live launch.
+A verified launch yields readiness with `stale_account_cache`. A credential
+failure from the real process is a backend integration gap. Unconfirmed launch
+effect remains unknown and is not retried. Never switch model or harness.
+
+A disposable health Dispatch is allowed only before a real role can safely run,
+one harness at a time, with no product work and exact-target release.
+
 ## Run, tasks and workers
 
 Bind a lightweight Run and create all independent tasks first. Prefer the
@@ -55,7 +78,8 @@ orca orchestration worker-show --dispatch <id> --json
 ```
 
 Process a complete delivery batch before acknowledging it. A timeout is a
-checkpoint, not failure. A `question` is answered through `reply`; `escalation`
+checkpoint, not failure, and the next blocking wait is armed before extended
+work continues. An early message must wake the wait. A `question` is answered through `reply`; `escalation`
 or a proven failed/lost dispatch is not success.
 
 The worker's complete `worker_done` body is the settled final response for
@@ -65,6 +89,17 @@ before claiming support. Do not use `worker-read --source transcript`: its
 hook-reported provider transcript is outside Meta-O's allowed surface.
 `worker-read --source terminal` and ordinary terminal commands are bounded
 whole-session diagnostics and delivery checks only.
+
+Treat quota, capacity, reconnecting, compaction, refusal, lost process and
+credentials as different outcomes. After compaction or approximately 75% of a
+32768-token context, start a fresh orchestrator turn/session and re-ground from
+the Git spec/checklist plus public Orca state. Sanitize each structured
+observation and cap it at 8000 tokens; never inject a raw 21k/41k dump.
+
+Public capability belongs to the exact Dispatch/turn/process and expires on
+exit or replacement. `worker_done` from a bare shell or expired Dispatch cannot
+settle work. A direct user message contaminates the prior isolated role;
+preserve the decision and create an exact replacement when isolation is needed.
 
 ## Reviews and cleanup
 
@@ -80,3 +115,9 @@ A low-level injected terminal is not a supervised worker resource, so close
 only its exact returned handle after its Dispatch settles and its response is
 delivered. A failed or uncertain worker follows the exact recovery action in its
 public receipt.
+
+Keep the executor and remediation reviewers in their exact owned terminals.
+Release old reviewers only before the fresh final pair. Stable titles are
+`<feature>:orchestrator`, `<feature>:executor`, `<feature>:review:<vendor>` and
+`<feature>:e2e:<n>`. Never close unnamed human tabs, neighboring Run resources or
+another project container.

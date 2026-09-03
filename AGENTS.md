@@ -5,8 +5,8 @@
 
 ## Scope and outcomes
 
-Meta-O is ten agent skills that run a feature from a spec to one verified
-candidate commit. Skills and reasoning orchestrate the work; the project adds
+Meta-O is a set of agent skills that runs a feature from a spec to one verified
+candidate commit through Orca. Skills and reasoning orchestrate the work; the project adds
 no workflow engine or general state store. See
 [§A-ORCHESTRATION-01 — Скилы и reasoning — слой оркестрации процесса](docs/architecture/skills-first.md)
 and the narrow state exception in
@@ -28,6 +28,7 @@ the lower layer instead.
 - [§A-RESPONSE-01 — Settled final responses остаются на публичных поверхностях backend](docs/architecture/settled-final-response.md)
 - [Один владелец source, самодостаточные generated skills](docs/architecture/distribution.md)
 - [§A-MEMORY-01 — Уровни знаний связаны уникальными id](docs/architecture/knowledge-identifiers.md)
+- [§A-EVAL-01 — Model actors запускаются только по применимости и на approved profile](docs/architecture/evaluation-model-policy.md)
 
 No native CLI is wrapped in a project proxy. Do not create a manifest, receipt,
 digest or baseline without a named external consumer.

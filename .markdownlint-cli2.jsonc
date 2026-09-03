@@ -11,6 +11,7 @@
     "skills/**",
     "spec/**",
     "docs/references/**",
+    "docs/research/**",
     "shared/licenses/**",
   ],
   "config": {

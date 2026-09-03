@@ -1,5 +1,5 @@
 /**
- * Prove that apm discovers the generated ten-skill tree and standalone units.
+ * Prove that apm discovers the generated skill tree and standalone units.
  *
  * Protects §A-DISTRIBUTION-05 and §A-DISTRIBUTION-01.
  */
@@ -67,16 +67,14 @@ test("apm installs exactly the complete generated tree", { skip }, () => {
 
 test("every skill is individually installable with its complete owned files", { skip }, () => {
   for (const skill of [
-    "mo-orchestrate-herdr",
+    "find-reuse",
     "mo-orchestrate-orca",
-    "mo-orchestrate-paseo",
-    "mo-review-herdr",
     "mo-review-orca",
-    "mo-review-paseo",
     "mo-setup",
     "mo-e2e",
-    "mo-reuse",
     "mo-watchdog",
+    "senior-jsts",
+    "senior-python",
   ]) {
     const installed = install(skill);
     assert.deepEqual(
@@ -96,10 +94,9 @@ test("README states the proven local scope and the owner's remote responsibility
     readme,
     /Публикация и\s+проверка remote installation остаются ответственностью владельца проекта/,
   );
-  assert.match(readme, /Маршрут считается поддерживаемым только после собственной live acceptance/);
-  assert.match(readme, /Сейчас Herdr заблокирован/);
-  assert.match(readme, /Paseo тоже заблокирован/);
-  assert.match(readme, /У Orca публичная поверхность ответа квалифицирована/);
+  assert.match(readme, /Meta-O поддерживает только\s+Orca/);
+  assert.match(readme, /Последнее дерево, содержащее их\s+orchestration и review skills/);
+  assert.match(readme, /2eb85bebe14aa35419db192db66938e14e0be6f1/);
   assert.match(readme, /единственное узкое исключение/);
   assert.match(readme, /требует `jq`.*и `flock`/s);
 });

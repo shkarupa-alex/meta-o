@@ -6,21 +6,52 @@
 реализованная спецификация уходит из проекта. Вердикты текущего запуска остаются
 в финальном отчёте, а не в этом отслеживаемом файле.
 
-| Требование                                                                 | Детерминированное доказательство                                     | Live-доказательство                                          |
-| -------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------ |
-| Собираются и устанавливаются ровно десять именованных скилов.              | Build- и install-тесты перечисляют точные имена и файлы.             | Local install подтверждает discovery.                        |
-| Удалённый backend отсутствует, кроме дословной истории и указателя README. | Repository scan исключает защищённую историю и проверяет точный SHA. | Не требуется.                                                |
-| Orchestration и review через Herdr работают.                               | Тесты authored/built contracts.                                      | Backend-сценарии B1–B14 на Herdr.                            |
-| Orchestration и review через Orca работают.                                | Тесты механики и имени companion.                                    | Backend-сценарии B1–B14 на Orca.                             |
-| Orchestration и review через Paseo работают.                               | Тесты механики и имени companion.                                    | Backend-сценарии B1–B14 на Paseo.                            |
-| Codex, Claude Code и OpenCode запускаются unsandboxed.                     | Тесты setup/posture helper.                                          | B2–B4 для каждого backend.                                   |
-| Полные normal и long settled responses извлекаются.                        | Contract-тесты markers и запрещённых поверхностей.                   | B8–B10 для каждого backend.                                  |
-| Reviews параллельны, независимы и vendor-diverse.                          | Тесты review protocol.                                               | B11–B13 на candidate.                                        |
-| Executor получает оба review только полной парой.                          | Assertions методологии.                                              | B12 на каждом orchestration backend.                         |
-| Reviewers проверяют фичу и backlog.                                        | Assertions общего review protocol.                                   | Оба финальных ответа показывают обе lenses.                  |
-| Setup проверяет substance проекта и backend companions.                    | Тесты setup contract.                                                | B14 и posture probes.                                        |
-| Pattern watchdog умеет scan по сессиям и безопасный nonblocking nudge.     | Тесты native JSON, stable envelope и cross-invocation deduplication. | W1–W4.                                                       |
-| Knowledge split и semantic Markdown labels корректны.                      | Markdown AST и тесты обязательных документов.                        | Не требуется.                                                |
-| Backlog разобран полностью.                                                | Тесты semantic fields и отсутствия удалённых progress rows.          | Финальные reviewers проверяют все строки.                    |
-| Каждый бизнес-тезис несёт уникальный id, и цепочка знаний не разорвана.    | Тест цепочки знаний в `make mo-qc`.                                  | Не требуется.                                                |
-| Один финальный SHA проходит QC и применимые E2E.                           | `make mo-qc` на этом SHA.                                            | E2E matrix или одобренный reviewers docs-only carry-forward. |
+| Требование                                                                               | Детерминированное доказательство                                                  | Live-доказательство                                               |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Собирается и устанавливается точный именованный набор скилов.                            | Build- и install-тесты перечисляют точные имена и файлы.                          | Local install подтверждает discovery.                             |
+| Удалённый backend отсутствует, кроме дословной истории и указателя README.               | Repository scan исключает защищённую историю и проверяет точный SHA.              | Не требуется.                                                     |
+| Orchestration и review через Orca работают.                                              | Тесты механики и имени companion.                                                 | Backend-сценарии B1–B14 на Orca.                                  |
+| Codex, Claude Code и OpenCode запускаются unsandboxed.                                   | Тесты setup/posture helper.                                                       | B2–B4 для каждого backend.                                        |
+| Полные normal и long settled responses извлекаются.                                      | Contract-тесты markers и запрещённых поверхностей.                                | B8–B10 для Orca.                                                  |
+| Reviews параллельны, независимы и vendor-diverse.                                        | Тесты review protocol.                                                            | B11–B13 на candidate.                                             |
+| Executor получает оба review только полной парой.                                        | Assertions методологии.                                                           | B12 на каждом orchestration backend.                              |
+| Reviewers применяют Deferral lens к diff и поведению фичи.                               | Protocol проверяет обязательную Deferral lens и валидность пустого backlog.       | Оба финальных ответа называют новые deferrals либо их отсутствие. |
+| Setup проверяет substance проекта и backend companions.                                  | Тесты setup contract.                                                             | B14 и posture probes.                                             |
+| Pattern watchdog умеет scan по сессиям и безопасный nonblocking nudge.                   | Тесты native JSON, stable envelope и cross-invocation deduplication.              | W1–W4.                                                            |
+| Knowledge split и semantic Markdown labels корректны.                                    | Markdown AST и тесты обязательных документов.                                     | Не требуется.                                                     |
+| Backlog разобран полностью, а новые deferrals не теряются.                               | Closure semantic fixtures и schema/future-entry тест backlog.                     | Финальная пара применяет Deferral lens к exact candidate.         |
+| Каждый бизнес-тезис несёт уникальный id, и цепочка знаний не разорвана.                  | Тест цепочки знаний в `make mo-qc`.                                               | Не требуется.                                                     |
+| Один финальный SHA проходит QC и применимые E2E.                                         | `make mo-qc` на этом SHA.                                                         | E2E matrix или одобренный reviewers docs-only carry-forward.      |
+| Host-sensitive full gate сериализован, foreground и без orphan-процессов.                | Obligations O-RR-046, O-RR-048 и O-RR-052 в `tests/closure-obligations.test.mjs`. | B11–B13 с двумя одновременными reviewers.                         |
+| `find-reuse` переносим и fail-closed при неполном поиске.                                | Build portability и contract fixtures.                                            | Named adapter evidence через `make mo-live-adapters`.             |
+| Review protocol задаёт порядок стадий; actor различает modes/P0–P3.                      | `tests/orchestration-contract.test.mjs` проверяет структуру protocol.             | Mode/severity eval cases и два полных `worker_done`.              |
+| Remediation использует hot roles, final proof — fresh pair.                              | Lifecycle contract assertions.                                                    | Orca review-loop scenario на exact SHA.                           |
+| Model actor запускается только по применимости на low-cost profile.                      | `tests/model-testing-policy.test.mjs`, `tests/skill-evals.test.mjs`.              | Валидированный envelope 24 embedded cases на exact SHA.           |
+| Локальная orchestration §B-PORTABILITY-08 управляет lifecycle, но не пишет product code. | Ownership, projection и critical-corpus fixtures.                                 | Critical Qwen profile suite на exact SHA.                         |
+
+## Провенанс закрытия backlog
+
+| Источник         | Frozen blob                                |
+| ---------------- | ------------------------------------------ |
+| Backlog ledger   | `8d11d1107eb5875235c2830e6503f7e1265317d7` |
+| Real-runs ledger | `c75859372fa7d794269cc6dcc8834c069ddd8096` |
+
+Итоговый lossless AST closure зафиксирован коммитом
+`2608df64ca6a54ece2abf6b858c49567bca19c1f`; blob полной карты —
+`2698b1898c8cb00ab9a736cff339b8820287bab6`. Карта даёт каждому obligation
+собственную executable proof command вида
+`node --test --test-name-pattern "^<id> " tests/closure-obligations.test.mjs`.
+Те же координаты доступны гейту без разбора prose или Markdown-таблиц:
+
+```yaml
+backlog_closure:
+  backlog_blob: 8d11d1107eb5875235c2830e6503f7e1265317d7
+  real_runs_blob: c75859372fa7d794269cc6dcc8834c069ddd8096
+  closure_sha: 2608df64ca6a54ece2abf6b858c49567bca19c1f
+  deletion_sha: 80e7e1e9e43f1a071abce7801829080e7d290195
+  map_blob: 2698b1898c8cb00ab9a736cff339b8820287bab6
+```
+
+Постоянное доказательство: `node --test tests/backlog-provenance.test.mjs`. Оно
+проверяет фиксированную deletion delta `closure_sha..deletion_sha`, а не всё
+после закрытия, и не сравнивает число узлов с записанной здесь константой.
