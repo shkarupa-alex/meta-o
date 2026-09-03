@@ -164,11 +164,16 @@ test("the closure-to-deletion delta is exactly the authorized retirement", () =>
   }
 });
 
-test("the current backlog has no substantive AST content under Open", () => {
-  const children = fromMarkdown(readFileSync("docs/backlog.md", "utf8")).children;
+test("the retirement itself left no substantive AST content under Open", () => {
+  // The provenance fact is historical: the ledger was empty on the deletion
+  // commit. Asserting it of the working tree instead would forbid every future
+  // real deferral the project instruction requires to be recorded here.
+  const result = git(["show", `${COORDINATES.deletion_sha}:docs/backlog.md`]);
+  assert.equal(result.status, 0, result.stderr);
+  const children = fromMarkdown(result.stdout).children;
   const open = children.findIndex(
     (node) => node.type === "heading" && node.depth === 2 && text(node).trim() === "Открыто",
   );
-  assert.ok(open >= 0, "docs/backlog.md has no Open section");
+  assert.ok(open >= 0, "the retired backlog has no Open section");
   assert.deepEqual(children.slice(open + 1), []);
 });

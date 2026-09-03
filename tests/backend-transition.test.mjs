@@ -164,11 +164,24 @@ function backlogEntries(source) {
 test("the backlog schema accepts empty state and validates every future deferral", () => {
   const source = readFileSync(join(ROOT, "docs", "backlog.md"), "utf8");
   const { entries, tokens } = backlogEntries(source);
-  const headings = tokens
+  // The document keeps its two structural headings, and every heading after
+  // them is an entry. Requiring an empty list here would make the project
+  // instruction to record a real deferral fail the gate that asks for it.
+  const structure = tokens
     .filter((entry) => entry.type === "heading_open")
-    .map((entry) => tokens[tokens.indexOf(entry) + 1].content);
-  assert.deepEqual(headings, ["Бэклог", "Открыто"]);
-  assert.deepEqual(entries, []);
+    .map((entry) => ({ tag: entry.tag, title: tokens[tokens.indexOf(entry) + 1].content }));
+  assert.deepEqual(structure.slice(0, 2), [
+    { tag: "h1", title: "Бэклог" },
+    { tag: "h2", title: "Открыто" },
+  ]);
+  assert.deepEqual(
+    structure.slice(2).filter(({ tag }) => tag !== "h3"),
+    [],
+  );
+  assert.deepEqual(
+    entries.map(({ title }) => title),
+    structure.slice(2).map(({ title }) => title),
+  );
 
   const future = backlogEntries(
     "# Бэклог\n\n## Открыто\n\n### Deferred\n\n**Причина.** R\n\n" +
