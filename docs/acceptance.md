@@ -47,9 +47,10 @@ backlog_closure:
   backlog_blob: 8d11d1107eb5875235c2830e6503f7e1265317d7
   real_runs_blob: c75859372fa7d794269cc6dcc8834c069ddd8096
   closure_sha: 2608df64ca6a54ece2abf6b858c49567bca19c1f
+  deletion_sha: 80e7e1e9e43f1a071abce7801829080e7d290195
   map_blob: 2698b1898c8cb00ab9a736cff339b8820287bab6
 ```
 
-Этот коммит удаляет temporary program artifacts. `deletion_sha` и постоянный
-provenance test добавляются следующим коммитом, потому что коммит не может
-содержать собственный object id.
+Постоянное доказательство: `node --test tests/backlog-provenance.test.mjs`. Оно
+проверяет фиксированную deletion delta `closure_sha..deletion_sha`, а не всё
+после закрытия, и не сравнивает число узлов с записанной здесь константой.
