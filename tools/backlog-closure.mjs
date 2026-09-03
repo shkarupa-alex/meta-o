@@ -19,47 +19,26 @@ export const SOURCES = [
     boundary: "after-h1",
   },
 ];
-export const PROOFS = {
-  "P-REUSE": {
-    command: ["node", "--test", "tests/adapter-contract.test.mjs", "tests/live-adapters.test.mjs"],
-    durable_paths: ["docs/architecture/reuse-evidence.md", "src/skills/find-reuse/SKILL.md"],
-  },
-  "P-REVIEW": {
-    command: [
-      "node",
-      "--test",
-      "tests/skill-evals.test.mjs",
-      "tests/orchestration-contract.test.mjs",
-    ],
-    durable_paths: ["shared/references/review-protocol.md", "src/skills/mo-review-orca/SKILL.md"],
-  },
-  "P-LIFECYCLE": {
-    command: ["node", "--test", "tests/skill-evals.test.mjs", "tests/backend-transition.test.mjs"],
-    durable_paths: ["shared/references/methodology.md", "src/skills/mo-orchestrate-orca/SKILL.md"],
-  },
-  "P-ORCA": {
-    command: ["node", "--test", "tests/backend-transition.test.mjs"],
-    durable_paths: ["docs/backend-capabilities.md", "shared/references/orca-mechanics.md"],
-  },
-  "P-WATCHDOG": {
-    command: ["node", "--test", "tests/backend-transition.test.mjs"],
-    durable_paths: [
-      "docs/architecture/watchdog-local-classifier.md",
-      "shared/scripts/mo-watchdog.sh",
-    ],
-  },
-  "P-KNOWLEDGE": {
-    command: [
-      "node",
-      "--test",
-      "tests/knowledge-chain.test.mjs",
-      "tests/knowledge-history.test.mjs",
-      "tests/build-skills.test.mjs",
-      "tests/eslint-symbol-purpose.test.mjs",
-    ],
-    durable_paths: ["docs/architecture/knowledge-identifiers.md", "tools/knowledge-history.mjs"],
-  },
+// One proof per obligation. A shared family command closed 514 rows with a test
+// file that never exercised them, so the command now addresses the obligation's
+// own named assertion, and the family only says which durable artifacts carry it.
+export const OBLIGATION_PROOF_FILE = "tests/closure-obligations.test.mjs";
+export const DURABLE = {
+  "P-REUSE": ["docs/architecture/reuse-evidence.md", "src/skills/find-reuse/SKILL.md"],
+  "P-REVIEW": ["shared/references/review-protocol.md", "src/skills/mo-review-orca/SKILL.md"],
+  "P-LIFECYCLE": ["shared/references/methodology.md", "src/skills/mo-orchestrate-orca/SKILL.md"],
+  "P-ORCA": ["docs/backend-capabilities.md", "shared/references/orca-mechanics.md"],
+  "P-WATCHDOG": ["docs/architecture/watchdog-local-classifier.md", "shared/scripts/mo-watchdog.sh"],
+  "P-KNOWLEDGE": ["docs/architecture/knowledge-identifiers.md", "tools/knowledge-history.mjs"],
 };
+
+/** §A-MEMORY-03 addresses one obligation's own named assertion as its proof. */
+export function obligationProof(obligation, family) {
+  return {
+    command: ["node", "--test", "--test-name-pattern", `^${obligation} `, OBLIGATION_PROOF_FILE],
+    durable_paths: DURABLE[family],
+  };
+}
 const BLOCKS = new Set(["heading", "paragraph", "listItem", "code", "blockquote"]);
 const BACKLOG = [
   ["Watchdog с локальной моделью", "Spec 3", "P-WATCHDOG", "architecture-rejected"],
@@ -191,8 +170,40 @@ function digest(node, source) {
 function locator(info, node, headings, ordinal) {
   return `${info.blob}:${info.path}:L${node.position.start.line}-L${node.position.end.line}:${headings.filter(Boolean).join(" > ") || "<root>"}:block-${String(ordinal).padStart(4, "0")}`;
 }
+const PENDING = {
+  id: "PENDING",
+  owner: "PENDING",
+  proof: "P-KNOWLEDGE",
+  disposition: "implemented",
+};
+
+/**
+ * A context node is not self-standing, so §4.5 makes it reference one concrete
+ * obligation. It attaches to the nearest obligation it belongs to: the closest
+ * preceding one, or the first following one for a node that opens a document.
+ */
+function bindContexts(rows) {
+  const carries = (candidate) => candidate.node_role !== "context";
+  rows.forEach((entry, index) => {
+    if (entry.node_role !== "context") return;
+    const donor =
+      rows.slice(0, index).reverse().find(carries) ?? rows.slice(index + 1).find(carries);
+    if (!donor) throw new Error(`${entry.source_locator}: no obligation to attach the context to`);
+    Object.assign(entry, {
+      obligation_id: donor.obligation_id,
+      owner_workstream: donor.owner_workstream,
+      disposition: donor.disposition,
+      durable_obligation: donor.durable_obligation,
+      proof_id: donor.proof_id,
+    });
+  });
+  const unbound = rows.find(({ obligation_id }) => obligation_id === PENDING.id);
+  if (unbound) throw new Error(`${unbound.source_locator}: obligation never resolved`);
+  return rows;
+}
+
 function row(info, source, node, headings, ordinal, assignment, role, obligation = assignment.id) {
-  const proof = PROOFS[assignment.proof];
+  const proof = obligationProof(obligation, assignment.proof);
   return {
     source_locator: locator(info, node, headings, ordinal),
     source_digest: digest(node, source),
@@ -202,7 +213,7 @@ function row(info, source, node, headings, ordinal, assignment, role, obligation
     owner_workstream: assignment.owner,
     disposition: assignment.disposition,
     durable_obligation: proof.durable_paths,
-    proof_id: assignment.proof,
+    proof_id: obligation,
     ...(role === "superseded-workaround" ? { replacement_contract: proof.durable_paths } : {}),
   };
 }
@@ -225,12 +236,6 @@ function backlogRows(info, source, items) {
           disposition: matched[3],
         };
     }
-    active ??= {
-      id: "O-BL-CONTEXT",
-      owner: "Spec 4",
-      proof: "P-KNOWLEDGE",
-      disposition: "implemented",
-    };
     result.push(
       row(
         info,
@@ -238,12 +243,12 @@ function backlogRows(info, source, items) {
         node,
         headings,
         index + 1,
-        active,
-        matched ? "obligation" : active.id === "O-BL-CONTEXT" ? "context" : "evidence",
+        active ?? PENDING,
+        matched ? "obligation" : active ? "evidence" : "context",
       ),
     );
   });
-  return result;
+  return bindContexts(result);
 }
 function realRows(info, source, items, semantic) {
   const result = [],
@@ -261,13 +266,7 @@ function realRows(info, source, items, semantic) {
       ranges.some(({ start, end }) => line >= start && line <= end),
     );
     if (!found) {
-      const context = {
-        id: "O-RR-CONTEXT",
-        owner: "Specs 2–4",
-        proof: "P-LIFECYCLE",
-        disposition: "implemented",
-      };
-      result.push(row(info, source, node, headings, index + 1, context, "context"));
+      result.push(row(info, source, node, headings, index + 1, PENDING, "context"));
       return;
     }
     const first =
@@ -297,7 +296,7 @@ function realRows(info, source, items, semantic) {
       ),
     );
   });
-  return result;
+  return bindContexts(result);
 }
 /** §A-MEMORY-03 emits one exact row for every selected frozen AST block. */
 export function buildClosureMap(root = process.cwd()) {
@@ -314,11 +313,18 @@ export function buildClosureMap(root = process.cwd()) {
     );
     source_counts[info.path] = items.length;
   }
+  const proofs = {};
+  for (const entry of rows) {
+    proofs[entry.proof_id] ??= {
+      command: obligationProof(entry.proof_id, "P-KNOWLEDGE").command,
+      durable_paths: entry.durable_obligation,
+    };
+  }
   return {
-    contract: "meta-o.backlog-closure-map.v2",
+    contract: "meta-o.backlog-closure-map.v3",
     sources: SOURCES,
     source_counts,
-    proofs: PROOFS,
+    proofs,
     semantic_assignments,
     rows,
   };
