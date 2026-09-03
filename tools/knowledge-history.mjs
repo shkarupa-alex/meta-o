@@ -20,6 +20,7 @@ import yaml from "js-yaml";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ID = /^§([AB])-[A-Z][A-Z0-9-]*-\d{2}(?=\s|$)/;
+const CITATION = /§[AB]-[A-Z][A-Z0-9-]*-\d{2}/gu;
 
 /** §A-MEMORY-01 runs one bounded Git command and returns its exact stdout. */
 export function git(root, args, allowMissing = false) {
@@ -158,6 +159,60 @@ function authorized(root, commit, action, id, current) {
   );
 }
 
+function prose(node) {
+  // Fenced blocks are records and examples, not citations: an authorization
+  // record has to name the id it retires, and the trailer grammar shows a
+  // placeholder id. Inline code stays in, because an id written as inline code
+  // inside a sentence is an ordinary reference.
+  if (node.type === "code") return "";
+  if (typeof node.value === "string") return node.value;
+  return (node.children ?? []).map(prose).join("\n");
+}
+
+/** §A-MEMORY-01 collects the knowledge ids one commit's own documents cite. */
+export function citations(root, commit) {
+  const found = new Map();
+  for (const path of knowledgePaths(root, commit)) {
+    const cited = prose(fromMarkdown(git(root, ["show", `${commit}:${path}`])));
+    for (const [id] of cited.matchAll(CITATION)) {
+      found.set(id, (found.get(id) ?? new Set()).add(path));
+    }
+  }
+  return found;
+}
+
+/**
+ * §A-MEMORY-01 reports every citation a commit cannot resolve in its own tree.
+ *
+ * A reference is a property of one tree, not of an edge, and checking only the
+ * current `HEAD` hides a commit whose dangling id a later commit repaired. The
+ * scope is the two knowledge levels themselves, so `references_updated` in an
+ * authorization record stops being a self-assertion.
+ */
+export function referenceViolations(root, commit) {
+  const defined = snapshot(root, commit);
+  const errors = [];
+  for (const [id, paths] of citations(root, commit)) {
+    if (!defined.has(id)) {
+      errors.push(`${commit}: broken reference ${id} in ${[...paths].sort().join(", ")}`);
+    }
+  }
+  return errors;
+}
+
+/**
+ * A merge may drop an id only because the other side deleted it. A sibling that
+ * simply branched before the id existed never had it to delete, so treating its
+ * absence as inheritance would let a merge lose an id in silence.
+ */
+function deletedOnSibling(root, parent, id, siblingParents) {
+  return siblingParents.some((sibling) => {
+    if (snapshot(root, sibling).has(id)) return false;
+    const base = git(root, ["merge-base", parent, sibling], true)?.trim();
+    return Boolean(base) && snapshot(root, base).has(id);
+  });
+}
+
 /** §A-MEMORY-01 compares one parent edge and reports unauthorized loss or reuse. */
 export function edgeViolations(root, parent, commit, siblingParents = [], enforceSemantic = true) {
   const before = snapshot(root, parent);
@@ -165,8 +220,8 @@ export function edgeViolations(root, parent, commit, siblingParents = [], enforc
   const siblings = siblingParents.map((sha) => snapshot(root, sha));
   const errors = [];
   for (const id of before.keys()) {
-    const deletionInherited = siblings.some((map) => !map.has(id));
-    if (!after.has(id) && !deletionInherited && !authorized(root, commit, "remove", id, after)) {
+    if (after.has(id) || deletedOnSibling(root, parent, id, siblingParents)) continue;
+    if (!authorized(root, commit, "remove", id, after)) {
       errors.push(`${parent}..${commit}: silent deletion ${id}`);
     }
   }
@@ -186,37 +241,34 @@ export function edgeViolations(root, parent, commit, siblingParents = [], enforc
   return errors;
 }
 
-/** §A-MEMORY-01 verifies the reachable full DAG after an explicit cutoff. */
-export function verifyHistory(root, cutoff) {
+/**
+ * §A-MEMORY-01 verifies the reachable full DAG after an explicit cutoff.
+ *
+ * Deletion and reference integrity hold from the cutoff. `semanticFrom` is the
+ * explicit, auditable commit from which semantic reuse is also enforced: the
+ * two edges between the cutoff and the checker's own introduction changed a
+ * section body under a rule that did not exist yet, and history is not
+ * rewritten to hide that. An absent `semanticFrom` enforces everywhere.
+ */
+export function verifyHistory(root, cutoff, semanticFrom = null) {
   if (!git(root, ["rev-parse", "--verify", `${cutoff}^{commit}`], true)) {
     return [`history_unavailable: cutoff ${cutoff} is unreachable`];
+  }
+  if (semanticFrom && !git(root, ["rev-parse", "--verify", `${semanticFrom}^{commit}`], true)) {
+    return [`history_unavailable: semantic boundary ${semanticFrom} is unreachable`];
   }
   const lines = git(root, ["rev-list", "--topo-order", "--reverse", "--parents", `${cutoff}..HEAD`])
     .trim()
     .split("\n")
     .filter(Boolean);
   const errors = [];
-  const activation = git(
-    root,
-    [
-      "log",
-      "--diff-filter=A",
-      "--reverse",
-      "--format=%H",
-      `${cutoff}..HEAD`,
-      "--",
-      "tools/knowledge-history.mjs",
-    ],
-    true,
-  )
-    ?.trim()
-    .split("\n")[0];
   for (const line of lines) {
     const [commit, ...parents] = line.split(" ");
+    errors.push(...referenceViolations(root, commit));
     for (const parent of parents) {
       const enforceSemantic =
-        !activation ||
-        git(root, ["merge-base", "--is-ancestor", activation, parent], true) !== null;
+        !semanticFrom ||
+        git(root, ["merge-base", "--is-ancestor", semanticFrom, parent], true) !== null;
       errors.push(
         ...edgeViolations(
           root,
@@ -235,11 +287,11 @@ function main() {
   const root = process.argv[2] ? resolve(process.argv[2]) : ROOT;
   const cutoff = process.argv[3];
   if (!cutoff) {
-    process.stderr.write("usage: knowledge-history.mjs [repository] <cutoff>\n");
+    process.stderr.write("usage: knowledge-history.mjs [repository] <cutoff> [semantic-from]\n");
     process.exitCode = 2;
     return;
   }
-  const errors = verifyHistory(root, cutoff);
+  const errors = verifyHistory(root, cutoff, process.argv[4] ?? null);
   if (errors.length > 0) {
     process.stderr.write(`${errors.join("\n")}\n`);
     process.exitCode = 1;

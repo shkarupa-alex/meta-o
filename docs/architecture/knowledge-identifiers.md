@@ -1,12 +1,18 @@
 # §A-MEMORY-01 — Уровни знаний связаны уникальными id
 
 ```yaml
-knowledge_id_change:
-  action: reuse
-  id: §A-MEMORY-01
-  reason: Историческая проверка усилена для merge DAG и явной авторизации изменений.
-  new_boundary: Решение теперь задаёт структуру authorization record и merge-edge semantics.
-  references_updated: true
+knowledge_id_changes:
+  - action: reuse
+    id: §A-MEMORY-01
+    reason: >-
+      Historical gate не проверял ссылки на каждом commit, считал deletion
+      унаследованным от parent, который просто ответвился до создания id, и
+      выключал semantic-проверку по неявно вычисленной границе.
+    new_boundary: >-
+      Решение задаёт три проверяемых уровня истории: deletion и ссылки от
+      cutoff, semantic reuse от явно закреплённого commit, а merge-inheritance
+      только при реальном удалении на другой стороне.
+    references_updated: true
 ```
 
 ## Решение
@@ -82,7 +88,29 @@ knowledge_id_change:
   references_updated: true
 ```
 
-Недостижимый cutoff даёт
+Ссылки проверяются на каждом commit диапазона, а не только на текущем `HEAD`:
+ссылка — свойство одного дерева, поэтому commit с dangling id, исправленный
+более поздним commit, иначе полностью исчезает из результата. Благодаря этому
+`references_updated: true` в authorization record перестаёт быть
+самоутверждением на уровне двух документов знаний.
+
+Deletion на merge считается унаследованным только когда id отсутствует у другого
+parent и присутствовал в их merge-base. Parent, ответвившийся до создания id,
+ничего не удалял, и merge в его пользу не имеет права терять id молча.
+
+Semantic reuse проверяется начиная с явно закреплённого commit, добавившего сам
+checker:
+
+```yaml
+semantic_enforcement_sha: 4127f414a43fee467415db955a2ed19e57ebc159
+```
+
+Два edge между cutoff и этой границей изменили тело секции по правилу, которого
+тогда ещё не существовало; история не переписывается, чтобы это скрыть, и
+граница не выводится из состояния файлов. Deletion и ссылки проверяются от
+cutoff без исключений.
+
+Недостижимый cutoff или недостижимая граница дают
 `history_unavailable`; merge-base остаётся лишь дешёвым branch guard.
 
 ## §A-MEMORY-02 — Дословный ledger живёт с задачей, постановка хранит тезисы
