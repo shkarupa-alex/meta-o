@@ -92,6 +92,7 @@ identity только из native harness result и возвращает JSON ev
 
 ```bash
 node tools/skill-evals.mjs --prompt <skill> \
+  --expectations-out <coordinate-expectation.json> \
   --candidate <full-sha> \
   --tier <required|desired|critical> --matrix-profile <name> \
   --route <route> --model <provider/model> --effort <level> \
@@ -101,11 +102,15 @@ node tools/skill-evals.mjs --prompt <skill> \
   --tool-permissions <comma-separated> --repetition 1
 ```
 
-Prompt передают user-approved harness без изменения checkout. Ответ сохраняют
-во внешнем untracked JSON-файле и проверяют:
+`--expectations-out` создаёт новый private-файл и отказывается перезаписывать
+существующий. Его сохраняют до model turn как caller-frozen input, а records
+всех coordinates объединяют во внешний untracked JSON-array. Prompt передают
+user-approved harness без изменения checkout. Ответ сохраняют во внешнем
+untracked JSON-файле и проверяют:
 
 ```bash
 node tools/skill-evals.mjs --validate-evidence <evidence.json> \
+  --expectations <all-coordinate-expectations.json> \
   --candidate <full-sha> --require-all \
   --critical-profile <configured-orchestrator-route/model/effort>
 ```
@@ -117,7 +122,19 @@ oracle. `--require-all` требует все 32 coordinates: required и desire
 каждого из 8 skills; desired отсутствие сохраняется envelope с
 `NOT_AVAILABLE`, а не пропуском. Такой envelope несёт `effective: null`,
 ненулевой exit code native availability probe и typed reason; он не выдумывает
-harness version или effective model. `PASS` не предзаполняется и невозможен при
+harness version или effective model. Отсутствующий native executable
+материализуется без model turn:
+
+```bash
+node tools/skill-evals.mjs --availability-probe <skill> \
+  --expectations-out <coordinate-expectation.json> \
+  --candidate <full-sha> --tier desired --matrix-profile <name> \
+  --route <route> --model <provider/model> --effort <level> \
+  --harness <name>
+```
+
+Успешный native probe запрещает ложный `NOT_AVAILABLE`. `PASS` не
+предзаполняется и невозможен при
 пустом observation или неподтверждённом oracle. Critical identity сравнивается
 с явно переданным user-owned orchestrator profile, а не с hard-coded display
 label. Полные

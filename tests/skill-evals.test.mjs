@@ -6,6 +6,9 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
 import { performance } from "node:perf_hooks";
 import { test } from "node:test";
 
@@ -13,9 +16,10 @@ import { forbiddenPublicDataReason } from "../tools/sensitive-evidence.mjs";
 import { diagnoseLegacyEvidence } from "../tools/skill-eval-runtime.mjs";
 import {
   diagnoseLegacyEvidenceForCandidate,
+  evaluationCoordinate,
   evaluationDigest,
   loadCorpus,
-  validateEvidence,
+  validateEvidence as validateEvidenceRaw,
 } from "../tools/skill-evals.mjs";
 
 const ROOT = process.cwd();
@@ -105,6 +109,22 @@ function finalizedEnvelope(skill, options = {}) {
   const result = envelope(skill, options);
   result.execution.evaluationDigest = evaluationDigest(loadCorpus(ROOT).get(skill), result);
   return result;
+}
+
+function frozenDigests(evidence) {
+  return Object.fromEntries(
+    (Array.isArray(evidence) ? evidence : [evidence]).map((item) => [
+      evaluationCoordinate(item),
+      evaluationDigest(loadCorpus(ROOT).get(item.skill), item),
+    ]),
+  );
+}
+
+function validateEvidence(root, evidence, candidate, requireAll = false, options = {}) {
+  return validateEvidenceRaw(root, evidence, candidate, requireAll, {
+    ...options,
+    expectedDigests: options.expectedDigests ?? frozenDigests(evidence),
+  });
 }
 
 test("every installable skill owns three bounded embedded cases", () => {
@@ -239,6 +259,27 @@ test("machine paths stay distinct from complete public HTTP URLs", () => {
     "gh version 2.96.0",
   ]) {
     assert.equal(forbiddenPublicDataReason(value), null, value);
+  }
+});
+
+test("actor-modified inputs cannot replace caller-frozen prompt inputs", () => {
+  for (const actorRecomputesDigest of [false, true]) {
+    const provenanceDrift = finalizedEnvelope("find-reuse");
+    const callerFrozen = frozenDigests(provenanceDrift);
+    provenanceDrift.harness.version = "actor-rewritten-version";
+    if (actorRecomputesDigest) {
+      provenanceDrift.execution.evaluationDigest = evaluationDigest(
+        loadCorpus(ROOT).get("find-reuse"),
+        provenanceDrift,
+      );
+    }
+    assert.throws(
+      () =>
+        validateEvidenceRaw(ROOT, provenanceDrift, HEAD, false, {
+          expectedDigests: callerFrozen,
+        }),
+      /returned evaluation inputs do not match frozen digest/u,
+    );
   }
 });
 
@@ -677,10 +718,14 @@ test("evidence v2 is readable only as an explicit legacy diagnostic", () => {
 });
 
 test("the CLI exposes a bounded prompt without launching a model", () => {
+  const temporary = mkdtempSync(join(tmpdir(), "mo-skill-eval-prompt-"));
+  const expectations = join(temporary, "expectations.json");
   const args = [
     "tools/skill-evals.mjs",
     "--prompt",
     "find-reuse",
+    "--expectations-out",
+    expectations,
     "--candidate",
     HEAD,
     "--tier",
@@ -716,10 +761,160 @@ test("the CLI exposes a bounded prompt without launching a model", () => {
   assert.doesNotMatch(result.stdout, /"verdict": "PASS"/u);
   assert.match(result.stdout, /native harness execution id/u);
   assert.match(result.stdout, /BLOCKED\|NOT_RUN\|NOT_AVAILABLE/u);
+  const frozen = JSON.parse(readFileSync(expectations, "utf8"));
+  assert.equal(frozen.length, 1);
+  assert.equal(frozen[0].coordinate, "find-reuse:required-codex:1");
+  assert.match(frozen[0].evaluationDigest, /^[a-f0-9]{64}$/u);
   const repeated = spawnSync(process.execPath, [...args, "--repetition", "2"], {
     cwd: ROOT,
     encoding: "utf8",
   });
   assert.equal(repeated.status, 2);
   assert.match(repeated.stderr, /--repetition must be 1/u);
+  rmSync(temporary, { recursive: true, force: true });
+});
+
+test("the CLI materializes and validates a missing desired harness without a model turn", () => {
+  const temporary = mkdtempSync(join(tmpdir(), "mo-skill-eval-unavailable-"));
+  const expectations = join(temporary, "expectations.json");
+  const evidencePath = join(temporary, "evidence.json");
+  const result = spawnSync(
+    process.execPath,
+    [
+      "tools/skill-evals.mjs",
+      "--availability-probe",
+      "find-reuse",
+      "--expectations-out",
+      expectations,
+      "--candidate",
+      HEAD,
+      "--tier",
+      "desired",
+      "--matrix-profile",
+      "desired-opencode",
+      "--route",
+      "opencode",
+      "--model",
+      "provider/qwen3.8-27b",
+      "--effort",
+      "low",
+      "--harness",
+      "OpenCode",
+    ],
+    {
+      cwd: ROOT,
+      encoding: "utf8",
+      env: { ...process.env, PATH: "/usr/bin:/bin" },
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const evidence = JSON.parse(result.stdout);
+  assert.equal(evidence.execution.effective, null);
+  assert.equal(evidence.execution.exitCode, 127);
+  assert.equal(evidence.execution.availability.reason, "command_unavailable");
+  assert.equal(evidence.harness.version, null);
+  assert.ok(evidence.results.every(({ verdict }) => verdict === "NOT_AVAILABLE"));
+  writeFileSync(evidencePath, result.stdout);
+  const validated = spawnSync(
+    process.execPath,
+    [
+      "tools/skill-evals.mjs",
+      "--validate-evidence",
+      evidencePath,
+      "--expectations",
+      expectations,
+      "--candidate",
+      HEAD,
+    ],
+    { cwd: ROOT, encoding: "utf8" },
+  );
+  assert.equal(validated.status, 0, validated.stderr);
+  assert.match(validated.stdout, /1 envelopes, 0 non-PASS/u);
+
+  const complete = [...loadCorpus(ROOT).values()].flatMap(({ skill }) =>
+    ["required-claude", "required-codex", "desired-codex", "desired-opencode"].map(
+      (matrixProfile) =>
+        skill === "find-reuse" && matrixProfile === "desired-opencode"
+          ? evidence
+          : finalizedEnvelope(skill, {
+              matrixProfile,
+              tier: matrixProfile.startsWith("desired-") ? "desired" : "required",
+            }),
+    ),
+  );
+  assert.equal(validateEvidence(ROOT, complete, HEAD, true).envelopes, 32);
+  rmSync(temporary, { recursive: true, force: true });
+});
+
+test("availability CLI probes the exact desired profile and emits only valid reasons", () => {
+  const temporary = mkdtempSync(join(tmpdir(), "mo-skill-eval-profile-probe-"));
+  const bin = join(temporary, "bin");
+  mkdirSync(bin);
+  const executable = join(bin, "opencode");
+  const baseArgs = [
+    "tools/skill-evals.mjs",
+    "--availability-probe",
+    "find-reuse",
+    "--candidate",
+    HEAD,
+    "--tier",
+    "desired",
+    "--matrix-profile",
+    "desired-opencode",
+    "--route",
+    "opencode",
+    "--model",
+    "provider/qwen3.8-27b",
+    "--effort",
+    "low",
+    "--harness",
+    "OpenCode",
+  ];
+  const runProbe = (script, name, extraEnvironment = {}) => {
+    writeFileSync(executable, script);
+    chmodSync(executable, 0o755);
+    return spawnSync(
+      process.execPath,
+      [...baseArgs, "--expectations-out", join(temporary, `${name}.json`)],
+      {
+        cwd: ROOT,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          ...extraEnvironment,
+          PATH: `${bin}${delimiter}/usr/bin:/bin`,
+        },
+      },
+    );
+  };
+
+  const absent = runProbe(
+    '#!/bin/sh\nif [ "$1" = "--version" ]; then echo fixture; else echo provider/other; fi\n',
+    "absent",
+  );
+  assert.equal(absent.status, 0, absent.stderr);
+  assert.equal(
+    JSON.parse(absent.stdout).execution.availability.reason,
+    "approved_profile_unavailable",
+  );
+
+  const failed = runProbe("#!/bin/sh\nexit 9\n", "failed");
+  assert.equal(failed.status, 0, failed.stderr);
+  assert.equal(JSON.parse(failed.stdout).execution.availability.reason, "harness_unavailable");
+
+  const timedOut = runProbe(
+    '#!/bin/sh\nif [ "$1" = "--version" ]; then echo fixture; else sleep 1; fi\n',
+    "timeout",
+    { MO_MODELS_CATALOG_TIMEOUT_MS: "100" },
+  );
+  assert.equal(timedOut.status, 0, timedOut.stderr);
+  assert.equal(JSON.parse(timedOut.stdout).execution.availability.reason, "harness_unavailable");
+
+  const present = runProbe(
+    '#!/bin/sh\nif [ "$1" = "--version" ]; then echo fixture; else echo provider/qwen3.8-27b; fi\n',
+    "present",
+  );
+  assert.equal(present.status, 2);
+  assert.match(present.stderr, /exact profile probe succeeded/u);
+  rmSync(temporary, { recursive: true, force: true });
 });

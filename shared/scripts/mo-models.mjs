@@ -34,6 +34,8 @@ import { homedir } from "node:os";
 import { basename, delimiter, dirname, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { forbiddenPublicDataReason } from "./public-data.mjs";
+
 import { query as claudeQuery } from "@anthropic-ai/claude-agent-sdk";
 
 /** The role names a run addresses. Anything else is a typo, not a new role. */
@@ -86,6 +88,46 @@ const CATALOG_TIMEOUT_MS =
 const HOME = homedir();
 const SETTINGS_DIR = join(HOME, ".meta-o");
 const SETTINGS_FILE = join(SETTINGS_DIR, "models.json");
+const MODEL_ID_MAX_BYTES = 256;
+const DISPLAY_TEXT_MAX_BYTES = 1024;
+
+/** §A-MODELS-01 keeps provider model identifiers relative, bounded and terminal-safe. */
+function isPortableModelId(value) {
+  if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > MODEL_ID_MAX_BYTES) {
+    return false;
+  }
+  if (value === "" || /[\p{Cc}\p{Z}\s\\]/u.test(value) || value.startsWith("/")) return false;
+  const segments = value.split("/");
+  return segments.every(
+    (segment) =>
+      segment !== "." && segment !== ".." && /^[A-Za-z0-9][A-Za-z0-9._+:[\]()-]*$/u.test(segment),
+  );
+}
+
+function isPortableDisplayText(value) {
+  if (value === null || value === undefined) return true;
+  if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > DISPLAY_TEXT_MAX_BYTES) {
+    return false;
+  }
+  return !/[\p{Cc}]/u.test(value) && forbiddenPublicDataReason(value) === null;
+}
+
+function portableCatalogRow(model) {
+  const efforts = [
+    ...(model?.supported_reasoning_levels?.map(({ effort }) => effort) ?? []),
+    ...(model?.supportedEffortLevels ?? []),
+  ];
+  const capabilities = model?.capabilities;
+  const capabilityValues = Array.isArray(capabilities) ? capabilities : [capabilities];
+  return (
+    isPortableModelId(model?.slug ?? model?.value) &&
+    efforts.every(isPortableModelId) &&
+    [model?.display_name, model?.displayName, model?.name, model?.description].every(
+      isPortableDisplayText,
+    ) &&
+    capabilityValues.every(isPortableDisplayText)
+  );
+}
 
 /**
  * Where each route's authoritative catalog comes from.
@@ -160,10 +202,15 @@ export function parseSelection(value) {
       `unknown route "${route}" in "${value}"; known: ${Object.keys(ROUTES).join(", ")}`,
     );
   }
+  const model = parts.slice(1, -1).join("/");
+  const effort = parts[parts.length - 1];
+  if (!isPortableModelId(model) || !isPortableModelId(effort)) {
+    throw new Error("selection contains an invalid model or effort identifier");
+  }
   return {
     route,
-    model: parts.slice(1, -1).join("/"),
-    effort: parts[parts.length - 1],
+    model,
+    effort,
   };
 }
 
@@ -378,12 +425,14 @@ function lineListing(descriptor) {
   if (result.error || result.status !== 0) {
     return unavailable(result.error?.message ?? `${descriptor.command} listing failed`);
   }
-  const models = dedupe(
-    String(result.stdout)
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith("#")),
-  ).sort();
+  const rows = String(result.stdout)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"));
+  if (rows.some((model) => !isPortableModelId(model))) {
+    return unavailable("model listing contained invalid identifiers");
+  }
+  const models = dedupe(rows).sort();
   return models.length > 0
     ? { available: true, models, efforts: {}, details: {}, reason: null }
     : unavailable("empty listing");
@@ -409,6 +458,9 @@ export function parseCodexModels(text) {
   const rows = (parsed?.models ?? []).filter(
     (model) => model?.visibility === "list" && model?.supported_in_api === true,
   );
+  if (rows.some((model) => !portableCatalogRow(model))) {
+    return unavailable("codex catalog contained invalid model data");
+  }
   const efforts = Object.fromEntries(
     rows
       .map((model) => [
@@ -535,6 +587,9 @@ async function claudeSdkListing() {
     ]);
     const efforts = {};
     const details = {};
+    if (supported.some((model) => !portableCatalogRow(model))) {
+      return unavailable("Claude catalog contained invalid model data");
+    }
     for (const model of supported) {
       const levels = model.supportedEffortLevels ?? [];
       if (levels.length > 0) efforts[model.value] = levels;
@@ -589,6 +644,18 @@ async function routeCatalog(route) {
     default:
       return unavailable(`unknown catalog kind "${descriptor.kind}"`);
   }
+}
+
+/** §A-EVAL-01 probes one exact desired model/effort through the route catalog. */
+export async function probeModelProfile(route, model, effort) {
+  if (!Object.hasOwn(ROUTES, route)) return { status: "unavailable" };
+  if (!isPortableModelId(model) || !isPortableModelId(effort)) return { status: "unavailable" };
+  const catalog = await routeCatalog(route);
+  if (!catalog.available) return { status: "unavailable" };
+  if (!catalog.models.includes(model)) return { status: "not_available" };
+  const efforts = catalog.efforts[model] ?? [];
+  if (efforts.length > 0 && !efforts.includes(effort)) return { status: "not_available" };
+  return { status: "available" };
 }
 
 /** Every regular non-symlink `.jsonl` under a directory, newest first. */
@@ -653,7 +720,7 @@ function recentSessionFiles(directory, started) {
  * newer generation the settings have not caught up with. They are never
  * presented as the route's catalog.
  */
-function collectModels(route, value, seen) {
+function collectModels(route, value, state) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return;
   const candidates = {
     claude: [value.model, value.message?.model],
@@ -664,14 +731,19 @@ function collectModels(route, value, seen) {
     opencode: [value.model, value.info?.modelID, value.session?.model],
   }[route];
   for (const model of candidates ?? []) {
-    if (typeof model === "string" && model.trim() !== "") seen.push(model);
+    if (model === null || model === undefined || model === "") continue;
+    if (!isPortableModelId(model)) {
+      state.corrupt = true;
+      continue;
+    }
+    state.seen.push(model);
   }
 }
 
 function collectHistoryLine(route, line, state) {
   if (!line.trim()) return;
   try {
-    collectModels(route, JSON.parse(line), state.seen);
+    collectModels(route, JSON.parse(line), state);
   } catch {
     state.corrupt = true;
   }

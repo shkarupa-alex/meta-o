@@ -13,6 +13,8 @@ import { test } from "node:test";
 import yaml from "js-yaml";
 import MarkdownIt from "markdown-it";
 
+import { stripSourceAnchors } from "../tools/build-skills.mjs";
+
 const ROOT = resolve(import.meta.dirname, "..");
 const markdown = new MarkdownIt();
 
@@ -37,7 +39,7 @@ function firstTable(document) {
 }
 
 test("the Issue decision table is rectangular, total and fail-closed", () => {
-  const rows = firstTable(source("docs/architecture/issue-routing.md"));
+  const rows = firstTable(source("shared/references/issue-routing.md"));
   assert.deepEqual(rows[0], [
     "Scenario",
     "Applies to",
@@ -73,7 +75,7 @@ test("the Issue decision table is rectangular, total and fail-closed", () => {
       "ISS-15",
     ],
   );
-  const tokens = markdown.parse(source("docs/architecture/issue-routing.md"), {});
+  const tokens = markdown.parse(source("shared/references/issue-routing.md"), {});
   const vocabulary = tokens.find(
     ({ type, content }) => type === "inline" && content.startsWith("`Applies to` — route context"),
   );
@@ -96,6 +98,23 @@ test("the Issue decision table is rectangular, total and fail-closed", () => {
       assert.match(forbidden, /[Gg]uess|origin|tracking|[Pp]ick|infer/u);
     }
   }
+});
+
+test("the installable orchestrator carries the complete Issue-routing contract", () => {
+  const shared = source("shared/references/issue-routing.md");
+  assert.equal(
+    source("skills/mo-orchestrate-orca/references/issue-routing.md"),
+    stripSourceAnchors(shared),
+  );
+  assert.match(
+    source("skills/mo-orchestrate-orca/SKILL.md"),
+    /\[Маршрутизация подтверждённой внешней работы\]\(references\/issue-routing\.md\)/u,
+  );
+  for (const scenario of ["ISS-01", "ISS-07A", "ISS-10", "ISS-15"]) {
+    assert.match(shared, new RegExp(`\\| ${scenario}\\s+\\|`, "u"));
+  }
+  assert.match(shared, /glab issue note.*unsupported/su);
+  assert.doesNotMatch(shared, /glab api --method POST/u);
 });
 
 /** §A-REVIEW-04 gets only top-level prose lines from the CommonMark block AST. */
@@ -513,7 +532,10 @@ function gitlabCoverage(documents, hosting) {
   const mergeRequest = supportedRule || supportedOnly;
   const workflowRules = documents[0].parsed?.workflow?.rules;
   const workflowReachable = gitlabWorkflowReachable(workflowRules);
-  const automatic = job.allow_failure !== true && new Set([undefined, "on_success"]).has(job.when);
+  const failureBlocks = job.allow_failure === undefined || job.allow_failure === false;
+  const hasUnprovedDependency = job.needs !== undefined;
+  const automatic =
+    failureBlocks && !hasUnprovedDependency && new Set([undefined, "on_success"]).has(job.when);
   if (!mergeRequest || !workflowReachable || !automatic) return "unknown";
   const required =
     hosting.ciEnabled === true &&
@@ -734,6 +756,29 @@ test("GitLab CI fixtures never invent candidate reachability or required policy"
     }),
     "covered",
   );
+  for (const unsafeJobSuffix of ["  allow_failure:\n    exit_codes: [2]\n", "  needs: prepare\n"]) {
+    assert.equal(
+      ciCoverage({
+        provider: "gitlab",
+        entrypoint: ".gitlab-ci.yml",
+        files: {
+          ".gitlab-ci.yml": gitlab,
+          "jobs.yml":
+            `${job}${unsafeJobSuffix}` +
+            (unsafeJobSuffix === "  needs: prepare\n"
+              ? "prepare:\n  script: echo ok\n  when: never\n"
+              : ""),
+        },
+        hosting: {
+          ciEnabled: true,
+          requiredJob: "backlog",
+          mergeRequestPipelines: true,
+          mergeTrains: true,
+        },
+      }),
+      "unknown",
+    );
+  }
   for (const rejectedRule of [
     "- if: $CI_PIPELINE_SOURCE == 'merge_request_event'\n      when: never",
     "- if: $CI_PIPELINE_SOURCE != 'merge_request_event'",

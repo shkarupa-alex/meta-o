@@ -17,7 +17,7 @@ const ROOT = resolve(import.meta.dirname, "..");
 const markdown = new MarkdownIt();
 
 function issueRows(
-  document = readFileSync(resolve(ROOT, "docs/architecture/issue-routing.md"), "utf8"),
+  document = readFileSync(resolve(ROOT, "shared/references/issue-routing.md"), "utf8"),
 ) {
   const tokens = markdown.parse(document, {});
   const start = tokens.findIndex(({ type }) => type === "table_open");
@@ -216,7 +216,7 @@ test("ISS-01 through ISS-15 route distinct facts to canonical actions", () => {
 });
 
 test("the parsed canonical row owns every normative routing field and missing rows fail closed", () => {
-  const source = readFileSync(resolve(ROOT, "docs/architecture/issue-routing.md"), "utf8");
+  const source = readFileSync(resolve(ROOT, "shared/references/issue-routing.md"), "utf8");
   const facts = { search: "incomplete" };
   const original = issueDecision(facts, issueRows(source));
   for (const field of ["preconditions", "requiredAction", "forbiddenAction", "evidence"]) {

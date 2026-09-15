@@ -834,6 +834,101 @@ test("corrupt history is explicitly incomplete while preserving observed hints",
   assert.deepEqual(history.models, ["observed-model"]);
 });
 
+test("unsafe provider model identifiers are never projected or used as history hints", () => {
+  const home = sandbox();
+  const bin = join(home, "bin");
+  const sessions = join(home, ".codex", "sessions");
+  mkdirSync(bin, { recursive: true });
+  mkdirSync(sessions, { recursive: true });
+  const codex = join(bin, "codex");
+  writeFileSync(
+    codex,
+    `#!/bin/sh\nprintf '%s\\n' '{"models":[{"slug":"/home/private/model","visibility":"list","supported_in_api":true}]}'\n`,
+  );
+  chmodSync(codex, 0o755);
+  const unsafeHistory = [
+    "/root/private-model",
+    "access_token=abcdefghijklmnop",
+    "line\nbreak",
+    "ansi\u001b[31m",
+  ];
+  writeFileSync(
+    join(sessions, "unsafe.jsonl"),
+    `${unsafeHistory.map((model) => JSON.stringify({ model })).join("\n")}\n`,
+  );
+  const environment = { PATH: `${bin}${delimiter}${process.env.PATH}` };
+  const json = run(home, ["--catalog", "--route", "codex", "--json"], ROOT, environment);
+  assert.equal(json.status, 0, json.stderr);
+  const report = provider(JSON.parse(json.stdout), "codex");
+  assert.equal(report.catalog.status, "unavailable");
+  assert.equal(report.history.complete, false);
+  assert.equal(report.history.stopReason, "corrupt");
+  assert.deepEqual(report.history.models, []);
+  for (const value of unsafeHistory) assert.equal(json.stdout.includes(value), false);
+
+  const human = run(home, ["--catalog", "--route", "codex"], ROOT, environment);
+  assert.equal(human.status, 0, human.stderr);
+  assert.doesNotMatch(human.stdout, /private-model|access_token|ansi/u);
+  assert.doesNotMatch(human.stdout, /default recommendation:/u);
+});
+
+test("unsafe catalog display metadata never reaches any projection or recommendation", () => {
+  const unsafeRows = [
+    ["display_name", "/Users/alex/private/model"],
+    ["description", "weights at /mnt/SMALL/private/model.bin"],
+    ["description", "cache at /var/private/model.bin"],
+    ["description", "file:///srv/private/model.bin"],
+    ["description", "access_token=abcdefghijklmnop"],
+    ["capabilities", ["code_generation", "ansi\u001b[31m"]],
+  ];
+  for (const [field, unsafe] of unsafeRows) {
+    const home = sandbox();
+    const bin = join(home, "bin");
+    mkdirSync(bin, { recursive: true });
+    const row = {
+      slug: "safe-model",
+      display_name: "Safe model",
+      description: "software engineering model",
+      capabilities: ["code_generation"],
+      visibility: "list",
+      supported_in_api: true,
+      supported_reasoning_levels: [{ effort: "high" }],
+      [field]: unsafe,
+    };
+    const codex = join(bin, "codex");
+    writeFileSync(codex, `#!/bin/sh\nprintf '%s\\n' '${JSON.stringify({ models: [row] })}'\n`);
+    chmodSync(codex, 0o755);
+    const environment = { PATH: `${bin}${delimiter}${process.env.PATH}` };
+    for (const args of [
+      ["--catalog", "--route", "codex", "--json"],
+      ["--catalog", "--route", "codex"],
+    ]) {
+      const result = run(home, args, ROOT, environment);
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.stdout.includes(Array.isArray(unsafe) ? unsafe.at(-1) : unsafe), false);
+      assert.doesNotMatch(result.stdout, /default recommendation:/u);
+    }
+  }
+
+  const safe = parseCodexModels(
+    JSON.stringify({
+      models: [
+        {
+          slug: "safe-model",
+          display_name: "Safe coding model",
+          description: "Public software engineering model",
+          capabilities: ["code_generation"],
+          visibility: "list",
+          supported_in_api: true,
+          supported_reasoning_levels: [{ effort: "high" }],
+        },
+      ],
+    }),
+  );
+  assert.equal(safe.available, true);
+  assert.deepEqual(safe.models, ["safe-model"]);
+});
+
 test("history JSON remains valid when UTF-8 spans the stream chunk boundary", () => {
   const home = sandbox();
   const sessions = join(home, ".codex", "sessions");

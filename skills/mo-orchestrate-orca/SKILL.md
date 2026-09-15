@@ -13,6 +13,7 @@ Read [Feature lifecycle](references/methodology.md),
 [Backend contract](references/backend-contract.md),
 [Portable review protocol](references/review-protocol.md),
 [Orca native mechanics](references/orca-mechanics.md), and
+[Маршрутизация подтверждённой внешней работы](references/issue-routing.md), and
 [Purpose and architecture contract](references/purpose-and-architecture.md)
 completely. Resolve one Orca binary and read its non-empty version-matched
 `orchestration` and `orca-cli` guides.
@@ -45,7 +46,8 @@ pair paths/sizes; wait for exact `Review-Handoff-Ack` before cleanup. Keep
 remediation reviewers hot, and use a fresh final same-SHA pair. Public updates
 contain only candidate, pair verdict and summed authored P0–P3 census.
 
-For a confirmed out-of-scope technical defect, apply the project decision table:
+For a confirmed out-of-scope technical defect, apply the bundled Issue-routing
+decision table:
 route to project/upstream only after verified ownership, search open+closed with
 explicit complete limits, then reread and redact the final title and every
 allowlisted field of the private file-safe body with the same closed policy. Use native
