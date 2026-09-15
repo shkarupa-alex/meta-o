@@ -6,8 +6,10 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { performance } from "node:perf_hooks";
 import { test } from "node:test";
 
+import { forbiddenPublicDataReason } from "../tools/sensitive-evidence.mjs";
 import { diagnoseLegacyEvidence } from "../tools/skill-eval-runtime.mjs";
 import {
   diagnoseLegacyEvidenceForCandidate,
@@ -166,6 +168,38 @@ function assertMachinePathKeyRejected(key) {
   assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /machine path is forbidden/u);
 }
 
+const SENSITIVE_CREDENTIALS = [
+  "Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==",
+  "https://alice:s3cr3t@build-host.internal/api",
+  "ssh://alice:s3cr3t@build-host.example/repo",
+  "postgresql://alice:s3cr3t@db.example/data",
+  "access_token=abcdefghijklmnop",
+  "api-token=abcdefghijklmnop",
+  "AWS_SECRET_ACCESS_KEY=abcdefghijklmnop",
+  "accessToken=abcdefghijklmnop",
+  "refresh_token=abcdefghijklmnop",
+  "auth-token=abcdefghijklmnop",
+  '{"access_token":"abcdefghijklmnop"}',
+  '{"api-token":"abcdefghijklmnop"}',
+  "-----BEGIN PRIVATE KEY-----",
+];
+
+const MACHINE_PATH_KEYS = [
+  "/home/alex/repo",
+  "/tmp/private",
+  "/root/private",
+  "C:\\Users\\alex\\repo",
+  "c:\\users\\alex\\repo",
+  "d:\\temp\\private",
+];
+
+test("sensitive evidence classification stays bounded on separator-heavy input", () => {
+  const input = "a1_b2-".repeat(16_000);
+  const started = performance.now();
+  assert.equal(forbiddenPublicDataReason(input), null);
+  assert.ok(performance.now() - started < 1_000, "96 KB classification exceeded one second");
+});
+
 test("evidence fails closed on identity drift, missing coverage and sensitive fields", () => {
   const drift = finalizedEnvelope("find-reuse");
   drift.execution.effective.model = "gpt-5.6-luna";
@@ -191,23 +225,16 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
   secretValue.results[0].observations = ["Bearer abcdefghijklmnop"];
   assert.throws(() => validateEvidence(ROOT, secretValue, HEAD), /secret-bearing evidence value/u);
 
-  for (const credential of [
-    "Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==",
-    "https://alice:s3cr3t@build-host.internal/api",
-    "ssh://alice:s3cr3t@build-host.example/repo",
-    "postgresql://alice:s3cr3t@db.example/data",
-    "access_token=abcdefghijklmnop",
-    "api-token=abcdefghijklmnop",
-    "AWS_SECRET_ACCESS_KEY=abcdefghijklmnop",
-    "accessToken=abcdefghijklmnop",
-    "refresh_token=abcdefghijklmnop",
-    "auth-token=abcdefghijklmnop",
-    "-----BEGIN PRIVATE KEY-----",
-  ])
-    assertSensitiveValueRejected(credential);
+  for (const credential of SENSITIVE_CREDENTIALS) assertSensitiveValueRejected(credential);
 
-  for (const key of ["/home/alex/repo", "/tmp/private", "C:\\Users\\alex\\repo"])
-    assertMachinePathKeyRejected(key);
+  for (const key of MACHINE_PATH_KEYS) assertMachinePathKeyRejected(key);
+
+  const oversized = finalizedEnvelope("find-reuse");
+  oversized.results[0].observations = ["a1_b2-".repeat(16_000)];
+  assert.throws(
+    () => validateEvidence(ROOT, oversized, HEAD),
+    /observations\[0\] exceeds 4096 bytes/u,
+  );
 
   const wrongHarness = finalizedEnvelope("find-reuse");
   wrongHarness.harness.name = "Claude";

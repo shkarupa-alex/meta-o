@@ -47,7 +47,8 @@ contain only candidate, pair verdict and summed authored P0–P3 census.
 
 For a confirmed out-of-scope technical defect, apply the project decision table:
 route to project/upstream only after verified ownership, search open+closed with
-explicit complete limits, redact a private file-safe body and use native
+explicit complete limits, then reread and redact the final title and every
+allowlisted field of the private file-safe body with the same closed policy. Use native
 `gh`/`glab`. A technical Issue with established root cause/owner is
 pre-authorized; credentials, product disputes, subscriptions, irreversible or
 unknown effects and watchdog remain human boundaries. Never retry an unknown

@@ -32,6 +32,12 @@ Orca `new-child` worktrees of a Git project. Shared `current`, raw
 `git worktree add`, `orca repo add`, `new-top-level` and unproven remote
 placement are forbidden.
 
+For each selected worktree, run the resolved system `realpath -- <path>`
+read-only, require exit zero and one absolute output path, and bind the recorded
+command and output to that observation. Two lexical paths whose observed
+realpaths are equal are one resource and fail with `inventory_changed`; stale,
+missing or mismatched command/output evidence fails with `inventory_unreadable`.
+
 If project identity, full inventory, placement or candidate cannot be proved,
 create no Run tasks, namespace or reports. Emit exactly:
 

@@ -432,11 +432,13 @@ function validateEnvelope(root, corpus, envelope, candidate, criticalProfile) {
     throw new Error(`${envelope.skill}: invalid repetition`);
   }
   const unavailable = envelopeIsUnavailable(envelope);
-  rejectSensitiveOrMachineLocal(envelope, envelope.skill);
+  // Apply every declared author-controlled field bound before the shared
+  // classifier scans the envelope (§A-EVAL-01).
+  validateResults(envelope, document, unavailable);
   validateActorIdentity(envelope, criticalProfile, unavailable);
   validateHarness(envelope, unavailable);
+  rejectSensitiveOrMachineLocal(envelope, envelope.skill);
   validateExecution(envelope, unavailable, evaluationDigest(document, envelope));
-  validateResults(envelope, document, unavailable);
   return envelope.results.filter(({ verdict }) =>
     new Set(["FAIL", "UNKNOWN", "BLOCKED", "NOT_RUN"]).has(verdict),
   );

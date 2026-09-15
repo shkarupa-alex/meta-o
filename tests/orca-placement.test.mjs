@@ -78,7 +78,18 @@ function recordedRealPath(child) {
   if (child.realPathProvenance !== `realpath -- ${child.path}`) {
     throw new Error("realpath provenance mismatch");
   }
+  if (typeof child.realPath !== "string" || !child.realPath.startsWith("/")) {
+    throw new Error("recorded realpath output is unreadable");
+  }
   return child.realPath;
+}
+
+function filesystemRealPath(child) {
+  const actual = realpathSync.native(child.path);
+  if (child.realPathProvenance !== `realpath -- ${child.path}` || child.realPath !== actual) {
+    throw new Error("realpath observation mismatch");
+  }
+  return actual;
 }
 
 function reviewerInventoryReason(surface, candidate, resolveRealPath) {
@@ -123,7 +134,7 @@ function recordedReview(
     candidate = "0123456789abcdef0123456789abcdef01234567",
     failAt = null,
     cleanupFails = false,
-    resolveRealPath = recordedRealPath,
+    resolveRealPath = filesystemRealPath,
   } = {},
 ) {
   const calls = [];
@@ -184,8 +195,12 @@ function recordedReview(
   return finish({ status: "started", reason: null, ownedDelta: owned });
 }
 
+function replayRecordedReview(surface, options = {}) {
+  return recordedReview(surface, { ...options, resolveRealPath: recordedRealPath });
+}
+
 test("folder placement accepts two existing clean exact-candidate reviewer worktrees", () => {
-  const result = recordedReview(fixture.folder);
+  const result = replayRecordedReview(fixture.folder);
   assert.deepEqual(
     { status: result.status, reason: result.reason },
     { status: "started", reason: null },
@@ -251,7 +266,7 @@ test("inventory proof uses the closed reason vocabulary before any reviewer task
   ];
   for (const [variant, reason] of variants) {
     const surface = { ...fixture.folder, ...variant };
-    const result = recordedReview(surface);
+    const result = replayRecordedReview(surface);
     assert.equal(result.reason, reason);
     assert.deepEqual(result.calls, []);
     assert.match(result.header, new RegExp(`reason=${reason} `, "u"));
@@ -260,7 +275,7 @@ test("inventory proof uses the closed reason vocabulary before any reviewer task
     () => reviewStartHeader("reviewer_inventory_invalid", "project-folder", "f".repeat(40)),
     /unknown REVIEW-START reason/u,
   );
-  const unsupported = recordedReview({
+  const unsupported = replayRecordedReview({
     ...fixture.folder,
     project: { ...fixture.folder.project, kind: "unknown" },
     children: fixture.folder.children.slice(0, 1),
@@ -278,13 +293,30 @@ test("filesystem realpath identity rejects two symlink aliases of one worktree",
     const children = fixture.folder.children.map((child, index) => ({
       ...child,
       path: index === 0 ? target : alias,
+      realPath: target,
+      realPathProvenance: `realpath -- ${index === 0 ? target : alias}`,
     }));
-    const result = recordedReview(
-      { ...fixture.folder, children },
-      { resolveRealPath: (child) => realpathSync.native(child.path) },
-    );
+    const result = recordedReview({ ...fixture.folder, children });
     assert.equal(result.reason, "inventory_changed");
     assert.deepEqual(result.calls, []);
+
+    for (const mutation of [{ realPath: alias }, { realPathProvenance: `realpath ${alias}` }]) {
+      const mutated = children.map((child, index) =>
+        index === 1 ? { ...child, ...mutation } : child,
+      );
+      assert.equal(
+        recordedReview({ ...fixture.folder, children: mutated }).reason,
+        "inventory_unreadable",
+      );
+    }
+
+    const second = join(root, "review-b");
+    mkdirSync(second);
+    const distinct = children.map((child, index) => {
+      const path = index === 0 ? target : second;
+      return { ...child, path, realPath: path, realPathProvenance: `realpath -- ${path}` };
+    });
+    assert.equal(recordedReview({ ...fixture.folder, children: distinct }).status, "started");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -295,7 +327,7 @@ test("missing context and remote-only placement are typed before any start", () 
     [fixture.noContext, "no_project_context"],
     [fixture.remote, "remote_placement_unsupported"],
   ]) {
-    const result = recordedReview(surface);
+    const result = replayRecordedReview(surface);
     assert.equal(result.status, "unsupported");
     assert.equal(result.reason, reason);
     assert.deepEqual(result.calls, []);
@@ -305,7 +337,7 @@ test("missing context and remote-only placement are typed before any start", () 
 });
 
 test("Git new-child placement attributes exactly two isolated reviewer resources", () => {
-  const result = recordedReview(fixture.git);
+  const result = replayRecordedReview(fixture.git);
   assert.equal(result.status, "started");
   assert.equal(result.header, null);
   assert.equal(result.registrationUnchanged, true);
@@ -323,12 +355,12 @@ test("Git new-child placement attributes exactly two isolated reviewer resources
 });
 
 test("partial start removes only exact-owned resources and types incomplete cleanup", () => {
-  let result = recordedReview(fixture.git, { failAt: "review-b" });
+  let result = replayRecordedReview(fixture.git, { failAt: "review-b" });
   assert.equal(result.reason, "partial_start_failed");
   assert.equal(result.finalResources, result.baselineResources);
   assert.equal(result.registrationUnchanged, true);
 
-  result = recordedReview(fixture.git, { failAt: "review-b", cleanupFails: true });
+  result = replayRecordedReview(fixture.git, { failAt: "review-b", cleanupFails: true });
   assert.equal(result.status, "UNKNOWN");
   assert.equal(result.reason, "cleanup_incomplete");
   assert.match(

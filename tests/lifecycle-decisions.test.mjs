@@ -131,18 +131,24 @@ function issueDecision(facts, rows = issueRows()) {
 }
 
 const ISSUE_BODY_FIELDS = ["summary", "reproduction", "expected", "actual", "versions", "links"];
+const ISSUE_PUBLIC_FIELDS = ["title", ...ISSUE_BODY_FIELDS];
 
-function projectIssueBody(draft) {
+function projectIssue(draft) {
+  if (typeof draft.title !== "string" || draft.title.trim() === "") {
+    return { status: "needs_attention", reason: "projection_unproved" };
+  }
   const projected = Object.fromEntries(
     ISSUE_BODY_FIELDS.filter((field) => typeof draft[field] === "string").map((field) => [
       field,
       draft[field],
     ]),
   );
-  if (Object.values(projected).some((value) => forbiddenPublicDataReason(value))) {
+  if (
+    [draft.title, ...Object.values(projected)].some((value) => forbiddenPublicDataReason(value))
+  ) {
     return { status: "needs_attention", reason: "forbidden_data" };
   }
-  return { status: "ready", body: projected };
+  return { status: "ready", title: draft.title, body: projected };
 }
 
 const WRITE_READY = {
@@ -295,7 +301,8 @@ test("Issue routing fails closed for overlapping facts, truncated search, unknow
     "ISS-03",
   );
   assert.deepEqual(
-    projectIssueBody({
+    projectIssue({
+      title: "Bounded defect",
       summary: "bounded defect",
       reproduction: "run public command",
       internalPrompt: "private prompt",
@@ -303,13 +310,17 @@ test("Issue routing fails closed for overlapping facts, truncated search, unknow
     }),
     {
       status: "ready",
+      title: "Bounded defect",
       body: { summary: "bounded defect", reproduction: "run public command" },
     },
   );
-  assert.deepEqual(projectIssueBody({ summary: "token=abc", actual: "/home/alex/private" }), {
-    status: "needs_attention",
-    reason: "forbidden_data",
-  });
+  assert.deepEqual(
+    projectIssue({ title: "Defect", summary: "token=abc", actual: "/home/alex/private" }),
+    {
+      status: "needs_attention",
+      reason: "forbidden_data",
+    },
+  );
   for (const forbidden of [
     "Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==",
     "https://alice:s3cr3t@build.example/api",
@@ -322,6 +333,8 @@ test("Issue routing fails closed for overlapping facts, truncated search, unknow
     "accessToken=abcdefghijklmnop",
     "refresh_token=abcdefghijklmnop",
     "auth-token=abcdefghijklmnop",
+    '{"access_token":"abcdefghijklmnop"}',
+    '{"api-token":"abcdefghijklmnop"}',
     "-----BEGIN PRIVATE KEY-----",
     "SHELL=/bin/bash\nLANG=C\nCI=true",
     "build-host.internal",
@@ -330,18 +343,27 @@ test("Issue routing fails closed for overlapping facts, truncated search, unknow
     "internal specification excerpt",
     "session transcript excerpt",
   ]) {
-    for (const field of ISSUE_BODY_FIELDS) {
-      assert.equal(projectIssueBody({ [field]: forbidden }).status, "needs_attention", field);
+    for (const field of ISSUE_PUBLIC_FIELDS) {
+      assert.equal(
+        projectIssue({ title: "Public defect", [field]: forbidden }).status,
+        "needs_attention",
+        field,
+      );
     }
   }
   assert.equal(
-    projectIssueBody({
+    projectIssue({
+      title: "Public defect",
       summary: "public defect",
       versions: "gh 2.96.0",
       links: "https://github.com/example/project/issues/1",
     }).status,
     "ready",
   );
+  assert.deepEqual(projectIssue({ summary: "missing title" }), {
+    status: "needs_attention",
+    reason: "projection_unproved",
+  });
 });
 
 function readiness(observation) {
