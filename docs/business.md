@@ -700,7 +700,7 @@ profile. Постоянное наблюдение за сессиями и ож
 `PASS`.
 
 Желательные coordinates — Codex `gpt-5.6-luna/max` и OpenCode с локальным
-`llama.cpp` / `qwen 3.8 27b`. Недоступность честно даёт `not_available`; если
+`llama.cpp` / `qwen3.8-27b`. Недоступность честно даёт `not_available`; если
 coordinate запущена, её `FAIL|UNKNOWN` нельзя скрыть advisory-статусом.
 
 Эти testing actors не заменяют локальную orchestration capability

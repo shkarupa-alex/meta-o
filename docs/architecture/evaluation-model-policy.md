@@ -14,6 +14,16 @@ knowledge_id_changes:
     reason: Testing policy теперь требует оба vendor-diverse low-effort profiles для каждого applicable case.
     new_boundary: Required Codex/Claude coordinates блокируют; desired Luna/OpenCode coordinates materialize availability.
     references_updated: true
+  - action: reuse
+    id: §B-EVAL-01
+    reason: Desired OpenCode coordinate закреплена за точным model id вместо неоднозначного названия семейства.
+    new_boundary: Desired OpenCode profile принимает только opencode/<provider>/qwen3.8-27b/low и сообщает этот literal при отказе.
+    references_updated: true
+  - action: reuse
+    id: §A-EVAL-01
+    reason: Решение фиксирует authorization record для точного desired OpenCode model id вместе с изменением бизнес-границы.
+    new_boundary: История §A-EVAL-01 сохраняет отдельную запись о каждом повторном использовании §B-EVAL-01 вместо опоры на прежнюю запись.
+    references_updated: true
 ```
 
 ## Решение

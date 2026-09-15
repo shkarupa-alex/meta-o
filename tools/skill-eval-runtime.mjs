@@ -317,7 +317,7 @@ export function diagnoseLegacyEvidenceAtCandidate(evidence, candidate, adapter) 
 /** §A-EVAL-01 keeps critical B22 on a configured Qwen without coupling its generation to evals. */
 function isQwenModel(model) {
   const identifier = String(model).split("/").at(-1)?.toLowerCase() ?? "";
-  return /^qwen(?:[-_.]|\d)[a-z0-9._-]*$/u.test(identifier);
+  return /^qwen(?:\d[a-z0-9._-]*|[-_.][a-z0-9][a-z0-9._-]*)$/u.test(identifier);
 }
 
 /** §A-EVAL-01 parses the user-owned critical coordinate independently of evidence. */

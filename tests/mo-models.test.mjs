@@ -270,11 +270,11 @@ test("testing profiles fail closed above the approved cost", () => {
   assert.match(testingPolicyError("testCodex", "codex/gpt-5.6-sol/high"), /sol\/low/);
   assert.match(
     testingPolicyError("testOpenCodeDesired", "opencode/provider/qwen3.8-27b/high"),
-    /qwen 3\.8 27b.*low effort/,
+    /qwen3\.8-27b\/low/,
   );
   assert.match(
     testingPolicyError("testOpenCodeDesired", "opencode/provider/deepseek-v4-flash/low"),
-    /qwen 3\.8 27b/,
+    /qwen3\.8-27b/,
   );
 });
 

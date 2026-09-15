@@ -415,10 +415,11 @@ function githubPullRequestReachable(root, events) {
   const pullRequestKeys =
     pullRequest && typeof pullRequest === "object" ? Object.keys(pullRequest) : [];
   if (pullRequestKeys.length === 0) return true;
-  const branches = [pullRequest.branches].flat();
+  const branches = pullRequest.branches;
   return (
     pullRequestKeys.length === 1 &&
     pullRequestKeys[0] === "branches" &&
+    Array.isArray(branches) &&
     branches.length === 1 &&
     branches[0] === "develop"
   );
@@ -430,7 +431,9 @@ function githubMergeGroupReachable(root, events) {
   return (
     events.includes("merge_group") &&
     (mergeGroup === null ||
-      (typeof mergeGroup === "object" && Object.keys(mergeGroup).length === 0))
+      (typeof mergeGroup === "object" &&
+        !Array.isArray(mergeGroup) &&
+        Object.keys(mergeGroup).length === 0))
   );
 }
 
@@ -585,6 +588,7 @@ test("GitHub CI fixtures never invent candidate reachability or required policy"
   };
   for (const invalidTrigger of [
     ordinary.replace("  pull_request:\n    branches: [develop]", "  pull_request: false"),
+    ordinary.replace("branches: [develop]", "branches: develop"),
     ordinary.replace("branches: [develop]", "branches: [develop, '!develop']"),
   ]) {
     assert.equal(
@@ -640,6 +644,15 @@ test("GitHub CI fixtures never invent candidate reachability or required policy"
       hosting: { ...protectedHosting, mergeQueueEnabled: true },
     }),
     "covered",
+  );
+  assert.equal(
+    ciCoverage({
+      provider: "github",
+      entrypoint: "ci.yml",
+      files: { "ci.yml": ordinary.replace("jobs:", "  merge_group: []\njobs:") },
+      hosting: { ...protectedHosting, mergeQueueEnabled: true },
+    }),
+    "config_present",
   );
   assert.equal(
     ciCoverage({

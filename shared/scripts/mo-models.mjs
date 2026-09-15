@@ -197,14 +197,12 @@ const TESTING_PROFILES = {
     route: "opencode",
     effort: "low",
     matches: isApprovedQwen38_27bModel,
-    requirement:
-      "testOpenCodeDesired must name the configured qwen 3.8 27b model id " +
-      "through opencode at low effort",
+    requirement: "testOpenCodeDesired must be opencode/<provider>/qwen3.8-27b/low",
   },
 };
 
 /** §A-EVAL-01 recognizes only the approved closed Qwen 3.8 27B testing id. */
-export function isApprovedQwen38_27bModel(model) {
+function isApprovedQwen38_27bModel(model) {
   const identifier = String(model).split("/").at(-1)?.toLowerCase() ?? "";
   return identifier === "qwen3.8-27b";
 }

@@ -222,6 +222,26 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
     /Qwen model/u,
   );
 
+  for (const malformedQwen of ["qwen-", "qwen.", "qwen_"]) {
+    const malformedCritical = finalizedEnvelope("mo-orchestrate-orca", {
+      tier: "critical",
+      matrixProfile: "critical-orchestration",
+    });
+    malformedCritical.requested.model = `llamacpp/${malformedQwen}`;
+    malformedCritical.execution.effective.model = `llamacpp/${malformedQwen}`;
+    malformedCritical.execution.evaluationDigest = evaluationDigest(
+      loadCorpus(ROOT).get("mo-orchestrate-orca"),
+      malformedCritical,
+    );
+    assert.throws(
+      () =>
+        validateEvidence(ROOT, malformedCritical, HEAD, false, {
+          criticalProfile: `opencode/llamacpp/${malformedQwen}/default`,
+        }),
+      /Qwen model/u,
+    );
+  }
+
   const configuredNewerQwen = finalizedEnvelope("mo-orchestrate-orca", {
     tier: "critical",
     matrixProfile: "critical-orchestration",

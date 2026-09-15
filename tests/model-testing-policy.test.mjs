@@ -65,7 +65,7 @@ test("desired OpenCode testing identity is Qwen only", () => {
   ]) {
     assert.match(
       testingPolicyError("testOpenCodeDesired", `opencode/local/${model}/low`),
-      /qwen 3\.8 27b/,
+      /qwen3\.8-27b/,
     );
   }
 });
@@ -91,7 +91,7 @@ test("the testing profiles accept an exact model id and reject a floating alias"
   assert.match(testingPolicyError("testCodex", "codex/gpt-5.6/low"), /gpt-5\.6-sol/u);
   assert.match(
     testingPolicyError("testOpenCodeDesired", "opencode/deepseek/deepseek-v3-4-flash/low"),
-    /qwen 3\.8 27b/u,
+    /qwen3\.8-27b/u,
   );
   assert.equal(testingPolicyError("executor", "codex/gpt-5.6-sol/medium"), null);
 });

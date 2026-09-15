@@ -19642,7 +19642,7 @@ var TESTING_PROFILES = {
     route: "opencode",
     effort: "low",
     matches: isApprovedQwen38_27bModel,
-    requirement: "testOpenCodeDesired must name the configured qwen 3.8 27b model id through opencode at low effort"
+    requirement: "testOpenCodeDesired must be opencode/<provider>/qwen3.8-27b/low"
   }
 };
 function isApprovedQwen38_27bModel(model) {
@@ -20497,7 +20497,6 @@ if (invokedDirectly()) {
 export {
   familyAndGeneration,
   findUpgrade,
-  isApprovedQwen38_27bModel,
   parseCodexModels,
   parseSelection,
   testingPolicyError
