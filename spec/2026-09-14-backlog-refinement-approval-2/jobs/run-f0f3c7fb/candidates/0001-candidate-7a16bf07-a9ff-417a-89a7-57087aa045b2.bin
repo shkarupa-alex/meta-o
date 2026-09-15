@@ -1,0 +1,165 @@
+## Facts & Constraints (White Hat)
+
+Прежде чем оценивать поправку, зафиксирую то, что проверяемо в репозитории и задаёт границы исполнимости. `make mo-qc` сегодня равен `mo-lint contract skills-check mo-eval-cases mo-test mo-smoke`, а `mo-test` — это буквально `node --test "tests/*.test.mjs"`, поэтому утверждение §8.3 о том, что runtime-assertion пустоты нельзя класть под этот glob, технически корректно и неслучайно. Схема backlog сегодня уже проверяется на живом `docs/backlog.md` внутри `tests/backend-transition.test.mjs` (функция `backlogEntries`, markdown-it, а не mdast), то есть «второй parser» уже существует де-факто и поправка обязана его поглотить. `.gitignore` действительно не покрывает ни `.orca/`, ни `spec/` — §8.2/U-18 обоснованы фактом, а не гипотезой. `origin` этого репозитория — `https://github.com/shkarupa-alex/meta-o.git`, каталогов `.github/workflows` и `.gitlab-ci.yml` в дереве нет вовсе. Утверждение §8.3 про GNU Make («сворачивает failing child statuses», поэтому различать надо по токену) верно: make отдаёт 2 независимо от кода потомка.
+
+И главный структурный факт: `shared/references/methodology.md` — владелец lifecycle — **не содержит ни одного упоминания MR, merge request, pull request или push**; единственное касание темы — «After the review loop, applicable E2E and the user's merge decision» в §7. То есть Meta-O сегодня заканчивается verified SHA, MR не создаёт и ветку не сливает. Поправка вешает два blocking gate на события, которых в нормативном lifecycle пока не существует.
+
+Ещё одно ограничение, которое поправка обязана учитывать: `mo-setup` по контракту работает над **чужими** проектами (`shared/references/project-setup.md` требует от проекта «one deterministic non-mutating aggregate QC command», а не конкретный `mo-qc`), и канонический backlog Meta-O содержит русские литералы (`## Открыто`, `Причина.`, `Практическое влияние.`, `Следующий шаг.`), тогда как CLAUDE.md требует вести human-facing знание на языке пользователя проекта.
+
+## Risks & Failure Modes (Black Hat)
+
+**1. `GATE-NO-SHA-INTERFACE` (critical).** §8.3 объявляет «Результат относится только к exact SHA; новый commit его инвалидирует», но нормативная поверхность команды — `make mo-backlog-empty` с выводом `path=<path> entries=<n>` — не принимает ни `--ref`, ни `--sha` и не печатает ни SHA, ни состояние worktree. Из вывода принципиально нельзя доказать, к какому кандидату относится `PASS`; сравните с §5.1, где reviewer обязан печатать `Candidate: <40-hex SHA>`. Хуже: boundary 2 требует прогнать gate по «фактическому integration candidate» (merged-result / merge train / merge queue), то есть по объекту, которого нет в рабочем дереве. Механизм не назван вообще: ни `git show <sha>:<path>`, ни отдельный disposable worktree, ни команда получения merged-ref (`refs/merge-requests/<iid>/merge`, merge-group ref). Любая наивная реализация сделает `git fetch`/`checkout` в замороженном candidate worktree — прямое нарушение правила CLAUDE.md «Run a potentially mutating diagnostic only in an isolated disposable location, never in the frozen candidate worktree». При этом §2.5 требует не называть чужие поверхности по памяти — а здесь не названо ничего, хотя действие обязательное.
+
+**2. `GATE-PROVISIONING-UNDEFINED` (critical).** Задача спрашивала «какой project-owned non-mutating command должен проверять пустоту backlog». Спека отвечает только для Meta-O («Для Meta-O реализация живёт в project quality tooling вне `tests/*.test.mjs`»), но при этом (a) `mo-setup` обязан «проверять наличие команды» в произвольном проекте, (b) предлагаемый CI patch подставляет литерал `make mo-backlog-empty`. В Python-проекте с `nox`/`just`/`tox` или в JS-проекте без Makefile этот литерал неисполним; кто и как создаёт checker в чужом проекте — не сказано (Meta-O его не поставляет: в `skills/*/scripts/` сейчас только `mo-models.mjs`). Одновременно не определены: канонический путь backlog в чужом проекте, язык/схема его заголовков, и что делать, если проект вообще не принял notebook-конвенцию — `UNKNOWN reason=missing` даст вечный nonzero и заблокирует каждый MR. Для weak-model исполнителя это не «выполнить», а «принять архитектурное решение».
+
+**3. `MR-MERGE-ACTOR-UNDEFINED` (major).** «Meta-O-managed MR create», «вызываемый им Result/MR workflow» и «agent-managed merge» нигде не определены: в методологии этих шагов нет, Result/MR workflow (`aidd-result`-класса) — персональный скилл пользователя вне этого репозитория, и Meta-O не имеет над ним нормативной власти. Следствия: (a) §15 slice 13 требует пройти gate «перед Meta-O-managed MR create», хотя такого действия в lifecycle нет; (b) единственная реальная точка принуждения для чужих agent-workflow — правило в `AGENTS.md`/`CLAUDE.md` проекта и CI, но §8.3 их так не называет; (c) E2E B36/B37 остаются без субъекта — нечего наблюдать, кроме отказа агента вызвать несуществующую операцию. Поправку нужно либо расширить методологией (описать, что Meta-O-managed MR create — это, и под какой границей авторизации происходит hosting write; §B-HUMAN-04 авторизует автономно только Issues, не MR), либо честно свести обязательство к «project contract rule + CI + любой agent-owned MR workflow».
+
+**4. `CI-JOB-BLOCKS-ACTIVE-DEV` (major).** Задача явно требовала «как не заблокировать активную разработку». Спека решает это для локального QC (mid-feature QC принимает entries) и тут же ломает для CI: требуется «отдельный non-allow-failure job/step с `make mo-backlog-empty` на MR/PR candidate», а GitLab merge-request/merged-result pipeline и GitHub `pull_request` workflow запускаются на **каждый push в открытый MR**, а не в момент merge. В типичном потоке (Draft MR открыт рано — а D-49 сам включает Draft в область gate) вся активная разработка идёт с красным обязательным job, при merge train — с выбросом из train. Спека нигде не говорит: ожидаемо ли это красное состояние, разрешено ли ограничить job merge-train/`merge_group`-пайплайнами, и запрещено ли валить весь pipeline (а с ним deploy/другие jobs). «Непустой backlog во время разработки — informational state» в присутствии предлагаемого CI-job фактически неверно.
+
+**5. `CI-ABSENT-OUTCOME-MISSING` (major).** Классификация CI знает `covered` и `unknown`, но не знает «CI в проекте нет вовсе» — а это ровно случай самого Meta-O (нет ни `.github/workflows`, ни `.gitlab-ci.yml`). Поведение `mo-setup` не определено: промолчать, пометить gap или предложить создать CI с нуля. Последнее — незапрошенное расширение области (пользователь просил «поглядывать на yml конфиги … и предлагать этот этап … туда тоже засовывать», то есть в существующие). Без явного правила разные исполнители реализуют разное, а B39 на собственном репозитории недоказуем.
+
+**6. `GITLAB-ENTRYPOINT-NOT-REPO-EVIDENCE` (major).** «CI provider определяется по repository-owned evidence» логически не работает для GitLab: активный entrypoint задаётся project setting `ci_config_path`, а CI может быть выключен. Tracked `.gitlab-ci.yml` не доказывает, что он исполняется; спека же разрешает только «unreadable custom path → unknown», то есть по умолчанию примет tracked файл за активный и выдаст ложный `covered`/патч в неиспользуемый файл. Симметрично для GitHub: Actions могут быть отключены на уровне repository/organization. Нужен явный уровень доказательства: `covered` только при подтверждённом активном entrypoint (read-only API), иначе `unknown` с названной причиной.
+
+**7. `EMPTINESS-SEMANTICS-AMBIGUOUS` (major).** `PASS` определён как «ноль **открытых** feature entries», но канонический schema (и существующий тест) знает ровно один раздел `## Открыто` и h3-записи в нём; раздела «закрытых» нет. Одновременно §4.5 требует «bounded textual record … в живой spec/**backlog closure message**» с полями `Scenario/Class/Repository/...`. Исполнитель не может определить: (a) попадают ли disposition-записи в `docs/backlog.md` (и тогда файл непуст и gate валится), (b) появляется ли новый закрытый раздел (и тогда меняется schema, которую §14 требует оставить прежней). Фикстур для «entries с disposition» в §14 тоже нет — перечислены только empty/entries/missing/unreadable/invalid UTF-8/malformed.
+
+**8. `NEEDS-ATTENTION-DEADLOCK` (minor→major).** Путь выхода из `NOT-EMPTY` — «закончить in-scope работу либо перенести в canonical Issue по §4». Но §4 легально заканчивается `needs_attention` (ISS-02/03/11/12: владелец upstream не читается, нет credentials, несколько кандидатов). При этом §8.3 прямо говорит, что решение человека о merge «само по себе не заменяет gate». Получается состояние, из которого фича не финализируется вообще, и ни один документированный override (явное решение пользователя, зафиксированное в ledger) не предусмотрен. Это надо назвать явно — либо как принятую human boundary с записью, либо как разрешённый waiver.
+
+**9. `SETUP-CHECKS-UNDECIDABLE` (minor).** `mo-setup` обязан проверить «non-mutating поведение» команды и «отсутствие live-empty assertion в ordinary QC». Первое требует прогона в disposable копии с diff Git state (не описано); второе — доказательства отрицания по произвольному чужому test corpus, что неразрешимо как инспекция. Операционализация есть в §14 для Meta-O («`make mo-qc` с valid non-empty fixture остаётся зелёным») — её же надо сделать нормативной формой проверки в чужих проектах.
+
+**10. `TOKEN-STREAM-UNSPECIFIED` (minor).** Токены `MO-BACKLOG-*` объявлены контрактом для caller и CI, но не сказано, в stdout или stderr они печатаются, печатается ли токен при `PASS` (кажется, да) и как отличать их от собственного `make: *** [...] Error 1`. Для grep в CI-job это существенно.
+
+**11. `SINGLE-AST-OWNER-UNROUTED` (minor).** «Один project-owned AST reader владеет canonical backlog schema и используется существующими schema tests и closure command» — но существующий reader живёт внутри `tests/backend-transition.test.mjs` на markdown-it и вплетён в тест перехода. Ни путь нового модуля, ни библиотека (markdown-it vs mdast, обе есть в проекте), ни судьба старой функции не названы. Плюс фраза «Runtime assertion над backlog текущей ветки не размещается под glob `mo-test`» читается неоднозначно: буквально она запрещает и существующую **schema**-проверку живого файла, которую §14 одновременно требует сохранить.
+
+## Strengths & Benefits (Yellow Hat)
+
+Поправка попадает в главные ловушки этого требования и не проваливает их. Разделение «mid-feature QC терпит записи / closure gate требует пустоты» прямо отвечает на «не заблокировать активную разработку» и зафиксировано и в §8.3, и в §16 («unconditional empty-backlog check во всяком mid-feature QC — rejected»), и в §14. Отказ от `make mo-closure` в пользу двух последовательных команд правильно избегает второго aggregate-владельца. Различение `NOT-EMPTY` и `UNKNOWN` с запретом «отсутствие evidence = пустота» — точный ответ на «не принять отсутствующий/нечитаемый backlog за пустой», и три класса покрыты фикстурами (empty/entries/missing/unreadable/invalid UTF-8/malformed). Осознание, что GNU Make схлопывает коды, и переход на стабильный первый токен вместо обещанных exit 1/2 — редкая для спек точность. Симметрия GitHub/GitLab по repository evidence, а не по установленному CLI, согласована с §4.1/§4.6 и прямо исполняет уточнение пользователя. Запрет автоматической правки CI и server-side protection, показ exact proposed patch и отдельная ветка `feature/meta-o-setup` соответствуют существующему setup-контракту. Обоснование custom checker («mature Markdown tool не докажет project-specific semantic emptiness») удовлетворяет требование CLAUDE.md о proof в commit message, а «один AST reader» — запрет второго parser. Наконец, §8.2 (`git check-ignore --no-index` вместо grep по `.gitignore`) — фактически верное решение, и репозиторий подтверждает, что пробел реален.
+
+## Alternatives & Creative Ideas (Green Hat)
+
+Есть более узкий и лучше проверяемый дизайн интерфейса самой команды: сделать её `mo-backlog-empty` с опциональным `REF=<sha-or-ref>`, читающей содержимое через `git cat-file blob <ref>:<path>` (строго read-only, работает и для merged-result ref после `git fetch` в **отдельном** disposable clone), и печатающей `MO-BACKLOG-EMPTY path=<p> ref=<40-hex> entries=0`. Это одним движением закрывает findings 1 и частично 2 и делает evidence самодостаточным — по образцу reviewer header §5.1.
+
+Для чужих проектов стоит перенести норму на уровень, который Meta-O действительно контролирует: project-setup контракт объявляет «closure gate command» как **роль** (как уже сделано с «one deterministic non-mutating aggregate QC command»), а не как литерал `make mo-backlog-empty`; `mo-setup` обнаруживает или предлагает конкретную команду проекта и записывает её имя в project contract, а CI-патч подставляет именно её.
+
+Для CI разумнее предлагать двухрежимный patch: обязательный barrier только на merge-time поверхности (`merge_group` у GitHub, merge train / `$CI_MERGE_REQUEST_EVENT_TYPE == "merge_train"` у GitLab) и advisory/`allow_failure: true` job на обычном MR-пайплайне. Это буквально соответствует D-53 («может блокировать merge, но не создание MR») и снимает finding 4, не ослабляя гарантию.
+
+Стоит также рассмотреть более дешёвый и гораздо более надёжный enforcement, чем CI: серверная required-status или локальный `pre-push`/`pre-merge-commit` hook — но оба хуже по причинам, которые спека уже приняла (server-side settings — человеческая граница; hooks не tracked и не переносятся в новый checkout), так что вывод «CI как advisory + contract rule» выглядит правильным, если сказать это явно.
+
+## Completeness & Process (Blue Hat)
+
+Поправка внутренне хорошо сшита с остальной спекой: §8.3 ↔ §14 (фикстуры и B36–B39) ↔ §15 (slices 6, 11, 13) ↔ §16 (три явных rejected/forbidden) ↔ §18 (D-47…D-53). Отсутствуют, однако: (a) явное изменение `shared/references/methodology.md` в описании boundaries — §2.2 называет methodology «consumer» `§A-BACKLOG-01`, но слайсы не требуют внести туда сами MR/merge шаги, без которых gate не к чему прицепить; (b) любой acceptance-пункт, доказывающий, что токен виден именно через `make`, а не только через прямой вызов скрипта; (c) фикстура «backlog с закрытыми/dispositioned записями»; (d) правило на случай отсутствия CI; (e) описание, где хранится disposition record относительно backlog (пересечение §4.5 и §8.3).
+
+**Traceability.** Ledger есть, U-01…U-19 разрешаются по exact text, D-01…D-53 присутствуют. Новые D-47…D-53 все имеют место в теле: D-47/D-49/D-50 → §8.3; D-48 → §8.3 + §16; D-51/D-52 → §8.3 CI-часть; D-53 → §8.3 («default-branch pipeline — audit»), хотя тезис «не блокирует создание MR» в теле явно не сформулирован и в CI-части фактически не обеспечен (finding 4). Rejected-решения отражены: D-19/D-20 → §2a и §16, «mo-closure» → §16, «автоматическая правка CI» → §16. Единственный traceability-дефект — D-48 называет consumer «Result/MR workflow», не существующий как нормативная сущность (finding 3).
+
+**Decomposition Readiness.** Слайсы 6, 11 и 13 нельзя выполнить без принятия новых архитектурных решений: путь и библиотека единого AST reader, интерфейс команды к чужому SHA, способ провизионирования gate в чужих проектах, форма CI-job (barrier vs advisory), поведение при отсутствии CI. Это ровно те места, где исполнитель будет «придумывать подход», а не исполнять.
+
+**Weak-Model Executability.** Основные директивы конкретны (токены, `git check-ignore --no-index`, `--state all` vs `--all`, запрет regex по YAML), но «повторно проходит gate фактический integration candidate», «project quality tooling вне `tests/*.test.mjs`», «проверяет … non-mutating поведение» и «tracked canonical/custom CI entrypoint» — прозаические директивы без исполнимой поверхности, и это на фоне §2.5, который сам же запрещает нормативные команды без проверенной поверхности. Асимметрия качества между §4.6 (образцовая точность) и §8.3 (прозаический уровень) — главный содержательный дефект поправки.
+
+**Contract Completeness.** Схема вывода команды неполна (нет SHA/ref, не назван поток вывода, нет определения `<reason>` словаря для `UNKNOWN` — в отличие от §5.3, где typed codes перечислены явно: `unreadable`, `candidate_mismatch`, …). Порог «ноль открытых entries» опирается на неопределённое понятие «открытый». TBD вне §17 формально нет, но §17 не содержит ни одного открытого вопроса по CI/gate, хотя как минимум «максимально доказуемая поверхность активного CI entrypoint» и «поддерживает ли hosting merge-time-only job» туда напрашиваются.
+
+Итог: поправка направлена верно и в нескольких местах заметно аккуратнее среднего (токены, UNKNOWN-семантика, mid-feature терпимость, запрет авто-правки CI), но три из шести вопросов исходной задачи — «какой именно command», «как gate применяется к merge-кандидату» и «как не заблокировать активную разработку (в CI)» — закрыты только на уровне намерения. Это исправимо точечными правками §8.3, §14, §15 и §17, без пересмотра подхода и без затрагивания ранее подтверждённых решений.
+
+```council-verdict
+{
+  "schema_version": 1,
+  "verdicts": [
+    {
+      "target_id": "spec-review",
+      "approval_score": 6,
+      "would_adopt": false,
+      "summary": "Поправка §8.3 верно выбирает форму (отдельный non-mutating closure gate вместо расширения mo-qc, стабильные токены EMPTY/NOT-EMPTY/UNKNOWN, запрет считать отсутствующий backlog пустым, терпимость mid-feature QC, симметричное GitHub/GitLab обнаружение по repository evidence, запрет авто-правки CI) и корректно сшита с §14/§15/§16/§18 и E2E B36–B39. Однако три из шести вопросов исходной задачи закрыты только декларативно: команда не имеет интерфейса к SHA/ref, из-за чего утверждение «PASS относится к exact SHA» недоказуемо, а обязательная перепроверка merged-result/merge-train/merge-queue кандидата не имеет ни названной поверхности, ни безопасного (немутирующего) способа исполнения в замороженном worktree; gate определён только для самого Meta-O, тогда как mo-setup обязан проверять его наличие и подставлять литерал `make mo-backlog-empty` в CI произвольных проектов, где нет ни Makefile, ни канонического пути/языка backlog; предлагаемый non-allow-failure job на MR/PR-пайплайне срабатывает на каждый push в открытый MR и тем самым ломает собственное обещание «непустой backlog во время разработки — informational». Дополнительно: «Meta-O-managed MR create» и «agent-managed merge» не существуют в methodology.md (grep по репозиторию даёт только «the user's merge decision»), поэтому у B36/B37 нет субъекта; не определён исход «CI в проекте отсутствует» (случай самого meta-o); активный GitLab-entrypoint (ci_config_path) принципиально не выводится из repository evidence; и смысл «ноль открытых entries» расходится со схемой, где есть только `## Открыто`. Все находки локальны и устраняются правкой §8.3/§14/§15/§17 без пересмотра подхода и без затрагивания frozen decisions.",
+      "phase": "spec-review",
+      "blocking_findings": [
+        {
+          "id": "GATE-NO-SHA-INTERFACE",
+          "severity": "critical",
+          "area": "§8.3 gate contract / pre-merge boundary",
+          "description": "Команда `make mo-backlog-empty` не принимает ref/SHA и не печатает его, поэтому заявленная привязка результата к exact SHA недоказуема; проверка фактического merged-result/merge-train/merge-queue кандидата не имеет ни названной команды получения ref, ни немутирующего способа прочитать backlog этого кандидата.",
+          "evidence": "§8.3: вывод `MO-BACKLOG-EMPTY path=<path> entries=0` без SHA; «текущий source SHA и ... фактический integration candidate повторно проходят gate»; сравните с §5.1, где reviewer обязан печатать `Candidate: <40-hex SHA>`. CLAUDE.md запрещает мутирующие диагностики в frozen candidate worktree, а checkout/fetch merged-ref — именно такая операция.",
+          "required_change": "Задать нормативный интерфейс: опциональный `REF=<sha-or-ref>`, чтение содержимого через `git cat-file blob <ref>:<path>` (или отдельный disposable worktree/clone), обязательные поля вывода `ref=<40-hex>` и состояние worktree, а также точную последовательность получения merged-result/merge-group ref для каждого hosting либо явный `unsupported` при её отсутствии."
+        },
+        {
+          "id": "GATE-PROVISIONING-UNDEFINED",
+          "severity": "critical",
+          "area": "§8.3 / mo-setup / distribution",
+          "description": "Gate специфицирован только для репозитория Meta-O, но mo-setup обязан проверять его наличие и предлагать CI-патч с литералом `make mo-backlog-empty` в произвольных проектах; не определено, кто создаёт checker в чужом проекте, какой путь и схему backlog он использует и что делать, если проект не принял notebook-конвенцию.",
+          "evidence": "§8.3: «Для Meta-O реализация живёт в project quality tooling вне `tests/*.test.mjs`» и одновременно «`mo-setup` проверяет наличие команды ... и CI coverage»; предлагаемый CI job вызывает `make mo-backlog-empty`. project-setup.md требует от проекта лишь «one deterministic non-mutating aggregate QC command», а канонические литералы схемы (`## Открыто`, `Причина.`) — русские и Meta-O-специфичные. `skills/*/scripts/` сегодня содержит только `mo-models.mjs`.",
+          "required_change": "Объявить closure gate ролью проекта (как уже сделано с aggregate QC command), а не литеральной целью: mo-setup обнаруживает или согласует конкретную команду и путь backlog, записывает их в project contract, CI-патч подставляет согласованную команду; отдельно решить и записать, поставляет ли Meta-O reference-реализацию checker'а в skills/ или проект пишет свою, и задать исход «проект не принял backlog-notebook»."
+        },
+        {
+          "id": "MR-MERGE-ACTOR-UNDEFINED",
+          "severity": "major",
+          "area": "lifecycle boundaries / methodology ownership",
+          "description": "«Meta-O-managed MR create», «вызываемый им Result/MR workflow» и «agent-managed merge» нигде не определены: владелец lifecycle (methodology.md) не содержит шагов создания MR и слияния, а Result/MR workflow — внешний персональный скилл вне нормативной власти проекта; поэтому gate прицеплен к несуществующим событиям, а B36/B37 лишены субъекта.",
+          "evidence": "grep по shared/references/methodology.md: единственное касание — «After the review loop, applicable E2E and the user's merge decision» (§7); ни MR, ни merge request, ни pull request, ни push в docs/ и shared/ не встречаются. §15 slice 13 при этом требует «перед Meta-O-managed MR create ... пройти make mo-backlog-empty». §B-HUMAN-04 автономно авторизует только Issues, не hosting MR-write.",
+          "required_change": "Либо добавить в methodology.md явное определение MR-create/merge шагов, их авторизационной границы и владельца, либо переформулировать §8.3 так, чтобы обязательство ложилось на реально контролируемые поверхности: правило в project contract (AGENTS.md/CLAUDE.md), CI barrier и любой agent-owned MR workflow, с соответствующей корректировкой D-48 и E2E B36/B37."
+        },
+        {
+          "id": "CI-JOB-BLOCKS-ACTIVE-DEV",
+          "severity": "major",
+          "area": "§8.3 CI posture",
+          "description": "Требование «отдельного non-allow-failure job на MR/PR candidate» превращает нормальную разработку с непустым notebook в постоянно красный обязательный job, потому что merge-request/merged-result и pull_request пайплайны запускаются на каждый push в открытый MR (а Draft MR включён в область gate), что противоречит и обещанию «informational state», и требованию задачи не блокировать активную разработку.",
+          "evidence": "§8.3: «Coverage требует отдельного non-allow-failure job/step с `make mo-backlog-empty` на MR/PR candidate»; «Непустой backlog во время разработки — informational state»; D-49 включает Draft; D-53 утверждает, что pipeline блокирует merge, а не создание MR.",
+          "required_change": "Разделить предлагаемые job'ы по поверхности: обязательный barrier только на merge-time поверхностях (GitHub `merge_group`, GitLab merge train / merged-result в момент слияния) либо как required status, явно допускающий красное состояние до финализации; обычный MR/PR job — advisory (`allow_failure`) с явным запретом валить неотносящиеся стадии. Зафиксировать выбранное правило в §8.3, §16 и B38/B39."
+        },
+        {
+          "id": "CI-ENTRYPOINT-AND-ABSENCE",
+          "severity": "major",
+          "area": "§8.3 CI detection",
+          "description": "Обнаружение CI объявлено «по repository-owned evidence», но активный GitLab entrypoint задаётся project setting (ci_config_path) и CI может быть выключен, а GitHub Actions могут быть отключены на уровне repo/org — tracked YAML не доказывает исполнение и даёт ложный `covered`; отдельно не определён исход «CI-конфигурации нет вовсе», который является случаем самого meta-o.",
+          "evidence": "§8.3 перечисляет только `covered`/`unknown` и «unreadable custom path даёт unknown»; в репозитории нет ни `.github/workflows`, ни `.gitlab-ci.yml`, origin — github.com/shkarupa-alex/meta-o.",
+          "required_change": "Разрешать `covered` только при подтверждённом активном entrypoint (read-only authenticated surface), иначе `unknown` с названной причиной; добавить третий исход `no_ci_surface` с явным правилом, что mo-setup фиксирует gap и не предлагает создавать CI-инфраструктуру с нуля без отдельного запроса пользователя."
+        },
+        {
+          "id": "EMPTINESS-SEMANTICS-AMBIGUOUS",
+          "severity": "major",
+          "area": "§8.3 / §4.5 backlog schema",
+          "description": "`PASS` определён как «ноль открытых feature entries», но канонический schema знает только раздел `## Открыто` и h3-записи; одновременно §4.5 требует хранить bounded disposition record в «живой spec/backlog closure message». Исполнителю неизвестно, попадают ли disposition-записи в docs/backlog.md (и тогда gate валится) или файл должен остаться пустым, и меняется ли схема.",
+          "evidence": "§8.3 «ноль открытых feature entries»; §4.5 «bounded textual record в живой spec/backlog closure message»; текущий tests/backend-transition.test.mjs требует ровно `# Бэклог` + `## Открыто` + h3-записи; §14 перечисляет фикстуры empty/entries/missing/unreadable/invalid UTF-8/malformed, но не «entries с disposition».",
+          "required_change": "Явно указать, где живут disposition-записи (живая spec / commit message), подтвердить, что docs/backlog.md после disposition пуст, либо определить закрытый раздел в схеме; добавить соответствующую фикстуру в §14."
+        },
+        {
+          "id": "GATE-COMMAND-CONTRACT-GAPS",
+          "severity": "minor",
+          "area": "§8.3 output contract / mo-setup checks",
+          "description": "Не определены: поток вывода токена (stdout/stderr) и его отличимость от собственных сообщений make; словарь допустимых `<reason>` для MO-BACKLOG-UNKNOWN (в отличие от typed codes §5.3); путь и библиотека единого AST reader при том, что существующий schema-reader живёт внутри tests/backend-transition.test.mjs на markdown-it; проверяемая форма обязательств mo-setup «non-mutating поведение» и «отсутствие live-empty assertion в ordinary QC»; отсутствует документированный человеческий выход из deadlock, когда запись нельзя ни реализовать, ни маршрутизировать (ISS-02/03/11/12 дают needs_attention).",
+          "evidence": "§8.3 перечисляет три токена без потока и без словаря reason; §5.3 в той же спеке задаёт закрытый список typed codes; §8.3 «Один project-owned AST reader ... используется существующими schema tests» без имени модуля; §4 «needs_attention: completion запрещён» плюс «решение человека о merge само по себе не заменяет gate».",
+          "required_change": "Зафиксировать поток и порядок вывода токена, закрытый словарь `<reason>`, точный путь нового AST-модуля и судьбу текущей функции backlogEntries; заменить недоказуемые инспекции mo-setup операционализацией (прогон QC с valid non-empty fixture в disposable копии); назвать явный human-boundary выход при неустранимом needs_attention с записью в ledger."
+        }
+      ],
+      "non_blocking_findings": [
+        {
+          "id": "MO-TEST-GLOB-WORDING",
+          "severity": "minor",
+          "area": "§8.3 wording",
+          "description": "Фраза «Runtime assertion над backlog текущей ветки не размещается под glob, который исполняет mo-test» буквально запрещает и существующую schema-проверку живого docs/backlog.md, которую §14 одновременно требует сохранить.",
+          "evidence": "§8.3 vs §14 «backlog schema принимает временные entries»; tests/backend-transition.test.mjs читает реальный docs/backlog.md.",
+          "required_change": "Сузить формулировку до «assertion пустоты», явно сохранив live schema assertion под mo-test."
+        },
+        {
+          "id": "MAKE-INVOCATION-NOT-PROVEN",
+          "severity": "minor",
+          "area": "§14 acceptance",
+          "description": "D-50 — утверждение про поведение именно make (схлопывание кодов, различение по токену), но ни один перечисленный deterministic proof не обязывает вызывать gate через `make`, а не напрямую скрипт.",
+          "evidence": "§14: «fixture roots доказывают MO-BACKLOG-EMPTY/NOT-EMPTY/UNKNOWN»; явного требования прогона через публичный Make target нет.",
+          "required_change": "Добавить пункт acceptance: токены и nonzero наблюдаются через публичный `make mo-backlog-empty`."
+        },
+        {
+          "id": "NOT-EMPTY-SAFE-HEADINGS",
+          "severity": "minor",
+          "area": "§8.3 diagnostics",
+          "description": "«NOT-EMPTY перечисляет только безопасные заголовки» — критерий безопасности не определён, хотя рядом §4.3 содержит подробный redaction allowlist.",
+          "evidence": "§8.3 vs §4.3.",
+          "required_change": "Сослаться на §4.3 или ограничить вывод числом записей и их порядковыми индексами."
+        }
+      ],
+      "assumptions": [
+        "Спека оценивалась только по её тексту и текущему состоянию репозитория; прежние council-артефакты под spec/** не читались, поскольку текущая задача их не называет.",
+        "Предполагается, что `aidd-result`-подобный Result/MR workflow не входит в поставку meta-o и не может быть изменён этой работой; поэтому его нельзя считать нормативным consumer'ом без отдельного решения.",
+        "Предполагается, что mo-setup применяется не только к самому meta-o, но и к произвольным проектам пользователя — иначе часть требований §8.3 (CI-инспекция, проверка наличия команды) была бы избыточна.",
+        "Предполагается, что GitLab merge-request/merged-result и GitHub pull_request пайплайны в целевых проектах запускаются на каждый push в открытый MR (стандартное поведение обоих hosting)."
+      ],
+      "confidence": "high"
+    }
+  ]
+}
+```

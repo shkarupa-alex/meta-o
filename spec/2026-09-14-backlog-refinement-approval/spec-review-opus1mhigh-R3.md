@@ -1,0 +1,107 @@
+I have verified every checkable claim. Let me summarize what the evidence shows.
+
+**The three R5 corrections are factually grounded.** I checked each against the installed toolchain rather than taking the preamble's word for it:
+
+| Spec claim (§4.6, §8.1) | Verified |
+|---|---|
+| `gh` 2.100.0, `glab` 1.117.0 | exact match |
+| `gh search issues --state` is `{open\|closed}`, no `all` | confirmed |
+| `gh search issues --json` lacks `stateReason` | confirmed (18 fields, absent) |
+| `gh issue list --json` has `state` + `stateReason`, `--state all` | confirmed |
+| `gh issue list --repo [HOST/]OWNER/REPO` vs `gh search issues --repo OWNER/REPO` | confirmed — host form differs exactly as claimed |
+| `--body-file -` on `gh issue comment`/`create` | confirmed |
+| `glab issue list` has no `--state`; has `-A --all`, `-c --closed` | confirmed |
+| `glab issue list` uses `-O --output`; `glab issue view` uses `-F --output` | confirmed — and `-F` on `list` means `--output-format {details,ids,urls}`, so the spec's "no flag transfer" rule prevents a real silent breakage |
+| `glab issue note` has no body-file flag, opens editor without `--message` | confirmed |
+| `glab issue create --description-file` | confirmed |
+| `glab api --method/--input/--paginate/--hostname` | confirmed |
+| `glab issue list -p --page / -P --per-page` | confirmed |
+| `orca skills list/get`, `--full`, `--json`, both topics, reads bundled content locally without the runtime | confirmed verbatim |
+
+I also verified the §3 intake gate: `git hash-object docs/backlog.md` → `4b6a958c…bef` and `shasum -a 256` → `ce8113b2…c38`, both exactly as the spec states.
+
+**PASS-EMPTY-BODY-VS-EVIDENCE** is closed on the merits and structurally: §5.1 introduces named sections with a per-verdict obligation matrix, scoping emptiness to the finding index and `Findings` only, with `Grounding`/`Scope and checks` mandatory and `Unknowns`/`Residual risks` explicit even at `PASS`; §5.2, §5.3, §14, §16 and new B34 are all consistent with it, and D-43 records it. All new tables (§5.1, §4.5 with ISS-15) are AST-rectangular with no empty cells and no unescaped pipes, satisfying §2.4.
+
+The remaining fourteen named findings were untouched by the correction and remain closed as previously adopted; I re-read each anchor (§2.2 `§A-MEMORY-03` unchanged, §13 settings-role ownership, §6 caller-as-writer, §9 run-scoped waiter, §13.1 v3 schema, §11 bounded history, §15/§2.2 decomposition) and found no regression.
+
+**No blocking findings.** Two things are worth the implementer's attention but neither leaves a named finding open nor constitutes a critical regression, so they go in non-blocking notes: §8.1 sources the recorded version from `orca status`, which reports `result.runtime.appVersion` and needs the app running, whereas the guides are bundled with the *CLI* — `orca --version` off the resolved binary is the correct and offline-safe evidence; and §5.1's bare-line section markers inside prose that legitimately discusses "Unknowns" are collision-prone, though §5.2's anchoring plus caller validation degrades safely to `UNKNOWN`.
+
+```council-verdict
+{
+  "schema_version": 1,
+  "verdicts": [
+    {
+      "target_id": "spec-review",
+      "approval_score": 9,
+      "would_adopt": true,
+      "summary": "All three R5 findings are closed, and unusually well closed: I independently verified every factual claim the correction rests on against the installed toolchain rather than accepting the preamble's assertions. gh 2.100.0 and glab 1.117.0 match the stated baselines exactly; gh search issues really does accept --state only as open|closed and really does lack stateReason; gh issue list really is the only listing command covering both states with stateReason in one call; glab issue list really has no --state (using -A/--all and -c/--closed) and really does collide on -F (--output-format on list vs --output on view), making the spec's no-flag-transfer rule a genuine safety rule rather than pedantry; glab issue note really has no body-file path and opens an editor without --message, which justifies the glab api --input workaround and its §3.1 upstream obligation; glab issue create --description-file, glab api --method/--input/--paginate/--hostname, and the gh [HOST/]OWNER/REPO vs OWNER/REPO asymmetry all check out. ISSUE-NATIVE-CLI-003 is therefore closed with an executable surface plus ISS-15, §2.5 and recorded-fixture proof. GUIDE-LOCATOR-MISSING is closed by a real locator: orca skills list/get exist, both orchestration and orca-cli are present, --full and --json are real, and the help text confirms guides are read locally without contacting the runtime, which is exactly what U-13's no-harness-home-install requirement needs. PASS-EMPTY-BODY-VS-EVIDENCE is closed on the merits, since a verdict that emptied the whole body would have deleted the coverage evidence that makes PASS trustworthy; §5.1's named-section matrix scopes emptiness to the finding index and Findings only and is consistently propagated through §5.2, §5.3, §14, §16, B34 and D-43. I additionally confirmed the §3 migration gate is reconstructible: git hash-object and shasum -a 256 of docs/backlog.md reproduce the stated blob id and SHA-256 exactly. The other fourteen named findings were untouched and I found no regression at their anchors; all new and rewritten tables are AST-rectangular with no empty cells or unescaped pipes per §2.4; and no frozen decision U-01..U-17 is weakened. Two narrow imprecisions remain, both non-blocking and both with a one-line fix, recorded as notes.",
+      "phase": "spec-review",
+      "confidence": "high",
+      "non_blocking_findings": [
+        {
+          "id": "GUIDE-LOCATOR-VERSION-SOURCE",
+          "severity": "minor",
+          "area": "§8.1 guide locator evidence",
+          "description": "§8.1 mandates recording the resolved binary path 'вместе с версией из orca status', but orca status prints no version in text form and exposes only result.runtime.appVersion under --json, which is the running desktop app's version and requires appRunning/runtimeReachable. The bundled guides are bundled with the CLI ('List version-matched skill guides bundled with this Orca CLI'), and orca skills get explicitly 'Reads bundled guide content locally without contacting the Orca runtime'.",
+          "evidence": "Verified: `orca status` text output contains appRunning/pid/runtimeState/runtimeId/graphState and no version; `orca status --json` yields result.runtime.appVersion=1.4.198; `orca --version` yields 1.4.198; `orca skills get --help` states it reads bundled content locally without the runtime.",
+          "required_change": "Record the version from `orca --version` on the resolved binary as the normative version-match evidence, and treat orca status appVersion as optional CLI/app skew evidence only. Otherwise a guide-readiness probe run with the Orca app closed cannot populate the mandated evidence field and would mark the route unsupported even though both guides read correctly offline."
+        },
+        {
+          "id": "REPORT-SECTION-MARKER-COLLISION",
+          "severity": "minor",
+          "area": "§5.1/§5.2 report section recognition",
+          "description": "§5.1 promotes five to six bare-line section markers (Grounding, Scope and checks, Findings, Unknown-Account, Unknowns, Residual risks) inside a report whose prose legitimately discusses unknowns and residual risk. §5.2 disambiguates only by fixed order, exactly-once and anchoring between 'Evidence report' and 'End-Review:', which is workable but leaves a bare line reading 'Unknowns' inside a finding body structurally ambiguous.",
+          "evidence": "§5.1 template uses unadorned lines for section names; §5.2 states quotes of section names inside body or code blocks are not structural markers, without giving a lexical distinction between a section line and a body line of identical text.",
+          "required_change": "At implementation, give sections an unambiguous lexical form (for example a '## ' heading prefix or a 'Section: ' prefix) so the deterministic grammar fixtures test a real lexical rule. Failure mode today degrades to a self-correction and then UNKNOWN rather than a wrong verdict, so this is quality not correctness."
+        },
+        {
+          "id": "LEDGER-APPENDIX-HASH-WORDING",
+          "severity": "minor",
+          "area": "§19 verbatim source ledger",
+          "description": "§19 says 'Полные исходные bytes проверяются SHA-256 из §3', but §3's SHA-256 is the digest of the whole docs/backlog.md file, not of the post-'## Открыто' appendix text reproduced in §19. A test author implementing §19 literally would hash the appendix and fail.",
+          "evidence": "Verified: shasum -a 256 docs/backlog.md = ce8113b298ec069cea38e1d5f5bbcd0c7078dffe059ad1a606dd20e50c4bac38 (matches §3); the post-'## Открыто' excerpt hashes to c3cb7d4a2c877698ef03e0437ea419cd2439b8e480ac7ba94d333e7f1df036c6, which appears nowhere in the spec.",
+          "required_change": "State explicitly that §3's SHA-256 and blob id identify the whole docs/backlog.md source file, and that appendix integrity is proven by the §3 AST bijection test rather than by that digest. Pre-existing wording, not introduced by this correction."
+        },
+        {
+          "id": "GUIDE-READ-OBLIGATION-IMPLICIT",
+          "severity": "minor",
+          "area": "§8/§8.1 who must read the guides",
+          "description": "The pre-correction §8 carried an explicit sentence binding all Meta-O Orca entry skills to read both version-matched guides. The rewrite moves the topic list into §8.1 and states the locator, readiness proof and mo-setup duty, but the 'every Orca entry skill must read both' obligation now survives only through U-13/D-13, §2.2's consumer column and B26's 'guides применены по ownership'.",
+          "evidence": "Corrected §8 ends at the trust probe paragraph; §8.1 names canonical topics and mo-setup's probe but not the per-skill reading duty as a standalone normative sentence.",
+          "required_change": "Restore one explicit sentence in §8.1 naming Orca entry skills as obliged readers, so the obligation is stated where the locator is defined rather than inferred from the decision ledger."
+        },
+        {
+          "id": "CLI-SURFACE-VOLUME-VS-ADHERENCE",
+          "severity": "minor",
+          "area": "§4.6 volume vs ADHERENCE-VS-CONTEXT-GROWTH",
+          "description": "The correction roughly doubles §4.6 into detailed per-subcommand CLI minutiae. This is correct content, but it is the same class of text growth that ADHERENCE-VS-CONTEXT-GROWTH warns about, and BKL-08/BKL-15 are both adherence failures under long skill text.",
+          "evidence": "§4.6 now spans two canonical command blocks plus two verified-limitation lists plus truncation and host-classification rules, all of which must reach lifecycle skills.",
+          "required_change": "Land §4.6 in a shared reference read on demand before the first Issue write rather than inline in every lifecycle skill body, consistent with the project's shared/references convention, and keep the skill body pointing at it."
+        },
+        {
+          "id": "GLAB-API-NOTE-CONTENT-TYPE",
+          "severity": "minor",
+          "area": "§4.6 GitLab note publication",
+          "description": "The normative GitLab comment path is `glab api --method POST projects/<path>/issues/<iid>/notes --input <note.json>`. The API path and flags are verified real, but the spec does not state that the request must be sent as application/json, and a form-encoded body would create exactly the ambiguous-write condition the spec routes to ISS-09.",
+          "evidence": "Verified glab api exposes --input ('The file to use as the body for the HTTP request'), -X/--method and --hostname; content-type behaviour is not documented in the flag help.",
+          "required_change": "Have the recorded-surface fixture for this path capture the content-type behaviour of the installed glab and, if needed, add the explicit header to the canonical shape; otherwise the note write is settled only through the ISS-09 lookup."
+        }
+      ],
+      "assumptions": [
+        "I treated the frozen decisions U-01..U-17 as authority and did not evaluate any alternative that would trade reviewer count, Issue-write autonomy, wait cadence or eval profiles.",
+        "I verified CLI and orca surfaces read-only on this machine and made no network calls to GitHub or GitLab and no writes of any kind; repository files, git state and external services were left untouched.",
+        "I interpreted 'blocking' as limited to a named finding that is still open or a critical regression introduced by the correction, per the task instruction, and routed everything else to non-blocking notes.",
+        "I assumed the reviewer machine's gh/glab/orca versions are representative of the recorded-fixture baselines the spec names, which the exact version match supports.",
+        "I did not inspect or reuse any prior council artifact under spec/**, since the task named none.",
+        "Where the spec defers a detail to implementation-time recorded fixtures or §17 open questions, I treated that as an adequate closure mechanism rather than an unresolved gap."
+      ],
+      "round": 3,
+      "reviewer": "opus1mhigh"
+    }
+  ]
+}
+```
+
+---REVIEW-META---
+approval_score: 9
+would_adopt: true

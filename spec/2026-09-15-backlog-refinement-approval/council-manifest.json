@@ -1,0 +1,293 @@
+{
+  "schemaVersion": 1,
+  "runId": "a66f9c9c-a447-4de4-9247-b61015811b6b",
+  "previousRunId": "c9041931-8342-4889-966d-ca3b5ed67f17",
+  "userEventRef": "user-turn-2026-09-15-review-workers-became-projects",
+  "feedbackReason": "Observed reviewer launch workaround created two separate Orca projects instead of tabs; add implementation requirement and optionally run one final review iteration.",
+  "projectRoot": "/Users/alex/Develop/meta-o",
+  "datedTaskSlug": "2026-09-15-backlog-refinement-approval",
+  "judges": [
+    {
+      "slug": "opus1mhigh",
+      "model": "opus[1m]",
+      "route": "claude-agent-sdk",
+      "effort": "high"
+    },
+    {
+      "slug": "gpt56solmedium",
+      "model": "gpt-5.6-sol",
+      "route": "codex-sdk",
+      "effort": "medium"
+    }
+  ],
+  "createdAt": "2026-09-14T21:01:16.223Z",
+  "finalizedAt": "2026-09-14T21:19:14.976Z",
+  "fileCount": 53,
+  "files": [
+    {
+      "path": "2026-09-15-backlog-refinement-approval-council-brainstorm.md",
+      "size": 231105,
+      "sha256": "557b395b61aa8e36ba55a7ddd0c8d686bdbdf92fa0c29aebf123af6cb4d31407"
+    },
+    {
+      "path": "council-checkpoint.json",
+      "size": 229729,
+      "sha256": "d4803397c4ae2ed7fca3bf3fcbf425635ee625dac87373ac62fd040d77868cd2"
+    },
+    {
+      "path": "council-daemon.log",
+      "size": 2965,
+      "sha256": "285fc51d281c355866a2e3b08fc623ea3234fbeda812f418a314a025772211b6"
+    },
+    {
+      "path": "council-events.log",
+      "size": 2965,
+      "sha256": "285fc51d281c355866a2e3b08fc623ea3234fbeda812f418a314a025772211b6"
+    },
+    {
+      "path": "health-gpt56solmedium.json",
+      "size": 120,
+      "sha256": "89c0191cc6bf8b8267de21383f2631236a765f22d040195339302e4693d9df4f"
+    },
+    {
+      "path": "health-gpt56solmedium.md",
+      "size": 102,
+      "sha256": "494eedc0040630ddd33cab3e58fab4706884e845fb2bfddc8eed34bb72061339"
+    },
+    {
+      "path": "health-opus1mhigh.json",
+      "size": 123,
+      "sha256": "5297d2b9df5c1ed2978af2901670228e597fdcd908934721bdc2ed2642b78e41"
+    },
+    {
+      "path": "health-opus1mhigh.md",
+      "size": 105,
+      "sha256": "ea5a8dfadccb6a01f6922f2dfdf9ed422f0e7090cacec9dd736b9bb0bc93e43d"
+    },
+    {
+      "path": "jobs/run-4f7ad911/candidates/.generation-00000001.reservation",
+      "size": 47,
+      "sha256": "56358629ff25eccd147479e094c90f53734fa7e2469d966f10c354dd2e52104a"
+    },
+    {
+      "path": "jobs/run-4f7ad911/candidates/.generation-00000002.reservation",
+      "size": 47,
+      "sha256": "de9249d123a536079dd7ca429904e062f1eb44291f0f56a425d6050075900e6b"
+    },
+    {
+      "path": "jobs/run-4f7ad911/candidates/.generation-00000003.reservation",
+      "size": 47,
+      "sha256": "2f1c067d5094f7bd5c3c5eb2dc61e75e30d22594d744b05186bb1f2247a26487"
+    },
+    {
+      "path": "jobs/run-4f7ad911/candidates/.generation-00000004.reservation",
+      "size": 47,
+      "sha256": "27cfe42f3497a19ff361cc3a02719c1e46856f2fb61648b23661c1b5b6d9322f"
+    },
+    {
+      "path": "jobs/run-4f7ad911/candidates/.generation-00000005.reservation",
+      "size": 47,
+      "sha256": "68e26dd80d8255297a4a5a5a9a61a615007d44c76de6916288bf97289502cc92"
+    },
+    {
+      "path": "jobs/run-4f7ad911/candidates/0001-candidate-98609bd8-f9a8-47ed-8b0b-fbb9ef665e1c.bin",
+      "size": 35053,
+      "sha256": "18dde2b9088dec73dce157c6d764e7a6859c252cfdc6f654e37f39399c6d2cfd"
+    },
+    {
+      "path": "jobs/run-4f7ad911/candidates/0001-candidate-98609bd8-f9a8-47ed-8b0b-fbb9ef665e1c.bin.json",
+      "size": 411,
+      "sha256": "bc0d6ada02f69a1b5596dc5ce317590caf3ce226c479da7233ea872ad7c85123"
+    },
+    {
+      "path": "jobs/run-4f7ad911/candidates/0001-candidate-98609bd8-f9a8-47ed-8b0b-fbb9ef665e1c.bin.validation-b91d7cdf-472f-4999-b02a-c67e4bf43708.json",
+      "size": 123,
+      "sha256": "8afef9a114436248c28211040e5f30eb79c8435f333b67e17f02c5e09085a465"
+    },
+    {
+      "path": "jobs/run-4f7ad911/candidates/0002-candidate-a80d3260-118c-4122-a4b7-a3d103682d48.bin",
+      "size": 35160,
+      "sha256": "093e9468e05e11aebdd3935baba563cea318624ee79c6087fc25d01047d0d0b0"
+    },
+    {
+      "path": "jobs/run-4f7ad911/candidates/0002-candidate-a80d3260-118c-4122-a4b7-a3d103682d48.bin.json",
+      "size": 496,
+      "sha256": "ee76d251ac87a5494809dd4318cad32c8185cf2e7546b9cbddeeeba5435aecb8"
+    },
+    {
+      "path": "jobs/run-4f7ad911/candidates/0002-candidate-a80d3260-118c-4122-a4b7-a3d103682d48.bin.validation-2bf9134f-4a8d-421f-80fc-33af682fb3b8.json",
+      "size": 121,
+      "sha256": "ee0f96d362618c88c41cd3abf4d5bff6eb515f78d0fb1828ca412b729d40b9b5"
+    },
+    {
+      "path": "jobs/run-4f7ad911/candidates/0003-candidate-d0bf39ca-1ae6-4c86-be0d-b48fdd1a82ef.bin",
+      "size": 16433,
+      "sha256": "cc0aeae786eac1d345077c9e83727975b660dfc07c2ee39a409b535db7ccdbc1"
+    },
+    {
+      "path": "jobs/run-4f7ad911/candidates/0003-candidate-d0bf39ca-1ae6-4c86-be0d-b48fdd1a82ef.bin.json",
+      "size": 415,
+      "sha256": "73b71b6883479ffcef52c3871d699de9c4f842106c7b5b396f66f67aeb7802ab"
+    },
+    {
+      "path": "jobs/run-4f7ad911/candidates/0003-candidate-d0bf39ca-1ae6-4c86-be0d-b48fdd1a82ef.bin.validation-5a1074a1-a2f1-43e9-9f48-0b46cafd50ca.json",
+      "size": 123,
+      "sha256": "1df47ffda614a0d4cf449a18803dc88e8a3f71898f9c5cbe9dc4e5bfa6369356"
+    },
+    {
+      "path": "jobs/run-4f7ad911/candidates/0004-candidate-04f9c062-78f2-4d5a-8110-c5f1206efd78.bin",
+      "size": 16544,
+      "sha256": "efe8905177826dcb7b9fbb5f96233af0d1f658f21cc8457ae1f9908d5562d549"
+    },
+    {
+      "path": "jobs/run-4f7ad911/candidates/0004-candidate-04f9c062-78f2-4d5a-8110-c5f1206efd78.bin.json",
+      "size": 500,
+      "sha256": "6ba9f8fc91244edee05ed4e7e0aa8cc789ac0c1e4dd8698d5687ca1fa39e4b6c"
+    },
+    {
+      "path": "jobs/run-4f7ad911/candidates/0004-candidate-04f9c062-78f2-4d5a-8110-c5f1206efd78.bin.validation-5b136f48-9a8e-4ae0-8b8c-2ad748047e7c.json",
+      "size": 121,
+      "sha256": "cc27ffe901a5588d8353d1253ccd80732643efe69a5fc1d348cb1171a830629d"
+    },
+    {
+      "path": "jobs/run-4f7ad911/candidates/0005-candidate-f8d7f478-d98e-4724-a430-9ea561410e0e.bin",
+      "size": 227309,
+      "sha256": "793207dc3e7ff3dd9c4241d629a63078688e55d416655374dd58781b9c72d708"
+    },
+    {
+      "path": "jobs/run-4f7ad911/candidates/0005-candidate-f8d7f478-d98e-4724-a430-9ea561410e0e.bin.json",
+      "size": 416,
+      "sha256": "1330d655d0f98073242fe7de3f0f0e01380756e674d2efda01bcd2a22451df1d"
+    },
+    {
+      "path": "jobs/run-4f7ad911/candidates/0005-candidate-f8d7f478-d98e-4724-a430-9ea561410e0e.bin.validation-ee51129e-9333-4864-81fc-b0e899e9dd21.json",
+      "size": 121,
+      "sha256": "b90f8169b164bbc2eb3d818f254a546156d9054c7edd9e1cf0b6ad6edf20c3f7"
+    },
+    {
+      "path": "jobs/run-4f7ad911/current-spec-refinement-r1-a1-spec-author.json",
+      "size": 333,
+      "sha256": "6bee0b4760efd427b98706bfbe23daad3748a8e27565eceac00dadcce12745a4"
+    },
+    {
+      "path": "jobs/run-4f7ad911/current-spec-review-r1-a1-gpt56solmedium.json",
+      "size": 332,
+      "sha256": "9283b99618cada268448ede8f9d8c973d188876a159b67232b094778be5e512d"
+    },
+    {
+      "path": "jobs/run-4f7ad911/current-spec-review-r1-a1-opus1mhigh.json",
+      "size": 328,
+      "sha256": "38ce421351feb8c232131d8751277bb81671ad4d3c8120f601f38d94eb842a7c"
+    },
+    {
+      "path": "jobs/run-4f7ad911/promotions/promotion-4aa17f74-f1c7-4923-ab7d-22d65b39ab2a.json",
+      "size": 333,
+      "sha256": "f8dd6c74e2b86d64c76b53f9321d7435642ab5282fb3d52a957092f9385b8741"
+    },
+    {
+      "path": "jobs/run-4f7ad911/promotions/promotion-7267a21b-4054-4f04-8445-12984872b8fa.json",
+      "size": 329,
+      "sha256": "00d8275e2657bafef7d792119bf2c5f69aa2135f6f88f4efecbfa9de177da262"
+    },
+    {
+      "path": "jobs/run-4f7ad911/promotions/promotion-bebb8705-39b4-4f94-ab1b-3df981845efd.json",
+      "size": 334,
+      "sha256": "8fa65015c1681e733733191bef23b5a9c8dd9e145352fb27017d31c6700d576e"
+    },
+    {
+      "path": "review-attempt-events.jsonl",
+      "size": 818,
+      "sha256": "4884887a206ace9fedebb8e056ca5a87782045781ce13732b0ea28327c99327e"
+    },
+    {
+      "path": "review-attempt.json",
+      "size": 279,
+      "sha256": "acfe34f64e0b0ad1a6b35e29d6bed6a73abc73c199e4101c42ce8bd70a8fc81b"
+    },
+    {
+      "path": "sessions/health_gpt56solmedium.jsonl",
+      "size": 105,
+      "sha256": "ff7789f959cf30abc185a084fd4339498d38b32d4d2cd4679719dd58abf0c4c6"
+    },
+    {
+      "path": "sessions/health_opus1mhigh.jsonl",
+      "size": 105,
+      "sha256": "7bc20d22c58475bd5f4d89c20aa105616a39261ac9bb0fc9609ee4e50ea66a8f"
+    },
+    {
+      "path": "sessions/spec-reviewer_gpt56solmedium.jsonl",
+      "size": 251935,
+      "sha256": "66a56a24940aeb1e9505e606ff3726b64afbbd7bf3d0114fcf7709681c188282"
+    },
+    {
+      "path": "sessions/spec-reviewer_opus1mhigh.jsonl",
+      "size": 270815,
+      "sha256": "51b55bc03c31e153418de26a5e1de6c8f55e06ee7a159d161226b511296f5f2b"
+    },
+    {
+      "path": "spec-review-gpt56solmedium-R1.json",
+      "size": 5138,
+      "sha256": "0ae333b6cefef25b9d069540f04e13b429fce34b403ace0d9d19c4c847da2956"
+    },
+    {
+      "path": "spec-review-gpt56solmedium-R1.md",
+      "size": 16544,
+      "sha256": "efe8905177826dcb7b9fbb5f96233af0d1f658f21cc8457ae1f9908d5562d549"
+    },
+    {
+      "path": "spec-review-gpt56solmedium-R1.md.generation.json",
+      "size": 295,
+      "sha256": "3bb2da2f42af1186075e9ddd0060860537eb477e7efaf447a9d4676dfe915d5e"
+    },
+    {
+      "path": "spec-review-opus1mhigh-R1.json",
+      "size": 17122,
+      "sha256": "f4806c9374473086ee17a1b0e068d380ca76fd8e468590fa481a04d0eb70ad46"
+    },
+    {
+      "path": "spec-review-opus1mhigh-R1.md",
+      "size": 35160,
+      "sha256": "093e9468e05e11aebdd3935baba563cea318624ee79c6087fc25d01047d0d0b0"
+    },
+    {
+      "path": "spec-review-opus1mhigh-R1.md.generation.json",
+      "size": 291,
+      "sha256": "2dd6fd75e222adad6691de45b4248620839f9016f1981a526493fbbc5d8bc159"
+    },
+    {
+      "path": "spec-review.md",
+      "size": 227309,
+      "sha256": "793207dc3e7ff3dd9c4241d629a63078688e55d416655374dd58781b9c72d708"
+    },
+    {
+      "path": "spec-review.md.generation.json",
+      "size": 296,
+      "sha256": "69a94b869f8789af1e60d109763d3f960eb8d31b9bb5dca299b77c84a0d25201"
+    },
+    {
+      "path": "synthesis.md",
+      "size": 3274,
+      "sha256": "01e7439e1639b0a1d8181beced2a7b9ba6cf90f56bb61f0b9637c5cd53b57282"
+    },
+    {
+      "path": "task-description.md",
+      "size": 1350,
+      "sha256": "bc6313754fe65c52e32ae30d934542267bb3dadef7344c90c0646aa241a6a715"
+    },
+    {
+      "path": "user-decision-events.jsonl",
+      "size": 688,
+      "sha256": "1ad64ccb22e0f9f33be6787683f7bfba3e7eeca64f662f6333d0506e849da534"
+    },
+    {
+      "path": "user-decisions.json",
+      "size": 761,
+      "sha256": "5a87d544b31df2f08664f7630f4ae7c5d95dc643308c8f2123e6470b4902a38d"
+    },
+    {
+      "path": "user-decisions.md",
+      "size": 637,
+      "sha256": "30b5a4d20d4a874613673024ec4c0eb4a529c5adad8f0eb619fe384ce692a114"
+    }
+  ]
+}

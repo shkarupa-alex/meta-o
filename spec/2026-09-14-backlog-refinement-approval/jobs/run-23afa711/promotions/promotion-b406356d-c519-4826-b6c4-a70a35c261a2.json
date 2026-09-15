@@ -1,0 +1,12 @@
+{
+  "jobId": "run-23afa711",
+  "slot": {
+    "phase": "spec-refinement",
+    "round": 2,
+    "activeSetRevision": 1,
+    "judge": "spec-author"
+  },
+  "candidateId": "candidate-2a7e73e0-6172-49cc-9151-f06b0bbe0c94",
+  "promotedBy": "runtime",
+  "validationSha256": "4a338dc876a203d549843b16bdd23f86f67a73a6fa2266a5e536e1150044eb80"
+}

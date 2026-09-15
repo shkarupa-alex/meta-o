@@ -1,0 +1,13 @@
+{
+  "candidateId": "candidate-cf0fa997-f3fc-4512-8141-9c238fb60376",
+  "jobId": "run-9c7600d3",
+  "generation": 6,
+  "phase": "approach-review",
+  "round": 1,
+  "activeSetRevision": 1,
+  "judge": "gpt56solmedium-for-gpt56solmedium",
+  "parentCandidateId": "candidate-939cd78e-c5db-4e2e-ad4d-27a3676ea494",
+  "createdBy": "orchestrator_wrapper",
+  "path": "jobs/run-9c7600d3/candidates/0006-candidate-cf0fa997-f3fc-4512-8141-9c238fb60376.bin",
+  "sha256": "02dee50fc7a7f424955a4fabd26c1f458cea03bf2a32c19a24d63cf9d366f78e"
+}

@@ -1,0 +1,246 @@
+## Facts & Constraints (White Hat)
+
+Before judging this specification I grounded every checkable claim it makes against the repository, because a spec of this density earns or loses credibility on whether its assertions about existing artifacts are true. Several load-bearing claims verify cleanly: `git hash-object docs/backlog.md` returns exactly `4b6a958c1747e76a16439ae1c967b09d9ab76bef` and `shasum -a 256` returns exactly `ce8113b298ec069cea38e1d5f5bbcd0c7078dffe059ad1a606dd20e50c4bac38`, matching §3 byte-for-byte. The identifier-novelty claims also verify: `git log --all -S` finds 0 commits for every id the spec calls new (`§A-REVIEW-04`, `§A-ISSUE-01`, `§A-SESSION-01`, `§A-DELIVERY-01`, `§A-WAIT-01`, `§A-ACTIVATION-01`, `§A-MODELS-01`, `§A-BACKLOG-01`, `§A-RESPONSE-03`, `§A-MEMORY-04`, `§B-HUMAN-04`) and non-zero for every id it calls historically burned (`§A-REVIEW-01`: 16, `§A-REVIEW-03`: 16, `§A-BOOT-01`: 11, `§A-LEDGER-01`: 2, `§B-TRUST-01`: 18, `§B-SAFETY-01`: 2, `§B-WORKFLOW-01`: 18). The three deep-research documents exist and research-2's actual conclusion ("сабагентов не надо форсировать; форсируйте фильтр-верификатор") matches the spec's BKL-01 characterization. `B22` is genuinely the highest existing E2E id, so `B23`–`B32` are free. The `knowledge-identifiers.md` YAML/trailer grammar the spec quotes is reproduced accurately. This is a spec that did its homework.
+
+The constraints it must live inside are tight. `CLAUDE.md` forbids a project proxy over a native CLI, forbids manifests/receipts/digests without a named external consumer, and mandates AST-based Markdown parsing. `§A-ORCHESTRATION-01` forbids a workflow engine or general state store. `§B-EVAL-01` currently hard-names `sonnet5/low`, `gpt-5.6-terra/low`, `deepseek 4 flash` — and `shared/scripts/mo-models.mjs` enforces those as regexes in `TESTING_PROFILES` with `validateEffectiveRoles` throwing on any non-conforming stored value. `tools/skill-evals.mjs` pins `meta-o.skill-eval-cases.v1` / `meta-o.skill-eval-evidence.v2` and uses `document.policy` to *select* actor identity (`validateActorIdentity` branches on `policy === "critical"`). `shared/references/review-protocol.md` currently states flatly "Do not emit numeric confidence, machine counters or adjudication grammar" — the spec knows this and schedules the narrowing in slice 4, which is correct handling.
+
+One constraint the spec asserts but the environment contradicts: §8/U-13 say guides are read "from bundled Orca" and are not installed per harness home, yet `~/.claude/skills/orchestration`, `~/.codex/skills/orchestration` and `~/.config/opencode/skills/orchestration` all exist today, and the installed `orchestration/SKILL.md` is 3862 bytes that does not document `check --wait --types --timeout-ms` at all. The wait surface the spec's §9 depends on is documented only in Meta-O's own `orca-mechanics.md`, not in the guide the spec makes mandatory.
+
+## Risks & Failure Modes (Black Hat)
+
+**The canonical decision table in §4.5 is structurally broken, and it is the single artifact §14.1 names as the executable subject of deterministic proof.** The `disposition_class` cells from ISS-06 onward contain an unescaped `|` (`` `project_issue | upstream_issue` ``), which shifts every subsequent column. Parsed by the real Markdown AST library the spec mandates, ISS-06 reads: `disposition_class` = `` `project_issue ``, `inputs` = `` upstream_issue` ``, `required_action` = "Open candidate matches surface+invariant+symptom class" (that is the *inputs* text), and `forbidden_action` = "Add sanitized confirmed use case once" — the table normatively **forbids the correct action**. ISS-07C is worse (8 cells for 6 columns, because `` `wontfix | stale` `` adds another split). The same defect hits the pair-aggregation table in §5: the row `| Valid `FINDINGS` | Valid `PASS | FINDINGS` | ... |` yields 5 cells for 4 headers. A spec whose §14 promises "decision table §4.5 присутствует, имеет стабильные колонки, покрывает ISS-01…ISS-10 и не содержит строки без `required_action`" would have that very test fail on its own text. This is not cosmetic — it is the normative content being wrong.
+
+**Canonical `PASS` with an empty body contradicts `review-protocol.md` and `§B-PROOF-01`.** §5 defines canonical `PASS` as "полный header, четыре нуля, **пустые index/body** и valid end marker". But `review-protocol.md`'s Report section requires every report to carry "grounding, checks и stage evidence" and "Unknowns и residual risks", and states "`PASS` means no required change remains and **evidence covers the complete scope**". Under the new grammar a passing reviewer emits four zeros and nothing else — an assertion of readiness with zero proof, which is precisely what `§B-PROOF-01` exists to forbid. The spec never reconciles the two, and §14's "review fixtures" would lock in the evidence-free form. The same applies to `UNKNOWN` ("пустыми findings", one typed code) — the reviewer's account of what it did disappears.
+
+**`§A-MEMORY-03` is re-scoped without the authorization the spec itself demands of everyone else.** §2.2 marks it `unchanged` while redefining its content as "Исторический backlog-closure provenance остаётся закрытым доказательством прежней программы и не переиспользуется для этой фичи". But the ADR's actual title is the general norm "Удалённый backlog сохраняет проверяемый Git-провенанс", and this feature deletes a 20 KB backlog. Narrowing a general norm to a one-off historical record is a semantic reuse under `§A-MEMORY-01` and requires a `Knowledge-ID-Change: reuse` trailer plus YAML — yet §2.2's mandatory-authorization list names only `§B-LONGEVITY-04`, `§B-EVAL-01`, `§A-REVIEW-02`, `§A-RESPONSE-02`, `§A-EVAL-01`. Either the ADR is historical-scoped and must be edited to say so (with authorization), or it applies and a receipt is owed.
+
+**The `mo-models.mjs` settings migration will hard-fail existing installs.** `validateEffectiveRoles` throws on any stored role failing `TESTING_PROFILES`. Changing `testClaude` from `sonnet5/low` to `opus[1m]/low` and `testCodex` from `gpt-5.6-terra` to `gpt-5.6-sol`, while §13 explicitly forbids a `schemaVersion` bump, means every existing settings file with the old (previously *mandatory*) values starts throwing at `--show` time with no migration path and no foreign-version detection. §13 also says `testOpenCode` is replaced by optional `testOpenCodeDesired` but never says whether `testOpenCode` leaves `ROLES` — and a stored unknown role is a second failure mode. The spec's own §11 flow depends on `--show` working.
+
+**§6 never names who writes the payload.** It mandates `umask 077`, `mktemp -d` with ≥8 random symbols, exclusive write at mode `0600`, `fsync`/close, then atomic in-directory rename. But the authoritative report arrives in `worker_done` (`§A-RESPONSE-01`), and the backlog transcript shows Orca's `--report-path` writing it. So: does the caller transcribe the report into the file (which is exactly the lossy retransmission `§A-RESPONSE-02` forbids), does the reviewer write it, or does Orca? Each answer has different failure modes and different feasibility. Relatedly, `fsync` has no portable per-file CLI on darwin (`sync` is whole-filesystem), so an agent driving Bash cannot execute the mandated step; if Orca performs the write, Meta-O is mandating another tool's internal durability semantics, which `§B-PORTABILITY-07` forbids guessing at.
+
+**§9 assumes run-scoped event filtering that no observed surface provides.** "events foreign run, released actor или уже settled Dispatch отбрасываются **до выдачи caller** и не могут сокращать arm" requires backend-side filtering. `orca orchestration check --wait --types worker_done,escalation,question --timeout-ms <ms>` has no documented run selector. If a foreign-run event returns the call, the arm *has* been shortened, and the caller can only compensate by tracking remaining time — which the spec forbids reasoning about and never specifies. §17 lists the host wait-timeout cap as an open question but not this, so there is no `unsupported` escape hatch for the filtering assumption.
+
+**§8's guide-readiness check has no locator.** `mo-setup` must verify "presence/readability guides в bundled Orca source", but no path, command, or discovery mechanism is named, and §17 does not list it. Meanwhile the guides *are* already installed in three harness homes — the spec forbids installing them there but says nothing about the pre-existing copies, so an implementer must decide whether to ignore, trust, or remove them. That is an architectural decision left to slice 6.
+
+**The remedy may aggravate the root cause the cited research identifies.** BKL-15/BKL-08/BKL-10/BKL-14 are adherence failures against norms that *already exist verbatim*: `orca-mechanics.md` already says "Release old reviewers only before the fresh final pair. Stable titles are `<feature>:orchestrator`, `<feature>:executor`, `<feature>:review:<vendor>`…"; `mo-review-orca/SKILL.md` already says "Keep remediation reviewers hot" and "never start another reviewer". The spec's answer is substantially more normative prose in the same documents — the §4.5 table, the §5 grammar, §6+§6.1+§6.2, the §9 outcome table, §10.1, §12. The mandatory read-set for `mo-review-orca` today is ~28 KB (`SKILL.md` 2.7 KB + four references); these additions plausibly push it past 40 KB. The spec's own cited research (`review-deep-research-2.md`: "сильные модели следуют инструкциям буквально и штрафуют за противоречия и объём… форму — сжать и вынести детали в модули через progressive disclosure") argues this is the wrong direction. §10.1 is the one place the spec does root-cause analysis ("самозапуск произошёл не из-за графа вызовов, а потому что harness выбирает skill по полю `description`") — that analysis is excellent and is exactly what is missing for titles, hot roles and TUI summaries.
+
+**Smaller but real.** The `<work-slug>` prefix in §7 silently disagrees with `<feature>` in both `orca-mechanics.md` and `mo-review-orca/SKILL.md`, creating a third phrasing of a contract that already has two owners. §10.1's deterministic lint must reject "broad-trigger шаблонов" but the pattern set is given only by one example — an implementer must invent the blocklist, and `mo-review-orca`'s current description ("Independently review one exact candidate…") is itself arguably a broad review trigger. §19's verbatim block holds only the text after `## Открыто`, while the SHA-256 in §3 is of the whole file (I verified this); reconstructing one from the other requires the exact canonical header bytes and blank-line count, which are never given, so the "полные исходные bytes проверяются SHA-256" claim is not mechanically executable as written. §13's replacement of `§B-EVAL-01`'s profile list ignores that thesis's stated *reason* — "Проверка skills не повышает стоимость без необходимости… low-cost testing profiles" — which `claude/opus[1m]/low` plainly violates; §2.1 promises to name every semantic change, and this one is named only as a list swap. Dropping mandatory OpenCode coverage (`deepseek 4 flash`) to "desired" is a real proof regression for `§B-PORTABILITY-01`'s three-harness support that §2.1 does not acknowledge.
+
+## Strengths & Benefits (Yellow Hat)
+
+The asymmetric routing rule in §4.1 is the best single idea here: separating "establish the disposition class first, then the repository" and refusing `origin`/tracking-ref as an upstream fallback closes the exact failure mode where autonomous Issue creation dumps a vendor's bug into the user's own tracker. The reasoning ("«ближайший доступный remote» — это не владелец дефекта, а просто то, что оказалось под рукой") is the right kind of argument.
+
+§14.1 is unusually honest. Naming three proof layers and stating for each what it *does not* prove — "Что агент её применил" is explicitly outside deterministic table evaluation — is exactly the epistemic discipline `§B-PROOF-01` demands, and the guard that a test-only evaluator growing branching/CLI calls reopens D-19 rather than quietly becoming a helper is a genuinely good boundary.
+
+The §3.1 workaround table operationalizes `§B-PORTABILITY-06` better than the thesis itself does: every local workaround this spec introduces carries a named public gap and either an Issue obligation or an explicit `unsupported`, and "Обход без Issue и без явного `unsupported` — дефект реализации" is checkable. §6.1's consumer matrix is the right answer to "who acknowledges a handoff", and the human-caller row (never auto-delete, ownership does not transfer implicitly) is a well-judged safety default. §6.2's typed failure taxonomy correctly distinguishes transport failure from a consumer refusing to read, and correctly denies the retry to retrieval/write/reread/truncation failures because the payload is already untrustworthy.
+
+§10.1 is the strongest section in the document. §13.2's refusal to let the desired `qwen 3.8 27b` skill-eval row satisfy `§B-PORTABILITY-08` — "Skill eval доказывает instruction following одного case; B22 доказывает ownership целого lifecycle" — catches a substitution that would otherwise have quietly gutted a business requirement. §2a's rejection of approach B is argued from the actual project rule rather than by assertion. §11.1's `no_default_recommendation` outcome, and the rule that model name/popularity/recent use do not constitute coding-positioning evidence, correctly implement `§B-PORTABILITY-07`.
+
+## Alternatives & Creative Ideas (Green Hat)
+
+Given that the adherence failures recur in documents that already contain the correct norm, the highest-leverage alternative is the one §10.1 already discovered and did not generalize: **find the enforcement surface for each failure, not just the normative sentence.** For titles, that is "the create call that omits `--title` is the defect" — so make the title a required argument in every documented create recipe rather than a separate paragraph. For hot reviewers, it is that `worker-release` is currently reachable from a general rule ("after `worker_done`, release") that outranks the specific rule in the reader's mind — so the fix is to delete the general rule's applicability to reviewers at its source in `orca-mechanics.md`, not to add a third restatement.
+
+Second: **invert §4.5's location.** A 13-row normative table inside guidance is a large permanent context cost paid on every invocation, for a scenario that arises rarely. Progressive disclosure fits it exactly — a short "route by owner first; never use a project remote for an upstream defect; on any ambiguity `needs_attention`" core in `SKILL.md`, with the full table in a reference file read only when an Issue write is actually about to happen. This preserves the deterministic AST subject (the reference file is still parsed) while removing the density penalty from every review.
+
+Third: **make the decision table machine-readable rather than Markdown.** The spec wants it parsed by AST, evaluated by a test-only evaluator, and cited by `scenario_id` in evidence. A Markdown table is the format most likely to break silently on an unescaped pipe — as it already has. A fenced YAML block inside the same guidance document is AST-addressable, human-readable, and immune to column shifting, and it costs nothing architecturally.
+
+Fourth: **consider whether `PASS` needs its own evidence floor** rather than an empty body — e.g. `PASS` carries zero index entries but retains the grounding/scope/Unknowns sections `review-protocol.md` already mandates. That resolves the §5 contradiction without weakening the census contract at all, since counts and index are orthogonal to the evidence sections.
+
+Fifth: for the `mo-models.mjs` role migration, an additive `testClaudeV2`-style role or an explicit "stored role no longer approved → clear and re-prompt" branch would be cheaper and safer than either a silent throw or a `schemaVersion` bump; the spec needs to pick one.
+
+## Completeness & Process (Blue Hat)
+
+Structurally the document is complete: outcome, authority and semantic changes, considered approaches, lossless disposition of all 19 intake blocks, Issue lifecycle, review contract, handoff, sessions, delivery, waits, activation, models, memory, evals, acceptance, slices, rejected/unsupported, open questions, ledger, verbatim source. §17 correctly contains only implementation-discoverable facts and no product questions, which respects U-01. The 13 slices are ordered so that the migration checkpoint precedes substantive work and the knowledge/build/QC/reviews close on one SHA.
+
+The process gaps are: (a) three of the new contracts (guide locator, payload writer, run-scoped wait filtering) are unresolved but appear in neither §17 nor §16's `unsupported` list, so an implementer will resolve them by inventing an approach; (b) §2.2 creates nine new ADRs without assigning them to files, while `knowledge-chain.test.mjs` requires each `§A-*` to be an anchored heading in `docs/architecture/` — slice 2 therefore begins with an unmade decision; (c) §13's migration of `tools/skill-evals.mjs` names the envelope fields but not the CLI surface, though `--prompt` currently takes `--route/--model/--effort/--harness/...` and `tier`/`matrixProfile` need flags, and `validateActorIdentity`'s dependence on `document.policy` must be replaced by something the spec does not name; (d) it is unclear whether `mo-orchestrate-orca`'s single `cases.json` serves both the required matrix and the separate B22 critical run, given `skill-evals.mjs` currently enforces exactly one `policy` per skill.
+
+## Traceability
+
+The Decision Ledger exists in two parts (U-01…U-17 frozen keys, D-01…D-36 derived decisions) and is the strongest part of the document's hygiene. I checked each: every frozen decision maps to at least one `D-*` and every `D-*` resolves to a body section — D-02→§3/§4, D-03→§4, D-04→§2.2/§5, D-06→§5, D-07→§5/§2.3, D-09→§8, D-10→§10, D-12→§12, D-13→§8, D-15→§11, D-16→§9, D-17→§13, D-21→§4.1–§4.4, D-22→§6.1, D-25→§4.1, D-26→§14.1, D-27→§6.2, D-28→§3, D-29→§8, D-30→§5, D-31→§9, D-33→§11, D-34→§13.1, D-35→§10.1, D-36→§13.2. Rejected decisions D-19 and D-20 appear in both §2a and §16. The mapping of U-keys to stable spec-local ids rather than runtime UUIDs (§18 preamble) is a good call.
+
+Two minor traceability gaps: D-24's second clause ("R3 предложение ретранслировать index отклонено") lives only in §5 prose and is absent from §16's rejected list, where every other rejection is enumerated. And §3's BKL-04/BKL-09 rows carry outcome `Investigate` with evidence owed only at slice 12 — the ledger does not state what happens to closure if investigation refutes the incidents, though §4's `unconfirmed` disposition covers it implicitly.
+
+## Decomposition Readiness
+
+Mostly good — slices 3, 4, 5, 7, 8, 10 are executable as written, and slice 1's migration checkpoint has exact hashes and a stated boundary ("очищает только `docs/backlog.md`; другие пользовательские dirty files не затрагиваются"). The blocked slices are: **slice 2** (nine ADRs with no file assignment; `§A-MEMORY-03` authorization question unresolved), **slice 6** (no bundled-guide locator; no handling of the three existing harness-home guide copies), **slice 9** (`mo-models.mjs` role migration semantics for stored settings unspecified), **slice 11** (`skill-evals.mjs` CLI surface and the `policy`→`matrixProfile` replacement unspecified; `mo-orchestrate-orca` dual-run question open), and **slice 4** (who writes the handoff payload, and whether `fsync` is achievable on the target platform). Each of these requires the implementer to make an architectural choice rather than execute one.
+
+## Weak-Model Executability
+
+The strongest sections for a weak model are §9's outcome table, §6.1's consumer matrix, §10.1's enforcement list and §11.1's JSON contract — all give exact values, exact strings (`Review-Handoff-Ack: <pair_id> A=<decimal-bytes> B=<decimal-bytes>`), exact numbers (`600000`/`300000`/`5000 ms`/`64 MiB`/31 days) and closed enumerations. That is above the norm for a spec of this scope.
+
+The weak spots: "отсутствие broad-trigger шаблонов" gives one example and no pattern set. "`fsync`/close завершают запись" names no command. "проверяет presence/readability guides в bundled Orca source" names no path. §5's `Evidence report` is called "единственный heading" but rendered in the example as a bare line, so a grammar implementer cannot tell whether to match `## Evidence report` or `^Evidence report$`. §19's relationship to the §3 SHA-256 requires header bytes that are never given. And, critically, §4.5 — the artifact most explicitly designed for mechanical application — currently parses to wrong values, so a weak model following it literally would do the forbidden thing.
+
+## Contract Completeness
+
+Schemas are largely specific and versioned: `meta-o.model-discovery.v2` with named provider/model/history fields and a closed `ok|unavailable|timeout|partial|corrupt` status set; `meta-o.skill-eval-evidence.v3` with a full field table, composite identity definition and a closed status set; `meta-o.skill-eval-cases.v2` with the added `contracts[]` and the retained three bounded classes; the review grammar with typed `Unknown-Reason` codes; the disposition outcome set `implemented|commented|created|duplicate|refuted|needs_attention`; the vendor-slug regex `^[a-z0-9][a-z0-9-]{0,31}$`. Limits and thresholds are numeric throughout. No TBDs appear outside §17.
+
+Incomplete contracts: the `skill-evals.mjs` invocation interface for `tier`/`matrixProfile`; the settings-role migration contract; the atomic-write actor and durability primitive in §6; the guide-source locator; the run-scoping capability §9 depends on; the broad-trigger pattern set; and the §4.5 table's actual cell values, which are the contract and are currently wrong.
+
+```council-verdict
+{
+  "schema_version": 1,
+  "verdicts": [
+    {
+      "target_id": "spec-review",
+      "approval_score": 6,
+      "would_adopt": false,
+      "summary": "This is a serious, well-researched specification whose verifiable claims about the repository all check out — the backlog blob id and SHA-256 match exactly, every id it calls new has zero git history and every id it calls burned has non-zero history, and its characterization of the three deep-research documents is accurate. Its best sections (asymmetric Issue routing in §4.1, the three-layer proof boundary in §14.1, the §3.1 workaround-obligation table, §10.1's root-cause analysis of skill self-activation, and §13.2's refusal to let a desired eval row substitute for §B-PORTABILITY-08) are genuinely strong and traceability is excellent. But I found defects that block adoption as-is: the canonical decision table in §4.5 — the artifact §14.1 names as the executable subject of deterministic proof — is malformed Markdown (unescaped pipes in `project_issue|upstream_issue` shift every column from ISS-06 onward, so the parsed table forbids the correct action and mislabels inputs as required_action), and §5's pair-aggregation table has the same defect; §5's canonical PASS with an empty body contradicts review-protocol.md's requirement that a PASS carry grounding, stage evidence and Unknowns, and contradicts §B-PROOF-01; §2.2 re-scopes §A-MEMORY-03 from a general norm to a historical one-off while marking it 'unchanged' and omitting it from the mandatory Knowledge-ID-Change list; the mo-models.mjs role change will make validateEffectiveRoles throw on every existing settings file with no migration and an explicitly forbidden schemaVersion bump; §6 never names who performs the atomic payload write and mandates fsync with no portable command; and §8/§9 depend on a bundled-guide locator and run-scoped event filtering that are neither specified nor listed in §17 as open questions. Separately, the spec's chief remedy for adherence failures is more normative prose in documents that already contain the correct norms verbatim, which its own cited research identifies as counterproductive.",
+      "phase": "spec-review",
+      "confidence": "high",
+      "blocking_findings": [
+        {
+          "id": "DECISION-TABLE-MALFORMED",
+          "severity": "critical",
+          "area": "issue-routing / deterministic proof",
+          "description": "The canonical decision table in §4.5 is structurally broken. Rows ISS-06 through ISS-13 contain an unescaped pipe inside the disposition_class cell (`project_issue | upstream_issue`), shifting every subsequent column by one; ISS-07C adds a second shift via `wontfix | stale`. §5's pair-aggregation table has the identical defect in the `Valid PASS | FINDINGS` row.",
+          "evidence": "ISS-06 yields 7 cells for 6 headers. Parsed by a Markdown AST library as §14.1 mandates, it reads disposition_class='`project_issue', inputs='upstream_issue`', required_action='Open candidate matches surface+invariant+symptom class' (which is the inputs text), forbidden_action='Add sanitized confirmed use case once' (which is the correct action). ISS-07C yields 8 cells. §5's row yields 5 cells for 4 headers. §14's Deterministic proof section promises a test asserting the table 'имеет стабильные колонки' and 'не содержит строки без required_action' — that test would fail on the spec's own text.",
+          "required_change": "Escape the pipes (use `project_issue`/`upstream_issue` on separate lines, a slash, or an HTML entity), or move the table to a fenced YAML block inside the same guidance document so it remains AST-addressable but immune to column shifting. Re-verify every row's cell count against the six declared columns and re-check §5's aggregation table."
+        },
+        {
+          "id": "PASS-EMPTY-BODY-VS-EVIDENCE",
+          "severity": "critical",
+          "area": "review contract",
+          "description": "§5 defines canonical PASS as 'полный header, четыре нуля, пустые index/body и valid end marker', which strips the evidence sections that shared/references/review-protocol.md requires of every report and that §B-PROOF-01 requires of any readiness claim.",
+          "evidence": "review-protocol.md Report section requires 'grounding, checks и stage evidence' and 'Unknowns и residual risks' in the returned report, and states 'PASS means no required change remains and evidence covers the complete scope'. §B-PROOF-01: 'Готовность доказывают, а не заявляют'. Under §5's grammar a passing reviewer emits a header, four zeros and an end marker — a bare assertion. §14's 'review fixtures' would lock this form in. UNKNOWN has the same problem: 'нулевыми counts, пустыми findings' plus one typed code removes the account of what was attempted.",
+          "required_change": "Redefine canonical PASS as: full header, four zeros, empty leading index, and the evidence sections review-protocol.md already mandates (grounding, scope, checks, Unknowns/residual risks) present in the body. Do the same for UNKNOWN. State explicitly that 'empty index/body' constrains only the keyed finding index and finding bodies, not the report's evidence sections."
+        },
+        {
+          "id": "MEMORY-03-RESCOPE-UNAUTHORIZED",
+          "severity": "major",
+          "area": "knowledge identifiers",
+          "description": "§2.2 marks §A-MEMORY-03 'unchanged' while redefining it as applying only to the historical closure, and omits it from the mandatory Knowledge-ID-Change authorization list — but that narrowing is exactly the semantic reuse §A-MEMORY-01 requires authorization for.",
+          "evidence": "docs/architecture/knowledge-identifiers.md titles the decision '§A-MEMORY-03 — Удалённый backlog сохраняет проверяемый Git-провенанс' and states the general norm that after removing program artifacts, docs/acceptance.md keeps source blob ids, closure commit, map blob and a permanent verification command. This feature deletes a 20184-byte backlog. §3 refuses: 'второй permanent closure receipt и изменение исторического backlog_closure не создаются'. §2.2's mandatory authorization list names only §B-LONGEVITY-04, §B-EVAL-01, §A-REVIEW-02, §A-RESPONSE-02, §A-EVAL-01.",
+          "required_change": "Either add §A-MEMORY-03 to the mandatory Knowledge-ID-Change list with a reuse authorization that states the new boundary ('this decision covers only the named historical closure; backlog notebook clearing under §A-BACKLOG-01 produces no receipt'), or apply §A-MEMORY-03 to this deletion and specify the receipt. Do not leave it marked 'unchanged'."
+        },
+        {
+          "id": "MODEL-ROLE-MIGRATION-BREAKS-SETTINGS",
+          "severity": "major",
+          "area": "mo-models.mjs / eval profiles",
+          "description": "Changing the mandatory testClaude/testCodex profiles while forbidding a settings schemaVersion bump will make every existing settings file throw, with no migration path and no foreign-version detection. The fate of the existing testOpenCode role is also unspecified.",
+          "evidence": "shared/scripts/mo-models.mjs TESTING_PROFILES pins testClaude to /^(?:claude-)?sonnet-?5.../ , testCodex to /^gpt-5\\.6-terra$/, testOpenCode to a deepseek-4-flash regex; validateEffectiveRoles() throws on any stored role failing testingPolicyError(). §13 requires testClaude=claude/opus[1m]/low and testCodex=codex/gpt-5.6-sol/low 'без изменения settings schemaVersion 1'. Existing stored values were previously mandatory, so every install has them. §11's flow depends on --show succeeding.",
+          "required_change": "Specify the migration explicitly: on encountering a stored testing role that no longer names an approved profile, clear it and re-prompt (or emit a typed 'role_superseded' outcome) rather than throwing; state whether testOpenCode is removed from ROLES or retained as a deprecated alias, and what happens to a stored value for a removed role."
+        },
+        {
+          "id": "HANDOFF-WRITER-UNNAMED",
+          "severity": "major",
+          "area": "pair handoff",
+          "description": "§6 mandates exclusive create, mode 0600, fsync/close and atomic rename, but never names which actor performs the write, and fsync has no portable per-file command on the target platform.",
+          "evidence": "The authoritative report arrives in worker_done (§A-RESPONSE-01); docs/backlog.md line 196 shows Orca's --report-path writing it. §6 assigns the caller only namespace creation, slot assignment, and the reread of size and End-Review. If the caller transcribes the report into a file, that is the lossy retransmission §A-RESPONSE-02 forbids; if Orca writes it, Meta-O is mandating another tool's durability semantics, which §B-PORTABILITY-07 forbids guessing at. macOS provides no per-file fsync CLI (sync is whole-filesystem).",
+          "required_change": "Name the writer explicitly for each route, and derive the durability requirement from what that writer can actually be observed to guarantee. If Orca's report-path performs the write, replace the fsync/rename mandate with a public post-write verification (size + End-Review reread), and record any gap in §3.1 with an upstream Issue obligation."
+        },
+        {
+          "id": "WAIT-RUN-SCOPING-ASSUMED",
+          "severity": "major",
+          "area": "blocking wait cadence",
+          "description": "§9 requires foreign-run, released-actor and settled-Dispatch events to be discarded 'до выдачи caller' so they cannot shorten the arm, which presumes backend-side run scoping that no observed surface provides, and lists no open question or unsupported fallback for it.",
+          "evidence": "shared/references/orca-mechanics.md documents only 'orca orchestration check --wait --types worker_done,escalation,question --timeout-ms <ms> --json' — no run selector. The bundled ~/.claude/skills/orchestration/SKILL.md (3862 bytes) does not document the wait command at all. If a foreign-run event returns the call, the arm is already consumed and the caller must track remaining time, which §9 neither permits nor specifies. §17 lists the host timeout cap but not this capability.",
+          "required_change": "Add 'does the installed Orca wait surface scope events to the current run, and what does it return for foreign-run events' to §17; specify the caller's behavior when a discarded event returns the wait early (re-arm with remaining time, or re-arm fresh and state that this is acceptable); and add the route to §16 as unsupported if no public scoping exists."
+        },
+        {
+          "id": "GUIDE-LOCATOR-MISSING",
+          "severity": "major",
+          "area": "upstream guide readiness",
+          "description": "§8 makes reading two version-matched bundled Orca guides mandatory and requires mo-setup to verify their presence and readability in 'bundled Orca source', but names no path, command or discovery mechanism, and does not address the guide copies that already exist in three harness homes.",
+          "evidence": "~/.claude/skills/orchestration, ~/.codex/skills/orchestration and ~/.config/opencode/skills/orchestration all exist today, while §8 and D-13 state 'Копии guides в каждый harness home не устанавливаются'. No locator for the Orca app bundle appears anywhere in the spec, and §17 does not list one. Slice 6 would therefore begin with an invented discovery mechanism, which §B-PORTABILITY-07 forbids.",
+          "required_change": "Name the public command or documented path by which a Meta-O skill locates version-matched bundled guides, or add it to §17 as a read-only evidence obligation with an explicit unsupported fallback; and state how pre-existing harness-home copies are treated (ignored, accepted as equivalent, or removed)."
+        },
+        {
+          "id": "EVAL-01-LOWCOST-RATIONALE",
+          "severity": "minor",
+          "area": "business layer / evals",
+          "description": "§2.1 changes §B-EVAL-01's profile list but not the thesis's stated reason, which the new mandatory profiles contradict; and it silently drops mandatory OpenCode eval coverage without naming the proof regression.",
+          "evidence": "docs/business.md §B-EVAL-01 is titled 'Проверка skills не повышает стоимость без необходимости' and says Meta-O 'использует явно одобренные low-cost testing profiles'. claude/opus[1m]/low is not a low-cost profile. The thesis also currently mandates OpenCode via 'deepseek 4 flash'; §13 demotes OpenCode to a desired row. §2.1 promises that every change of meaning to an existing contract is named explicitly.",
+          "required_change": "In §2.1, state the §B-EVAL-01 change as a change of principle ('approved and effective-identity-confirmed profiles' rather than 'low-cost'), and explicitly name the loss of mandatory OpenCode eval coverage together with what still proves §B-PORTABILITY-01 three-harness support."
+        },
+        {
+          "id": "EVAL-TOOL-INTERFACE-GAP",
+          "severity": "minor",
+          "area": "skill-evals migration",
+          "description": "§13/§13.1 define the v3 envelope fields but not the tool interface changes needed to produce them, and leave mo-orchestrate-orca's dual-run arrangement ambiguous.",
+          "evidence": "tools/skill-evals.mjs --prompt takes --route/--model/--effort/--harness/--harness-version/--profile-version/--quantization/--context/--sampling/--tool-permissions/--repetition; tier and matrixProfile have no flags. validateActorIdentity() currently branches on document.policy === 'critical' to select identity, and validateCorpus() enforces exactly one policy per skill (critical for mo-orchestrate-orca, advisory otherwise). §13 says policy 'больше не выбирает model identity' without naming the replacement, and says mo-orchestrate-orca runs both the required matrix and a separate B22 critical run from what appears to be one cases.json.",
+          "required_change": "Specify the added CLI flags and their allowed values, name what replaces policy as the identity selector, and state whether the critical B22 run reuses the same three cases or a separate corpus."
+        },
+        {
+          "id": "LEDGER-SHA-NOT-RECONSTRUCTIBLE",
+          "severity": "minor",
+          "area": "intake ledger",
+          "description": "§19 preserves only the text after `## Открыто` while the SHA-256 in §3 is of the whole file, and the canonical header bytes needed to bridge them are never given.",
+          "evidence": "shasum -a 256 docs/backlog.md = ce8113b298ec069cea38e1d5f5bbcd0c7078dffe059ad1a606dd20e50c4bac38 (verified), i.e. the full 20184-byte file including the 11-line canonical header and the blank lines after `## Открыто`. §19 says 'Полные исходные bytes проверяются SHA-256 из §3' but contains only the post-heading text, so the §14 ledger test cannot deterministically verify the digest from §19 alone.",
+          "required_change": "Either state the exact canonical header bytes and blank-line count to prepend before hashing, or record a second SHA-256 computed over exactly the §19 verbatim span and say which digest the ledger test uses for which purpose."
+        },
+        {
+          "id": "ADHERENCE-VS-CONTEXT-GROWTH",
+          "severity": "minor",
+          "area": "architecture / skills-first",
+          "description": "Most of the reported failures are non-adherence to norms already written verbatim in the shipped artifacts, yet the remedy is substantially more normative prose in those same artifacts, contrary to the research this spec cites.",
+          "evidence": "orca-mechanics.md already states 'Release old reviewers only before the fresh final pair' and the exact title grammar; mo-review-orca/SKILL.md already states 'Keep remediation reviewers hot' and 'never start another reviewer'. BKL-03/10/11/17 are failures against existing text. The mandatory read-set for mo-review-orca is ~28 KB today (SKILL.md 2748 B plus four references) and the additions in §4.5, §5, §6-§6.2, §9, §10.1 and §12 push it well past 40 KB. docs/research/review-deep-research-2.md concludes that strong models 'штрафуют за противоречия и объём' and recommends compressing the core and moving detail into modules via progressive disclosure. Only §10.1 performs the enforcement-surface analysis that would address this.",
+          "required_change": "Apply §10.1's method to the other recurring failures: name for each (titles, hot reviewers, TUI summary, standalone ownership) the specific surface where the norm is actually consumed, and state whether the fix is a new sentence or the removal/narrowing of a competing general rule. Additionally, state which of the new normative blocks live in progressively-disclosed reference files rather than in always-read skill bodies."
+        },
+        {
+          "id": "ADR-FILE-ASSIGNMENT-MISSING",
+          "severity": "minor",
+          "area": "decomposition / slice 2",
+          "description": "§2.2 introduces nine new architecture decisions and §15 slice 2 says 'написать новые ADR §2.2', but no file assignment is given, while the knowledge-chain gate requires each §A-* to be an anchored heading in docs/architecture/.",
+          "evidence": "docs/architecture/knowledge-identifiers.md: 'решение — заголовок с якорем в docs/architecture/'; tests/knowledge-chain.test.mjs enforces anchors, uniqueness, and that each §A-* names an existing §B-*. Existing practice mixes one-decision files (skills-first.md) with multi-decision files (knowledge-identifiers.md holds §A-MEMORY-01..03). The spec does not say which pattern the nine new ids follow.",
+          "required_change": "Assign each new §A-* to a named file (new or existing) in §2.2 or §15 slice 2, so the slice is executable without an architectural choice."
+        }
+      ],
+      "non_blocking_findings": [
+        {
+          "id": "TITLE-SLUG-DIVERGENCE",
+          "severity": "minor",
+          "area": "session titles",
+          "description": "§7 writes the title grammar with a `<work-slug>` prefix while orca-mechanics.md and mo-review-orca/SKILL.md both use `<feature>`, creating a third phrasing of a contract that already has two owners.",
+          "evidence": "orca-mechanics.md: '`<feature>:orchestrator`, `<feature>:executor`, `<feature>:review:<vendor>` и `<feature>:e2e:<n>`'. mo-review-orca/SKILL.md: 'stable titles `<feature>:review:<vendor>`'. §7: '`<work-slug>:orchestrator`' etc.",
+          "required_change": "Pick one token, name the single owning document, and state that the other references point to it rather than restating the grammar."
+        },
+        {
+          "id": "BROAD-TRIGGER-SET-UNDEFINED",
+          "severity": "minor",
+          "area": "activation lint",
+          "description": "§10.1 requires a deterministic lint rejecting 'broad-trigger шаблонов' but gives only one example and no pattern set, so the implementer must invent the blocklist.",
+          "evidence": "§10.1 cites only 'use when reviewing code'. mo-review-orca's current description ('Independently review one exact candidate with two vendor-diverse Orca workers…') is itself arguably a broad review trigger, so the blocklist's breadth determines whether the rule bites or no-ops.",
+          "required_change": "Enumerate the rejected patterns, or invert the rule to a positive form (description must begin with a literal explicit-invocation clause naming the exact skill) which is mechanically checkable without a blocklist."
+        },
+        {
+          "id": "EVIDENCE-REPORT-HEADING-AMBIGUITY",
+          "severity": "minor",
+          "area": "review grammar",
+          "description": "§5 calls `Evidence report` 'единственный heading' but renders it as a bare line in the example, leaving the grammar test ambiguous between a Markdown ATX heading and a literal line.",
+          "evidence": "The fenced example shows 'Evidence report' with no leading '#'; the prose says 'единственный heading Evidence report'.",
+          "required_change": "State the exact literal form the parser anchors on and make the example match it."
+        },
+        {
+          "id": "EXECUTOR-ARM-UNOBSERVABLE",
+          "severity": "minor",
+          "area": "wait cadence testability",
+          "description": "Because the run-wide arm equals the minimum cadence of outstanding actor classes, the 600000 ms executor arm is only observable when the executor is the sole outstanding actor — a condition B25 does not name.",
+          "evidence": "§9: 'reviewer/E2E в set делает arm 300000 ms, один executor — 600000 ms'. §7 keeps both reviewers hot during remediation while the executor fixes, so both classes are typically outstanding. B25 asserts 'executor 10-minute и reviewer/E2E 5-minute cadence к active set' without naming the observable condition.",
+          "required_change": "State in B25 the exact set composition under which each arm length is observable."
+        },
+        {
+          "id": "D24-NOT-IN-REJECTED-LIST",
+          "severity": "minor",
+          "area": "traceability",
+          "description": "D-24's rejection of caller retransmission of the leading index appears only in §5 prose, not in §16, where every other rejection is enumerated.",
+          "evidence": "§18 D-24: 'R3 предложение ретранслировать index отклонено'. §16 lists census-adjacent rejections but not this one.",
+          "required_change": "Add 'caller retransmission of the reviewer leading index — rejected' to §16."
+        }
+      ],
+      "assumptions": [
+        "I treated all frozen decisions U-01..U-17 as authority and did not evaluate reviewer subagents, clean verifiers, review-quality evals, or the specific model ids as open alternatives; findings touching those areas concern only internal consistency and unnamed semantic changes.",
+        "I assumed the spec under review is the artifact that will be implemented verbatim, so defects in its own Markdown (the §4.5 and §5 tables) are defects of the deliverable rather than rendering artifacts of the review pipeline. If the council host normalizes tables before delivery, DECISION-TABLE-MALFORMED drops to minor but the escaping should still be fixed at source.",
+        "I assumed docs/architecture/knowledge-identifiers.md's §A-MEMORY-03 is intended to read as a general norm, since its title and body are phrased generally even though tests/backlog-provenance.test.mjs reads a single backlog_closure block. If the project's settled reading is that it was always historical-scoped, MEMORY-03-RESCOPE-UNAUTHORIZED reduces to a documentation clarification rather than a missing authorization.",
+        "I assumed the installed ~/.claude/skills/orchestration, ~/.codex/skills/orchestration and ~/.config/opencode/skills/orchestration copies are the guides §8 refers to, since no other Orca guide source was locatable from this working directory.",
+        "I did not run make mo-qc, mo-lint or mo-test, per the read-only constraint; all repository claims above come from reading files, git log -S and git hash-object/shasum."
+      ],
+      "round": 1,
+      "reviewer": "opus1mhigh"
+    }
+  ]
+}
+```
+
+---REVIEW-META---
+approval_score: 6
+would_adopt: false

@@ -1,0 +1,213 @@
+P0=0 P1=0 P2=5 P3=1
+
+- BLG-START-001 [P2] Требование пустого backlog в начале lifecycle заявлено, но не получает blocking boundary и E2E.
+- BLG-MERGE-SHA-002 [P2] Проверка synthetic merged-result/merge-queue SHA не имеет исполнимого механизма.
+- BLG-CI-COVERAGE-003 [P2] Наличие команды в YAML ошибочно может быть признано blocking coverage, даже если job пропускается или ошибка маскируется.
+- BLG-CONSUMER-004 [P2] Не назван конкретный владелец agent-managed MR create/merge, который обязан вызвать gate.
+- BLG-FAILURE-005 [P2] `MO-BACKLOG-UNKNOWN` не имеет закрытого набора reason codes и однозначного wire format.
+- BLG-DOCS-006 [P3] Не перечислены все документы, где надо устранить утверждение, что `mo-qc` — единственный gate.
+
+## Facts & Constraints
+
+Спецификация правильно опирается на существующий стек: Node 22, `markdown-it`/mdast и `js-yaml` уже доступны. Отдельный AST-checker технически оправдан: стандартный Markdown-linter не способен доказать предметную пустоту `## Открыто`.
+
+`make mo-backlog-empty` удачно отделён от обычного `make mo-qc`: текущий schema-test намеренно допускает корректные записи во время разработки. Fail-closed трактовка missing, unreadable, malformed и invalid UTF-8 также соответствует исходному требованию.
+
+Однако текущий lifecycle не создаёт MR и не выполняет merge: `mo-orchestrate-orca` заканчивается verified SHA. Поэтому контракт нельзя реально распространить на «любой agent-managed MR» без названного вызывающего skill/workflow либо обязательного project-contract правила, читаемого внешним агентом.
+
+## Risks & Failure Modes
+
+### BLG-START-001 — отсутствует start boundary
+
+U-02 и §1 требуют пустоту в начале и конце lifecycle, но §8.3 определяет только pre-create и pre-merge boundaries. §3 решает разовую миграцию этой конкретной фичи, а не общий lifecycle. B36–B39 тоже не проверяют отказ запуска новой фичи при непустом backlog.
+
+Требуется добавить вызов gate в project/task readiness до materialization feature bundle и до substantive executor work. `NOT-EMPTY` должен запускать disposition существующих записей, `UNKNOWN` — блокировать старт. Нужны deterministic lifecycle assertion и отдельный E2E start-rejection scenario.
+
+### BLG-MERGE-SHA-002 — не определена проверка integration candidate
+
+`make mo-backlog-empty` проверяет checkout, но §8.3 одновременно требует проверить «фактический integration candidate». Для GitHub merge queue и GitLab merged-result/merge train это synthetic SHA, который обычно существует внутри CI, а не в текущем source worktree. Спецификация не определяет, должен ли агент получить этот commit, создать disposable worktree, запустить команду там или проверить exact CI result.
+
+Следует разделить контракт:
+
+- перед merge локально перепроверить текущий MR source SHA;
+- для synthetic candidate потребовать успешный gate check, чей reported SHA точно совпадает с merge-group/merged-result/train SHA;
+- если hosting не предоставляет проверяемый candidate/check association, merge остаётся `needs_attention`;
+- stale success для другого SHA запрещён.
+
+Это существенно уже и безопаснее, чем заставлять исполнителя изобретать checkout synthetic ref.
+
+### BLG-CI-COVERAGE-003 — coverage predicate недостаточен
+
+Фраза «отдельный non-allow-failure job/step с `make mo-backlog-empty`» не доказывает, что gate действительно блокирует merge. Возможны:
+
+- GitHub `if`, `paths`, `paths-ignore`, job/step `continue-on-error`;
+- GitLab `rules`, `only`, `except`, `changes`, rule-level `allow_failure`;
+- shell masking: `|| true`, отключённый `errexit`, последующая успешная команда;
+- skipped dependencies, manual jobs и разрешённые failures;
+- unsafe `pull_request_target`;
+- reusable workflow или include, не исполняемый для нужного event/ref.
+
+Нужен консервативный алгоритм reachability и failure propagation. Практичный узкий вариант — признавать `covered` только для отдельного job с канонической немаскируемой command shape, доказанным event eligibility и blocking required-status association; всё более сложное классифицировать как `unknown`, показывая причину и patch.
+
+### BLG-CONSUMER-004 — отсутствует implementation owner
+
+`§A-BACKLOG-01` называет абстрактные “Result/MR workflows”, а slice 3 — лишь methodology и guidance. В самом Meta-O нет skill, который создаёт MR или выполняет merge. Внешний `aidd-result` не назначен изменяемым артефактом этой реализации.
+
+Спецификация должна перечислить точные integration surfaces:
+
+- какой Meta-O skill вызывает gate и в какой секции;
+- какой внешний Result/MR skill должен быть изменён отдельно;
+- как project contract заставляет generic agent выполнить gate;
+- кто проверяет source SHA и hosting-side integration status непосредственно перед merge.
+
+Если внешний workflow не входит в implementation scope, outcome следует честно ограничить Meta-O lifecycle и CI вместо обещания покрытия всех agent-managed операций.
+
+### BLG-FAILURE-005 — typed result не завершён
+
+Первый token стабилен, но `reason=<reason>` остаётся свободным текстом. Не определены escaping пути/заголовков, stdout против stderr, порядок дополнительных строк и reason для каждого случая. Слабая модель неизбежно создаст несовместимые варианты.
+
+Нужно зафиксировать, например:
+
+`missing`, `unreadable`, `not_regular`, `invalid_utf8`, `invalid_schema`, `path_resolution`, `internal_error`.
+
+Также нужны правила:
+
+- первая строка ASCII и machine-readable;
+- относительный нормализованный path;
+- diagnostics после первой строки идут в stderr;
+- заголовки экранируются либо выводятся JSON;
+- PASS — 0, остальные outcomes — nonzero;
+- unexpected exception всегда становится `UNKNOWN internal_error`.
+
+## Strengths & Benefits
+
+Поправка в целом хорошо спроектирована:
+
+- gate fail-closed и не принимает отсутствие evidence за пустоту;
+- mid-feature QC не блокирует честное ведение notebook;
+- любой новый commit инвалидирует результат;
+- Draft MR включён в pre-create boundary;
+- GitHub и GitLab выбираются по repository evidence, а не по установленному CLI;
+- `mo-setup` только предлагает CI patch и не совершает неавторизованные writes;
+- post-merge default-branch pipeline правильно признан audit, а не barrier;
+- custom checker имеет узкую предметную ответственность и названных потребителей;
+- acceptance включает empty, non-empty, missing, unreadable, malformed и stale-SHA случаи.
+
+Сохранённые frozen decisions не переоткрываются, а новое требование отражено в U-19 и D-47…D-53.
+
+## Alternatives & Creative Ideas
+
+Наиболее исполнимый дизайн — три связанных, но разных доказательства:
+
+1. `make mo-backlog-empty` проверяет только checkout текущего exact `HEAD`.
+2. Agent-managed create/merge вызывает его после clean-worktree и SHA validation.
+3. Synthetic integration candidate подтверждается hosting-side blocking CI result, привязанным к exact synthetic SHA.
+
+Для CI inspection стоит определить небольшой allowlist доказуемых конфигураций. `mo-setup` может выдавать `covered`, `not_covered` или `unknown`; сложные expressions и удалённые includes не следует пытаться полностью интерпретировать.
+
+## Completeness & Process
+
+### Traceability
+
+Decision Ledger существует, rejected decisions отражены. U-19 покрыт содержательно. Единственный неполный adopted decision — U-02: empty completion реализована, но общий empty-start gate отсутствует.
+
+D-47 создаёт второй lifecycle gate, однако репозиторные тексты сейчас называют `make mo-qc` «единственным авторитетным гейтом». Slice plan не перечисляет обязательное исправление всех таких мест.
+
+### Decomposition Readiness
+
+§8.3 пока нельзя разрезать на полностью механические задачи: implementer должен самостоятельно выбрать API AST-reader, synthetic-SHA strategy, CI reachability algorithm и владельца MR/merge invocation. После устранения пяти P2 раздел можно декомпозировать на checker, lifecycle integration, setup inspection, GitLab fixtures, GitHub fixtures и E2E.
+
+### Weak-Model Executability
+
+Слабая модель реализует базовый parser и Make target, но будет гадать о:
+
+- `UNKNOWN` reason taxonomy;
+- безопасном diagnostic encoding;
+- synthetic candidate retrieval;
+- GitHub/GitLab conditional semantics;
+- точных файлах/skills MR integration.
+
+Это архитектурные решения, а не локальные детали реализации.
+
+### Contract Completeness
+
+Хорошо заданы command name, success token, fail-closed classes, provider families и основные fixtures. Не завершены reason schema, CI coverage semantics, integration-candidate interface и lifecycle consumer ownership.
+
+### Неблокирующее замечание BLG-DOCS-006
+
+Нужно явно включить `Makefile`, `AGENTS.md`, `CLAUDE.md`, `README.md`, `docs/papercut.md`, `shared/references/methodology.md`, acceptance/E2E и generated skill copies в migration map терминологии gate. Иначе сохранится ложное утверждение «единственный gate».
+
+Итог: архитектурное направление верное, но спецификация ещё не implementation-ready в критических точках enforcement. После названных уточнений дизайн можно принять без смены подхода.
+
+```council-verdict
+{
+  "schema_version": 1,
+  "verdicts": [
+    {
+      "target_id": "spec-review",
+      "approval_score": 6,
+      "would_adopt": false,
+      "summary": "Дизайн правильно отделяет empty-backlog closure gate от обычного mid-feature QC, работает fail-closed, учитывает GitHub и GitLab и запрещает неавторизованные изменения CI. Однако общий empty-start boundary отсутствует, synthetic integration candidate не имеет исполнимого механизма проверки, CI coverage predicate допускает ложный covered, не назначен конкретный владелец MR/merge invocation, а typed failure contract недоопределён. Эти пробелы требуют редакции спецификации, но не смены выбранной архитектуры.",
+      "phase": "spec-review",
+      "blocking_findings": [
+        {
+          "id": "BLG-START-001",
+          "severity": "major",
+          "area": "lifecycle",
+          "description": "Обязательная пустота backlog в начале общего feature lifecycle заявлена, но не обеспечена blocking boundary.",
+          "evidence": "§8.3 определяет только pre-MR-create и pre-merge boundaries; §3 описывает одноразовый migration checkpoint этой фичи; B36-B39 не содержат start rejection.",
+          "required_change": "Добавить make mo-backlog-empty в project/task readiness до materialization и substantive work, определить обработку NOT-EMPTY/UNKNOWN и добавить deterministic плюс E2E proof."
+        },
+        {
+          "id": "BLG-MERGE-SHA-002",
+          "severity": "major",
+          "area": "merge gate",
+          "description": "Требование проверить фактический merged-result/queue/train SHA не связано с конкретной исполнимой поверхностью.",
+          "evidence": "Публичная команда проверяет текущий checkout, тогда как §8.3 требует также synthetic integration candidate; способ получения checkout или exact hosting-side result не задан.",
+          "required_change": "Разделить local source-SHA recheck и hosting-side synthetic-SHA check; требовать exact SHA association и needs_attention при отсутствии доказуемого результата."
+        },
+        {
+          "id": "BLG-CI-COVERAGE-003",
+          "severity": "major",
+          "area": "CI inspection",
+          "description": "По текущему predicate mo-setup может объявить coverage при условно пропускаемом job или замаскированной ошибке команды.",
+          "evidence": "§8.3 упоминает лишь non-allow-failure job/step и event family, но не задаёт rules/if/paths/changes, continue-on-error, shell masking, manual/skipped dependency и pull_request_target semantics.",
+          "required_change": "Задать консервативный reachability/failure-propagation contract и канонические GitHub/GitLab shapes; всё недоказуемое классифицировать как unknown."
+        },
+        {
+          "id": "BLG-CONSUMER-004",
+          "severity": "major",
+          "area": "ownership",
+          "description": "Не назначен конкретный изменяемый workflow, который владеет вызовом gate перед MR create и merge.",
+          "evidence": "Meta-O orchestration сейчас заканчивается verified SHA; §A-BACKLOG-01 и slice 3 ссылаются на абстрактные Result/MR workflows без точного skill/file/interface.",
+          "required_change": "Перечислить exact consumer skills/files и invocation points либо ограничить обещанный outcome теми Meta-O и CI surfaces, которые проект действительно контролирует."
+        },
+        {
+          "id": "BLG-FAILURE-005",
+          "severity": "major",
+          "area": "command contract",
+          "description": "MO-BACKLOG-UNKNOWN не имеет закрытой reason taxonomy и однозначного diagnostic encoding.",
+          "evidence": "§8.3 использует свободный reason и path-or-none, а формат заголовков, stdout/stderr, escaping и unexpected exceptions не определён.",
+          "required_change": "Зафиксировать reason enum, нормализованный path, первую machine-readable строку, stderr diagnostics, escaping и internal_error behavior."
+        }
+      ],
+      "non_blocking_findings": [
+        {
+          "id": "BLG-DOCS-006",
+          "severity": "minor",
+          "area": "knowledge migration",
+          "description": "План не перечисляет все места, где новый lifecycle gate делает выражение «mo-qc — единственный gate» неточным.",
+          "evidence": "Такая формулировка присутствует в Makefile и docs/papercut.md; команды и lifecycle также отражены в AGENTS.md, CLAUDE.md и README.md.",
+          "required_change": "Добавить точную migration map документов и generated copies, сохранив mo-qc как единственный aggregate product QC, но не единственный lifecycle barrier."
+        }
+      ],
+      "assumptions": [
+        "Предоставленный в запросе текст является текущей спецификацией под ревью; другие прежние council reports в spec/** не инспектировались.",
+        "Из-за отсутствия exact candidate SHA и двух user-approved reviewer selections worker-часть mo-review-orca не запускалась; его протокол использован как нормативная review framework.",
+        "Agent-managed merge означает эффект через hosting CLI/API, а не простое локальное удаление feature branch."
+      ],
+      "confidence": "high"
+    }
+  ]
+}
+```

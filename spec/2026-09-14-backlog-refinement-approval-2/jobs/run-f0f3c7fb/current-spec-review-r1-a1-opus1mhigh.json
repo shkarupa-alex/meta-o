@@ -1,0 +1,12 @@
+{
+  "jobId": "run-f0f3c7fb",
+  "slot": {
+    "phase": "spec-review",
+    "round": 1,
+    "activeSetRevision": 1,
+    "judge": "opus1mhigh"
+  },
+  "candidateId": "candidate-e2d7abf0-975b-47c0-9eb1-a3cbf4f052a5",
+  "promotedBy": "runtime",
+  "validationSha256": "bf7cebde7efd1d13b0d9deab67fbbc825c07b4b6913969dc96e1088f99310ffb"
+}

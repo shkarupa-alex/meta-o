@@ -1,0 +1,296 @@
+Counts: P0=0 P1=0 P2=6 P3=1
+
+- BLG-REMOTE-SHA-001 — local PASS is not cryptographically bound to the hosting-side source ref that MR creation or merge actually uses.
+- BLG-COMPLETION-002 — lifecycle completion without an agent-managed MR or merge can bypass the required empty-backlog check.
+- BLG-SNAPSHOT-003 — the checker can parse transient working-tree bytes rather than the committed backlog blob it claims to prove.
+- BLG-EMPTY-AST-004 — “substantive content” and canonical empty Markdown are insufficiently defined for one deterministic implementation.
+- BLG-CI-CONTRACT-005 — CI discovery and reachability analysis lack a bounded supported grammar and verified control-plane interfaces.
+- BLG-SPEC-IGNORE-006 — requiring `spec/` to be ignored contradicts the requirement to commit the temporary feature specification bundle.
+- BLG-DIAGNOSTIC-007 — the “ASCII header” promise conflicts with an arbitrary JSON path unless escaping is specified.
+
+Verdict: FINDINGS.
+
+## Facts & Constraints
+
+The amendment correctly introduces a separate `make mo-backlog-empty` boundary rather than making backlog emptiness a dependency of ordinary `make mo-qc`. That preserves active development: schema-valid temporary entries may exist during implementation, while finalization is fail-closed.
+
+The typed result design is mostly sound:
+
+- PASS is distinct from known non-emptiness and inability to prove emptiness.
+- `UNKNOWN` does not degrade to empty.
+- Make’s collapsed child exit statuses are handled through stable diagnostic tokens.
+- The checker is non-mutating and does not perform Issue disposition or hosting writes.
+- GitLab and GitHub are selected from repository evidence rather than whichever CLI happens to be installed.
+- `mo-setup` proposes CI changes but does not apply YAML or server-side settings without authorization.
+
+The repository confirms that the current backlog reader is only a schema-oriented Markdown parser. It finds every H3 entry globally and does not define the proposed “other substantive content” predicate. The repository also currently has no GitHub Actions or GitLab CI configuration, so `no_ci_surface` is the expected present-project outcome.
+
+The explicitly supplied `mo-review-orca` procedure could not be run as an Orca pair because the request did not supply an exact candidate SHA and two user-approved reviewer selections. I therefore made no model, effort, or candidate assumption and performed the requested read-only specification review directly. E2E was not evaluated.
+
+## Risks & Failure Modes
+
+### BLG-REMOTE-SHA-001 — hosting write is not bound to the gated SHA
+
+Severity: major.
+
+At G1 the command checks local `HEAD`, but MR/PR creation operates on a hosting-side branch ref. The specification never requires the remote source tip to equal the printed gate SHA. A local empty-backlog commit can pass while the pushed branch still points to another commit.
+
+At G2 the same race exists between reading the remote head, checking locally, and issuing merge. “Immediately before” is ordering, not atomicity. Required CI helps only when the hosting policy is proven to require the exact check for the exact current head.
+
+Required remediation:
+
+- Define a lifecycle-level `candidate_mismatch` outcome.
+- Before MR creation, resolve the hosting-side source ref read-only and require its full SHA to equal the local PASS SHA and intended candidate.
+- Before merge, obtain the current MR/PR head and required-check identity again.
+- Require either a hosting-supported compare-and-set/precondition on the merge write or a proven required-policy mechanism that rejects a changed head.
+- If neither atomic mechanism exists, classify agent-owned merge as `unsupported`/`needs_attention`; do not claim a source-SHA check proves the merged result.
+
+### BLG-COMPLETION-002 — no universal completion gate
+
+Severity: major.
+
+U-02 and the Outcome require an empty backlog at lifecycle completion, but §8.3 defines only:
+
+- G0 at feature start;
+- G1 before an agent-managed MR/PR creation;
+- G2 before an agent-managed merge.
+
+A valid workflow may finish by delivering a verified SHA to the user without the agent creating an MR or merging it. In that path, none of G1/G2 necessarily runs.
+
+Required remediation: add an unconditional completion/delivery boundary after final disposition and before declaring success or handing off the verified result. An unchanged PASS from this boundary may be reused immediately for G1, but MR creation must not be its only trigger.
+
+### BLG-SNAPSHOT-003 — checker does not prove committed backlog bytes
+
+Severity: major.
+
+The checker reads the working file, checks cleanliness, and compares `HEAD` before/after. That does not prove that the parsed bytes were the blob belonging to the printed SHA. A concurrent process could temporarily replace the file, allow the checker to parse it, and restore it before the final cleanliness check.
+
+Required remediation:
+
+- Define the committed `HEAD:<backlog-path>` blob as the semantic input.
+- Resolve and parse that exact blob, or verify the parsed worktree bytes against its Git object ID.
+- Check index/worktree cleanliness separately.
+- Record the backlog blob ID in diagnostic detail or fixture evidence.
+- Treat a changing blob/index/worktree snapshot as typed `UNKNOWN`, not PASS.
+
+### BLG-EMPTY-AST-004 — semantic emptiness remains ambiguous
+
+Severity: major.
+
+The phrase “zero `###` entries and other substantive content” does not define:
+
+- whether HTML comments are allowed;
+- whether paragraphs, lists, blockquotes, code blocks, thematic breaks, or deeper headings are substantive;
+- whether an H3 outside `## Открыто` counts;
+- whether multiple `## Открыто` headings are invalid;
+- whether empty headings count as entries;
+- which introductory nodes are mandatory or optional.
+
+The existing `backlogEntries` logic scans H3 headings globally, so simply extracting it would not implement the stated section-scoped semantics.
+
+Required remediation: specify an AST grammar for the whole document and for `## Открыто`, including exact cardinality, permitted node types before/inside/after it, and entry boundaries. Add one fixture for every allowed and rejected node class.
+
+### BLG-CI-CONTRACT-005 — CI coverage is not yet implementation-ready
+
+Severity: major.
+
+The specification demands sound analysis of:
+
+- authenticated active CI settings;
+- custom GitLab entrypoints and include graphs;
+- GitHub reusable workflows;
+- `rules`, `if`, `only`, `except`, path filters and prerequisites;
+- merge trains, merged-result pipelines and merge queues;
+- required status/pipeline policy.
+
+However, it deliberately leaves the actual `gh`/`glab` read surfaces and relevant fields in §17. It also gives no bounded expression/include subset that can be proven statically. A weak implementer must invent API calls and workflow semantics.
+
+Required remediation:
+
+- Define verified read-only CLI/API commands, response fields and version fixtures for GitHub and GitLab CI settings.
+- Specify a conservative supported subset for local includes, reusable workflows, conditions and dependency graphs.
+- State that every construct outside that subset yields `unknown`.
+- Define exact evidence needed to connect a required server-side check name to the discovered job.
+- Provide fixture matrices for disabled CI, absent CI, custom entrypoints, dynamic includes, renamed jobs, skipped dependencies and ambiguous required-check names.
+
+### BLG-SPEC-IGNORE-006 — ignored and committed feature bundle conflict
+
+Severity: major.
+
+U-18 and §8.2 require project-owned ignore rules for `spec/`. Meanwhile §3, current methodology, and implementation slice 1 require the executor’s first coherent commit to materialize and commit the accepted specification, ledger and checklist. A new file below an effectively ignored `spec/` path is not normally included in a commit.
+
+Required remediation: choose one explicit storage contract without reopening U-18. The least disruptive resolution is to keep `spec/` ignored and move the committed temporary implementation bundle to a different named tracked directory. Update methodology, cleanup, ledger tests and implementation slices consistently.
+
+### BLG-DIAGNOSTIC-007 — ASCII versus JSON path
+
+Severity: minor.
+
+A JSON string may contain literal non-ASCII characters. Therefore an arbitrary project-relative Unicode backlog path cannot satisfy a strictly ASCII header unless the serializer is required to escape every non-ASCII code point.
+
+Required remediation: either define ASCII-only JSON escaping or change the contract to “one UTF-8 header line.”
+
+## Strengths & Benefits
+
+The amendment’s central architecture is strong:
+
+- It separates routine quality from lifecycle closure and therefore does not block normal implementation work.
+- It assigns backlog semantics to the consuming project instead of shipping a universal Meta-O parser.
+- It gives missing, malformed, unreadable and dirty states fail-closed meanings.
+- It repeats the gate at merge instead of treating the MR-time result as permanent.
+- It recognizes merged-result and merge-queue candidates as distinct from source commits.
+- It rejects `pull_request_target` as candidate proof.
+- It distinguishes tracked CI configuration from required server policy.
+- It makes setup inspection read-only and presents an exact proposed patch.
+- It records the GitHub/GitLab clarification in U-19, D-51, B39 and B40.
+
+The Decision Ledger is unusually complete. Every frozen U-01…U-19 decision has an adopted body location, and the relevant rejected alternatives appear in §16. I found no ledger entry that exists only in the ledger.
+
+## Alternatives & Creative Ideas
+
+A smaller executable contract would have four boundaries:
+
+1. `C0`: unconditional lifecycle completion check on the exact candidate.
+2. `G1`: remote source SHA equals C0/G1 PASS SHA before MR creation.
+3. `G2`: current hosting head and required check are revalidated before merge.
+4. `CI`: candidate checkout runs the same project command and the hosting policy requires that exact result.
+
+The checker itself should prove only a committed Git snapshot:
+
+```text
+resolve HEAD
+resolve HEAD:<declared-backlog-path> blob
+parse that blob with the project-owned AST contract
+verify index/worktree cleanliness
+resolve HEAD again
+emit PASS only when all identities remain stable
+```
+
+`mo-setup` does not need a general GitHub/GitLab workflow theorem prover. A conservative finite recognizer is enough: support direct jobs and statically local calls with a documented condition subset; classify everything else as `unknown` and show the evidence that prevented a conclusion.
+
+## Completeness & Process
+
+### Traceability
+
+The Decision Ledger exists and is internally well linked. U-19 appears in §1, §2.2, §8.3, §14, §15 and §18. The provider clarification is reflected symmetrically in D-51 and B39/B40. Rejected decisions are represented in §16.
+
+The traceability defect is semantic rather than documentary: U-02 says “lifecycle completion,” but the executable boundary list has no unconditional completion gate.
+
+### Decomposition readiness
+
+Most work can be decomposed without new architectural decisions once the findings above are resolved. Current slices 2, 6 and 11 are too broad to serve as small independent tasks, but they can be mechanically subdivided by owning document, checker contract, setup inspection, provider fixture family and E2E scenario.
+
+As written, implementers would still need to make architectural choices for remote-SHA binding, committed-blob snapshotting, empty AST semantics and CI reachability. Those are specification decisions, not ordinary implementation details.
+
+### Weak-model executability
+
+A weaker model could implement:
+
+- Make integration;
+- diagnostic token formatting;
+- simple fixture cases;
+- G0/G1/G2 instruction text;
+- setup’s no-write proposal behavior.
+
+It could not safely implement the remote/hosting association, “substantive content,” arbitrary workflow condition analysis, or required-policy verification without guessing.
+
+### Contract completeness
+
+The local result tokens, reason enum, non-mutating constraint and fixture expectations are detailed. Missing contracts remain for:
+
+- remote source/head identity;
+- an unconditional completion boundary;
+- a stable committed backlog snapshot;
+- exact Markdown emptiness grammar;
+- supported CI expression/include grammar;
+- verified hosting metadata commands and fields;
+- reconciliation of ignored `spec/` with committed feature bundles.
+
+These omissions affect the gate’s ability to prove what it claims, so they are blocking rather than editorial.
+
+```council-verdict
+{
+  "schema_version": 1,
+  "verdicts": [
+    {
+      "target_id": "spec-review",
+      "approval_score": 6,
+      "would_adopt": false,
+      "summary": "The amendment has the right high-level architecture: a project-owned non-mutating closure command, separation from ordinary mid-feature QC, fail-closed typed outcomes, repeated merge-time checking, and read-only GitHub/GitLab-aware setup proposals. It is not yet safe to adopt because local PASS is not bound to the hosting-side ref used by MR creation or merge, completion without an MR can bypass the gate, the checker does not prove the committed backlog blob, semantic Markdown emptiness is undefined, CI coverage analysis lacks bounded executable provider contracts, and the requirement to ignore spec/ conflicts with committing the temporary feature bundle.",
+      "phase": "spec-review",
+      "confidence": "high",
+      "blocking_findings": [
+        {
+          "id": "BLG-REMOTE-SHA-001",
+          "severity": "major",
+          "area": "MR and merge lifecycle",
+          "description": "The local gate proves local HEAD but MR creation and merge operate on hosting-side refs that may point to a different or concurrently changed commit.",
+          "evidence": "Section 8.3 requires local before/after HEAD checks and caller comparison, but does not require the remote MR/PR source tip to equal that SHA or bind the merge write atomically to the observed head.",
+          "required_change": "Specify read-only remote head resolution before MR creation and merge, a typed candidate_mismatch result, and either a hosting compare-and-set merge precondition or proven required-policy enforcement for the exact current head."
+        },
+        {
+          "id": "BLG-COMPLETION-002",
+          "severity": "major",
+          "area": "Lifecycle boundaries",
+          "description": "A feature completed by handing off a verified SHA without agent-managed MR creation or merge has no mandatory empty-backlog boundary.",
+          "evidence": "U-02 requires emptiness at lifecycle completion, while Section 8.3 defines only G0 feature start, G1 agent-managed MR creation and G2 agent-owned merge.",
+          "required_change": "Add an unconditional completion/delivery gate before success is declared; allow its unchanged PASS to be reused for an immediately following G1."
+        },
+        {
+          "id": "BLG-SNAPSHOT-003",
+          "severity": "major",
+          "area": "Checker correctness",
+          "description": "Parsing working-tree bytes while only checking HEAD before and after does not prove that the parsed backlog is the blob belonging to the reported candidate SHA.",
+          "evidence": "Section 8.3 says the checker reads the current tree, checks cleanliness and resolves HEAD before and after, but does not bind parsed bytes to HEAD:<backlog-path> or a Git blob ID.",
+          "required_change": "Parse the committed blob or verify the parsed bytes against its object ID, check index/worktree state separately, and return typed UNKNOWN when snapshot identities change."
+        },
+        {
+          "id": "BLG-EMPTY-AST-004",
+          "severity": "major",
+          "area": "Backlog schema",
+          "description": "The term other substantive content does not define a deterministic Markdown AST grammar for an empty backlog.",
+          "evidence": "Section 8.3 mentions zero H3 entries and no other substantive content, while the existing reader scans H3 headings globally and does not specify allowed comments, paragraphs, lists, deeper headings or section cardinality.",
+          "required_change": "Define the complete AST shape and allowed node types for the document and the canonical Open section, with positive and negative fixtures for every node class."
+        },
+        {
+          "id": "BLG-CI-CONTRACT-005",
+          "severity": "major",
+          "area": "mo-setup CI inspection",
+          "description": "CI coverage requires analysis of provider settings, include graphs, conditions and required policies, but the supported grammar and exact read-only provider interfaces are unspecified.",
+          "evidence": "Section 8.3 demands sound GitHub/GitLab reachability and required-policy checks, while Section 17 leaves the version-matched gh/glab surfaces for those facts as an implementation investigation.",
+          "required_change": "Specify verified commands, fields and fixtures plus a finite supported subset of workflow/include/condition semantics; all constructs outside that subset must deterministically return unknown."
+        },
+        {
+          "id": "BLG-SPEC-IGNORE-006",
+          "severity": "major",
+          "area": "Repository artifact ownership",
+          "description": "The project must ignore spec/ while also committing a new temporary feature specification bundle under the lifecycle contract.",
+          "evidence": "Section 8.2 and U-18 require effective project-owned ignore coverage for spec/, but Section 3, the current methodology and slice 1 require the executor to materialize and commit the specification, ledger and checklist.",
+          "required_change": "Keep the frozen ignore decision and assign committed temporary feature bundles to a different explicitly tracked directory, updating methodology, cleanup and tests consistently."
+        }
+      ],
+      "non_blocking_findings": [
+        {
+          "id": "BLG-DIAGNOSTIC-007",
+          "severity": "minor",
+          "area": "Diagnostic protocol",
+          "description": "An ASCII-only header is incompatible with arbitrary Unicode project-relative paths unless non-ASCII JSON escaping is required.",
+          "evidence": "Section 8.3 requires exactly one ASCII header line while path is a general project-relative POSIX path encoded as a JSON string.",
+          "required_change": "Mandate ASCII escaping for every non-ASCII code point or define the header as UTF-8."
+        }
+      ],
+      "assumptions": [
+        "No Orca review pair was launched because no exact candidate SHA and no two user-approved reviewer selections were supplied; inventing them would violate the explicitly provided mo-review-orca contract.",
+        "The specification text in the request is the complete review target, so no unrequested prior council artifact under spec/ was opened.",
+        "The gate is intended to prove the exact commit that the hosting operation will use, not merely a nearby clean local checkout.",
+        "A lifecycle may validly finish by handing a verified candidate to a human without the agent creating or merging an MR."
+      ],
+      "round": 1,
+      "reviewer": "gpt56solmedium"
+    }
+  ]
+}
+```
+
+---REVIEW-META---
+approval_score: 6
+would_adopt: false

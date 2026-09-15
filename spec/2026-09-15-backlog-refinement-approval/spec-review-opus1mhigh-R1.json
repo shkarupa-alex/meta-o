@@ -1,0 +1,114 @@
+{
+  "target_id": "spec-review",
+  "approval_score": 6,
+  "would_adopt": false,
+  "summary": "The amendment's prohibition is correct, well-traced (U-20 → D-60 → §1/§2.2/§3.1/§7.1/§14/B41/§16/§17/§20) and architecturally sound: it separates review isolation from Orca project registration and makes project-inventory invariance the enforcing check rather than a blacklist of commands. The replacement route, however, is not implementable as written. Route 2 puts both reviewers in the caller-executor's live worktree while imposing no freeze obligation, colliding with the existing clean-status/exact-SHA precondition (this repo is dirty right now, and §3 preserves unrelated dirty files), with the hot executor's remediation commits, and with review-protocol's full-gate rule that grants gate execution only under a caller lock or 'a worktree of your own'. Its precondition 'public route proves absence of write ownership' is unprovable by any Orca surface, so read strictly every folder project falls to REVIEW-RESOURCE-UNSUPPORTED — which would kill the use case the task says to preserve and re-create the exact pressure that produced the incident. §7.1 also has no branch for a caller with no Orca project context at all (verified: `orca worktree current` returns selector_not_found for /Users/alex/Develop/meta-o and meta-o is absent from project/repo inventory) or for unreadable inventory; it asserts Orca commands, typed errors and 'two reviewer tabs' without the recorded-surface discipline §2.5 imposes elsewhere and without naming the fields that do exist (`orca project list --json.kind`, `repo list`, `worktree current`, `terminal list`, `worker-list`); the new REVIEW-RESOURCE-UNSUPPORTED token sits outside every closed enum in the spec with no caller-publication or handoff semantics; the prohibition is scoped to the reviewer pair although the same folder-project failure hits orchestrator and E2E workers; and the rollback clause presumes a public deregistration capability that installed `orca --help` does not expose, with no audit duty for the two registrations the incident already created. One more bounded editing round on §7.1 (plus §5.3/§6.1/§14/§16/§17 touch-ups) would make this adoptable without reopening any frozen decision.",
+  "phase": "spec-review",
+  "confidence": "high",
+  "blocking_findings": [
+    {
+      "id": "R6-ROUTE2-FREEZE-CONFLICT",
+      "severity": "critical",
+      "area": "§7.1 same-project reviewer route vs review-protocol",
+      "description": "Route 2 runs both reviewers as separate terminals on the caller's current worktree, but the caller in the amended scenario is a hot executor that owns fixes and commits remediation. The spec imposes no freeze obligation on the caller, no freeze observation, no typed outcome for a broken freeze, and does not reconcile the loss of per-reviewer worktrees with the full-gate/mutating-diagnostic rules.",
+      "evidence": "src/skills/mo-review-orca/SKILL.md:28 'Each reviewer proves the full SHA and clean status'; shared/references/review-protocol.md 'Dirty or mismatched checkout ... is UNKNOWN' and 'only after the caller grants the shared lock or a worktree of your own'; CLAUDE.md 'Run a potentially mutating diagnostic only in an isolated disposable location, never in the frozen candidate worktree'; spec §5.3 typed code `dirty_candidate`; spec §3 keeps unrelated dirty files (this worktree is currently dirty: M docs/backlog.md, untracked spec/**); spec §7 keeps both reviewers hot for follow-up while the executor commits.",
+      "required_change": "Define 'frozen current candidate' as an explicit caller obligation for the whole review window (no writes, no commits, no checkout, no mutating diagnostics in that worktree), with a stated observable proof (HEAD + clean status re-verified by each reviewer at report time) and a typed outcome when the freeze cannot be held or is broken. State explicitly that route-2 reviewers may not run the project's full gate (or name the disposable location they may use) and require that reduction to be declared in `Scope and checks`."
+    },
+    {
+      "id": "R6-ROUTE2-UNPROVABLE-PRECONDITION",
+      "severity": "critical",
+      "area": "§7.1 route selection",
+      "description": "Route 2 is gated on a public route proving 'отсутствие write ownership', which no Orca surface can establish for a terminal in a writable worktree; read-only-ness is a contractual property of the reviewer, not a route capability. Strictly applied, every folder project therefore lands on REVIEW-RESOURCE-UNSUPPORTED, blocking the executor-launched review the task requires to be preserved and re-creating the incentive that produced the incident.",
+      "evidence": "Spec §7.1 route 2 wording; `orca orchestration worker-start --help` offers only placement selectors (current/new-child/new-top-level/identity/path/branch) with no read-only or write-restricted mode; spec §7.1 route 3 forces typed unsupported when 'same-project current route не даёт нужной изоляции или exact-SHA proof'.",
+      "required_change": "Replace the unprovable precondition with a concrete, checkable conjunction (exact candidate identity proof by named command/field + contractual reviewer non-mutation + caller freeze token + post-review HEAD/clean re-verification), or state honestly that folder-project review is unsupported until registration is upgraded, and say which of the two the implementation must deliver."
+    },
+    {
+      "id": "R6-NO-PROJECT-CONTEXT-BRANCH",
+      "severity": "major",
+      "area": "§7.1 preconditions / §17",
+      "description": "The invariant is defined entirely over 'текущий Orca project', with no branch for a caller that is not inside any Orca-managed project or worktree, and no typed outcome for unreadable inventory (runtime unreachable, partial graph). In that state routes 1 and 2 are undefined and route 3 blocks review, while the only obvious way to obtain a project identity is the forbidden `orca repo add`.",
+      "evidence": "`orca worktree current --json` in /Users/alex/Develop/meta-o returns {\"ok\":false,\"error\":{\"code\":\"selector_not_found\"}}; meta-o appears in neither `orca project list --json` nor `orca repo list --json` (four unrelated projects only); spec §7.1 mandates a pre-start snapshot of current project identity, kind, candidate worktree and inventory with no failure branch.",
+      "required_change": "Add explicit branches for (a) caller not inside any Orca-managed project/worktree and (b) unreadable or partially readable inventory/runtime: both must produce a typed needs_attention/unsupported outcome with the observed error code, must forbid obtaining a project by registering the workspace without the §7.1 route-3 human-confirmed `mo-setup` path, and must not be satisfiable by `repo add`."
+    },
+    {
+      "id": "R6-ORCA-SURFACE-NOT-RECORDED",
+      "severity": "major",
+      "area": "§2.5, §7.1, §14.1 layer 2, B41",
+      "description": "§7.1 makes normative claims about Orca's surface (new-child refusal for folder projects, `orca repo add` creating a project, `worker-release` returning no_owned_resource, registration kind git/folder/unknown, project inventory, 'two reviewer tabs' in the UI) without naming the commands/fields and without the recorded-surface discipline §2.5 applies to §4.6/§8. 'UI должен показывать' is not an agent-observable predicate.",
+      "evidence": "Spec §2.5 scopes the recorded-fixture rule to §4.6 and §8 only; §14.1 layer 2 lists fixtures only for gh/glab/`orca skills list --json`; verified existing surfaces that the spec fails to name: `orca project list --json` (field `kind`: git/folder, `id`, `sourceRepoIds`), `orca repo list --json` (`path`, `kind`), `orca worktree current|list|show`, `orca terminal list`, `orca orchestration worker-list`.",
+      "required_change": "Extend §2.5/§14.1 layer 2 to the Orca orchestration/project surfaces used by §7.1, and rewrite §7.1 and B41 in terms of named read-only commands and fields (e.g. sorted set of project ids from `orca project list --json` plus repo paths from `orca repo list --json` compared pre/post; reviewer handle attribution via a named terminal/worker listing), replacing the UI-tab phrasing with a CLI-checkable predicate."
+    },
+    {
+      "id": "R6-UNSUPPORTED-CODE-OUTSIDE-CONTRACTS",
+      "severity": "major",
+      "area": "§5.1/§5.3 typed codes, §6.1 handoff, §14",
+      "description": "REVIEW-RESOURCE-UNSUPPORTED is introduced without membership in any closed vocabulary and without caller-side semantics: it is absent from the §5.3 Unknown-Reason enum, has no row in the pair-aggregation table, no §6.1 handoff/consumer/cleanup row (no namespace is ever created), no counts/verdict publication rule, and no deterministic fixture (only E2E B41).",
+      "evidence": "Spec §5.3 closed enum: unreadable, candidate_mismatch, dirty_candidate, malformed_report, retrieval_failure, handoff_failure, review_incomplete; §5.3 aggregation table rows cover only UNKNOWN/structural/transport/missing-report cases; §8.3 shows the spec's own convention for closed reason enums; §14 review fixtures enumerate the enum without the new code.",
+      "required_change": "Either add a typed code (e.g. `resource_unsupported`) to the §5.3 enum and a pair-aggregation row, or state explicitly that REVIEW-RESOURCE-UNSUPPORTED is a pre-review start failure outside the response grammar and define what the caller publishes (no pair, no counts, no namespace, no ack) plus a deterministic fixture for it."
+    },
+    {
+      "id": "R6-PROHIBITION-SCOPE-NARROW",
+      "severity": "major",
+      "area": "§7.1, §16, §14/B41 scope",
+      "description": "The root cause (new-child refused for a folder project) applies equally to orchestrator executor workers and E2E actors, but the inventory-invariance rule, the forbidden-fallback entry and the tests are all scoped to the reviewer pair, leaving the same bypass available to mo-orchestrate-orca and mo-e2e.",
+      "evidence": "Spec §7.1 heading 'Same-project reviewer resource invariant'; §16 entry 'raw git worktree add + orca repo add ... как fallback для reviewer pair'; B41 covers standalone/executor review only; `worker-start --worktree new-child` is used for any worker class, and `--worktree` selectors plus `repo add`/`project setup-existing-folder`/`setup-clone` are global.",
+      "required_change": "Generalize the norm in §7.1/§16 to all Meta-O-started Orca resources (no Meta-O skill may change Orca project/repo inventory; only Orca-owned worktree/terminal resources inside the current project may be created), own it in §A-SESSION-01, and extend at least one existing orchestration/E2E scenario to assert inventory invariance for non-reviewer workers."
+    },
+    {
+      "id": "R6-ROLLBACK-CAPABILITY-AND-RESIDUE",
+      "severity": "minor",
+      "area": "§7.1 rollback, §15 slice 13, §17",
+      "description": "The rollback clause presumes a confirmed public Orca cleanup capability for exact-owned registrations, but installed help exposes no repo deregistration command; the spec neither names a candidate, nor open-questions its existence, nor requires post-rollback proof that inventory returned to the pre-start baseline, nor requires reporting the two stray registrations the incident already created on the user's machine.",
+      "evidence": "`orca --help` Repos section: repo list | add | show | set-base-ref | search-refs (no remove); nearest candidates `project setup-delete`, `worktree rm` are unverified for repo-add paths; §20 transcript states the agent intended to delete the two temporary registrations and worktrees; §15 slice 13 requires reproducing incidents but no residue audit.",
+      "required_change": "Add to §17 the open question whether a public deregistration capability exists for a path added by `orca repo add`; require rollback to end with a pre/post inventory equality proof or an explicit handover of exact handles plus a recoverable command; and add to slice 13 a read-only audit that reports any pre-existing stray reviewer project/worktree registrations to the human without deleting them."
+    },
+    {
+      "id": "R6-FOLDER-FIXTURE-NO-SUBJECT",
+      "severity": "minor",
+      "area": "§14 deterministic proof vs §14.1 layer boundary",
+      "description": "The new deterministic bullet claims a folder-project fixture proves that `orca repo add` and raw worktree fallback 'не вызываются' — a statement about agent behavior, which §14.1 assigns to the eval/E2E layer and which the council's own rule requires to have a named executable subject.",
+      "evidence": "Spec §14 bullet 'folder-project fixture воспроизводит отказ new-child: inventory остаётся неизменным, orca repo add/raw worktree fallback не вызываются'; §14.1 layer 1 'Чего не доказывает: что агент её применил'; contrast with the backlog bullets that name `make mo-backlog-empty` as the subject.",
+      "required_change": "Name the executable subject (e.g. a test-only recording `orca` stub under tests/ with an explicit statement that it is not shipped in skills/ and never calls the real CLI), or move the 'fallback not invoked' assertion entirely into B41/live eval and keep only the structural/inventory-comparison claim in the deterministic layer."
+    }
+  ],
+  "non_blocking_findings": [
+    {
+      "id": "R6-PREREGISTERED-WORKTREE-ROUTE-DROPPED",
+      "severity": "minor",
+      "area": "§7.1 route table vs §20 intake",
+      "description": "The user's own remediation proposal in the verbatim amendment ('заранее зарегистрированные worktree внутри одного проекта') is a real selectable route and is neither adopted nor explicitly refuted; §7.1 jumps from new-child to shared-current to unsupported.",
+      "evidence": "`orca orchestration worker-start --help` --worktree selectors include identity:, id:<repo-id>::<path>, name:, branch:, issue:, path:; §20 verbatim text proposes exactly this route; §7.1 lists only three routes.",
+      "required_change": "Add the pre-registered same-project worktree route to §7.1 with its own proof requirements, or record in §17 why it is infeasible for folder projects."
+    },
+    {
+      "id": "R6-REMOTE-HOST-CASE",
+      "severity": "minor",
+      "area": "§7.1 route table",
+      "description": "For workers started on a connected Orca server both `current` and `new-child` are invalid, so routes 1 and 2 collapse and only new-top-level remains — which the amendment implicitly forbids as inventory-changing.",
+      "evidence": "`orca orchestration worker-start --help` note: 'Remote current and new-child are invalid; discover an exact remote selector or use new-top-level.'",
+      "required_change": "State that remote reviewer placement is out of scope, or give it an explicit typed unsupported outcome."
+    },
+    {
+      "id": "R6-D60-CONDITIONAL",
+      "severity": "minor",
+      "area": "§18 ledger row D-60 vs §17",
+      "description": "D-60 is recorded as adopted while §17 still leaves open whether the same-project route it depends on exists, so the row hides its own conditionality.",
+      "evidence": "D-60 text 'folder project получает доказанный same-project current route либо typed REVIEW-RESOURCE-UNSUPPORTED'; §17 open question on the version-matched Orca surface and multiple same-project terminals on one frozen candidate.",
+      "required_change": "Mark D-60's route-2 half as conditional on the §17 finding, so an implementer cannot read it as a settled capability."
+    }
+  ],
+  "assumptions": [
+    "The Orca surfaces I probed read-only (orca --help, status, project list --json, repo list --json, worktree current/list, worker-start --help) on 1.4.198 are representative of the version this spec targets; the spec pins no orca version, so a different installed version could change the new-child/folder facts but not the structural findings.",
+    "I treated 'проработать этот incident при реализации' as requiring an implementable positive route plus the prohibition, not the prohibition alone; if the user's intent were only to forbid the bypass and accept blocked review in folder projects, findings R6-ROUTE2-UNPROVABLE-PRECONDITION and R6-ROUTE2-FREEZE-CONFLICT would reduce to 'say so explicitly'.",
+    "I did not read or reuse anything under spec/** (two untracked council bundles are present); all grounding came from tracked repo files and live read-only CLI probes.",
+    "The dirty state of this worktree (M docs/backlog.md, untracked spec/**) is the normal pre-migration state described in §3 rather than an anomaly, which is why I treated route 2's clean-status collision as a routine rather than exotic failure."
+  ],
+  "round": 1,
+  "reviewer": "opus1mhigh",
+  "judge": {
+    "slug": "opus1mhigh",
+    "model": "opus[1m]",
+    "route": "claude-agent-sdk",
+    "effort": "high"
+  }
+}
