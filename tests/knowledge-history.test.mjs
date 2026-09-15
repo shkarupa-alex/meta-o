@@ -12,7 +12,7 @@ import { after, test } from "node:test";
 
 import { fromMarkdown } from "mdast-util-from-markdown";
 
-import { git, verifyHistory } from "../tools/knowledge-history.mjs";
+import { edgeViolations, git, verifyHistory } from "../tools/knowledge-history.mjs";
 
 const BUSINESS_ID = `§${"B-FIXTURE-01"}`;
 const ARCHITECTURE_ID = `§${"A-FIXTURE-01"}`;
@@ -62,12 +62,13 @@ function commit(root, message) {
 test("the real history is reachable and valid from program input", () => {
   const cutoff = pinned("program_input_sha");
   const boundary = pinned("semantic_enforcement_sha");
-  assert.deepEqual(verifyHistory(process.cwd(), cutoff, boundary), []);
+  const currentRecordBoundary = pinned("current_record_enforcement_sha");
+  assert.deepEqual(verifyHistory(process.cwd(), cutoff, boundary, currentRecordBoundary), []);
   // The declared boundary has to be the whole exemption: every edge from it
   // onwards must survive semantic enforcement on its own.
-  assert.deepEqual(verifyHistory(process.cwd(), boundary), []);
+  assert.deepEqual(verifyHistory(process.cwd(), boundary, null, currentRecordBoundary), []);
   // And the exemption may not quietly cover anything after the boundary.
-  for (const error of verifyHistory(process.cwd(), cutoff)) {
+  for (const error of verifyHistory(process.cwd(), cutoff, null, currentRecordBoundary)) {
     const [parent] = error.split("..");
     assert.equal(
       git(process.cwd(), ["merge-base", "--is-ancestor", boundary, parent], true),
@@ -192,6 +193,55 @@ test("a trailer works only through a same-commit architecture decision", () => {
     state.root,
     `authorize reuse\n\nKnowledge-ID-Change: reuse ${BUSINESS_ID} via ${MISSING_ARCHITECTURE_ID}`,
   );
+  assert.deepEqual(verifyHistory(state.root, state.cutoff), []);
+});
+
+test("sequential reuse requires distinct records on the current parent edge", () => {
+  const state = fixture();
+  const authorizationPath = join(state.root, "docs", "architecture", "authorization.md");
+  writeFileSync(
+    join(state.root, "docs", "business.md"),
+    `# Business\n\n### ${BUSINESS_ID} — Second meaning\n\nSecond requirement.\n`,
+  );
+  writeFileSync(
+    authorizationPath,
+    `# ${MISSING_ARCHITECTURE_ID} — Authorization\n\nInitial policy.\n\n\`\`\`yaml\nknowledge_id_changes:\n  - action: reuse\n    id: ${BUSINESS_ID}\n    reason: The fixture gained its second meaning.\n    new_boundary: The id names the second requirement.\n    references_updated: true\n  - action: reuse\n    id: ${MISSING_ARCHITECTURE_ID}\n    reason: The fixture reserves a self-reuse record.\n    new_boundary: The decision initially authorizes the second meaning.\n    references_updated: true\n\`\`\`\n`,
+  );
+  commit(
+    state.root,
+    `authorize second meaning\n\nKnowledge-ID-Change: reuse ${BUSINESS_ID} via ${MISSING_ARCHITECTURE_ID}`,
+  );
+  const parent = git(state.root, ["rev-parse", "HEAD"]).trim();
+
+  writeFileSync(
+    join(state.root, "docs", "business.md"),
+    `# Business\n\n### ${BUSINESS_ID} — Third meaning\n\nThird requirement.\n`,
+  );
+  writeFileSync(
+    authorizationPath,
+    readFileSync(authorizationPath, "utf8").replace("Initial policy.", "Revised policy."),
+  );
+  const message =
+    `reuse stale records\n\nKnowledge-ID-Change: reuse ${BUSINESS_ID} via ${MISSING_ARCHITECTURE_ID}\n` +
+    `Knowledge-ID-Change: reuse ${MISSING_ARCHITECTURE_ID} via ${MISSING_ARCHITECTURE_ID}`;
+  commit(state.root, message);
+  let current = git(state.root, ["rev-parse", "HEAD"]).trim();
+  assert.deepEqual(edgeViolations(state.root, parent, current), [
+    `${parent}..${current}: semantic reuse ${MISSING_ARCHITECTURE_ID}`,
+    `${parent}..${current}: semantic reuse ${BUSINESS_ID}`,
+  ]);
+
+  writeFileSync(
+    authorizationPath,
+    readFileSync(authorizationPath, "utf8").replace(
+      "```\n",
+      `  - action: reuse\n    id: ${BUSINESS_ID}\n    reason: The fixture gained its third meaning.\n    new_boundary: The id names the third requirement.\n    references_updated: true\n  - action: reuse\n    id: ${MISSING_ARCHITECTURE_ID}\n    reason: The authorization policy changed with the third meaning.\n    new_boundary: The decision now authorizes only a distinct current record.\n    references_updated: true\n\`\`\`\n`,
+    ),
+  );
+  git(state.root, ["add", "-A"]);
+  git(state.root, ["commit", "--amend", "-qm", message]);
+  current = git(state.root, ["rev-parse", "HEAD"]).trim();
+  assert.deepEqual(edgeViolations(state.root, parent, current), []);
   assert.deepEqual(verifyHistory(state.root, state.cutoff), []);
 });
 

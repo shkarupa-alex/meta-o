@@ -122,12 +122,12 @@ function trailers(root, commit) {
     .map((match) => ({ action: match[1], id: match[2], via: match[3] }));
 }
 
-function authorizationRecord(markdown, architectureId, action, id) {
+function authorizationRecords(markdown, architectureId) {
   const children = fromMarkdown(markdown).children;
   const start = children.findIndex(
     (node) => node.type === "heading" && text(node).trim().startsWith(architectureId),
   );
-  if (start < 0) return null;
+  if (start < 0) return [];
   const depth = children[start].depth;
   const section = children.slice(
     start + 1,
@@ -140,19 +140,44 @@ function authorizationRecord(markdown, architectureId, action, id) {
         ),
   );
   const block = section.find((node) => node.type === "code" && node.lang === "yaml");
-  if (!block) return null;
+  if (!block) return [];
   const parsed = yaml.load(block.value);
   const records = parsed?.knowledge_id_changes ?? [parsed?.knowledge_id_change].filter(Boolean);
-  return records.find((record) => record?.action === action && record?.id === id) ?? null;
+  return Array.isArray(records) ? records : [];
 }
 
-function authorized(root, commit, action, id, current) {
+function stableValue(value) {
+  if (Array.isArray(value)) return value.map(stableValue);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => [key, stableValue(nested)]),
+  );
+}
+
+function authorized(root, parent, commit, action, id, previous, current, enforceCurrentRecord) {
   const match = trailers(root, commit).find((entry) => entry.action === action && entry.id === id);
   if (!match || !/^§A-[A-Z][A-Z0-9-]*-\d{2}$/.test(match.via)) return false;
   const owner = current.get(match.via);
   if (!owner || owner.kind !== "A") return false;
   const decision = git(root, ["show", `${commit}:${owner.path}`]);
-  const record = authorizationRecord(decision, match.via, action, id);
+  const priorOwner = previous.get(match.via);
+  const priorRecords = priorOwner
+    ? authorizationRecords(git(root, ["show", `${parent}:${priorOwner.path}`]), match.via)
+    : [];
+  const priorFingerprints = new Set(
+    priorRecords.map((record) => JSON.stringify(stableValue(record))),
+  );
+  // A historical record may explain only its own parent edge. Requiring a
+  // distinct current record prevents one old non-empty boundary from
+  // authorizing every later semantic reuse at this trust boundary.
+  const record = authorizationRecords(decision, match.via).find(
+    (candidate) =>
+      candidate?.action === action &&
+      candidate?.id === id &&
+      (!enforceCurrentRecord || !priorFingerprints.has(JSON.stringify(stableValue(candidate)))),
+  );
   return (
     record?.action === action &&
     record?.id === id &&
@@ -219,14 +244,21 @@ function deletedOnSibling(root, parent, id, siblingParents) {
 }
 
 /** §A-MEMORY-01 compares one parent edge and reports unauthorized loss or reuse. */
-export function edgeViolations(root, parent, commit, siblingParents = [], enforceSemantic = true) {
+export function edgeViolations(
+  root,
+  parent,
+  commit,
+  siblingParents = [],
+  enforceSemantic = true,
+  enforceCurrentRecord = true,
+) {
   const before = snapshot(root, parent);
   const after = snapshot(root, commit);
   const siblings = siblingParents.map((sha) => snapshot(root, sha));
   const errors = [];
   for (const id of before.keys()) {
     if (after.has(id) || deletedOnSibling(root, parent, id, siblingParents)) continue;
-    if (!authorized(root, commit, "remove", id, after)) {
+    if (!authorized(root, parent, commit, "remove", id, before, after, enforceCurrentRecord)) {
       errors.push(`${parent}..${commit}: silent deletion ${id}`);
     }
   }
@@ -238,7 +270,7 @@ export function edgeViolations(root, parent, commit, siblingParents = [], enforc
       enforceSemantic &&
       changed &&
       !sameFromSibling &&
-      !authorized(root, commit, "reuse", id, after)
+      !authorized(root, parent, commit, "reuse", id, before, after, enforceCurrentRecord)
     ) {
       errors.push(`${parent}..${commit}: semantic reuse ${id}`);
     }
@@ -254,13 +286,21 @@ export function edgeViolations(root, parent, commit, siblingParents = [], enforc
  * two edges between the cutoff and the checker's own introduction changed a
  * section body under a rule that did not exist yet, and history is not
  * rewritten to hide that. An absent `semanticFrom` enforces everywhere.
+ * `currentRecordFrom` similarly pins the first parent whose outgoing edges
+ * require a distinct authorization record rather than the legacy shape check.
  */
-export function verifyHistory(root, cutoff, semanticFrom = null) {
+export function verifyHistory(root, cutoff, semanticFrom = null, currentRecordFrom = null) {
   if (!git(root, ["rev-parse", "--verify", `${cutoff}^{commit}`], true)) {
     return [`history_unavailable: cutoff ${cutoff} is unreachable`];
   }
   if (semanticFrom && !git(root, ["rev-parse", "--verify", `${semanticFrom}^{commit}`], true)) {
     return [`history_unavailable: semantic boundary ${semanticFrom} is unreachable`];
+  }
+  if (
+    currentRecordFrom &&
+    !git(root, ["rev-parse", "--verify", `${currentRecordFrom}^{commit}`], true)
+  ) {
+    return [`history_unavailable: current-record boundary ${currentRecordFrom} is unreachable`];
   }
   const lines = git(root, ["rev-list", "--topo-order", "--reverse", "--parents", `${cutoff}..HEAD`])
     .trim()
@@ -274,6 +314,9 @@ export function verifyHistory(root, cutoff, semanticFrom = null) {
       const enforceSemantic =
         !semanticFrom ||
         git(root, ["merge-base", "--is-ancestor", semanticFrom, parent], true) !== null;
+      const enforceCurrentRecord =
+        !currentRecordFrom ||
+        git(root, ["merge-base", "--is-ancestor", currentRecordFrom, parent], true) !== null;
       errors.push(
         ...edgeViolations(
           root,
@@ -281,6 +324,7 @@ export function verifyHistory(root, cutoff, semanticFrom = null) {
           commit,
           parents.filter((sha) => sha !== parent),
           enforceSemantic,
+          enforceCurrentRecord,
         ),
       );
     }
@@ -292,11 +336,13 @@ function main() {
   const root = process.argv[2] ? resolve(process.argv[2]) : ROOT;
   const cutoff = process.argv[3];
   if (!cutoff) {
-    process.stderr.write("usage: knowledge-history.mjs [repository] <cutoff> [semantic-from]\n");
+    process.stderr.write(
+      "usage: knowledge-history.mjs [repository] <cutoff> [semantic-from] [current-record-from]\n",
+    );
     process.exitCode = 2;
     return;
   }
-  const errors = verifyHistory(root, cutoff, process.argv[4] ?? null);
+  const errors = verifyHistory(root, cutoff, process.argv[4] ?? null, process.argv[5] ?? null);
   if (errors.length > 0) {
     process.stderr.write(`${errors.join("\n")}\n`);
     process.exitCode = 1;

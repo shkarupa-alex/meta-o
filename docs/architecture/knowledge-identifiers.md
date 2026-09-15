@@ -18,6 +18,11 @@ knowledge_id_changes:
     reason: Durable defect memory добавила regression/invariant rules к цепочке знаний.
     new_boundary: Поведенческий defect связан с test, а non-obvious repair — с invariant comment.
     references_updated: true
+  - action: reuse
+    id: §A-MEMORY-01
+    reason: Проверка authorization выбирала первую историческую запись и разрешала ею все последующие semantic reuse.
+    new_boundary: Начиная с current_record_enforcement_sha каждый parent edge требует отдельную подходящую запись с содержанием, которого не было в owning decision у parent.
+    references_updated: true
 ```
 
 ## Решение
@@ -81,8 +86,9 @@ Knowledge-ID-Change: reuse <id> via <architecture-id>
 ```
 
 Trailer разрешает изменение только когда указанное решение существует в том же
-commit и содержит machine-readable YAML-блок с действием, id, непустыми причиной
-и новой semantic boundary, а также `references_updated: true`:
+commit и добавляет относительно проверяемого parent отдельную machine-readable
+YAML-запись с действием, id, непустыми причиной и новой semantic boundary, а
+также `references_updated: true`:
 
 ```yaml
 knowledge_id_change:
@@ -114,6 +120,13 @@ semantic_enforcement_sha: 4127f414a43fee467415db955a2ed19e57ebc159
 тогда ещё не существовало; история не переписывается, чтобы это скрыть, и
 граница не выводится из состояния файлов. Deletion и ссылки проверяются от
 cutoff без исключений.
+
+Привязка authorization record к конкретному parent edge применяется начиная с
+проверенного candidate, после которого правило стало исполняемым:
+
+```yaml
+current_record_enforcement_sha: 661eaf0f25a3d50c1f5aef686b106eddfe9a9489
+```
 
 Недостижимый cutoff или недостижимая граница дают
 `history_unavailable`; merge-base остаётся лишь дешёвым branch guard.
