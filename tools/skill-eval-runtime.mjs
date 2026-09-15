@@ -34,6 +34,11 @@ export function rejectSensitiveOrMachineLocal(value, label) {
     }
     if (!node || typeof node !== "object") return;
     for (const [key, child] of Object.entries(node)) {
+      const keyReason = forbiddenPublicDataReason(key);
+      if (keyReason === "machine_path") {
+        throw new Error(`${path}: absolute machine path is forbidden in an evidence key`);
+      }
+      if (keyReason) throw new Error(`${path}: sensitive evidence key is forbidden`);
       if (/(?:api.?key|token|secret|transcript|weights?)/iu.test(key)) {
         throw new Error(`${path}.${key}: forbidden evidence field`);
       }

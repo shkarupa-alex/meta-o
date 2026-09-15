@@ -9,7 +9,8 @@
       {
         "id": "review-a",
         "path": "/recorded/review-a",
-        "canonicalPath": "/recorded/review-a",
+        "realPath": "/recorded/review-a",
+        "realPathProvenance": "realpath -- /recorded/review-a",
         "kind": "worktree",
         "owner": "candidate-run",
         "projectId": "project-folder",
@@ -21,7 +22,8 @@
       {
         "id": "review-b",
         "path": "/recorded/review-b",
-        "canonicalPath": "/recorded/review-b",
+        "realPath": "/recorded/review-b",
+        "realPathProvenance": "realpath -- /recorded/review-b",
         "kind": "worktree",
         "owner": "candidate-run",
         "projectId": "project-folder",
@@ -41,7 +43,8 @@
       {
         "id": "review-a",
         "path": "/recorded/review-a",
-        "canonicalPath": "/recorded/review-a",
+        "realPath": "/recorded/review-a",
+        "realPathProvenance": "realpath -- /recorded/review-a",
         "kind": "worktree",
         "owner": "candidate-run",
         "projectId": "project-git",
@@ -53,7 +56,8 @@
       {
         "id": "review-b",
         "path": "/recorded/review-b",
-        "canonicalPath": "/recorded/review-b",
+        "realPath": "/recorded/review-b",
+        "realPathProvenance": "realpath -- /recorded/review-b",
         "kind": "worktree",
         "owner": "candidate-run",
         "projectId": "project-git",

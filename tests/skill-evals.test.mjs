@@ -154,6 +154,18 @@ test("identity equality is independent of JSON object key order", () => {
   assert.deepEqual(validateEvidence(ROOT, evidence, HEAD).nonPass, []);
 });
 
+function assertSensitiveValueRejected(value) {
+  const evidence = finalizedEnvelope("find-reuse");
+  evidence.results[0].oracleEvidence[0].evidence = value;
+  assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /secret-bearing evidence value/u);
+}
+
+function assertMachinePathKeyRejected(key) {
+  const evidence = finalizedEnvelope("find-reuse");
+  evidence.extra = { [key]: "ok" };
+  assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /machine path is forbidden/u);
+}
+
 test("evidence fails closed on identity drift, missing coverage and sensitive fields", () => {
   const drift = finalizedEnvelope("find-reuse");
   drift.execution.effective.model = "gpt-5.6-luna";
@@ -184,15 +196,18 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
     "https://alice:s3cr3t@build-host.internal/api",
     "ssh://alice:s3cr3t@build-host.example/repo",
     "postgresql://alice:s3cr3t@db.example/data",
+    "access_token=abcdefghijklmnop",
+    "api-token=abcdefghijklmnop",
+    "AWS_SECRET_ACCESS_KEY=abcdefghijklmnop",
+    "accessToken=abcdefghijklmnop",
+    "refresh_token=abcdefghijklmnop",
+    "auth-token=abcdefghijklmnop",
     "-----BEGIN PRIVATE KEY-----",
-  ]) {
-    const credentialEvidence = finalizedEnvelope("find-reuse");
-    credentialEvidence.results[0].oracleEvidence[0].evidence = credential;
-    assert.throws(
-      () => validateEvidence(ROOT, credentialEvidence, HEAD),
-      /secret-bearing evidence value/u,
-    );
-  }
+  ])
+    assertSensitiveValueRejected(credential);
+
+  for (const key of ["/home/alex/repo", "/tmp/private", "C:\\Users\\alex\\repo"])
+    assertMachinePathKeyRejected(key);
 
   const wrongHarness = finalizedEnvelope("find-reuse");
   wrongHarness.harness.name = "Claude";

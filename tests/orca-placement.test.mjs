@@ -6,8 +6,9 @@
  */
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { posix, resolve } from "node:path";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { test } from "node:test";
 
 const fixture = JSON.parse(
@@ -73,7 +74,14 @@ function placementReason(surface) {
     : null;
 }
 
-function reviewerInventoryReason(surface, candidate) {
+function recordedRealPath(child) {
+  if (child.realPathProvenance !== `realpath -- ${child.path}`) {
+    throw new Error("realpath provenance mismatch");
+  }
+  return child.realPath;
+}
+
+function reviewerInventoryReason(surface, candidate, resolveRealPath) {
   const children = surface.children ?? [];
   if (children.length !== 2) return "inventory_partial";
   if (
@@ -81,9 +89,6 @@ function reviewerInventoryReason(surface, candidate) {
       (child) =>
         typeof child.id !== "string" ||
         typeof child.path !== "string" ||
-        typeof child.canonicalPath !== "string" ||
-        !child.canonicalPath.startsWith("/") ||
-        posix.normalize(child.path) !== child.canonicalPath ||
         child.kind !== "worktree" ||
         child.projectId !== surface.project.id,
     )
@@ -93,10 +98,19 @@ function reviewerInventoryReason(surface, candidate) {
   if (children.some((child) => child.sha !== candidate || child.clean !== true)) {
     return "candidate_unverifiable";
   }
+  let realPaths;
+  try {
+    realPaths = children.map(resolveRealPath);
+  } catch {
+    return "inventory_unreadable";
+  }
+  if (realPaths.some((path) => typeof path !== "string" || !path.startsWith("/"))) {
+    return "inventory_unreadable";
+  }
   if (
     children.some((child) => child.owner !== "candidate-run") ||
     new Set(children.map(({ id }) => id)).size !== 2 ||
-    new Set(children.map(({ canonicalPath }) => canonicalPath)).size !== 2
+    new Set(realPaths).size !== 2
   ) {
     return "inventory_changed";
   }
@@ -109,6 +123,7 @@ function recordedReview(
     candidate = "0123456789abcdef0123456789abcdef01234567",
     failAt = null,
     cleanupFails = false,
+    resolveRealPath = recordedRealPath,
   } = {},
 ) {
   const calls = [];
@@ -137,7 +152,7 @@ function recordedReview(
   }
 
   const children = surface.children ?? [];
-  const inventoryReason = reviewerInventoryReason(surface, candidate);
+  const inventoryReason = reviewerInventoryReason(surface, candidate, resolveRealPath);
   if (inventoryReason) {
     return finish({ status: "unsupported", reason: inventoryReason, ownedDelta: [] });
   }
@@ -196,7 +211,8 @@ test("inventory proof uses the closed reason vocabulary before any reviewer task
           {
             ...fixture.folder.children[1],
             path: "/recorded/x/../review-a",
-            canonicalPath: "/recorded/review-a",
+            realPath: "/recorded/review-a",
+            realPathProvenance: "realpath -- /recorded/x/../review-a",
           },
         ],
       },
@@ -250,6 +266,28 @@ test("inventory proof uses the closed reason vocabulary before any reviewer task
     children: fixture.folder.children.slice(0, 1),
   });
   assert.equal(unsupported.reason, "placement_unsupported");
+});
+
+test("filesystem realpath identity rejects two symlink aliases of one worktree", () => {
+  const root = mkdtempSync(join(tmpdir(), "mo-placement-realpath-"));
+  try {
+    const target = join(root, "review");
+    const alias = join(root, "alias");
+    mkdirSync(target);
+    symlinkSync(target, alias, "dir");
+    const children = fixture.folder.children.map((child, index) => ({
+      ...child,
+      path: index === 0 ? target : alias,
+    }));
+    const result = recordedReview(
+      { ...fixture.folder, children },
+      { resolveRealPath: (child) => realpathSync.native(child.path) },
+    );
+    assert.equal(result.reason, "inventory_changed");
+    assert.deepEqual(result.calls, []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("missing context and remote-only placement are typed before any start", () => {

@@ -6,7 +6,7 @@
  */
 
 const PATTERNS = [
-  ["machine_path", /\/(?:home|Users|mnt|tmp)\//u],
+  ["machine_path", /(?:\/(?:home|Users|mnt|tmp)\/|\b[A-Z]:\\(?:Users|Temp|Windows)\\)/u],
   [
     "credential",
     /\b(?:Authorization|Proxy-Authorization)\s*:\s*(?:Basic|Bearer|Digest|Negotiate)\s+\S+/iu,
@@ -15,7 +15,7 @@ const PATTERNS = [
   ["credential", /-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----/u],
   [
     "credential",
-    /(?:\bBearer\s+|\b(?:token|secret|password|api[_-]?key)\s*[:=]|\b(?:gh[opsu]_[A-Za-z0-9]{8,}|glpat-[A-Za-z0-9_-]{8,}|sk-[A-Za-z0-9_-]{8,}))/iu,
+    /(?:\bBearer\s+|\b(?:[A-Za-z0-9]+[_-])*(?:(?:access|refresh|auth|api|id)[_-]?token|secret[_-]?access[_-]?key|client[_-]?secret|private[_-]?key|api[_-]?key|password|passphrase|credential|token|secret)\s*[:=]|\b(?:gh[opsu]_[A-Za-z0-9]{8,}|glpat-[A-Za-z0-9_-]{8,}|sk-[A-Za-z0-9_-]{8,}))/iu,
   ],
   ["environment_dump", /\b(?:HOME|PATH|USER|HOSTNAME|SHELL|LANG|CI)=\S+/u],
   ["private_hostname", /\b[a-z0-9-]+\.(?:internal|local|lan|corp)\b/iu],
