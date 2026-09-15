@@ -6,6 +6,7 @@
  */
 
 import { testingPolicyError } from "../shared/scripts/mo-models.mjs";
+import { forbiddenPublicDataReason } from "./sensitive-evidence.mjs";
 
 function assertString(value, label) {
   if (typeof value !== "string" || value.trim() === "") throw new Error(`${label} is empty`);
@@ -23,15 +24,13 @@ function sameIdentity(left, right) {
 
 /** §A-EVAL-01 rejects secrets and machine-local paths from portable evidence. */
 export function rejectSensitiveOrMachineLocal(value, label) {
-  const serialized = JSON.stringify(value);
-  if (/\/(?:home|Users|mnt|tmp)\//u.test(serialized)) {
-    throw new Error(`${label}: absolute machine path is forbidden`);
-  }
-  const credentialValue =
-    /(?:\b(?:Authorization|Proxy-Authorization)\s*:\s*(?:Basic|Bearer|Digest|Negotiate)\s+\S+|\bBearer\s+[A-Za-z0-9._~+/-]{3,}|https?:\/\/[^/\s:@]+:[^@\s/]+@|-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----|\b(?:api[_-]?key|access[_-]?token|token|secret|password)\s*[:=]\s*["']?[^\s"',}]{3,}|\b(?:gh[opsu]_[A-Za-z0-9]{8,}|glpat-[A-Za-z0-9_-]{8,}|sk-[A-Za-z0-9_-]{8,}))/iu;
   const visit = (node, path = label) => {
-    if (typeof node === "string" && credentialValue.test(node)) {
-      throw new Error(`${path}: secret-bearing evidence value is forbidden`);
+    if (typeof node === "string") {
+      const reason = forbiddenPublicDataReason(node);
+      if (reason === "machine_path") {
+        throw new Error(`${path}: absolute machine path is forbidden`);
+      }
+      if (reason) throw new Error(`${path}: secret-bearing evidence value is forbidden`);
     }
     if (!node || typeof node !== "object") return;
     for (const [key, child] of Object.entries(node)) {

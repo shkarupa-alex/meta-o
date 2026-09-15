@@ -17,14 +17,16 @@ function recording(name, source = null) {
   );
   assert.equal(document.contract, "recorded-cli-help.v2");
   assert.match(document.binary, /^[a-z][a-z0-9-]*$/u);
-  assert.match(document.resolvedBinary, /^<home>\//u);
-  assert.doesNotMatch(document.resolvedBinary, /\/(?:home|Users|mnt)\//u);
+  assert.match(document.binaryIdentity, /^home-relative:[A-Za-z0-9._/-]+$/u);
+  assert.match(document.resolution, /one absolute .*home prefix redacted/u);
+  assert.doesNotMatch(document.binaryIdentity, /\/(?:home|Users|mnt)\//u);
   assert.equal(typeof document.version, "string");
   assert.ok(document.version.length > 0);
   assert.ok(Array.isArray(document.observations));
   assert.ok(document.observations.length > 0);
   const commands = new Set();
   for (const observation of document.observations) {
+    assert.equal(observation.invokedBinary, document.binaryIdentity);
     assert.match(observation.command, new RegExp(`^${document.binary} `, "u"));
     assert.equal(observation.exitStatus, 0);
     assert.match(observation.provenance, /^stdout(?: |$)/u);
@@ -174,10 +176,11 @@ test("recording metadata and field provenance fail closed under mutation", () =>
     readFileSync(join(ROOT, "tests", "fixtures", "recorded-surfaces", "gh-2.96.0.fixture"), "utf8"),
   );
   for (const mutate of [
-    (value) => delete value.resolvedBinary,
+    (value) => delete value.binaryIdentity,
     (value) => delete value.observations[0].provenance,
     (value) => (value.observations[0].exitStatus = 1),
     (value) => (value.observations[0].command = "glab issue list --help"),
+    (value) => (value.observations[0].invokedBinary = "home-relative:.local/bin/other"),
   ]) {
     const changed = structuredClone(valid);
     mutate(changed);

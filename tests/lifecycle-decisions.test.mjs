@@ -11,6 +11,7 @@ import { resolve } from "node:path";
 import { test } from "node:test";
 
 import MarkdownIt from "markdown-it";
+import { forbiddenPublicDataReason } from "../tools/sensitive-evidence.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const markdown = new MarkdownIt();
@@ -78,8 +79,13 @@ const ISSUE_RULES = [
 ];
 
 function currentWritePermission(facts) {
-  const routeBlocker =
-    facts.rootCause === "external"
+  const routeBlocker = facts.mixedWorkaround
+    ? facts.owner === "verified" &&
+      facts.upstreamRepository === "verified" &&
+      facts.projectRepository === "verified"
+      ? null
+      : "mixed_ownership_unproved"
+    : facts.rootCause === "external"
       ? facts.owner === "verified" && facts.upstreamRepository === "verified"
         ? null
         : "upstream_ownership_unproved"
@@ -87,12 +93,7 @@ function currentWritePermission(facts) {
         ? facts.projectRepository === "verified"
           ? null
           : "project_repository_unproved"
-        : facts.mixedWorkaround &&
-            facts.owner === "verified" &&
-            facts.upstreamRepository === "verified" &&
-            facts.projectRepository === "verified"
-          ? null
-          : "root_cause_unproved";
+        : "root_cause_unproved";
   const blockers = [
     [routeBlocker !== null, routeBlocker],
     [facts.forbiddenData === true, "forbidden_data"],
@@ -131,19 +132,6 @@ function issueDecision(facts, rows = issueRows()) {
 
 const ISSUE_BODY_FIELDS = ["summary", "reproduction", "expected", "actual", "versions", "links"];
 
-function forbiddenIssueData(serialized) {
-  return [
-    /\/(?:home|Users|mnt|tmp)\//u,
-    /\b(?:Authorization|Proxy-Authorization)\s*:\s*(?:Basic|Bearer|Digest|Negotiate)\s+\S+/iu,
-    /https?:\/\/[^/\s:@]+:[^@\s/]+@/iu,
-    /(?:\bBearer\s+|\b(?:token|secret|password|api[_-]?key)\s*[:=])/iu,
-    /\b(?:HOME|PATH|USER|HOSTNAME)=\S+/u,
-    /\b[a-z0-9-]+\.(?:internal|local|lan|corp)\b/iu,
-    /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/iu,
-    /(?:internal specification|client context|customer context|session transcript)/iu,
-  ].some((pattern) => pattern.test(serialized));
-}
-
 function projectIssueBody(draft) {
   const projected = Object.fromEntries(
     ISSUE_BODY_FIELDS.filter((field) => typeof draft[field] === "string").map((field) => [
@@ -151,8 +139,7 @@ function projectIssueBody(draft) {
       draft[field],
     ]),
   );
-  const serialized = JSON.stringify(projected);
-  if (forbiddenIssueData(serialized)) {
+  if (Object.values(projected).some((value) => forbiddenPublicDataReason(value))) {
     return { status: "needs_attention", reason: "forbidden_data" };
   }
   return { status: "ready", body: projected };
@@ -283,6 +270,17 @@ test("Issue routing fails closed for overlapping facts, truncated search, unknow
       /(?:root_cause|ownership|repository)_unproved/u,
     );
   }
+  for (const rootCause of ["external", "project", "unknown", undefined]) {
+    const incompleteMixed = {
+      ...WRITE_READY,
+      mixedWorkaround: true,
+      rootCause,
+      owner: "verified",
+      upstreamRepository: "verified",
+    };
+    assert.equal(issueDecision(incompleteMixed).mayWrite, false);
+    assert.equal(issueDecision(incompleteMixed).writeBlocker, "mixed_ownership_unproved");
+  }
   assert.equal(issueDecision({ rootCause: "unknown", auth: "unavailable" }).scenario, "ISS-05");
   assert.equal(
     issueDecision({ rootCause: "external", owner: "ambiguous", auth: "unavailable" }).scenario,
@@ -315,6 +313,11 @@ test("Issue routing fails closed for overlapping facts, truncated search, unknow
   for (const forbidden of [
     "Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==",
     "https://alice:s3cr3t@build.example/api",
+    "ssh://alice:s3cr3t@build.example/repo",
+    "postgresql://alice:s3cr3t@db.example/data",
+    "ghp_abcdefghijklmnop",
+    "-----BEGIN PRIVATE KEY-----",
+    "SHELL=/bin/bash\nLANG=C\nCI=true",
     "build-host.internal",
     "HOME=/private/place",
     "person@example.com",

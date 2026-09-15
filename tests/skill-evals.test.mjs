@@ -182,6 +182,8 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
   for (const credential of [
     "Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==",
     "https://alice:s3cr3t@build-host.internal/api",
+    "ssh://alice:s3cr3t@build-host.example/repo",
+    "postgresql://alice:s3cr3t@db.example/data",
     "-----BEGIN PRIVATE KEY-----",
   ]) {
     const credentialEvidence = finalizedEnvelope("find-reuse");

@@ -7,7 +7,7 @@
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { posix, resolve } from "node:path";
 import { test } from "node:test";
 
 const fixture = JSON.parse(
@@ -81,6 +81,9 @@ function reviewerInventoryReason(surface, candidate) {
       (child) =>
         typeof child.id !== "string" ||
         typeof child.path !== "string" ||
+        typeof child.canonicalPath !== "string" ||
+        !child.canonicalPath.startsWith("/") ||
+        posix.normalize(child.path) !== child.canonicalPath ||
         child.kind !== "worktree" ||
         child.projectId !== surface.project.id,
     )
@@ -93,7 +96,7 @@ function reviewerInventoryReason(surface, candidate) {
   if (
     children.some((child) => child.owner !== "candidate-run") ||
     new Set(children.map(({ id }) => id)).size !== 2 ||
-    new Set(children.map(({ path }) => path)).size !== 2
+    new Set(children.map(({ canonicalPath }) => canonicalPath)).size !== 2
   ) {
     return "inventory_changed";
   }
@@ -187,6 +190,19 @@ test("inventory proof uses the closed reason vocabulary before any reviewer task
       "candidate_unverifiable",
     ],
     [
+      {
+        children: [
+          fixture.folder.children[0],
+          {
+            ...fixture.folder.children[1],
+            path: "/recorded/x/../review-a",
+            canonicalPath: "/recorded/review-a",
+          },
+        ],
+      },
+      "inventory_changed",
+    ],
+    [
       { children: fixture.folder.children.map((child) => ({ ...child, sha: "f".repeat(40) })) },
       "candidate_unverifiable",
     ],
@@ -214,7 +230,7 @@ test("inventory proof uses the closed reason vocabulary before any reviewer task
           { ...fixture.folder.children[1], path: fixture.folder.children[0].path },
         ],
       },
-      "inventory_changed",
+      "inventory_unreadable",
     ],
   ];
   for (const [variant, reason] of variants) {
