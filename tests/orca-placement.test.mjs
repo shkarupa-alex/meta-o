@@ -1,7 +1,7 @@
 /**
  * Execute the finite review-placement caller against a recording Orca surface.
  *
- * The fixture proves the caller algorithm required by §A-REVIEW-04; it does not
+ * The fixture proves the caller algorithm required by §A-SESSION-01; it does not
  * claim that a real agent, backend build, or UI behaved this way.
  */
 
@@ -34,7 +34,47 @@ function registrationSet(surface) {
   ]);
 }
 
-function recordedReview(surface, { failAt = null, cleanupFails = false } = {}) {
+function placementReason(surface) {
+  if (!new Set(["git", "folder"]).has(surface.project.kind)) return "placement_unsupported";
+  if (surface.project.kind === "git" && surface.project.sourceRepoIds.length !== 1) {
+    return "placement_unsupported";
+  }
+  if (
+    surface.currentContext?.projectId !== surface.project.id ||
+    (surface.project.kind === "git" &&
+      !surface.project.sourceRepoIds.includes(surface.currentContext?.repoId))
+  ) {
+    return "no_project_context";
+  }
+  const repository = surface.repositories.find(({ id }) => id === surface.currentContext.repoId);
+  return surface.project.kind === "git" && repository?.kind !== "git"
+    ? "remote_placement_unsupported"
+    : null;
+}
+
+function validReviewerInventory(surface, candidate) {
+  const children = surface.children ?? [];
+  return (
+    children.length === 2 &&
+    children.every(
+      (child) =>
+        child.kind === "worktree" &&
+        child.owner === "candidate-run" &&
+        child.projectId === surface.project.id &&
+        child.sha === candidate &&
+        child.clean === true,
+    )
+  );
+}
+
+function recordedReview(
+  surface,
+  {
+    candidate = "0123456789abcdef0123456789abcdef01234567",
+    failAt = null,
+    cleanupFails = false,
+  } = {},
+) {
   const calls = [];
   const baselineRegistration = registrationSet(surface);
   const baselineResources = normalized(surface.resources);
@@ -56,26 +96,20 @@ function recordedReview(surface, { failAt = null, cleanupFails = false } = {}) {
     };
   };
 
-  if (surface.project.kind !== "git" || surface.project.sourceRepoIds.length !== 1) {
-    return finish({
-      status: "unsupported",
-      reason: "placement_unsupported",
-      ownedDelta: [],
-    });
+  const unsupportedPlacement = placementReason(surface);
+  if (unsupportedPlacement) {
+    return finish({ status: "unsupported", reason: unsupportedPlacement, ownedDelta: [] });
   }
-  if (
-    surface.currentContext?.projectId !== surface.project.id ||
-    !surface.project.sourceRepoIds.includes(surface.currentContext?.repoId)
-  ) {
-    return finish({ status: "unsupported", reason: "no_project_context", ownedDelta: [] });
+
+  const children = surface.children ?? [];
+  if (!validReviewerInventory(surface, candidate)) {
+    return finish({ status: "unsupported", reason: "reviewer_inventory_invalid", ownedDelta: [] });
   }
-  const repository = surface.repositories.find(({ id }) => id === surface.currentContext.repoId);
-  if (repository?.kind !== "git") {
-    return finish({
-      status: "unsupported",
-      reason: "remote_placement_unsupported",
-      ownedDelta: [],
-    });
+  if (surface.project.kind === "folder") {
+    if (!children.every(({ existing }) => existing === true)) {
+      return finish({ status: "unsupported", reason: "placement_unsupported", ownedDelta: [] });
+    }
+    return finish({ status: "started", reason: null, ownedDelta: [] });
   }
 
   for (const child of surface.children) {
@@ -99,20 +133,43 @@ function recordedReview(surface, { failAt = null, cleanupFails = false } = {}) {
   return finish({ status: "started", reason: null, ownedDelta: owned });
 }
 
-test("folder placement fails before pair artifacts or registry calls", () => {
+test("folder placement accepts two existing clean exact-candidate reviewer worktrees", () => {
   const result = recordedReview(fixture.folder);
   assert.deepEqual(
     { status: result.status, reason: result.reason },
-    { status: "unsupported", reason: "placement_unsupported" },
+    { status: "started", reason: null },
   );
   assert.deepEqual(result.calls, []);
   assert.deepEqual(result.ownedDelta, []);
   assert.equal(result.registrationUnchanged, true);
   assert.equal(result.finalResources, result.baselineResources);
-  assert.match(
-    result.header,
-    /^REVIEW-START version=1 status=unsupported reason=placement_unsupported /u,
-  );
+  assert.equal(result.header, null);
+});
+
+test("inventory proof precedes placement and rejects dirty, wrong-SHA, missing, or mixed ownership", () => {
+  const variants = [
+    { children: fixture.folder.children.slice(0, 1) },
+    { children: fixture.folder.children.map((child, index) => ({ ...child, clean: index > 0 })) },
+    { children: fixture.folder.children.map((child) => ({ ...child, sha: "f".repeat(40) })) },
+    {
+      children: fixture.folder.children.map((child, index) => ({
+        ...child,
+        owner: index === 0 ? "foreign" : child.owner,
+      })),
+    },
+  ];
+  for (const variant of variants) {
+    const surface = { ...fixture.folder, ...variant };
+    const result = recordedReview(surface);
+    assert.equal(result.reason, "reviewer_inventory_invalid");
+    assert.deepEqual(result.calls, []);
+  }
+  const unsupported = recordedReview({
+    ...fixture.folder,
+    project: { ...fixture.folder.project, kind: "unknown" },
+    children: fixture.folder.children.slice(0, 1),
+  });
+  assert.equal(unsupported.reason, "placement_unsupported");
 });
 
 test("missing context and remote-only placement are typed before any start", () => {

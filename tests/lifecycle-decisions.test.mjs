@@ -63,19 +63,34 @@ const ISSUE_RULES = [
   [(facts) => facts.search === "incomplete", "ISS-14"],
   [(facts) => facts.capability === "missing", "ISS-15"],
   [(facts) => facts.writeEffect === "rejected", "ISS-13"],
+  [(facts) => facts.auth === "unavailable", "ISS-11"],
+  [(facts) => facts.repositoryRank === "ambiguous", "ISS-12"],
   [(facts) => facts.mixedWorkaround, "ISS-10"],
   [(facts) => facts.match === "open_exact", "ISS-06"],
   [(facts) => facts.match === "closed_fixed_installed", "ISS-07A"],
   [(facts) => facts.match === "closed_fixed_newer", "ISS-07B"],
   [(facts) => facts.match === "closed_wontfix_alive", "ISS-07C"],
-  [(facts) => facts.repositoryKnown && facts.auth === "unavailable", "ISS-11"],
-  [(facts) => facts.repositoryRank === "ambiguous", "ISS-12"],
   [(facts) => facts.rootCause === "unknown", "ISS-05"],
   [(facts) => facts.rootCause === "external" && facts.owner === "verified", "ISS-01"],
   [(facts) => facts.rootCause === "external" && facts.owner === "ambiguous", "ISS-02"],
   [(facts) => facts.rootCause === "external" && facts.owner === "project_remotes_only", "ISS-03"],
   [(facts) => facts.rootCause === "project", "ISS-04"],
 ];
+
+function currentWritePermission(facts) {
+  const blockers = [
+    [facts.forbiddenData === true, "forbidden_data"],
+    [facts.writeEffect === "ambiguous", "write_effect_ambiguous"],
+    [facts.writeEffect === "rejected", "write_rejected"],
+    [facts.search !== "complete", "search_unproved"],
+    [facts.capability !== "available", "capability_unproved"],
+    [facts.auth !== "available", "authorization_unproved"],
+    [facts.repositoryRank === "ambiguous", "repository_ambiguous"],
+    [facts.projection !== "allowlisted", "projection_unproved"],
+  ];
+  const blocked = blockers.find(([condition]) => condition);
+  return blocked ? { allowed: false, reason: blocked[1] } : { allowed: true, reason: null };
+}
 
 function issueDecision(facts, rows = issueRows()) {
   const matched = ISSUE_RULES.find(([predicate]) => predicate(facts));
@@ -86,31 +101,58 @@ function issueDecision(facts, rows = issueRows()) {
   if (!new Set(["yes", "no"]).has(row.writePermission)) {
     return { status: "needs_attention", reason: "canonical_write_permission_invalid" };
   }
-  const mayWrite = row.writePermission === "yes";
-  return { status: "settled", scenario, class: row.issueClass, ...row, mayWrite };
+  const current = currentWritePermission(facts);
+  const mayWrite = row.writePermission === "yes" && current.allowed;
+  return {
+    status: "settled",
+    scenario,
+    class: row.issueClass,
+    ...row,
+    mayWrite,
+    writeBlocker: mayWrite ? null : current.reason,
+  };
 }
 
-function sanitizeIssueBody(body) {
-  return body
-    .replace(/(?:api[_-]?token|token|secret)=\S+/giu, "[REDACTED_CREDENTIAL]")
-    .replace(/\/(?:home|Users|mnt)\/[^\s)]+/gu, "[REDACTED_PATH]")
-    .replace(/```transcript[\s\S]*?```/giu, "[REDACTED_TRANSCRIPT]");
+const ISSUE_BODY_FIELDS = ["summary", "reproduction", "expected", "actual", "versions", "links"];
+
+function projectIssueBody(draft) {
+  const projected = Object.fromEntries(
+    ISSUE_BODY_FIELDS.filter((field) => typeof draft[field] === "string").map((field) => [
+      field,
+      draft[field],
+    ]),
+  );
+  const serialized = JSON.stringify(projected);
+  if (
+    /\/(?:home|Users|mnt|tmp)\//u.test(serialized) ||
+    /(?:\bBearer\s+|\b(?:token|secret|password|api[_-]?key)\s*[:=])/iu.test(serialized)
+  ) {
+    return { status: "needs_attention", reason: "forbidden_data" };
+  }
+  return { status: "ready", body: projected };
 }
+
+const WRITE_READY = {
+  auth: "available",
+  search: "complete",
+  capability: "available",
+  projection: "allowlisted",
+};
 
 test("ISS-01 through ISS-15 route distinct facts to canonical actions", () => {
   const fixtures = [
-    [{ rootCause: "external", owner: "verified" }, "ISS-01", true],
+    [{ ...WRITE_READY, rootCause: "external", owner: "verified" }, "ISS-01", true],
     [{ rootCause: "external", owner: "ambiguous" }, "ISS-02", false],
     [{ rootCause: "external", owner: "project_remotes_only" }, "ISS-03", false],
-    [{ rootCause: "project" }, "ISS-04", true],
+    [{ ...WRITE_READY, rootCause: "project" }, "ISS-04", true],
     [{ rootCause: "unknown" }, "ISS-05", false],
-    [{ match: "open_exact" }, "ISS-06", true],
-    [{ match: "closed_fixed_installed" }, "ISS-07A", true],
+    [{ ...WRITE_READY, match: "open_exact" }, "ISS-06", true],
+    [{ ...WRITE_READY, match: "closed_fixed_installed" }, "ISS-07A", true],
     [{ match: "closed_fixed_newer" }, "ISS-07B", false],
-    [{ match: "closed_wontfix_alive" }, "ISS-07C", true],
+    [{ ...WRITE_READY, match: "closed_wontfix_alive" }, "ISS-07C", true],
     [{ forbiddenData: true }, "ISS-08", false],
     [{ writeEffect: "ambiguous" }, "ISS-09", false],
-    [{ mixedWorkaround: true }, "ISS-10", true],
+    [{ ...WRITE_READY, mixedWorkaround: true }, "ISS-10", true],
     [{ repositoryKnown: true, auth: "unavailable" }, "ISS-11", false],
     [{ repositoryRank: "ambiguous" }, "ISS-12", false],
     [{ writeEffect: "rejected" }, "ISS-13", false],
@@ -165,12 +207,34 @@ test("Issue routing fails closed for overlapping facts, truncated search, unknow
   assert.equal(issueDecision({ rootCause: "project", forbiddenData: true }).scenario, "ISS-08");
   assert.equal(issueDecision({ search: "incomplete" }).mayWrite, false);
   assert.match(issueDecision({ writeEffect: "ambiguous" }).requiredAction, /Read-only lookup/u);
-  const sanitized = sanitizeIssueBody(
-    "token=abc /home/alex/private\n```transcript\nprivate prompt\n```",
+  for (const blocker of [
+    { auth: "unavailable" },
+    { search: "incomplete" },
+    { capability: "missing" },
+    { forbiddenData: true },
+    { repositoryRank: "ambiguous" },
+  ]) {
+    assert.equal(
+      issueDecision({ ...WRITE_READY, rootCause: "project", ...blocker }).mayWrite,
+      false,
+    );
+  }
+  assert.deepEqual(
+    projectIssueBody({
+      summary: "bounded defect",
+      reproduction: "run public command",
+      internalPrompt: "private prompt",
+      transcript: "private transcript",
+    }),
+    {
+      status: "ready",
+      body: { summary: "bounded defect", reproduction: "run public command" },
+    },
   );
-  assert.equal(sanitized.includes("abc"), false);
-  assert.equal(sanitized.includes("/home/"), false);
-  assert.equal(sanitized.includes("private prompt"), false);
+  assert.deepEqual(projectIssueBody({ summary: "token=abc", actual: "/home/alex/private" }), {
+    status: "needs_attention",
+    reason: "forbidden_data",
+  });
 });
 
 function readiness(observation) {

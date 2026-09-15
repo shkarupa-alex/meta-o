@@ -51,7 +51,12 @@ function envelope(skill, { tier = "required", matrixProfile = "required-codex" }
     matrixProfile,
     requested: identity,
     harness: {
-      name: tier === "critical" ? "OpenCode" : identity.route === "claude" ? "Claude" : "Codex",
+      name:
+        tier === "critical" || identity.route === "opencode"
+          ? "OpenCode"
+          : identity.route === "claude"
+            ? "Claude"
+            : "Codex",
       version: "fixture-1",
       profileVersion: "fixture-profile-1",
       quantization: tier === "critical" ? "UD-Q4-KM" : "provider-managed",
@@ -169,6 +174,28 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
   const sensitive = finalizedEnvelope("find-reuse");
   sensitive.harness.apiToken = "must-not-survive";
   assert.throws(() => validateEvidence(ROOT, sensitive, HEAD), /forbidden evidence field/);
+
+  const secretValue = finalizedEnvelope("find-reuse");
+  secretValue.results[0].observations = ["Bearer abcdefghijklmnop"];
+  assert.throws(() => validateEvidence(ROOT, secretValue, HEAD), /secret-bearing evidence value/u);
+
+  const wrongHarness = finalizedEnvelope("find-reuse");
+  wrongHarness.harness.name = "Claude";
+  assert.throws(
+    () => validateEvidence(ROOT, wrongHarness, HEAD),
+    /does not match the approved route/u,
+  );
+
+  const nullObservation = finalizedEnvelope("find-reuse");
+  nullObservation.results[0].observations = [null];
+  assert.throws(() => validateEvidence(ROOT, nullObservation, HEAD), /observations\[0\] is empty/u);
+
+  const invalidPermission = finalizedEnvelope("find-reuse");
+  invalidPermission.harness.toolPermissions = [""];
+  assert.throws(
+    () => validateEvidence(ROOT, invalidPermission, HEAD),
+    /toolPermissions\[0\] is empty/u,
+  );
 
   assert.throws(
     () => validateEvidence(ROOT, finalizedEnvelope("find-reuse"), HEAD, true),

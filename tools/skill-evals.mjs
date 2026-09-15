@@ -21,6 +21,7 @@ import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 
 import {
+  assertBoundedString,
   diagnoseLegacyEvidenceAtCandidate,
   rejectSensitiveOrMachineLocal,
   validateActorIdentity,
@@ -310,6 +311,9 @@ function validateResult(result, item, unavailable, executionId) {
     throw new Error(`${result.caseId}: observations missing`);
   if (result.observations.length === 0)
     throw new Error(`${result.caseId}: verdict needs an observation`);
+  result.observations.forEach((observation, index) =>
+    assertBoundedString(observation, `${result.caseId}: observations[${index}]`, 4096),
+  );
   validateResultProvenance(result, unavailable, executionId);
   if (JSON.stringify(result.contractIds) !== JSON.stringify(item.contracts))
     throw new Error(`${result.caseId}: contract identities mismatch`);
@@ -319,7 +323,9 @@ function validateResult(result, item, unavailable, executionId) {
   if (JSON.stringify(actual) !== JSON.stringify(oracleKeys(item)))
     throw new Error(`${result.caseId}: oracle evidence identities mismatch`);
   for (const oracle of result.oracleEvidence) {
-    assertString(oracle.evidence, `${result.caseId}: oracle evidence`);
+    assertBoundedString(oracle.evidence, `${result.caseId}: oracle evidence`, 4096, {
+      allowAngles: true,
+    });
     if (typeof oracle.satisfied !== "boolean")
       throw new Error(`${result.caseId}: oracle satisfaction must be boolean`);
   }

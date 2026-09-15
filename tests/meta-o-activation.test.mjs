@@ -58,6 +58,40 @@ function calls(document, name) {
   });
 }
 
+function exactBodyReferences(document, name) {
+  const references = new Set();
+  const visit = (node) => {
+    if (node.type === "inlineCode" && /^mo-[a-z0-9-]+$/u.test(node.value) && node.value !== name) {
+      references.add(node.value);
+    }
+    for (const child of node.children ?? []) visit(child);
+  };
+  const callHeading = document.tree.children.findIndex(
+    (node) =>
+      node.type === "heading" &&
+      node.depth === 2 &&
+      node.children.map(({ value = "" }) => value).join("") === "Meta-O calls",
+  );
+  for (const node of document.tree.children.slice(0, callHeading)) visit(node);
+  return [...references].sort();
+}
+
+function validateDeclaredReferences(document, name, known) {
+  const declared = calls(document, name);
+  assert.equal(new Set(declared).size, declared.length, `${name}: duplicate callee`);
+  if (declared.includes("none")) assert.deepEqual(declared, ["none"]);
+  for (const callee of declared.filter((value) => value !== "none")) {
+    assert.ok(known.has(callee), `${name}: unknown callee ${callee}`);
+    assert.notEqual(callee, name, `${name}: self-call`);
+  }
+  assert.deepEqual(
+    exactBodyReferences(document, name),
+    declared.filter((value) => value !== "none").sort(),
+    `${name}: declared callees drift from exact body references`,
+  );
+  return declared;
+}
+
 test("source and generated Meta-O skills expose the same explicit activation graph", () => {
   const sourceNames = moSkills("src/skills");
   assert.deepEqual(moSkills("skills"), sourceNames);
@@ -71,14 +105,18 @@ test("source and generated Meta-O skills expose the same explicit activation gra
         document.frontmatter.description,
         /use when (?:reviewing|setting up|implementing)|generic (?:review|setup)/iu,
       );
-      const declared = calls(document, name);
-      assert.equal(new Set(declared).size, declared.length, `${name}: duplicate callee`);
-      if (declared.includes("none")) assert.deepEqual(declared, ["none"]);
-      for (const callee of declared.filter((value) => value !== "none")) {
-        assert.ok(known.has(callee), `${name}: unknown callee ${callee}`);
-        assert.notEqual(callee, name, `${name}: self-call`);
-      }
+      validateDeclaredReferences(document, name, known);
     }
     assert.deepEqual(calls(source, name), calls(generated, name), `${name}: generated graph drift`);
   }
+});
+
+test("an undeclared exact Meta-O reference fails the activation lint", () => {
+  const document = {
+    tree: fromMarkdown("# Fixture\n\nCall `mo-e2e` for proof.\n\n## Meta-O calls\n\n- none\n"),
+  };
+  assert.throws(
+    () => validateDeclaredReferences(document, "mo-watchdog", new Set(["mo-e2e", "mo-watchdog"])),
+    /declared callees drift/u,
+  );
 });

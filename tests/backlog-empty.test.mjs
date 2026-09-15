@@ -112,6 +112,16 @@ test("portable path serialization escapes BMP and astral Unicode as ASCII JSON",
   assert.equal(JSON.parse(encoded), original);
 });
 
+test("path diagnostics distinguish ambiguous spelling from repository escape", () => {
+  const root = fixture();
+  for (const path of ["./docs/backlog.md", "docs//backlog.md", "docs/../docs/backlog.md"]) {
+    assert.match(evaluate({ root, path }).line, /reason=path_ambiguous/u);
+  }
+  for (const path of ["/etc/passwd", "../outside.md"]) {
+    assert.match(evaluate({ root, path }).line, /reason=path_outside_repository/u);
+  }
+});
+
 test("committed empty proof tolerates unrelated dirt but rejects backlog dirt", () => {
   const root = fixture();
   let result = evaluate({ root });
@@ -123,6 +133,26 @@ test("committed empty proof tolerates unrelated dirt but rejects backlog dirt", 
   assert.match(result.line, /worktree=dirty/u);
   writeFileSync(join(root, "docs", "backlog.md"), `${EMPTY}\nchanged\n`);
   result = evaluate({ root });
+  assert.equal(result.status, "UNKNOWN");
+  assert.match(result.line, /reason=backlog_path_dirty/u);
+});
+
+test("a concurrent backlog edit after the first path probe cannot pass", () => {
+  const root = fixture();
+  let pathProbes = 0;
+  const runGit = (gitRoot, args, encoding = "utf8") => {
+    const result = spawnSync("git", ["-C", gitRoot, ...args], {
+      encoding,
+      maxBuffer: 16 * 1024 * 1024,
+    });
+    if (args.join("\0") === "status\0--porcelain=v1\0--\0docs/backlog.md") {
+      pathProbes += 1;
+      if (pathProbes === 1) writeFileSync(join(root, "docs", "backlog.md"), `${EMPTY}\nraced\n`);
+    }
+    return result;
+  };
+  const result = evaluate({ root, runGit });
+  assert.equal(pathProbes, 2);
   assert.equal(result.status, "UNKNOWN");
   assert.match(result.line, /reason=backlog_path_dirty/u);
 });

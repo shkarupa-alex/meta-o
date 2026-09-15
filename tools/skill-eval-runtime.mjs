@@ -27,7 +27,12 @@ export function rejectSensitiveOrMachineLocal(value, label) {
   if (/\/(?:home|Users|mnt|tmp)\//u.test(serialized)) {
     throw new Error(`${label}: absolute machine path is forbidden`);
   }
+  const credentialValue =
+    /(?:\bBearer\s+[A-Za-z0-9._~+/-]{3,}|\b(?:api[_-]?key|access[_-]?token|token|secret|password)\s*[:=]\s*["']?[^\s"',}]{3,}|\b(?:gh[opsu]_[A-Za-z0-9]{8,}|glpat-[A-Za-z0-9_-]{8,}|sk-[A-Za-z0-9_-]{8,}))/iu;
   const visit = (node, path = label) => {
+    if (typeof node === "string" && credentialValue.test(node)) {
+      throw new Error(`${path}: secret-bearing evidence value is forbidden`);
+    }
     if (!node || typeof node !== "object") return;
     for (const [key, child] of Object.entries(node)) {
       if (/(?:api.?key|token|secret|transcript|weights?)/iu.test(key)) {
@@ -228,11 +233,12 @@ function validateLegacyEnvelopeShape(envelope, context) {
   rejectSensitiveOrMachineLocal(envelope, "legacy_v2");
 }
 
-function assertBoundedString(value, label, maxBytes) {
+/** §A-EVAL-01 bounds portable evidence strings and rejects template placeholders by default. */
+export function assertBoundedString(value, label, maxBytes, { allowAngles = false } = {}) {
   assertString(value, label);
   if (Buffer.byteLength(value, "utf8") > maxBytes)
     throw new Error(`${label} exceeds ${maxBytes} bytes`);
-  if (value.includes("<") || value.includes(">"))
+  if (!allowAngles && (value.includes("<") || value.includes(">")))
     throw new Error(`${label} has an unresolved placeholder`);
 }
 
@@ -454,6 +460,12 @@ export function validateExecution(envelope, unavailable, expectedDigest) {
 }
 
 function validateAvailableHarness(envelope) {
+  const expectedHarness = { claude: "Claude", codex: "Codex", opencode: "OpenCode" }[
+    envelope.requested?.route
+  ];
+  if (!expectedHarness || envelope.harness?.name !== expectedHarness) {
+    throw new Error(`${envelope.skill}: harness.name does not match the approved route`);
+  }
   for (const field of [
     "name",
     "version",
@@ -470,12 +482,21 @@ function validateAvailableHarness(envelope) {
   ) {
     throw new Error(`${envelope.skill}: tool permissions are missing`);
   }
+  envelope.harness.toolPermissions.forEach((permission, index) =>
+    assertBoundedString(permission, `${envelope.skill}: toolPermissions[${index}]`, 128),
+  );
 }
 
 /** §A-EVAL-01 prevents an unavailable harness from carrying invented runtime metadata. */
 export function validateHarness(envelope, unavailable) {
   if (!unavailable) return validateAvailableHarness(envelope);
   assertString(envelope.harness?.name, `${envelope.skill}: harness.name`);
+  const expectedHarness = { claude: "Claude", codex: "Codex", opencode: "OpenCode" }[
+    envelope.requested?.route
+  ];
+  if (envelope.harness.name !== expectedHarness) {
+    throw new Error(`${envelope.skill}: harness.name does not match the approved route`);
+  }
   for (const field of ["version", "profileVersion", "quantization", "context", "sampling"]) {
     if (envelope.harness[field] !== null) {
       throw new Error(`${envelope.skill}: unavailable harness must not invent ${field}`);

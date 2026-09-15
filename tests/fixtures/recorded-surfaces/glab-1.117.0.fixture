@@ -1,22 +1,12 @@
-surface-contract: recorded-cli-help.v1
-binary: glab
-version: 1.117.0
-
-[issue list]
---all
---closed
---page
---per-page
-ABSENT: --state
-
-[issue create]
---title
---description-file
-
-[issue note]
---message
-ABSENT: --body-file
-
-[api]
---input
---header
+{
+  "contract": "recorded-cli-help.v2",
+  "binary": "glab",
+  "resolvedBinary": "/home/alex/.local/bin/glab",
+  "version": "glab 1.117.0 (44790937b)",
+  "observations": [
+    { "command": "glab issue list --help", "exitStatus": 0, "provenance": "stdout", "output": "USAGE\n  glab issue list [--flags]\n\nFLAGS\n  -A --all            Get all issues.\n  -c --closed         Get only closed issues.\n  -O --output         Options: 'text' or 'json'. (text)\n  -p --page           Page number. (1)\n  -P --per-page       Number of items to list per page. (30)" },
+    { "command": "glab issue create --help", "exitStatus": 0, "provenance": "stdout", "output": "USAGE\n  glab issue create [--flags]\n\nFLAGS\n  --description-file  Read the issue description from a file. Use \"-\" to read from standard input.\n  -t --title           Title of issue." },
+    { "command": "glab issue note --help", "exitStatus": 0, "provenance": "stdout", "output": "USAGE\n  glab issue note <issue-id> [--flags]\n\nFLAGS\n  -m --message        Comment/Note message." },
+    { "command": "glab api --help", "exitStatus": 0, "provenance": "stdout", "output": "USAGE\n  glab api <endpoint> [--flags]\n\nFLAGS\n  -H --header         Add a HTTP request header in key:value format.\n  --input             The file to use as body for the HTTP request." }
+  ]
+}

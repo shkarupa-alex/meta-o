@@ -125,8 +125,8 @@ function git(root, args, encoding = "utf8") {
   return spawnSync("git", ["-C", root, ...args], { encoding, maxBuffer: 16 * 1024 * 1024 });
 }
 
-function worktreeState(root) {
-  const status = git(root, ["status", "--porcelain=v1"]);
+function worktreeState(root, runGit = git) {
+  const status = runGit(root, ["status", "--porcelain=v1"]);
   return status.status === 0 && status.stdout.trim() === "" ? "clean" : "dirty";
 }
 
@@ -143,31 +143,41 @@ function unknown(reason, sha, worktree, path) {
 function declaredPath(path) {
   if (typeof path !== "string" || path === "") return { reason: "path_undeclared", path: null };
   const normalized = posix.normalize(path.replaceAll("\\", "/"));
-  const outside = normalized !== path || normalized.startsWith("../") || normalized.startsWith("/");
-  return outside ? { reason: "path_outside_repository", path: normalized } : { path: normalized };
+  if (normalized.startsWith("../") || normalized.startsWith("/")) {
+    return { reason: "path_outside_repository", path: normalized };
+  }
+  return normalized === path
+    ? { path: normalized }
+    : { reason: "path_ambiguous", path: normalized };
 }
 
-function headSnapshot(root) {
-  const result = git(root, ["rev-parse", "--verify", "HEAD"]);
+function headSnapshot(root, runGit = git) {
+  const result = runGit(root, ["rev-parse", "--verify", "HEAD"]);
   if (result.error?.code === "ENOENT") return { reason: "command_unavailable" };
   if (result.status !== 0) return { reason: "not_git_repository" };
   const sha = result.stdout.trim();
   return /^[a-f0-9]{40}$/u.test(sha) ? { sha } : { reason: "git_head_unreadable" };
 }
 
-function committedSource(root, path) {
-  const row = git(root, ["ls-tree", "HEAD", "--", path]);
+function committedSource(root, path, runGit = git) {
+  const row = runGit(root, ["ls-tree", "HEAD", "--", path]);
   if (row.status !== 0) return { reason: "unreadable_file" };
   const match = row.stdout.match(/^(\d{6})\s+(\w+)\s+[a-f0-9]{40}\t/u);
   if (!match) return { reason: "missing_file" };
   if (match[1] !== "100644" || match[2] !== "blob") return { reason: "not_regular_file" };
-  const blob = git(root, ["show", `HEAD:${path}`], null);
+  const blob = runGit(root, ["show", `HEAD:${path}`], null);
   if (blob.status !== 0 || !Buffer.isBuffer(blob.stdout)) return { reason: "unreadable_file" };
   try {
     return { source: new TextDecoder("utf-8", { fatal: true }).decode(blob.stdout) };
   } catch {
     return { reason: "invalid_utf8" };
   }
+}
+
+function backlogPathState(root, path, runGit) {
+  const result = runGit(root, ["status", "--porcelain=v1", "--", path]);
+  if (result.status !== 0) return { reason: "unreadable_file" };
+  return result.stdout.trim() === "" ? {} : { reason: "backlog_path_dirty" };
 }
 
 function settledResult(inspected, sha, worktree, path) {
@@ -190,26 +200,34 @@ function settledResult(inspected, sha, worktree, path) {
 }
 
 /** §A-BACKLOG-01 proves one immutable committed backlog snapshot and no checkout bytes. */
-export function evaluate({ root = ROOT, path = DEFAULT_PATH, candidate = null } = {}) {
-  const worktree = worktreeState(root);
+export function evaluate({
+  root = ROOT,
+  path = DEFAULT_PATH,
+  candidate = null,
+  runGit = git,
+} = {}) {
+  const worktree = worktreeState(root, runGit);
   const declared = declaredPath(path);
   if (declared.reason) return unknown(declared.reason, null, worktree, declared.path);
   const normalized = declared.path;
-  const before = headSnapshot(root);
+  const before = headSnapshot(root, runGit);
   if (before.reason) return unknown(before.reason, null, "unknown", normalized);
   const { sha } = before;
   if (candidate !== null && candidate !== sha)
     return unknown("candidate_mismatch", sha, worktree, normalized);
-  const dirty = git(root, ["status", "--porcelain=v1", "--", normalized]);
-  if (dirty.status !== 0) return unknown("unreadable_file", sha, worktree, normalized);
-  if (dirty.stdout.trim() !== "") return unknown("backlog_path_dirty", sha, worktree, normalized);
-  const committed = committedSource(root, normalized);
+  const beforePath = backlogPathState(root, normalized, runGit);
+  if (beforePath.reason) return unknown(beforePath.reason, sha, worktree, normalized);
+  const committed = committedSource(root, normalized, runGit);
   if (committed.reason) return unknown(committed.reason, sha, worktree, normalized);
   const inspected = inspectBacklog(committed.source);
-  const after = git(root, ["rev-parse", "--verify", "HEAD"]);
+  const after = runGit(root, ["rev-parse", "--verify", "HEAD"]);
   if (after.status !== 0 || after.stdout.trim() !== sha) {
     return unknown("snapshot_changed", sha, worktree, normalized);
   }
+  // A stable HEAD alone does not freeze checkout bytes: repeat the exact path
+  // probe after reading the blob so a concurrent edit cannot settle closure.
+  const afterPath = backlogPathState(root, normalized, runGit);
+  if (afterPath.reason) return unknown(afterPath.reason, sha, worktree, normalized);
   return settledResult(inspected, sha, worktree, normalized);
 }
 

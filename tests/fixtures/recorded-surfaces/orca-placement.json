@@ -2,9 +2,31 @@
   "contract": "meta-o.orca-placement-recording.v1",
   "folder": {
     "project": { "id": "project-folder", "kind": "folder", "sourceRepoIds": [] },
-    "currentContext": null,
+    "currentContext": { "projectId": "project-folder", "repoId": null },
     "repositories": [],
-    "resources": [{ "id": "foreign-terminal", "kind": "terminal", "owner": "foreign" }]
+    "resources": [{ "id": "foreign-terminal", "kind": "terminal", "owner": "foreign" }],
+    "children": [
+      {
+        "id": "review-a",
+        "kind": "worktree",
+        "owner": "candidate-run",
+        "projectId": "project-folder",
+        "repoId": null,
+        "sha": "0123456789abcdef0123456789abcdef01234567",
+        "clean": true,
+        "existing": true
+      },
+      {
+        "id": "review-b",
+        "kind": "worktree",
+        "owner": "candidate-run",
+        "projectId": "project-folder",
+        "repoId": null,
+        "sha": "0123456789abcdef0123456789abcdef01234567",
+        "clean": true,
+        "existing": true
+      }
+    ]
   },
   "git": {
     "project": { "id": "project-git", "kind": "git", "sourceRepoIds": ["repo-meta-o"] },
@@ -18,7 +40,9 @@
         "owner": "candidate-run",
         "projectId": "project-git",
         "repoId": "repo-meta-o",
-        "sha": "0123456789abcdef0123456789abcdef01234567"
+        "sha": "0123456789abcdef0123456789abcdef01234567",
+        "clean": true,
+        "existing": false
       },
       {
         "id": "review-b",
@@ -26,7 +50,9 @@
         "owner": "candidate-run",
         "projectId": "project-git",
         "repoId": "repo-meta-o",
-        "sha": "0123456789abcdef0123456789abcdef01234567"
+        "sha": "0123456789abcdef0123456789abcdef01234567",
+        "clean": true,
+        "existing": false
       }
     ]
   },

@@ -1,49 +1,14 @@
-surface-contract: recorded-cli-help.v1
-binary: orca
-version-command: unsupported (orca --version prints root help)
-
-[skills list --json]
-topic: orchestration
-topic: orca-cli
-
-[skills get orchestration --json]
-name: orchestration
-markdown_bytes: 39250
-
-[skills get orca-cli --json]
-name: orca-cli
-markdown_bytes: nonzero
-
-[project]
-list
-setups
-
-[repo]
-list
-show
-add
-
-[worktree]
-list
-show
-current
-create
-rm
-
-[terminal]
-list
-show
-read
-wait
-create
-close
-
-[orchestration]
-run-create
-task-create
-worker-start
-worker-show
-worker-list
-worker-release
-check
-reply
+{
+  "contract": "recorded-cli-help.v2",
+  "binary": "orca",
+  "resolvedBinary": "/home/alex/.local/orca/releases/v1.4.185/resources/bin/orca-ide",
+  "version": "1.4.185",
+  "observations": [
+    { "command": "orca skills list --json", "exitStatus": 0, "provenance": "stdout JSON topics[].name", "output": "{\"topics\":[{\"name\":\"orca-cli\"},{\"name\":\"orchestration\"}]}" },
+    { "command": "orca project --help", "exitStatus": 0, "provenance": "stdout", "output": "Commands:\n  list               List durable projects known to Orca\n  setups             List project host setups" },
+    { "command": "orca repo --help", "exitStatus": 0, "provenance": "stdout", "output": "Commands:\n  list               List repos registered in Orca\n  add                Add a project to Orca by filesystem path\n  show               Show one registered repo" },
+    { "command": "orca worktree --help", "exitStatus": 0, "provenance": "stdout", "output": "Commands:\n  list               List Orca-managed worktrees\n  show               Show one worktree\n  current            Show the Orca-managed worktree for the current directory\n  create             Create a new Orca-managed worktree\n  rm                 Remove a worktree from Orca and git" },
+    { "command": "orca terminal --help", "exitStatus": 0, "provenance": "stdout", "output": "Commands:\n  list               List live Orca-managed terminals\n  show               Show terminal metadata and preview\n  read               Read bounded terminal output\n  wait               Wait for a terminal condition\n  create             Create a terminal session in the current worktree\n  close              Close a terminal pane/session, or its whole tab with --tab" },
+    { "command": "orca orchestration --help", "exitStatus": 0, "provenance": "stdout", "output": "Commands:\n  check              Check messages for a terminal\n  reply              Reply to a message\n  worker-start       Start one supervised worker on the Run home or a connected Orca server\n  worker-list        List supervised worker terminal resource accounting\n  worker-release     Release the terminal of one settled supervised worker" }
+  ]
+}

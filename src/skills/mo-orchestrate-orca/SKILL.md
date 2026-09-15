@@ -39,8 +39,8 @@ reviewer/E2E is active. Demultiplex exact handles, process complete event batche
 re-arm quiet timeouts without narration, and allow only one same-arm retry after
 transport failure.
 
-Call the standalone review skill for the first deep pair and remediation
-follow-ups. Give the executor both immutable reports only through its verified
+Call `mo-review-orca` for the first deep pair and remediation follow-ups. Give
+the executor both immutable reports only through its verified
 pair paths/sizes; wait for exact `Review-Handoff-Ack` before cleanup. Keep
 remediation reviewers hot, and use a fresh final same-SHA pair. Public updates
 contain only candidate, pair verdict and summed authored P0–P3 census.
@@ -53,7 +53,7 @@ pre-authorized; credentials, product disputes, subscriptions, irreversible or
 unknown effects and watchdog remain human boundaries. Never retry an unknown
 write effect.
 
-Run foreground serialized QC and call the E2E skill for applicable scenarios.
+Run foreground serialized QC and call `mo-e2e` for applicable scenarios.
 After knowledge harvest and removal of the implemented spec, require GC on the
 exact candidate. Immediately before any agent-owned MR/PR create run G1 and
 verify remote source head equality. Immediately before merge run G2 and bind the
