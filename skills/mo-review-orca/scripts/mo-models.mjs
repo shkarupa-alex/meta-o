@@ -19574,7 +19574,8 @@ var RETIRED_ROLES = /* @__PURE__ */ new Map([
 ]);
 var SCHEMA_VERSION = 1;
 var HISTORY_MAX_AGE_DAYS = 31;
-var HISTORY_TIMEOUT_MS = 5e3;
+var configuredHistoryTimeout = Number(process.env.MO_MODELS_HISTORY_TIMEOUT_MS);
+var HISTORY_TIMEOUT_MS = Number.isSafeInteger(configuredHistoryTimeout) && configuredHistoryTimeout >= 1 && configuredHistoryTimeout <= 5e3 ? configuredHistoryTimeout : 5e3;
 var HISTORY_BYTE_BUDGET = 64 * 1024 * 1024;
 var GIT_TIMEOUT_MS = 5e3;
 var configuredCatalogTimeout = Number(process.env.MO_MODELS_CATALOG_TIMEOUT_MS);
@@ -19640,16 +19641,20 @@ var TESTING_PROFILES = {
   testOpenCodeDesired: {
     route: "opencode",
     effort: "low",
-    id: /^qwen(?:-?3[._-]?8)?[-_/ ].*27b$/u,
+    matches: isApprovedQwen38_27bModel,
     requirement: "testOpenCodeDesired must name the configured qwen 3.8 27b model id through opencode at low effort"
   }
 };
+function isApprovedQwen38_27bModel(model) {
+  const identifier = String(model).split("/").at(-1)?.toLowerCase() ?? "";
+  return /^qwen[-_.]?3[._-]?8[-_.]?27b(?:[-_.][a-z0-9]+)*$/u.test(identifier);
+}
 function testingPolicyError(role, value) {
   const profile = TESTING_PROFILES[role];
   if (!profile) return null;
   const selection = typeof value === "string" ? parseSelection(value) : value;
   const identifier = selection.model.split("/").pop() ?? "";
-  const namesApprovedProfile = profile.id.test(identifier.toLowerCase());
+  const namesApprovedProfile = profile.matches ? profile.matches(identifier) : profile.id.test(identifier.toLowerCase());
   if (selection.route !== profile.route || selection.effort !== profile.effort) {
     return profile.requirement;
   }
@@ -19917,15 +19922,18 @@ async function routeCatalog(route) {
       return unavailable(`unknown catalog kind "${descriptor.kind}"`);
   }
 }
-function recentSessionFiles(directory) {
+function recentSessionFiles(directory, started) {
+  const timedOut = () => Date.now() - started >= HISTORY_TIMEOUT_MS;
   if (!directory || !existsSync2(directory)) {
-    return { files: [], unreadable: [], truncated: [], missing: true };
+    return { files: [], unreadable: [], truncated: [], missing: true, timedOut: false };
   }
-  const cutoff = Date.now() - HISTORY_MAX_AGE_DAYS * 24 * 60 * 60 * 1e3;
+  const cutoff = started - HISTORY_MAX_AGE_DAYS * 24 * 60 * 60 * 1e3;
   const found = [];
   const unreadable = [];
   const truncated = [];
+  let deadlineReached = timedOut();
   const walk = (path, depth) => {
+    if (deadlineReached) return;
     if (depth > 6) {
       truncated.push(relative(directory, path) || ".");
       return;
@@ -19938,6 +19946,10 @@ function recentSessionFiles(directory) {
       return;
     }
     for (const entry of entries) {
+      if (timedOut()) {
+        deadlineReached = true;
+        return;
+      }
       const child = join(path, entry.name);
       if (entry.isDirectory()) {
         walk(child, depth + 1);
@@ -19959,7 +19971,8 @@ function recentSessionFiles(directory) {
     files: found.map((entry) => entry.path),
     unreadable,
     truncated,
-    missing: false
+    missing: false,
+    timedOut: deadlineReached
   };
 }
 function collectModels(route, value, seen) {
@@ -20009,8 +20022,8 @@ async function scanHistoryFile(route, file, state, started) {
 }
 async function routeHistory(route) {
   const directory = ROUTES[route]?.historyDir;
-  const discovery = recentSessionFiles(directory);
   const started = Date.now();
+  const discovery = recentSessionFiles(directory, started);
   const unreadable = [...discovery.unreadable];
   const truncated = [...discovery.truncated];
   let scannedFiles = 0;
@@ -20018,7 +20031,7 @@ async function routeHistory(route) {
     seen: [],
     bytesRead: 0,
     corrupt: false,
-    stopReason: discovery.missing ? "unavailable" : "ok"
+    stopReason: discovery.missing ? "unavailable" : discovery.timedOut ? "timeout" : "ok"
   };
   for (const file of discovery.files) {
     if (Date.now() - started >= HISTORY_TIMEOUT_MS) {
@@ -20052,7 +20065,11 @@ function dedupe(values) {
 }
 function eligibleRecommendations(provider) {
   return provider.catalog.models.filter(
-    ({ label, description, capabilities, efforts }) => efforts.includes("high") && /cod(?:e|ing)|software/iu.test(JSON.stringify({ label, description, capabilities }))
+    ({ label, description, capabilities, efforts }) => efforts.includes("high") && (/(?:^|[^\p{L}\p{N}_])(?:code|coding|software(?:[ -]engineering)?)(?:$|[^\p{L}\p{N}_])/iu.test(
+      [label, description].filter((value) => typeof value === "string").join(" ")
+    ) || (Array.isArray(capabilities) ? capabilities : [capabilities]).filter((value) => typeof value === "string").map((value) => value.trim().toLowerCase().replace(/[ _]+/gu, "-")).some(
+      (value) => (/* @__PURE__ */ new Set(["code", "coding", "software", "software-engineering"])).has(value)
+    ))
   );
 }
 function defaultRecommendation(provider) {
@@ -20479,6 +20496,7 @@ if (invokedDirectly()) {
 export {
   familyAndGeneration,
   findUpgrade,
+  isApprovedQwen38_27bModel,
   parseCodexModels,
   parseSelection,
   testingPolicyError

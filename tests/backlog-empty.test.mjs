@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, test } from "node:test";
 
-import { evaluate, inspectBacklog } from "../tools/backlog-empty.mjs";
+import { asciiJson, evaluate, inspectBacklog } from "../tools/backlog-empty.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const roots = [];
@@ -98,6 +98,18 @@ test("malformed CLI input is an internal error rather than an ambiguous backlog 
   assert.equal(result.status, 2);
   assert.match(result.stderr, /reason=internal_error/u);
   assert.doesNotMatch(result.stderr, /reason=path_ambiguous/u);
+});
+
+test("portable path serialization escapes BMP and astral Unicode as ASCII JSON", () => {
+  const original = "docs/бэклог-😀.md";
+  const encoded = asciiJson(original);
+  assert.equal(
+    [...encoded].every((character) => character.codePointAt(0) <= 0x7f),
+    true,
+  );
+  assert.match(encoded, /\\u0431/u);
+  assert.match(encoded, /\\ud83d\\ude00/u);
+  assert.equal(JSON.parse(encoded), original);
 });
 
 test("committed empty proof tolerates unrelated dirt but rejects backlog dirt", () => {

@@ -715,6 +715,24 @@ test("depth-truncated history is explicitly incomplete", () => {
   assert.equal(history.models.includes("too-deep"), false);
 });
 
+test("history discovery consumes the same provider-wide timeout budget", () => {
+  const home = sandbox();
+  const sessions = join(home, ".codex", "sessions");
+  mkdirSync(sessions, { recursive: true });
+  for (let index = 0; index < 500; index += 1) {
+    writeFileSync(join(sessions, `${String(index).padStart(3, "0")}.jsonl`), '{"model":"x"}\n');
+  }
+  const result = run(home, ["--catalog", "--route", "codex", "--json"], ROOT, {
+    MO_MODELS_HISTORY_TIMEOUT_MS: "1",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const history = provider(JSON.parse(result.stdout), "codex").history;
+  assert.equal(history.complete, false);
+  assert.equal(history.stopReason, "timeout");
+  assert.ok(history.scannedFiles < 500);
+  assert.ok(history.elapsedMs >= 1);
+});
+
 test("a sole evidence-qualified successor can become the default recommendation", () => {
   const home = sandbox();
   const bin = join(home, "bin");
@@ -730,6 +748,24 @@ test("a sole evidence-qualified successor can become the default recommendation"
   });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /default recommendation: codex\/gpt-successor\/high/u);
+});
+
+test("incidental encoding prose is not coding-positioning evidence", () => {
+  const home = sandbox();
+  const bin = join(home, "bin");
+  mkdirSync(bin, { recursive: true });
+  const codex = join(bin, "codex");
+  writeFileSync(
+    codex,
+    `#!/bin/sh\nprintf '%s\\n' '{"models":[{"slug":"image-encoder","display_name":"Image encoder","description":"High quality image encoding","visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"high"}]}]}'\n`,
+  );
+  chmodSync(codex, 0o755);
+  const result = run(home, ["--catalog", "--route", "codex"], ROOT, {
+    PATH: `${bin}${delimiter}${process.env.PATH}`,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /no_default_recommendation/u);
+  assert.doesNotMatch(result.stdout, /default recommendation:/u);
 });
 
 test("an ambiguous catalog is not resolved by the current orientation id", () => {

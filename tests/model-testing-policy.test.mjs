@@ -51,10 +51,18 @@ test("generated methodology removes the source-only architecture marker", () => 
 
 test("desired OpenCode testing identity is Qwen only", () => {
   assert.equal(testingPolicyError("testOpenCodeDesired", "opencode/local/qwen3.8-27b/low"), null);
-  assert.match(
-    testingPolicyError("testOpenCodeDesired", "opencode/local/deepseek-4-flash/low"),
-    /qwen 3\.8 27b/,
-  );
+  for (const model of [
+    "deepseek-4-flash",
+    "qwen-2.5-27b",
+    "qwen-anything-27b",
+    "qwen3.80-27b",
+    "qwen3.8-anything-27b",
+  ]) {
+    assert.match(
+      testingPolicyError("testOpenCodeDesired", `opencode/local/${model}/low`),
+      /qwen 3\.8 27b/,
+    );
+  }
 });
 
 test("the testing profiles accept an exact model id and reject a floating alias", () => {

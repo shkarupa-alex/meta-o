@@ -395,6 +395,40 @@ test("every first-party test entrypoint preserves provider process isolation", (
   assert.doesNotMatch(pkg.scripts.test, /tests\/\*\.test\.mjs/u);
 });
 
+/** §A-BACKLOG-01 rejects conditional jobs and prerequisites it cannot prove reachable. */
+function githubJobAutomatic(job) {
+  const commandSteps = (job.steps ?? []).filter(({ run = "" }) => run === "make mo-backlog-empty");
+  return (
+    job.if === undefined &&
+    job.needs === undefined &&
+    job["continue-on-error"] !== true &&
+    commandSteps.every((step) => step.if === undefined && step["continue-on-error"] !== true)
+  );
+}
+
+/** §A-BACKLOG-01 recognizes the literal unfiltered pull-request subset. */
+function githubPullRequestReachable(root, events) {
+  const pullRequest = root?.on?.pull_request;
+  const pullRequestKeys =
+    pullRequest && typeof pullRequest === "object" ? Object.keys(pullRequest) : [];
+  return (
+    events.includes("pull_request") &&
+    pullRequestKeys.every((key) => key === "branches") &&
+    (pullRequestKeys.length === 0 ||
+      [pullRequest.branches].flat().some((branch) => branch === "develop"))
+  );
+}
+
+/** §A-BACKLOG-01 recognizes an unconditional merge-queue trigger. */
+function githubMergeGroupReachable(root, events) {
+  const mergeGroup = root?.on?.merge_group;
+  return (
+    events.includes("merge_group") &&
+    (mergeGroup === null ||
+      (typeof mergeGroup === "object" && Object.keys(mergeGroup).length === 0))
+  );
+}
+
 /** §A-BACKLOG-01 binds one literal GitHub job to its trigger and hosting policy. */
 function githubCoverage(documents, hosting) {
   const root = documents[0].parsed;
@@ -403,25 +437,21 @@ function githubCoverage(documents, hosting) {
   const commandJobs = jobs.filter(([, { steps = [] }]) =>
     steps.some(({ run = "" }) => run === "make mo-backlog-empty"),
   );
-  const automatic = commandJobs.every(([, job]) => {
-    const commandSteps = (job.steps ?? []).filter(
-      ({ run = "" }) => run === "make mo-backlog-empty",
-    );
-    return (
-      job.if === undefined &&
-      job["continue-on-error"] !== true &&
-      commandSteps.every((step) => step.if === undefined && step["continue-on-error"] !== true)
-    );
-  });
-  const candidateEvent = events.includes("pull_request") || events.includes("merge_group");
+  const automatic = commandJobs.every(([, job]) => githubJobAutomatic(job));
+  const pullRequestReachable = githubPullRequestReachable(root, events);
+  const mergeGroupReachable = githubMergeGroupReachable(root, events);
   if (
-    !candidateEvent ||
+    !pullRequestReachable ||
     events.includes("pull_request_target") ||
     commandJobs.length !== 1 ||
     !automatic
   )
     return "unknown";
-  const required = hosting.workflowActive === true && hosting.requiredCheck === commandJobs[0][0];
+  const required =
+    hosting.workflowActive === true &&
+    hosting.requiredCheck === commandJobs[0][0] &&
+    (hosting.mergeQueueEnabled === false ||
+      (hosting.mergeQueueEnabled === true && mergeGroupReachable));
   return required ? "covered" : "config_present";
 }
 
@@ -518,7 +548,7 @@ function ciCoverage({ provider, entrypoint, files, hosting = {} }) {
   return "unknown";
 }
 
-test("CI fixture evaluation covers both hosts and never invents required policy", () => {
+test("GitHub CI fixtures never invent candidate reachability or required policy", () => {
   const ordinary =
     "on:\n  pull_request:\n    branches: [develop]\njobs:\n  backlog:\n    steps:\n      - run: make mo-backlog-empty\n";
   assert.equal(
@@ -530,7 +560,7 @@ test("CI fixture evaluation covers both hosts and never invents required policy"
       provider: "github",
       entrypoint: "ci.yml",
       files: { "ci.yml": ordinary },
-      hosting: { workflowActive: true, requiredCheck: "backlog" },
+      hosting: { workflowActive: true, requiredCheck: "backlog", mergeQueueEnabled: false },
     }),
     "covered",
   );
@@ -543,6 +573,55 @@ test("CI fixture evaluation covers both hosts and never invents required policy"
     }),
     "unknown",
   );
+  const protectedHosting = {
+    workflowActive: true,
+    requiredCheck: "backlog",
+    mergeQueueEnabled: false,
+  };
+  const pathFiltered = ordinary.replace(
+    "    branches: [develop]",
+    "    branches: [develop]\n    paths-ignore: [docs/backlog.md, tools/backlog-empty.mjs]",
+  );
+  assert.equal(
+    ciCoverage({
+      provider: "github",
+      entrypoint: "ci.yml",
+      files: { "ci.yml": pathFiltered },
+      hosting: protectedHosting,
+    }),
+    "unknown",
+  );
+  const skippedDependency =
+    "on:\n  pull_request:\n    branches: [develop]\njobs:\n" +
+    "  prepare:\n    if: false\n    steps:\n      - run: echo skipped\n" +
+    "  backlog:\n    needs: prepare\n    steps:\n      - run: make mo-backlog-empty\n";
+  assert.equal(
+    ciCoverage({
+      provider: "github",
+      entrypoint: "ci.yml",
+      files: { "ci.yml": skippedDependency },
+      hosting: protectedHosting,
+    }),
+    "unknown",
+  );
+  assert.equal(
+    ciCoverage({
+      provider: "github",
+      entrypoint: "ci.yml",
+      files: { "ci.yml": ordinary },
+      hosting: { ...protectedHosting, mergeQueueEnabled: true },
+    }),
+    "config_present",
+  );
+  assert.equal(
+    ciCoverage({
+      provider: "github",
+      entrypoint: "ci.yml",
+      files: { "ci.yml": ordinary.replace("jobs:", "  merge_group:\njobs:") },
+      hosting: { ...protectedHosting, mergeQueueEnabled: true },
+    }),
+    "covered",
+  );
   assert.equal(
     ciCoverage({
       provider: "github",
@@ -551,6 +630,9 @@ test("CI fixture evaluation covers both hosts and never invents required policy"
     }),
     "unknown",
   );
+});
+
+test("GitLab CI fixtures never invent candidate reachability or required policy", () => {
   const gitlab =
     "include:\n  - local: jobs.yml\nworkflow:\n  rules:\n    - if: $CI_MERGE_REQUEST_ID\n";
   const job =

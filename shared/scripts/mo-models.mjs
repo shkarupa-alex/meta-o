@@ -62,7 +62,13 @@ const SCHEMA_VERSION = 1;
 const HISTORY_MAX_AGE_DAYS = 31;
 
 /** §A-MODELS-01 bounds provider history without silently truncating by file count. */
-const HISTORY_TIMEOUT_MS = 5_000;
+const configuredHistoryTimeout = Number(process.env.MO_MODELS_HISTORY_TIMEOUT_MS);
+const HISTORY_TIMEOUT_MS =
+  Number.isSafeInteger(configuredHistoryTimeout) &&
+  configuredHistoryTimeout >= 1 &&
+  configuredHistoryTimeout <= 5_000
+    ? configuredHistoryTimeout
+    : 5_000;
 const HISTORY_BYTE_BUDGET = 64 * 1024 * 1024;
 
 /** Resolving the project is one local `git` call; it may never be the slow part. */
@@ -190,12 +196,18 @@ const TESTING_PROFILES = {
   testOpenCodeDesired: {
     route: "opencode",
     effort: "low",
-    id: /^qwen(?:-?3[._-]?8)?[-_/ ].*27b$/u,
+    matches: isApprovedQwen38_27bModel,
     requirement:
       "testOpenCodeDesired must name the configured qwen 3.8 27b model id " +
       "through opencode at low effort",
   },
 };
+
+/** §A-EVAL-01 recognizes only the configured Qwen 3.8 27B model family. */
+export function isApprovedQwen38_27bModel(model) {
+  const identifier = String(model).split("/").at(-1)?.toLowerCase() ?? "";
+  return /^qwen[-_.]?3[._-]?8[-_.]?27b(?:[-_.][a-z0-9]+)*$/u.test(identifier);
+}
 
 /** §A-EVAL-01 rejects testing selections outside the approved low-cost routes. */
 export function testingPolicyError(role, value) {
@@ -204,7 +216,9 @@ export function testingPolicyError(role, value) {
   const selection = typeof value === "string" ? parseSelection(value) : value;
   // An OpenCode selection carries `provider/model`; the id is the last segment.
   const identifier = selection.model.split("/").pop() ?? "";
-  const namesApprovedProfile = profile.id.test(identifier.toLowerCase());
+  const namesApprovedProfile = profile.matches
+    ? profile.matches(identifier)
+    : profile.id.test(identifier.toLowerCase());
   if (selection.route !== profile.route || selection.effort !== profile.effort) {
     return profile.requirement;
   }
@@ -580,15 +594,18 @@ async function routeCatalog(route) {
 }
 
 /** Every regular non-symlink `.jsonl` under a directory, newest first. */
-function recentSessionFiles(directory) {
+function recentSessionFiles(directory, started) {
+  const timedOut = () => Date.now() - started >= HISTORY_TIMEOUT_MS;
   if (!directory || !existsSync(directory)) {
-    return { files: [], unreadable: [], truncated: [], missing: true };
+    return { files: [], unreadable: [], truncated: [], missing: true, timedOut: false };
   }
-  const cutoff = Date.now() - HISTORY_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+  const cutoff = started - HISTORY_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
   const found = [];
   const unreadable = [];
   const truncated = [];
+  let deadlineReached = timedOut();
   const walk = (path, depth) => {
+    if (deadlineReached) return;
     if (depth > 6) {
       truncated.push(relative(directory, path) || ".");
       return;
@@ -601,6 +618,10 @@ function recentSessionFiles(directory) {
       return;
     }
     for (const entry of entries) {
+      if (timedOut()) {
+        deadlineReached = true;
+        return;
+      }
       const child = join(path, entry.name);
       if (entry.isDirectory()) {
         walk(child, depth + 1);
@@ -623,6 +644,7 @@ function recentSessionFiles(directory) {
     unreadable,
     truncated,
     missing: false,
+    timedOut: deadlineReached,
   };
 }
 
@@ -683,8 +705,8 @@ async function scanHistoryFile(route, file, state, started) {
 
 async function routeHistory(route) {
   const directory = ROUTES[route]?.historyDir;
-  const discovery = recentSessionFiles(directory);
   const started = Date.now();
+  const discovery = recentSessionFiles(directory, started);
   const unreadable = [...discovery.unreadable];
   const truncated = [...discovery.truncated];
   let scannedFiles = 0;
@@ -692,7 +714,7 @@ async function routeHistory(route) {
     seen: [],
     bytesRead: 0,
     corrupt: false,
-    stopReason: discovery.missing ? "unavailable" : "ok",
+    stopReason: discovery.missing ? "unavailable" : discovery.timedOut ? "timeout" : "ok",
   };
 
   for (const file of discovery.files) {
@@ -731,7 +753,15 @@ function eligibleRecommendations(provider) {
   return provider.catalog.models.filter(
     ({ label, description, capabilities, efforts }) =>
       efforts.includes("high") &&
-      /cod(?:e|ing)|software/iu.test(JSON.stringify({ label, description, capabilities })),
+      (/(?:^|[^\p{L}\p{N}_])(?:code|coding|software(?:[ -]engineering)?)(?:$|[^\p{L}\p{N}_])/iu.test(
+        [label, description].filter((value) => typeof value === "string").join(" "),
+      ) ||
+        (Array.isArray(capabilities) ? capabilities : [capabilities])
+          .filter((value) => typeof value === "string")
+          .map((value) => value.trim().toLowerCase().replace(/[ _]+/gu, "-"))
+          .some((value) =>
+            new Set(["code", "coding", "software", "software-engineering"]).has(value),
+          )),
   );
 }
 

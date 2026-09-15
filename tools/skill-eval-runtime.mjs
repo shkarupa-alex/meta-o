@@ -5,7 +5,7 @@
  * executions so completeness never requires a fabricated effective identity.
  */
 
-import { testingPolicyError } from "../shared/scripts/mo-models.mjs";
+import { isApprovedQwen38_27bModel, testingPolicyError } from "../shared/scripts/mo-models.mjs";
 
 function assertString(value, label) {
   if (typeof value !== "string" || value.trim() === "") throw new Error(`${label} is empty`);
@@ -292,7 +292,11 @@ export function diagnoseLegacyEvidence(evidence, context) {
   return { status: "legacy_v2", envelopes: legacy.length, accepted: false };
 }
 
-/** §A-EVAL-01 binds a v2 diagnostic to adapters reading its historical candidate. */
+/**
+ * §A-EVAL-01 binds a v2 diagnostic to adapters reading its historical candidate.
+ * The adapter must return null for an unknown skill before repository lookup so
+ * envelope bytes can never become a Git pathspec; null becomes a typed error here.
+ */
 export function diagnoseLegacyEvidenceAtCandidate(evidence, candidate, adapter) {
   return diagnoseLegacyEvidence(evidence, {
     candidate,
@@ -329,6 +333,7 @@ function validateCriticalIdentity(envelope, criticalProfile) {
     sameIdentity(envelope.requested, expectedIdentity),
     sameIdentity(effective, expectedIdentity),
     effective.route === "opencode",
+    isApprovedQwen38_27bModel(effective.model),
     harness.includes("opencode"),
     quantization.includes("q4km"),
     Number.isSafeInteger(context),

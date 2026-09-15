@@ -349,6 +349,8 @@ function validateResults(envelope, document, unavailable) {
 export function diagnoseLegacyEvidenceForCandidate(root, evidence, candidate) {
   if (!/^[a-f0-9]{40}$/u.test(candidate ?? "")) throw new Error("candidate must be a full SHA");
   return diagnoseLegacyEvidenceAtCandidate(evidence, candidate, {
+    // This allowlist is the trust barrier: reject envelope-controlled skill
+    // bytes before they can enter the Git pathspec assembled below.
     readDocument: (skill) =>
       EXPECTED_SKILLS.includes(skill)
         ? JSON.parse(git(root, ["show", `${candidate}:src/skills/${skill}/evals/cases.json`]))

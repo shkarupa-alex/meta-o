@@ -43,7 +43,7 @@ const INTRO = [
 /** §A-BACKLOG-01 keeps the diagnostic path stable and safe to embed in one line. */
 export function asciiJson(value) {
   return JSON.stringify(value).replace(
-    /[\u0080-\uffff]/gu,
+    /[\u0080-\uffff]/g,
     (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`,
   );
 }
