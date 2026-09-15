@@ -1,5 +1,7 @@
 # Надёжный review lifecycle и пустой feature backlog Meta-O
 
+<!-- Canonical tracked implementation specification; the private council bundle remains ignored. -->
+
 Статус: linked council synthesis с incident amendment о reviewer resources после
 начального proposal round, пользовательского уточнения GitHub/GitLab CI, двух
 предыдущих итераций spec review и одной разрешённой финальной review-итерации
