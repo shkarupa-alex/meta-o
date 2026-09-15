@@ -292,6 +292,8 @@ export function edgeViolations(
  * history is not rewritten to fabricate an authorization that did not exist.
  */
 export function verifyHistory(root, cutoff, semanticFrom = null, currentRecordFrom = null) {
+  // Resolving a commit is insufficient: a sibling boundary would make every
+  // per-edge ancestry test false and silently disable the associated rule.
   const isReachable = (ref) =>
     Boolean(git(root, ["rev-parse", "--verify", `${ref}^{commit}`], true)) &&
     git(root, ["merge-base", "--is-ancestor", ref, "HEAD"], true) !== null;

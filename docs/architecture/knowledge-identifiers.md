@@ -28,6 +28,11 @@ knowledge_id_changes:
     reason: Resolvable sibling boundary отключала enforcement, а единственное историческое исключение новой границы не было названо.
     new_boundary: Cutoff и обе enforcement boundary обязаны быть ancestors HEAD; current-record pin исключает только 3a292e7..a811313 для §A-DELIVERY-01.
     references_updated: true
+  - action: reuse
+    id: §A-MEMORY-01
+    reason: Ancestry precondition оставалась только в change record, а нормативный текст неверно сводил merge-base к branch guard.
+    new_boundary: Решение и invariant comment объясняют, что resolvable sibling отключила бы все per-edge rules и поэтому считается unreachable.
+    references_updated: true
 ```
 
 ## Решение
@@ -139,8 +144,11 @@ current_record_enforcement_sha: 661eaf0f25a3d50c1f5aef686b106eddfe9a9489
 переписывается ради вымышленной authorization record. Сам edge с исправлением
 `661eaf0f..2e8dd1a` уже проверяется новым правилом.
 
-Недостижимый cutoff или недостижимая граница дают
-`history_unavailable`; merge-base остаётся лишь дешёвым branch guard.
+Cutoff и обе enforcement boundary обязаны разрешаться в commit из ancestry
+`HEAD`; существующий sibling считается недостижимым и даёт
+`history_unavailable`. Одного `rev-parse` недостаточно: sibling заставил бы все
+последующие per-edge ancestry checks вернуть false и молча отключил бы правило.
+`merge-base` также остаётся дешёвым branch guard для feature lifecycle.
 
 ## §A-MEMORY-02 — Дословный ledger живёт с задачей, постановка хранит тезисы
 
