@@ -370,6 +370,18 @@ test("PASS cannot be accepted without case-specific oracle evidence", () => {
   evidence.results[0].evidenceRef = "file:../../../etc/shadow";
   assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /repository-relative/u);
   evidence.results[0] = finalizedEnvelope("find-reuse").results[0];
+  evidence.results[0].evidenceRef = "commands";
+  assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /bounded public locator/u);
+  evidence.results[0] = finalizedEnvelope("find-reuse").results[0];
+  evidence.results[0].evidenceRef = "files";
+  assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /bounded public locator/u);
+  evidence.results[0] = finalizedEnvelope("find-reuse").results[0];
+  evidence.results[0].evidenceRef = "file:tests/report.txt#ok#../../etc/passwd";
+  assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /multiple fragments/u);
+  evidence.results[0] = finalizedEnvelope("find-reuse").results[0];
+  evidence.results[0].evidenceRef = "fixture:tests/eval.json#ok# bad-tail";
+  assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /multiple fragments/u);
+  evidence.results[0] = finalizedEnvelope("find-reuse").results[0];
   evidence.results[0].evidenceRef = `command:${"x".repeat(1100)}`;
   assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /exceeds 1024 bytes/u);
   evidence.results[0] = finalizedEnvelope("find-reuse").results[0];
@@ -394,7 +406,10 @@ test("evidence v2 is readable only as an explicit legacy diagnostic", () => {
     envelopes: 1,
     accepted: false,
   });
-  assert.throws(() => validateEvidence(ROOT, legacy, HEAD), /wrong legacy cases contract/u);
+  assert.throws(
+    () => validateEvidence(ROOT, legacy, HEAD),
+    /legacy_v2: diagnostic only; invalid historical evidence:.*wrong legacy cases contract/u,
+  );
   delete legacy.results[0].observations;
   assert.throws(() => diagnoseLegacyEvidence(legacy), /legacy observations missing/u);
 
@@ -455,6 +470,10 @@ test("evidence v2 is readable only as an explicit legacy diagnostic", () => {
     envelopes: 1,
     accepted: false,
   });
+  assert.throws(
+    () => validateEvidence(ROOT, historical, historicalCandidate),
+    /legacy_v2: diagnostic only; the live gate requires evidence v3/u,
+  );
   const wrongRevision = structuredClone(historical);
   wrongRevision.skillRevision = "0".repeat(40);
   assert.throws(

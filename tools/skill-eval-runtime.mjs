@@ -239,6 +239,9 @@ function assertBoundedString(value, label, maxBytes) {
 function validateEvidenceRef(value, caseId) {
   assertBoundedString(value, `${caseId}: evidence reference`, 1024);
   const separator = value.indexOf(":");
+  if (separator <= 0 || separator === value.length - 1) {
+    throw new Error(`${caseId}: evidence reference is not a bounded public locator`);
+  }
   const kind = value.slice(0, separator);
   const locator = value.slice(separator + 1);
   if (!new Set(["fixture", "command", "dispatch", "terminal", "artifact", "file"]).has(kind)) {
@@ -250,7 +253,12 @@ function validateEvidenceRef(value, caseId) {
     }
     return;
   }
-  const [path, fragment] = locator.split("#", 2);
+  const fragmentIndex = locator.indexOf("#");
+  if (fragmentIndex >= 0 && locator.indexOf("#", fragmentIndex + 1) >= 0) {
+    throw new Error(`${caseId}: file evidence locator has multiple fragments`);
+  }
+  const path = fragmentIndex < 0 ? locator : locator.slice(0, fragmentIndex);
+  const fragment = fragmentIndex < 0 ? undefined : locator.slice(fragmentIndex + 1);
   const segments = path.split("/");
   if (
     path.startsWith("/") ||
@@ -282,6 +290,22 @@ export function diagnoseLegacyEvidence(evidence, context) {
   if (legacy.length !== envelopes.length) throw new Error("legacy_v2: mixed evidence contracts");
   legacy.forEach((envelope) => validateLegacyEnvelopeShape(envelope, context));
   return { status: "legacy_v2", envelopes: legacy.length, accepted: false };
+}
+
+/** §A-EVAL-01 binds a v2 diagnostic to adapters reading its historical candidate. */
+export function diagnoseLegacyEvidenceAtCandidate(evidence, candidate, adapter) {
+  return diagnoseLegacyEvidence(evidence, {
+    candidate,
+    describeSkill(skill) {
+      const document = validateLegacyCaseDocument(adapter.readDocument(skill), skill);
+      return {
+        policy: document.policy,
+        revision: adapter.readRevision(skill),
+        cases: document.cases,
+        digest: (envelope) => adapter.digest(document, envelope),
+      };
+    },
+  });
 }
 
 function validateCriticalIdentity(envelope, criticalProfile) {

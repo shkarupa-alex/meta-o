@@ -6,14 +6,6 @@
  * prompt for an explicitly selected harness and validates the returned JSON in
  * an external, untracked location.
  *
- * A schema validator with project-owned configuration would cover the shape of
- * one file and none of what actually fails: the corpus has to equal the skill
- * inventory on disk, a case id has to agree with its own class, an envelope's
- * candidate has to be a reachable Git object, and its effective identity has to
- * satisfy the same approved-profile function the settings helper enforces. No
- * schema language expresses those, so a schema would add a dependency and a
- * second source of truth for the same contract without removing this code.
- *
  * Implements §A-EVAL-01.
  */
 
@@ -25,12 +17,11 @@ import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 
 import {
-  diagnoseLegacyEvidence,
+  diagnoseLegacyEvidenceAtCandidate,
   rejectSensitiveOrMachineLocal,
   validateActorIdentity,
   validateExecution,
   validateHarness,
-  validateLegacyCaseDocument,
   validateResultProvenance,
 } from "./skill-eval-runtime.mjs";
 
@@ -350,29 +341,15 @@ function validateResults(envelope, document, unavailable) {
   }
 }
 
-function legacyDiagnosticContext(root, candidate) {
-  if (!/^[a-f0-9]{40}$/u.test(candidate ?? "")) throw new Error("candidate must be a full SHA");
-  return {
-    candidate,
-    describeSkill(skill) {
-      if (!EXPECTED_SKILLS.includes(skill)) return null;
-      const document = validateLegacyCaseDocument(
-        JSON.parse(git(root, ["show", `${candidate}:src/skills/${skill}/evals/cases.json`])),
-        skill,
-      );
-      return {
-        policy: document.policy,
-        revision: git(root, ["rev-parse", `${candidate}:skills/${skill}`]),
-        cases: document.cases,
-        digest: (envelope) => evaluationDigest(document, envelope),
-      };
-    },
-  };
-}
-
 /** §A-EVAL-01 diagnoses a frozen v2 envelope against its own historical candidate. */
 export function diagnoseLegacyEvidenceForCandidate(root, evidence, candidate) {
-  return diagnoseLegacyEvidence(evidence, legacyDiagnosticContext(root, candidate));
+  if (!/^[a-f0-9]{40}$/u.test(candidate ?? "")) throw new Error("candidate must be a full SHA");
+  return diagnoseLegacyEvidenceAtCandidate(evidence, candidate, {
+    readDocument: (skill) =>
+      JSON.parse(git(root, ["show", `${candidate}:src/skills/${skill}/evals/cases.json`])),
+    readRevision: (skill) => git(root, ["rev-parse", `${candidate}:skills/${skill}`]),
+    digest: evaluationDigest,
+  });
 }
 
 function validateMatrixCoordinate(envelope) {
@@ -454,11 +431,21 @@ function validateEnvelope(root, corpus, envelope, candidate, criticalProfile) {
 /** §A-EVAL-01 verifies exact identity, completeness and redaction of live eval evidence. */
 export function validateEvidence(root, evidence, candidate, requireAll = false, options = {}) {
   if (!/^[a-f0-9]{40}$/u.test(candidate ?? "")) throw new Error("candidate must be a full SHA");
-  if (git(root, ["rev-parse", "HEAD"]) !== candidate)
-    throw new Error("candidate is not current HEAD");
-  if (diagnoseLegacyEvidenceForCandidate(root, evidence, candidate)) {
+  const declaredLegacy = (Array.isArray(evidence) ? evidence : [evidence]).some(
+    (envelope) => envelope?.contract === "meta-o.skill-eval-evidence.v2",
+  );
+  if (declaredLegacy) {
+    try {
+      diagnoseLegacyEvidenceForCandidate(root, evidence, candidate);
+    } catch (error) {
+      throw new Error(`legacy_v2: diagnostic only; invalid historical evidence: ${error.message}`, {
+        cause: error,
+      });
+    }
     throw new Error("legacy_v2: diagnostic only; the live gate requires evidence v3");
   }
+  if (git(root, ["rev-parse", "HEAD"]) !== candidate)
+    throw new Error("candidate is not current HEAD");
   const corpus = loadCorpus(root);
   const envelopes = Array.isArray(evidence) ? evidence : [evidence];
   const seen = new Set();
