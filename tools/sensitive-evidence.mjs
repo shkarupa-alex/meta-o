@@ -36,14 +36,20 @@ const PATTERNS = [
 ];
 
 function containsAbsoluteMachinePath(value) {
-  return value.split(/[\s"'`()<>[\]{},;]+/u).some((token) => {
-    if (/^https?:\/\//iu.test(token)) return false;
-    if (token.toLowerCase().includes("file://")) return true;
+  if (value.toLowerCase().includes("file://")) return true;
+  return value.split(/[\s"'`()<>{},;]+/u).some((token) => {
+    try {
+      const url = new URL(token);
+      if (url.protocol === "http:" || url.protocol === "https:") return false;
+    } catch {
+      // A non-URL token may still contain a standalone or labelled path.
+    }
     if (posix.isAbsolute(token) || win32.isAbsolute(token)) return true;
-    const label = token.indexOf(":");
-    if (label < 0) return false;
-    const payload = token.slice(label + 1);
-    return posix.isAbsolute(payload) || win32.isAbsolute(payload);
+    return (
+      /(?:^|[^A-Za-z0-9._/\\])\/(?!\/)/u.test(token) ||
+      /(?:^|[^A-Za-z0-9._/\\])\\\\[^\\]/u.test(token) ||
+      /[A-Za-z]:[\\/]/u.test(token)
+    );
   });
 }
 

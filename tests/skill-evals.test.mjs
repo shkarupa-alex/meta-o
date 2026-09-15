@@ -210,6 +210,10 @@ const MACHINE_PATH_KEYS = [
   "at file:///home/alex/app/index.mjs:14:3",
   "cwd:/home/alex/private",
   "Error:/root/secret",
+  "--root=/home/alex/x",
+  "cwd=/home/alex/project",
+  "user@/home/alex/x",
+  "https://example.com/?next=file:///home/alex/repo",
 ];
 
 test("sensitive evidence classification stays bounded on separator-heavy input", () => {
@@ -229,6 +233,10 @@ test("machine paths stay distinct from complete public HTTP URLs", () => {
     "https://github.com/example/project/issues/1",
     "https://example.com/docs?redirect=/api/v1",
     "https://github.com/example/project?path=/issues",
+    "https://[2001:db8::1]/docs?redirect=/api/v1",
+    "home-relative:.local/bin/gh",
+    "node:internal/modules/esm/module_job:439:25",
+    "gh version 2.96.0",
   ]) {
     assert.equal(forbiddenPublicDataReason(value), null, value);
   }
