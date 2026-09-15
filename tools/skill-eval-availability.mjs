@@ -64,9 +64,11 @@ export async function buildUnavailableEvidence({
     if (profile.status === "available") {
       throw new Error(`${requested.route} exact profile probe succeeded; NOT_AVAILABLE is false`);
     }
-    exitCode = profile.status === "not_available" ? 2 : Number(probe.status || 1);
-    reason =
-      profile.status === "not_available" ? "approved_profile_unavailable" : "harness_unavailable";
+    if (profile.status !== "not_available") {
+      throw new Error(`${requested.route} catalog could not prove exact profile availability`);
+    }
+    exitCode = 2;
+    reason = "approved_profile_unavailable";
   }
   const executionId = `${requested.route}-availability-${createHash("sha256")
     .update(`${candidate}:${skill}:${values.matrixProfile}:${startedAt}`)

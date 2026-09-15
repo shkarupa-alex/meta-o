@@ -117,6 +117,34 @@ test("the installable orchestrator carries the complete Issue-routing contract",
   assert.doesNotMatch(shared, /glab api --method POST/u);
 });
 
+test("Issue disposition records have the spec-owned fields and closed outcomes", () => {
+  const shared = source("shared/references/issue-routing.md");
+  for (const field of [
+    "Scenario",
+    "Class",
+    "Repository",
+    "Search",
+    "Action",
+    "Canonical-URL",
+    "Outcome",
+  ]) {
+    assert.ok(shared.includes(`\`${field}\``), `${field}: disposition field missing`);
+  }
+  for (const outcome of [
+    "implemented",
+    "commented",
+    "created",
+    "duplicate",
+    "refuted",
+    "needs_attention",
+  ]) {
+    assert.ok(shared.includes(`\`${outcome}\``), `${outcome}: outcome missing`);
+  }
+  assert.match(shared, /commented.*created.*duplicate.*Canonical-URL.*обязательно/su);
+  assert.match(shared, /needs_attention.*обязательна причина/su);
+  assert.match(shared, /needs_attention.*failed write/su);
+});
+
 /** §A-REVIEW-04 gets only top-level prose lines from the CommonMark block AST. */
 function topLevelProseLines(report) {
   const positions = new Set();

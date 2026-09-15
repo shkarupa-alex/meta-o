@@ -21,6 +21,11 @@ import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 
 import { buildUnavailableEvidence } from "./skill-eval-availability.mjs";
+import {
+  buildEvidenceAggregate,
+  canonicalJson,
+  registerCompositeIdentities,
+} from "./skill-eval-aggregate.mjs";
 import { buildEvaluationPrompt } from "./skill-eval-prompt.mjs";
 
 import {
@@ -65,6 +70,12 @@ const DESIRED_MATRIX = [
   { matrixProfile: "desired-opencode", route: "opencode", role: "testOpenCodeDesired" },
 ];
 const EXPECTED_MATRIX = [...REQUIRED_MATRIX, ...DESIRED_MATRIX];
+const AGGREGATE_MATRIX_ORDER = [
+  "required-codex",
+  "required-claude",
+  "desired-codex",
+  "desired-opencode",
+];
 const MATRIX_BY_PROFILE = new Map(
   EXPECTED_MATRIX.map((profile) => [profile.matrixProfile, profile]),
 );
@@ -166,7 +177,7 @@ export function evaluationDigest(document, envelope) {
     harness: envelope.harness,
     cases: document.cases,
   };
-  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+  return createHash("sha256").update(canonicalJson(payload)).digest("hex");
 }
 
 /** §A-EVAL-01 gives caller-frozen prompt inputs one stable lookup coordinate. */
@@ -424,11 +435,13 @@ export function validateEvidence(root, evidence, candidate, requireAll = false, 
   const corpus = loadCorpus(root);
   const envelopes = Array.isArray(evidence) ? evidence : [evidence];
   const seen = new Set();
+  const compositeIdentities = new Set();
   const nonPass = [];
   for (const envelope of envelopes) {
     const key = `${envelope.skill}:${envelope.matrixProfile}:${envelope.repetition}`;
     if (seen.has(key)) throw new Error(`duplicate evidence ${key}`);
     seen.add(key);
+    registerCompositeIdentities(envelope, compositeIdentities);
     nonPass.push(
       ...validateEnvelope(
         root,
@@ -449,7 +462,8 @@ export function validateEvidence(root, evidence, candidate, requireAll = false, 
     ).filter((coordinate) => !covered.has(coordinate));
     if (missing.length > 0) throw new Error(`missing skill evidence: ${missing.join(", ")}`);
   }
-  return { envelopes: envelopes.length, nonPass };
+  const aggregate = buildEvidenceAggregate(envelopes, AGGREGATE_MATRIX_ORDER);
+  return { envelopes: envelopes.length, nonPass, aggregate };
 }
 
 function usage() {
@@ -521,6 +535,7 @@ async function main() {
     process.stdout.write(
       `skill eval evidence ok: ${result.envelopes} envelopes, ${result.nonPass.length} non-PASS results\n`,
     );
+    process.stdout.write(`${JSON.stringify({ aggregate: result.aggregate })}\n`);
     if (result.nonPass.length > 0) process.exitCode = 1;
     return;
   }

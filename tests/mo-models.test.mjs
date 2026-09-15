@@ -99,6 +99,7 @@ function fakeClaude(home, mode = "success") {
 import { spawn } from "node:child_process";
 import { appendFileSync, renameSync, writeFileSync } from "node:fs";
 const mode = process.env.FAKE_CLAUDE_MODE;
+if (mode === "dies-immediately") process.exit(9);
 const pids = { parent: process.pid, attempts: 0, denied: 0, descendants: [] };
 const persistPids = () => {
   const temporary = process.env.FAKE_CLAUDE_PIDS + "." + process.pid + ".tmp";
@@ -541,6 +542,17 @@ test("Claude SDK cleanup reaps the transient catalogue process", () => {
   );
   const pids = JSON.parse(readFileSync(fixture.pids, "utf8"));
   assert.equal(waitUntilGone(pids.parent), true, `provider ${pids.parent} was not reaped`);
+});
+
+test("a Claude process that dies during SDK startup leaves a typed provider row", () => {
+  const home = sandbox();
+  const fixture = fakeClaude(home, "dies-immediately");
+  const result = run(home, ["--catalog", "--json"], home, fixture.env);
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.providers.length, 3);
+  assert.equal(provider(report, "claude").catalog.status, "unavailable");
+  assert.equal(result.stdout.includes(fixture.executable), false);
 });
 
 test("a Claude catalogue timeout is bounded and leaves no provider child", () => {

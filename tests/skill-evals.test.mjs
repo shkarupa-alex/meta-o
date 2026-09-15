@@ -158,20 +158,26 @@ test("complete evidence binds every skill to candidate, revision and approved id
         }),
     ),
   );
-  assert.deepEqual(
-    validateEvidence(ROOT, evidence, HEAD, true, {
-      criticalProfile: "opencode/llamacpp/qwen3.8-27b/default",
-    }),
-    {
-      envelopes: 32,
-      nonPass: [],
-    },
-  );
+  const validated = validateEvidence(ROOT, evidence, HEAD, true, {
+    criticalProfile: "opencode/llamacpp/qwen3.8-27b/default",
+  });
+  assert.equal(validated.envelopes, 32);
+  assert.deepEqual(validated.nonPass, []);
+  assert.equal(validated.aggregate.length, 24);
+  for (const group of validated.aggregate) {
+    assert.deepEqual(
+      group.coordinates.map(({ matrixProfile }) => matrixProfile),
+      ["required-codex", "required-claude", "desired-codex", "desired-opencode"],
+    );
+  }
 });
 
 test("identity equality is independent of JSON object key order", () => {
   const evidence = finalizedEnvelope("find-reuse");
   const { route, model, effort } = evidence.execution.effective;
+  evidence.requested = { effort, route, model };
+  const harness = evidence.harness;
+  evidence.harness = Object.fromEntries(Object.entries(harness).reverse());
   evidence.execution.effective = { effort, route, model };
   assert.deepEqual(validateEvidence(ROOT, evidence, HEAD).nonPass, []);
 });
@@ -899,16 +905,18 @@ test("availability CLI probes the exact desired profile and emits only valid rea
   );
 
   const failed = runProbe("#!/bin/sh\nexit 9\n", "failed");
-  assert.equal(failed.status, 0, failed.stderr);
-  assert.equal(JSON.parse(failed.stdout).execution.availability.reason, "harness_unavailable");
+  assert.equal(failed.status, 2);
+  assert.match(failed.stderr, /could not prove exact profile availability/u);
+  assert.equal(failed.stdout, "");
 
   const timedOut = runProbe(
     '#!/bin/sh\nif [ "$1" = "--version" ]; then echo fixture; else sleep 1; fi\n',
     "timeout",
     { MO_MODELS_CATALOG_TIMEOUT_MS: "100" },
   );
-  assert.equal(timedOut.status, 0, timedOut.stderr);
-  assert.equal(JSON.parse(timedOut.stdout).execution.availability.reason, "harness_unavailable");
+  assert.equal(timedOut.status, 2);
+  assert.match(timedOut.stderr, /could not prove exact profile availability/u);
+  assert.equal(timedOut.stdout, "");
 
   const present = runProbe(
     '#!/bin/sh\nif [ "$1" = "--version" ]; then echo fixture; else echo provider/qwen3.8-27b; fi\n',

@@ -70,6 +70,50 @@ function forbiddenPublicDataReason(value) {
   return patternReason ?? (containsAbsoluteMachinePath(value) ? "machine_path" : null);
 }
 
+// shared/scripts/model-catalog-data.mjs
+var MODEL_ID_MAX_BYTES = 256;
+var DISPLAY_TEXT_MAX_BYTES = 1024;
+function isPortableModelId(value) {
+  if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > MODEL_ID_MAX_BYTES) {
+    return false;
+  }
+  if (value === "" || /[\p{Cc}\p{Z}\s\\]/u.test(value) || value.startsWith("/")) return false;
+  const segments = value.split("/");
+  return segments.every(
+    (segment) => segment !== "." && segment !== ".." && /^[A-Za-z0-9][A-Za-z0-9._+:[\]()-]*$/u.test(segment)
+  );
+}
+function isPortableDisplayText(value) {
+  if (value === null || value === void 0) return true;
+  if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > DISPLAY_TEXT_MAX_BYTES) {
+    return false;
+  }
+  return !/[\p{Cc}]/u.test(value) && forbiddenPublicDataReason(value) === null;
+}
+function portableCatalogRow(model) {
+  return isPortableModelId(model?.slug ?? model?.value) && catalogEfforts(model).every(isPortableModelId) && catalogDisplayValues(model).every(isPortableDisplayText);
+}
+function catalogEfforts(model) {
+  const reasoning = model?.supported_reasoning_levels ?? [];
+  return [...reasoning.map(({ effort }) => effort), ...model?.supportedEffortLevels ?? []];
+}
+function catalogDisplayValues(model) {
+  const capabilities = model?.capabilities;
+  return [
+    model?.display_name,
+    model?.displayName,
+    model?.name,
+    model?.description,
+    ...Array.isArray(capabilities) ? capabilities : [capabilities]
+  ];
+}
+function portableCatalogReason(reason) {
+  if (typeof reason !== "string" || Buffer.byteLength(reason, "utf8") > DISPLAY_TEXT_MAX_BYTES || forbiddenPublicDataReason(reason) !== null) {
+    return "catalog unavailable with a non-portable diagnostic";
+  }
+  return reason;
+}
+
 // node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs
 import { createRequire as qz } from "node:module";
 import { execFile as sne } from "child_process";
@@ -19634,36 +19678,6 @@ var CATALOG_TIMEOUT_MS = Number.isSafeInteger(configuredCatalogTimeout) && confi
 var HOME = homedir();
 var SETTINGS_DIR = join(HOME, ".meta-o");
 var SETTINGS_FILE = join(SETTINGS_DIR, "models.json");
-var MODEL_ID_MAX_BYTES = 256;
-var DISPLAY_TEXT_MAX_BYTES = 1024;
-function isPortableModelId(value) {
-  if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > MODEL_ID_MAX_BYTES) {
-    return false;
-  }
-  if (value === "" || /[\p{Cc}\p{Z}\s\\]/u.test(value) || value.startsWith("/")) return false;
-  const segments = value.split("/");
-  return segments.every(
-    (segment) => segment !== "." && segment !== ".." && /^[A-Za-z0-9][A-Za-z0-9._+:[\]()-]*$/u.test(segment)
-  );
-}
-function isPortableDisplayText(value) {
-  if (value === null || value === void 0) return true;
-  if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > DISPLAY_TEXT_MAX_BYTES) {
-    return false;
-  }
-  return !/[\p{Cc}]/u.test(value) && forbiddenPublicDataReason(value) === null;
-}
-function portableCatalogRow(model) {
-  const efforts = [
-    ...model?.supported_reasoning_levels?.map(({ effort }) => effort) ?? [],
-    ...model?.supportedEffortLevels ?? []
-  ];
-  const capabilities = model?.capabilities;
-  const capabilityValues = Array.isArray(capabilities) ? capabilities : [capabilities];
-  return isPortableModelId(model?.slug ?? model?.value) && efforts.every(isPortableModelId) && [model?.display_name, model?.displayName, model?.name, model?.description].every(
-    isPortableDisplayText
-  ) && capabilityValues.every(isPortableDisplayText);
-}
 var ROUTES = {
   claude: {
     catalog: { kind: "claude-sdk", exhaustive: false },
@@ -19936,7 +19950,7 @@ function resolveSystemClaude() {
   }
   return null;
 }
-async function claudeSdkListing() {
+async function claudeSdkListingWorker() {
   const claudeExecutable = resolveSystemClaude();
   if (!claudeExecutable) return unavailable("system claude executable not found on PATH");
   const abortController = new AbortController();
@@ -20001,6 +20015,24 @@ async function claudeSdkListing() {
     return unavailable(`supportedModels() failed: ${listingFailure.message}`);
   }
   return listing;
+}
+async function claudeSdkListing() {
+  const result = spawnSync(
+    process.execPath,
+    [fileURLToPath(import.meta.url), "--claude-catalog-worker"],
+    {
+      encoding: "utf8",
+      timeout: CATALOG_TIMEOUT_MS + 2e3,
+      stdio: ["ignore", "pipe", "ignore"]
+    }
+  );
+  if (result.error || result.status !== 0) return unavailable("Claude catalog worker failed");
+  try {
+    const listing = JSON.parse(result.stdout);
+    return listing?.available === true || listing?.available === false ? listing : unavailable("Claude catalog worker returned an invalid result");
+  } catch {
+    return unavailable("Claude catalog worker returned invalid JSON");
+  }
 }
 async function routeCatalog(route) {
   const descriptor = ROUTES[route]?.catalog;
@@ -20259,7 +20291,7 @@ async function commandCatalog(routeFilter, asJson) {
           efforts: catalog.efforts[id2] ?? [],
           sourceKind: ROUTES[route].catalog?.kind ?? null
         })),
-        reason: catalog.available ? null : catalog.reason
+        reason: catalog.available ? null : portableCatalogReason(catalog.reason)
       },
       history
     });
@@ -20597,11 +20629,18 @@ function invokedDirectly() {
   }
 }
 if (invokedDirectly()) {
-  main().catch((error) => {
-    process.stderr.write(`mo-models: ${error.message}
+  if (process.argv.length === 3 && process.argv[2] === "--claude-catalog-worker") {
+    claudeSdkListingWorker().then((listing) => process.stdout.write(`${JSON.stringify(listing)}
+`)).catch(() => {
+      process.exitCode = 1;
+    });
+  } else {
+    main().catch((error) => {
+      process.stderr.write(`mo-models: ${error.message}
 `);
-    process.exitCode = 1;
-  });
+      process.exitCode = 1;
+    });
+  }
 }
 export {
   familyAndGeneration,

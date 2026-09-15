@@ -71,6 +71,11 @@ workaround.
 shell substitution и удаляется только после settled outcome. Версионные и
 credential-наблюдения принадлежат текущему run evidence, а не durable contract.
 
-После каждого решения сохрани disposition record: scenario, root-cause class,
-выбранный repository и доказательство ownership, search query и полноту,
-write=`yes|no`, результат/ошибку и canonical URL, если effect подтверждён.
+После каждого решения сохрани bounded textual disposition record в живой
+spec/backlog closure message с точными полями `Scenario`, `Class`, `Repository`,
+`Search`, `Action`, `Canonical-URL`, `Outcome`. `Outcome` принимает только
+`implemented`, `commented`, `created`, `duplicate`, `refuted` или
+`needs_attention`. Для Issue-class outcomes `commented`, `created` и `duplicate`
+поле `Canonical-URL` обязательно. Для `needs_attention` обязательна причина, а
+`Canonical-URL` не может содержать URL, угаданный из failed write. Record не
+создаёт отдельный manifest/state store и удаляется вместе со spec после harvest.
