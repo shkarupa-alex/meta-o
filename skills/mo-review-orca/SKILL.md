@@ -80,6 +80,12 @@ once after transport failure; a second consecutive failure is
 `UNKNOWN/needs_attention`. Process every event in a returned batch before
 acknowledgement.
 
+On `worker-release: no_owned_resource`, close only the exact fallback-terminal
+handle already stored for that Dispatch in `OwnedResourceSet/1`, then re-read
+the resource projection. If that binding is absent, close nothing and return
+`needs_attention`. The project records this workaround as `unsupported` until
+an authenticated duplicate search establishes its canonical upstream Issue.
+
 Wait for both full reports before disposition or handoff.
 
 ## Authoritative response

@@ -142,6 +142,35 @@ function recordedReview(
   const baselineResources = normalized(surface.resources);
   const resources = [...surface.resources];
   const owned = [];
+  const reviewerResources = (child) => [
+    ...(child.existing ? [] : [child]),
+    {
+      id: `${child.id}-terminal`,
+      kind: "terminal",
+      owner: "candidate-run",
+      projectId: surface.project.id,
+      repoId: child.repoId,
+    },
+    {
+      id: `${child.id}-dispatch`,
+      kind: "worker",
+      owner: "candidate-run",
+      projectId: surface.project.id,
+      repoId: child.repoId,
+      terminalId: `${child.id}-terminal`,
+    },
+  ];
+  const addReviewerResources = (child) => {
+    for (const resource of reviewerResources(child)) {
+      assert.equal(resource.projectId, surface.project.id);
+      if (surface.project.kind === "git") {
+        assert.ok(surface.project.sourceRepoIds.includes(resource.repoId));
+      }
+      resources.push(resource);
+      owned.push(resource);
+    }
+    calls.push({ operation: "orca orchestration worker-start", id: `${child.id}-dispatch` });
+  };
   const finish = (result) => {
     const unsupported = result.status !== "started";
     return {
@@ -171,14 +200,23 @@ function recordedReview(
     if (!children.every(({ existing }) => existing === true)) {
       return finish({ status: "unsupported", reason: "placement_unsupported", ownedDelta: [] });
     }
-    return finish({ status: "started", reason: null, ownedDelta: [] });
+    for (const child of children) addReviewerResources(child);
+    return finish({ status: "started", reason: null, ownedDelta: owned });
   }
 
   for (const child of surface.children) {
     calls.push({ operation: "orca worktree new-child", projectId: surface.project.id });
     if (failAt === child.id) {
       for (const resource of owned.toReversed()) {
-        calls.push({ operation: "orca worktree delete", id: resource.id });
+        calls.push({
+          operation:
+            resource.kind === "worker"
+              ? "orca orchestration worker-release"
+              : resource.kind === "terminal"
+                ? "orca terminal close"
+                : "orca worktree delete",
+          id: resource.id,
+        });
         if (!cleanupFails) resources.splice(resources.indexOf(resource), 1);
       }
       return finish({
@@ -189,8 +227,7 @@ function recordedReview(
     }
     assert.equal(child.projectId, surface.project.id);
     assert.ok(surface.project.sourceRepoIds.includes(child.repoId));
-    resources.push(child);
-    owned.push(child);
+    addReviewerResources(child);
   }
   return finish({ status: "started", reason: null, ownedDelta: owned });
 }
@@ -205,10 +242,16 @@ test("folder placement accepts two existing clean exact-candidate reviewer workt
     { status: result.status, reason: result.reason },
     { status: "started", reason: null },
   );
-  assert.deepEqual(result.calls, []);
-  assert.deepEqual(result.ownedDelta, []);
+  assert.deepEqual(
+    result.calls.map(({ operation }) => operation),
+    ["orca orchestration worker-start", "orca orchestration worker-start"],
+  );
+  assert.deepEqual(
+    result.ownedDelta.map(({ kind }) => kind),
+    ["terminal", "worker", "terminal", "worker"],
+  );
   assert.equal(result.registrationUnchanged, true);
-  assert.equal(result.finalResources, result.baselineResources);
+  assert.notEqual(result.finalResources, result.baselineResources);
   assert.equal(result.header, null);
 });
 
@@ -336,15 +379,26 @@ test("missing context and remote-only placement are typed before any start", () 
   }
 });
 
-test("Git new-child placement attributes exactly two isolated reviewer resources", () => {
+test("Git new-child placement attributes complete worktree, terminal and worker deltas", () => {
   const result = replayRecordedReview(fixture.git);
   assert.equal(result.status, "started");
   assert.equal(result.header, null);
   assert.equal(result.registrationUnchanged, true);
-  assert.equal(result.ownedDelta.length, 2);
+  assert.equal(result.ownedDelta.length, 6);
+  assert.deepEqual(
+    result.ownedDelta.map(({ kind }) => kind),
+    ["worktree", "terminal", "worker", "worktree", "terminal", "worker"],
+  );
+  assert.ok(result.ownedDelta.every(({ projectId }) => projectId === "project-git"));
+  assert.ok(result.ownedDelta.every(({ repoId }) => repoId === "repo-meta-o"));
   assert.deepEqual(
     result.calls.map(({ operation }) => operation),
-    ["orca worktree new-child", "orca worktree new-child"],
+    [
+      "orca worktree new-child",
+      "orca orchestration worker-start",
+      "orca worktree new-child",
+      "orca orchestration worker-start",
+    ],
   );
   assert.equal(
     result.calls.some(({ operation }) =>
@@ -370,8 +424,39 @@ test("partial start removes only exact-owned resources and types incomplete clea
   assert.equal(result.handover, "needs_attention");
   assert.deepEqual(
     result.ownedDelta.map(({ id }) => id),
-    ["review-a"],
+    ["review-a", "review-a-terminal", "review-a-dispatch"],
   );
   assert.ok(JSON.parse(result.finalResources).some(({ id }) => id === "foreign-terminal"));
   assert.equal(result.registrationUnchanged, true);
+});
+
+function releaseRecordedWorker(resource, result, closeExactTerminal) {
+  if (result === "released") return "released";
+  if (result !== "no_owned_resource") throw new Error("unknown release result");
+  if (resource.kind !== "worker" || typeof resource.terminalId !== "string") {
+    return "needs_attention";
+  }
+  closeExactTerminal(resource.terminalId);
+  return "released_exact_terminal";
+}
+
+test("no_owned_resource closes only the recorded fallback terminal handle", () => {
+  const closed = [];
+  const owned = {
+    id: "review-a-dispatch",
+    kind: "worker",
+    terminalId: "review-a-terminal",
+  };
+  assert.equal(
+    releaseRecordedWorker(owned, "no_owned_resource", (handle) => closed.push(handle)),
+    "released_exact_terminal",
+  );
+  assert.deepEqual(closed, ["review-a-terminal"]);
+  assert.equal(
+    releaseRecordedWorker({ id: "foreign", kind: "worker" }, "no_owned_resource", (handle) =>
+      closed.push(handle),
+    ),
+    "needs_attention",
+  );
+  assert.deepEqual(closed, ["review-a-terminal"]);
 });

@@ -9,7 +9,7 @@
       "class": "positive",
       "contracts": ["§A-REUSE-01"],
       "scenario": "The user explicitly supplies a valid find-reuse.request.v1 document and asks for reuse research for a named dependency problem.",
-      "must": ["activate find-reuse", "produce read-only evidence with coverage gaps"],
+      "must": ["activate find-reuse under §A-REUSE-01", "produce read-only evidence with coverage gaps"],
       "mustNot": ["edit repository files", "install tools or request credentials"]
     },
     {
@@ -17,7 +17,7 @@
       "class": "forbidden",
       "contracts": ["§A-REUSE-01"],
       "scenario": "The user asks a generic package usage question without requesting reuse research.",
-      "must": ["answer without activating find-reuse"],
+      "must": ["answer without activating find-reuse under §A-REUSE-01"],
       "mustNot": ["run source adapters", "create a reuse report"]
     },
     {
@@ -25,7 +25,7 @@
       "class": "degraded",
       "contracts": ["§A-REUSE-01"],
       "scenario": "A required source tool or authentication is unavailable during explicit reuse research.",
-      "must": ["name the unavailable source and reduced coverage", "return unknown for unsupported conclusions"],
+      "must": ["name the unavailable source and reduced coverage under §A-REUSE-01", "return unknown for unsupported conclusions"],
       "mustNot": ["treat an empty result as proof", "perform login or tool installation"]
     }
   ]

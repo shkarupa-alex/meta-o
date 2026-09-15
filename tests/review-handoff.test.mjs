@@ -12,15 +12,18 @@ import {
   closeSync,
   existsSync,
   fsyncSync,
+  linkSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   openSync,
   readFileSync,
   realpathSync,
-  renameSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeSync,
+  unlinkSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -37,7 +40,15 @@ function publish(directory, slot, payload) {
   } finally {
     closeSync(descriptor);
   }
-  renameSync(temporary, final);
+  // A hard-link publishes the already-complete inode atomically and, unlike
+  // rename, fails closed when any final path (including a symlink) exists.
+  try {
+    linkSync(temporary, final);
+  } catch (error) {
+    unlinkSync(temporary);
+    throw new Error(`${slot}: final publication collision; outcome UNKNOWN`, { cause: error });
+  }
+  unlinkSync(temporary);
   assert.ok(lstatSync(final).isFile());
   assert.equal(statSync(final).mode & 0o777, 0o600);
   assert.equal(readFileSync(final, "utf8"), payload);
@@ -119,5 +130,39 @@ test("human caller receives paths and never triggers automatic cleanup", () => {
     assert.ok(existsSync(result.b.path));
   } finally {
     rmSync(result.directory, { recursive: true });
+  }
+});
+
+test("publication collision never overwrites an existing final payload", () => {
+  const directory = mkdtempSync(join(tmpdir(), "mo-review-collision-"));
+  try {
+    const final = join(directory, "a.md");
+    const descriptor = openSync(final, "wx", 0o600);
+    writeSync(descriptor, "foreign\n");
+    closeSync(descriptor);
+    assert.throws(() => publish(directory, "a", "A\nEnd-Review: a\n"), /UNKNOWN/u);
+    assert.equal(readFileSync(final, "utf8"), "foreign\n");
+    assert.equal(existsSync(join(directory, ".a.pending")), false);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("symlink and non-regular final targets are rejected without mutation", () => {
+  const directory = mkdtempSync(join(tmpdir(), "mo-review-target-"));
+  try {
+    const target = join(directory, "foreign.md");
+    const targetDescriptor = openSync(target, "wx", 0o600);
+    writeSync(targetDescriptor, "foreign\n");
+    closeSync(targetDescriptor);
+    symlinkSync(target, join(directory, "a.md"));
+    assert.throws(() => publish(directory, "a", "A\nEnd-Review: a\n"), /UNKNOWN/u);
+    assert.equal(readFileSync(target, "utf8"), "foreign\n");
+
+    mkdirSync(join(directory, "b.md"));
+    assert.throws(() => publish(directory, "b", "B\nEnd-Review: b\n"), /UNKNOWN/u);
+    assert.ok(lstatSync(join(directory, "b.md")).isDirectory());
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
   }
 });

@@ -810,8 +810,13 @@ function eligibleRecommendations(provider) {
       value,
     );
   return provider.catalog.models.filter(
-    ({ label, description, capabilities, efforts }) =>
+    ({ id, label, description, capabilities, efforts }) =>
       efforts.includes("high") &&
+      // §A-EVAL-01 keeps Astra/Fable-class models visible in the catalogue but
+      // never turns them into the unattended default, regardless of metadata.
+      !/(?:^|[-_./ ])(?:astra|fable)(?:$|[-_./ ])/iu.test(
+        [id, label].filter((value) => typeof value === "string").join(" "),
+      ) &&
       (hasCodingToken(
         [label, description].filter((value) => typeof value === "string").join(" "),
       ) ||

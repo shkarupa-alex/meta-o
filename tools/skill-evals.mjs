@@ -15,7 +15,7 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -27,6 +27,12 @@ import {
   registerCompositeIdentities,
 } from "./skill-eval-aggregate.mjs";
 import { buildEvaluationPrompt } from "./skill-eval-prompt.mjs";
+import {
+  expectedDigest,
+  expectedExecution,
+  readExpectedBindings,
+  writeExpectation,
+} from "./skill-eval-expectations.mjs";
 
 import {
   assertBoundedString,
@@ -111,6 +117,12 @@ function validateCase(item, expectedSkill) {
     }
     item[field].forEach((entry, index) => assertString(entry, `${item.id}: ${field}[${index}]`));
   }
+  const oracleText = [...item.must, ...item.mustNot].join(" ");
+  for (const contract of item.contracts) {
+    if (!oracleText.includes(contract)) {
+      throw new Error(`${item.id}: contract ${contract} has no same-case oracle`);
+    }
+  }
 }
 
 function validateCaseSet(document, expectedSkill) {
@@ -185,18 +197,6 @@ export function evaluationCoordinate(envelope) {
   return `${envelope.skill}:${envelope.matrixProfile}:${envelope.repetition}`;
 }
 
-function expectedDigest(expectedDigests, envelope) {
-  const coordinate = evaluationCoordinate(envelope);
-  const digest =
-    expectedDigests instanceof Map
-      ? expectedDigests.get(coordinate)
-      : expectedDigests?.[coordinate];
-  if (!/^[a-f0-9]{64}$/u.test(digest ?? "")) {
-    throw new Error(`${coordinate}: caller-frozen evaluation digest is missing`);
-  }
-  return digest;
-}
-
 function makePrompt(root, corpus, skill, values) {
   const candidate = values.candidate;
   if (!/^[a-f0-9]{40}$/u.test(candidate ?? "")) throw new Error("--candidate must be a full SHA");
@@ -214,22 +214,6 @@ function makePrompt(root, corpus, skill, values) {
     document,
     values,
     digest: evaluationDigest,
-  });
-}
-
-function expectationRecord(envelope) {
-  return {
-    coordinate: evaluationCoordinate(envelope),
-    evaluationDigest: envelope.execution.evaluationDigest,
-  };
-}
-
-function writeExpectation(path, envelope) {
-  if (!path) throw new Error("--expectations-out is required to freeze prompt inputs");
-  writeFileSync(resolve(path), `${JSON.stringify([expectationRecord(envelope)], null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-    flag: "wx",
   });
 }
 
@@ -381,7 +365,15 @@ function envelopeIsUnavailable(envelope) {
   throw new Error(`${envelope.skill}: critical evidence cannot claim unavailable execution`);
 }
 
-function validateEnvelope(root, corpus, envelope, candidate, criticalProfile, expectedDigests) {
+function validateEnvelope(
+  root,
+  corpus,
+  envelope,
+  candidate,
+  criticalProfile,
+  expectedDigests,
+  expectedExecutions,
+) {
   if (envelope.contract !== EVIDENCE_CONTRACT) throw new Error("wrong evidence contract");
   if (envelope.candidate !== candidate) throw new Error(`${envelope.skill}: candidate mismatch`);
   const document = corpus.get(envelope.skill);
@@ -409,6 +401,10 @@ function validateEnvelope(root, corpus, envelope, candidate, criticalProfile, ex
     throw new Error(`${envelope.skill}: returned evaluation inputs do not match frozen digest`);
   }
   validateExecution(envelope, unavailable, frozenDigest);
+  const callerExecution = expectedExecution(expectedExecutions, envelope);
+  if (canonicalJson(envelope.execution) !== canonicalJson(callerExecution)) {
+    throw new Error(`${envelope.skill}: actor execution does not match caller-owned observation`);
+  }
   return envelope.results.filter(({ verdict }) =>
     new Set(["FAIL", "UNKNOWN", "BLOCKED", "NOT_RUN"]).has(verdict),
   );
@@ -450,6 +446,7 @@ export function validateEvidence(root, evidence, candidate, requireAll = false, 
         candidate,
         options.criticalProfile,
         options.expectedDigests,
+        options.expectedExecutions,
       ),
     );
   }
@@ -471,12 +468,12 @@ function usage() {
   node tools/skill-evals.mjs --check
   node tools/skill-evals.mjs --prompt <skill> --expectations-out <json> --candidate <sha> --tier <required|desired|critical> --matrix-profile <name> --route <route> --model <id> --effort <level> --harness <name> --harness-version <version> --profile-version <version> --quantization <value> --context <value> --sampling <value> --tool-permissions <csv> [--repetition 1]
   node tools/skill-evals.mjs --availability-probe <skill> --expectations-out <json> --candidate <sha> --tier desired --matrix-profile <name> --route <route> --model <id> --effort <level> --harness <name> [--repetition 1]
-  node tools/skill-evals.mjs --validate-evidence <json> --expectations <json> --candidate <sha> [--require-all] [--critical-profile <route/model/effort>]\n`;
+  node tools/skill-evals.mjs --validate-evidence <json> --expectations <json> --execution-observations <json> --candidate <sha> [--require-all] [--critical-profile <route/model/effort>]\n`;
 }
 
 async function main() {
   // prettier-ignore
-  const stringOptions = ["prompt", "availability-probe", "candidate", "route", "model", "effort", "harness", "harness-version", "profile-version", "quantization", "context", "sampling", "tool-permissions", "repetition", "tier", "matrix-profile", "validate-evidence", "expectations", "expectations-out", "critical-profile"];
+  const stringOptions = ["prompt", "availability-probe", "candidate", "route", "model", "effort", "harness", "harness-version", "profile-version", "quantization", "context", "sampling", "tool-permissions", "repetition", "tier", "matrix-profile", "validate-evidence", "expectations", "expectations-out", "execution-observations", "critical-profile"];
   const booleanOptions = ["check", "require-all"];
   const options = Object.fromEntries(stringOptions.map((name) => [name, { type: "string" }]));
   for (const name of booleanOptions) options[name] = { type: "boolean" };
@@ -516,11 +513,13 @@ async function main() {
   }
   if (values["validate-evidence"]) {
     if (!values.expectations) throw new Error("--expectations is required for live evidence");
+    if (!values["execution-observations"]) {
+      throw new Error("--execution-observations is required for live evidence");
+    }
     const evidence = JSON.parse(readFileSync(resolve(values["validate-evidence"]), "utf8"));
-    const expectationRecords = JSON.parse(readFileSync(resolve(values.expectations), "utf8"));
-    if (!Array.isArray(expectationRecords)) throw new Error("--expectations must contain an array");
-    const expectedDigests = Object.fromEntries(
-      expectationRecords.map(({ coordinate, evaluationDigest: digest }) => [coordinate, digest]),
+    const { expectedDigests, expectedExecutions } = readExpectedBindings(
+      values.expectations,
+      values["execution-observations"],
     );
     const legacy = diagnoseLegacyEvidenceForCandidate(ROOT, evidence, values.candidate);
     if (legacy) {
@@ -531,6 +530,7 @@ async function main() {
     const result = validateEvidence(ROOT, evidence, values.candidate, values["require-all"], {
       criticalProfile: values["critical-profile"],
       expectedDigests,
+      expectedExecutions,
     });
     process.stdout.write(
       `skill eval evidence ok: ${result.envelopes} envelopes, ${result.nonPass.length} non-PASS results\n`,

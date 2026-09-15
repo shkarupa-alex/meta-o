@@ -30,33 +30,24 @@ function issueRows(
     if (token.type === "tr_close") rows.push(row);
   }
   assert.deepEqual(rows[0], [
-    "Scenario",
-    "Applies to",
-    "Write",
-    "Preconditions",
-    "Required action",
-    "Forbidden action",
-    "Evidence",
+    "scenario_id",
+    "disposition_class",
+    "inputs",
+    "required_action",
+    "forbidden_action",
+    "evidence",
   ]);
   return new Map(
     rows
       .slice(1)
-      .map(
-        ([
-          scenario,
-          issueClass,
-          writePermission,
-          preconditions,
-          requiredAction,
-          forbiddenAction,
-          evidence,
-        ]) => [
-          scenario,
-          { issueClass, writePermission, preconditions, requiredAction, forbiddenAction, evidence },
-        ],
-      ),
+      .map(([scenario, issueClass, inputs, requiredAction, forbiddenAction, evidence]) => [
+        scenario,
+        { issueClass, inputs, requiredAction, forbiddenAction, evidence },
+      ]),
   );
 }
+
+const WRITE_SCENARIOS = new Set(["ISS-01", "ISS-04", "ISS-06", "ISS-07A", "ISS-07C", "ISS-10"]);
 
 const ISSUE_RULES = [
   [(facts) => facts.forbiddenData, "ISS-08"],
@@ -115,11 +106,8 @@ function issueDecision(facts, rows = issueRows()) {
   const [, scenario] = matched;
   const row = rows.get(scenario);
   if (!row) return { status: "needs_attention", reason: "canonical_route_missing" };
-  if (!new Set(["yes", "no"]).has(row.writePermission)) {
-    return { status: "needs_attention", reason: "canonical_write_permission_invalid" };
-  }
   const current = currentWritePermission(facts);
-  const mayWrite = row.writePermission === "yes" && current.allowed;
+  const mayWrite = WRITE_SCENARIOS.has(scenario) && current.allowed;
   return {
     status: "settled",
     scenario,
@@ -207,7 +195,7 @@ test("ISS-01 through ISS-15 route distinct facts to canonical actions", () => {
     assert.ok(rows.has(result.scenario));
     assert.equal(result.class, rows.get(result.scenario).issueClass);
     assert.equal(result.mayWrite, mayWrite, `${scenario}: autonomous write permission`);
-    for (const field of ["preconditions", "requiredAction", "forbiddenAction", "evidence"]) {
+    for (const field of ["inputs", "requiredAction", "forbiddenAction", "evidence"]) {
       assert.equal(result[field], rows.get(result.scenario)[field]);
       assert.ok(result[field].length > 3, `${scenario}: ${field}`);
     }
@@ -219,7 +207,7 @@ test("the parsed canonical row owns every normative routing field and missing ro
   const source = readFileSync(resolve(ROOT, "shared/references/issue-routing.md"), "utf8");
   const facts = { search: "incomplete" };
   const original = issueDecision(facts, issueRows(source));
-  for (const field of ["preconditions", "requiredAction", "forbiddenAction", "evidence"]) {
+  for (const field of ["inputs", "requiredAction", "forbiddenAction", "evidence"]) {
     const marker = ` [fixture-${field}]`;
     const mutated = source.replace(original[field], `${original[field]}${marker}`);
     assert.ok(issueDecision(facts, issueRows(mutated))[field].endsWith(marker));
@@ -236,11 +224,7 @@ test("the parsed canonical row owns every normative routing field and missing ro
     requiredAction: "create needs_attention record",
   });
   assert.equal(issueDecision({ repositoryRank: "ambiguous" }, rewordedRows).mayWrite, false);
-  rewordedRows.get("ISS-12").writePermission = "maybe";
-  assert.deepEqual(issueDecision({ repositoryRank: "ambiguous" }, rewordedRows), {
-    status: "needs_attention",
-    reason: "canonical_write_permission_invalid",
-  });
+  assert.equal(issueDecision({ repositoryRank: "ambiguous" }, rewordedRows).mayWrite, false);
 });
 
 test("Issue routing fails closed for overlapping facts, truncated search, unknown effect, and secrets", () => {

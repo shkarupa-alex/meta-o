@@ -38,16 +38,34 @@ function firstTable(document) {
   return rows;
 }
 
+function markdownTables(document) {
+  const tokens = markdown.parse(document, {});
+  const tables = [];
+  let rows = null;
+  let row = null;
+  for (const token of tokens) {
+    if (token.type === "table_open") rows = [];
+    if (token.type === "tr_open") row = [];
+    if (token.type === "inline" && row) row.push(token.content.trim());
+    if (token.type === "tr_close") rows.push(row);
+    if (token.type === "table_close") {
+      tables.push(rows);
+      rows = null;
+      row = null;
+    }
+  }
+  return tables;
+}
+
 test("the Issue decision table is rectangular, total and fail-closed", () => {
   const rows = firstTable(source("shared/references/issue-routing.md"));
   assert.deepEqual(rows[0], [
-    "Scenario",
-    "Applies to",
-    "Write",
-    "Preconditions",
-    "Required action",
-    "Forbidden action",
-    "Evidence",
+    "scenario_id",
+    "disposition_class",
+    "inputs",
+    "required_action",
+    "forbidden_action",
+    "evidence",
   ]);
   for (const row of rows) {
     assert.equal(row.length, rows[0].length);
@@ -77,21 +95,19 @@ test("the Issue decision table is rectangular, total and fail-closed", () => {
   );
   const tokens = markdown.parse(source("shared/references/issue-routing.md"), {});
   const vocabulary = tokens.find(
-    ({ type, content }) => type === "inline" && content.startsWith("`Applies to` — route context"),
+    ({ type, content }) =>
+      type === "inline" && content.startsWith("`disposition_class` имеет closed vocabulary"),
   );
   const values = vocabulary.children
     .filter(({ type }) => type === "code_inline")
     .map(({ content }) => content);
-  const allowed = new Set(
-    values.slice(values.indexOf("Applies to") + 1, values.indexOf("disposition_class")),
-  );
+  const allowed = new Set(values.slice(1, values.indexOf("required_action")));
   assert.deepEqual(
     [...allowed],
     ["upstream_issue", "project_issue", "unconfirmed", "either", "mixed"],
   );
-  for (const [scenario, appliesTo, write, , action, forbidden] of rows.slice(1)) {
+  for (const [scenario, appliesTo, , action, forbidden] of rows.slice(1)) {
     assert.ok(allowed.has(appliesTo), `${scenario}: invalid route context`);
-    assert.ok(new Set(["yes", "no"]).has(write), `${scenario}: invalid write permission`);
     assert.ok(action.length > 3, `${scenario}: action missing`);
     if (["ISS-02", "ISS-03", "ISS-12"].includes(scenario)) {
       assert.match(action, /needs_attention/u);
@@ -113,8 +129,7 @@ test("the installable orchestrator carries the complete Issue-routing contract",
   for (const scenario of ["ISS-01", "ISS-07A", "ISS-10", "ISS-15"]) {
     assert.match(shared, new RegExp(`\\| ${scenario}\\s+\\|`, "u"));
   }
-  assert.match(shared, /glab issue note.*unsupported/su);
-  assert.doesNotMatch(shared, /glab api --method POST/u);
+  assert.match(shared, /glab issue note.*glab api --hostname.*--input/su);
 });
 
 test("Issue disposition records have the spec-owned fields and closed outcomes", () => {
@@ -143,6 +158,29 @@ test("Issue disposition records have the spec-owned fields and closed outcomes",
   assert.match(shared, /commented.*created.*duplicate.*Canonical-URL.*обязательно/su);
   assert.match(shared, /needs_attention.*обязательна причина/su);
   assert.match(shared, /needs_attention.*failed write/su);
+});
+
+test("the harvested intake has one closed disposition for every BKL source", () => {
+  const table = markdownTables(source("docs/acceptance.md")).find(
+    ([header]) =>
+      JSON.stringify(header) === JSON.stringify(["Source", "Outcome", "Durable evidence"]),
+  );
+  assert.ok(table, "BKL harvest table missing");
+  const rows = table.slice(1);
+  assert.deepEqual(
+    rows.map(([id]) => id),
+    Array.from({ length: 19 }, (_, index) => `BKL-${String(index).padStart(2, "0")}`),
+  );
+  assert.equal(new Set(rows.map(([id]) => id)).size, 19);
+  const outcomes = new Set(["implemented", "refuted", "duplicate", "needs_attention"]);
+  for (const [id, outcome, evidence] of rows) {
+    assert.ok(outcomes.has(outcome), `${id}: unknown harvested outcome`);
+    assert.ok(evidence.length > 8, `${id}: durable evidence missing`);
+  }
+  for (const id of ["BKL-04", "BKL-06", "BKL-09", "BKL-15"]) {
+    const evidence = rows.find(([sourceId]) => sourceId === id)[2];
+    assert.match(evidence, /https:\/\/|`unsupported`/u, `${id}: workaround disposition missing`);
+  }
 });
 
 /** §A-REVIEW-04 gets only top-level prose lines from the CommonMark block AST. */
@@ -489,9 +527,28 @@ function githubCoverage(documents, hosting) {
   const root = documents[0].parsed;
   const events = Object.keys(root?.on ?? {});
   const jobs = Object.entries(root?.jobs ?? {});
-  const commandJobs = jobs.filter(([, { steps = [] }]) =>
-    steps.some(({ run = "" }) => run === "make mo-backlog-empty"),
-  );
+  const byPath = new Map(documents.map((document) => [document.path, document.parsed]));
+  const jobCoverage = (job, stack = new Set()) => {
+    if (typeof job?.uses === "string") {
+      if (!job.uses.startsWith("./.github/workflows/")) throw new Error("unsupported workflow use");
+      const path = job.uses.slice(2);
+      if (stack.has(path) || !byPath.has(path)) throw new Error("workflow cycle or missing file");
+      const called = byPath.get(path);
+      if (!Object.hasOwn(called?.on ?? {}, "workflow_call")) {
+        throw new Error("called workflow is not reusable");
+      }
+      const next = new Set(stack).add(path);
+      const covered = Object.values(called.jobs ?? {}).filter((child) => jobCoverage(child, next));
+      return covered.length === 1 && githubJobAutomatic(job) && githubJobAutomatic(covered[0]);
+    }
+    return (job?.steps ?? []).some(({ run = "" }) => run === "make mo-backlog-empty");
+  };
+  let commandJobs;
+  try {
+    commandJobs = jobs.filter(([, job]) => jobCoverage(job));
+  } catch {
+    return "unknown";
+  }
   const automatic = commandJobs.every(([, job]) => githubJobAutomatic(job));
   const pullRequestReachable = githubPullRequestReachable(root, events);
   const mergeGroupReachable = githubMergeGroupReachable(root, events);
@@ -579,7 +636,7 @@ function ciCoverage({ provider, entrypoint, files, hosting = {} }) {
   const seen = new Set();
   const documents = [];
   const visit = (path) => {
-    if (seen.has(path)) return;
+    if (seen.has(path)) throw new Error("include cycle");
     seen.add(path);
     const text = files[path];
     if (typeof text !== "string" || text.includes("${{")) throw new Error("unknown construct");
@@ -594,6 +651,21 @@ function ciCoverage({ provider, entrypoint, files, hosting = {} }) {
       const local = typeof include === "string" ? include : include?.local;
       if (!local || !Object.hasOwn(files, local)) throw new Error("remote or dynamic include");
       visit(local);
+    }
+    if (provider === "github") {
+      for (const job of Object.values(parsed?.jobs ?? {})) {
+        if (job?.uses === undefined) continue;
+        if (
+          typeof job.uses !== "string" ||
+          !job.uses.startsWith("./.github/workflows/") ||
+          job.uses.includes("..")
+        ) {
+          throw new Error("remote or dynamic workflow use");
+        }
+        const local = job.uses.slice(2);
+        if (!Object.hasOwn(files, local)) throw new Error("missing reusable workflow");
+        visit(local);
+      }
     }
   };
   try {
@@ -709,6 +781,56 @@ test("GitHub CI fixtures never invent candidate reachability or required policy"
       provider: "github",
       entrypoint: "ci.yml",
       files: { "ci.yml": ordinary.replace("make mo-backlog-empty", "${{ matrix.command }}") },
+    }),
+    "unknown",
+  );
+});
+
+test("GitHub local reusable workflows are resolved through a finite literal call graph", () => {
+  const entry =
+    "on:\n  pull_request:\n    branches: [develop]\njobs:\n  backlog:\n    uses: ./.github/workflows/backlog.yml\n";
+  const called =
+    "on:\n  workflow_call:\njobs:\n  gate:\n    steps:\n      - run: make mo-backlog-empty\n";
+  const files = {
+    ".github/workflows/ci.yml": entry,
+    ".github/workflows/backlog.yml": called,
+  };
+  assert.equal(
+    ciCoverage({
+      provider: "github",
+      entrypoint: ".github/workflows/ci.yml",
+      files,
+      hosting: { workflowActive: true, requiredCheck: "backlog", mergeQueueEnabled: false },
+    }),
+    "covered",
+  );
+  for (const uses of [
+    "./.github/workflows/missing.yml",
+    "./.github/workflows/../secret.yml",
+    "owner/repo/.github/workflows/backlog.yml@main",
+    "${{ inputs.workflow }}",
+  ]) {
+    assert.equal(
+      ciCoverage({
+        provider: "github",
+        entrypoint: ".github/workflows/ci.yml",
+        files: {
+          ...files,
+          ".github/workflows/ci.yml": entry.replace("./.github/workflows/backlog.yml", uses),
+        },
+      }),
+      "unknown",
+    );
+  }
+  assert.equal(
+    ciCoverage({
+      provider: "github",
+      entrypoint: ".github/workflows/ci.yml",
+      files: {
+        ...files,
+        ".github/workflows/backlog.yml":
+          "on:\n  workflow_call:\njobs:\n  again:\n    uses: ./.github/workflows/backlog.yml\n",
+      },
     }),
     "unknown",
   );

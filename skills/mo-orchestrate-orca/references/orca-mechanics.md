@@ -130,6 +130,12 @@ invokes the reviewer harness. Keep the messages isolated until both
 `worker_done` bodies are complete.
 Release a settled supervised worker only with
 `orca orchestration worker-release`; never substitute a broad terminal close.
+A `no_owned_resource` result permits exactly one fallback only when the caller
+recorded that Dispatch's low-level terminal handle in its run-owned resource
+set: close that exact handle and re-read the resource projection. Without that
+saved binding, return `needs_attention` and close nothing. This workaround is
+currently `unsupported` for durable automation because no authenticated search
+confirmed a canonical upstream Issue URL; see the project papercut audit.
 A low-level injected terminal is not a supervised worker resource, so close
 only its exact returned handle after its Dispatch settles and its response is
 delivered. A failed or uncertain worker follows the exact recovery action in its

@@ -120,10 +120,20 @@ function frozenDigests(evidence) {
   );
 }
 
+function frozenExecutions(evidence) {
+  return Object.fromEntries(
+    (Array.isArray(evidence) ? evidence : [evidence]).map((item) => [
+      evaluationCoordinate(item),
+      structuredClone(item.execution),
+    ]),
+  );
+}
+
 function validateEvidence(root, evidence, candidate, requireAll = false, options = {}) {
   return validateEvidenceRaw(root, evidence, candidate, requireAll, {
     ...options,
     expectedDigests: options.expectedDigests ?? frozenDigests(evidence),
+    expectedExecutions: options.expectedExecutions ?? frozenExecutions(evidence),
   });
 }
 
@@ -287,6 +297,25 @@ test("actor-modified inputs cannot replace caller-frozen prompt inputs", () => {
       /returned evaluation inputs do not match frozen digest/u,
     );
   }
+});
+
+test("actor-authored native identity cannot replace the caller-owned execution observation", () => {
+  const evidence = finalizedEnvelope("find-reuse");
+  const expectedDigests = frozenDigests(evidence);
+  const expectedExecutions = frozenExecutions(evidence);
+  evidence.execution.id = "actor-invented-execution";
+  evidence.execution.identityEvidence = "actor invented a self-consistent native identity";
+  for (const result of evidence.results) {
+    result.observedAction = "case_evaluation:actor-invented-execution";
+  }
+  assert.throws(
+    () =>
+      validateEvidenceRaw(ROOT, evidence, HEAD, false, {
+        expectedDigests,
+        expectedExecutions,
+      }),
+    /does not match caller-owned observation/u,
+  );
 });
 
 test("evidence fails closed on identity drift, missing coverage and sensitive fields", () => {
@@ -784,6 +813,7 @@ test("the CLI materializes and validates a missing desired harness without a mod
   const temporary = mkdtempSync(join(tmpdir(), "mo-skill-eval-unavailable-"));
   const expectations = join(temporary, "expectations.json");
   const evidencePath = join(temporary, "evidence.json");
+  const executionObservations = join(temporary, "execution-observations.json");
   const result = spawnSync(
     process.execPath,
     [
@@ -821,6 +851,10 @@ test("the CLI materializes and validates a missing desired harness without a mod
   assert.equal(evidence.harness.version, null);
   assert.ok(evidence.results.every(({ verdict }) => verdict === "NOT_AVAILABLE"));
   writeFileSync(evidencePath, result.stdout);
+  writeFileSync(
+    executionObservations,
+    `${JSON.stringify([{ coordinate: evaluationCoordinate(evidence), execution: evidence.execution }])}\n`,
+  );
   const validated = spawnSync(
     process.execPath,
     [
@@ -829,6 +863,8 @@ test("the CLI materializes and validates a missing desired harness without a mod
       evidencePath,
       "--expectations",
       expectations,
+      "--execution-observations",
+      executionObservations,
       "--candidate",
       HEAD,
     ],

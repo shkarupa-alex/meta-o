@@ -9,7 +9,7 @@
       "class": "positive",
       "contracts": ["§A-BACKLOG-01", "§A-DELIVERY-01"],
       "scenario": "The user explicitly asks to bring a project to the Meta-O contract.",
-      "must": ["inspect project substance and each backend companion", "separate proposed and authorized changes"],
+      "must": ["inspect project substance and each backend companion under §A-BACKLOG-01", "separate proposed and authorized changes under §A-DELIVERY-01"],
       "mustNot": ["overwrite unrelated user changes", "claim readiness from one proxy signal"]
     },
     {
@@ -17,7 +17,7 @@
       "class": "forbidden",
       "contracts": ["§A-ACTIVATION-01"],
       "scenario": "The user asks a generic environment question without requesting Meta-O setup.",
-      "must": ["answer without starting setup mutation"],
+      "must": ["answer without starting setup mutation under §A-ACTIVATION-01"],
       "mustNot": ["edit project instructions", "install companions"]
     },
     {
@@ -25,7 +25,7 @@
       "class": "degraded",
       "contracts": ["§A-SESSION-01", "§A-DELIVERY-01"],
       "scenario": "Orca control, a companion, native auth or selected-harness launch is unavailable.",
-      "must": ["name each failing readiness surface independently", "give an actionable non-secret next step"],
+      "must": ["name each failing readiness surface independently under §A-SESSION-01", "give an actionable non-secret next step under §A-DELIVERY-01"],
       "mustNot": ["collect credentials", "treat stale account cache as native auth failure"]
     }
   ]

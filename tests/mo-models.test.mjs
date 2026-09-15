@@ -762,6 +762,47 @@ test("a sole evidence-qualified successor can become the default recommendation"
   assert.match(result.stdout, /default recommendation: codex\/gpt-successor\/high/u);
 });
 
+test("Astra and Fable classes stay visible but never become the default recommendation", () => {
+  for (const slug of ["gpt-astra", "gpt-fable"]) {
+    const home = sandbox();
+    const bin = join(home, "bin");
+    mkdirSync(bin, { recursive: true });
+    const codex = join(bin, "codex");
+    writeFileSync(
+      codex,
+      `#!/bin/sh\nprintf '%s\\n' '{"models":[{"slug":"${slug}","display_name":"${slug} coding","description":"software engineering model","visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"high"}]}]}'\n`,
+    );
+    chmodSync(codex, 0o755);
+    const environment = { PATH: `${bin}${delimiter}${process.env.PATH}` };
+    const result = run(home, ["--catalog", "--route", "codex"], ROOT, environment);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, new RegExp(slug, "u"));
+    assert.match(result.stdout, /no_default_recommendation/u);
+    assert.doesNotMatch(result.stdout, /default recommendation:/u);
+  }
+});
+
+test("recent history cannot promote an Astra-class candidate over an ordinary ambiguity", () => {
+  const home = sandbox();
+  const bin = join(home, "bin");
+  const sessions = join(home, ".codex", "sessions");
+  mkdirSync(bin, { recursive: true });
+  mkdirSync(sessions, { recursive: true });
+  writeFileSync(join(sessions, "recent.jsonl"), '{"model":"gpt-astra"}\n');
+  const codex = join(bin, "codex");
+  writeFileSync(
+    codex,
+    `#!/bin/sh\nprintf '%s\\n' '{"models":[{"slug":"gpt-astra","display_name":"Astra coding","description":"software engineering model","visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"high"}]},{"slug":"ordinary-a","display_name":"Coding A","description":"software engineering model","visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"high"}]},{"slug":"ordinary-b","display_name":"Coding B","description":"software engineering model","visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"high"}]}]}'\n`,
+  );
+  chmodSync(codex, 0o755);
+  const result = run(home, ["--catalog", "--route", "codex"], ROOT, {
+    PATH: `${bin}${delimiter}${process.env.PATH}`,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /no_default_recommendation \(catalog_has_2_ambiguous/u);
+  assert.doesNotMatch(result.stdout, /default recommendation:/u);
+});
+
 test("incidental encoding prose is not coding-positioning evidence", () => {
   const home = sandbox();
   const bin = join(home, "bin");

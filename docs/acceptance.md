@@ -37,6 +37,34 @@
 | Каждый applicable eval case проходит required Codex и Claude profiles.                   | V2 corpus contracts и V3 matrix validator fixtures.                               | Полный required product и desired availability rows exact SHA.    |
 | Локальная orchestration §B-PORTABILITY-08 управляет lifecycle, но не пишет product code. | Ownership, projection и critical-corpus fixtures.                                 | Critical Qwen profile suite на exact SHA.                         |
 
+## Harvest исходного intake BKL-00…BKL-18
+
+Это часть существующей карты acceptance, а не второй registry/receipt. Она
+сохраняет только durable disposition и доказательство после удаления живой
+spec; исходные bytes остаются в frozen Git blob, указанном ниже.
+
+| Source | Outcome     | Durable evidence                                                                                                  |
+| ------ | ----------- | ----------------------------------------------------------------------------------------------------------------- |
+| BKL-00 | implemented | `make mo-qc`, exact-SHA reviews и eval matrix                                                                     |
+| BKL-01 | refuted     | `shared/references/review-protocol.md`: delegation не является обязательной                                       |
+| BKL-02 | implemented | `tests/review-handoff.test.mjs`: private unique namespace и collision-safe publication                            |
+| BKL-03 | implemented | `docs/architecture/orca-session-ownership.md`: stable visible role titles                                         |
+| BKL-04 | implemented | exact-handle fallback проверен тестом; upstream write пока `unsupported`, см. `docs/papercut.md`                  |
+| BKL-05 | implemented | `shared/references/issue-routing.md` и `tests/backlog-empty.test.mjs`                                             |
+| BKL-06 | implemented | trust-safe readiness реализована; upstream write пока `unsupported`, см. `docs/papercut.md`                       |
+| BKL-07 | implemented | actionable finding contract в `shared/references/review-protocol.md`                                              |
+| BKL-08 | implemented | explicit activation в `src/skills/mo-review-orca/SKILL.md`                                                        |
+| BKL-09 | implemented | delivery/posture guards реализованы; incidents ведёт [Orca #16527](https://github.com/stablyai/orca/issues/16527) |
+| BKL-10 | implemented | hot remediation и fresh final pair в `src/skills/mo-review-orca/SKILL.md`                                         |
+| BKL-11 | duplicate   | BKL-03; color остаётся best effort                                                                                |
+| BKL-12 | duplicate   | BKL-09; posture flags имеют одного owner                                                                          |
+| BKL-13 | implemented | authored census и lossless handoff в `tests/lifecycle-contracts.test.mjs`                                         |
+| BKL-14 | implemented | standalone review создаёт только reviewer pair                                                                    |
+| BKL-15 | implemented | canonical worker response реализован; upstream write пока `unsupported`, см. `docs/papercut.md`                   |
+| BKL-16 | implemented | version-matched `orchestration` и `orca-cli` fixtures                                                             |
+| BKL-17 | duplicate   | BKL-10; reviewer сохраняется hot до follow-up                                                                     |
+| BKL-18 | implemented | regression tests и durable architecture ids                                                                       |
+
 ## Провенанс закрытия backlog
 
 | Источник         | Frozen blob                                |

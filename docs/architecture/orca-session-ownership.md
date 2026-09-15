@@ -1,5 +1,14 @@
 # §A-SESSION-01 — Orca actors остаются ресурсами исходного project
 
+```yaml
+knowledge_id_change:
+  action: reuse
+  id: §A-SESSION-01
+  reason: Review обнаружил, что resource delta не связывал fallback terminal с Dispatch при no_owned_resource.
+  new_boundary: OwnedResourceSet хранит worktree, terminal и worker; fallback закрывает только записанный exact terminal handle.
+  references_updated: true
+```
+
 ## Решение
 
 Перед запуском Meta-O строит read-only `ProjectRegistrationSet/1` и
@@ -18,6 +27,12 @@ Standalone review создаёт только двух reviewers и не при�
 создаётся fresh pair. Cleanup затрагивает только сохранённые exact handles; при
 partial start сохраняет foreign/ambiguous resources и повторно сравнивает обе
 проекции. Visible titles имеют форму `<work-slug>:<role>`.
+
+Ответ `worker-release: no_owned_resource` разрешает fallback только для заранее
+сохранённой пары Dispatch → exact low-level terminal handle: закрывается ровно
+этот handle, затем перечитывается resource projection. Без пары cleanup даёт
+`needs_attention` и ничего не закрывает. До подтверждённого canonical upstream
+Issue этот обход помечен `unsupported` в `docs/papercut.md`.
 
 Решение служит §B-SESSION-01, §B-REVIEW-04 и §B-PORTABILITY-07.
 Без §A-SESSION-01 reviewer isolation снова может создавать побочные project
