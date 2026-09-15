@@ -6,6 +6,10 @@
  * prompt for an explicitly selected harness and validates the returned JSON in
  * an external, untracked location.
  *
+ * A schema validator cannot enforce disk inventory, Git reachability, corpus
+ * identity and the approved-profile function; adding one would duplicate this
+ * executable contract without replacing it.
+ *
  * Implements §A-EVAL-01.
  */
 
@@ -346,7 +350,9 @@ export function diagnoseLegacyEvidenceForCandidate(root, evidence, candidate) {
   if (!/^[a-f0-9]{40}$/u.test(candidate ?? "")) throw new Error("candidate must be a full SHA");
   return diagnoseLegacyEvidenceAtCandidate(evidence, candidate, {
     readDocument: (skill) =>
-      JSON.parse(git(root, ["show", `${candidate}:src/skills/${skill}/evals/cases.json`])),
+      EXPECTED_SKILLS.includes(skill)
+        ? JSON.parse(git(root, ["show", `${candidate}:src/skills/${skill}/evals/cases.json`]))
+        : null,
     readRevision: (skill) => git(root, ["rev-parse", `${candidate}:skills/${skill}`]),
     digest: evaluationDigest,
   });

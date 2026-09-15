@@ -58,7 +58,7 @@ function validateLegacyIdentity(identity, label) {
 }
 
 /** §A-EVAL-01 validates the frozen cases.v1 document used by v2 evidence. */
-export function validateLegacyCaseDocument(document, expectedSkill) {
+function validateLegacyCaseDocument(document, expectedSkill) {
   if (document?.contract !== "meta-o.skill-eval-cases.v1") {
     throw new Error(`${expectedSkill}: wrong legacy cases contract`);
   }
@@ -297,7 +297,9 @@ export function diagnoseLegacyEvidenceAtCandidate(evidence, candidate, adapter) 
   return diagnoseLegacyEvidence(evidence, {
     candidate,
     describeSkill(skill) {
-      const document = validateLegacyCaseDocument(adapter.readDocument(skill), skill);
+      const source = adapter.readDocument(skill);
+      if (source === null) return null;
+      const document = validateLegacyCaseDocument(source, skill);
       return {
         policy: document.policy,
         revision: adapter.readRevision(skill),

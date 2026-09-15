@@ -480,6 +480,12 @@ test("evidence v2 is readable only as an explicit legacy diagnostic", () => {
     () => diagnoseLegacyEvidenceForCandidate(ROOT, wrongRevision, historicalCandidate),
     /skill revision mismatch/u,
   );
+  const unknownSkill = structuredClone(historical);
+  unknownSkill.skill = "../../../etc/passwd";
+  assert.throws(
+    () => diagnoseLegacyEvidenceForCandidate(ROOT, unknownSkill, historicalCandidate),
+    (error) => /legacy_v2: unknown skill/u.test(error.message) && !/git show/u.test(error.message),
+  );
 });
 
 test("the CLI exposes a bounded prompt without launching a model", () => {
