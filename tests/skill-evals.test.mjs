@@ -100,6 +100,16 @@ test("every installable skill owns three bounded embedded cases", () => {
     24,
   );
   assert.equal(corpus.get("mo-orchestrate-orca").policy, "critical");
+  const issueRouting = corpus
+    .get("mo-orchestrate-orca")
+    .cases.find(({ id }) => id === "mo-orchestrate-orca.degraded");
+  assert.ok(issueRouting.contracts.includes("§A-ISSUE-01"));
+  for (const scenario of ["ISS-12", "ISS-14", "ISS-15"]) {
+    assert.ok(
+      issueRouting.must.some((oracle) => oracle.includes(scenario)),
+      scenario,
+    );
+  }
 });
 
 test("complete evidence binds every skill to candidate, revision and approved identity", () => {
@@ -276,41 +286,38 @@ test("PASS cannot be accepted without case-specific oracle evidence", () => {
 });
 
 test("the CLI exposes a bounded prompt without launching a model", () => {
-  const result = spawnSync(
-    process.execPath,
-    [
-      "tools/skill-evals.mjs",
-      "--prompt",
-      "find-reuse",
-      "--candidate",
-      HEAD,
-      "--tier",
-      "required",
-      "--matrix-profile",
-      "required-codex",
-      "--route",
-      "codex",
-      "--model",
-      "gpt-5.6-sol",
-      "--effort",
-      "low",
-      "--harness",
-      "Codex",
-      "--harness-version",
-      "fixture-1",
-      "--profile-version",
-      "fixture-profile-1",
-      "--quantization",
-      "provider-managed",
-      "--context",
-      "fixture-context",
-      "--sampling",
-      "fixture-defaults",
-      "--tool-permissions",
-      "read,shell-readonly",
-    ],
-    { cwd: ROOT, encoding: "utf8" },
-  );
+  const args = [
+    "tools/skill-evals.mjs",
+    "--prompt",
+    "find-reuse",
+    "--candidate",
+    HEAD,
+    "--tier",
+    "required",
+    "--matrix-profile",
+    "required-codex",
+    "--route",
+    "codex",
+    "--model",
+    "gpt-5.6-sol",
+    "--effort",
+    "low",
+    "--harness",
+    "Codex",
+    "--harness-version",
+    "fixture-1",
+    "--profile-version",
+    "fixture-profile-1",
+    "--quantization",
+    "provider-managed",
+    "--context",
+    "fixture-context",
+    "--sampling",
+    "fixture-defaults",
+    "--tool-permissions",
+    "read,shell-readonly",
+  ];
+  const result = spawnSync(process.execPath, args, { cwd: ROOT, encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /find-reuse\.positive/);
   assert.match(result.stdout, /INSTALLABLE INSTRUCTIONS/);
@@ -318,4 +325,10 @@ test("the CLI exposes a bounded prompt without launching a model", () => {
   assert.doesNotMatch(result.stdout, /"verdict": "PASS"/u);
   assert.match(result.stdout, /native harness execution id/u);
   assert.match(result.stdout, /BLOCKED\|NOT_RUN\|NOT_AVAILABLE/u);
+  const repeated = spawnSync(process.execPath, [...args, "--repetition", "2"], {
+    cwd: ROOT,
+    encoding: "utf8",
+  });
+  assert.equal(repeated.status, 2);
+  assert.match(repeated.stderr, /--repetition must be 1/u);
 });

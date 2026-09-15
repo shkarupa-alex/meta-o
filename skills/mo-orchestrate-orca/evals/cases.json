@@ -41,7 +41,7 @@
     {
       "id": "mo-orchestrate-orca.degraded",
       "class": "degraded",
-      "contracts": ["§A-WAIT-01", "§A-DELIVERY-01"],
+      "contracts": ["§A-WAIT-01", "§A-DELIVERY-01", "§A-ISSUE-01"],
       "scenario": "One run presents quota, another reconnecting, another capacity, another compaction, and a fifth refuses after doing work. During Issue routing, repository candidates have the same rank (ISS-12), a duplicate search truncates at its limit (ISS-14), and installed CLI help lacks the required safe body capability (ISS-15).",
       "must": [
         "return distinct typed outcomes for quota, reconnecting, capacity, compaction and output_blocked_after_work",

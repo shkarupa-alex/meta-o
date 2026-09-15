@@ -87,31 +87,32 @@ function sanitizeIssueBody(body) {
 
 test("ISS-01 through ISS-15 route distinct facts to canonical actions", () => {
   const fixtures = [
-    [{ rootCause: "external", owner: "verified" }, "ISS-01"],
-    [{ rootCause: "external", owner: "ambiguous" }, "ISS-02"],
-    [{ rootCause: "external", owner: "project_remotes_only" }, "ISS-03"],
-    [{ rootCause: "project" }, "ISS-04"],
-    [{ rootCause: "unknown" }, "ISS-05"],
-    [{ match: "open_exact" }, "ISS-06"],
-    [{ match: "closed_fixed_installed" }, "ISS-07A"],
-    [{ match: "closed_fixed_newer" }, "ISS-07B"],
-    [{ match: "closed_wontfix_alive" }, "ISS-07C"],
-    [{ forbiddenData: true }, "ISS-08"],
-    [{ writeEffect: "ambiguous" }, "ISS-09"],
-    [{ mixedWorkaround: true }, "ISS-10"],
-    [{ repositoryKnown: true, auth: "unavailable" }, "ISS-11"],
-    [{ repositoryRank: "ambiguous" }, "ISS-12"],
-    [{ writeEffect: "rejected" }, "ISS-13"],
-    [{ search: "incomplete" }, "ISS-14"],
-    [{ capability: "missing" }, "ISS-15"],
+    [{ rootCause: "external", owner: "verified" }, "ISS-01", true],
+    [{ rootCause: "external", owner: "ambiguous" }, "ISS-02", false],
+    [{ rootCause: "external", owner: "project_remotes_only" }, "ISS-03", false],
+    [{ rootCause: "project" }, "ISS-04", true],
+    [{ rootCause: "unknown" }, "ISS-05", false],
+    [{ match: "open_exact" }, "ISS-06", true],
+    [{ match: "closed_fixed_installed" }, "ISS-07A", true],
+    [{ match: "closed_fixed_newer" }, "ISS-07B", false],
+    [{ match: "closed_wontfix_alive" }, "ISS-07C", true],
+    [{ forbiddenData: true }, "ISS-08", false],
+    [{ writeEffect: "ambiguous" }, "ISS-09", false],
+    [{ mixedWorkaround: true }, "ISS-10", true],
+    [{ repositoryKnown: true, auth: "unavailable" }, "ISS-11", false],
+    [{ repositoryRank: "ambiguous" }, "ISS-12", false],
+    [{ writeEffect: "rejected" }, "ISS-13", false],
+    [{ search: "incomplete" }, "ISS-14", false],
+    [{ capability: "missing" }, "ISS-15", false],
   ];
   const rows = issueRows();
-  for (const [facts, scenario] of fixtures) {
+  for (const [facts, scenario, mayWrite] of fixtures) {
     const result = issueDecision(facts);
     assert.equal(result.status, "settled", scenario);
     assert.equal(result.scenario, scenario);
     assert.ok(rows.has(result.scenario));
     assert.equal(result.class, rows.get(result.scenario).issueClass);
+    assert.equal(result.mayWrite, mayWrite, `${scenario}: autonomous write permission`);
     for (const field of ["preconditions", "requiredAction", "forbiddenAction", "evidence"]) {
       assert.equal(result[field], rows.get(result.scenario)[field]);
       assert.ok(result[field].length > 3, `${scenario}: ${field}`);
@@ -135,6 +136,12 @@ test("the parsed canonical row owns every normative routing field and missing ro
     status: "needs_attention",
     reason: "canonical_route_missing",
   });
+  const rewordedRows = new Map(issueRows(source));
+  rewordedRows.set("ISS-12", {
+    ...rewordedRows.get("ISS-12"),
+    requiredAction: "create needs_attention record",
+  });
+  assert.equal(issueDecision({ repositoryRank: "ambiguous" }, rewordedRows).mayWrite, true);
 });
 
 test("Issue routing fails closed for overlapping facts, truncated search, unknown effect, and secrets", () => {

@@ -262,8 +262,8 @@ function makePrompt(root, corpus, skill, values) {
     })),
   };
   envelope.execution.evaluationDigest = evaluationDigest(document, envelope);
-  if (!Number.isSafeInteger(envelope.repetition) || envelope.repetition < 1) {
-    throw new Error("--repetition must be a positive integer");
+  if (envelope.repetition !== 1) {
+    throw new Error("--repetition must be 1 for the §A-EVAL-01 evidence coordinate");
   }
   return [
     "Evaluate the three bounded routing/behavior cases below against the supplied installable skill.",
@@ -438,7 +438,7 @@ export function validateEvidence(root, evidence, candidate, requireAll = false, 
 function usage() {
   return `usage:
   node tools/skill-evals.mjs --check
-  node tools/skill-evals.mjs --prompt <skill> --candidate <sha> --tier <required|desired|critical> --matrix-profile <name> --route <route> --model <id> --effort <level> --harness <name> --harness-version <version> --profile-version <version> --quantization <value> --context <value> --sampling <value> --tool-permissions <csv> [--repetition <n>]
+  node tools/skill-evals.mjs --prompt <skill> --candidate <sha> --tier <required|desired|critical> --matrix-profile <name> --route <route> --model <id> --effort <level> --harness <name> --harness-version <version> --profile-version <version> --quantization <value> --context <value> --sampling <value> --tool-permissions <csv> [--repetition 1]
   node tools/skill-evals.mjs --validate-evidence <json> --candidate <sha> [--require-all] [--critical-profile <route/model/effort>]\n`;
 }
 
