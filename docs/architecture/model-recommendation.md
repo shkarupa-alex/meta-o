@@ -4,8 +4,8 @@
 knowledge_id_change:
   action: reuse
   id: §A-MODELS-01
-  reason: Review уточнил честность depth cutoff и устранил model-id как обязательное условие recommendation.
-  new_boundary: Recommendation требует coding positioning и offered high, а усечённое дерево history всегда сообщает partial.
+  reason: Review уточнил честность depth cutoff и полностью устранил model-id из executable recommendation tie-breaks.
+  new_boundary: Recommendation требует coding positioning и offered high; ambiguity возвращается человеку, а усечённое history всегда partial.
   references_updated: true
 ```
 
@@ -23,10 +23,11 @@ Default recommendation требует catalog/bundled/official coding positionin
 `label`, `description` или `capabilities` и реально offered `high` effort. Текущие ориентиры —
 `codex/gpt-5.6-sol/high` и `claude/opus[1m]/high`; это не selector и не permanent
 hard-code. Единственный admissible catalog candidate может быть рекомендован с
-любым id; при нескольких candidates уникальный recent-history match, затем
-текущий ориентир служат только deterministic tie-break. Неоднозначность не
-разрешается догадкой по имени. Astra/Fable показываются в full list, но без
-coding positioning не рекомендуются по умолчанию.
+любым id; при нескольких candidates только уникальный recent-history match
+служит deterministic tie-break. Текущие ориентиры остаются human guidance и не
+становятся исполняемым allowlist. Неоднозначность не разрешается догадкой по
+имени. Astra/Fable показываются в full list, но без coding positioning не
+рекомендуются по умолчанию.
 Без допустимого evidence результат `no_default_recommendation`; explicit выбор
 пользователя остаётся авторитетным и fallback запрещён.
 

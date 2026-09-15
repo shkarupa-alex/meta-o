@@ -4,8 +4,8 @@
 knowledge_id_changes:
   - action: reuse
     id: §A-ISSUE-01
-    reason: Review отделил разрешение записи от свободного текста action и уточнил назначение route-context column.
-    new_boundary: Write имеет closed yes/no vocabulary, а Applies to не выдаётся за disposition class.
+    reason: Review отделил разрешение записи от prose, уточнил route context и вынес изменчивые наблюдения из durable решения.
+    new_boundary: Write имеет closed yes/no vocabulary, Applies to не выдаётся за disposition class, а version/auth facts остаются run evidence.
     references_updated: true
   - action: reuse
     id: §B-PORTABILITY-06
@@ -83,5 +83,6 @@ or stdin without shell substitution, and removed only after settled outcome.
 
 Многострочный GitLab body передаётся только через доказанную file/stdin
 поверхность, включая `glab api --input` с явным `Content-Type`; её отсутствие
-даёт ISS-15. Версионные и credential-наблюдения принадлежат
-[Грабли и команды проекта](../papercut.md), а не этому durable решению.
+даёт ISS-15. Версионные и credential-наблюдения остаются current run evidence,
+а повторяемые диагностические команды принадлежат
+[Грабли и команды проекта](../papercut.md), не этому durable решению.

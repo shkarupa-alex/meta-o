@@ -11,6 +11,82 @@ function assertString(value, label) {
   if (typeof value !== "string" || value.trim() === "") throw new Error(`${label} is empty`);
 }
 
+function assertRecord(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+}
+
+function sameIdentity(left, right) {
+  return ["route", "model", "effort"].every((field) => left?.[field] === right?.[field]);
+}
+
+/** §A-EVAL-01 rejects secrets and machine-local paths from portable evidence. */
+export function rejectSensitiveOrMachineLocal(value, label) {
+  const serialized = JSON.stringify(value);
+  if (/\/(?:home|Users|mnt|tmp)\//u.test(serialized)) {
+    throw new Error(`${label}: absolute machine path is forbidden`);
+  }
+  const visit = (node, path = label) => {
+    if (!node || typeof node !== "object") return;
+    for (const [key, child] of Object.entries(node)) {
+      if (/(?:api.?key|token|secret|transcript|weights?)/iu.test(key)) {
+        throw new Error(`${path}.${key}: forbidden evidence field`);
+      }
+      visit(child, `${path}.${key}`);
+    }
+  };
+  visit(value);
+}
+
+function validateLegacyResult(result) {
+  assertString(result.caseId, "legacy_v2: caseId");
+  assertString(result.verdict, `${result.caseId}: legacy verdict`);
+  if (!Array.isArray(result.observations) || result.observations.length === 0) {
+    throw new Error(`${result.caseId}: legacy observations missing`);
+  }
+  if (!Array.isArray(result.oracleEvidence)) {
+    throw new Error(`${result.caseId}: legacy oracle evidence missing`);
+  }
+}
+
+function validateLegacyEnvelopeShape(envelope) {
+  assertRecord(envelope, "legacy_v2: envelope");
+  for (const field of ["candidate", "skillRevision"]) {
+    if (!/^[a-f0-9]{40}$/u.test(envelope[field] ?? "")) {
+      throw new Error(`legacy_v2: invalid ${field}`);
+    }
+  }
+  for (const field of ["skill", "policy"]) assertString(envelope[field], `legacy_v2: ${field}`);
+  if (!Number.isSafeInteger(envelope.repetition) || envelope.repetition < 1) {
+    throw new Error("legacy_v2: invalid repetition");
+  }
+  for (const field of ["requested", "harness", "execution"]) {
+    assertRecord(envelope[field], `legacy_v2: ${field}`);
+  }
+  for (const field of ["route", "model", "effort"]) {
+    assertString(envelope.requested[field], `legacy_v2: requested.${field}`);
+  }
+  assertString(envelope.execution.id, "legacy_v2: execution.id");
+  if (!Array.isArray(envelope.results) || envelope.results.length === 0) {
+    throw new Error("legacy_v2: results missing");
+  }
+  envelope.results.forEach(validateLegacyResult);
+  rejectSensitiveOrMachineLocal(envelope, "legacy_v2");
+}
+
+/** §A-EVAL-01 reads v2 only into a typed diagnostic that cannot settle the v3 gate. */
+export function diagnoseLegacyEvidence(evidence) {
+  const envelopes = Array.isArray(evidence) ? evidence : [evidence];
+  const legacy = envelopes.filter(
+    (envelope) => envelope?.contract === "meta-o.skill-eval-evidence.v2",
+  );
+  if (legacy.length === 0) return null;
+  if (legacy.length !== envelopes.length) throw new Error("legacy_v2: mixed evidence contracts");
+  legacy.forEach(validateLegacyEnvelopeShape);
+  return { status: "legacy_v2", envelopes: legacy.length, accepted: false };
+}
+
 function validateCriticalIdentity(envelope, criticalProfile) {
   assertString(criticalProfile, `${envelope.skill}: critical orchestrator profile`);
   const expected = criticalProfile.split("/");
@@ -27,8 +103,8 @@ function validateCriticalIdentity(envelope, criticalProfile) {
     envelope.harness?.quantization?.toLowerCase().replace(/[^a-z0-9]/gu, "") ?? "";
   const context = Number(envelope.harness?.context);
   const qualified = [
-    JSON.stringify(envelope.requested) === JSON.stringify(expectedIdentity),
-    JSON.stringify(effective) === JSON.stringify(expectedIdentity),
+    sameIdentity(envelope.requested, expectedIdentity),
+    sameIdentity(effective, expectedIdentity),
     effective.route === "opencode",
     harness.includes("opencode"),
     quantization.includes("q4km"),
@@ -64,7 +140,7 @@ export function validateActorIdentity(envelope, criticalProfile, unavailable) {
     throw new Error(`${envelope.skill}: unavailable profile must not invent effective identity`);
   }
   const identity = unavailable ? envelope.requested : envelope.execution.effective;
-  if (!unavailable && JSON.stringify(envelope.requested) !== JSON.stringify(identity)) {
+  if (!unavailable && !sameIdentity(envelope.requested, identity)) {
     throw new Error(`${envelope.skill}: requested/effective identity mismatch`);
   }
   if (envelope.tier === "critical") return validateCriticalIdentity(envelope, criticalProfile);

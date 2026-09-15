@@ -123,6 +123,12 @@ On structural mismatch request one complete corrected report in that hot
 session; a second mismatch is `UNKNOWN`. Terminal text never replaces
 `worker_done`.
 
+Validate the report against caller-owned expected values: exact candidate,
+native Dispatch id, requested mode and observed effective mode. A stale but
+self-consistent header/footer is `UNKNOWN`. Parse structural markers as
+top-level CommonMark prose with an AST; marker-looking bytes inside any code or
+quote container remain body evidence.
+
 ## Lossless handoff and projection
 
 After both valid reports, create one unique namespace with `umask 077` and

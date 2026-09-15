@@ -25,6 +25,8 @@ import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 
 import {
+  diagnoseLegacyEvidence,
+  rejectSensitiveOrMachineLocal,
   validateActorIdentity,
   validateExecution,
   validateHarness,
@@ -250,6 +252,9 @@ function makePrompt(root, corpus, skill, values) {
       contractIds: contracts,
       verdict: "<PASS|FAIL|UNKNOWN|BLOCKED|NOT_RUN|NOT_AVAILABLE|NOT_APPLICABLE>",
       observations: ["<case-specific observation>"],
+      observedAction: "<bounded public action that produced this case observation>",
+      evidenceRef:
+        "<fixture:relative-path, command:name, dispatch:id, terminal:id, artifact:id or file:relative-path>",
       oracleEvidence: [
         ...must.map((oracle) => ({ kind: "must", oracle, satisfied: "<boolean>", evidence: "" })),
         ...mustNot.map((oracle) => ({
@@ -275,28 +280,12 @@ function makePrompt(root, corpus, skill, values) {
     "For a desired matrix profile whose approved harness cannot run, materialize the envelope with NOT_AVAILABLE and bounded availability evidence; never omit the coordinate.",
     "For a required matrix profile whose approved harness cannot run, materialize every result as BLOCKED or NOT_RUN so the coordinate remains blocking.",
     "In either unavailable envelope set execution.effective to null, execution.availability to {status: not_available, reason: <native reason>}, preserve the nonzero native probe exit code, and do not invent harness metadata.",
+    "For every case set observedAction to the public action actually observed and evidenceRef to its bounded fixture:, command:, dispatch:, terminal:, artifact: or relative file: locator; unavailable cases cite the availability probe, never a fabricated behavior observation.",
     "Use NOT_APPLICABLE only when the supplied case declares an exact notApplicableWhen rule, quote that rule in the observation, and claim no observed oracle.",
     `\nCASES\n${JSON.stringify(document, null, 2)}`,
     `\nEVIDENCE TEMPLATE\n${JSON.stringify(envelope, null, 2)}`,
     `\nINSTALLABLE INSTRUCTIONS${instructionBundle(root, skill)}`,
   ].join("\n");
-}
-
-function rejectSensitiveOrMachineLocal(value, label) {
-  const serialized = JSON.stringify(value);
-  if (/\/(?:home|Users|mnt|tmp)\//u.test(serialized)) {
-    throw new Error(`${label}: absolute machine path is forbidden`);
-  }
-  const visit = (node, path = label) => {
-    if (!node || typeof node !== "object") return;
-    for (const [key, child] of Object.entries(node)) {
-      if (/(?:api.?key|token|secret|transcript|weights?)/iu.test(key)) {
-        throw new Error(`${path}.${key}: forbidden evidence field`);
-      }
-      visit(child, `${path}.${key}`);
-    }
-  };
-  visit(value);
 }
 
 function oracleKeys(item) {
@@ -306,8 +295,8 @@ function oracleKeys(item) {
   ].sort();
 }
 
-function validateUnobservedVerdict(result, item) {
-  if (!new Set(["NOT_AVAILABLE", "NOT_APPLICABLE"]).has(result.verdict)) return;
+function validateUnobservedVerdict(result, item, unavailable) {
+  if (!new Set(["NOT_AVAILABLE", "NOT_APPLICABLE"]).has(result.verdict) && !unavailable) return;
   if (result.oracleEvidence.some(({ satisfied }) => satisfied)) {
     throw new Error(`${result.caseId}: ${result.verdict} cannot claim an observed oracle`);
   }
@@ -318,12 +307,17 @@ function validateUnobservedVerdict(result, item) {
   }
 }
 
-function validateResult(result, item) {
+function validateResult(result, item, unavailable) {
   if (!VERDICTS.has(result.verdict)) throw new Error(`${result.caseId}: invalid verdict`);
   if (!Array.isArray(result.observations))
     throw new Error(`${result.caseId}: observations missing`);
   if (result.observations.length === 0)
     throw new Error(`${result.caseId}: verdict needs an observation`);
+  assertString(result.observedAction, `${result.caseId}: observed action`);
+  assertString(result.evidenceRef, `${result.caseId}: evidence reference`);
+  if (!/^(?:fixture|command|dispatch|terminal|artifact|file):\S+$/u.test(result.evidenceRef)) {
+    throw new Error(`${result.caseId}: evidence reference is not a bounded public locator`);
+  }
   if (JSON.stringify(result.contractIds) !== JSON.stringify(item.contracts))
     throw new Error(`${result.caseId}: contract identities mismatch`);
   if (!Array.isArray(result.oracleEvidence))
@@ -338,10 +332,10 @@ function validateResult(result, item) {
   }
   if (result.verdict === "PASS" && result.oracleEvidence.some(({ satisfied }) => !satisfied))
     throw new Error(`${result.caseId}: PASS has an unsatisfied oracle`);
-  validateUnobservedVerdict(result, item);
+  validateUnobservedVerdict(result, item, unavailable);
 }
 
-function validateResults(envelope, document) {
+function validateResults(envelope, document, unavailable) {
   if (!Array.isArray(envelope.results) || envelope.results.length !== document.cases.length)
     throw new Error(`${envelope.skill}: incomplete result set`);
   const expected = document.cases.map(({ id }) => id).sort();
@@ -352,6 +346,7 @@ function validateResults(envelope, document) {
     validateResult(
       result,
       document.cases.find(({ id }) => id === result.caseId),
+      unavailable,
     );
   }
 }
@@ -426,7 +421,7 @@ function validateEnvelope(root, corpus, envelope, candidate, criticalProfile) {
   validateActorIdentity(envelope, criticalProfile, unavailable);
   validateHarness(envelope, unavailable);
   validateExecution(envelope, unavailable, evaluationDigest(document, envelope));
-  validateResults(envelope, document);
+  validateResults(envelope, document, unavailable);
   return envelope.results.filter(({ verdict }) =>
     new Set(["FAIL", "UNKNOWN", "BLOCKED", "NOT_RUN"]).has(verdict),
   );
@@ -437,6 +432,9 @@ export function validateEvidence(root, evidence, candidate, requireAll = false, 
   if (!/^[a-f0-9]{40}$/u.test(candidate ?? "")) throw new Error("candidate must be a full SHA");
   if (git(root, ["rev-parse", "HEAD"]) !== candidate)
     throw new Error("candidate is not current HEAD");
+  if (diagnoseLegacyEvidence(evidence)) {
+    throw new Error("legacy_v2: diagnostic only; the live gate requires evidence v3");
+  }
   const corpus = loadCorpus(root);
   const envelopes = Array.isArray(evidence) ? evidence : [evidence];
   const seen = new Set();
@@ -495,6 +493,12 @@ function main() {
   }
   if (values["validate-evidence"]) {
     const evidence = JSON.parse(readFileSync(resolve(values["validate-evidence"]), "utf8"));
+    const legacy = diagnoseLegacyEvidence(evidence);
+    if (legacy) {
+      process.stdout.write(`${JSON.stringify(legacy)}\n`);
+      process.exitCode = 1;
+      return;
+    }
     const result = validateEvidence(ROOT, evidence, values.candidate, values["require-all"], {
       criticalProfile: values["critical-profile"],
     });

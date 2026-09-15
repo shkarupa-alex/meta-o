@@ -4,8 +4,8 @@
 knowledge_id_changes:
   - action: reuse
     id: §A-REVIEW-04
-    reason: Canonical report уточнён до взаимно-однозначного index/body и closed UNKNOWN taxonomy.
-    new_boundary: Finding body повторяет ровно каждый monotonic key с той же severity; UNKNOWN несёт один разрешённый reason.
+    reason: Canonical report уточнён до contextual identity binding, CommonMark AST и bounded self-correction.
+    new_boundary: Caller сверяет внешний SHA, Dispatch и modes; только top-level prose задаёт markers, второй malformed report даёт UNKNOWN.
     references_updated: true
   - action: reuse
     id: §B-REVIEW-02
@@ -20,9 +20,11 @@ knowledge_id_changes:
 `Review-Execution`, exact candidate, requested/effective mode, `Delegation:
 none`, verdict и целочисленный census P0–P3. Между `Evidence report` и
 совпадающим последним `End-Review` ровно по одному идут `Grounding`, `Scope and
-checks`, `Findings`, `Unknowns` и `Residual risks`; у `UNKNOWN` дополнительно
-есть непустой `Unknown-Account` и ровно один `Unknown-Reason` из closed taxonomy
-протокола.
+checks`, `Findings`, `Unknowns` и `Residual risks`; markers берутся только из
+top-level CommonMark prose, а code/quote/list bytes ими не становятся. Caller
+сверяет `Candidate`, `Review-Execution` и оба mode с внешним frozen context, а
+не доверяет самосогласованному header. У `UNKNOWN` дополнительно есть непустой
+`Unknown-Account` и ровно один `Unknown-Reason` из closed taxonomy entry skill.
 
 Finding index использует уникальные monotonic report-local `F-001…`; каждому
 ключу соответствует ровно один body с той же severity, а counts равны этому

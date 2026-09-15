@@ -20050,17 +20050,22 @@ async function routeHistory(route) {
 function dedupe(values) {
   return [...new Set(values)];
 }
-function defaultRecommendation(provider) {
-  const eligible = provider.catalog.models.filter(
+function eligibleRecommendations(provider) {
+  return provider.catalog.models.filter(
     ({ label, description, capabilities, efforts }) => efforts.includes("high") && /cod(?:e|ing)|software/iu.test(JSON.stringify({ label, description, capabilities }))
   );
+}
+function defaultRecommendation(provider) {
+  const eligible = eligibleRecommendations(provider);
   if (eligible.length === 1) return eligible[0];
   const recentlyUsed = new Set(provider.history.models);
   const recent = eligible.filter(({ id: id2 }) => recentlyUsed.has(id2));
   if (recent.length === 1) return recent[0];
-  const currentOrientation = { codex: "gpt-5.6-sol", claude: "opus[1m]" }[provider.route];
-  const oriented = eligible.filter(({ id: id2 }) => id2 === currentOrientation);
-  return oriented.length === 1 ? oriented[0] : null;
+  return null;
+}
+function noRecommendationReason(provider) {
+  const eligible = eligibleRecommendations(provider);
+  return eligible.length === 0 ? "catalog_has_no_admissible_coding_positioning_evidence" : `catalog_has_${eligible.length}_ambiguous_admissible_candidates`;
 }
 function familyAndGeneration(model) {
   const id2 = String(model).split("/").pop() ?? "";
@@ -20171,9 +20176,8 @@ async function commandCatalog(routeFilter, asJson) {
 `
       );
     } else if ((/* @__PURE__ */ new Set(["codex", "claude"])).has(provider.route)) {
-      process.stdout.write(
-        "  no_default_recommendation (catalog has no admissible coding-positioning evidence)\n"
-      );
+      process.stdout.write(`  no_default_recommendation (${noRecommendationReason(provider)})
+`);
     }
   }
 }
@@ -20243,7 +20247,9 @@ async function commandSet(settings, key, assignments, useDefaults, force) {
 }
 function commandUnset(settings, key, roles, useDefaults) {
   for (const role of roles) {
-    if (!ROLES.includes(role)) throw new Error(`unknown role "${role}"`);
+    if (!ROLES.includes(role) && !RETIRED_ROLES.has(role)) {
+      throw new Error(`unknown role "${role}"`);
+    }
     if (useDefaults) delete settings.defaults?.[role];
     else delete settings.projects?.[key]?.roles?.[role];
   }

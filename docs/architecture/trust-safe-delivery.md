@@ -27,7 +27,8 @@ fallback не дублирует flags. Неоднозначность дела�
 trust UI, а guide/version и posture ownership перестают быть доказуемыми.
 
 Отдельный публичный trust-UI state остаётся `unsupported` до появления
-canonical URL; route обязан fail closed, а version/credential наблюдения живут
-в [Грабли и команды проекта](../papercut.md). Смежный пробел аудита effective
+canonical URL; route обязан fail closed. Version/credential facts остаются
+current run evidence, а повторяемые диагностические команды живут в
+[Грабли и команды проекта](../papercut.md). Смежный пробел аудита effective
 worker identity уже ведётся в
 [Orca issue #16527](https://github.com/stablyai/orca/issues/16527).

@@ -98,24 +98,29 @@ test("the Issue decision table is rectangular, total and fail-closed", () => {
   }
 });
 
+/** §A-REVIEW-04 gets only top-level prose lines from the CommonMark block AST. */
+function topLevelProseLines(report) {
+  const positions = new Set();
+  for (const token of markdown.parse(report, {})) {
+    if (token.type !== "paragraph_open" || token.level !== 0 || !token.map) continue;
+    for (let index = token.map[0]; index < token.map[1]; index += 1) positions.add(index);
+  }
+  return positions;
+}
+
 /** §A-REVIEW-04 validates anchored report sections without parsing finding prose. */
-function structuralLines(lines, labels) {
+function structuralLines(lines, labels, topLevel) {
   const positions = new Map(labels.map((label) => [label, []]));
-  let fenced = false;
-  for (let index = 0; index < lines.length; index += 1) {
+  for (const index of topLevel) {
     const line = lines[index];
-    if (/^\s*```/u.test(line)) {
-      fenced = !fenced;
-      continue;
-    }
-    if (fenced || /^\s*>/u.test(line)) continue;
     if (positions.has(line)) positions.get(line).push(index);
   }
   return positions;
 }
 
 /** §A-REVIEW-04 treats quoted envelope words as body bytes, never control markers. */
-function validateReport(report) {
+function validateReport(report, expected) {
+  assert.ok(expected, "external review context missing");
   const lines = report.trimEnd().split("\n");
   const execution = lines[0]?.match(/^Review-Execution: (\S+)$/u)?.[1];
   const candidate = lines[1]?.match(/^Candidate: ([a-f0-9]{40})$/u)?.[1];
@@ -125,6 +130,10 @@ function validateReport(report) {
   const verdict = lines[4]?.match(/^Verdict: (PASS|FINDINGS|UNKNOWN)$/u)?.[1];
   const counts = lines[5]?.match(/^Counts: P0=(\d+) P1=(\d+) P2=(\d+) P3=(\d+)$/u);
   assert.ok(execution && candidate && mode && verdict && counts, "invalid header");
+  assert.equal(execution, expected.execution, "review execution mismatch");
+  assert.equal(candidate, expected.candidate, "candidate mismatch");
+  assert.equal(mode[1], expected.requestedMode, "requested mode mismatch");
+  assert.equal(mode[2], expected.effectiveMode, "effective mode mismatch");
   assert.equal(lines[3], "Delegation: none");
   assert.equal(lines.at(-1), `End-Review: ${execution}`);
   const labels = [
@@ -136,7 +145,8 @@ function validateReport(report) {
     "Unknowns",
     "Residual risks",
   ];
-  const structural = structuralLines(lines, labels);
+  const topLevel = topLevelProseLines(report);
+  const structural = structuralLines(lines, labels, topLevel);
   const unique = (label) => {
     const matches = structural.get(label);
     assert.equal(matches.length, 1, `${label}: needs one unquoted structural marker`);
@@ -178,8 +188,11 @@ function validateReport(report) {
   }
   if (verdict === "FINDINGS") {
     assert.ok(keys.length > 0);
-    const bodyKeys = findingBody
-      .map((line, position) => ({ match: line.match(/^(F-\d{3})$/u), position }))
+    const findingStart = unique("Findings") + 1;
+    const findingEnd = unique(findingsEnd);
+    const bodyKeys = [...topLevel]
+      .filter((position) => position >= findingStart && position < findingEnd)
+      .map((position) => ({ match: lines[position].match(/^(F-\d{3})$/u), position }))
       .filter(({ match }) => match);
     assert.deepEqual(
       bodyKeys.map(({ match }) => match[1]),
@@ -188,8 +201,10 @@ function validateReport(report) {
     );
     for (const [index, { position }] of bodyKeys.entries()) {
       const expectedSeverity = keys[index][2];
-      const nextBody = bodyKeys[index + 1]?.position ?? findingBody.length;
-      const detail = findingBody.slice(position + 1, nextBody);
+      const nextBody = bodyKeys[index + 1]?.position ?? findingEnd;
+      const detail = [...topLevel]
+        .filter((line) => line > position && line < nextBody && lines[line] !== "")
+        .map((line) => lines[line]);
       assert.ok(detail.length > 0, `${keys[index][1]}: finding body is empty`);
       assert.match(detail[0], new RegExp(`^\\[${expectedSeverity}\\](?:\\s|$)`));
     }
@@ -199,8 +214,15 @@ function validateReport(report) {
     assert.deepEqual(findingBody, []);
     const account = unique("Unknown-Account");
     assert.ok(account > unique("Findings") && account < unique("Unknowns"));
-    assert.ok(lines.slice(account + 1, unique("Unknowns")).some((line) => line.trim() !== ""));
-    const reasons = lines.filter((line) => line.startsWith("Unknown-Reason:"));
+    assert.ok(
+      [...topLevel].some(
+        (position) =>
+          position > account && position < unique("Unknowns") && lines[position].trim() !== "",
+      ),
+    );
+    const reasons = [...topLevel]
+      .map((position) => lines[position])
+      .filter((line) => line.startsWith("Unknown-Reason:"));
     assert.equal(reasons.length, 1);
     assert.match(
       reasons[0],
@@ -209,11 +231,24 @@ function validateReport(report) {
   } else {
     assert.equal(structural.get("Unknown-Account").length, 0);
     assert.equal(
-      lines.some((line) => line.startsWith("Unknown-Reason:")),
+      [...topLevel].some((position) => lines[position].startsWith("Unknown-Reason:")),
       false,
     );
   }
   return true;
+}
+
+function settleReportAttempts(reports, expected) {
+  for (const [index, report] of reports.entries()) {
+    try {
+      validateReport(report, expected);
+      return { status: "accepted", attempts: index + 1 };
+    } catch {
+      if (index === 0 && reports.length > 1) continue;
+      return { status: "UNKNOWN", reason: "malformed_report", attempts: index + 1 };
+    }
+  }
+  return { status: "UNKNOWN", reason: "review_incomplete", attempts: 0 };
 }
 
 test("PASS, FINDINGS and UNKNOWN fixtures preserve the canonical review envelope", () => {
@@ -223,9 +258,16 @@ test("PASS, FINDINGS and UNKNOWN fixtures preserve the canonical review envelope
     `Counts: ${counts}\n\n${index}Evidence report\nGrounding\nintent and clean SHA\n` +
     `Scope and checks\nread-only diff and tests\nFindings\n${findings}${extra}` +
     "Unknowns\nnone\nResidual risks\nnone\nEnd-Review: ctx_fixture\n";
-  assert.ok(validateReport(base("PASS", "P0=0 P1=0 P2=0 P3=0", "", "")));
+  const context = (mode = "deep") => ({
+    execution: "ctx_fixture",
+    candidate: "a".repeat(40),
+    requestedMode: mode,
+    effectiveMode: mode,
+  });
+  const validateFixture = (report, mode = "deep") => validateReport(report, context(mode));
+  assert.ok(validateFixture(base("PASS", "P0=0 P1=0 P2=0 P3=0", "", "")));
   assert.ok(
-    validateReport(
+    validateFixture(
       base(
         "FINDINGS",
         "P0=0 P1=0 P2=1 P3=0",
@@ -235,7 +277,17 @@ test("PASS, FINDINGS and UNKNOWN fixtures preserve the canonical review envelope
     ),
   );
   assert.ok(
-    validateReport(
+    validateFixture(
+      base(
+        "FINDINGS",
+        "P0=0 P1=0 P2=1 P3=0",
+        "F-001 [P2] Every CommonMark container is body evidence.\n\n",
+        "F-001\n[P2] confirmed.\n\n~~~~text\nFindings\nF-002\nResidual risks\n~~~~\n\n    Unknowns\n    End-Review: ctx_fake\n\n> Evidence report\n> Unknown-Account\n\n",
+      ),
+    ),
+  );
+  assert.ok(
+    validateFixture(
       base(
         "FINDINGS",
         "P0=0 P1=0 P2=1 P3=0",
@@ -245,7 +297,7 @@ test("PASS, FINDINGS and UNKNOWN fixtures preserve the canonical review envelope
     ),
   );
   assert.ok(
-    validateReport(
+    validateFixture(
       base(
         "FINDINGS",
         "P0=0 P1=0 P2=1 P3=0",
@@ -254,10 +306,11 @@ test("PASS, FINDINGS and UNKNOWN fixtures preserve the canonical review envelope
         "",
         "follow_up",
       ),
+      "follow_up",
     ),
   );
   assert.ok(
-    validateReport(
+    validateFixture(
       base(
         "UNKNOWN",
         "P0=0 P1=0 P2=0 P3=0",
@@ -268,12 +321,13 @@ test("PASS, FINDINGS and UNKNOWN fixtures preserve the canonical review envelope
     ),
   );
   assert.throws(
-    () => validateReport(base("PASS", "P0=0 P1=0 P2=0 P3=0", "", "").replace(/End-Review:.+/u, "")),
+    () =>
+      validateFixture(base("PASS", "P0=0 P1=0 P2=0 P3=0", "", "").replace(/End-Review:.+/u, "")),
     /Expected values/u,
   );
   assert.throws(
     () =>
-      validateReport(
+      validateFixture(
         base(
           "FINDINGS",
           "P0=0 P1=0 P2=2 P3=0",
@@ -285,7 +339,7 @@ test("PASS, FINDINGS and UNKNOWN fixtures preserve the canonical review envelope
   );
   assert.throws(
     () =>
-      validateReport(
+      validateFixture(
         base(
           "FINDINGS",
           "P0=0 P1=1 P2=0 P3=0",
@@ -297,7 +351,7 @@ test("PASS, FINDINGS and UNKNOWN fixtures preserve the canonical review envelope
   );
   assert.throws(
     () =>
-      validateReport(
+      validateFixture(
         base(
           "UNKNOWN",
           "P0=0 P1=0 P2=0 P3=0",
@@ -308,6 +362,28 @@ test("PASS, FINDINGS and UNKNOWN fixtures preserve the canonical review envelope
       ),
     /regular expression/u,
   );
+  for (const [field, replacement] of [
+    ["Candidate", `Candidate: ${"b".repeat(40)}`],
+    ["Review-Execution", "Review-Execution: ctx_stale"],
+    ["Mode", "Mode: requested=fast effective=deep"],
+  ]) {
+    const valid = base("PASS", "P0=0 P1=0 P2=0 P3=0", "", "");
+    assert.throws(
+      () => validateFixture(valid.replace(new RegExp(`^${field}:.*`, "mu"), replacement)),
+      /mismatch/u,
+    );
+  }
+  const malformed = base("PASS", "P0=0 P1=0 P2=0 P3=0", "", "").replace(/End-Review:.+/u, "");
+  const valid = base("PASS", "P0=0 P1=0 P2=0 P3=0", "", "");
+  assert.deepEqual(settleReportAttempts([malformed, valid], context()), {
+    status: "accepted",
+    attempts: 2,
+  });
+  assert.deepEqual(settleReportAttempts([malformed, malformed], context()), {
+    status: "UNKNOWN",
+    reason: "malformed_report",
+    attempts: 2,
+  });
 });
 
 test("every first-party test entrypoint preserves provider process isolation", () => {

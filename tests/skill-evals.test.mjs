@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 
+import { diagnoseLegacyEvidence } from "../tools/skill-eval-runtime.mjs";
 import { evaluationDigest, loadCorpus, validateEvidence } from "../tools/skill-evals.mjs";
 
 const ROOT = process.cwd();
@@ -68,6 +69,8 @@ function envelope(skill, { tier = "required", matrixProfile = "required-codex" }
       contractIds: item.contracts,
       verdict: "PASS",
       observations: [`${item.class} behavior observed`],
+      observedAction: `evaluated ${item.id} through the native harness`,
+      evidenceRef: `fixture:tests/skill-evals.test.mjs#${item.id}`,
       oracleEvidence: [
         ...item.must.map((oracle) => ({
           kind: "must",
@@ -132,6 +135,13 @@ test("complete evidence binds every skill to candidate, revision and approved id
       nonPass: [],
     },
   );
+});
+
+test("identity equality is independent of JSON object key order", () => {
+  const evidence = finalizedEnvelope("find-reuse");
+  const { route, model, effort } = evidence.execution.effective;
+  evidence.execution.effective = { effort, route, model };
+  assert.deepEqual(validateEvidence(ROOT, evidence, HEAD).nonPass, []);
 });
 
 test("evidence fails closed on identity drift, missing coverage and sensitive fields", () => {
@@ -307,6 +317,10 @@ test("required profile unavailability stays blocking without invented runtime id
   );
   assert.deepEqual(validateEvidence(ROOT, evidence, HEAD).nonPass, evidence.results);
 
+  evidence.results[0].oracleEvidence[0].satisfied = true;
+  assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /cannot claim an observed oracle/u);
+  evidence.results[0].oracleEvidence[0].satisfied = false;
+
   evidence.results[1].verdict = "PASS";
   assert.throws(
     () => validateEvidence(ROOT, evidence, HEAD),
@@ -322,8 +336,38 @@ test("PASS cannot be accepted without case-specific oracle evidence", () => {
     /oracle evidence identities mismatch/u,
   );
   evidence.results[0] = finalizedEnvelope("find-reuse").results[0];
+  delete evidence.results[0].observedAction;
+  assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /observed action is empty/u);
+  evidence.results[0] = finalizedEnvelope("find-reuse").results[0];
+  delete evidence.results[0].evidenceRef;
+  assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /evidence reference is empty/u);
+  evidence.results[0] = finalizedEnvelope("find-reuse").results[0];
+  evidence.results[0].evidenceRef = "plausible prose only";
+  assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /bounded public locator/u);
+  evidence.results[0] = finalizedEnvelope("find-reuse").results[0];
   evidence.results[0].oracleEvidence[0].satisfied = false;
   assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /PASS has an unsatisfied oracle/u);
+});
+
+test("evidence v2 is readable only as an explicit legacy diagnostic", () => {
+  const legacy = finalizedEnvelope("find-reuse");
+  legacy.contract = "meta-o.skill-eval-evidence.v2";
+  delete legacy.tier;
+  delete legacy.matrixProfile;
+  delete legacy.execution.availability;
+  for (const result of legacy.results) {
+    delete result.contractIds;
+    delete result.observedAction;
+    delete result.evidenceRef;
+  }
+  assert.deepEqual(diagnoseLegacyEvidence(legacy), {
+    status: "legacy_v2",
+    envelopes: 1,
+    accepted: false,
+  });
+  assert.throws(() => validateEvidence(ROOT, legacy, HEAD), /legacy_v2: diagnostic only/u);
+  delete legacy.results[0].observations;
+  assert.throws(() => diagnoseLegacyEvidence(legacy), /legacy observations missing/u);
 });
 
 test("the CLI exposes a bounded prompt without launching a model", () => {
