@@ -30,6 +30,8 @@ import {
   validateActorIdentity,
   validateExecution,
   validateHarness,
+  validateLegacyCaseDocument,
+  validateResultProvenance,
 } from "./skill-eval-runtime.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -252,7 +254,7 @@ function makePrompt(root, corpus, skill, values) {
       contractIds: contracts,
       verdict: "<PASS|FAIL|UNKNOWN|BLOCKED|NOT_RUN|NOT_AVAILABLE|NOT_APPLICABLE>",
       observations: ["<case-specific observation>"],
-      observedAction: "<bounded public action that produced this case observation>",
+      observedAction: "<case_evaluation:exact native harness execution id>",
       evidenceRef:
         "<fixture:relative-path, command:name, dispatch:id, terminal:id, artifact:id or file:relative-path>",
       oracleEvidence: [
@@ -280,7 +282,7 @@ function makePrompt(root, corpus, skill, values) {
     "For a desired matrix profile whose approved harness cannot run, materialize the envelope with NOT_AVAILABLE and bounded availability evidence; never omit the coordinate.",
     "For a required matrix profile whose approved harness cannot run, materialize every result as BLOCKED or NOT_RUN so the coordinate remains blocking.",
     "In either unavailable envelope set execution.effective to null, execution.availability to {status: not_available, reason: <native reason>}, preserve the nonzero native probe exit code, and do not invent harness metadata.",
-    "For every case set observedAction to the public action actually observed and evidenceRef to its bounded fixture:, command:, dispatch:, terminal:, artifact: or relative file: locator; unavailable cases cite the availability probe, never a fabricated behavior observation.",
+    "For every available case set observedAction to case_evaluation:<exact execution.id>; for every unavailable case use availability_probe:<exact execution.id>. Set evidenceRef to its bounded fixture:, command:, dispatch:, terminal:, artifact: or repository-relative file: locator; unavailable cases cite the availability probe, never a fabricated behavior observation.",
     "Use NOT_APPLICABLE only when the supplied case declares an exact notApplicableWhen rule, quote that rule in the observation, and claim no observed oracle.",
     `\nCASES\n${JSON.stringify(document, null, 2)}`,
     `\nEVIDENCE TEMPLATE\n${JSON.stringify(envelope, null, 2)}`,
@@ -307,17 +309,13 @@ function validateUnobservedVerdict(result, item, unavailable) {
   }
 }
 
-function validateResult(result, item, unavailable) {
+function validateResult(result, item, unavailable, executionId) {
   if (!VERDICTS.has(result.verdict)) throw new Error(`${result.caseId}: invalid verdict`);
   if (!Array.isArray(result.observations))
     throw new Error(`${result.caseId}: observations missing`);
   if (result.observations.length === 0)
     throw new Error(`${result.caseId}: verdict needs an observation`);
-  assertString(result.observedAction, `${result.caseId}: observed action`);
-  assertString(result.evidenceRef, `${result.caseId}: evidence reference`);
-  if (!/^(?:fixture|command|dispatch|terminal|artifact|file):\S+$/u.test(result.evidenceRef)) {
-    throw new Error(`${result.caseId}: evidence reference is not a bounded public locator`);
-  }
+  validateResultProvenance(result, unavailable, executionId);
   if (JSON.stringify(result.contractIds) !== JSON.stringify(item.contracts))
     throw new Error(`${result.caseId}: contract identities mismatch`);
   if (!Array.isArray(result.oracleEvidence))
@@ -347,8 +345,34 @@ function validateResults(envelope, document, unavailable) {
       result,
       document.cases.find(({ id }) => id === result.caseId),
       unavailable,
+      envelope.execution.id,
     );
   }
+}
+
+function legacyDiagnosticContext(root, candidate) {
+  if (!/^[a-f0-9]{40}$/u.test(candidate ?? "")) throw new Error("candidate must be a full SHA");
+  return {
+    candidate,
+    describeSkill(skill) {
+      if (!EXPECTED_SKILLS.includes(skill)) return null;
+      const document = validateLegacyCaseDocument(
+        JSON.parse(git(root, ["show", `${candidate}:src/skills/${skill}/evals/cases.json`])),
+        skill,
+      );
+      return {
+        policy: document.policy,
+        revision: git(root, ["rev-parse", `${candidate}:skills/${skill}`]),
+        cases: document.cases,
+        digest: (envelope) => evaluationDigest(document, envelope),
+      };
+    },
+  };
+}
+
+/** §A-EVAL-01 diagnoses a frozen v2 envelope against its own historical candidate. */
+export function diagnoseLegacyEvidenceForCandidate(root, evidence, candidate) {
+  return diagnoseLegacyEvidence(evidence, legacyDiagnosticContext(root, candidate));
 }
 
 function validateMatrixCoordinate(envelope) {
@@ -432,7 +456,7 @@ export function validateEvidence(root, evidence, candidate, requireAll = false, 
   if (!/^[a-f0-9]{40}$/u.test(candidate ?? "")) throw new Error("candidate must be a full SHA");
   if (git(root, ["rev-parse", "HEAD"]) !== candidate)
     throw new Error("candidate is not current HEAD");
-  if (diagnoseLegacyEvidence(evidence)) {
+  if (diagnoseLegacyEvidenceForCandidate(root, evidence, candidate)) {
     throw new Error("legacy_v2: diagnostic only; the live gate requires evidence v3");
   }
   const corpus = loadCorpus(root);
@@ -493,7 +517,7 @@ function main() {
   }
   if (values["validate-evidence"]) {
     const evidence = JSON.parse(readFileSync(resolve(values["validate-evidence"]), "utf8"));
-    const legacy = diagnoseLegacyEvidence(evidence);
+    const legacy = diagnoseLegacyEvidenceForCandidate(ROOT, evidence, values.candidate);
     if (legacy) {
       process.stdout.write(`${JSON.stringify(legacy)}\n`);
       process.exitCode = 1;

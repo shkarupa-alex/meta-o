@@ -9,7 +9,12 @@ import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 
 import { diagnoseLegacyEvidence } from "../tools/skill-eval-runtime.mjs";
-import { evaluationDigest, loadCorpus, validateEvidence } from "../tools/skill-evals.mjs";
+import {
+  diagnoseLegacyEvidenceForCandidate,
+  evaluationDigest,
+  loadCorpus,
+  validateEvidence,
+} from "../tools/skill-evals.mjs";
 
 const ROOT = process.cwd();
 const HEAD = spawnSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).stdout.trim();
@@ -69,7 +74,7 @@ function envelope(skill, { tier = "required", matrixProfile = "required-codex" }
       contractIds: item.contracts,
       verdict: "PASS",
       observations: [`${item.class} behavior observed`],
-      observedAction: `evaluated ${item.id} through the native harness`,
+      observedAction: `case_evaluation:${skill}-native-execution-1`,
       evidenceRef: `fixture:tests/skill-evals.test.mjs#${item.id}`,
       oracleEvidence: [
         ...item.must.map((oracle) => ({
@@ -269,6 +274,10 @@ test("desired profile can materialize as evidenced NOT_AVAILABLE", () => {
     identityEvidence: "native executable lookup reported command unavailable",
     evaluationDigest: "",
   };
+  for (const result of evidence.results) {
+    result.observedAction = `availability_probe:${evidence.execution.id}`;
+    result.evidenceRef = `command:${evidence.execution.id}`;
+  }
   evidence.execution.evaluationDigest = evaluationDigest(
     loadCorpus(ROOT).get("find-reuse"),
     evidence,
@@ -311,6 +320,10 @@ test("required profile unavailability stays blocking without invented runtime id
     identityEvidence: "native provider rejected the approved required model",
     evaluationDigest: "",
   };
+  for (const result of evidence.results) {
+    result.observedAction = `availability_probe:${evidence.execution.id}`;
+    result.evidenceRef = `command:${evidence.execution.id}`;
+  }
   evidence.execution.evaluationDigest = evaluationDigest(
     loadCorpus(ROOT).get("find-reuse"),
     evidence,
@@ -345,6 +358,21 @@ test("PASS cannot be accepted without case-specific oracle evidence", () => {
   evidence.results[0].evidenceRef = "plausible prose only";
   assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /bounded public locator/u);
   evidence.results[0] = finalizedEnvelope("find-reuse").results[0];
+  evidence.results[0].observedAction = "<case_evaluation:exact native harness execution id>";
+  assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /unresolved placeholder/u);
+  evidence.results[0] = finalizedEnvelope("find-reuse").results[0];
+  evidence.results[0].observedAction = "case_evaluation:another-execution";
+  assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /bound to the envelope execution/u);
+  evidence.results[0] = finalizedEnvelope("find-reuse").results[0];
+  evidence.results[0].evidenceRef = "file:/etc/passwd";
+  assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /repository-relative/u);
+  evidence.results[0] = finalizedEnvelope("find-reuse").results[0];
+  evidence.results[0].evidenceRef = "file:../../../etc/shadow";
+  assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /repository-relative/u);
+  evidence.results[0] = finalizedEnvelope("find-reuse").results[0];
+  evidence.results[0].evidenceRef = `command:${"x".repeat(1100)}`;
+  assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /exceeds 1024 bytes/u);
+  evidence.results[0] = finalizedEnvelope("find-reuse").results[0];
   evidence.results[0].oracleEvidence[0].satisfied = false;
   assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /PASS has an unsatisfied oracle/u);
 });
@@ -360,14 +388,79 @@ test("evidence v2 is readable only as an explicit legacy diagnostic", () => {
     delete result.observedAction;
     delete result.evidenceRef;
   }
+  legacy.execution.evaluationDigest = evaluationDigest(loadCorpus(ROOT).get("find-reuse"), legacy);
   assert.deepEqual(diagnoseLegacyEvidence(legacy), {
     status: "legacy_v2",
     envelopes: 1,
     accepted: false,
   });
-  assert.throws(() => validateEvidence(ROOT, legacy, HEAD), /legacy_v2: diagnostic only/u);
+  assert.throws(() => validateEvidence(ROOT, legacy, HEAD), /wrong legacy cases contract/u);
   delete legacy.results[0].observations;
   assert.throws(() => diagnoseLegacyEvidence(legacy), /legacy observations missing/u);
+
+  const invalidPolicy = structuredClone(legacy);
+  invalidPolicy.results[0].observations = ["restored observation"];
+  invalidPolicy.policy = "not-a-policy";
+  assert.throws(() => diagnoseLegacyEvidence(invalidPolicy), /invalid policy/u);
+
+  const invalidVerdict = structuredClone(invalidPolicy);
+  invalidVerdict.policy = "advisory";
+  invalidVerdict.results[0].verdict = "TOTALLY_INVALID";
+  assert.throws(() => diagnoseLegacyEvidence(invalidVerdict), /invalid legacy verdict/u);
+
+  const duplicateCase = structuredClone(invalidVerdict);
+  duplicateCase.results[0].verdict = "PASS";
+  duplicateCase.results[1].caseId = duplicateCase.results[0].caseId;
+  assert.throws(() => diagnoseLegacyEvidence(duplicateCase), /duplicate case id/u);
+
+  const historicalCandidate = spawnSync("git", ["rev-parse", "034925f^"], {
+    cwd: ROOT,
+    encoding: "utf8",
+  }).stdout.trim();
+  const historicalDocument = JSON.parse(
+    spawnSync("git", ["show", `${historicalCandidate}:src/skills/find-reuse/evals/cases.json`], {
+      cwd: ROOT,
+      encoding: "utf8",
+    }).stdout,
+  );
+  const historical = structuredClone(legacy);
+  historical.candidate = historicalCandidate;
+  historical.skillRevision = spawnSync(
+    "git",
+    ["rev-parse", `${historicalCandidate}:skills/find-reuse`],
+    { cwd: ROOT, encoding: "utf8" },
+  ).stdout.trim();
+  historical.results = historicalDocument.cases.map((item) => ({
+    caseId: item.id,
+    verdict: "PASS",
+    observations: [`${item.class} behavior observed`],
+    oracleEvidence: [
+      ...item.must.map((oracle) => ({
+        kind: "must",
+        oracle,
+        satisfied: true,
+        evidence: `observed required behavior: ${oracle}`,
+      })),
+      ...item.mustNot.map((oracle) => ({
+        kind: "mustNot",
+        oracle,
+        satisfied: true,
+        evidence: `observed forbidden behavior absent: ${oracle}`,
+      })),
+    ],
+  }));
+  historical.execution.evaluationDigest = evaluationDigest(historicalDocument, historical);
+  assert.deepEqual(diagnoseLegacyEvidenceForCandidate(ROOT, historical, historicalCandidate), {
+    status: "legacy_v2",
+    envelopes: 1,
+    accepted: false,
+  });
+  const wrongRevision = structuredClone(historical);
+  wrongRevision.skillRevision = "0".repeat(40);
+  assert.throws(
+    () => diagnoseLegacyEvidenceForCandidate(ROOT, wrongRevision, historicalCandidate),
+    /skill revision mismatch/u,
+  );
 });
 
 test("the CLI exposes a bounded prompt without launching a model", () => {
