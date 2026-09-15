@@ -27,7 +27,11 @@ function envelope(skill, { tier = "required", matrixProfile = "required-codex" }
     "required-codex": { route: "codex", model: "gpt-5.6-sol", effort: "low" },
     "desired-codex": { route: "codex", model: "gpt-5.6-luna", effort: "max" },
     "desired-opencode": { route: "opencode", model: "provider/qwen3.8-27b", effort: "low" },
-    critical: { route: "opencode", model: "llamacpp/qwen3.8-27b", effort: "default" },
+    "critical-orchestration": {
+      route: "opencode",
+      model: "llamacpp/qwen3.8-27b",
+      effort: "default",
+    },
   }[matrixProfile];
   assert.ok(identity, `unknown fixture matrix profile ${matrixProfile}`);
   return {
@@ -158,7 +162,7 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
 
   const wrongCriticalModel = finalizedEnvelope("mo-orchestrate-orca", {
     tier: "critical",
-    matrixProfile: "critical",
+    matrixProfile: "critical-orchestration",
   });
   wrongCriticalModel.requested.model = "remote/qwen2-7b";
   wrongCriticalModel.execution.effective.model = "remote/qwen2-7b";
@@ -174,6 +178,31 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
       }),
     /configured orchestrator profile/,
   );
+
+  const impersonatedMatrix = finalizedEnvelope("mo-orchestrate-orca", {
+    tier: "critical",
+    matrixProfile: "critical-orchestration",
+  });
+  impersonatedMatrix.matrixProfile = "required-codex";
+  impersonatedMatrix.execution.evaluationDigest = evaluationDigest(
+    loadCorpus(ROOT).get("mo-orchestrate-orca"),
+    impersonatedMatrix,
+  );
+  assert.throws(
+    () =>
+      validateEvidence(ROOT, impersonatedMatrix, HEAD, false, {
+        criticalProfile: "opencode/llamacpp/qwen3.8-27b/default",
+      }),
+    /critical evidence is not the orchestration B22 coordinate/u,
+  );
+
+  const repeated = finalizedEnvelope("find-reuse");
+  repeated.repetition = 2;
+  repeated.execution.evaluationDigest = evaluationDigest(
+    loadCorpus(ROOT).get("find-reuse"),
+    repeated,
+  );
+  assert.throws(() => validateEvidence(ROOT, repeated, HEAD), /invalid repetition/u);
 });
 
 test("blocking verdicts fail the live gate while evidenced inapplicability is accepted", () => {

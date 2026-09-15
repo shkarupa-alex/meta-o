@@ -58,6 +58,19 @@ function normalizedText(node) {
   return text(node).replace(/\s+/gu, " ").trim();
 }
 
+/** §A-BACKLOG-01 rejects every non-schema node before the open section. */
+function isCanonicalPreamble(before) {
+  if (before.length !== 3) return false;
+  const [title, first, second] = before;
+  if (title?.type !== "heading" || title.depth !== 1) return false;
+  if (first?.type !== "paragraph" || second?.type !== "paragraph") return false;
+  return (
+    normalizedText(title) === "Бэклог" &&
+    normalizedText(first) === INTRO[0] &&
+    normalizedText(second) === INTRO[1]
+  );
+}
+
 /**
  * §A-BACKLOG-01 owns the one backlog schema used by both closure and tests.
  * Nodes after `Открыто` are deliberately NOT-EMPTY, even when they are not H3.
@@ -76,19 +89,7 @@ export function inspectBacklog(source) {
   );
   const openIndex = children.indexOf(open[0]);
   const before = children.slice(0, openIndex);
-  const intro = before.filter((node) => node.type === "paragraph").map(normalizedText);
-  const invalidHeading = before.some(
-    (node) => node.type === "heading" && !(node.depth === 1 && normalizedText(node) === "Бэклог"),
-  );
-  if (
-    h1.length !== 1 ||
-    normalizedText(h1[0]) !== "Бэклог" ||
-    open.length !== 1 ||
-    openIndex < 0 ||
-    children[0] !== h1[0] ||
-    invalidHeading ||
-    JSON.stringify(intro) !== JSON.stringify(INTRO)
-  ) {
+  if (h1.length !== 1 || open.length !== 1 || openIndex < 0 || !isCanonicalPreamble(before)) {
     return { kind: "unknown", reason: "schema_invalid" };
   }
   const content = children.slice(openIndex + 1);
@@ -217,7 +218,7 @@ function main() {
   let candidate = null;
   if (args.length > 0) {
     if (args.length !== 2 || args[0] !== "--candidate" || !/^[a-f0-9]{40}$/u.test(args[1])) {
-      const result = unknown("path_ambiguous", null, worktreeState(ROOT), DEFAULT_PATH);
+      const result = unknown("internal_error", null, worktreeState(ROOT), DEFAULT_PATH);
       process.stderr.write(`${result.line}\n`);
       process.exitCode = 2;
       return;

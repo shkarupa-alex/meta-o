@@ -32,7 +32,9 @@ Ordinary QC must test the reader/schema but not assert the current branch empty.
 
 Check `.orca/` and `spec/` independently through
 `git check-ignore -v --no-index`; accept only a match from a tracked repository
-ignore file proven by `git ls-files --error-unmatch`.
+ignore file proven by `git ls-files --error-unmatch`. Separately require
+`git ls-files -- .orca/ spec/` to be empty: an ignore match never proves that
+already-indexed private workspace bytes are absent.
 
 Resolve one absolute Orca binary. Require non-empty version-matched bundled
 `orchestration` and `orca-cli` guides via `orca skills list/get --json`;

@@ -1,7 +1,13 @@
 # Надёжный review lifecycle и пустой feature backlog Meta-O
 
-Статус: linked council synthesis после начального proposal round и
-пользовательского уточнения GitHub/GitLab CI; R3 blockers
+<!-- Canonical tracked implementation specification; the private council bundle remains ignored. -->
+
+Статус: linked council synthesis с incident amendment о reviewer resources после
+начального proposal round, пользовательского уточнения GitHub/GitLab CI, двух
+предыдущих итераций spec review и одной разрешённой финальной review-итерации
+amendment. Формального convergence судьи не достигли; final amendment findings
+про immutable placement, typed pre-pair outcome, inventory projection и partial
+cleanup учтены оркестраторской редакцией в пределах frozen decisions. R3 blockers
 закрыты оркестраторской редакцией внутри согласованного подхода, R4 findings по
 малформированным нормативным таблицам и ADR file assignment закрыты в §2.2,
 §4.5 и §14, R5 findings по report sections (`PASS`), version-matched guide
@@ -21,6 +27,9 @@ candidate так, чтобы:
   upstream Issues через native `gh`/`glab`;
 - два видимых vendor-diverse reviewer работали одинаково предсказуемо, оставались
   горячими для remediation и отдавали executor полную неизменённую пару;
+- reviewer workers, запущенные из executor или standalone review, оставались
+  tabs/resources текущего Orca project и не создавали побочные project
+  registrations;
 - человек видел короткий severity census, а не длинный повтор полного review;
 - Orca sessions получали стабильные titles, безопасную delivery, точный cleanup
   и редкие blocking waits;
@@ -71,13 +80,13 @@ helper, wrapper над `orca`/`gh`/`glab` или обязательный review
 | `§A-REVIEW-04`     | новый     | `docs/architecture/review-authoritative-response.md`   | Служит `§B-REVIEW-01/04/05`: authoritative response, report sections, census/index, remediation depth, самокоррекция и `UNKNOWN`; consumer — `mo-review-orca` и portable review protocol                                                                                                                                                                                                         |
 | `§A-RESPONSE-03`   | новый     | `docs/architecture/settled-final-response.md` (раздел) | Служит `§B-REVIEW-01/05` и `§B-SESSION-02`: private namespace, atomic publication, settled pair handoff и bounded acknowledgement; consumer — callers review skill                                                                                                                                                                                                                               |
 | `§A-ISSUE-01`      | новый     | `docs/architecture/issue-routing.md`                   | Служит `§B-LONGEVITY-04`, `§B-HUMAN-04`, `§B-PORTABILITY-06/07`: routing, search/dedup, redaction, native CLI surface и unknown-write table; consumer — lifecycle skills                                                                                                                                                                                                                         |
-| `§A-SESSION-01`    | новый     | `docs/architecture/orca-session-ownership.md`          | Служит `§B-SESSION-01` и `§B-REVIEW-04`: standalone/full ownership, titles, hot/fresh roles и exact cleanup; consumer — Orca entry skills                                                                                                                                                                                                                                                        |
+| `§A-SESSION-01`    | новый     | `docs/architecture/orca-session-ownership.md`          | Служит `§B-SESSION-01` и `§B-REVIEW-04`: standalone/full ownership, same-project reviewer resources, titles, hot/fresh roles и exact cleanup; consumer — Orca entry skills и `mo-setup`                                                                                                                                                                                                          |
 | `§A-DELIVERY-01`   | новый     | `docs/architecture/trust-safe-delivery.md`             | Служит `§B-PROOF-01`, `§B-PORTABILITY-01/07`: trust-safe delivery, bundled guide locator и single-owner posture; consumer — `mo-setup` и Orca entry skills                                                                                                                                                                                                                                       |
 | `§A-WAIT-01`       | новый     | `docs/architecture/blocking-wait-cadence.md`           | Служит `§B-UPTIME-03/05` и `§B-CONTROL-04`: run-wide waiter, cadence и typed failure; consumer — orchestration/review/E2E skills                                                                                                                                                                                                                                                                 |
 | `§A-ACTIVATION-01` | новый     | `docs/architecture/skill-activation.md`                | Служит `§B-HUMAN-01` и `§B-PORTABILITY-03`: explicit `mo-*` activation; consumer — all `mo-*` frontmatter/instructions and lint                                                                                                                                                                                                                                                                  |
 | `§A-MODELS-01`     | новый     | `docs/architecture/model-recommendation.md`            | Служит `§B-PORTABILITY-07` и `§B-EVAL-01`: catalogs, bounded history и recommendations; consumer — `mo-models.mjs` and selecting skills                                                                                                                                                                                                                                                          |
 | `§A-MEMORY-04`     | новый     | `docs/architecture/knowledge-identifiers.md` (раздел)  | Служит `§B-REVIEW-02` и `§B-SELFHOST-02`: regression test/invariant comment; consumer — `mo-setup` project contract                                                                                                                                                                                                                                                                              |
-| `§A-BACKLOG-01`    | новый     | `docs/architecture/backlog-notebook.md`                | Служит `§B-LONGEVITY-04`: intake, notebook, Issue sink, project-owned empty gate, MR/merge boundaries и CI posture без permanent receipt; consumers — methodology, `mo-setup`, Result/MR workflows, closure review и applicable GitHub/GitLab CI                                                                                                                                                 |
+| `§A-BACKLOG-01`    | новый     | `docs/architecture/backlog-notebook.md`                | Служит `§B-LONGEVITY-04`: intake, notebook, Issue sink, project-owned empty gate, G0/G1/G2 boundaries и CI posture без permanent receipt; consumers — methodology/`mo-orchestrate-orca`, setup-managed project contract, `mo-setup`, closure review и applicable GitHub/GitLab CI                                                                                                                |
 
 Owning file нормативен: новый identifier появляется ровно в одном файле, а
 identifier, приписанный существующему файлу, добавляется туда разделом по
@@ -117,8 +126,9 @@ governance слоем. Оркестратор не выводит из counts р
 ### 2.5 Проверенная поверхность внешних инструментов
 
 Нормативная спека не называет флаг, поле или подкоманду чужого CLI по памяти.
-Каждая команда, флаг и JSON-поле в §4.6 и §8 взяты из `--help` установленной
-версии и фиксируются recorded fixture (§14.1, слой 2). Проверенные baselines:
+Каждая команда, флаг и JSON-поле в §4.6, §7.1 и §8 взяты из `--help`
+установленной версии и фиксируются recorded fixture (§14.1, слой 2).
+Проверенные baselines:
 `gh 2.100.0`, `glab 1.117.0` и bundled guides установленного `orca`. Если на
 машине стоит другая версия и названный флаг/поле отсутствует, route становится
 `unsupported`/`needs_attention`, а подстановка похожего флага запрещена.
@@ -191,8 +201,9 @@ entries обязаны иметь `Причина.`, `Практическое �
 disposition table, а schema agent entries и пустота named closure остаются
 blocking. Первый coherent implementation commit создаётся на
 `feature/backlog-review-lifecycle` от актуального `develop`, materialize'ит
-intake в spec и очищает только `docs/backlog.md`; другие пользовательские dirty
-files не затрагиваются. После checkpoint все следующие slices выполняют зелёный
+intake в канонический tracked путь под `docs/`, назначенный project contract, и
+очищает только `docs/backlog.md`; локальный/private `spec/` остаётся ignored, а
+другие пользовательские dirty files не затрагиваются. После checkpoint все следующие slices выполняют зелёный
 `make mo-qc`. Final closure требует пустой backlog, harvested knowledge и
 удаление реализованной spec; историческая provenance запись остаётся неизменной.
 
@@ -209,6 +220,7 @@ files не затрагиваются. После checkpoint все следую
 | Leading index как замена различающемуся TUI summary (BKL-15, §5) | Разные harness по-разному отражают final response в TUI                                                         | Issue только если подтверждён дефект публичной поверхности; иначе это наша норма, а не обход                                                                     |
 | Повторное вооружение arm при host wait cap (§9)                  | Host не поддерживает запрошенный timeout                                                                        | Issue наверх; при отсутствии публичного пути route unsupported, тихий переход на polling запрещён                                                                |
 | Exact-handle cleanup поверх `no_owned_resource` (BKL-04/10, §7)  | `worker-release` не владеет low-level fallback terminal, вкладка остаётся или даёт `Remote terminal was closed` | Воспроизвести и завести upstream Orca Issue; canonical URL рядом с cleanup-инструкцией; без воспроизведения — `needs_attention`, не тихое закрытие чужого handle |
+| Same-project reviewer fallback (§7.1)                            | `new-child` недоступен для folder project, а регистрация temporary paths создаёт побочные Orca projects         | Использовать только доказанный same-project route; иначе `REVIEW-START/1 unsupported`; при подтверждённом capability gap создать/обновить upstream Orca Issue    |
 | Текстовый `Review-Handoff-Ack` (§6.1)                            | Нет публичной поверхности, подтверждающей, что потребитель прочитал payload целиком                             | Issue только если подтверждён дефект/пробел публичной поверхности Orca; иначе строка остаётся нашим узким transport contract, а не обходом                       |
 | Публикация GitLab note через `glab api --input` (§4.6)           | `glab issue note` 1.117.0 не принимает body из файла/stdin и без `--message` открывает editor                   | Завести upstream `glab` Issue на body-file поддержку; canonical URL рядом с инструкцией; при появлении публичного body-file флага обход удаляется                |
 
@@ -746,6 +758,85 @@ title при создании. Route без public set/verify title capability u
 Per-tab color применяется best effort только через публичную capability и не
 является gate.
 
+### 7.1 Same-project Orca resource invariant
+
+Норма применяется ко всем Orca resources, запускаемым Meta-O, а reviewer pair —
+обязательный incident-backed case. Session isolation означает отдельные agent
+sessions, Dispatch и terminal handles, но не отдельные Orca project/repository
+registrations.
+
+До старта caller строит две разные нормализованные проекции из
+version-matched read-only surfaces:
+
+- `ProjectRegistrationSet/1` — сортированный set project tuples
+  `id,kind,sourceRepoIds` из `orca project list --json` и repository tuples
+  `path,kind` из `orca repo list --json`;
+- `OwnedResourceSet/1` — текущие worktree, terminal и orchestration worker/
+  Dispatch identities из `orca worktree current|list|show`,
+  `orca terminal list` и `orca orchestration worker-list` с их доступной
+  project/repository attribution.
+
+После старта и cleanup `ProjectRegistrationSet/1` обязан byte-semantically
+совпасть с baseline. В `OwnedResourceSet/1` разрешён только ожидаемый exact-owned
+delta текущего run: два reviewer sessions/terminals/Dispatch и Orca-owned
+worktrees выбранного route. UI wording «две вкладки» является human projection;
+acceptance проверяет CLI identities и их принадлежность исходному project, а не
+скриншот или название элемента.
+
+Route выбирается в таком порядке:
+
+1. Уже существующие isolated worktrees исходного project разрешены по exact
+   public selector, если их attribution, clean exact candidate SHA и отсутствие
+   foreign ownership доказаны до Dispatch.
+2. Для Git project разрешён Orca-owned `new-child`, если installed surface
+   подтверждает поддержку и созданный worktree атрибутирован исходному project.
+3. Shared `current` worktree для двух reviewers, вызванных из hot executor,
+   запрещён: caller продолжает владеть remediation, временное изменение может
+   ускользнуть между start/end probes, а full gate требует собственного
+   disposable location. Folder project без уже существующих допустимых
+   same-project isolated worktrees получает pre-pair failure.
+4. Remote placement допустим только при version-matched exact selector,
+   сохраняющем исходный project и isolated candidate; иначе это тот же pre-pair
+   failure. `new-top-level` не используется как скрытая замена same-project
+   route.
+
+Pre-pair failure не является reviewer report `UNKNOWN` из §5.3. Caller публикует
+ровно один header
+`REVIEW-START version=1 status=unsupported reason=<code> project=<id-or-none> candidate=<sha-or-none>`,
+где закрытый `reason`: `no_project_context`, `inventory_unreadable`,
+`inventory_partial`, `registration_kind_unknown`, `placement_unsupported`,
+`remote_placement_unsupported`, `candidate_unverifiable`, `inventory_changed`,
+`partial_start_failed`, `cleanup_incomplete`. Pair id, reports, P0–P3 census,
+namespace, handoff и acknowledgement не создаются. Caller показывает observed
+Orca error code и exact evidence refs и возвращает `needs_attention`.
+
+`mo-setup` для `folder`/no-project-context показывает version-matched
+поддержанный путь: выбрать уже зарегистрированный same-project worktree либо
+настроить основной workspace как Git-capable project. Любая mutation
+project/repository registration выполняется только после отдельного
+подтверждения человека и вне review start; сам review skill не регистрирует
+workspace ради собственного запуска.
+
+Ни один Meta-O skill не обходит placement failure через raw `git worktree add`,
+`orca repo add` или эквивалентную временную project/repository registration.
+Recording Orca stub в `tests/` доказывает порядок probes, отсутствие запрещённых
+calls и closed outcomes, но не поставляется в `skills/` и никогда не вызывает
+реальный CLI; фактическое поведение агента проверяет B41/B42.
+
+При partial start автоматически освобождаются только exact-owned terminal,
+Dispatch и Orca-owned child-worktree handles текущего run через подтверждённые
+public cleanup commands; foreign/ambiguous resources сохраняются. Затем
+повторяются обе inventory projections. Несовпавший registration baseline или
+неполный cleanup даёт `cleanup_incomplete` и handover exact handles/evidence
+человеку. Поскольку compliant route никогда не создаёт registration, он не
+пытается угадывать несуществующую `repo remove` capability. Slice 13 отдельно
+аудитит и сообщает уже существующие stray reviewer registrations из incident,
+но не удаляет их без явного запроса.
+
+Подтверждённый разрыв между documented и фактической Orca capability
+обрабатывается по §3.1 как upstream Issue, а не закрепляется как постоянный
+workaround.
+
 ## 8. Trust-safe delivery и upstream guides
 
 Task bytes нельзя отправлять ни в Claude Code, ни в Codex, ни в OpenCode, пока
@@ -819,112 +910,233 @@ orca skills get orca-cli --json
 ### 8.2 Git-ignore posture рабочих артефактов
 
 `mo-setup` в Git-проекте обязан проверить, что оба project-relative пути
-`.orca/` и `spec/` покрыты effective ignore rules. Проверка выполняется через
-Git, а не поиском буквальных строк в `.gitignore`, чтобы учитывать эквивалентные
-patterns и вложенные ignore-файлы:
+`.orca/` и `spec/` покрыты repository-owned effective ignore rules. Проверка
+выполняется через Git, а не поиском буквальных строк в `.gitignore`, чтобы
+учитывать эквивалентные patterns и вложенные ignore-файлы:
 
 ```text
-git check-ignore --no-index -- .orca/
-git check-ignore --no-index -- spec/
+git check-ignore -v --no-index -- .orca/
+git check-ignore -v --no-index -- spec/
 ```
 
-Успех доказывается отдельно для каждого пути. Отсутствие coverage хотя бы для
-одного пути — setup gap: `mo-setup` называет непокрытый путь и предлагает
-добавить минимальное project-owned правило в `.gitignore`. После принятого
-изменения probe повторяется; ложный успех по общему exit code двух путей
-запрещён. Глобальный exclude, user-level ignore и изменение tracked state не
-используются как замена project-owned правилу: новый checkout должен получать
-тот же posture из repository. Само наличие каталогов не требуется, а их
-содержимое не читается и не индексируется этой проверкой.
+Успех доказывается отдельно для каждого пути. Источник match из `-v` обязан быть
+tracked ignore-файлом этого repository, что отдельно подтверждается через
+`git ls-files --error-unmatch -- <source>`; `.git/info/exclude`, global
+`core.excludesFile` и user-level source означают setup gap даже при exit 0.
+Отсутствие coverage хотя бы для одного пути — setup gap: `mo-setup` называет
+непокрытый путь и предлагает добавить минимальное project-owned правило в
+`.gitignore`. После принятого изменения probe повторяется; ложный успех по
+общему exit code двух путей запрещён. Новый checkout должен получать тот же
+posture из repository. Само наличие каталогов не требуется, а их содержимое не
+читается и не индексируется этой проверкой.
 
-### 8.3 Empty-backlog finalization gate и CI posture
+`spec/` зарезервирован для локальных/private рабочих bundles и не является
+каноническим tracked хранилищем feature specification. Если lifecycle требует
+закоммитить спецификацию или ledger, project contract выбирает отдельный
+repository-owned tracked путь (для Meta-O — под `docs/`); migration §3
+materialize'ит intake именно туда. Поэтому ignore requirement U-18 не
+противоречит обязательству сохранить каноническую спецификацию.
+
+### 8.3 Empty-backlog lifecycle gate и CI posture
 
 Пустота feature backlog проверяется отдельной project-owned non-mutating
-командой:
+командой. В Meta-O её публичное имя:
 
 ```text
 make mo-backlog-empty
 ```
 
-Это lifecycle closure gate, а не замена и не dependency обычного `make mo-qc`.
-Mid-feature QC обязан принимать корректно оформленные временные entries; в QC
-входят только fixture-тесты механизма gate. Runtime assertion над backlog
-текущей ветки не размещается под glob, который исполняет `mo-test`.
+В другом проекте `mo-setup` сначала находит уже документированные backlog path и
+closure command в project contract. Любая реализация обязана соблюдать
+language/runner-agnostic portable protocol `MO-BACKLOG/1`, определённый ниже.
+Если path/command нет, setup предлагает
+project-specific реализацию в языке и task runner проекта и фиксирует выбранные
+path/command в byte-identical `AGENTS.md`/`CLAUDE.md`; literal Make target не
+навязывается проекту без Makefile. Meta-O не поставляет универсальный checker в
+`skills/`: schema, язык и QC ownership принадлежат проекту. Проект, который не
+принял обязательную backlog-notebook convention, имеет setup outcome
+`needs_attention`, а не выдуманный default path или тихий skip.
 
-Для Meta-O реализация живёт в project quality tooling вне `tests/*.test.mjs`.
-Один project-owned AST reader владеет canonical backlog schema и используется
-существующими schema tests и closure command; второй parser с расходящейся
-семантикой запрещён. Узкий read-only checker явно разрешён как исключение к
-D-19: его named consumers — Meta-O lifecycle, Result/MR workflow и CI. Он не
-оркестрирует работу, не вызывает hosting/Issue API, не меняет backlog, не
-создаёт receipt/manifest/state и не принимает disposition за агента. Mature
+Это lifecycle gate, а не замена и не dependency обычного aggregate QC.
+Mid-feature QC обязан принимать корректно оформленные временные entries. В QC
+входят fixture-тесты механизма и live schema assertion, но assertion **пустоты**
+текущей ветки не размещается под исполняемым mid-feature test glob. Для Meta-O
+implementation извлекает нынешний `backlogEntries` из
+`tests/backend-transition.test.mjs` в один project-owned AST reader под
+`tools/`; тот же reader используют schema tests и closure command. Второй parser
+или второй schema owner запрещён.
+
+Узкий read-only checker — явное ограниченное уточнение D-19. Его named consumers:
+
+- `shared/references/methodology.md` и generated `mo-orchestrate-orca` для G0 и
+  G1 ниже;
+- setup-managed `AGENTS.md`/`CLAUDE.md`, обязательный для любого агента, который
+  собирается выполнить MR/PR create или merge write;
+- applicable project CI job.
+
+Checker не оркестрирует работу, не вызывает hosting/Issue API, не меняет backlog,
+не создаёт receipt/manifest/state и не принимает disposition за агента. Mature
 Markdown tool не умеет доказать project-specific semantic emptiness, поэтому
-custom predicate допустим с project-owned tests.
+custom predicate допустим с project-owned fixture tests.
 
-`PASS` возможен только когда canonical backlog существует, является читаемым
-regular UTF-8 file, проходит единственный schema contract и содержит ноль
-открытых feature entries. Непустой backlog и недоказанная пустота различаются
-стабильным первым diagnostic token, но оба дают nonzero через публичный Make
-target:
+Checker доказывает committed candidate, а не случайный working-tree snapshot:
+он резолвит `HEAD`, читает mode и bytes только из `HEAD:<declared-path>` через
+Git object database, затем повторно резолвит `HEAD`. Изменения declared backlog
+в index/worktree дают `UNKNOWN/backlog_path_dirty`; unrelated dirty files не
+отменяют proof и отражаются только полем `worktree=dirty`. `PASS` возможен,
+только когда candidate не сменился, declared path остаётся внутри repository,
+указывает на regular blob, bytes являются UTF-8 и проходят единый schema
+contract.
+
+AST-контракт пустоты детерминирован: документ содержит ровно один H1; до
+единственного H2 с literal heading `Открыто` допустимы только schema-owned
+introductory paragraphs; этот H2 является последним non-blank AST node. Любой
+AST node после него означает `NOT-EMPTY`, а не schema ambiguity: H3 nodes
+считаются как `entries`, все nodes после H2 — как `content_nodes`. Повторный H1,
+отсутствующий/повторный H2 `Открыто`, headings с иной глубиной до open section и
+несоответствующая template/schema intro дают `UNKNOWN/schema_invalid`.
+Settled dispositions
+живут в активной spec/ledger, canonical Issues и при необходимости commit
+message, но не в закрытом разделе `docs/backlog.md`: после disposition сам
+notebook пуст. Непустой backlog и недоказанная пустота различаются checker-owned
+diagnostic token, но оба дают nonzero через публичный task-runner target.
+
+Рецепт Make использует `@`, checker до detail печатает ровно одну ASCII header
+line: PASS — в stdout, любой отказ — в stderr. `path` — нормализованный
+project-relative POSIX path в JSON string с обязательным ASCII escaping всех
+non-ASCII code points; произвольные entry headings не печатаются. Это portable
+`MO-BACKLOG/1` contract для Meta-O и любого provisioned проекта:
 
 ```text
-MO-BACKLOG-EMPTY path=<path> entries=0
-MO-BACKLOG-NOT-EMPTY path=<path> entries=<n>
-MO-BACKLOG-UNKNOWN reason=<reason> path=<path-or-none>
+MO-BACKLOG-EMPTY version=1 sha=<40-hex> worktree=<clean-or-dirty> path=<json-string> entries=0 content_nodes=0
+MO-BACKLOG-NOT-EMPTY version=1 sha=<40-hex> worktree=<clean-or-dirty> path=<json-string> entries=<n> content_nodes=<positive-n>
+MO-BACKLOG-UNKNOWN version=1 reason=<reason> sha=<40-hex-or-none> worktree=<clean-or-dirty-or-unknown> path=<json-string-or-null>
 ```
 
-`NOT-EMPTY` перечисляет только безопасные заголовки и требует до финализации
-закончить in-scope работу либо перенести подтверждённую out-of-scope работу в
-canonical Issue по §4. `UNKNOWN` используется для missing/unreadable/non-regular
-file, invalid UTF-8, ambiguous path и schema failure; отсутствие evidence
-никогда не считается пустотой. GNU Make сворачивает failing child statuses,
-поэтому caller различает виды отказа по token, а не по обещанным exit `1/2`.
+Закрытый `reason` enum: `not_git_repository`, `command_unavailable`,
+`path_undeclared`, `path_ambiguous`, `path_outside_repository`, `missing_file`,
+`not_regular_file`, `unreadable_file`, `invalid_utf8`, `schema_invalid`,
+`git_head_unreadable`, `backlog_path_dirty`, `snapshot_changed`,
+`candidate_mismatch`, `remote_head_unreadable`, `internal_error`.
+`NOT-EMPTY` сохраняет полезные counts и всегда блокирует; unrelated dirty tree
+не меняет результат committed-blob proof.
+Unexpected exception маппится в `internal_error`; stack/detail после header не
+является machine-readable contract. GNU Make сворачивает failing child statuses,
+поэтому caller ищет `MO-BACKLOG-*` token в stream, допускает task-runner noise и
+различает виды отказа по token, а не по обещанным exit `1/2`. `mo-setup`
+проверяет portable contract и non-mutation на disposable fixture checkout;
+отсутствующая declared command диагностируется setup wrapper как
+`UNKNOWN/command_unavailable`.
 
-Gate обязателен на двух boundaries:
+`NOT-EMPTY` требует закончить in-scope работу либо перенести подтверждённую
+out-of-scope работу в canonical Issue по §4. `UNKNOWN` никогда не становится
+пустотой. Если `needs_attention` disposition нельзя разрешить без product/user
+решения, lifecycle задаёт вопрос человеку; без решения feature можно оставить
+незавершённой, но gate нельзя waive ради MR/merge.
 
-1. Перед любым MR create, которым владеет Meta-O или вызываемый им Result/MR
-   workflow, включая Draft: clean committed `HEAD` проходит `make mo-qc`, затем
-   `make mo-backlog-empty`; при любом nonzero hosting write не вызывается.
-2. Непосредственно перед agent-managed merge или закрытием feature branch через
-   слияние: текущий source SHA и, когда hosting использует merged-result/merge
-   queue/train, фактический integration candidate повторно проходят gate.
+Gate обязателен на четырёх boundaries:
 
-Результат относится только к exact SHA; новый commit его инвалидирует. MR,
-созданный человеком или внешним workflow без pre-create gate, не объявляется
-недействительным, но не получает исключения из pre-merge проверки. Решение
-человека о merge остаётся отдельной границей и само по себе не заменяет gate.
+1. **G0 / feature start:** после разрешённого pre-lifecycle intake/migration §3,
+   но до tracked materialization в выбранный project contract path и substantive implementation. `NOT-EMPTY`
+   возвращает работу к disposition; `UNKNOWN` блокирует старт. Эта фича имеет
+   ровно одно явное исключение: сырой текущий backlog сначала мигрируется по §3,
+   затем G0 обязан пройти.
+2. **GC / completion:** после final QC/reviews/E2E и backlog disposition, перед
+   объявлением feature завершённой или передачей verified SHA — независимо от
+   наличия MR/PR. Неизменившийся PASS GC можно повторно использовать для
+   немедленного G1, только пока local SHA, remote source head и gate inputs не
+   изменились.
+3. **G1 / managed MR create:** после GC,
+   непосредственно перед любым MR/PR create write, которым владеет агент,
+   включая Draft. Committed `HEAD` проходит closure command; затем read-only
+   hosting lookup доказывает, что remote source head равен этому SHA. При
+   nonzero, unreadable remote head или mismatch write не вызывается.
+4. **G2 / managed merge:** непосредственно перед agent-owned merge или закрытием
+   feature branch через слияние source candidate проходит повторно. Когда
+   hosting предоставляет merged-result, merge-train или merge-queue candidate,
+   обязательный CI gate исполняется в предоставленном hosting checkout этого
+   integration candidate.
 
-`mo-setup` проверяет наличие команды, её non-mutating поведение, единое владение
-schema, отсутствие live-empty assertion в ordinary QC, обе lifecycle boundaries
-и CI coverage. Непустой backlog во время разработки — informational state;
-blocking он становится только на названных finalization boundaries.
+Local gate не делает checkout/fetch и не мутирует frozen worktree. Boundary
+принимает PASS только при совпавших before/after HEAD, чистом declared backlog
+path и SHA, ожидаемом caller. G1/G2 read-only provider lookup повторно получает
+актуальный remote source head; mismatch даёт `UNKNOWN/candidate_mismatch`.
+Merge write обязан быть связан с наблюдённым source head через hosting
+compare-and-set/expected-head precondition либо через required policy для exact
+current head; если установленная provider surface этого не доказывает, G2
+остаётся `needs_attention`, а не делает race-prone merge. CI сравнивает
+напечатанный SHA с commit SHA своего checkout. Если hosting не предоставляет читаемый synthetic checkout или
+exact SHA association, integration-candidate proof `unsupported`/
+`needs_attention`; source-SHA PASS не выдаётся за merged-result proof. Новый
+commit инвалидирует прежний результат.
 
-CI provider определяется по repository-owned evidence, а не по наличию `gh` или
-`glab`:
+MR, созданный человеком или внешним workflow без G1, не объявляется
+недействительным, но не получает исключения из G2/CI. Решение человека о merge
+остаётся отдельной границей и само по себе не заменяет gate. Project contract,
+а не несуществующий встроенный MR workflow Meta-O, связывает любой agent-owned
+hosting write с G1/G2.
 
-- GitLab: tracked canonical/custom CI entrypoint и статически разрешимые
+`mo-setup` проверяет наличие выбранных path/command, non-mutating behavior,
+единое владение schema, отсутствие live-empty assertion в ordinary QC, G0/G1/G2
+в project contract и CI coverage. Probe вариантов выполняется только на fixture
+roots/disposable copy; непустой backlog текущей активной ветки — informational
+setup state, а не запрет продолжать работу.
+
+CI discovery выполняет `mo-setup` и возвращает bounded `CI-Coverage/1` record:
+`provider`, `repository`, `entrypoint`, `resolved_graph`, `job_or_step`,
+`events`, `required_policy`, `outcome`, `unresolved`. `outcome` имеет значения
+`covered`, `config_present`, `no_ci_surface`, `unknown`. Provider определяется remote/hosting metadata и active CI settings,
+а не наличием `gh`/`glab`:
+
+- GitLab: active canonical/custom CI entrypoint читается через authenticated
+  read-only project metadata, затем tracked entrypoint и статически разрешимые
   project-local YAML includes;
-- GitHub: tracked `.github/workflows/*.yml|yaml` и статически разрешимые local
-  reusable workflows;
-- если доказаны обе hosting/CI surfaces, coverage оценивается и предлагается
-  отдельно для каждой; ambiguity, malformed YAML, dynamic/remote includes или
-  unreadable custom path дают `unknown`, а не ложный `covered`.
+- GitHub: active Actions posture читается через authenticated read-only
+  repository metadata, затем tracked `.github/workflows/*.yml|yaml` и
+  статически разрешимые local reusable workflows;
+- если доказаны обе hosting/CI surfaces, coverage оценивается отдельно для
+  каждой; unreadable settings, malformed YAML, dynamic/remote includes или
+  ambiguous provider дают `unknown`;
+- если CI действительно отсутствует/выключен, `no_ci_surface` фиксирует gap, но
+  setup не предлагает создавать CI-инфраструктуру с нуля без отдельного запроса.
 
-YAML разбирается mature parser, не regex. Coverage требует отдельного
-non-allow-failure job/step с `make mo-backlog-empty` на MR/PR candidate. Для
-GitLab учитываются merge-request, merged-result и merge-train pipelines; для
-GitHub — pull-request и, если включена merge queue, merge-group candidate.
-Default-branch pipeline после merge считается audit, а не barrier. Полный
-`make mo-qc` не дублируется в таком job, если его prerequisites и отдельное
-исполнение уже не доказаны проектом.
+YAML разбирается project dependency `js-yaml`, не regex. Поддерживаемый
+детерминированный subset ограничен tracked local entrypoint, literal local
+include/reusable-workflow paths, literal command invocation, literal event keys,
+простыми boolean/manual/failure flags и literal path filters. Dynamic/remote
+include, expression-dependent reachability, generated config и неизвестное
+условие только понижают результат до `unknown`; эвристика не может дать
+`covered`. `covered` требует, чтобы exact closure
+command был автоматически reachable на candidate, job/step не был manual,
+skipped, `allow_failure`/`continue-on-error`, не маскировал exit через shell и не
+зависел от заведомо skipped prerequisite. `rules`/`if`/`only`/`except` и
+path/change filters обязаны покрывать backlog, checker и CI-config changes.
+GitHub `pull_request_target` не является candidate proof. Unresolved call/include
+graph всегда `unknown`, даже если строка команды найдена.
+
+Обычный MR/PR job может быть красным, пока внешний/ручной Draft содержит
+feature entries: это блокирует только merge, но не commits или pushes, и потому
+не противоречит informational mid-feature setup state. Для GitLab coverage
+включает merge-request и применимые merged-result/merge-train pipelines; для
+GitHub — `pull_request` и применимый `merge_group`. Default-branch run после
+merge — audit, не barrier. Полный aggregate QC не дублируется в backlog job,
+если его prerequisites и отдельное исполнение не доказаны проектом.
+
+Три proof layers разделены: live `mo-setup` производит `CI-Coverage/1` по
+version-matched read-only `gh`/`glab` surfaces; test-only evaluator в `tests/`
+применяет тот же finite subset к GitHub/GitLab fixtures; embedded/live eval
+доказывает, что skill корректно выбирает outcome на новых проектах. Fixtures не
+доказывают фактические server settings. Точные команды/поля installed-provider
+версии записываются как recorded-surface fixtures; отсутствующая capability
+даёт `unknown`, а не guessed API.
 
 `mo-setup` показывает exact proposed YAML patch, target file/job/stage и все
 неразрешённые includes/settings, но не меняет CI автоматически. Принятая tracked
 правка выполняется по существующему setup-контракту в отдельной
 `feature/meta-o-setup`. Required-status/pipeline/branch-protection settings
-проверяются read-only, когда public authenticated surface доступна; без такого
-доказательства YAML job называется advisory, а изменение server-side settings
-остаётся отдельной человеческой границей.
+проверяются read-only; YAML без доказанной required policy имеет только
+`config_present`, не `covered`, а изменение server-side settings остаётся
+отдельной человеческой границей.
 
 ## 9. Blocking wait cadence и liveness
 
@@ -1201,11 +1413,11 @@ following одного case; B22 доказывает ownership целого lif
 принято: без названного субъекта такой тест проверял бы наличие слов, а не
 нормы. Субъект называется явно, и границы каждого слоя тоже:
 
-| Слой                           | Что исполняется                                                                                                                                                         | Что доказано                                                                                                                                                        | Чего не доказывает                            |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| Deterministic table evaluation | Canonical decision table §4.5, разобранная настоящей Markdown AST-библиотекой, и test-only evaluator в `tests/`, который применяет её к fixture-сценариям ISS-01…ISS-15 | Таблица прямоугольна, полна, однозначна, покрывает каждый сценарий, запрещает upstream-запись в project remote и даёт ровно одно `required_action`                  | Что агент её применил                         |
-| Recorded-surface conformance   | Сохранённые выводы `gh --version`, `glab --version`, `--help` каждой подкоманды §4.6, `orca skills list --json` и реальных read-only search-запросов как fixtures       | Команды, флаги, JSON-поля, state-семантика и limit/pagination, названные §4.6 и §8.1, существуют в установленных версиях; parsing документированных полей корректен | Что запись действительно произойдёт правильно |
-| Live/embedded eval §13         | Агент + реальный skill на required-матрице                                                                                                                              | Агент выбирает строку таблицы, называет `scenario_id` и выполняет её действие на новом сценарии                                                                     | Ничего сверх наблюдённого действия            |
+| Слой                           | Что исполняется                                                                                                                                                                                                  | Что доказано                                                                                                                                                  | Чего не доказывает                     |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| Deterministic table evaluation | Canonical decision table §4.5, разобранная настоящей Markdown AST-библиотекой, и test-only evaluator в `tests/`, который применяет её к fixture-сценариям ISS-01…ISS-15                                          | Таблица прямоугольна, полна, однозначна, покрывает каждый сценарий, запрещает upstream-запись в project remote и даёт ровно одно `required_action`            | Что агент её применил                  |
+| Recorded-surface conformance   | Сохранённые выводы `gh --version`, `glab --version`, `--help` каждой подкоманды §4.6, а также `orca skills`, `project`, `repo`, `worktree`, `terminal` и `orchestration` read-only surfaces §7.1/§8 как fixtures | Команды, флаги, JSON-поля, attribution/state-семантика и limit/pagination, названные §4.6, §7.1 и §8.1, существуют в установленных версиях; parsing корректен | Что агент действительно соблюдёт route |
+| Live/embedded eval §13         | Агент + реальный skill на required-матрице                                                                                                                                                                       | Агент выбирает строку таблицы, называет `scenario_id` и выполняет её действие на новом сценарии                                                               | Ничего сверх наблюдённого действия     |
 
 Test-only evaluator живёт исключительно в `tests/`, не поставляется в `skills/`,
 никогда не вызывает `gh`/`glab`/сеть и не участвует в lifecycle. Поэтому он не
@@ -1224,10 +1436,17 @@ waits, titles и review response проверяются на структуре 
   §19, включая BKL-00 и BKL-01…BKL-18, с disposition/proof без потерь;
 - backlog schema принимает временные entries, named lifecycle closure требует
   пустоты, обычный mid-feature QC — нет;
-- fixture roots доказывают `MO-BACKLOG-EMPTY`, `MO-BACKLOG-NOT-EMPTY` и
-  `MO-BACKLOG-UNKNOWN` для empty, entries, missing, unreadable, invalid UTF-8 и
-  malformed schema; `make mo-qc` с valid non-empty fixture остаётся зелёным, а
-  closure command не меняет bytes или Git state;
+- fixture roots доказывают `MO-BACKLOG/1` для empty, каждого допустимого AST
+  node после `## Открыто`, entries, missing, symlink/non-blob, unreadable,
+  invalid UTF-8, malformed schema, dirty backlog path, unrelated dirty file,
+  changed HEAD и candidate mismatch; намеренно malformed/invalid-byte fixtures
+  хранятся вне `*.md` lint surface (например, `*.fixture`) либо их root явно
+  исключён из Prettier/markdownlint; `make mo-qc` остаётся зелёным со всем
+  fixture set, а closure command не меняет bytes или Git state;
+- Meta-O fixture вызывает именно публичный `make mo-backlog-empty` и проверяет
+  stdout/stderr tokens, JSON-escaped path, closed reason enum, SHA/tree fields и
+  nonzero обоих отказов; отдельная fixture подтверждает, что dispositions живут
+  вне пустого `docs/backlog.md`;
 - live-spec ledger test требует canonical URL у каждой settled
   `project_issue`/`upstream_issue` disposition и URL либо explicit `unsupported`
   у каждого локального обхода §3.1; после harvest этот временный test input
@@ -1275,6 +1494,12 @@ waits, titles и review response проверяются на структуре 
   `UNKNOWN` и сохраняет namespace; human-caller режим namespace не удаляет;
 - standalone создаёт ровно pair; hot/fresh lifecycle и exact cleanup сохранены;
   `no_owned_resource` не приводит к закрытию недоказанного handle;
+- recording-Orca-stub fixture воспроизводит folder-project/no-context/partial
+  inventory, проверяет `ProjectRegistrationSet/1`, allowed
+  `OwnedResourceSet/1` delta, отсутствие `repo add`/raw-worktree calls и
+  `REVIEW-START/1` reasons; Git-project fixture отдельно доказывает Orca-owned
+  `new-child` attribution. Fixture доказывает caller algorithm, не поведение
+  реального агента или UI;
 - titles обязательны; оба bundled guide topic обнаруживаются через locator §8.1;
 - trust prompt запрещает delivery, posture flag имеет одного владельца;
 - waits используют одну run-wide wait point, минимум `600000/300000` по active
@@ -1326,20 +1551,33 @@ benchmark, mutation corpus, reviewer subagents и clean verifier отсутст�
 - B34: реальный `PASS` от обоих reviewers содержит непустые
   `Grounding`/`Scope and checks` и явные `Unknowns`/`Residual risks`, а пусты
   только finding index и `Findings`.
-- B35: `mo-setup` отдельно доказывает через `git check-ignore --no-index`, что
-  `.orca/` и `spec/` покрыты project-owned ignore rules; отсутствие любого
-  правила даёт setup gap и предложение минимальной правки `.gitignore`.
-- B36: при non-empty/unknown backlog Meta-O-managed MR create не вызывается,
-  агент показывает typed diagnostic и продолжает disposition; после нового SHA
-  требуются новые QC и empty-gate результаты;
-- B37: pre-merge recheck отвергает stale result после изменения source SHA и
-  проверяет фактический merged-result/queue/train candidate, когда он применим;
-- B38: `mo-setup` для GitLab различает proven MR/merge-train coverage,
-  incomplete includes и advisory job, показывает proposed patch и не меняет
-  YAML/settings;
-- B39: `mo-setup` для GitHub различает proven pull-request/merge-group coverage,
-  incomplete reusable workflows и advisory job, показывает proposed patch и не
-  меняет workflow/branch protection.
+- B35: `mo-setup` отдельно доказывает через `git check-ignore -v --no-index` и
+  `git ls-files --error-unmatch`, что `.orca/` и `spec/` покрыты tracked
+  project-owned ignore rules; global или `.git/info/exclude` match не считается,
+  отсутствие любого правила даёт setup gap и предложение минимальной правки.
+- B36: G0 отвергает feature start при non-empty/unknown backlog после intake
+  migration и допускает substantive work только после clean empty result;
+- B37: GC безусловно блокирует объявление completion/передачу SHA при
+  non-empty/unknown backlog; G1 дополнительно сверяет remote source head и при
+  mismatch не вызывает MR create; любой provisioned project показывает typed
+  `MO-BACKLOG/1` diagnostic, новый SHA требует новый result;
+- B38: G2 read-only сверяет актуальный remote head, использует atomic
+  expected-head/required-policy binding, отвергает stale/source-only result и
+  принимает integration candidate только из exact hosting-provided checkout;
+- B39: `mo-setup` для GitLab различает `covered`, `config_present`,
+  `no_ci_surface` и `unknown`, проверяет active custom entrypoint и
+  MR/merge-train reachability, показывает patch и не меняет YAML/settings;
+- B40: `mo-setup` для GitHub различает те же outcomes, проверяет active Actions,
+  pull-request/merge-group reachability, запрещает `pull_request_target` как
+  candidate proof, показывает patch и не меняет workflow/branch protection.
+- B41: standalone review из executor сохраняет `ProjectRegistrationSet/1` и
+  создаёт ровно две атрибутированные исходному project reviewer resources на
+  existing isolated/new-child route; folder/no-context/remote negative cases
+  дают typed `REVIEW-START/1 unsupported` без pair artifacts и registry calls.
+- B42: partial reviewer start освобождает только exact-owned resources,
+  сохраняет foreign handles и при incomplete cleanup передаёт evidence человеку;
+  orchestration executor и E2E start также не меняют
+  `ProjectRegistrationSet/1`.
 
 ### Доказательство Issue flow без dummy writes
 
@@ -1368,29 +1606,45 @@ Issue ради зелёного gate запрещено.
    review projection с проверенными identifiers; создать новые ADR файлы ровно
    по owning-file карте §2.2, внести поправки к `§A-REVIEW-02`,
    `§A-RESPONSE-02` и точные `Knowledge-ID-Change` trailer/YAML authorizations,
-   обновить списки ADR в `CLAUDE.md`/`README.md`.
+   обновить списки ADR в `CLAUDE.md`/`README.md`; синхронизировать новый gate в
+   `docs/business.md`, `docs/architecture/backlog-notebook.md`,
+   `shared/references/methodology.md`, `shared/references/project-setup.md`,
+   `AGENTS.md`/`CLAUDE.md`, `README.md`, `docs/acceptance.md`, `docs/e2e.md`,
+   `docs/papercut.md` и комментарии `Makefile`.
 3. Обновить backlog lifecycle, Deferral lens и autonomous Issue guidance вместе
    с canonical decision table §4.5, native CLI surface §4.6 и finalization
    boundaries §8.3, сняв recorded help fixtures установленных `gh`/`glab`.
 4. Обновить review response: секции §5.1, private handoff, потребителя handoff,
    bounded acknowledgement retry и caller projection.
-5. Исправить standalone ownership, hot/fresh roles, titles и cleanup.
-6. Добавить trust-safe delivery, guide locator §8.1, git-ignore probe §8.2,
-   empty-gate/CI inspection §8.3 и single-owner posture.
+5. Исправить standalone ownership, hot/fresh roles, same-project resource
+   invariant §7.1, titles и cleanup; добавить normalized registration/resource
+   projections, `REVIEW-START/1`, pre/post evidence и partial-start cleanup без
+   нового registry/state store.
+6. Добавить trust-safe delivery, guide locator §8.1, provenance-aware
+   git-ignore probe §8.2, portable `MO-BACKLOG/1` provisioning §8.3 и
+   single-owner posture; regenerated `skills/` получают изменения только через
+   `make skills`.
 7. Восстановить blocking wait cadence и typed waiter failure.
 8. Зафиксировать explicit activation graph, description surface и narrow
    implicit exceptions.
 9. Расширить model discovery/history и dynamic recommendation instructions.
 10. Добавить setup-managed regression/invariant rule.
-11. Расширить deterministic tests (включая table evaluator, recorded-surface
-    fixtures `gh`/`glab`/`orca skills`, backlog-gate fixture roots, GitHub/GitLab
-    CI fixtures и report-section fixtures), embedded/live skill evals по schema
-    §13.1 и E2E contracts.
-12. Воспроизвести Orca incidents, автономно создать/обновить Issues по
-    подтверждённым root causes и закрыть обязательства §3.1.
-13. Обновить knowledge, собрать generated skills, очистить backlog, пройти QC,
-    final reviews и applicable E2E на одном SHA; перед Meta-O-managed MR create
-    и повторно перед merge пройти `make mo-backlog-empty` по §8.3.
+11. Реализовать bounded CI inspection отдельно: `CI-Coverage/1`, finite
+    `js-yaml` subset, GitHub/GitLab recorded surfaces и fixtures, exact proposed
+    patch и downgrade неизвестных constructs до `unknown`.
+12. Расширить остальные deterministic tests (включая table evaluator,
+    recorded-surface fixtures `gh`/`glab`/`orca skills`, backlog-gate fixture
+    roots вне Markdown lint surface и report-section fixtures), embedded/live
+    skill evals по schema §13.1 и E2E contracts. Добавить `.PHONY` target,
+    `node --check`/lint wiring, purpose docblock с `§A-BACKLOG-01` и требуемое
+    commit-message обоснование custom predicate.
+13. Воспроизвести Orca incidents, read-only проаудитить и сообщить существующие
+    stray reviewer registrations/worktrees без удаления, автономно
+    создать/обновить Issues по подтверждённым root causes и закрыть
+    обязательства §3.1.
+14. Обновить knowledge, собрать generated skills, очистить backlog, пройти QC,
+    final reviews и applicable E2E на одном SHA; пройти GC, затем перед
+    Meta-O-managed MR create и повторно перед merge применить §8.3.
 
 Каждый slice получает observable runtime/eval evidence, отличающее исполненную
 норму от простого наличия текста. Coherent increments коммитятся отдельно. Ни
@@ -1399,9 +1653,11 @@ Issue ради зелёного gate запрещено.
 ## 16. Rejected и unsupported
 
 - reviewer subagents, clean verifier и review-quality eval — rejected;
-- новый orchestration/report/Issue helper или registry в поставке — rejected;
-  test-only table evaluator в `tests/`, не вызывающий hosting CLI и не входящий
-  в `skills/`, — allowed;
+- новый orchestration/report/Issue helper, registry или внешний workflow
+  engine/state store в поставке — rejected; разрешены только два узких
+  project-owned executable исключения: test-only table/CI fixture evaluator в
+  `tests/` и backlog semantic predicate §8.3; оба не оркестрируют и не входят в
+  `skills/`;
 - approval перед каждым техническим Issue — rejected;
 - upstream Issue в project repository по fallback-remote — forbidden;
 - автоматический reopen закрытого Issue — rejected, остаётся человеческой
@@ -1415,6 +1671,9 @@ Issue ради зелёного gate запрещено.
 - dummy external write ради E2E — rejected;
 - mandatory colors — rejected;
 - установка Orca guides в каждый harness home — rejected;
+- raw `git worktree add` + `orca repo add` или эквивалентная временная
+  project/repository registration как fallback для любого Meta-O actor —
+  forbidden;
 - Astra/Fable как default reviewer recommendation — rejected;
 - terminal summary вместо authoritative report — rejected;
 - `PASS` без grounding, scope/checks, Unknowns и residual risks — forbidden;
@@ -1449,7 +1708,27 @@ Issue ради зелёного gate запрещено.
   при отсутствии такого источника соответствующая запись остаётся
   `needs_attention`;
 - фактическую доступность желательных eval profiles на машине разработки;
-- максимальный поддерживаемый host wait timeout для requested arms.
+- максимальный поддерживаемый host wait timeout для requested arms;
+- version-matched Orca surface, которая read-only сообщает project identity,
+  registration kind, resource ownership и полный project inventory; может ли
+  existing folder-project worktree быть доказанно атрибутирован исходному
+  project и selected по exact public identity; если нет, §7.1 остаётся typed
+  unsupported без `repo add` workaround;
+- существует ли public deregistration capability для исторического path,
+  добавленного через `orca repo add`; пока она не доказана recorded surface,
+  implementation только сообщает stray registration и не обещает rollback;
+- version-matched read-only `gh`/`glab` surfaces для active CI entrypoint,
+  Actions/CI enablement, required checks/pipelines и exact synthetic candidate;
+  неподтверждённая capability остаётся `unknown`/`needs_attention` и не
+  заменяется guessed flag или private hosting state.
+
+Meta-O на момент этой спецификации имеет GitHub remote, но не имеет tracked
+GitHub Actions или GitLab CI config. Его ожидаемый setup outcome —
+`no_ci_surface`: G0/GC/G1/G2 исполняются агентным project contract, а human merge
+не защищён server-side gate. Следующий шаг требует отдельного продуктового
+решения создать CI и required policy; `mo-setup` не делает это молча. B39
+условен наличием доступного read-only GitLab target; без него recorded-surface и
+fixture layers обязательны, а live coordinate честно получает `not_available`.
 
 Если public-safe path не установлен, соответствующий route остаётся unsupported;
 это не разрешает private evidence, invented fallback или пропуск обязательного
@@ -1460,83 +1739,91 @@ gate.
 `U-*` — стабильные spec-local keys. Они разрешаются по exact decision text, а не
 по runtime-generated UUID конкретного council workspace:
 
-| Key  | Exact frozen decision                                                                                                                                                                                                                                                                                                        |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| U-01 | Deliver only an approved specification in this work; implementation is separate.                                                                                                                                                                                                                                             |
-| U-02 | Use docs/backlog.md as a temporary notebook for the active feature and require it to be empty at lifecycle start and completion; move confirmed out-of-scope defects and improvements to Issues.                                                                                                                             |
-| U-03 | Use gh for GitHub and glab for GitLab; search for an existing Issue first, add the confirmed use case when root cause matches, otherwise create a new Issue, without an additional user approval.                                                                                                                            |
-| U-04 | Keep the current two visible vendor-diverse reviewers; do not add reviewer subagents or a separate clean verifier.                                                                                                                                                                                                           |
-| U-05 | Do not add eval experiments that measure code-review quality; do extend ordinary embedded and live skill evals that test instruction following and correct skill behavior.                                                                                                                                                   |
-| U-06 | Each reviewer response begins with P0-P3 counts and one short sentence per finding, then includes the complete evidence report with expected remediation direction and depth.                                                                                                                                                |
-| U-07 | Deliver complete unchanged review reports to the executor; public orchestrator or standalone-caller updates may show only aggregate P0-P3 counts.                                                                                                                                                                            |
-| U-08 | Investigate Remote terminal was closed and retained tabs during implementation and file or update an upstream Orca Issue when confirmed; do not encode the incident as permanent methodology.                                                                                                                                |
-| U-09 | Block task delivery while Claude Code is at a workspace trust prompt; mo-setup may offer a personal trust configuration change with explicit confirmation.                                                                                                                                                                   |
-| U-10 | All mo-* skills activate only when explicitly named by the user or by a directly declared call from an active mo-* skill.                                                                                                                                                                                                    |
-| U-11 | find-reuse, senior-jsts, and senior-python may activate implicitly within their scoped applicability.                                                                                                                                                                                                                        |
-| U-12 | A confirmed reproducible defect gets a focused regression test; substantial non-obvious fixes get a durable invariant comment delivered through compact AGENTS.md and CLAUDE.md guidance.                                                                                                                                    |
-| U-13 | Require both version-matched bundled Orca guides: orchestration for lifecycle and Dispatch, and orca-cli for terminal operations; per-harness-home installation is not required.                                                                                                                                             |
-| U-14 | Recommend current powerful coding models for reviewers, currently codex/gpt-5.6-sol/high and claude/opus[1m]/high; do not recommend Astra/Fable-class models by default, but include them when the user asks to see all options.                                                                                             |
-| U-15 | Base reviewer model recommendations on current provider catalogs, all readable model usage from the last month, and agent judgment rather than hard-coded permanent model ids; explicit user selection remains authoritative.                                                                                                |
-| U-16 | Use one blocking waiter per actor: executor arms up to 10 minutes, reviewer and E2E arms up to 5 minutes, including standalone review; relevant events may wake early and quiet timeout only re-arms without polling narration.                                                                                              |
-| U-17 | Make codex/gpt-5.6-sol/low and claude/opus[1m]/low mandatory skill-eval profiles; additionally run codex/gpt-5.6-luna/max and OpenCode with qwen 3.8 27b through local llama.cpp when available on the development machine, and record this portability expectation in business requirements.                                |
-| U-18 | Require mo-setup to verify that the project-owned Git ignore rules cover both .orca/ and spec/.                                                                                                                                                                                                                              |
-| U-19 | Require an empty-backlog check that blocks agent-managed MR creation and branch finalization by merge, integrate it as a dedicated QC-like gate inspected by mo-setup, and have mo-setup inspect and propose the gate for GitLab or GitHub CI according to the hosting and CI configuration actually present in the project. |
+| Key  | Exact frozen decision                                                                                                                                                                                                                                                                                                                   |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| U-01 | Deliver only an approved specification in this work; implementation is separate.                                                                                                                                                                                                                                                        |
+| U-02 | Use docs/backlog.md as a temporary notebook for the active feature and require it to be empty at lifecycle start and completion; move confirmed out-of-scope defects and improvements to Issues.                                                                                                                                        |
+| U-03 | Use gh for GitHub and glab for GitLab; search for an existing Issue first, add the confirmed use case when root cause matches, otherwise create a new Issue, without an additional user approval.                                                                                                                                       |
+| U-04 | Keep the current two visible vendor-diverse reviewers; do not add reviewer subagents or a separate clean verifier.                                                                                                                                                                                                                      |
+| U-05 | Do not add eval experiments that measure code-review quality; do extend ordinary embedded and live skill evals that test instruction following and correct skill behavior.                                                                                                                                                              |
+| U-06 | Each reviewer response begins with P0-P3 counts and one short sentence per finding, then includes the complete evidence report with expected remediation direction and depth.                                                                                                                                                           |
+| U-07 | Deliver complete unchanged review reports to the executor; public orchestrator or standalone-caller updates may show only aggregate P0-P3 counts.                                                                                                                                                                                       |
+| U-08 | Investigate Remote terminal was closed and retained tabs during implementation and file or update an upstream Orca Issue when confirmed; do not encode the incident as permanent methodology.                                                                                                                                           |
+| U-09 | Block task delivery while Claude Code is at a workspace trust prompt; mo-setup may offer a personal trust configuration change with explicit confirmation.                                                                                                                                                                              |
+| U-10 | All mo-* skills activate only when explicitly named by the user or by a directly declared call from an active mo-* skill.                                                                                                                                                                                                               |
+| U-11 | find-reuse, senior-jsts, and senior-python may activate implicitly within their scoped applicability.                                                                                                                                                                                                                                   |
+| U-12 | A confirmed reproducible defect gets a focused regression test; substantial non-obvious fixes get a durable invariant comment delivered through compact AGENTS.md and CLAUDE.md guidance.                                                                                                                                               |
+| U-13 | Require both version-matched bundled Orca guides: orchestration for lifecycle and Dispatch, and orca-cli for terminal operations; per-harness-home installation is not required.                                                                                                                                                        |
+| U-14 | Recommend current powerful coding models for reviewers, currently codex/gpt-5.6-sol/high and claude/opus[1m]/high; do not recommend Astra/Fable-class models by default, but include them when the user asks to see all options.                                                                                                        |
+| U-15 | Base reviewer model recommendations on current provider catalogs, all readable model usage from the last month, and agent judgment rather than hard-coded permanent model ids; explicit user selection remains authoritative.                                                                                                           |
+| U-16 | Use one blocking waiter per actor: executor arms up to 10 minutes, reviewer and E2E arms up to 5 minutes, including standalone review; relevant events may wake early and quiet timeout only re-arms without polling narration.                                                                                                         |
+| U-17 | Make codex/gpt-5.6-sol/low and claude/opus[1m]/low mandatory skill-eval profiles; additionally run codex/gpt-5.6-luna/max and OpenCode with qwen 3.8 27b through local llama.cpp when available on the development machine, and record this portability expectation in business requirements.                                           |
+| U-18 | Require mo-setup to verify that the project-owned Git ignore rules cover both .orca/ and spec/.                                                                                                                                                                                                                                         |
+| U-19 | Require an empty-backlog check that blocks agent-managed MR creation and branch finalization by merge, integrate it as a dedicated QC-like gate inspected by mo-setup, and have mo-setup inspect and propose the gate for GitLab or GitHub CI according to the hosting and CI configuration actually present in the project.            |
+| U-20 | When review is launched from an executor, require implementation to address the observed Orca incident where a folder-project `new-child` failure was bypassed with manual Git worktrees and `orca repo add`, causing two reviewer projects instead of two tabs; preserve review isolation without creating side-project registrations. |
 
-| id   | Решение                                                                                                                                                                                                                                                                                    | Статус   | Основание / источник                                                                                                                                         |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| D-01 | Доставить только spec, реализацию вынести отдельно                                                                                                                                                                                                                                         | adopted  | U-01                                                                                                                                                         |
-| D-02 | Backlog — notebook активной фичи, пустой в начале и конце                                                                                                                                                                                                                                  | adopted  | U-02; `§B-LONGEVITY-04`                                                                                                                                      |
-| D-03 | Долговечный sink — Issues через native `gh`/`glab` без отдельного approval                                                                                                                                                                                                                 | adopted  | U-03; новый `§B-HUMAN-04`                                                                                                                                    |
-| D-04 | Ровно два видимых vendor-diverse reviewer, без subagents и clean verifier                                                                                                                                                                                                                  | adopted  | U-04; `§A-REVIEW-02` amended                                                                                                                                 |
-| D-05 | Никаких eval, измеряющих качество code review; обычные evals расширяются                                                                                                                                                                                                                   | adopted  | U-05                                                                                                                                                         |
-| D-06 | Leading P0–P3 census + одно предложение на finding, затем полный отчёт с глубиной исправления                                                                                                                                                                                              | adopted  | U-06; `§A-REVIEW-04`                                                                                                                                         |
-| D-07 | Executor получает полные неизменённые reports; человеку — только counts                                                                                                                                                                                                                    | adopted  | U-07; `§A-RESPONSE-02`                                                                                                                                       |
-| D-08 | `Remote terminal was closed`/retained tabs — investigation + upstream Issue, не методология                                                                                                                                                                                                | adopted  | U-08                                                                                                                                                         |
-| D-09 | Trust prompt блокирует delivery; `mo-setup` предлагает личную настройку с подтверждением                                                                                                                                                                                                   | adopted  | U-09; `§B-PORTABILITY-06`                                                                                                                                    |
-| D-10 | `mo-*` запускаются только явно                                                                                                                                                                                                                                                             | adopted  | U-10; frontmatter `description` + call graph                                                                                                                 |
-| D-11 | `find-reuse`/`senior-jsts`/`senior-python` — implicit в узкой applicability                                                                                                                                                                                                                | adopted  | U-11                                                                                                                                                         |
-| D-12 | Regression test + invariant comment через setup-managed project contract                                                                                                                                                                                                                   | adopted  | U-12; `§B-REVIEW-02`                                                                                                                                         |
-| D-13 | Оба version-matched bundled guides обязательны, без установки в harness home                                                                                                                                                                                                               | adopted  | U-13; locator §8.1                                                                                                                                           |
-| D-14 | Дефолтные reviewer-модели — современные powerful coding models; Astra/Fable по запросу                                                                                                                                                                                                     | adopted  | U-14                                                                                                                                                         |
-| D-15 | Рекомендация строится из catalogs и 31-day history, без permanent hard-code                                                                                                                                                                                                                | adopted  | U-15                                                                                                                                                         |
-| D-16 | Один blocking waiter на actor: 10 мин executor, 5 мин reviewers/E2E                                                                                                                                                                                                                        | adopted  | U-16; §9 run-wide realization                                                                                                                                |
-| D-17 | Обязательные eval profiles `codex/gpt-5.6-sol/low` и `claude/opus[1m]/low`; желательные — Codex `luna/max` и OpenCode+`llama.cpp`                                                                                                                                                          | adopted  | U-17; §13                                                                                                                                                    |
-| D-18 | Подход A (skills-first, без helper и state store)                                                                                                                                                                                                                                          | adopted  | §2a; `§A-ORCHESTRATION-01`                                                                                                                                   |
-| D-19 | Тонкий helper-слой для Issue/report в поставке                                                                                                                                                                                                                                             | rejected | §2a, подход B; round 2 подтверждён: test-only evaluator в `tests/` поставкой не является, а любая исполняемая логика сверх таблицы переоткрывает это решение |
-| D-20 | Внешний workflow engine/state store                                                                                                                                                                                                                                                        | rejected | §2a, подход C                                                                                                                                                |
-| D-21 | Routing precedence, closed-issue семантика, dedup evidence и redaction как нормативные шаги, а не свободное рассуждение                                                                                                                                                                    | adopted  | Council R1 `ISSUE-WRITE-007`; `§A-ISSUE-01`                                                                                                                  |
-| D-22 | Названный потребитель pair handoff, включая human-caller режим без автоочистки                                                                                                                                                                                                             | adopted  | Council R1: «standalone handoff не имеет consumer»; `§A-RESPONSE-03`                                                                                         |
-| D-23 | Запрет dummy external writes сохранён; evidence разделён на read-only / fixture / real-defect уровни                                                                                                                                                                                       | adopted  | Council R1–R2; §14.1 называет субъект каждого уровня                                                                                                         |
-| D-24 | Census как единственная авторизованная числовая caller-проекция, не governance-слой                                                                                                                                                                                                        | adopted  | U-07; §2.3, §5.3; R3 предложение ретранслировать index отклонено                                                                                             |
-| D-25 | Асимметричный routing: `upstream_issue` только по explicit repository или verified ownership metadata, иначе `needs_attention`; project remotes — исключительно для `project_issue`                                                                                                        | adopted  | Council R2 `F7-issue-autonomy-without-identifier-and-upstream-duty`; §4.1                                                                                    |
-| D-26 | Детерминированное доказательство Issue flow получает названный субъект: полная decision table §4.5 и test-only evaluator с границей «таблица — не поведение агента»                                                                                                                        | adopted  | Council R2–R3 `PROOF-BOUNDARY-008`; §14.1                                                                                                                    |
-| D-27 | Bounded acknowledgement failure: ровно одна re-delivery, затем `UNKNOWN` с сохранённым namespace; retrieval/write/reread/truncation повтора не получают                                                                                                                                    | adopted  | Council R2–R3 `F3`; §6.2                                                                                                                                     |
-| D-28 | Сырые human notes — pre-lifecycle intake; migration checkpoint предшествует empty-start lifecycle                                                                                                                                                                                          | adopted  | Council R3 `F5`; §3                                                                                                                                          |
-| D-29 | Safe delivery универсальна; composed start разрешён только при public proof удержания task bytes до readiness                                                                                                                                                                              | adopted  | Council R3 `F4`; §8                                                                                                                                          |
-| D-30 | Review grammar использует report-local keys и anchored markers; проверкой владеет `mo-review-orca` caller                                                                                                                                                                                  | adopted  | Council R3 `F8`; §5.2                                                                                                                                        |
-| D-31 | Один caller-owned run-wide waiter покрывает active actor set; arm равен минимальной cadence ожидаемых классов                                                                                                                                                                              | adopted  | Council R3 `F1`/`WAIT-CONTRACT-010`; §9                                                                                                                      |
-| D-32 | Живая spec хранит verbatim intake и AST-disposition BKL-00…18; исторический closure-map не переоткрывается                                                                                                                                                                                 | adopted  | Linked council `CLOSURE-REUSE-FICTION`; §3, §19                                                                                                              |
-| D-33 | 31-day history scan bounded по времени/bytes, streaming и честно помечает partial result                                                                                                                                                                                                   | adopted  | Council R3 `F13`; §11                                                                                                                                        |
-| D-34 | Eval evidence v3 расширяет v2 matrix tier/profile и имеет детерминированный completeness aggregate                                                                                                                                                                                         | adopted  | Council R3 `EVAL-MATRIX-005`; §13.1                                                                                                                          |
-| D-35 | Literal call graph — один AST-раздел `## Meta-O calls` с exact inline-code callees либо `none`                                                                                                                                                                                             | adopted  | Council R3 `ACTIVATION-GRAPH-009`; §10.1                                                                                                                     |
-| D-36 | Desired Qwen skill eval не заменяет отдельный critical orchestration outcome `§B-PORTABILITY-08`/B22                                                                                                                                                                                       | adopted  | Council R3 `F6`; §13.2                                                                                                                                       |
-| D-37 | Нормативные таблицы обязаны быть AST-прямоугольными: альтернативы пишутся словами, `disposition_class` получает токен `either`, §4.5 и §5.3 переписаны, правило вынесено в §2.4                                                                                                            | adopted  | Council R4 `DECISION-TABLE-MALFORMED`, `ISSUE-TABLE-002`; §2.4, §4.5, §5.3, §14                                                                              |
-| D-38 | Acceptance decision table покрывает ISS-01…ISS-15, включая truncation поиска и отсутствующую CLI capability                                                                                                                                                                                | adopted  | Council R4 `ISSUE-TABLE-002`, R5 `ISSUE-NATIVE-CLI-003`; §4.2, §4.5, §14                                                                                     |
-| D-39 | Native CLI surface §4.6: точные команды `gh`/`glab`, explicit limits и pagination, body через file/stdin, host probe вместо догадки по CLI                                                                                                                                                 | adopted  | Council R4 `ISSUE-NATIVE-CLI-003`; §4.1, §4.6, §14.1                                                                                                         |
-| D-40 | `UNKNOWN` сохраняет `Unknown-Account`; §5 объявлен additive к `review-protocol.md` и не отменяет grounding/scope/checks/Unknowns/residual risks                                                                                                                                            | adopted  | Council R4 (UNKNOWN account, protocol-body coverage); §5, §14                                                                                                |
-| D-41 | Каждый новый/изменённый `§A-*` получает названный owning file в §2.2, и slice 2 создаёт ровно эти файлы                                                                                                                                                                                    | adopted  | Council R4 `ADR-FILE-ASSIGNMENT-MISSING`; §2.2, §15                                                                                                          |
-| D-42 | Exact-handle cleanup поверх `no_owned_resource` и текстовый `Review-Handoff-Ack` внесены в таблицу обходов §3.1 с их обязательствами                                                                                                                                                       | adopted  | Council R4 (§3.1 completeness); §3.1, §6.1, §7                                                                                                               |
-| D-43 | Ответ reviewer состоит из именованных секций; пустота `PASS` относится только к finding index и `Findings`, а grounding/scope/checks/Unknowns/residual risks обязательны всегда                                                                                                            | adopted  | Council R5 `PASS-EMPTY-BODY-VS-EVIDENCE`; §5.1, §5.3, §14, B34                                                                                               |
-| D-44 | Единый version-matched locator bundled guides — `orca skills list --json` и `orca skills get <topic>` из одного resolved `orca` binary, без установки в harness home                                                                                                                       | adopted  | Council R5 `GUIDE-LOCATOR-MISSING`; §8.1, B26                                                                                                                |
-| D-45 | Нормативная CLI поверхность снимается с установленных версий (`gh 2.100.0`, `glab 1.117.0`): нет `--state all` в `gh search issues`, нет `stateReason` там же, нет `--state` у `glab issue list`, GitLab note публикуется через `glab api --input`, write-команда без body-флага запрещена | adopted  | Council R5 `ISSUE-NATIVE-CLI-003`; §2.5, §4.6, §3.1, ISS-15                                                                                                  |
-| D-46 | `mo-setup` проверяет project-owned ignore coverage для `.orca/` и `spec/`, а отсутствие любого правила оформляет как setup gap                                                                                                                                                             | adopted  | U-18; §8.2, B35                                                                                                                                              |
-| D-47 | `make mo-backlog-empty` — отдельный project-owned non-mutating closure gate; обычный `make mo-qc` допускает valid feature entries                                                                                                                                                          | adopted  | U-19; §8.3                                                                                                                                                   |
-| D-48 | Узкий runtime checker разрешён с named consumers, но не расширяет D-19 до orchestration/report/Issue helper                                                                                                                                                                                | adopted  | U-19; §8.3; начальные proposals и cross-review                                                                                                               |
-| D-49 | Meta-O-managed MR create, включая Draft, и agent-managed merge блокируются до PASS актуального exact SHA                                                                                                                                                                                   | adopted  | U-19; §8.3                                                                                                                                                   |
-| D-50 | Make сообщает `PASS` кодом 0 и любой отказ nonzero; `NOT-EMPTY`/`UNKNOWN` различаются стабильным diagnostic token                                                                                                                                                                          | adopted  | U-19; cross-review `MAKE-EXIT-COLLAPSE`                                                                                                                      |
-| D-51 | CI provider и config выбираются по repository evidence; GitHub и GitLab поддерживаются симметрично, а доказанные обе surfaces проверяются отдельно                                                                                                                                         | adopted  | U-19; пользовательское уточнение до spec-review                                                                                                              |
-| D-52 | `mo-setup` показывает exact proposed CI patch, но tracked YAML и server-side protection не меняет автоматически                                                                                                                                                                            | adopted  | U-19; существующая setup/human boundary                                                                                                                      |
-| D-53 | MR/PR pipeline может блокировать merge, но не создание MR; default-branch post-merge run является audit, а не barrier                                                                                                                                                                      | adopted  | Начальные proposals и cross-review; §8.3                                                                                                                     |
+| id   | Решение                                                                                                                                                                                                                                                                                      | Статус   | Основание / источник                                                                                                                                         |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| D-01 | Доставить только spec, реализацию вынести отдельно                                                                                                                                                                                                                                           | adopted  | U-01                                                                                                                                                         |
+| D-02 | Backlog — notebook активной фичи, пустой в начале и конце                                                                                                                                                                                                                                    | adopted  | U-02; `§B-LONGEVITY-04`                                                                                                                                      |
+| D-03 | Долговечный sink — Issues через native `gh`/`glab` без отдельного approval                                                                                                                                                                                                                   | adopted  | U-03; новый `§B-HUMAN-04`                                                                                                                                    |
+| D-04 | Ровно два видимых vendor-diverse reviewer, без subagents и clean verifier                                                                                                                                                                                                                    | adopted  | U-04; `§A-REVIEW-02` amended                                                                                                                                 |
+| D-05 | Никаких eval, измеряющих качество code review; обычные evals расширяются                                                                                                                                                                                                                     | adopted  | U-05                                                                                                                                                         |
+| D-06 | Leading P0–P3 census + одно предложение на finding, затем полный отчёт с глубиной исправления                                                                                                                                                                                                | adopted  | U-06; `§A-REVIEW-04`                                                                                                                                         |
+| D-07 | Executor получает полные неизменённые reports; человеку — только counts                                                                                                                                                                                                                      | adopted  | U-07; `§A-RESPONSE-02`                                                                                                                                       |
+| D-08 | `Remote terminal was closed`/retained tabs — investigation + upstream Issue, не методология                                                                                                                                                                                                  | adopted  | U-08                                                                                                                                                         |
+| D-09 | Trust prompt блокирует delivery; `mo-setup` предлагает личную настройку с подтверждением                                                                                                                                                                                                     | adopted  | U-09; `§B-PORTABILITY-06`                                                                                                                                    |
+| D-10 | `mo-*` запускаются только явно                                                                                                                                                                                                                                                               | adopted  | U-10; frontmatter `description` + call graph                                                                                                                 |
+| D-11 | `find-reuse`/`senior-jsts`/`senior-python` — implicit в узкой applicability                                                                                                                                                                                                                  | adopted  | U-11                                                                                                                                                         |
+| D-12 | Regression test + invariant comment через setup-managed project contract                                                                                                                                                                                                                     | adopted  | U-12; `§B-REVIEW-02`                                                                                                                                         |
+| D-13 | Оба version-matched bundled guides обязательны, без установки в harness home                                                                                                                                                                                                                 | adopted  | U-13; locator §8.1                                                                                                                                           |
+| D-14 | Дефолтные reviewer-модели — современные powerful coding models; Astra/Fable по запросу                                                                                                                                                                                                       | adopted  | U-14                                                                                                                                                         |
+| D-15 | Рекомендация строится из catalogs и 31-day history, без permanent hard-code                                                                                                                                                                                                                  | adopted  | U-15                                                                                                                                                         |
+| D-16 | Один blocking waiter на actor: 10 мин executor, 5 мин reviewers/E2E                                                                                                                                                                                                                          | adopted  | U-16; §9 run-wide realization                                                                                                                                |
+| D-17 | Обязательные eval profiles `codex/gpt-5.6-sol/low` и `claude/opus[1m]/low`; желательные — Codex `luna/max` и OpenCode+`llama.cpp`                                                                                                                                                            | adopted  | U-17; §13                                                                                                                                                    |
+| D-18 | Подход A (skills-first, без helper и state store)                                                                                                                                                                                                                                            | adopted  | §2a; `§A-ORCHESTRATION-01`                                                                                                                                   |
+| D-19 | Тонкий helper-слой для Issue/report в поставке                                                                                                                                                                                                                                               | rejected | §2a, подход B; round 2 подтверждён: test-only evaluator в `tests/` поставкой не является, а любая исполняемая логика сверх таблицы переоткрывает это решение |
+| D-20 | Внешний workflow engine/state store                                                                                                                                                                                                                                                          | rejected | §2a, подход C                                                                                                                                                |
+| D-21 | Routing precedence, closed-issue семантика, dedup evidence и redaction как нормативные шаги, а не свободное рассуждение                                                                                                                                                                      | adopted  | Council R1 `ISSUE-WRITE-007`; `§A-ISSUE-01`                                                                                                                  |
+| D-22 | Названный потребитель pair handoff, включая human-caller режим без автоочистки                                                                                                                                                                                                               | adopted  | Council R1: «standalone handoff не имеет consumer»; `§A-RESPONSE-03`                                                                                         |
+| D-23 | Запрет dummy external writes сохранён; evidence разделён на read-only / fixture / real-defect уровни                                                                                                                                                                                         | adopted  | Council R1–R2; §14.1 называет субъект каждого уровня                                                                                                         |
+| D-24 | Census как единственная авторизованная числовая caller-проекция, не governance-слой                                                                                                                                                                                                          | adopted  | U-07; §2.3, §5.3; R3 предложение ретранслировать index отклонено                                                                                             |
+| D-25 | Асимметричный routing: `upstream_issue` только по explicit repository или verified ownership metadata, иначе `needs_attention`; project remotes — исключительно для `project_issue`                                                                                                          | adopted  | Council R2 `F7-issue-autonomy-without-identifier-and-upstream-duty`; §4.1                                                                                    |
+| D-26 | Детерминированное доказательство Issue flow получает названный субъект: полная decision table §4.5 и test-only evaluator с границей «таблица — не поведение агента»                                                                                                                          | adopted  | Council R2–R3 `PROOF-BOUNDARY-008`; §14.1                                                                                                                    |
+| D-27 | Bounded acknowledgement failure: ровно одна re-delivery, затем `UNKNOWN` с сохранённым namespace; retrieval/write/reread/truncation повтора не получают                                                                                                                                      | adopted  | Council R2–R3 `F3`; §6.2                                                                                                                                     |
+| D-28 | Сырые human notes — pre-lifecycle intake; migration checkpoint предшествует empty-start lifecycle                                                                                                                                                                                            | adopted  | Council R3 `F5`; §3                                                                                                                                          |
+| D-29 | Safe delivery универсальна; composed start разрешён только при public proof удержания task bytes до readiness                                                                                                                                                                                | adopted  | Council R3 `F4`; §8                                                                                                                                          |
+| D-30 | Review grammar использует report-local keys и anchored markers; проверкой владеет `mo-review-orca` caller                                                                                                                                                                                    | adopted  | Council R3 `F8`; §5.2                                                                                                                                        |
+| D-31 | Один caller-owned run-wide waiter покрывает active actor set; arm равен минимальной cadence ожидаемых классов                                                                                                                                                                                | adopted  | Council R3 `F1`/`WAIT-CONTRACT-010`; §9                                                                                                                      |
+| D-32 | Живая spec хранит verbatim intake и AST-disposition BKL-00…18; исторический closure-map не переоткрывается                                                                                                                                                                                   | adopted  | Linked council `CLOSURE-REUSE-FICTION`; §3, §19                                                                                                              |
+| D-33 | 31-day history scan bounded по времени/bytes, streaming и честно помечает partial result                                                                                                                                                                                                     | adopted  | Council R3 `F13`; §11                                                                                                                                        |
+| D-34 | Eval evidence v3 расширяет v2 matrix tier/profile и имеет детерминированный completeness aggregate                                                                                                                                                                                           | adopted  | Council R3 `EVAL-MATRIX-005`; §13.1                                                                                                                          |
+| D-35 | Literal call graph — один AST-раздел `## Meta-O calls` с exact inline-code callees либо `none`                                                                                                                                                                                               | adopted  | Council R3 `ACTIVATION-GRAPH-009`; §10.1                                                                                                                     |
+| D-36 | Desired Qwen skill eval не заменяет отдельный critical orchestration outcome `§B-PORTABILITY-08`/B22                                                                                                                                                                                         | adopted  | Council R3 `F6`; §13.2                                                                                                                                       |
+| D-37 | Нормативные таблицы обязаны быть AST-прямоугольными: альтернативы пишутся словами, `disposition_class` получает токен `either`, §4.5 и §5.3 переписаны, правило вынесено в §2.4                                                                                                              | adopted  | Council R4 `DECISION-TABLE-MALFORMED`, `ISSUE-TABLE-002`; §2.4, §4.5, §5.3, §14                                                                              |
+| D-38 | Acceptance decision table покрывает ISS-01…ISS-15, включая truncation поиска и отсутствующую CLI capability                                                                                                                                                                                  | adopted  | Council R4 `ISSUE-TABLE-002`, R5 `ISSUE-NATIVE-CLI-003`; §4.2, §4.5, §14                                                                                     |
+| D-39 | Native CLI surface §4.6: точные команды `gh`/`glab`, explicit limits и pagination, body через file/stdin, host probe вместо догадки по CLI                                                                                                                                                   | adopted  | Council R4 `ISSUE-NATIVE-CLI-003`; §4.1, §4.6, §14.1                                                                                                         |
+| D-40 | `UNKNOWN` сохраняет `Unknown-Account`; §5 объявлен additive к `review-protocol.md` и не отменяет grounding/scope/checks/Unknowns/residual risks                                                                                                                                              | adopted  | Council R4 (UNKNOWN account, protocol-body coverage); §5, §14                                                                                                |
+| D-41 | Каждый новый/изменённый `§A-*` получает названный owning file в §2.2, и slice 2 создаёт ровно эти файлы                                                                                                                                                                                      | adopted  | Council R4 `ADR-FILE-ASSIGNMENT-MISSING`; §2.2, §15                                                                                                          |
+| D-42 | Exact-handle cleanup поверх `no_owned_resource` и текстовый `Review-Handoff-Ack` внесены в таблицу обходов §3.1 с их обязательствами                                                                                                                                                         | adopted  | Council R4 (§3.1 completeness); §3.1, §6.1, §7                                                                                                               |
+| D-43 | Ответ reviewer состоит из именованных секций; пустота `PASS` относится только к finding index и `Findings`, а grounding/scope/checks/Unknowns/residual risks обязательны всегда                                                                                                              | adopted  | Council R5 `PASS-EMPTY-BODY-VS-EVIDENCE`; §5.1, §5.3, §14, B34                                                                                               |
+| D-44 | Единый version-matched locator bundled guides — `orca skills list --json` и `orca skills get <topic>` из одного resolved `orca` binary, без установки в harness home                                                                                                                         | adopted  | Council R5 `GUIDE-LOCATOR-MISSING`; §8.1, B26                                                                                                                |
+| D-45 | Нормативная CLI поверхность снимается с установленных версий (`gh 2.100.0`, `glab 1.117.0`): нет `--state all` в `gh search issues`, нет `stateReason` там же, нет `--state` у `glab issue list`, GitLab note публикуется через `glab api --input`, write-команда без body-флага запрещена   | adopted  | Council R5 `ISSUE-NATIVE-CLI-003`; §2.5, §4.6, §3.1, ISS-15                                                                                                  |
+| D-46 | `mo-setup` проверяет project-owned ignore coverage для `.orca/` и `spec/`, а отсутствие любого правила оформляет как setup gap                                                                                                                                                               | adopted  | U-18; §8.2, B35                                                                                                                                              |
+| D-47 | `make mo-backlog-empty` — отдельный project-owned non-mutating closure gate; обычный `make mo-qc` допускает valid feature entries                                                                                                                                                            | adopted  | U-19; §8.3                                                                                                                                                   |
+| D-48 | Узкий runtime checker разрешён для methodology, setup-managed project contract и CI, но не расширяет D-19 до orchestration/report/Issue helper                                                                                                                                               | adopted  | U-19; §8.3; начальные proposals и cross-review                                                                                                               |
+| D-49 | G0, любой project-contract-bound agent MR create, включая Draft, и agent-owned merge блокируются до PASS актуального exact SHA                                                                                                                                                               | adopted  | U-02, U-19; §8.3                                                                                                                                             |
+| D-50 | Make сообщает `PASS` кодом 0 и любой отказ nonzero; `NOT-EMPTY`/`UNKNOWN` различаются стабильным diagnostic token                                                                                                                                                                            | adopted  | U-19; cross-review `MAKE-EXIT-COLLAPSE`                                                                                                                      |
+| D-51 | CI provider и config выбираются по repository evidence; GitHub и GitLab поддерживаются симметрично, а доказанные обе surfaces проверяются отдельно                                                                                                                                           | adopted  | U-19; пользовательское уточнение до spec-review                                                                                                              |
+| D-52 | `mo-setup` показывает exact proposed CI patch, но tracked YAML и server-side protection не меняет автоматически                                                                                                                                                                              | adopted  | U-19; существующая setup/human boundary                                                                                                                      |
+| D-53 | MR/PR pipeline может блокировать merge, но не создание MR; default-branch post-merge run является audit, а не barrier                                                                                                                                                                        | adopted  | Начальные proposals и cross-review; §8.3                                                                                                                     |
+| D-54 | CI coverage имеет `covered/config_present/no_ci_surface/unknown`; только active settings, полный call graph и required policy дают `covered`                                                                                                                                                 | adopted  | Spec-review R1 `CI-ENTRYPOINT-AND-ABSENCE`, `BLG-CI-COVERAGE-003`; §8.3                                                                                      |
+| D-55 | Local gate читает committed blob exact HEAD, не checkout'ит ref и не блокируется unrelated dirt; synthetic candidate проверяет hosting-provided CI checkout либо остаётся `needs_attention`                                                                                                  | adopted  | Spec-review R1/R2 `GATE-NO-SHA-INTERFACE`, `BLG-MERGE-SHA-002`, `BLG-GATE-DIRTY-TREE-CONFLATION`, `BLG-SNAPSHOT-003`; §8.3                                   |
+| D-56 | Безусловный GC проверяет backlog до объявления completion даже без MR; G1/G2 дополнительно связывают local candidate с актуальным remote head и race-safe merge precondition                                                                                                                 | adopted  | U-02, U-19; final spec review `BLG-REMOTE-SHA-001`, `BLG-COMPLETION-002`; §8.3                                                                               |
+| D-57 | Любая project-specific реализация соблюдает portable `MO-BACKLOG/1`; AST emptiness, typed failures и fixture contract едины, task runner и язык свободны                                                                                                                                     | adopted  | U-19; final spec review `BLG-FOREIGN-CHECKER-CONTRACT-UNDEFINED`, `BLG-EMPTY-AST-004`; §8.3, §14                                                             |
+| D-58 | CI inspection принадлежит `mo-setup`, выдаёт bounded `CI-Coverage/1`, доказывается тремя слоями и даёт `covered` только для конечного поддерживаемого subset                                                                                                                                 | adopted  | U-19; final spec review `BLG-CI-COVERAGE-NO-SUBJECT`, `BLG-CI-CONTRACT-005`; §8.3, §14                                                                       |
+| D-59 | Ignore coverage доказывает provenance tracked ignore-файла; private `spec/` ignored, а канонический committed spec/ledger живёт в отдельном tracked project path                                                                                                                             | adopted  | U-18; final spec review `BLG-CHECKIGNORE-PROVENANCE`, `BLG-SPEC-IGNORE-006`; §3, §8.2                                                                        |
+| D-60 | Meta-O actor isolation не меняет `ProjectRegistrationSet/1`: reviewer использует existing same-project isolated worktree либо доказанный Git `new-child`; folder/no-context/remote без такого route получает pre-pair `REVIEW-START/1 unsupported`, но никогда temporary `repo add` fallback | adopted  | U-20; incident 2026-09-15; §3.1, §7.1, B41/B42                                                                                                               |
 
 ## 19. Verbatim source ledger
 
@@ -1789,4 +2076,30 @@ Accessing workspace:
 
 При этом исправляет исполнитель, а значит оркестратор должен ему этот принцип донести в задании
 <!-- verbatim-backlog-end -->
+<!-- prettier-ignore-end -->
+
+## 20. Verbatim incident amendment 2026-09-15
+
+<!-- prettier-ignore-start -->
+
+> вот еще только что словил прикол при запуске скила ревьюера из исполнителя
+>
+> тоже бы докинуть в спеку чтобы эту проблему при реализации проработали
+>
+> ```sql
+> › у меня кстати запущенное тобой ревью определилось как 2 новых проекта а не как 2 новых вкладки - объясни почему
+>
+>
+> • Потому что я неправильно обошёл ограничение Orca.
+>   worker-start --worktree new-child отказался создавать дочерние worktree: текущий workspace зарегистрирован как folder project. Я вручную
+>   создал два чистых Git worktree, а затем сделал для каждого orca repo add, чтобы Orca смог посадить туда независимого ревьюера. repo add
+>   регистрирует путь как отдельный проект, поэтому UI показал два проекта, а не две вкладки одного проекта.
+>
+>   Для чистоты ревью это сработало, но с точки зрения организации Orca — неверный обход. Текущих ревьюеров сейчас не дёргаю; когда они
+>   закончат, освобожу их терминалы, удалю эти две временные регистрации и worktree. В дальнейшем для такого review буду использовать заранее
+>   зарегистрированные worktree внутри одного проекта либо настрою основной проект как git setup, чтобы new-child создавал именно вкладки.
+> ```
+>
+> если нужно после этой правки можешь 1 итерацию финального ревью сделать
+
 <!-- prettier-ignore-end -->

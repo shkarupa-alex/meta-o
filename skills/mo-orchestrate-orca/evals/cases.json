@@ -42,16 +42,20 @@
       "id": "mo-orchestrate-orca.degraded",
       "class": "degraded",
       "contracts": ["§A-WAIT-01", "§A-DELIVERY-01"],
-      "scenario": "One run presents quota, another reconnecting, another capacity, another compaction, and a fifth refuses after doing work.",
+      "scenario": "One run presents quota, another reconnecting, another capacity, another compaction, and a fifth refuses after doing work. During Issue routing, repository candidates have the same rank (ISS-12), a duplicate search truncates at its limit (ISS-14), and installed CLI help lacks the required safe body capability (ISS-15).",
       "must": [
         "return distinct typed outcomes for quota, reconnecting, capacity, compaction and output_blocked_after_work",
         "apply the bounded same-task recovery ladder without changing ownership",
-        "reject a fake or wrong candidate SHA before review"
+        "reject a fake or wrong candidate SHA before review",
+        "name ISS-12 and stop with needs_attention instead of choosing a same-rank repository",
+        "name ISS-14 and narrow or explicitly enlarge the truncated search without claiming no duplicate",
+        "name ISS-15, record the missing help capability and return unsupported or needs_attention without a write"
       ],
       "mustNot": [
         "infer success from terminal existence",
         "silently replace model or candidate",
-        "collapse the five states into one generic failure"
+        "collapse the five states into one generic failure",
+        "perform an Issue write while ISS-12, ISS-14 or ISS-15 remains unresolved"
       ]
     }
   ]

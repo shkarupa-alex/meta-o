@@ -10,6 +10,8 @@
     "node_modules/**",
     "skills/**",
     "spec/**",
+    // Active implementation specs preserve a verbatim intake ledger until harvest.
+    "docs/specifications/**",
     "docs/references/**",
     "docs/research/**",
     "shared/licenses/**",

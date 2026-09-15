@@ -8,6 +8,9 @@ templates/
 # Council transcripts and proposals are historical artefacts, kept verbatim.
 spec/
 
+# Active implementation specs keep their original intake ledger byte-for-byte until harvest.
+docs/specifications/
+
 # Imported reference material, kept as received.
 docs/references/
 docs/research/

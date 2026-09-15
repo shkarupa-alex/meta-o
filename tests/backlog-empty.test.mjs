@@ -78,6 +78,26 @@ test("the AST owner distinguishes empty, entries, and arbitrary content", () => 
   for (const malformed of ["# Wrong\n\n## Открыто\n", `${EMPTY}\n## Открыто\n`]) {
     assert.deepEqual(inspectBacklog(malformed), { kind: "unknown", reason: "schema_invalid" });
   }
+  for (const hidden of [
+    "- unresolved work\n\n",
+    "> unresolved work\n\n",
+    "```text\nunresolved work\n```\n\n",
+    "<!-- unresolved work -->\n\n",
+    "---\n\n",
+  ]) {
+    const malformed = EMPTY.replace("## Открыто", `${hidden}## Открыто`);
+    assert.deepEqual(inspectBacklog(malformed), { kind: "unknown", reason: "schema_invalid" });
+  }
+});
+
+test("malformed CLI input is an internal error rather than an ambiguous backlog path", () => {
+  const result = spawnSync(process.execPath, ["tools/backlog-empty.mjs", "--candidate", "bad"], {
+    cwd: ROOT,
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /reason=internal_error/u);
+  assert.doesNotMatch(result.stderr, /reason=path_ambiguous/u);
 });
 
 test("committed empty proof tolerates unrelated dirt but rejects backlog dirt", () => {

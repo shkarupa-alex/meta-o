@@ -180,12 +180,17 @@ test("every anchor reference in the project resolves to a defined id", () => {
     ...theses().map((title) => title.split(" ")[0]),
     ...decisions().map((decision) => decision.title.split(" ")[0]),
   ]);
+  // §A-MEMORY-01 validates current knowledge; live specs preserve temporary and historical ids
+  // verbatim until harvest, so they are inputs to implementation rather than members of this DAG.
   const sources = [
     join(ROOT, "README.md"),
     join(ROOT, "AGENTS.md"),
     join(ROOT, "CLAUDE.md"),
     ...files(join(ROOT, "docs")).filter(
-      (path) => extname(path) === ".md" && !path.startsWith(join(ROOT, "docs", "references")),
+      (path) =>
+        extname(path) === ".md" &&
+        !path.startsWith(join(ROOT, "docs", "references")) &&
+        !path.startsWith(join(ROOT, "docs", "specifications")),
     ),
     ...modules(),
   ];

@@ -5,6 +5,7 @@
  */
 
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
@@ -52,6 +53,23 @@ test("setup checks controls, companions and every harness posture separately", (
   assert.match(contract, /Backend-wide health does not prove harness readiness/);
   assert.match(setup, /check mature `jq` and `flock` dependencies/);
   assert.match(contract, /require `jq` and `flock` separately\s+from the Orca control/);
+});
+
+test("private Orca and specification workspaces are ignored and absent from the index", () => {
+  const indexed = spawnSync("git", ["ls-files", "--", ".orca/", "spec/"], {
+    cwd: ROOT,
+    encoding: "utf8",
+  });
+  assert.equal(indexed.status, 0, indexed.stderr);
+  assert.equal(indexed.stdout, "");
+  for (const path of [".orca/probe", "spec/probe"]) {
+    const ignored = spawnSync("git", ["check-ignore", "-v", "--no-index", path], {
+      cwd: ROOT,
+      encoding: "utf8",
+    });
+    assert.equal(ignored.status, 0, ignored.stderr);
+    assert.match(ignored.stdout, /^\.gitignore:\d+:/u);
+  }
 });
 
 test("knowledge policy covers verbatim intent, language, semantic links and backlog fields", () => {

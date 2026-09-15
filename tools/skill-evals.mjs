@@ -62,6 +62,10 @@ const DESIRED_MATRIX = [
   { matrixProfile: "desired-opencode", route: "opencode", role: "testOpenCodeDesired" },
 ];
 const EXPECTED_MATRIX = [...REQUIRED_MATRIX, ...DESIRED_MATRIX];
+const MATRIX_BY_PROFILE = new Map(
+  EXPECTED_MATRIX.map((profile) => [profile.matrixProfile, profile]),
+);
+const CRITICAL_MATRIX_PROFILE = "critical-orchestration";
 
 function git(root, args) {
   const result = spawnSync("git", ["-C", root, ...args], { encoding: "utf8" });
@@ -346,6 +350,37 @@ function validateResults(envelope, document) {
   }
 }
 
+function validateMatrixCoordinate(envelope) {
+  const matrix = MATRIX_BY_PROFILE.get(envelope.matrixProfile);
+  if (envelope.tier === "critical") {
+    if (
+      envelope.skill !== "mo-orchestrate-orca" ||
+      envelope.matrixProfile !== CRITICAL_MATRIX_PROFILE
+    ) {
+      throw new Error(
+        `${envelope.skill}: critical evidence is not the orchestration B22 coordinate`,
+      );
+    }
+    return;
+  }
+  const expectedTier = envelope.matrixProfile.startsWith("desired-") ? "desired" : "required";
+  if (!matrix || envelope.tier !== expectedTier) {
+    throw new Error(`${envelope.skill}: tier does not match matrix profile`);
+  }
+}
+
+function envelopeIsUnavailable(envelope) {
+  const unavailableResults = (envelope.results ?? []).filter(
+    ({ verdict }) => verdict === "NOT_AVAILABLE",
+  );
+  const unavailable =
+    unavailableResults.length > 0 && unavailableResults.length === envelope.results?.length;
+  if (unavailableResults.length > 0 && !unavailable) {
+    throw new Error(`${envelope.skill}: NOT_AVAILABLE must cover the whole desired envelope`);
+  }
+  return unavailable;
+}
+
 function validateEnvelope(root, corpus, envelope, candidate, criticalProfile) {
   if (envelope.contract !== EVIDENCE_CONTRACT) throw new Error("wrong evidence contract");
   if (envelope.candidate !== candidate) throw new Error(`${envelope.skill}: candidate mismatch`);
@@ -356,19 +391,13 @@ function validateEnvelope(root, corpus, envelope, candidate, criticalProfile) {
     throw new Error(`${envelope.skill}: invalid tier`);
   }
   assertString(envelope.matrixProfile, `${envelope.skill}: matrixProfile`);
+  validateMatrixCoordinate(envelope);
   const revision = git(root, ["rev-parse", `${candidate}:skills/${envelope.skill}`]);
   if (envelope.skillRevision !== revision) throw new Error(`${envelope.skill}: revision mismatch`);
-  if (!Number.isSafeInteger(envelope.repetition) || envelope.repetition < 1) {
+  if (envelope.repetition !== 1) {
     throw new Error(`${envelope.skill}: invalid repetition`);
   }
-  const unavailableResults = (envelope.results ?? []).filter(
-    ({ verdict }) => verdict === "NOT_AVAILABLE",
-  );
-  const unavailable =
-    unavailableResults.length > 0 && unavailableResults.length === envelope.results?.length;
-  if (unavailableResults.length > 0 && !unavailable) {
-    throw new Error(`${envelope.skill}: NOT_AVAILABLE must cover the whole desired envelope`);
-  }
+  const unavailable = envelopeIsUnavailable(envelope);
   rejectSensitiveOrMachineLocal(envelope, envelope.skill);
   validateActorIdentity(envelope, criticalProfile, unavailable);
   validateHarness(envelope, unavailable);

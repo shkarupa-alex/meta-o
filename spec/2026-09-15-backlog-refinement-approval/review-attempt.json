@@ -1,9 +1,0 @@
-{
-  "attemptId": "attempt-a0b27667-9971-4eb9-9548-5f7825e0e562",
-  "designVersionId": "51ab4fe7b941432667044ab41d30962c207f8d653f9e2e65b11f5bf6419be795",
-  "ceiling": 1,
-  "supersededJobIds": [],
-  "status": "max_rounds",
-  "completedRounds": 1,
-  "activeJobId": "run-4f7ad911"
-}

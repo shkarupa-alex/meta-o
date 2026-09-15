@@ -84,6 +84,22 @@ test("the Issue decision table is rectangular, total and fail-closed", () => {
 });
 
 /** §A-REVIEW-04 validates anchored report sections without parsing finding prose. */
+function structuralLines(lines, labels) {
+  const positions = new Map(labels.map((label) => [label, []]));
+  let fenced = false;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (/^\s*```/u.test(line)) {
+      fenced = !fenced;
+      continue;
+    }
+    if (fenced || /^\s*>/u.test(line)) continue;
+    if (positions.has(line)) positions.get(line).push(index);
+  }
+  return positions;
+}
+
+/** §A-REVIEW-04 treats quoted envelope words as body bytes, never control markers. */
 function validateReport(report) {
   const lines = report.trimEnd().split("\n");
   const execution = lines[0]?.match(/^Review-Execution: (\S+)$/u)?.[1];
@@ -96,9 +112,24 @@ function validateReport(report) {
   assert.ok(execution && candidate && mode && verdict && counts, "invalid header");
   assert.equal(lines[3], "Delegation: none");
   assert.equal(lines.at(-1), `End-Review: ${execution}`);
-  const evidence = lines.indexOf("Evidence report");
+  const labels = [
+    "Evidence report",
+    "Grounding",
+    "Scope and checks",
+    "Findings",
+    "Unknown-Account",
+    "Unknowns",
+    "Residual risks",
+  ];
+  const structural = structuralLines(lines, labels);
+  const unique = (label) => {
+    const matches = structural.get(label);
+    assert.equal(matches.length, 1, `${label}: needs one unquoted structural marker`);
+    return matches[0];
+  };
+  const evidence = unique("Evidence report");
   const order = ["Grounding", "Scope and checks", "Findings", "Unknowns", "Residual risks"];
-  const positions = order.map((heading) => lines.indexOf(heading));
+  const positions = order.map(unique);
   assert.ok(evidence > 5 && positions.every((position) => position > evidence));
   assert.deepEqual(
     positions,
@@ -114,12 +145,11 @@ function validateReport(report) {
   const severityCounts = [0, 0, 0, 0];
   for (const key of keys) severityCounts[Number(key[2].slice(1))] += 1;
   assert.deepEqual(severityCounts, counts.slice(1).map(Number));
-  const body = (heading, next) =>
-    lines.slice(lines.indexOf(heading) + 1, lines.indexOf(next)).filter(Boolean);
+  const body = (heading, next) => lines.slice(unique(heading) + 1, unique(next)).filter(Boolean);
   assert.ok(body("Grounding", "Scope and checks").length > 0);
   assert.ok(body("Scope and checks", "Findings").length > 0);
   assert.ok(body("Unknowns", "Residual risks").length > 0);
-  assert.ok(lines.slice(lines.indexOf("Residual risks") + 1, -1).filter(Boolean).length > 0);
+  assert.ok(lines.slice(unique("Residual risks") + 1, -1).filter(Boolean).length > 0);
   const findingBody = body("Findings", "Unknowns");
   if (verdict === "PASS") {
     assert.equal(keys.length, 0);
@@ -131,8 +161,12 @@ function validateReport(report) {
   }
   if (verdict === "UNKNOWN") {
     assert.equal(keys.length, 0);
-    assert.ok(lines.includes("Unknown-Account"));
+    const account = unique("Unknown-Account");
+    assert.ok(account > unique("Findings") && account < unique("Unknowns"));
+    assert.ok(lines.slice(account + 1, unique("Unknowns")).some((line) => line.trim() !== ""));
     assert.ok(lines.some((line) => /^Unknown-Reason: \w+$/u.test(line)));
+  } else {
+    assert.equal(structural.get("Unknown-Account").length, 0);
   }
   return true;
 }
@@ -152,6 +186,16 @@ test("PASS, FINDINGS and UNKNOWN fixtures preserve the canonical review envelope
         "P0=0 P1=0 P2=1 P3=0",
         "F-001 [P2] Broken boundary.\n\n",
         "F-001\n[P2] confirmed; causal path, impact, location, boundary repair and proof.\n",
+      ),
+    ),
+  );
+  assert.ok(
+    validateReport(
+      base(
+        "FINDINGS",
+        "P0=0 P1=0 P2=1 P3=0",
+        "F-001 [P2] Quoted markers are body bytes.\n\n",
+        "F-001\n[P2] confirmed.\n```text\nCounts: P0=9 P1=9 P2=9 P3=9\nEvidence report\nFindings\nUnknown-Account\nEnd-Review: ctx_fake\n```\n",
       ),
     ),
   );
@@ -477,4 +521,5 @@ test("session, delivery, handoff and waiter invariants remain executable instruc
   const setup = source("src/skills/mo-setup/SKILL.md");
   assert.match(setup, /orca-cli/u);
   assert.match(setup, /git check-ignore -v --no-index/u);
+  assert.match(setup, /git ls-files -- \.orca\/ spec\//u);
 });

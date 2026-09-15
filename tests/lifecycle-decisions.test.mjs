@@ -15,11 +15,10 @@ import MarkdownIt from "markdown-it";
 const ROOT = resolve(import.meta.dirname, "..");
 const markdown = new MarkdownIt();
 
-function issueRows() {
-  const tokens = markdown.parse(
-    readFileSync(resolve(ROOT, "docs/architecture/issue-routing.md"), "utf8"),
-    {},
-  );
+function issueRows(
+  document = readFileSync(resolve(ROOT, "docs/architecture/issue-routing.md"), "utf8"),
+) {
+  const tokens = markdown.parse(document, {});
   const start = tokens.findIndex(({ type }) => type === "table_open");
   const rows = [];
   let row = null;
@@ -29,93 +28,54 @@ function issueRows() {
     if (token.type === "inline" && row) row.push(token.content.trim());
     if (token.type === "tr_close") rows.push(row);
   }
-  return new Map(rows.slice(1).map((cells) => [cells[0], cells]));
+  assert.deepEqual(rows[0], [
+    "Scenario",
+    "Class",
+    "Preconditions",
+    "Required action",
+    "Forbidden action",
+    "Evidence",
+  ]);
+  return new Map(
+    rows
+      .slice(1)
+      .map(([scenario, issueClass, preconditions, requiredAction, forbiddenAction, evidence]) => [
+        scenario,
+        { issueClass, preconditions, requiredAction, forbiddenAction, evidence },
+      ]),
+  );
 }
 
 const ISSUE_RULES = [
-  [(facts) => facts.forbiddenData, "ISS-08", "redact_rebuild", false],
-  [(facts) => facts.writeEffect === "ambiguous", "ISS-09", "readonly_lookup", false],
-  [(facts) => facts.search === "incomplete", "ISS-14", "narrow_or_attention", false],
-  [(facts) => facts.capability === "missing", "ISS-15", "record_help_unsupported", false],
-  [(facts) => facts.writeEffect === "rejected", "ISS-13", "report_exact_failure", false],
-  [(facts) => facts.mixedWorkaround, "ISS-10", "cross_link_two", true],
-  [(facts) => facts.match === "open_exact", "ISS-06", "comment_sanitized", true],
-  [(facts) => facts.match === "closed_fixed_installed", "ISS-07A", "create_linked", true],
-  [(facts) => facts.match === "closed_fixed_newer", "ISS-07B", "reference_version", false],
-  [(facts) => facts.match === "closed_wontfix_alive", "ISS-07C", "comment_sanitized", true],
-  [
-    (facts) => facts.repositoryKnown && facts.auth === "unavailable",
-    "ISS-11",
-    "credential_boundary",
-    false,
-  ],
-  [(facts) => facts.repositoryRank === "ambiguous", "ISS-12", "needs_attention", false],
-  [(facts) => facts.rootCause === "unknown", "ISS-05", "reproduce", false],
-  [
-    (facts) => facts.rootCause === "external" && facts.owner === "verified",
-    "ISS-01",
-    "search_comment_create",
-    true,
-  ],
-  [
-    (facts) => facts.rootCause === "external" && facts.owner === "ambiguous",
-    "ISS-02",
-    "needs_attention",
-    false,
-  ],
-  [
-    (facts) => facts.rootCause === "external" && facts.owner === "project_remotes_only",
-    "ISS-03",
-    "needs_attention",
-    false,
-  ],
-  [(facts) => facts.rootCause === "project", "ISS-04", "project_precedence_search", true],
+  [(facts) => facts.forbiddenData, "ISS-08"],
+  [(facts) => facts.writeEffect === "ambiguous", "ISS-09"],
+  [(facts) => facts.search === "incomplete", "ISS-14"],
+  [(facts) => facts.capability === "missing", "ISS-15"],
+  [(facts) => facts.writeEffect === "rejected", "ISS-13"],
+  [(facts) => facts.mixedWorkaround, "ISS-10"],
+  [(facts) => facts.match === "open_exact", "ISS-06"],
+  [(facts) => facts.match === "closed_fixed_installed", "ISS-07A"],
+  [(facts) => facts.match === "closed_fixed_newer", "ISS-07B"],
+  [(facts) => facts.match === "closed_wontfix_alive", "ISS-07C"],
+  [(facts) => facts.repositoryKnown && facts.auth === "unavailable", "ISS-11"],
+  [(facts) => facts.repositoryRank === "ambiguous", "ISS-12"],
+  [(facts) => facts.rootCause === "unknown", "ISS-05"],
+  [(facts) => facts.rootCause === "external" && facts.owner === "verified", "ISS-01"],
+  [(facts) => facts.rootCause === "external" && facts.owner === "ambiguous", "ISS-02"],
+  [(facts) => facts.rootCause === "external" && facts.owner === "project_remotes_only", "ISS-03"],
+  [(facts) => facts.rootCause === "project", "ISS-04"],
 ];
 
-const ACTION_EVIDENCE = {
-  "ISS-01": /Search all/u,
-  "ISS-02": /needs_attention/u,
-  "ISS-03": /needs_attention/u,
-  "ISS-04": /Tracking ref/u,
-  "ISS-05": /Reproduce/u,
-  "ISS-06": /sanitized confirmed use case/u,
-  "ISS-07A": /Create new Issue/u,
-  "ISS-07B": /Reference required version/u,
-  "ISS-07C": /sanitized use case/u,
-  "ISS-08": /Redact\/rebuild/u,
-  "ISS-09": /Read-only lookup/u,
-  "ISS-10": /cross-linked Issues/u,
-  "ISS-11": /Credential boundary/u,
-  "ISS-12": /needs_attention/u,
-  "ISS-13": /Report exact failure/u,
-  "ISS-14": /Narrow or enlarge/u,
-  "ISS-15": /Record help/u,
-};
-const ISSUE_CLASS = {
-  "ISS-01": "upstream_issue",
-  "ISS-02": "upstream_issue",
-  "ISS-03": "upstream_issue",
-  "ISS-04": "project_issue",
-  "ISS-05": "unconfirmed",
-  "ISS-06": "either",
-  "ISS-07A": "either",
-  "ISS-07B": "either",
-  "ISS-07C": "either",
-  "ISS-08": "either",
-  "ISS-09": "either",
-  "ISS-10": "mixed",
-  "ISS-11": "either",
-  "ISS-12": "either",
-  "ISS-13": "either",
-  "ISS-14": "either",
-  "ISS-15": "either",
-};
-
-function issueDecision(facts) {
+function issueDecision(facts, rows = issueRows()) {
   const matched = ISSUE_RULES.find(([predicate]) => predicate(facts));
   if (!matched) return { status: "needs_attention", reason: "route_unclassified" };
-  const [, scenario, action, mayWrite] = matched;
-  return { status: "settled", scenario, class: ISSUE_CLASS[scenario], action, mayWrite };
+  const [, scenario] = matched;
+  const row = rows.get(scenario);
+  if (!row) return { status: "needs_attention", reason: "canonical_route_missing" };
+  const mayWrite = /(?:comment|create|add one|add sanitized|cross-linked Issues)/iu.test(
+    row.requiredAction,
+  );
+  return { status: "settled", scenario, class: row.issueClass, ...row, mayWrite };
 }
 
 function sanitizeIssueBody(body) {
@@ -151,17 +111,36 @@ test("ISS-01 through ISS-15 route distinct facts to canonical actions", () => {
     assert.equal(result.status, "settled", scenario);
     assert.equal(result.scenario, scenario);
     assert.ok(rows.has(result.scenario));
-    assert.equal(result.class, rows.get(result.scenario)[1]);
-    assert.ok(result.action.length > 3);
-    assert.match(rows.get(result.scenario)[3], ACTION_EVIDENCE[result.scenario]);
+    assert.equal(result.class, rows.get(result.scenario).issueClass);
+    for (const field of ["preconditions", "requiredAction", "forbiddenAction", "evidence"]) {
+      assert.equal(result[field], rows.get(result.scenario)[field]);
+      assert.ok(result[field].length > 3, `${scenario}: ${field}`);
+    }
   }
   assert.equal(new Set(fixtures.map(([, scenario]) => scenario)).size, rows.size);
+});
+
+test("the parsed canonical row owns every normative routing field and missing rows fail closed", () => {
+  const source = readFileSync(resolve(ROOT, "docs/architecture/issue-routing.md"), "utf8");
+  const facts = { search: "incomplete" };
+  const original = issueDecision(facts, issueRows(source));
+  for (const field of ["preconditions", "requiredAction", "forbiddenAction", "evidence"]) {
+    const marker = ` [fixture-${field}]`;
+    const mutated = source.replace(original[field], `${original[field]}${marker}`);
+    assert.ok(issueDecision(facts, issueRows(mutated))[field].endsWith(marker));
+  }
+  const withoutScenario = new Map(issueRows(source));
+  withoutScenario.delete("ISS-14");
+  assert.deepEqual(issueDecision(facts, withoutScenario), {
+    status: "needs_attention",
+    reason: "canonical_route_missing",
+  });
 });
 
 test("Issue routing fails closed for overlapping facts, truncated search, unknown effect, and secrets", () => {
   assert.equal(issueDecision({ rootCause: "project", forbiddenData: true }).scenario, "ISS-08");
   assert.equal(issueDecision({ search: "incomplete" }).mayWrite, false);
-  assert.equal(issueDecision({ writeEffect: "ambiguous" }).action, "readonly_lookup");
+  assert.match(issueDecision({ writeEffect: "ambiguous" }).requiredAction, /Read-only lookup/u);
   const sanitized = sanitizeIssueBody(
     "token=abc /home/alex/private\n```transcript\nprivate prompt\n```",
   );
