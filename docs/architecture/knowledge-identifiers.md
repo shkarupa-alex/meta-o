@@ -23,6 +23,11 @@ knowledge_id_changes:
     reason: Проверка authorization выбирала первую историческую запись и разрешала ею все последующие semantic reuse.
     new_boundary: Начиная с current_record_enforcement_sha каждый parent edge требует отдельную подходящую запись с содержанием, которого не было в owning decision у parent.
     references_updated: true
+  - action: reuse
+    id: §A-MEMORY-01
+    reason: Resolvable sibling boundary отключала enforcement, а единственное историческое исключение новой границы не было названо.
+    new_boundary: Cutoff и обе enforcement boundary обязаны быть ancestors HEAD; current-record pin исключает только 3a292e7..a811313 для §A-DELIVERY-01.
+    references_updated: true
 ```
 
 ## Решение
@@ -127,6 +132,12 @@ cutoff без исключений.
 ```yaml
 current_record_enforcement_sha: 661eaf0f25a3d50c1f5aef686b106eddfe9a9489
 ```
+
+Граница оставляет в legacy shape-check ровно один старый edge
+`3a292e716e9614c9ff71b138d2dc8b10ee2d551f..a8113132c2f7a23d0a7cd18c156de527108dd953`
+с semantic reuse §A-DELIVERY-01: он появился до edge-aware правила, и история не
+переписывается ради вымышленной authorization record. Сам edge с исправлением
+`661eaf0f..2e8dd1a` уже проверяется новым правилом.
 
 Недостижимый cutoff или недостижимая граница дают
 `history_unavailable`; merge-base остаётся лишь дешёвым branch guard.

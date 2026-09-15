@@ -288,18 +288,20 @@ export function edgeViolations(
  * rewritten to hide that. An absent `semanticFrom` enforces everywhere.
  * `currentRecordFrom` similarly pins the first parent whose outgoing edges
  * require a distinct authorization record rather than the legacy shape check.
+ * It exempts only 3a292e7..a811313 (`§A-DELIVERY-01`), which predates the rule;
+ * history is not rewritten to fabricate an authorization that did not exist.
  */
 export function verifyHistory(root, cutoff, semanticFrom = null, currentRecordFrom = null) {
-  if (!git(root, ["rev-parse", "--verify", `${cutoff}^{commit}`], true)) {
+  const isReachable = (ref) =>
+    Boolean(git(root, ["rev-parse", "--verify", `${ref}^{commit}`], true)) &&
+    git(root, ["merge-base", "--is-ancestor", ref, "HEAD"], true) !== null;
+  if (!isReachable(cutoff)) {
     return [`history_unavailable: cutoff ${cutoff} is unreachable`];
   }
-  if (semanticFrom && !git(root, ["rev-parse", "--verify", `${semanticFrom}^{commit}`], true)) {
+  if (semanticFrom && !isReachable(semanticFrom)) {
     return [`history_unavailable: semantic boundary ${semanticFrom} is unreachable`];
   }
-  if (
-    currentRecordFrom &&
-    !git(root, ["rev-parse", "--verify", `${currentRecordFrom}^{commit}`], true)
-  ) {
+  if (currentRecordFrom && !isReachable(currentRecordFrom)) {
     return [`history_unavailable: current-record boundary ${currentRecordFrom} is unreachable`];
   }
   const lines = git(root, ["rev-list", "--topo-order", "--reverse", "--parents", `${cutoff}..HEAD`])

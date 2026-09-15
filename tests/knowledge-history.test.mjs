@@ -278,3 +278,23 @@ test("an unreachable cutoff reports history_unavailable", () => {
   const { root } = fixture();
   assert.match(verifyHistory(root, "0".repeat(40)).join("\n"), /history_unavailable/);
 });
+
+test("a resolvable sibling cannot act as a history boundary", () => {
+  const { root, cutoff } = fixture();
+  git(root, ["switch", "-qc", "sibling"]);
+  writeFileSync(join(root, "docs", "architecture", "sibling.md"), "# Sibling\n");
+  commit(root, "sibling boundary candidate");
+  const sibling = git(root, ["rev-parse", "HEAD"]).trim();
+  git(root, ["switch", "-q", "master"]);
+
+  assert.match(verifyHistory(root, sibling).join("\n"), /cutoff .* is unreachable/u);
+  assert.match(
+    verifyHistory(root, cutoff, sibling).join("\n"),
+    /semantic boundary .* is unreachable/u,
+  );
+  assert.match(
+    verifyHistory(root, cutoff, null, sibling).join("\n"),
+    /current-record boundary .* is unreachable/u,
+  );
+  assert.deepEqual(verifyHistory(root, cutoff, cutoff, cutoff), []);
+});
