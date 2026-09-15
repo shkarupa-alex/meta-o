@@ -20,26 +20,30 @@ function revision(skill) {
   }).stdout.trim();
 }
 
-function envelope(skill, policy = "advisory") {
+function envelope(skill, { tier = "required", matrixProfile = "required-codex" } = {}) {
   const document = loadCorpus(ROOT).get(skill);
-  const identity =
-    policy === "critical"
-      ? { route: "opencode", model: "llamacpp/qwen3.8-27b", effort: "default" }
-      : { route: "codex", model: "gpt-5.6-terra", effort: "low" };
+  const identity = {
+    "required-claude": { route: "claude", model: "opus[1m]", effort: "low" },
+    "required-codex": { route: "codex", model: "gpt-5.6-sol", effort: "low" },
+    critical: { route: "opencode", model: "llamacpp/qwen3.8-27b", effort: "default" },
+  }[matrixProfile];
+  assert.ok(identity, `unknown fixture matrix profile ${matrixProfile}`);
   return {
-    contract: "meta-o.skill-eval-evidence.v2",
+    contract: "meta-o.skill-eval-evidence.v3",
     candidate: HEAD,
     skillRevision: revision(skill),
     skill,
-    policy,
+    policy: document.policy,
     repetition: 1,
+    tier,
+    matrixProfile,
     requested: identity,
     harness: {
-      name: policy === "critical" ? "OpenCode" : "Codex",
+      name: tier === "critical" ? "OpenCode" : identity.route === "claude" ? "Claude" : "Codex",
       version: "fixture-1",
       profileVersion: "fixture-profile-1",
-      quantization: policy === "critical" ? "UD-Q4-KM" : "provider-managed",
-      context: policy === "critical" ? "32768" : "fixture-context",
+      quantization: tier === "critical" ? "UD-Q4-KM" : "provider-managed",
+      context: tier === "critical" ? "32768" : "fixture-context",
       sampling: "fixture-defaults",
       toolPermissions: ["read", "shell-readonly"],
     },
@@ -55,6 +59,7 @@ function envelope(skill, policy = "advisory") {
     },
     results: document.cases.map((item) => ({
       caseId: item.id,
+      contractIds: item.contracts,
       verdict: "PASS",
       observations: [`${item.class} behavior observed`],
       oracleEvidence: [
@@ -75,8 +80,8 @@ function envelope(skill, policy = "advisory") {
   };
 }
 
-function finalizedEnvelope(skill, policy = "advisory") {
-  const result = envelope(skill, policy);
+function finalizedEnvelope(skill, options = {}) {
+  const result = envelope(skill, options);
   result.execution.evaluationDigest = evaluationDigest(loadCorpus(ROOT).get(skill), result);
   return result;
 }
@@ -93,15 +98,17 @@ test("every installable skill owns three bounded embedded cases", () => {
 
 test("complete evidence binds every skill to candidate, revision and approved identity", () => {
   const corpus = loadCorpus(ROOT);
-  const evidence = [...corpus.values()].map(({ skill, policy }) =>
-    finalizedEnvelope(skill, policy),
+  const evidence = [...corpus.values()].flatMap(({ skill }) =>
+    ["required-claude", "required-codex"].map((matrixProfile) =>
+      finalizedEnvelope(skill, { matrixProfile }),
+    ),
   );
   assert.deepEqual(
     validateEvidence(ROOT, evidence, HEAD, true, {
       criticalProfile: "opencode/llamacpp/qwen3.8-27b/default",
     }),
     {
-      envelopes: 8,
+      envelopes: 16,
       nonPass: [],
     },
   );
@@ -109,7 +116,7 @@ test("complete evidence binds every skill to candidate, revision and approved id
 
 test("evidence fails closed on identity drift, missing coverage and sensitive fields", () => {
   const drift = finalizedEnvelope("find-reuse");
-  drift.execution.effective.model = "gpt-5.6-sol";
+  drift.execution.effective.model = "gpt-5.6-luna";
   assert.throws(
     () => validateEvidence(ROOT, drift, HEAD),
     /requested\/effective identity mismatch/,
@@ -133,7 +140,10 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
     /missing skill evidence/,
   );
 
-  const wrongCriticalModel = finalizedEnvelope("mo-orchestrate-orca", "critical");
+  const wrongCriticalModel = finalizedEnvelope("mo-orchestrate-orca", {
+    tier: "critical",
+    matrixProfile: "critical",
+  });
   wrongCriticalModel.requested.model = "remote/qwen2-7b";
   wrongCriticalModel.execution.effective.model = "remote/qwen2-7b";
   wrongCriticalModel.harness.context = "1";
@@ -184,10 +194,14 @@ test("the CLI exposes a bounded prompt without launching a model", () => {
       "find-reuse",
       "--candidate",
       HEAD,
+      "--tier",
+      "required",
+      "--matrix-profile",
+      "required-codex",
       "--route",
       "codex",
       "--model",
-      "gpt-5.6-terra",
+      "gpt-5.6-sol",
       "--effort",
       "low",
       "--harness",

@@ -73,6 +73,7 @@ Control executable и обязательный upstream companion skill — ра
 
 ```text
 готовность проекта/задачи
+  → migration intake и G0: пустой committed feature backlog
   → короткий начальный /goal для executor
   → executor коммитит чистый candidate
   → фиксируется один полный SHA
@@ -80,6 +81,8 @@ Control executable и обязательный upstream companion skill — ра
   → оба завершаются до освобождения любого из них
   → исправления создают новый SHA и перезапускают все gates
   → deterministic QC и применимые E2E
+  → GC: повторный empty-backlog proof exact SHA
+  → G1/G2 перед agent-owned MR create/merge со сверкой remote head
   → понятный человеку verified result или needs_attention
 ```
 
@@ -97,7 +100,7 @@ shared/       единые владельцы общих references и runtime h
 skills/       сгенерированное устанавливаемое дерево, закоммичено и byte-checked
 tools/        инструменты сборки, не поставляются
 docs/         бизнес-контекст, словарь, архитектура, backlog и acceptance
-spec/         спецификации фич и дословные intent-ledgers
+spec/         ignored private рабочие bundles; canonical active spec живёт под docs/
 ```
 
 `skills/` строится автоматически и никогда не редактируется вручную. Каждый
@@ -118,6 +121,10 @@ make mo-eval-cases
 печатает сценарии, которым нужен агент, и завершается с кодом 2, поэтому его
 невозможно принять за успешный прогон.
 
+`make mo-backlog-empty` — отдельный non-mutating lifecycle closure gate. Он
+читает `HEAD:docs/backlog.md`; ordinary `make mo-qc` намеренно допускает
+корректные временные feature entries.
+
 `make mo-eval-cases` offline проверяет embedded corpus из 24 случаев для восьми
 skills. Команды live GPU-run и валидации внешнего JSON evidence описаны в
 `docs/e2e.md`; сам target модель не запускает.
@@ -133,5 +140,13 @@ skills. Команды live GPU-run и валидации внешнего JSON 
 [Сквозная проверка](docs/e2e.md), [Карта acceptance](docs/acceptance.md),
 [Бэклог](docs/backlog.md), [Грабли и команды проекта](docs/papercut.md) и
 [§A-ORCHESTRATION-01 — Скилы и reasoning — слой оркестрации процесса][skills-first].
+Новый lifecycle дополняют:
+
+- [§A-BACKLOG-01 — Backlog — временный notebook с отдельным closure gate][backlog-notebook];
+- [§A-ISSUE-01 — Подтверждённая внешняя работа маршрутизируется в Issues][issue-routing];
+- [§A-REVIEW-04 — Authoritative review response имеет проверяемую форму][review-response].
 
 [skills-first]: docs/architecture/skills-first.md
+[backlog-notebook]: docs/architecture/backlog-notebook.md
+[issue-routing]: docs/architecture/issue-routing.md
+[review-response]: docs/architecture/review-authoritative-response.md

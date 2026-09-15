@@ -1,0 +1,49 @@
+surface-contract: recorded-cli-help.v1
+binary: orca
+version-command: unsupported (orca --version prints root help)
+
+[skills list --json]
+topic: orchestration
+topic: orca-cli
+
+[skills get orchestration --json]
+name: orchestration
+markdown_bytes: 39250
+
+[skills get orca-cli --json]
+name: orca-cli
+markdown_bytes: nonzero
+
+[project]
+list
+setups
+
+[repo]
+list
+show
+add
+
+[worktree]
+list
+show
+current
+create
+rm
+
+[terminal]
+list
+show
+read
+wait
+create
+close
+
+[orchestration]
+run-create
+task-create
+worker-start
+worker-show
+worker-list
+worker-release
+check
+reply

@@ -29,6 +29,14 @@ the lower layer instead.
 - [Один владелец source, самодостаточные generated skills](docs/architecture/distribution.md)
 - [§A-MEMORY-01 — Уровни знаний связаны уникальными id](docs/architecture/knowledge-identifiers.md)
 - [§A-EVAL-01 — Model actors запускаются только по применимости и на approved profile](docs/architecture/evaluation-model-policy.md)
+- [§A-BACKLOG-01 — Backlog — временный notebook с отдельным closure gate](docs/architecture/backlog-notebook.md)
+- [§A-ISSUE-01 — Подтверждённая внешняя работа маршрутизируется в Issues](docs/architecture/issue-routing.md)
+- [§A-REVIEW-04 — Authoritative review response имеет проверяемую форму](docs/architecture/review-authoritative-response.md)
+- [§A-SESSION-01 — Orca actors остаются ресурсами исходного project](docs/architecture/orca-session-ownership.md)
+- [§A-DELIVERY-01 — Task bytes доставляются только в доказанный agent prompt](docs/architecture/trust-safe-delivery.md)
+- [§A-WAIT-01 — Один run-wide waiter владеет liveness actors](docs/architecture/blocking-wait-cadence.md)
+- [§A-ACTIVATION-01 — Meta-O skills запускаются только по explicit graph](docs/architecture/skill-activation.md)
+- [§A-MODELS-01 — Recommendation выводится из catalog и bounded history](docs/architecture/model-recommendation.md)
 
 No native CLI is wrapped in a project proxy. Do not create a manifest, receipt,
 digest or baseline without a named external consumer.
@@ -49,7 +57,7 @@ name their `§A-*` decision; see
 | [Карта acceptance](docs/acceptance.md)                | requirements and their actual proof          |
 | [Сквозная проверка](docs/e2e.md)                      | live scenarios and actors                    |
 | [Возможности backend](docs/backend-capabilities.md)   | support boundary and companion map           |
-| [Бэклог](docs/backlog.md)                             | real deferrals, never current progress       |
+| [Бэклог](docs/backlog.md)                             | temporary notebook of the active feature     |
 | [Грабли и команды проекта](docs/papercut.md)          | routine commands and failed approaches       |
 | [Feature lifecycle](shared/references/methodology.md) | complete orchestration methodology           |
 
@@ -61,9 +69,17 @@ materially change scope or outcome, ask the user instead of guessing.
 Preserve confirmed intent verbatim; do not rewrite the original ledger entry to
 hide the dictation error.
 
-Anything postponed, deliberately omitted, blocked or left unfixed goes into
-[Бэклог](docs/backlog.md) with its reason, practical impact and next step.
-Temporary progress and gate state never go there.
+Temporary feature observations may go into [Бэклог](docs/backlog.md) with their
+reason, practical impact and next step. Confirmed out-of-scope work goes to the
+correct project/upstream Issue; unresolved ownership is `needs_attention`.
+`docs/backlog.md` must be empty at G0 and GC, and its committed exact SHA must
+pass `make mo-backlog-empty` immediately before any agent-managed MR/PR create
+or merge. Never waive `NOT-EMPTY` or `UNKNOWN`.
+
+A confirmed reproducible behavioral defect gets the smallest focused regression
+test. Substantial ownership, concurrency, trust, security, compatibility,
+transaction or resource-lifetime code keeps a nearby comment explaining the
+non-obvious invariant. Production comments never contain review finding ids.
 
 Human-facing knowledge uses the user's language. Code, identifiers, commands,
 protocol literals and upstream names remain in English.
@@ -75,6 +91,7 @@ make mo-qc          # authoritative non-mutating aggregate gate
 make mo-lint        # Markdown, formatting, ESLint, syntax and posture self-checks
 make mo-test        # node --test over tests/
 make mo-smoke       # helpers boot under a throwaway HOME
+make mo-backlog-empty # prove committed feature notebook is empty (closure only)
 make skills         # rebuild skills/ from src/skills/ + shared/
 make mo-e2e         # print agent-required scenarios and exit 2
 ```

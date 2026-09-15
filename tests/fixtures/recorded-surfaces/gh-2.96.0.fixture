@@ -1,0 +1,21 @@
+surface-contract: recorded-cli-help.v1
+binary: gh
+version: 2.96.0
+
+[issue list]
+--limit int
+--state string {open|closed|all}
+JSON FIELDS: state, stateReason, title, url
+
+[search issues]
+--limit int
+--state string {open|closed}
+JSON FIELDS: state, title, url
+ABSENT: stateReason
+
+[issue create]
+--title string
+--body-file file
+
+[issue comment]
+--body-file file

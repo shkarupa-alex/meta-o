@@ -312,7 +312,7 @@ test("find-reuse is portable and the retired name is absent", () => {
     // in any project, so it may not name this one in any case.
     if (relative === "evals/cases.json") {
       assert.equal(source.match(OWNER)?.[0], "meta-o", path);
-      assert.match(source, /"contract": "meta-o\.skill-eval-cases\.v1"/u, path);
+      assert.match(source, /"contract": "meta-o\.skill-eval-cases\.v2"/u, path);
       continue;
     }
     assert.doesNotMatch(source, OWNER, path);

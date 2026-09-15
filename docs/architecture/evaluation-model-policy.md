@@ -6,13 +6,13 @@
 knowledge_id_changes:
   - action: reuse
     id: §A-EVAL-01
-    reason: Решение дополнено проверкой native execution identity и read-path policy.
-    new_boundary: Решение определяет и выбор профиля, и доказательство фактического запуска.
+    reason: Approved set расширен обязательной vendor pair и желательными portability coordinates.
+    new_boundary: V3 evidence доказывает полную required matrix и typed desired availability.
     references_updated: true
   - action: reuse
     id: §B-EVAL-01
-    reason: Бизнес-тезис уточнён после отделения локальной orchestration capability.
-    new_boundary: Тезис относится только к low-cost testing actors, а не к orchestrator.
+    reason: Testing policy теперь требует оба vendor-diverse low-effort profiles для каждого applicable case.
+    new_boundary: Required Codex/Claude coordinates блокируют; desired Luna/OpenCode coordinates materialize availability.
     references_updated: true
 ```
 
@@ -24,11 +24,16 @@ actor запускается только для named scenario, который 
 `~/.meta-o/models.json`, сверяет requested/effective route, model и effort и не
 делает автоматический fallback.
 
-Для testing применяются Claude `sonnet5/low`, Codex `gpt-5.6-terra/low` и
-настроенная effective identity профиля OpenCode `deepseek 4 flash`. Более дорогая
-модель или effort требуют нового разрешения пользователя. Неприменимый сценарий
-имеет `not_applicable`; применимый, но не запущенный — `blocked|not_run`, не
-`PASS`.
+Каждый применимый case запускается на Claude `opus[1m]/low` и Codex
+`gpt-5.6-sol/low`. Evidence v3 связывает case, contract id, tier, matrix profile,
+candidate, requested/effective model+effort и native harness identity.
+Неприменимый сценарий имеет доказанный `not_applicable`; недоступная required
+coordinate — `blocked|not_run`, не `PASS`.
+
+Desired coordinates Codex `gpt-5.6-luna/max` и OpenCode/Qwen materialize'ятся
+как `not_available`, когда отсутствуют. Запущенный `fail|unknown` блокирует.
+Полный required Cartesian product обязателен, duplicate composite identity
+запрещён; evidence v2 читается только как `legacy_v2` диагностика.
 
 Критический Qwen/OpenCode profile остаётся отдельной проверкой orchestration и не
 заменяется DeepSeek comparator. Evidence хранит scenario id, candidate SHA,

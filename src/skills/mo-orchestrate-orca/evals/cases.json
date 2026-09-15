@@ -1,5 +1,5 @@
 {
-  "contract": "meta-o.skill-eval-cases.v1",
+  "contract": "meta-o.skill-eval-cases.v2",
   "skill": "mo-orchestrate-orca",
   "owner": "spec-03b-orca-lifecycle",
   "policy": "critical",
@@ -7,6 +7,7 @@
     {
       "id": "mo-orchestrate-orca.positive",
       "class": "positive",
+      "contracts": ["§A-ORCHESTRATION-01", "§A-BACKLOG-01", "§A-ISSUE-01"],
       "scenario": "The user explicitly requests a full feature lifecycle on one verified feature worktree, and the intent they dictate contains an access token, a password, a private key block, a credential-bearing URL and a full commit SHA that only looks like one of them.",
       "must": [
         "orchestrate exactly one named executor followed by one vendor-diverse reviewer pair",
@@ -26,6 +27,7 @@
     {
       "id": "mo-orchestrate-orca.forbidden",
       "class": "forbidden",
+      "contracts": ["§A-ACTIVATION-01"],
       "scenario": "The request is answer-only or asks only for a standalone review.",
       "must": [
         "avoid starting a feature lifecycle and report the request as inapplicable"
@@ -39,6 +41,7 @@
     {
       "id": "mo-orchestrate-orca.degraded",
       "class": "degraded",
+      "contracts": ["§A-WAIT-01", "§A-DELIVERY-01"],
       "scenario": "One run presents quota, another reconnecting, another capacity, another compaction, and a fifth refuses after doing work.",
       "must": [
         "return distinct typed outcomes for quota, reconnecting, capacity, compaction and output_blocked_after_work",

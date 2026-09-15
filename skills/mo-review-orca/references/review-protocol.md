@@ -63,11 +63,12 @@ code must cite durable business/architecture contracts, never finding ids.
 
 ## Deferral lens
 
-An empty backlog is valid. Inspect the change and behavior for postponed,
-deliberately omitted, blocked or knowingly unfixed work. Every real deferral
-needs a reason, practical impact and next step, and must not be used as a
-progress tracker. Review changed entries and related existing deferrals, but do
-not require an entry merely to fill a category.
+An empty backlog is valid and is required at lifecycle closure. Inspect the change
+and behavior for postponed, deliberately omitted, blocked or knowingly unfixed
+work. A temporary notebook entry needs reason, practical impact and next step;
+confirmed out-of-scope work belongs in a correctly routed project/upstream Issue.
+An unresolved disposition is `needs_attention`, not permission to leave closure
+non-empty. Do not manufacture an entry to fill a category.
 
 ## Diagnostics
 
@@ -84,7 +85,24 @@ a candidate finding without clean process evidence.
 
 ## Report
 
-Return one complete textual report with:
+Return one complete textual report beginning with:
+
+```text
+Review-Execution: <opaque dispatch id>
+Candidate: <40-hex SHA>
+Mode: requested=<mode> effective=<mode>
+Delegation: none
+Verdict: <PASS|FINDINGS|UNKNOWN>
+Counts: P0=<n> P1=<n> P2=<n> P3=<n>
+```
+
+Then include an optional keyed finding index, `Evidence report`, and exactly one
+each of `Grounding`, `Scope and checks`, `Findings`, `Unknowns`, `Residual risks`
+in that order. `UNKNOWN` additionally includes a non-empty `Unknown-Account`
+between Findings and Unknowns and a typed `Unknown-Reason`. End with
+`End-Review: <Review-Execution>` as the last non-empty line.
+
+The complete textual report includes:
 
 - exact 40-hex candidate SHA;
 - opaque native `Review-Execution` id when supplied by the caller;
@@ -95,7 +113,18 @@ Return one complete textual report with:
 - Unknowns and residual risks;
 - exactly one terminal verdict: `PASS`, `FINDINGS` or `UNKNOWN`.
 
+Index keys start at `F-001`, are report-local and match finding body/severity
+one-to-one. Counts equal authored findings. `PASS` has zero counts and empty
+index/Findings, while grounding, checks, Unknowns and residual risks remain
+explicit and non-empty. A finding also states its post-fix invariant, technical
+direction, acceptance proof and depth `local patch`, `boundary repair` or
+`affected-slice redesign`.
+
 `PASS` means no required change remains and evidence covers the complete scope.
 Dirty or mismatched checkout, unknown SHA, truncated/unreadable output or
 missing required context is `UNKNOWN`. Never edit the candidate or run a
 mutating formatter/fixer in its worktree.
+
+Numeric confidence and adjudication counters remain forbidden. The only numeric
+projection outside a report is a component-wise P0–P3 census copied from already
+published reviewer counts; it carries no deduplication, ranking or judgment.

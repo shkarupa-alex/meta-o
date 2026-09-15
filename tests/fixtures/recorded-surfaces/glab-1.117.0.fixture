@@ -1,0 +1,22 @@
+surface-contract: recorded-cli-help.v1
+binary: glab
+version: 1.117.0
+
+[issue list]
+--all
+--closed
+--page
+--per-page
+ABSENT: --state
+
+[issue create]
+--title
+--description-file
+
+[issue note]
+--message
+ABSENT: --body-file
+
+[api]
+--input
+--header

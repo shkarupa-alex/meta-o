@@ -13,8 +13,10 @@ Inspect substance, not file presence. A ready project has:
 - architecture decisions citing their business reason, each thesis and each
   decision carrying a unique stable id, and each decision naming the thesis ids
   it serves;
-- a backlog containing only real deferrals, each with reason, practical impact
-  and next step, never active progress;
+- a branch-local feature backlog whose temporary entries have reason,
+  practical impact and next step, plus a project-owned non-mutating
+  `MO-BACKLOG/1` closure
+  command and G0/GC/G1/G2 rules in the entry contract;
 - E2E scenarios and an acceptance-to-proof mapping;
 - a plain-language README explaining purpose, use, constraints, commands and
   links to the knowledge layer;
@@ -52,15 +54,33 @@ requires proof that a plugin/config solution is impossible.
 Reviewer checks do not mutate. Any diagnostic that can rewrite tracked files
 runs in a disposable location.
 
+Verify `.orca/` and `spec/` separately with `git check-ignore -v --no-index` and
+prove the matching ignore source is tracked with `git ls-files
+--error-unmatch`. Global or `.git/info/exclude` coverage is a setup gap.
+
+Discover GitHub/GitLab CI from authenticated hosting metadata, then parse only
+tracked local YAML and literal local includes/reusable workflows with `js-yaml`.
+Return a bounded `CI-Coverage/1` outcome: `covered`, `config_present`,
+`no_ci_surface` or `unknown`. `covered` requires candidate/MR and applicable
+merge-group/train reachability, non-optional execution and proven required
+policy. Dynamic/remote includes, expressions or unreadable settings are
+`unknown`. Show an exact proposed patch but never modify CI YAML or server-side
+protection without a separate request.
+
 ## Backend and harness readiness
 
 Detect Orca from its native environment and status surface. Report unsupported
 or ambiguous environments rather than guessing. When explicitly asked, check
 the control and companion skill from [Backend contract](backend-contract.md).
 
-Companion discovery remains separate from executable discovery. Orca exposes
-its version-matched `orchestration` guide through `orca skills`. Name the exact
-source found; do not substitute an unrelated personal copy.
+Companion discovery remains separate from executable discovery. Resolve one
+absolute Orca binary and require both `orca skills get orchestration --json` and
+`orca skills get orca-cli --json` to return non-empty version-matched guides.
+Do not install copies into harness homes.
+
+Check `orca`/`orca-cli` separately from the upstream
+`orchestration` companion and record each result independently. Orca exposes
+its version-matched `orchestration` guide through the native skill surface.
 
 Run the bundled posture helper for Codex, Claude Code and OpenCode in applicable
 launch-parent shells:
@@ -76,6 +96,14 @@ require explicit confirmation.
 
 Backend-wide health does not prove harness readiness. Use Orca's documented
 launch and observation surfaces to verify every selected harness.
+Before task bytes, distinguish a normal agent prompt from Claude trust UI and a
+shell prompt; an ambiguous public surface makes that route unsupported. Verify
+one owner of unsandboxed posture so a fallback never duplicates wrapper flags.
+
+Inspect `ProjectRegistrationSet/1` and `OwnedResourceSet/1`. A folder/no-project
+context without existing same-project isolated worktrees is a typed placement
+gap; setup may recommend a Git-capable project, but project/repository
+registration mutation requires separate confirmation outside review start.
 
 When `mo-watchdog` is installed or expected, require `jq` and `flock` separately
 from the Orca control. Missing JSON parsing or kernel-released locking

@@ -13,6 +13,11 @@ knowledge_id_changes:
       cutoff, semantic reuse от явно закреплённого commit, а merge-inheritance
       только при реальном удалении на другой стороне.
     references_updated: true
+  - action: reuse
+    id: §A-MEMORY-01
+    reason: Durable defect memory добавила regression/invariant rules к цепочке знаний.
+    new_boundary: Поведенческий defect связан с test, а non-obvious repair — с invariant comment.
+    references_updated: true
 ```
 
 ## Решение
@@ -148,6 +153,19 @@ source blob ids, closure commit, map blob и постоянную команду
 §B-LONGEVITY-04. Если §A-MEMORY-03 отменяется, временная map, ссылки на Git
 objects и постоянный provenance test удаляются вместе: оставлять непроверяемый
 receipt без потребителя запрещено.
+
+## §A-MEMORY-04 — Behavioral defect оставляет regression и invariant
+
+Подтверждённый воспроизводимый behavioral defect получает минимальный focused
+regression test, падающий до fix. Существенная правка ownership, concurrency,
+trust, security, compatibility, transaction или resource lifetime сохраняет в
+production code комментарий о non-obvious invariant и причине границы.
+Комментарий не пересказывает syntax и не содержит report-local finding id.
+
+Решение служит §B-REVIEW-02 и §B-SELFHOST-02: повторный класс сбоя должен ловиться
+раньше и быть понятен следующей сессии. Без §A-MEMORY-04 setup-managed contract,
+регрессионная норма и invariant comments становятся лишними, а найденный дефект
+снова остаётся только в transcript.
 
 ## Бизнес-причина
 

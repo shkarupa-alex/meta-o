@@ -3,16 +3,29 @@
 Здесь записано, чем в этом проекте делается типовая работа, что команда на самом
 деле делает и что уже пробовали, а оно не сработало. Документ существует, чтобы
 следующая сессия не тратила те же попытки заново — это опыт обращения с проектом,
-а не бэклог: отложенная продуктовая работа и дефекты живут в
-[Бэклог](backlog.md).
+а не feature backlog: подтверждённая долговечная работа живёт в Issues, а
+[Бэклог](backlog.md) остаётся временным notebook активной ветки.
 
 Запись короткая по правилу. Если строка перестала быть правдой — её удаляют, а не
 дописывают рядом.
+
+## Issue-аудит lifecycle workaround
+
+- Folder project не даёт доказанный same-project reviewer route: canonical
+  upstream — [Orca issue #2654](https://github.com/stablyai/orca/issues/2654).
+- Public worker surface не доказывает effective model identity: canonical
+  upstream — [Orca issue #16527](https://github.com/stablyai/orca/issues/16527).
+- Trust-UI state, exact fallback-terminal cleanup и `glab issue note` body-file:
+  `unsupported` для новой записи в этом lifecycle — `gh` ответил 401, а
+  `glab auth status` не завершился за bounded probe; точного публичного duplicate
+  не найдено. Эти исходы не разрешают dummy write или выбор другого remote.
 
 ## Проверки и сборка
 
 - `make mo-qc` — единственный авторитетный гейт, он ничего не перезаписывает.
   Правит файлы только `make format`, и в гейт он не входит.
+- `make mo-backlog-empty` — отдельный closure gate committed `HEAD`; он не входит
+  в `mo-qc`, потому что mid-feature notebook может законно быть непустым.
 - После любой правки в `shared/` нужен `make skills`. Иначе `skills-check` внутри
   `mo-qc` красный с «skills/ is out of date», и это не дефект гейта.
 - `make mo-e2e` намеренно завершается кодом 2 и печатает, что должен запустить

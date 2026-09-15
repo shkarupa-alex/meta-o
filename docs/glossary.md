@@ -34,6 +34,18 @@ candidate и gates. Он не читает, не оценивает и не ре
 Отсутствующее, неполное, unknown, stale или относящееся к другому SHA evidence не
 проходит gate.
 
+**Feature backlog** — временный branch-local notebook активной фичи. После
+disposition он пуст; долговечная подтверждённая работа живёт в Issues.
+
+**Closure gate** — project-owned `MO-BACKLOG/1` proof committed backlog blob на
+G0, GC, G1 и G2. `NOT-EMPTY` и `UNKNOWN` одинаково блокируют boundary.
+
+**Issue disposition** — один из `in_scope`, `unconfirmed`, `project_issue`,
+`upstream_issue`, `duplicate`, `needs_attention`, выбранный до repository.
+
+**Review handoff** — атомарная пара полных reviewer payload в private namespace,
+которую named consumer полностью читает до acknowledgement и cleanup.
+
 **Run evidence** — понятные человеку факты текущего запуска. Это не persisted
 receipt, event log, support certificate, manifest или registry.
 

@@ -62,6 +62,12 @@ function run(home, args, cwd = ROOT, extraEnv = {}) {
   });
 }
 
+/** One route from the versioned model-discovery envelope. */
+function provider(report, route) {
+  assert.equal(report.contract, "meta-o.model-discovery.v2");
+  return report.providers.find((entry) => entry.route === route);
+}
+
 after(() => {
   for (const home of sandboxes) rmSync(home, { recursive: true, force: true });
 });
@@ -243,7 +249,8 @@ test("show reports every role and writes nothing", () => {
     "e2eTester",
     "testClaude",
     "testCodex",
-    "testOpenCode",
+    "testCodexDesired",
+    "testOpenCodeDesired",
   ]) {
     assert.match(result.stdout, new RegExp(`${role}=unset`));
   }
@@ -252,18 +259,22 @@ test("show reports every role and writes nothing", () => {
 });
 
 test("testing profiles fail closed above the approved cost", () => {
-  assert.equal(testingPolicyError("testClaude", "claude/sonnet5/low"), null);
-  assert.equal(testingPolicyError("testCodex", "codex/gpt-5.6-terra/low"), null);
-  assert.equal(testingPolicyError("testOpenCode", "opencode/provider/deepseek-v4-flash/low"), null);
-  assert.match(testingPolicyError("testClaude", "claude/opus/high"), /sonnet5\/low/);
-  assert.match(testingPolicyError("testCodex", "codex/gpt-5.6-sol/high"), /terra\/low/);
+  assert.equal(testingPolicyError("testClaude", "claude/opus[1m]/low"), null);
+  assert.equal(testingPolicyError("testCodex", "codex/gpt-5.6-sol/low"), null);
+  assert.equal(testingPolicyError("testCodexDesired", "codex/gpt-5.6-luna/max"), null);
+  assert.equal(
+    testingPolicyError("testOpenCodeDesired", "opencode/provider/qwen3.8-27b/low"),
+    null,
+  );
+  assert.match(testingPolicyError("testClaude", "claude/opus[1m]/high"), /opus\[1m\]\/low/);
+  assert.match(testingPolicyError("testCodex", "codex/gpt-5.6-sol/high"), /sol\/low/);
   assert.match(
-    testingPolicyError("testOpenCode", "opencode/provider/deepseek-v4-flash/high"),
-    /deepseek 4 flash.*low effort/,
+    testingPolicyError("testOpenCodeDesired", "opencode/provider/qwen3.8-27b/high"),
+    /qwen 3\.8 27b.*low effort/,
   );
   assert.match(
-    testingPolicyError("testOpenCode", "opencode/provider/qwen3.8-27b/low"),
-    /deepseek 4 flash/,
+    testingPolicyError("testOpenCodeDesired", "opencode/provider/deepseek-v4-flash/low"),
+    /qwen 3\.8 27b/,
   );
 });
 
@@ -453,15 +464,14 @@ test(
     const home = sandbox();
     const result = run(home, ["--catalog", "--route", "codex", "--json"]);
     assert.equal(result.status, 0, result.stderr);
-    const report = JSON.parse(result.stdout);
-    if (!Array.isArray(report.codex.catalog)) {
-      context.skip(report.codex.catalogUnavailableReason);
+    const report = provider(JSON.parse(result.stdout), "codex");
+    if (report.catalog.status !== "ok") {
+      context.skip(report.catalog.reason);
       return;
     }
-    assert.equal(report.codex.source, "codex-json");
-    assert.ok(Array.isArray(report.codex.catalog) && report.codex.catalog.length > 0);
-    const [first] = report.codex.catalog;
-    assert.ok(Array.isArray(report.codex.efforts[first]) && report.codex.efforts[first].length > 0);
+    assert.equal(report.catalog.models[0].sourceKind, "codex-json");
+    assert.ok(report.catalog.models.length > 0);
+    assert.ok(report.catalog.models[0].efforts.length > 0);
   },
 );
 
@@ -470,9 +480,13 @@ test("the bundled Claude SDK reads supported models without sending a user turn"
   const fixture = fakeClaude(home, "success");
   const result = run(home, ["--catalog", "--route", "claude", "--json"], home, fixture.env);
   assert.equal(result.status, 0, result.stderr);
-  const report = JSON.parse(result.stdout).claude;
-  assert.deepEqual(report.catalog, ["fake-opus"], JSON.stringify(report));
-  assert.deepEqual(report.efforts, { "fake-opus": ["low", "high"] });
+  const report = provider(JSON.parse(result.stdout), "claude");
+  assert.deepEqual(
+    report.catalog.models.map(({ id }) => id),
+    ["fake-opus"],
+    JSON.stringify(report),
+  );
+  assert.deepEqual(report.catalog.models[0].efforts, ["low", "high"]);
   const records = readFileSync(fixture.log, "utf8").trim().split("\n").map(JSON.parse);
   assert.ok(records[0].args.includes("--input-format"));
   assert.ok(records[0].args.includes("stream-json"));
@@ -490,8 +504,11 @@ test("Claude SDK cleanup reaps the transient catalogue process", () => {
   const fixture = fakeClaude(home, "success-exit");
   const result = run(home, ["--catalog", "--route", "claude", "--json"], home, fixture.env);
   assert.equal(result.status, 0, result.stderr);
-  const report = JSON.parse(result.stdout).claude;
-  assert.deepEqual(report.catalog, ["fake-opus"]);
+  const report = provider(JSON.parse(result.stdout), "claude");
+  assert.deepEqual(
+    report.catalog.models.map(({ id }) => id),
+    ["fake-opus"],
+  );
   const pids = JSON.parse(readFileSync(fixture.pids, "utf8"));
   assert.equal(waitUntilGone(pids.parent), true, `provider ${pids.parent} was not reaped`);
 });
@@ -503,9 +520,9 @@ test("a Claude catalogue timeout is bounded and leaves no provider child", () =>
   const result = run(home, ["--catalog", "--route", "claude", "--json"], home, fixture.env);
   assert.equal(result.status, 0, result.stderr);
   assert.ok(Date.now() - started < 2_500, "catalogue timeout exceeded its cleanup bound");
-  const report = JSON.parse(result.stdout).claude;
-  assert.equal(report.catalog, null);
-  assert.match(report.catalogUnavailableReason, /no answer within 200ms/);
+  const report = provider(JSON.parse(result.stdout), "claude");
+  assert.equal(report.catalog.status, "unavailable");
+  assert.match(report.catalog.reason, /no answer within 200ms/);
   if (existsSync(fixture.pids)) {
     const pids = JSON.parse(readFileSync(fixture.pids, "utf8"));
     assert.equal(waitUntilGone(pids.parent), true, `timed-out provider ${pids.parent} leaked`);
@@ -523,8 +540,11 @@ test("an isolated generated helper needs no ambient node_modules", () => {
     { cwd: home, encoding: "utf8", env: { ...process.env, ...fixture.env, HOME: home } },
   );
   assert.equal(result.status, 0, result.stderr);
-  const report = JSON.parse(result.stdout).claude;
-  assert.deepEqual(report.catalog, ["fake-opus"]);
+  const report = provider(JSON.parse(result.stdout), "claude");
+  assert.deepEqual(
+    report.catalog.models.map(({ id }) => id),
+    ["fake-opus"],
+  );
 });
 
 test("roles are scoped to the Git root, so any subdirectory is the same project", () => {
@@ -573,10 +593,12 @@ test("an effort the model does not offer is refused before anything is written",
   );
   chmodSync(codex, 0o755);
   const environment = { PATH: `${bin}${delimiter}${process.env.PATH}` };
-  const listed = JSON.parse(
-    run(home, ["--catalog", "--route", "codex", "--json"], ROOT, environment).stdout,
-  ).codex;
-  const model = Object.keys(listed.efforts)[0];
+  const listed = provider(
+    JSON.parse(run(home, ["--catalog", "--route", "codex", "--json"], ROOT, environment).stdout),
+    "codex",
+  ).catalog;
+  const available = listed.models.find(({ efforts }) => efforts.length > 0);
+  const model = available?.id;
   assert.ok(model, "this test needs one codex model that publishes effort levels");
 
   const badEffort = run(
@@ -600,12 +622,61 @@ test("an effort the model does not offer is refused before anything is written",
   // The real thing is accepted, and the same value goes through with --force.
   const good = run(
     home,
-    ["--set", `executor=codex/${model}/${listed.efforts[model][0]}`],
+    ["--set", `executor=codex/${model}/${available.efforts[0]}`],
     ROOT,
     environment,
   );
   assert.equal(good.status, 0, good.stderr);
   assert.equal(run(home, ["--set", "executor=codex/no-such-model-9/high", "--force"]).status, 0);
+});
+
+test("31-day history streams beyond ten files and never becomes a catalog", () => {
+  const home = sandbox();
+  const bin = join(home, "bin");
+  const sessions = join(home, ".codex", "sessions", "2026", "09");
+  mkdirSync(bin, { recursive: true });
+  mkdirSync(sessions, { recursive: true });
+  const codex = join(bin, "codex");
+  writeFileSync(
+    codex,
+    `#!/bin/sh\nprintf '%s\\n' '{"models":[{"slug":"gpt-5.6-sol","display_name":"Sol coding","description":"software engineering model","visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}]}]}'\n`,
+  );
+  chmodSync(codex, 0o755);
+  for (let index = 0; index < 12; index += 1) {
+    writeFileSync(
+      join(sessions, `${index}.jsonl`),
+      `${JSON.stringify({ model: `history-${index}` })}\n`,
+    );
+  }
+  const environment = { PATH: `${bin}${delimiter}${process.env.PATH}` };
+  const json = run(home, ["--catalog", "--route", "codex", "--json"], ROOT, environment);
+  assert.equal(json.status, 0, json.stderr);
+  const report = provider(JSON.parse(json.stdout), "codex");
+  assert.equal(report.history.scannedFiles, 12);
+  assert.equal(report.history.models.length, 12);
+  assert.deepEqual(
+    report.catalog.models.map(({ id }) => id),
+    ["gpt-5.6-sol"],
+  );
+  assert.equal(JSON.stringify(report).includes("recommend"), false);
+
+  const human = run(home, ["--catalog", "--route", "codex"], ROOT, environment);
+  assert.equal(human.status, 0, human.stderr);
+  assert.match(human.stdout, /recently used \(12 files, hint only, not a catalog\)/u);
+  assert.match(human.stdout, /default recommendation: codex\/gpt-5\.6-sol\/high/u);
+});
+
+test("corrupt history is explicitly incomplete while preserving observed hints", () => {
+  const home = sandbox();
+  const sessions = join(home, ".codex", "sessions");
+  mkdirSync(sessions, { recursive: true });
+  writeFileSync(join(sessions, "mixed.jsonl"), '{"model":"observed-model"}\nnot-json\n');
+  const result = run(home, ["--catalog", "--route", "codex", "--json"]);
+  assert.equal(result.status, 0, result.stderr);
+  const history = provider(JSON.parse(result.stdout), "codex").history;
+  assert.equal(history.complete, false);
+  assert.equal(history.stopReason, "corrupt");
+  assert.deepEqual(history.models, ["observed-model"]);
 });
 
 test("a selection is stored with the gap named when the catalog cannot answer", () => {

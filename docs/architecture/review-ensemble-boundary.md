@@ -1,14 +1,24 @@
 # §A-REVIEW-02 — Обязательная review-единица — одна vendor-diverse пара
 
-Статус: принято; обязательные ensembles и forced subagents отклонены.
+Статус: принято; reviewer subagents и отдельный clean verifier отклонены.
+
+```yaml
+knowledge_id_change:
+  action: reuse
+  id: §A-REVIEW-02
+  reason: Incident уточнил, что даже добровольная delegation нарушает проверяемую review unit.
+  new_boundary: Lifecycle reviewer не создаёт subagents; независимость даёт ровно vendor-diverse pair.
+  references_updated: true
+```
 
 ## Решение
 
 Финальный Feature lifecycle требует ровно одну независимую vendor-diverse пару
 на одном полном SHA. Четыре обязательных initial reviewer и принудительные
-2×2 ensembles не являются дополнительным acceptance gate. Внутренние subagents
-допустимы только как добровольный способ исследования одного reviewer и не
-создают отдельного verdict.
+2×2 ensembles не являются дополнительным acceptance gate. Reviewer subagents в
+Meta-O lifecycle запрещены: они размывают provenance одного authored report и
+делают peer isolation непроверяемой. Это не запрещает отдельно запрошенный
+clean-room review вне Meta-O reviewer unit.
 
 Архивное исследование показывает, что одинаковые дополнительные voters
 повышают стоимость и задержку, но не дают независимости модели; consensus может

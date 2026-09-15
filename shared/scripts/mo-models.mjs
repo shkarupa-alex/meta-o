@@ -19,6 +19,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  createReadStream,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -30,7 +31,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { basename, delimiter, dirname, isAbsolute, join } from "node:path";
+import { basename, delimiter, dirname, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { query as claudeQuery } from "@anthropic-ai/claude-agent-sdk";
@@ -45,7 +46,8 @@ const ROLES = [
   "e2eTester",
   "testClaude",
   "testCodex",
-  "testOpenCode",
+  "testCodexDesired",
+  "testOpenCodeDesired",
 ];
 
 /** Only this schema is understood; a newer file is left strictly alone. */
@@ -54,8 +56,9 @@ const SCHEMA_VERSION = 1;
 /** History older than this is not evidence about what the user runs today. */
 const HISTORY_MAX_AGE_DAYS = 31;
 
-/** Ten recent sessions is a hint, never a catalog. */
-const HISTORY_MAX_SESSIONS = 10;
+/** §A-MODELS-01 bounds provider history without silently truncating by file count. */
+const HISTORY_TIMEOUT_MS = 5_000;
+const HISTORY_BYTE_BUDGET = 64 * 1024 * 1024;
 
 /** Resolving the project is one local `git` call; it may never be the slow part. */
 const GIT_TIMEOUT_MS = 5_000;
@@ -164,21 +167,27 @@ const TESTING_PROFILES = {
   testClaude: {
     route: "claude",
     effort: "low",
-    id: /^(?:claude-)?sonnet-?5(?:[.-]\d+)?(?:-\d{8})?$/u,
-    requirement: "testClaude must name an exact sonnet5/low model id through claude",
+    id: /^(?:claude-)?opus(?:\[1m\]|-1m)(?:-[\w.-]+)?$/u,
+    requirement: "testClaude must be claude/opus[1m]/low",
   },
   testCodex: {
     route: "codex",
     effort: "low",
-    id: /^gpt-5\.6-terra$/u,
-    requirement: "testCodex must be codex/gpt-5.6-terra/low",
+    id: /^gpt-5\.6-sol$/u,
+    requirement: "testCodex must be codex/gpt-5.6-sol/low",
   },
-  testOpenCode: {
+  testCodexDesired: {
+    route: "codex",
+    effort: "max",
+    id: /^gpt-5\.6-luna$/u,
+    requirement: "testCodexDesired must be codex/gpt-5.6-luna/max",
+  },
+  testOpenCodeDesired: {
     route: "opencode",
     effort: "low",
-    id: /^deepseek-?v?4(?:[.-]\d+)?-flash$/u,
+    id: /^qwen(?:-?3[._-]?8)?[-_/ ].*27b$/u,
     requirement:
-      "testOpenCode must name an exact deepseek 4 flash model id " +
+      "testOpenCodeDesired must name the configured qwen 3.8 27b model id " +
       "through opencode at low effort",
   },
 };
@@ -324,7 +333,13 @@ function effectiveRoles(settings, key) {
 // Catalogs and history
 // ---------------------------------------------------------------------------
 
-const unavailable = (reason) => ({ available: false, models: [], efforts: {}, reason });
+const unavailable = (reason) => ({
+  available: false,
+  models: [],
+  efforts: {},
+  details: {},
+  reason,
+});
 
 /** One `provider/model` per line, comments and blanks dropped. */
 function lineListing(descriptor) {
@@ -342,7 +357,7 @@ function lineListing(descriptor) {
       .filter((line) => line && !line.startsWith("#")),
   );
   return models.length > 0
-    ? { available: true, models, efforts: {}, reason: null }
+    ? { available: true, models, efforts: {}, details: {}, reason: null }
     : unavailable("empty listing");
 }
 
@@ -356,6 +371,42 @@ function lineListing(descriptor) {
  */
 export function parseCodexModels(text) {
   const source = String(text);
+  const json = firstJsonObject(source);
+  let parsed;
+  try {
+    parsed = JSON.parse(json);
+  } catch (error) {
+    return unavailable(`codex debug models returned unparseable JSON: ${error.message}`);
+  }
+  const rows = (parsed?.models ?? []).filter(
+    (model) => model?.visibility === "list" && model?.supported_in_api === true,
+  );
+  const efforts = Object.fromEntries(
+    rows
+      .map((model) => [
+        model.slug,
+        (model.supported_reasoning_levels ?? []).map(({ effort }) => effort).filter(Boolean),
+      ])
+      .filter(([, levels]) => levels.length > 0),
+  );
+  const details = Object.fromEntries(
+    rows.map((model) => [
+      model.slug,
+      {
+        label: model.display_name ?? model.name ?? null,
+        description: model.description ?? null,
+        capabilities: model.capabilities ?? null,
+      },
+    ]),
+  );
+  const models = dedupe(rows.map((model) => model.slug).filter(Boolean));
+  return models.length > 0
+    ? { available: true, models, efforts, details, reason: null }
+    : unavailable("no listable models");
+}
+
+/** Return the first balanced JSON object while ignoring braces inside strings. */
+function firstJsonObject(source) {
   const start = source.indexOf("{");
   let end = -1;
   let depth = 0;
@@ -376,26 +427,7 @@ export function parseCodexModels(text) {
       break;
     }
   }
-  let parsed;
-  try {
-    parsed = JSON.parse(start >= 0 && end > start ? source.slice(start, end) : source);
-  } catch (error) {
-    return unavailable(`codex debug models returned unparseable JSON: ${error.message}`);
-  }
-  const rows = (parsed?.models ?? []).filter(
-    (model) => model?.visibility === "list" && model?.supported_in_api === true,
-  );
-  const efforts = {};
-  for (const model of rows) {
-    const levels = (model.supported_reasoning_levels ?? [])
-      .map((level) => level?.effort)
-      .filter(Boolean);
-    if (levels.length > 0) efforts[model.slug] = levels;
-  }
-  const models = dedupe(rows.map((model) => model.slug).filter(Boolean));
-  return models.length > 0
-    ? { available: true, models, efforts, reason: null }
-    : unavailable("no listable models");
+  return start >= 0 && end > start ? source.slice(start, end) : source;
 }
 
 function codexJsonListing(descriptor) {
@@ -474,14 +506,20 @@ async function claudeSdkListing() {
       ),
     ]);
     const efforts = {};
+    const details = {};
     for (const model of supported) {
       const levels = model.supportedEffortLevels ?? [];
       if (levels.length > 0) efforts[model.value] = levels;
+      details[model.value] = {
+        label: model.displayName ?? model.display_name ?? null,
+        description: model.description ?? null,
+        capabilities: model.capabilities ?? null,
+      };
     }
     const models = dedupe(supported.map((model) => model.value).filter(Boolean));
     listing =
       models.length > 0
-        ? { available: true, models, efforts, reason: null }
+        ? { available: true, models, efforts, details, reason: null }
         : unavailable("SDK reported no supported models");
   } catch (error) {
     listingFailure = error;
@@ -525,36 +563,40 @@ async function routeCatalog(route) {
   }
 }
 
-/** Every `.jsonl` under a directory, newest first, bounded by age and count. */
+/** Every regular non-symlink `.jsonl` under a directory, newest first. */
 function recentSessionFiles(directory) {
-  if (!directory || !existsSync(directory)) return [];
+  if (!directory || !existsSync(directory)) return { files: [], unreadable: [], missing: true };
   const cutoff = Date.now() - HISTORY_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
   const found = [];
+  const unreadable = [];
   const walk = (path, depth) => {
     if (depth > 6) return;
     let entries;
     try {
       entries = readdirSync(path, { withFileTypes: true });
     } catch {
+      unreadable.push(relative(directory, path) || ".");
       return;
     }
     for (const entry of entries) {
       const child = join(path, entry.name);
       if (entry.isDirectory()) {
         walk(child, depth + 1);
+      } else if (entry.isSymbolicLink()) {
+        continue;
       } else if (entry.isFile() && entry.name.endsWith(".jsonl")) {
         try {
           const { mtimeMs } = statSync(child);
           if (mtimeMs >= cutoff) found.push({ path: child, mtimeMs });
         } catch {
-          /* a session file that vanished mid-scan is not an error worth raising */
+          unreadable.push(relative(directory, child));
         }
       }
     }
   };
   walk(directory, 0);
-  found.sort((a, b) => b.mtimeMs - a.mtimeMs);
-  return found.slice(0, HISTORY_MAX_SESSIONS).map((entry) => entry.path);
+  found.sort((a, b) => b.mtimeMs - a.mtimeMs || a.path.localeCompare(b.path));
+  return { files: found.map((entry) => entry.path), unreadable, missing: false };
 }
 
 /**
@@ -564,19 +606,83 @@ function recentSessionFiles(directory) {
  * newer generation the settings have not caught up with. They are never
  * presented as the route's catalog.
  */
-function routeHistory(route) {
-  const files = recentSessionFiles(ROUTES[route]?.historyDir);
-  const seen = [];
-  for (const file of files) {
-    let text;
-    try {
-      text = readFileSync(file, "utf8");
-    } catch {
-      continue;
-    }
-    for (const match of text.matchAll(/"model"\s*:\s*"([^"]+)"/g)) seen.push(match[1]);
+function collectModels(value, seen) {
+  if (!value || typeof value !== "object") return;
+  for (const [key, child] of Object.entries(value)) {
+    if (key === "model" && typeof child === "string") seen.push(child);
+    else collectModels(child, seen);
   }
-  return { sessions: files.length, models: dedupe(seen) };
+}
+
+function collectHistoryLine(line, state) {
+  if (!line.trim()) return;
+  try {
+    collectModels(JSON.parse(line), state.seen);
+  } catch {
+    state.corrupt = true;
+  }
+}
+
+async function scanHistoryFile(file, state, started) {
+  const stream = createReadStream(file);
+  let carry = "";
+  for await (const chunk of stream) {
+    state.bytesRead += chunk.length;
+    if (state.bytesRead > HISTORY_BYTE_BUDGET) {
+      state.stopReason = "partial";
+      stream.destroy();
+      break;
+    }
+    carry += chunk.toString("utf8");
+    const lines = carry.split("\n");
+    carry = lines.pop() ?? "";
+    lines.forEach((line) => collectHistoryLine(line, state));
+    if (Date.now() - started >= HISTORY_TIMEOUT_MS) {
+      state.stopReason = "timeout";
+      stream.destroy();
+      break;
+    }
+  }
+  if (carry.trim() && state.stopReason === "ok") collectHistoryLine(carry, state);
+}
+
+async function routeHistory(route) {
+  const directory = ROUTES[route]?.historyDir;
+  const discovery = recentSessionFiles(directory);
+  const started = Date.now();
+  const unreadable = [...discovery.unreadable];
+  let scannedFiles = 0;
+  const state = {
+    seen: [],
+    bytesRead: 0,
+    corrupt: false,
+    stopReason: discovery.missing ? "unavailable" : "ok",
+  };
+
+  for (const file of discovery.files) {
+    if (Date.now() - started >= HISTORY_TIMEOUT_MS) {
+      state.stopReason = "timeout";
+      break;
+    }
+    try {
+      await scanHistoryFile(file, state, started);
+      scannedFiles += 1;
+    } catch {
+      unreadable.push(relative(directory, file));
+    }
+    if (state.stopReason === "timeout" || state.stopReason === "partial") break;
+  }
+  if (state.stopReason === "ok" && unreadable.length > 0) state.stopReason = "partial";
+  if (state.stopReason === "ok" && state.corrupt) state.stopReason = "corrupt";
+  return {
+    complete: state.stopReason === "ok",
+    models: dedupe(state.seen).sort(),
+    scannedFiles,
+    unreadableFiles: dedupe(unreadable).sort().slice(0, 20),
+    bytesRead: state.bytesRead,
+    elapsedMs: Date.now() - started,
+    stopReason: state.stopReason,
+  };
 }
 
 function dedupe(values) {
@@ -658,38 +764,71 @@ async function commandCatalog(routeFilter, asJson) {
   if (routeFilter !== null && !Object.hasOwn(ROUTES, routeFilter)) {
     throw new Error(`unknown route "${routeFilter}"; known: ${Object.keys(ROUTES).join(", ")}`);
   }
-  const report = {};
+  const providers = [];
   for (const route of Object.keys(ROUTES)) {
     if (routeFilter && route !== routeFilter) continue;
     const catalog = await routeCatalog(route);
-    const history = routeHistory(route);
-    report[route] = {
-      source: ROUTES[route].catalog?.kind ?? null,
-      catalog: catalog.available ? catalog.models : null,
-      efforts: catalog.efforts,
-      catalogUnavailableReason: catalog.available ? null : catalog.reason,
-      recentlyUsed: history.models,
-      recentSessionsRead: history.sessions,
-    };
+    const history = await routeHistory(route);
+    providers.push({
+      route,
+      catalog: {
+        status: catalog.available ? "ok" : "unavailable",
+        exhaustive: ROUTES[route].catalog?.exhaustive === true,
+        models: catalog.models.map((id) => ({
+          id,
+          label: catalog.details[id]?.label ?? null,
+          description: catalog.details[id]?.description ?? null,
+          capabilities: catalog.details[id]?.capabilities ?? null,
+          efforts: catalog.efforts[id] ?? [],
+          sourceKind: ROUTES[route].catalog?.kind ?? null,
+        })),
+        reason: catalog.available ? null : catalog.reason,
+      },
+      history,
+    });
   }
+  const report = { contract: "meta-o.model-discovery.v2", providers };
   if (asJson) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     return;
   }
-  for (const [route, data] of Object.entries(report)) {
-    if (data.catalog) {
-      process.stdout.write(`${route}: ${data.catalog.length} models (via ${data.source})\n`);
-      for (const model of data.catalog) {
-        const levels = data.efforts[model];
-        process.stdout.write(`  ${model}${levels ? `  [${levels.join(" ")}]` : ""}\n`);
+  const currentDefaults = { codex: "gpt-5.6-sol", claude: "opus[1m]" };
+  for (const provider of providers) {
+    if (provider.catalog.status === "ok") {
+      process.stdout.write(
+        `${provider.route}: ${provider.catalog.models.length} models ` +
+          `(via ${provider.catalog.models[0]?.sourceKind ?? "unknown"})\n`,
+      );
+      for (const model of provider.catalog.models) {
+        process.stdout.write(
+          `  ${model.id}${model.efforts.length > 0 ? `  [${model.efforts.join(" ")}]` : ""}\n`,
+        );
       }
     } else {
-      process.stdout.write(`${route}: catalog unavailable (${data.catalogUnavailableReason})\n`);
+      process.stdout.write(`${provider.route}: catalog unavailable (${provider.catalog.reason})\n`);
     }
-    if (data.recentlyUsed.length > 0) {
+    if (provider.history.models.length > 0) {
       process.stdout.write(
-        `  recently used (${data.recentSessionsRead} sessions, hint only, not a catalog): ` +
-          `${data.recentlyUsed.join(", ")}\n`,
+        `  recently used (${provider.history.scannedFiles} files, hint only, not a catalog): ` +
+          `${provider.history.models.join(", ")}\n`,
+      );
+    }
+    if (!provider.history.complete) {
+      process.stdout.write(`  history incomplete (${provider.history.stopReason})\n`);
+    }
+    const preferred = provider.catalog.models.find(
+      ({ id, label, description, capabilities }) =>
+        id === currentDefaults[provider.route] &&
+        /cod(?:e|ing)|software/iu.test(JSON.stringify({ label, description, capabilities })),
+    );
+    if (preferred) {
+      process.stdout.write(
+        `  default recommendation: ${provider.route}/${preferred.id}/high ` +
+          `(catalog coding-positioning evidence)\n`,
+      );
+    } else if (Object.hasOwn(currentDefaults, provider.route)) {
+      process.stdout.write(
+        "  no_default_recommendation (catalog has no admissible coding-positioning evidence)\n",
       );
     }
   }
@@ -830,7 +969,7 @@ async function commandCheckUpgrades(settings, key, asJson) {
     }
     if (!available.has(current.route)) {
       const catalog = await routeCatalog(current.route);
-      const history = routeHistory(current.route);
+      const history = await routeHistory(current.route);
       available.set(current.route, dedupe([...catalog.models, ...history.models]));
     }
     const successor = findUpgrade(current, available.get(current.route) ?? []);

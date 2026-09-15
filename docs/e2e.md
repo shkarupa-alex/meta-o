@@ -44,27 +44,51 @@ databases запрещены как evidence.
 | B20 | Сверить TUI projection с полным `worker_done`.                 | Один `Review-Execution`, SHA и verdict; полный report остаётся source.            |
 | B21 | Не повторить `unknown_effect` и не затронуть foreign resource. | Effect остаётся unknown; exact-owned cleanup сохраняет соседние ресурсы.          |
 | B22 | Выполнить critical Qwen/OpenCode profile.                      | Три deterministic runs и один live small-feature lifecycle без invariant failure. |
+| B23 | Сохранить stable titles и exact-owned cleanup.                 | Standalone/full lifecycle не затрагивает foreign resources.                       |
+| B24 | Заблокировать delivery в trust UI или shell prompt.            | Task bytes отправлены ровно один раз только после positive readiness.             |
+| B25 | Применить run-wide wait cadence.                               | Early event, quiet timeout и два transport failures различены.                    |
+| B26 | Прочитать два version-matched Orca guides.                     | Один binary отдаёт непустые `orchestration` и `orca-cli`; install не вызван.      |
+| B27 | Показать default recommendation и полный catalog.              | Coding evidence объяснено; Astra/Fable доступны только в full list.               |
+| B28 | Передать pair до cleanup.                                      | Consumer проверяет оба size/end marker и подтверждает acknowledgement.            |
+| B29 | Сохранить hot remediation и fresh final pair.                  | FINDINGS sessions живы; final sessions не видели prior reports.                   |
+| B30 | Не активировать `mo-*` на near-miss prompt.                    | Generic review/setup request не создаёт Meta-O actors.                            |
+| B31 | Ограничить повтор handoff.                                     | Одна re-delivery, затем `UNKNOWN` с сохранённым namespace.                        |
+| B32 | Собрать eval evidence v3.                                      | Required matrix полна; desired availability не заменяет critical B22.             |
+| B33 | Выполнить read-only Issue discovery.                           | Host, limits, open/closed search и truncation доказаны native CLI.                |
+| B34 | Получить canonical reviewer PASS.                              | Непустые grounding/checks/unknowns/risks и пусты только finding sections.         |
+| B35 | Доказать tracked ignore для `.orca/` и `spec/`.                | `check-ignore` source подтверждён через `git ls-files`.                           |
+| B36 | Применить G0.                                                  | Non-empty/unknown блокирует substantive implementation после migration.           |
+| B37 | Применить GC и G1.                                             | Completion/MR create блокируются; remote head обязан совпасть.                    |
+| B38 | Применить G2.                                                  | Merge связан с current head; synthetic candidate проверен в hosting checkout.     |
+| B39 | Проверить GitLab CI coverage.                                  | Typed `CI-Coverage/1`, exact patch, без mutation.                                 |
+| B40 | Проверить GitHub Actions coverage.                             | PR/merge_group и required policy различены, YAML не меняется.                     |
+| B41 | Сохранить same-project reviewer resources.                     | Registration set неизменен; folder negative case typed unsupported.               |
+| B42 | Убрать только owned partial start.                             | Foreign handles сохранены, incomplete cleanup передан человеку.                   |
 
 ## Model actors для eval skills
 
-Каждый model-backed case сначала доказывает применимость: named behavior нельзя равноценно проверить
-deterministic fixture. Для обычного skill выполняются 2–3 bounded positive/forbidden/degraded cases.
-Claude использует `sonnet5/low`, Codex — `gpt-5.6-terra/low`, OpenCode comparator — настроенную
-effective identity `deepseek 4 flash`. Неприменимый case получает `not_applicable`; отсутствующая
-настройка — `blocked|not_run`. Более дорогого fallback нет. Qwen из B22 остаётся отдельным
-критическим orchestration actor.
+Каждый model-backed case сначала доказывает применимость: named behavior нельзя
+равноценно проверить deterministic fixture. Для обычного skill выполняются три
+bounded positive/forbidden/degraded cases на `claude/opus[1m]/low` и
+`codex/gpt-5.6-sol/low`. Desired Codex `gpt-5.6-luna/max` и OpenCode/Qwen
+coordinates всегда materialize'ятся минимум как `not_available`. Неприменимый
+case получает `not_applicable`; отсутствующая required настройка —
+`blocked|not_run`. Fallback нет. Qwen из B22 остаётся отдельным критическим
+orchestration actor.
 
 ### Embedded corpus и live-команда
 
-Каждый installable skill владеет `evals/cases.json` с тремя bounded cases:
-`positive`, `forbidden`, `degraded`. `make mo-eval-cases` проверяет точный набор
+Каждый installable skill владеет `evals/cases.json` v2 с тремя bounded cases:
+`positive`, `forbidden`, `degraded`, каждый со списком `contracts`.
+`make mo-eval-cases` проверяет точный набор
 из 8 skills / 24 cases offline и ничего не запускает. Generated skill получает
 тот же corpus через обычный `make skills`.
 
 Live-run выполняется из чистого checkout frozen candidate. Сначала runner
 создаёт один bounded prompt с instruction bundle, неизменяемыми входными
 metadata и незаполненными execution/result полями. Модель получает effective
-identity только из native harness result и возвращает JSON evidence envelope:
+identity только из native harness result и возвращает JSON evidence v3 envelope
+с `tier` и `matrixProfile`:
 
 ```bash
 node tools/skill-evals.mjs --prompt <skill> \

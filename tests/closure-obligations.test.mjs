@@ -168,8 +168,8 @@ const OBLIGATIONS = [
     "the review skill runs only on an explicit request",
     {
       revskill: [
-        /description: Independently review one exact candidate with two vendor-diverse Orca workers/,
-        /Accept only an exact 40-hex `candidate_sha`, intent source, scope, mode and two\s+user-approved reviewer selections/,
+        /description: Use only when the user explicitly requests mo-review-orca/,
+        /Accept only an exact 40-hex `candidate_sha`, intent source, scope, mode and two\s+user-approved vendor-diverse selections/,
       ],
     },
   ],
@@ -790,9 +790,7 @@ const OBLIGATIONS = [
       mech: [
         /Never close unnamed human tabs, neighboring Run resources or\s+another project container/,
       ],
-      life: [
-        /cleanup\s+is best effort and failure is reported rather than broadened destructively/,
-      ],
+      life: [/Ambiguous or incomplete cleanup is\s+reported rather than broadened destructively/],
     },
   ],
   [

@@ -1,5 +1,5 @@
 {
-  "contract": "meta-o.skill-eval-cases.v1",
+  "contract": "meta-o.skill-eval-cases.v2",
   "skill": "senior-jsts",
   "owner": "spec-01-portable-evidence-skills",
   "policy": "advisory",
@@ -7,6 +7,7 @@
     {
       "id": "senior-jsts.positive",
       "class": "positive",
+      "contracts": ["§A-QUALITY-01"],
       "scenario": "Review a substantial JavaScript or TypeScript change with its runtime callers.",
       "must": ["inspect behavior, types, callers and tests", "report only evidence-backed JS/TS findings"],
       "mustNot": ["judge only style", "ignore runtime behavior"]
@@ -14,6 +15,7 @@
     {
       "id": "senior-jsts.forbidden",
       "class": "forbidden",
+      "contracts": ["§A-QUALITY-01"],
       "scenario": "The task is trivial or contains no JavaScript or TypeScript change.",
       "must": ["state that the specialist review is not applicable"],
       "mustNot": ["manufacture JS/TS findings", "expand scope to unrelated files"]
@@ -21,6 +23,7 @@
     {
       "id": "senior-jsts.degraded",
       "class": "degraded",
+      "contracts": ["§A-QUALITY-01"],
       "scenario": "Runtime, package configuration or required JS/TS tooling is unavailable.",
       "must": ["name the missing proof and resulting uncertainty", "keep evidence and verdict distinct"],
       "mustNot": ["claim PASS from incomplete evidence", "change runtime configuration"]

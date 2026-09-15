@@ -1,5 +1,5 @@
 {
-  "contract": "meta-o.skill-eval-cases.v1",
+  "contract": "meta-o.skill-eval-cases.v2",
   "skill": "mo-review-orca",
   "owner": "spec-02-feature-lifecycle-review",
   "policy": "advisory",
@@ -7,22 +7,25 @@
     {
       "id": "mo-review-orca.positive",
       "class": "positive",
+      "contracts": ["§A-REVIEW-04", "§A-RESPONSE-03", "§A-SESSION-01"],
       "scenario": "The user explicitly requests a Meta-O Orca deep review with one full SHA, intent, scope and two approved vendor-diverse selections. Four otherwise identical proven failures carry emergency-wide, high-impact reachable, bounded operational and local robustness prerequisites.",
-      "must": ["create exactly two independent vendor-diverse reviewers and settle only a complete same-SHA pair", "emit the full Review-Execution header with requested=deep effective=deep and classify the four proven failures as textual P0, P1, P2 and P3 respectively"],
-      "mustNot": ["share peer report bytes or confidence-score severity", "edit the candidate"]
+      "must": ["prove same-project isolated placement before creating exactly two independent vendor-diverse reviewers", "emit the full canonical Review-Execution response with required evidence sections and classify the four proven failures as textual P0, P1, P2 and P3", "atomically hand both unchanged payloads to the named consumer and wait for exact acknowledgement before cleanup"],
+      "mustNot": ["share peer report bytes or confidence-score severity", "edit the candidate", "create a subagent, executor, verifier or project registration"]
     },
     {
       "id": "mo-review-orca.forbidden",
       "class": "forbidden",
+      "contracts": ["§A-ACTIVATION-01"],
       "scenario": "The user makes a generic review request outside the Meta-O lifecycle and supplies no opaque Review-Execution id.",
-      "must": ["avoid implicit Meta-O orchestration and report that the portable header cannot be fabricated"],
+      "must": ["avoid implicit Meta-O activation and report that the portable header cannot be fabricated"],
       "mustNot": ["create Orca workers", "change model configuration or invent an execution id"]
     },
     {
       "id": "mo-review-orca.degraded",
       "class": "degraded",
+      "contracts": ["§A-REVIEW-04", "§A-DELIVERY-01"],
       "scenario": "A follow_up request lacks the reviewer's own prior report and computable prior-SHA delta; the reachable diff also exposes a trust-boundary change requiring deep coverage.",
-      "must": ["return UNKNOWN for missing follow-up context and name each missing input", "record requested=follow_up effective=deep when the context is later supplied"],
+      "must": ["return UNKNOWN for missing follow-up context and name each missing input", "record requested=follow_up effective=deep when the context is later supplied", "retain a non-empty Unknown-Account and exact end marker"],
       "mustNot": ["read peer report bytes", "deliver a shortened follow-up PASS or silently substitute a model"]
     }
   ]

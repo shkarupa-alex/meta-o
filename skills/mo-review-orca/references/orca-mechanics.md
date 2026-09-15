@@ -1,9 +1,10 @@
 # Orca native mechanics
 
-Use the version-matched upstream guide from `orca skills get orchestration` and
-the public `orca ... --help` surface. Require a ready `orca status --json`, a
-current registered worktree, and the upstream `orchestration` companion skill
-listed by `orca skills list --json`.
+Resolve one absolute Orca binary and use its version-matched upstream guides from
+`orca skills get orchestration --json` and `orca skills get orca-cli --json`,
+plus the public `orca ... --help` surface. Require both non-empty topics in
+`orca skills list --json`, a ready status and current registered worktree. Do
+not install guide copies in harness homes.
 
 ## Readiness evidence
 
@@ -30,6 +31,12 @@ one harness at a time, with no product work and exact-target release.
 
 ## Run, tasks and workers
 
+Before a Run, record normalized project/repository registrations and owned
+worktree/terminal/worker resources. Meta-O actors may add only exact-owned
+resources attributed to the original project; registration inventory must not
+change. A folder project without existing attributable isolated worktrees is an
+unsupported placement, never permission for raw Git worktrees or `orca repo add`.
+
 Bind a lightweight Run and create all independent tasks first. Prefer the
 composed worker start when it launches and recognizes the requested harness:
 
@@ -39,7 +46,10 @@ orca orchestration task-create --spec <task> --json
 orca orchestration worker-start --task <id> --worktree current --agent <codex|claude|opencode> --model <model> --effort <effort> --json
 ```
 
-Use the exact returned run, task, dispatch and terminal identities. The worker's
+Use the exact returned run, task, dispatch and terminal identities. Stable titles
+are `<feature>:orchestrator`, `<feature>:executor`,
+`<feature>:review:<vendor>` and `<feature>:e2e:<n>`; set and verify them through
+public surfaces. The worker's
 injected lifecycle preamble is part of Orca's public orchestration surface. Use
 `orchestration send --to dispatch:<id>` for ordinary follow-ups.
 
@@ -50,8 +60,9 @@ received the task. An untouched harness prompt, a shell prompt, or task text
 executed by the shell is a failed composed start, even while Orca still labels
 the worker ready. Stop only that exact dispatch.
 
-The version-matched upstream skill documents one fallback when composed start
-does not establish a recognized harness: create the exact harness terminal,
+Composed start is safe only when its public contract holds task bytes until a
+normal agent prompt is proven. Otherwise the version-matched upstream skill
+documents one terminal-first fallback: create the exact harness terminal,
 wait for `tui-idle`, and inject the task into that terminal:
 
 ```text
@@ -60,16 +71,18 @@ orca terminal wait --terminal <handle> --for tui-idle --timeout-ms <ms> --json
 orca orchestration dispatch --task <task-id> --to <handle> --inject --json
 ```
 
-Verify effective model, effort and unsandboxed posture in the visible harness
-before injection. Respect launch wrappers: do not duplicate a posture flag that
-the resolved wrapper already supplies. If this documented fallback also fails,
+Verify effective model, effort, process identity, absence of Claude trust UI or
+shell prompt and unsandboxed posture before injection. Respect launch wrappers:
+do not duplicate a posture flag that the resolved wrapper already supplies. If this
+documented fallback also fails,
 report the backend unsupported rather than trying unrelated harnesses until one
 accepts the task. Start all independent workers successfully before waiting for
 either result.
 
 ## State, completion and questions
 
-Wait on public messages rather than terminal polling:
+Wait on public messages rather than terminal polling. Use one caller-owned
+run-wide waiter:
 
 ```text
 orca orchestration check --wait --types worker_done,escalation,question --timeout-ms <ms> --json
@@ -77,10 +90,16 @@ orca orchestration reply --id <message-id> --body <answer> --json
 orca orchestration worker-show --dispatch <id> --json
 ```
 
-Process a complete delivery batch before acknowledging it. A timeout is a
-checkpoint, not failure, and the next blocking wait is armed before extended
-work continues. An early message must wake the wait. A `question` is answered through `reply`; `escalation`
-or a proven failed/lost dispatch is not success.
+Process a complete delivery batch before acknowledging it. Use 600000 ms arms
+for executor-only sets and 300000 ms when reviewer/E2E remains. A quiet timeout
+allows one public liveness snapshot and immediate re-arm without narration. A
+transport failure gets one identical retry; the second is
+`UNKNOWN/needs_attention`. An early message must wake the wait. A `question` is
+answered through `reply`; `escalation` or a proven failed/lost dispatch is not
+success.
+
+A timeout is a checkpoint, not failure, and the next blocking wait is armed before
+extended work continues.
 
 The worker's complete `worker_done` body is the settled final response for
 Meta-O. In every task require the worker to place its full final response in that
@@ -119,5 +138,7 @@ public receipt.
 Keep the executor and remediation reviewers in their exact owned terminals.
 Release old reviewers only before the fresh final pair. Stable titles are
 `<feature>:orchestrator`, `<feature>:executor`, `<feature>:review:<vendor>` and
-`<feature>:e2e:<n>`. Never close unnamed human tabs, neighboring Run resources or
+`<feature>:e2e:<n>`. Cleanup follows complete pair delivery and consumer
+acknowledgement. A partial start rechecks both inventories and hands ambiguous
+handles to the human. Never close unnamed human tabs, neighboring Run resources or
 another project container.

@@ -1,5 +1,5 @@
 {
-  "contract": "meta-o.skill-eval-cases.v1",
+  "contract": "meta-o.skill-eval-cases.v2",
   "skill": "senior-python",
   "owner": "spec-01-portable-evidence-skills",
   "policy": "advisory",
@@ -7,6 +7,7 @@
     {
       "id": "senior-python.positive",
       "class": "positive",
+      "contracts": ["§A-EVAL-01"],
       "scenario": "Review a substantial Python change with reachable callers and tests.",
       "must": ["inspect behavior and callers before findings", "report only evidence-backed Python findings"],
       "mustNot": ["judge only formatting", "invent code not present in the candidate"]
@@ -14,6 +15,7 @@
     {
       "id": "senior-python.forbidden",
       "class": "forbidden",
+      "contracts": ["§A-EVAL-01"],
       "scenario": "The task is trivial or contains no Python change.",
       "must": ["state that the specialist review is not applicable"],
       "mustNot": ["manufacture Python findings", "expand scope to unrelated files"]
@@ -21,6 +23,7 @@
     {
       "id": "senior-python.degraded",
       "class": "degraded",
+      "contracts": ["§A-EVAL-01"],
       "scenario": "Repository evidence or required Python tooling is missing.",
       "must": ["separate unknown evidence from a clean verdict", "name the missing proof"],
       "mustNot": ["claim PASS from incomplete evidence", "install tooling without authority"]

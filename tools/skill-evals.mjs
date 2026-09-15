@@ -27,8 +27,8 @@ import { fileURLToPath } from "node:url";
 import { testingPolicyError } from "../shared/scripts/mo-models.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const CONTRACT = "meta-o.skill-eval-cases.v1";
-const EVIDENCE_CONTRACT = "meta-o.skill-eval-evidence.v2";
+const CONTRACT = "meta-o.skill-eval-cases.v2";
+const EVIDENCE_CONTRACT = "meta-o.skill-eval-evidence.v3";
 const EXPECTED_SKILLS = [
   "find-reuse",
   "mo-e2e",
@@ -40,7 +40,19 @@ const EXPECTED_SKILLS = [
   "senior-python",
 ];
 const EXPECTED_CLASSES = ["degraded", "forbidden", "positive"];
-const VERDICTS = new Set(["PASS", "FAIL", "UNKNOWN", "NOT_RUN", "NOT_APPLICABLE"]);
+const VERDICTS = new Set([
+  "PASS",
+  "FAIL",
+  "UNKNOWN",
+  "BLOCKED",
+  "NOT_RUN",
+  "NOT_AVAILABLE",
+  "NOT_APPLICABLE",
+]);
+const REQUIRED_MATRIX = [
+  { matrixProfile: "required-claude", route: "claude", role: "testClaude" },
+  { matrixProfile: "required-codex", route: "codex", role: "testCodex" },
+];
 
 function git(root, args) {
   const result = spawnSync("git", ["-C", root, ...args], { encoding: "utf8" });
@@ -66,6 +78,14 @@ function validateCase(item, expectedSkill) {
     throw new Error(`${expectedSkill}: case ${item.id} does not match its class`);
   }
   assertString(item.scenario, `${item.id}: scenario`);
+  if (!Array.isArray(item.contracts) || item.contracts.length === 0) {
+    throw new Error(`${item.id}: contracts needs at least one architecture/business id`);
+  }
+  for (const contract of item.contracts) {
+    if (!/^§[AB]-[A-Z][A-Z0-9-]*-\d{2}$/u.test(contract)) {
+      throw new Error(`${item.id}: invalid contract id ${contract}`);
+    }
+  }
   for (const field of ["must", "mustNot"]) {
     if (!Array.isArray(item[field]) || item[field].length === 0) {
       throw new Error(`${item.id}: ${field} needs at least one oracle`);
@@ -88,11 +108,8 @@ function validateCaseSet(document, expectedSkill) {
 }
 
 function validateEvalPolicy(document, expectedSkill) {
-  if (expectedSkill === "mo-orchestrate-orca" && document.policy !== "critical") {
-    throw new Error("mo-orchestrate-orca: Qwen profile must be critical");
-  }
-  if (expectedSkill !== "mo-orchestrate-orca" && document.policy !== "advisory") {
-    throw new Error(`${expectedSkill}: ordinary skill evals must be advisory`);
+  if (!new Set(["advisory", "critical"]).has(document.policy)) {
+    throw new Error(`${expectedSkill}: invalid ownership policy`);
   }
 }
 
@@ -169,6 +186,8 @@ export function evaluationDigest(document, envelope) {
     skill: envelope.skill,
     policy: envelope.policy,
     repetition: envelope.repetition,
+    tier: envelope.tier,
+    matrixProfile: envelope.matrixProfile,
     requested: envelope.requested,
     harness: envelope.harness,
     cases: document.cases,
@@ -185,6 +204,8 @@ function makePrompt(root, corpus, skill, values) {
   if (!document) throw new Error(`unknown skill ${skill}`);
   const skillRevision = git(root, ["rev-parse", `${candidate}:skills/${skill}`]);
   const actor = actorFromValues(values);
+  assertString(values.tier, "--tier");
+  assertString(values.matrixProfile, "--matrix-profile");
   const envelope = {
     contract: EVIDENCE_CONTRACT,
     candidate,
@@ -192,6 +213,8 @@ function makePrompt(root, corpus, skill, values) {
     skill,
     policy: document.policy,
     repetition: Number(values.repetition ?? 1),
+    tier: values.tier,
+    matrixProfile: values.matrixProfile,
     requested: actor.requested,
     harness: actor.harness,
     execution: {
@@ -208,8 +231,9 @@ function makePrompt(root, corpus, skill, values) {
       identityEvidence: "<bounded native identity evidence, not a transcript>",
       evaluationDigest: "",
     },
-    results: document.cases.map(({ id, must, mustNot }) => ({
+    results: document.cases.map(({ id, contracts, must, mustNot }) => ({
       caseId: id,
+      contractIds: contracts,
       verdict: "<PASS|FAIL|UNKNOWN|NOT_RUN|NOT_APPLICABLE>",
       observations: ["<case-specific observation>"],
       oracleEvidence: [
@@ -287,7 +311,7 @@ function validateCriticalIdentity(envelope, criticalProfile) {
   );
 }
 
-function validateActorIdentity(envelope, document, criticalProfile) {
+function validateActorIdentity(envelope, criticalProfile) {
   for (const side of ["requested", "effective"]) {
     for (const field of ["route", "model", "effort"]) {
       const identity = side === "requested" ? envelope.requested : envelope.execution?.effective;
@@ -297,18 +321,29 @@ function validateActorIdentity(envelope, document, criticalProfile) {
   if (JSON.stringify(envelope.requested) !== JSON.stringify(envelope.execution.effective)) {
     throw new Error(`${envelope.skill}: requested/effective identity mismatch`);
   }
-  if (document.policy === "critical") {
+  if (envelope.tier === "critical") {
     validateCriticalIdentity(envelope, criticalProfile);
     return;
   }
-  const role = {
-    claude: "testClaude",
-    codex: "testCodex",
-    opencode: "testOpenCode",
-  }[envelope.execution.effective.route];
+  const role =
+    envelope.tier === "desired"
+      ? { codex: "testCodexDesired", opencode: "testOpenCodeDesired" }[
+          envelope.execution.effective.route
+        ]
+      : { claude: "testClaude", codex: "testCodex" }[envelope.execution.effective.route];
   if (!role) throw new Error(`${envelope.skill}: unapproved testing route`);
   const policyError = testingPolicyError(role, envelope.execution.effective);
   if (policyError) throw new Error(`${envelope.skill}: ${policyError}`);
+  const expectedProfile =
+    {
+      testClaude: "required-claude",
+      testCodex: "required-codex",
+      testCodexDesired: "desired-codex",
+      testOpenCodeDesired: "desired-opencode",
+    }[role] ?? null;
+  if (envelope.matrixProfile !== expectedProfile) {
+    throw new Error(`${envelope.skill}: matrix profile does not match actor identity`);
+  }
 }
 
 function validateExecution(envelope, document) {
@@ -353,46 +388,50 @@ function validateHarness(envelope) {
   }
 }
 
-function validateResults(envelope, document) {
-  if (!Array.isArray(envelope.results) || envelope.results.length !== document.cases.length) {
-    throw new Error(`${envelope.skill}: incomplete result set`);
+function oracleKeys(item) {
+  return [
+    ...item.must.map((oracle) => `must\0${oracle}`),
+    ...item.mustNot.map((oracle) => `mustNot\0${oracle}`),
+  ].sort();
+}
+
+function validateResult(result, item, tier) {
+  if (!VERDICTS.has(result.verdict)) throw new Error(`${result.caseId}: invalid verdict`);
+  if (tier === "required" && result.verdict === "NOT_AVAILABLE")
+    throw new Error(`${result.caseId}: required profile cannot be NOT_AVAILABLE`);
+  if (!Array.isArray(result.observations))
+    throw new Error(`${result.caseId}: observations missing`);
+  if (result.observations.length === 0)
+    throw new Error(`${result.caseId}: verdict needs an observation`);
+  if (JSON.stringify(result.contractIds) !== JSON.stringify(item.contracts))
+    throw new Error(`${result.caseId}: contract identities mismatch`);
+  if (!Array.isArray(result.oracleEvidence))
+    throw new Error(`${result.caseId}: oracle evidence missing`);
+  const actual = result.oracleEvidence.map(({ kind, oracle }) => `${kind}\0${oracle}`).sort();
+  if (JSON.stringify(actual) !== JSON.stringify(oracleKeys(item)))
+    throw new Error(`${result.caseId}: oracle evidence identities mismatch`);
+  for (const oracle of result.oracleEvidence) {
+    assertString(oracle.evidence, `${result.caseId}: oracle evidence`);
+    if (typeof oracle.satisfied !== "boolean")
+      throw new Error(`${result.caseId}: oracle satisfaction must be boolean`);
   }
+  if (result.verdict === "PASS" && result.oracleEvidence.some(({ satisfied }) => !satisfied))
+    throw new Error(`${result.caseId}: PASS has an unsatisfied oracle`);
+}
+
+function validateResults(envelope, document) {
+  if (!Array.isArray(envelope.results) || envelope.results.length !== document.cases.length)
+    throw new Error(`${envelope.skill}: incomplete result set`);
   const expected = document.cases.map(({ id }) => id).sort();
   const actual = envelope.results.map(({ caseId }) => caseId).sort();
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+  if (JSON.stringify(actual) !== JSON.stringify(expected))
     throw new Error(`${envelope.skill}: result case identities mismatch`);
-  }
   for (const result of envelope.results) {
-    if (!VERDICTS.has(result.verdict)) throw new Error(`${result.caseId}: invalid verdict`);
-    if (!Array.isArray(result.observations)) {
-      throw new Error(`${result.caseId}: observations missing`);
-    }
-    if (result.observations.length === 0) {
-      throw new Error(`${result.caseId}: verdict needs an observation`);
-    }
-    const item = document.cases.find(({ id }) => id === result.caseId);
-    const expectedOracles = [
-      ...item.must.map((oracle) => `must\0${oracle}`),
-      ...item.mustNot.map((oracle) => `mustNot\0${oracle}`),
-    ].sort();
-    if (!Array.isArray(result.oracleEvidence)) {
-      throw new Error(`${result.caseId}: oracle evidence missing`);
-    }
-    const actualOracles = result.oracleEvidence
-      .map(({ kind, oracle }) => `${kind}\0${oracle}`)
-      .sort();
-    if (JSON.stringify(actualOracles) !== JSON.stringify(expectedOracles)) {
-      throw new Error(`${result.caseId}: oracle evidence identities mismatch`);
-    }
-    for (const oracle of result.oracleEvidence) {
-      assertString(oracle.evidence, `${result.caseId}: oracle evidence`);
-      if (typeof oracle.satisfied !== "boolean") {
-        throw new Error(`${result.caseId}: oracle satisfaction must be boolean`);
-      }
-    }
-    if (result.verdict === "PASS" && result.oracleEvidence.some(({ satisfied }) => !satisfied)) {
-      throw new Error(`${result.caseId}: PASS has an unsatisfied oracle`);
-    }
+    validateResult(
+      result,
+      document.cases.find(({ id }) => id === result.caseId),
+      envelope.tier,
+    );
   }
 }
 
@@ -402,18 +441,22 @@ function validateEnvelope(root, corpus, envelope, candidate, criticalProfile) {
   const document = corpus.get(envelope.skill);
   if (!document) throw new Error(`unknown evidence skill ${envelope.skill}`);
   if (envelope.policy !== document.policy) throw new Error(`${envelope.skill}: policy mismatch`);
+  if (!new Set(["required", "desired", "critical"]).has(envelope.tier)) {
+    throw new Error(`${envelope.skill}: invalid tier`);
+  }
+  assertString(envelope.matrixProfile, `${envelope.skill}: matrixProfile`);
   const revision = git(root, ["rev-parse", `${candidate}:skills/${envelope.skill}`]);
   if (envelope.skillRevision !== revision) throw new Error(`${envelope.skill}: revision mismatch`);
   if (!Number.isSafeInteger(envelope.repetition) || envelope.repetition < 1) {
     throw new Error(`${envelope.skill}: invalid repetition`);
   }
   rejectSensitiveOrMachineLocal(envelope, envelope.skill);
-  validateActorIdentity(envelope, document, criticalProfile);
+  validateActorIdentity(envelope, criticalProfile);
   validateHarness(envelope);
   validateExecution(envelope, document);
   validateResults(envelope, document);
   return envelope.results.filter(({ verdict }) =>
-    new Set(["FAIL", "UNKNOWN", "NOT_RUN"]).has(verdict),
+    new Set(["FAIL", "UNKNOWN", "BLOCKED", "NOT_RUN"]).has(verdict),
   );
 }
 
@@ -427,14 +470,20 @@ export function validateEvidence(root, evidence, candidate, requireAll = false, 
   const seen = new Set();
   const nonPass = [];
   for (const envelope of envelopes) {
-    const key = `${envelope.skill}:${envelope.repetition}`;
+    const key = `${envelope.skill}:${envelope.matrixProfile}:${envelope.repetition}`;
     if (seen.has(key)) throw new Error(`duplicate evidence ${key}`);
     seen.add(key);
     nonPass.push(...validateEnvelope(root, corpus, envelope, candidate, options.criticalProfile));
   }
   if (requireAll) {
-    const covered = new Set(envelopes.map(({ skill }) => skill));
-    const missing = EXPECTED_SKILLS.filter((skill) => !covered.has(skill));
+    const covered = new Set(
+      envelopes
+        .filter(({ tier }) => tier === "required")
+        .map(({ skill, matrixProfile }) => `${skill}:${matrixProfile}`),
+    );
+    const missing = EXPECTED_SKILLS.flatMap((skill) =>
+      REQUIRED_MATRIX.map(({ matrixProfile }) => `${skill}:${matrixProfile}`),
+    ).filter((coordinate) => !covered.has(coordinate));
     if (missing.length > 0) throw new Error(`missing skill evidence: ${missing.join(", ")}`);
   }
   return { envelopes: envelopes.length, nonPass };
@@ -443,44 +492,27 @@ export function validateEvidence(root, evidence, candidate, requireAll = false, 
 function usage() {
   return `usage:
   node tools/skill-evals.mjs --check
-  node tools/skill-evals.mjs --prompt <skill> --candidate <sha> --route <route> --model <id> --effort <level> --harness <name> --harness-version <version> --profile-version <version> --quantization <value> --context <value> --sampling <value> --tool-permissions <csv> [--repetition <n>]
+  node tools/skill-evals.mjs --prompt <skill> --candidate <sha> --tier <required|desired|critical> --matrix-profile <name> --route <route> --model <id> --effort <level> --harness <name> --harness-version <version> --profile-version <version> --quantization <value> --context <value> --sampling <value> --tool-permissions <csv> [--repetition <n>]
   node tools/skill-evals.mjs --validate-evidence <json> --candidate <sha> [--require-all] [--critical-profile <route/model/effort>]\n`;
 }
 
 function main() {
+  // prettier-ignore
+  const stringOptions = ["prompt", "candidate", "route", "model", "effort", "harness", "harness-version", "profile-version", "quantization", "context", "sampling", "tool-permissions", "repetition", "tier", "matrix-profile", "validate-evidence", "critical-profile"];
+  const booleanOptions = ["check", "require-all"];
+  const options = Object.fromEntries(stringOptions.map((name) => [name, { type: "string" }]));
+  for (const name of booleanOptions) options[name] = { type: "boolean" };
+  options.help = { type: "boolean", short: "h" };
   const { values } = parseArgs({
-    options: {
-      check: { type: "boolean" },
-      prompt: { type: "string" },
-      candidate: { type: "string" },
-      route: { type: "string" },
-      model: { type: "string" },
-      effort: { type: "string" },
-      harness: { type: "string" },
-      "harness-version": { type: "string" },
-      "profile-version": { type: "string" },
-      quantization: { type: "string" },
-      context: { type: "string" },
-      sampling: { type: "string" },
-      "tool-permissions": { type: "string" },
-      repetition: { type: "string" },
-      "validate-evidence": { type: "string" },
-      "require-all": { type: "boolean" },
-      "critical-profile": { type: "string" },
-      help: { type: "boolean", short: "h" },
-    },
+    options,
     strict: true,
   });
   if (values.help) {
     process.stdout.write(usage());
     return;
   }
-  const normalized = {
-    ...values,
-    harnessVersion: values["harness-version"],
-    profileVersion: values["profile-version"],
-    toolPermissions: values["tool-permissions"],
-  };
+  // prettier-ignore
+  const normalized = { ...values, harnessVersion: values["harness-version"], profileVersion: values["profile-version"], toolPermissions: values["tool-permissions"], matrixProfile: values["matrix-profile"] };
   const corpus = loadCorpus(ROOT);
   if (values.check) {
     const count = [...corpus.values()].reduce((sum, document) => sum + document.cases.length, 0);
