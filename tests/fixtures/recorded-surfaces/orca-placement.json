@@ -1,0 +1,49 @@
+{
+  "contract": "meta-o.orca-placement-recording.v1",
+  "folder": {
+    "project": { "id": "project-folder", "kind": "folder", "sourceRepoIds": [] },
+    "currentContext": null,
+    "repositories": [],
+    "resources": [{ "id": "foreign-terminal", "kind": "terminal", "owner": "foreign" }]
+  },
+  "git": {
+    "project": { "id": "project-git", "kind": "git", "sourceRepoIds": ["repo-meta-o"] },
+    "currentContext": { "projectId": "project-git", "repoId": "repo-meta-o" },
+    "repositories": [{ "id": "repo-meta-o", "path": "/recorded/meta-o", "kind": "git" }],
+    "resources": [{ "id": "foreign-terminal", "kind": "terminal", "owner": "foreign" }],
+    "children": [
+      {
+        "id": "review-a",
+        "kind": "worktree",
+        "owner": "candidate-run",
+        "projectId": "project-git",
+        "repoId": "repo-meta-o",
+        "sha": "0123456789abcdef0123456789abcdef01234567"
+      },
+      {
+        "id": "review-b",
+        "kind": "worktree",
+        "owner": "candidate-run",
+        "projectId": "project-git",
+        "repoId": "repo-meta-o",
+        "sha": "0123456789abcdef0123456789abcdef01234567"
+      }
+    ]
+  },
+  "noContext": {
+    "project": { "id": "project-git", "kind": "git", "sourceRepoIds": ["repo-meta-o"] },
+    "currentContext": null,
+    "repositories": [{ "id": "repo-meta-o", "path": "/recorded/meta-o", "kind": "git" }],
+    "resources": [],
+    "children": []
+  },
+  "remote": {
+    "project": { "id": "project-remote", "kind": "git", "sourceRepoIds": ["repo-remote"] },
+    "currentContext": { "projectId": "project-remote", "repoId": "repo-remote" },
+    "repositories": [
+      { "id": "repo-remote", "path": "https://example.invalid/meta-o.git", "kind": "remote" }
+    ],
+    "resources": [],
+    "children": []
+  }
+}

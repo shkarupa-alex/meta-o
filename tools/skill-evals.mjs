@@ -53,6 +53,11 @@ const REQUIRED_MATRIX = [
   { matrixProfile: "required-claude", route: "claude", role: "testClaude" },
   { matrixProfile: "required-codex", route: "codex", role: "testCodex" },
 ];
+const DESIRED_MATRIX = [
+  { matrixProfile: "desired-codex", route: "codex", role: "testCodexDesired" },
+  { matrixProfile: "desired-opencode", route: "opencode", role: "testOpenCodeDesired" },
+];
+const EXPECTED_MATRIX = [...REQUIRED_MATRIX, ...DESIRED_MATRIX];
 
 function git(root, args) {
   const result = spawnSync("git", ["-C", root, ...args], { encoding: "utf8" });
@@ -234,7 +239,7 @@ function makePrompt(root, corpus, skill, values) {
     results: document.cases.map(({ id, contracts, must, mustNot }) => ({
       caseId: id,
       contractIds: contracts,
-      verdict: "<PASS|FAIL|UNKNOWN|NOT_RUN|NOT_APPLICABLE>",
+      verdict: "<PASS|FAIL|UNKNOWN|BLOCKED|NOT_RUN|NOT_AVAILABLE|NOT_APPLICABLE>",
       observations: ["<case-specific observation>"],
       oracleEvidence: [
         ...must.map((oracle) => ({ kind: "must", oracle, satisfied: "<boolean>", evidence: "" })),
@@ -258,6 +263,7 @@ function makePrompt(root, corpus, skill, values) {
     "Return exactly one JSON object shaped like the template. Preserve candidate, revision, skill, policy, repetition, requested actor, harness, case ids, oracle kinds and oracle text byte-for-byte.",
     "Replace every angle-bracket placeholder from native harness facts and case observations; never copy requested identity into effective identity without observing it.",
     "Set PASS only when every oracle has distinct satisfied=true evidence and observations are non-empty; otherwise use FAIL or UNKNOWN.",
+    "For a desired matrix profile whose approved harness cannot run, materialize the envelope with NOT_AVAILABLE and bounded availability evidence; never omit the coordinate.",
     `\nCASES\n${JSON.stringify(document, null, 2)}`,
     `\nEVIDENCE TEMPLATE\n${JSON.stringify(envelope, null, 2)}`,
     `\nINSTALLABLE INSTRUCTIONS${instructionBundle(root, skill)}`,
@@ -477,12 +483,10 @@ export function validateEvidence(root, evidence, candidate, requireAll = false, 
   }
   if (requireAll) {
     const covered = new Set(
-      envelopes
-        .filter(({ tier }) => tier === "required")
-        .map(({ skill, matrixProfile }) => `${skill}:${matrixProfile}`),
+      envelopes.map(({ skill, matrixProfile }) => `${skill}:${matrixProfile}`),
     );
     const missing = EXPECTED_SKILLS.flatMap((skill) =>
-      REQUIRED_MATRIX.map(({ matrixProfile }) => `${skill}:${matrixProfile}`),
+      EXPECTED_MATRIX.map(({ matrixProfile }) => `${skill}:${matrixProfile}`),
     ).filter((coordinate) => !covered.has(coordinate));
     if (missing.length > 0) throw new Error(`missing skill evidence: ${missing.join(", ")}`);
   }

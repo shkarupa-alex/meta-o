@@ -93,6 +93,7 @@ identity только из native harness result и возвращает JSON ev
 ```bash
 node tools/skill-evals.mjs --prompt <skill> \
   --candidate <full-sha> \
+  --tier <required|desired|critical> --matrix-profile <name> \
   --route <route> --model <provider/model> --effort <level> \
   --harness <name> --harness-version <version> \
   --profile-version <profile-version> --quantization <value> \
@@ -112,9 +113,12 @@ node tools/skill-evals.mjs --validate-evidence <evidence.json> \
 Validator связывает evidence с Git tree revision каждого skill и digest точных
 case/requested/harness inputs, требует native execution id/interval/exit status,
 observed effective identity и отдельное evidence для каждого `must`/`mustNot`
-oracle. `PASS` не предзаполняется и невозможен при пустом observation или
-неподтверждённом oracle. Critical identity сравнивается с явно переданным
-user-owned orchestrator profile, а не с hard-coded display label. Полные
+oracle. `--require-all` требует все 32 coordinates: required и desired для
+каждого из 8 skills; desired отсутствие сохраняется envelope с
+`NOT_AVAILABLE`, а не пропуском. `PASS` не предзаполняется и невозможен при
+пустом observation или неподтверждённом oracle. Critical identity сравнивается
+с явно переданным user-owned orchestrator profile, а не с hard-coded display
+label. Полные
 transcripts, secrets и absolute machine paths запрещены. Любой `FAIL`, `UNKNOWN` или
 `NOT_RUN` делает live-команду ненулевой. Обоснованный
 `NOT_APPLICABLE` обязан содержать observation с применённым правилом и остаётся

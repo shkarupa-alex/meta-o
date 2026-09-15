@@ -184,8 +184,59 @@ test("PASS, FINDINGS and UNKNOWN fixtures preserve the canonical review envelope
   );
 });
 
+/** §A-BACKLOG-01 binds one literal GitHub job to its trigger and hosting policy. */
+function githubCoverage(documents, hosting) {
+  const root = documents[0].parsed;
+  const events = Object.keys(root?.on ?? {});
+  const jobs = Object.entries(root?.jobs ?? {});
+  const commandJobs = jobs.filter(([, { steps = [] }]) =>
+    steps.some(({ run = "" }) => run === "make mo-backlog-empty"),
+  );
+  const automatic = commandJobs.every(([, job]) => {
+    const commandSteps = (job.steps ?? []).filter(
+      ({ run = "" }) => run === "make mo-backlog-empty",
+    );
+    return (
+      job.if === undefined &&
+      job["continue-on-error"] !== true &&
+      commandSteps.every((step) => step.if === undefined && step["continue-on-error"] !== true)
+    );
+  });
+  const candidateEvent = events.includes("pull_request") || events.includes("merge_group");
+  if (
+    !candidateEvent ||
+    events.includes("pull_request_target") ||
+    commandJobs.length !== 1 ||
+    !automatic
+  )
+    return "unknown";
+  const required = hosting.workflowActive === true && hosting.requiredCheck === commandJobs[0][0];
+  return required ? "covered" : "config_present";
+}
+
+/** §A-BACKLOG-01 binds one literal GitLab job to MR rules and hosting policy. */
+function gitlabCoverage(documents, hosting) {
+  const reserved = new Set(["include", "stages", "workflow", "default", "variables"]);
+  const jobs = documents.flatMap(({ parsed }) =>
+    Object.entries(parsed ?? {}).filter(([name, value]) => !reserved.has(name) && value?.script),
+  );
+  const commandJobs = jobs.filter(([, job]) =>
+    (Array.isArray(job.script) ? job.script : [job.script]).includes("make mo-backlog-empty"),
+  );
+  if (commandJobs.length !== 1) return "unknown";
+  const [jobName, job] = commandJobs[0];
+  const mergeRequest = JSON.stringify(job.rules ?? job.only ?? "").includes("merge_request");
+  if (!mergeRequest || job.allow_failure === true) return "unknown";
+  const required =
+    hosting.ciEnabled === true &&
+    hosting.requiredJob === jobName &&
+    hosting.mergeRequestPipelines === true &&
+    hosting.mergeTrains === true;
+  return required ? "covered" : "config_present";
+}
+
 /** §A-BACKLOG-01 evaluates only the finite literal GitHub/GitLab CI subset. */
-function ciCoverage({ provider, entrypoint, files, required = false }) {
+function ciCoverage({ provider, entrypoint, files, hosting = {} }) {
   if (!entrypoint || !Object.hasOwn(files, entrypoint)) return "no_ci_surface";
   const seen = new Set();
   const documents = [];
@@ -212,35 +263,9 @@ function ciCoverage({ provider, entrypoint, files, required = false }) {
   } catch {
     return "unknown";
   }
-  if (provider === "github") {
-    const root = documents[0].parsed;
-    const events = Object.keys(root?.on ?? {});
-    const jobs = Object.values(root?.jobs ?? {});
-    const command = jobs.some(({ steps = [] }) =>
-      steps.some(({ run = "" }) => run === "make mo-backlog-empty"),
-    );
-    const automatic = jobs.every(
-      ({ if: condition, continueOnError = false }) => condition === undefined && !continueOnError,
-    );
-    const candidateEvent = events.includes("pull_request") || events.includes("merge_group");
-    if (!candidateEvent || events.includes("pull_request_target") || !command || !automatic)
-      return "unknown";
-  } else if (provider === "gitlab") {
-    const reserved = new Set(["include", "stages", "workflow", "default", "variables"]);
-    const jobs = documents.flatMap(({ parsed }) =>
-      Object.entries(parsed ?? {}).filter(([name, value]) => !reserved.has(name) && value?.script),
-    );
-    const command = jobs.some(([, job]) =>
-      (Array.isArray(job.script) ? job.script : [job.script]).includes("make mo-backlog-empty"),
-    );
-    const mergeRequest = jobs.some(([, job]) =>
-      JSON.stringify(job.rules ?? job.only ?? "").includes("merge_request"),
-    );
-    if (!command || !mergeRequest) return "unknown";
-  } else {
-    return "unknown";
-  }
-  return required ? "covered" : "config_present";
+  if (provider === "github") return githubCoverage(documents, hosting);
+  if (provider === "gitlab") return gitlabCoverage(documents, hosting);
+  return "unknown";
 }
 
 test("CI fixture evaluation covers both hosts and never invents required policy", () => {
@@ -255,9 +280,18 @@ test("CI fixture evaluation covers both hosts and never invents required policy"
       provider: "github",
       entrypoint: "ci.yml",
       files: { "ci.yml": ordinary },
-      required: true,
+      hosting: { workflowActive: true, requiredCheck: "backlog" },
     }),
     "covered",
+  );
+  assert.equal(
+    ciCoverage({
+      provider: "github",
+      entrypoint: "ci.yml",
+      files: { "ci.yml": ordinary.replace("- run:", "- if: false\n        run:") },
+      hosting: { workflowActive: true, requiredCheck: "backlog" },
+    }),
+    "unknown",
   );
   assert.equal(
     ciCoverage({
@@ -278,6 +312,32 @@ test("CI fixture evaluation covers both hosts and never invents required policy"
       files: { ".gitlab-ci.yml": gitlab, "jobs.yml": job },
     }),
     "config_present",
+  );
+  assert.equal(
+    ciCoverage({
+      provider: "gitlab",
+      entrypoint: ".gitlab-ci.yml",
+      files: {
+        ".gitlab-ci.yml": gitlab,
+        "jobs.yml":
+          "backlog:\n  script: make mo-backlog-empty\nverify:\n  script: echo ok\n  rules:\n    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'\n",
+      },
+    }),
+    "unknown",
+  );
+  assert.equal(
+    ciCoverage({
+      provider: "gitlab",
+      entrypoint: ".gitlab-ci.yml",
+      files: { ".gitlab-ci.yml": gitlab, "jobs.yml": job },
+      hosting: {
+        ciEnabled: true,
+        requiredJob: "backlog",
+        mergeRequestPipelines: true,
+        mergeTrains: true,
+      },
+    }),
+    "covered",
   );
   assert.equal(
     ciCoverage({

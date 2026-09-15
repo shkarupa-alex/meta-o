@@ -25,6 +25,8 @@ function envelope(skill, { tier = "required", matrixProfile = "required-codex" }
   const identity = {
     "required-claude": { route: "claude", model: "opus[1m]", effort: "low" },
     "required-codex": { route: "codex", model: "gpt-5.6-sol", effort: "low" },
+    "desired-codex": { route: "codex", model: "gpt-5.6-luna", effort: "max" },
+    "desired-opencode": { route: "opencode", model: "provider/qwen3.8-27b", effort: "low" },
     critical: { route: "opencode", model: "llamacpp/qwen3.8-27b", effort: "default" },
   }[matrixProfile];
   assert.ok(identity, `unknown fixture matrix profile ${matrixProfile}`);
@@ -99,8 +101,12 @@ test("every installable skill owns three bounded embedded cases", () => {
 test("complete evidence binds every skill to candidate, revision and approved identity", () => {
   const corpus = loadCorpus(ROOT);
   const evidence = [...corpus.values()].flatMap(({ skill }) =>
-    ["required-claude", "required-codex"].map((matrixProfile) =>
-      finalizedEnvelope(skill, { matrixProfile }),
+    ["required-claude", "required-codex", "desired-codex", "desired-opencode"].map(
+      (matrixProfile) =>
+        finalizedEnvelope(skill, {
+          matrixProfile,
+          tier: matrixProfile.startsWith("desired-") ? "desired" : "required",
+        }),
     ),
   );
   assert.deepEqual(
@@ -108,7 +114,7 @@ test("complete evidence binds every skill to candidate, revision and approved id
       criticalProfile: "opencode/llamacpp/qwen3.8-27b/default",
     }),
     {
-      envelopes: 16,
+      envelopes: 32,
       nonPass: [],
     },
   );
@@ -138,6 +144,16 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
   assert.throws(
     () => validateEvidence(ROOT, finalizedEnvelope("find-reuse"), HEAD, true),
     /missing skill evidence/,
+  );
+
+  const requiredOnly = [...loadCorpus(ROOT).values()].flatMap(({ skill }) =>
+    ["required-claude", "required-codex"].map((matrixProfile) =>
+      finalizedEnvelope(skill, { matrixProfile }),
+    ),
+  );
+  assert.throws(
+    () => validateEvidence(ROOT, requiredOnly, HEAD, true),
+    /desired-codex.*desired-opencode/u,
   );
 
   const wrongCriticalModel = finalizedEnvelope("mo-orchestrate-orca", {
@@ -171,6 +187,18 @@ test("blocking verdicts fail the live gate while evidenced inapplicability is ac
 
   evidence.results[2].observations = [];
   assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /needs an observation/);
+});
+
+test("desired profile can materialize as evidenced NOT_AVAILABLE", () => {
+  const evidence = finalizedEnvelope("find-reuse", {
+    tier: "desired",
+    matrixProfile: "desired-opencode",
+  });
+  for (const result of evidence.results) {
+    result.verdict = "NOT_AVAILABLE";
+    result.observations = ["approved desired harness was unavailable"];
+  }
+  assert.deepEqual(validateEvidence(ROOT, evidence, HEAD).nonPass, []);
 });
 
 test("PASS cannot be accepted without case-specific oracle evidence", () => {
@@ -227,4 +255,5 @@ test("the CLI exposes a bounded prompt without launching a model", () => {
   assert.doesNotMatch(result.stdout, /\/home\/|\/mnt\//);
   assert.doesNotMatch(result.stdout, /"verdict": "PASS"/u);
   assert.match(result.stdout, /native harness execution id/u);
+  assert.match(result.stdout, /BLOCKED\|NOT_RUN\|NOT_AVAILABLE/u);
 });

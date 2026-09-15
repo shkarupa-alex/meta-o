@@ -417,13 +417,22 @@ test("codex listings keep only the rows the CLI itself would offer", () => {
         supported_in_api: true,
         supported_reasoning_levels: [{ effort: "low" }, { effort: "high" }],
       },
+      {
+        slug: "gpt-1.0",
+        visibility: "list",
+        supported_in_api: true,
+        supported_reasoning_levels: [{ effort: "low" }],
+      },
       { slug: "internal-only", visibility: "hidden", supported_in_api: true },
       { slug: "no-api", visibility: "list", supported_in_api: false },
     ],
   });
   const listing = parseCodexModels(fixture);
-  assert.deepEqual(listing.models, ["gpt-9.9"], "hidden and API-unsupported rows are dropped");
-  assert.deepEqual(listing.efforts, { "gpt-9.9": ["low", "high"] });
+  assert.deepEqual(listing.models, ["gpt-1.0", "gpt-9.9"]);
+  assert.deepEqual(listing.efforts, {
+    "gpt-9.9": ["low", "high"],
+    "gpt-1.0": ["low"],
+  });
 });
 
 test("codex catalog parsing ignores wrapper diagnostics around one complete JSON value", () => {
@@ -639,7 +648,7 @@ test("31-day history streams beyond ten files and never becomes a catalog", () =
   const codex = join(bin, "codex");
   writeFileSync(
     codex,
-    `#!/bin/sh\nprintf '%s\\n' '{"models":[{"slug":"gpt-5.6-sol","display_name":"Sol coding","description":"software engineering model","visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}]}]}'\n`,
+    `#!/bin/sh\nprintf '%s\\n' '{"models":[{"slug":"gpt-5.6-sol","display_name":"Sol coding","description":"software engineering model","capabilities":["coding"],"visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}]}]}'\n`,
   );
   chmodSync(codex, 0o755);
   for (let index = 0; index < 12; index += 1) {
@@ -648,12 +657,17 @@ test("31-day history streams beyond ten files and never becomes a catalog", () =
       `${JSON.stringify({ model: `history-${index}` })}\n`,
     );
   }
+  writeFileSync(
+    join(sessions, "nested-secret.jsonl"),
+    `${JSON.stringify({ type: "tool_result", payload: { request: { model: "secret-model" } } })}\n`,
+  );
   const environment = { PATH: `${bin}${delimiter}${process.env.PATH}` };
   const json = run(home, ["--catalog", "--route", "codex", "--json"], ROOT, environment);
   assert.equal(json.status, 0, json.stderr);
   const report = provider(JSON.parse(json.stdout), "codex");
-  assert.equal(report.history.scannedFiles, 12);
+  assert.equal(report.history.scannedFiles, 13);
   assert.equal(report.history.models.length, 12);
+  assert.equal(report.history.models.includes("secret-model"), false);
   assert.deepEqual(
     report.catalog.models.map(({ id }) => id),
     ["gpt-5.6-sol"],
@@ -662,7 +676,7 @@ test("31-day history streams beyond ten files and never becomes a catalog", () =
 
   const human = run(home, ["--catalog", "--route", "codex"], ROOT, environment);
   assert.equal(human.status, 0, human.stderr);
-  assert.match(human.stdout, /recently used \(12 files, hint only, not a catalog\)/u);
+  assert.match(human.stdout, /recently used \(13 files, hint only, not a catalog\)/u);
   assert.match(human.stdout, /default recommendation: codex\/gpt-5\.6-sol\/high/u);
 });
 

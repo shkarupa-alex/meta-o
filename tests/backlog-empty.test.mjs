@@ -46,6 +46,25 @@ function fixture(content = EMPTY) {
   return root;
 }
 
+function repositoryFixture(content = EMPTY) {
+  const parent = mkdtempSync(join(tmpdir(), "mo-backlog-repository-"));
+  roots.push(parent);
+  const root = join(parent, "checkout");
+  const clone = spawnSync("git", ["clone", "-q", "--no-hardlinks", ROOT, root], {
+    encoding: "utf8",
+  });
+  assert.equal(clone.status, 0, clone.stderr);
+  symlinkSync(join(ROOT, "node_modules"), join(root, "node_modules"));
+  if (content !== EMPTY) {
+    writeFileSync(join(root, "docs", "backlog.md"), content);
+    git(root, ["config", "user.name", "Fixture"]);
+    git(root, ["config", "user.email", "fixture@example.invalid"]);
+    git(root, ["add", "docs/backlog.md"]);
+    git(root, ["commit", "-qm", "fixture backlog"]);
+  }
+  return root;
+}
+
 test("the AST owner distinguishes empty, entries, and arbitrary content", () => {
   assert.deepEqual(inspectBacklog(EMPTY), { kind: "empty", entries: 0, contentNodes: 0 });
   assert.deepEqual(inspectBacklog(`${EMPTY}\n### Deferred\n\nBody.\n`), {
@@ -108,8 +127,22 @@ test("missing, symlink, invalid UTF-8, and malformed schema never pass", () => {
 
 test("the public Make target emits the portable PASS header and changes no Git state", () => {
   const before = git(ROOT, ["status", "--porcelain=v1"]);
-  const result = spawnSync("make", ["mo-backlog-empty"], { cwd: ROOT, encoding: "utf8" });
+  const isolated = repositoryFixture();
+  const result = spawnSync("make", ["mo-backlog-empty"], {
+    cwd: isolated,
+    encoding: "utf8",
+  });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /MO-BACKLOG-EMPTY version=1 sha=[a-f0-9]{40} /u);
   assert.equal(git(ROOT, ["status", "--porcelain=v1"]), before);
+});
+
+test("ordinary QC tests the closure target without requiring the live notebook to be empty", () => {
+  const isolated = repositoryFixture(`${EMPTY}\n### Deferred\n\n**Причина.** R\n`);
+  const result = spawnSync("make", ["mo-backlog-empty"], {
+    cwd: isolated,
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /MO-BACKLOG-NOT-EMPTY/u);
 });

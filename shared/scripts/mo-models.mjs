@@ -355,7 +355,7 @@ function lineListing(descriptor) {
       .split("\n")
       .map((line) => line.trim())
       .filter((line) => line && !line.startsWith("#")),
-  );
+  ).sort();
   return models.length > 0
     ? { available: true, models, efforts: {}, details: {}, reason: null }
     : unavailable("empty listing");
@@ -399,7 +399,7 @@ export function parseCodexModels(text) {
       },
     ]),
   );
-  const models = dedupe(rows.map((model) => model.slug).filter(Boolean));
+  const models = dedupe(rows.map((model) => model.slug).filter(Boolean)).sort();
   return models.length > 0
     ? { available: true, models, efforts, details, reason: null }
     : unavailable("no listable models");
@@ -516,7 +516,7 @@ async function claudeSdkListing() {
         capabilities: model.capabilities ?? null,
       };
     }
-    const models = dedupe(supported.map((model) => model.value).filter(Boolean));
+    const models = dedupe(supported.map((model) => model.value).filter(Boolean)).sort();
     listing =
       models.length > 0
         ? { available: true, models, efforts, details, reason: null }
@@ -606,24 +606,31 @@ function recentSessionFiles(directory) {
  * newer generation the settings have not caught up with. They are never
  * presented as the route's catalog.
  */
-function collectModels(value, seen) {
-  if (!value || typeof value !== "object") return;
-  for (const [key, child] of Object.entries(value)) {
-    if (key === "model" && typeof child === "string") seen.push(child);
-    else collectModels(child, seen);
+function collectModels(route, value, seen) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+  const candidates = {
+    claude: [value.model, value.message?.model],
+    codex: [
+      value.model,
+      new Set(["session_meta", "turn_context"]).has(value.type) ? value.payload?.model : null,
+    ],
+    opencode: [value.model, value.info?.modelID, value.session?.model],
+  }[route];
+  for (const model of candidates ?? []) {
+    if (typeof model === "string" && model.trim() !== "") seen.push(model);
   }
 }
 
-function collectHistoryLine(line, state) {
+function collectHistoryLine(route, line, state) {
   if (!line.trim()) return;
   try {
-    collectModels(JSON.parse(line), state.seen);
+    collectModels(route, JSON.parse(line), state.seen);
   } catch {
     state.corrupt = true;
   }
 }
 
-async function scanHistoryFile(file, state, started) {
+async function scanHistoryFile(route, file, state, started) {
   const stream = createReadStream(file);
   let carry = "";
   for await (const chunk of stream) {
@@ -636,14 +643,14 @@ async function scanHistoryFile(file, state, started) {
     carry += chunk.toString("utf8");
     const lines = carry.split("\n");
     carry = lines.pop() ?? "";
-    lines.forEach((line) => collectHistoryLine(line, state));
+    lines.forEach((line) => collectHistoryLine(route, line, state));
     if (Date.now() - started >= HISTORY_TIMEOUT_MS) {
       state.stopReason = "timeout";
       stream.destroy();
       break;
     }
   }
-  if (carry.trim() && state.stopReason === "ok") collectHistoryLine(carry, state);
+  if (carry.trim() && state.stopReason === "ok") collectHistoryLine(route, carry, state);
 }
 
 async function routeHistory(route) {
@@ -665,7 +672,7 @@ async function routeHistory(route) {
       break;
     }
     try {
-      await scanHistoryFile(file, state, started);
+      await scanHistoryFile(route, file, state, started);
       scannedFiles += 1;
     } catch {
       unreadable.push(relative(directory, file));
@@ -816,11 +823,14 @@ async function commandCatalog(routeFilter, asJson) {
     if (!provider.history.complete) {
       process.stdout.write(`  history incomplete (${provider.history.stopReason})\n`);
     }
-    const preferred = provider.catalog.models.find(
-      ({ id, label, description, capabilities }) =>
+    const preferred = provider.catalog.models.find(({ id, capabilities, efforts }) => {
+      const capabilityEvidence = JSON.stringify(capabilities ?? {});
+      return (
         id === currentDefaults[provider.route] &&
-        /cod(?:e|ing)|software/iu.test(JSON.stringify({ label, description, capabilities })),
-    );
+        efforts.includes("high") &&
+        /cod(?:e|ing)|software/iu.test(capabilityEvidence)
+      );
+    });
     if (preferred) {
       process.stdout.write(
         `  default recommendation: ${provider.route}/${preferred.id}/high ` +
