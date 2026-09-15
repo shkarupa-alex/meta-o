@@ -1,5 +1,14 @@
 # §A-QUALITY-01 — JavaScript-границы проверяет ESLint
 
+```yaml
+knowledge_id_changes:
+  - action: reuse
+    id: §A-QUALITY-01
+    reason: Host-sensitive posture tests не должны конкурировать с тяжёлым обходом Git history внутри одного mo-test.
+    new_boundary: Node test files выполняются последовательно; внутренняя полнота каждого test file сохраняется.
+    references_updated: true
+```
+
 ## Решение
 
 Весь first-party JavaScript проходит ESLint внутри `make mo-lint`. Gate
@@ -23,6 +32,11 @@
 
 Gate non-mutating: `eslint .` только судит tracked source. Auto-fix в
 `make mo-qc` не входит.
+
+`mo-test` последовательно запускает test files через `--test-concurrency=1`.
+Это сохраняет полный набор assertions, но не даёт host-sensitive
+`provider-posture` конкурировать за процессы и таймауты с тяжёлым обходом Git
+history.
 
 ## Бизнес-причина
 

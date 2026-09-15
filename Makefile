@@ -52,7 +52,7 @@ skills:
 
 mo-test:
 	@command -v zsh >/dev/null 2>&1 || { echo "mo-test blocked: zsh is required for the cross-shell contract" >&2; exit 1; }
-	node --test "tests/*.test.mjs"
+	node --test --test-concurrency=1 "tests/*.test.mjs"
 
 # §A-BACKLOG-01 is a lifecycle closure gate, intentionally not a dependency of
 # mid-feature mo-qc: valid temporary notebook entries must remain testable.
