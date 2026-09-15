@@ -273,7 +273,9 @@ function makePrompt(root, corpus, skill, values) {
     "Replace every angle-bracket placeholder from native harness facts and case observations; never copy requested identity into effective identity without observing it.",
     "Set PASS only when every oracle has distinct satisfied=true evidence and observations are non-empty; otherwise use FAIL or UNKNOWN.",
     "For a desired matrix profile whose approved harness cannot run, materialize the envelope with NOT_AVAILABLE and bounded availability evidence; never omit the coordinate.",
-    "In that unavailable envelope set every result to NOT_AVAILABLE, execution.effective to null, execution.availability to {status: not_available, reason: <native reason>}, and preserve the nonzero native probe exit code; do not invent harness metadata.",
+    "For a required matrix profile whose approved harness cannot run, materialize every result as BLOCKED or NOT_RUN so the coordinate remains blocking.",
+    "In either unavailable envelope set execution.effective to null, execution.availability to {status: not_available, reason: <native reason>}, preserve the nonzero native probe exit code, and do not invent harness metadata.",
+    "Use NOT_APPLICABLE only when the supplied case declares an exact notApplicableWhen rule, quote that rule in the observation, and claim no observed oracle.",
     `\nCASES\n${JSON.stringify(document, null, 2)}`,
     `\nEVIDENCE TEMPLATE\n${JSON.stringify(envelope, null, 2)}`,
     `\nINSTALLABLE INSTRUCTIONS${instructionBundle(root, skill)}`,
@@ -304,10 +306,20 @@ function oracleKeys(item) {
   ].sort();
 }
 
-function validateResult(result, item, tier) {
+function validateUnobservedVerdict(result, item) {
+  if (!new Set(["NOT_AVAILABLE", "NOT_APPLICABLE"]).has(result.verdict)) return;
+  if (result.oracleEvidence.some(({ satisfied }) => satisfied)) {
+    throw new Error(`${result.caseId}: ${result.verdict} cannot claim an observed oracle`);
+  }
+  if (result.verdict !== "NOT_APPLICABLE") return;
+  assertString(item.notApplicableWhen, `${result.caseId}: corpus applicability rule`);
+  if (!result.observations.some((observation) => observation.includes(item.notApplicableWhen))) {
+    throw new Error(`${result.caseId}: NOT_APPLICABLE must cite its corpus rule`);
+  }
+}
+
+function validateResult(result, item) {
   if (!VERDICTS.has(result.verdict)) throw new Error(`${result.caseId}: invalid verdict`);
-  if (tier === "required" && result.verdict === "NOT_AVAILABLE")
-    throw new Error(`${result.caseId}: required profile cannot be NOT_AVAILABLE`);
   if (!Array.isArray(result.observations))
     throw new Error(`${result.caseId}: observations missing`);
   if (result.observations.length === 0)
@@ -326,12 +338,7 @@ function validateResult(result, item, tier) {
   }
   if (result.verdict === "PASS" && result.oracleEvidence.some(({ satisfied }) => !satisfied))
     throw new Error(`${result.caseId}: PASS has an unsatisfied oracle`);
-  if (
-    result.verdict === "NOT_AVAILABLE" &&
-    result.oracleEvidence.some(({ satisfied }) => satisfied)
-  ) {
-    throw new Error(`${result.caseId}: NOT_AVAILABLE cannot claim an observed oracle`);
-  }
+  validateUnobservedVerdict(result, item);
 }
 
 function validateResults(envelope, document) {
@@ -345,7 +352,6 @@ function validateResults(envelope, document) {
     validateResult(
       result,
       document.cases.find(({ id }) => id === result.caseId),
-      envelope.tier,
     );
   }
 }
@@ -370,15 +376,33 @@ function validateMatrixCoordinate(envelope) {
 }
 
 function envelopeIsUnavailable(envelope) {
-  const unavailableResults = (envelope.results ?? []).filter(
-    ({ verdict }) => verdict === "NOT_AVAILABLE",
-  );
-  const unavailable =
-    unavailableResults.length > 0 && unavailableResults.length === envelope.results?.length;
-  if (unavailableResults.length > 0 && !unavailable) {
-    throw new Error(`${envelope.skill}: NOT_AVAILABLE must cover the whole desired envelope`);
+  const results = envelope.results ?? [];
+  const declaredUnavailable = envelope.execution?.availability?.status === "not_available";
+  const hasNotAvailable = results.some(({ verdict }) => verdict === "NOT_AVAILABLE");
+  if (!declaredUnavailable) {
+    if (hasNotAvailable) {
+      throw new Error(`${envelope.skill}: NOT_AVAILABLE needs unavailable execution evidence`);
+    }
+    return false;
   }
-  return unavailable;
+  if (envelope.tier === "desired") {
+    if (!results.length || results.some(({ verdict }) => verdict !== "NOT_AVAILABLE")) {
+      throw new Error(`${envelope.skill}: NOT_AVAILABLE must cover the whole desired envelope`);
+    }
+    return true;
+  }
+  if (envelope.tier === "required") {
+    if (
+      !results.length ||
+      results.some(({ verdict }) => !new Set(["BLOCKED", "NOT_RUN"]).has(verdict))
+    ) {
+      throw new Error(
+        `${envelope.skill}: unavailable required envelope must stay BLOCKED or NOT_RUN`,
+      );
+    }
+    return true;
+  }
+  throw new Error(`${envelope.skill}: critical evidence cannot claim unavailable execution`);
 }
 
 function validateEnvelope(root, corpus, envelope, candidate, criticalProfile) {

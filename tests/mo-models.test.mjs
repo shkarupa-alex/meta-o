@@ -339,6 +339,24 @@ test("an unknown role or a malformed selection is refused before any write", () 
   );
 });
 
+test("a retired testing role in version-one settings is reported", () => {
+  const home = sandbox();
+  const directory = join(home, ".meta-o");
+  mkdirSync(directory);
+  writeFileSync(
+    join(directory, "models.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      defaults: { testOpenCode: "opencode/provider/deepseek-v4-flash/low" },
+      projects: {},
+    }),
+  );
+  const shown = run(home, ["--show"]);
+  assert.equal(shown.status, 0, shown.stderr);
+  assert.match(shown.stderr, /retired settings role defaults\.testOpenCode is ignored/u);
+  assert.match(shown.stderr, /configure testOpenCodeDesired/u);
+});
+
 test("an unknown flag is an error, not a silent default", () => {
   const home = sandbox();
   const result = run(home, ["--no-such-flag"]);
@@ -678,6 +696,37 @@ test("31-day history streams beyond ten files and never becomes a catalog", () =
   assert.equal(human.status, 0, human.stderr);
   assert.match(human.stdout, /recently used \(13 files, hint only, not a catalog\)/u);
   assert.match(human.stdout, /default recommendation: codex\/gpt-5\.6-sol\/high/u);
+});
+
+test("depth-truncated history is explicitly incomplete", () => {
+  const home = sandbox();
+  const sessions = join(home, ".codex", "sessions", "a", "b", "c", "d", "e", "f", "g");
+  mkdirSync(sessions, { recursive: true });
+  writeFileSync(join(sessions, "deep.jsonl"), '{"model":"too-deep"}\n');
+  const result = run(home, ["--catalog", "--route", "codex", "--json"]);
+  assert.equal(result.status, 0, result.stderr);
+  const history = provider(JSON.parse(result.stdout), "codex").history;
+  assert.equal(history.complete, false);
+  assert.equal(history.stopReason, "partial");
+  assert.ok(history.truncatedDirectories.length > 0);
+  assert.equal(history.models.includes("too-deep"), false);
+});
+
+test("a sole evidence-qualified successor can become the default recommendation", () => {
+  const home = sandbox();
+  const bin = join(home, "bin");
+  mkdirSync(bin, { recursive: true });
+  const codex = join(bin, "codex");
+  writeFileSync(
+    codex,
+    `#!/bin/sh\nprintf '%s\\n' '{"models":[{"slug":"gpt-successor","display_name":"Successor coding","description":"software engineering model","visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"high"}]}]}'\n`,
+  );
+  chmodSync(codex, 0o755);
+  const result = run(home, ["--catalog", "--route", "codex"], ROOT, {
+    PATH: `${bin}${delimiter}${process.env.PATH}`,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /default recommendation: codex\/gpt-successor\/high/u);
 });
 
 test("default recommendation requires the recommended high effort to be offered", () => {

@@ -48,6 +48,15 @@ files не редактируются вручную.
 
 ## §A-DISTRIBUTION-02 — Самодостаточный model helper
 
+```yaml
+knowledge_id_change:
+  action: reuse
+  id: §A-DISTRIBUTION-02
+  reason: Catalogue discovery и bundled runtime теперь явно разделяют exact supported model identity и provider availability.
+  new_boundary: Self-contained helper принимает только точный provider-supported profile и возвращает typed unavailable без выдуманного effective identity.
+  references_updated: true
+```
+
 Claude catalogue discovery использует поверхность Agent SDK
 `Query.supportedModels()`, но у установленного skill нет package-install step.
 Поэтому generated helper бандлит runtime dependency и не ищет project, global
@@ -84,6 +93,8 @@ Claude catalogue discovery использует поверхность Agent SDK
 Source helper и generated Orca copy проходят smoke tests.
 Disposable clone с symlinked `node_modules` обязан собрать точные committed bytes
 без абсолютного path исходного или временного дерева.
+Изменение словаря roles в schema 1 не теряется молча: сохранённый retired key
+остаётся нетронутым и явно называется при чтении вместе с актуальной заменой.
 
 Внешние файлы `brain-council`, упомянутые спецификацией, — только design
 references. Source, build, tests, generated skills и runtime обязаны работать без

@@ -19569,6 +19569,9 @@ var ROLES = [
   "testCodexDesired",
   "testOpenCodeDesired"
 ];
+var RETIRED_ROLES = /* @__PURE__ */ new Map([
+  ["testOpenCode", "configure testOpenCodeDesired for the current optional OpenCode coordinate"]
+]);
 var SCHEMA_VERSION = 1;
 var HISTORY_MAX_AGE_DAYS = 31;
 var HISTORY_TIMEOUT_MS = 5e3;
@@ -19619,7 +19622,7 @@ var TESTING_PROFILES = {
   testClaude: {
     route: "claude",
     effort: "low",
-    id: /^(?:claude-)?opus(?:\[1m\]|-1m)(?:-[\w.-]+)?$/u,
+    id: /^opus\[1m\]$/u,
     requirement: "testClaude must be claude/opus[1m]/low"
   },
   testCodex: {
@@ -19728,6 +19731,16 @@ function effectiveRoles(settings, key) {
     if (value) merged[role] = value;
   }
   return merged;
+}
+function retiredRoleLocations(settings) {
+  const locations = [];
+  for (const role of RETIRED_ROLES.keys()) {
+    if (settings.defaults?.[role]) locations.push(`defaults.${role}`);
+    for (const [project, value] of Object.entries(settings.projects ?? {})) {
+      if (value?.roles?.[role]) locations.push(`projects.${project}.roles.${role}`);
+    }
+  }
+  return locations;
 }
 var unavailable = (reason) => ({
   available: false,
@@ -19905,12 +19918,18 @@ async function routeCatalog(route) {
   }
 }
 function recentSessionFiles(directory) {
-  if (!directory || !existsSync2(directory)) return { files: [], unreadable: [], missing: true };
+  if (!directory || !existsSync2(directory)) {
+    return { files: [], unreadable: [], truncated: [], missing: true };
+  }
   const cutoff = Date.now() - HISTORY_MAX_AGE_DAYS * 24 * 60 * 60 * 1e3;
   const found = [];
   const unreadable = [];
+  const truncated = [];
   const walk = (path, depth) => {
-    if (depth > 6) return;
+    if (depth > 6) {
+      truncated.push(relative(directory, path) || ".");
+      return;
+    }
     let entries;
     try {
       entries = readdirSync2(path, { withFileTypes: true });
@@ -19936,7 +19955,12 @@ function recentSessionFiles(directory) {
   };
   walk(directory, 0);
   found.sort((a, b3) => b3.mtimeMs - a.mtimeMs || a.path.localeCompare(b3.path));
-  return { files: found.map((entry) => entry.path), unreadable, missing: false };
+  return {
+    files: found.map((entry) => entry.path),
+    unreadable,
+    truncated,
+    missing: false
+  };
 }
 function collectModels(route, value, seen) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return;
@@ -19988,6 +20012,7 @@ async function routeHistory(route) {
   const discovery = recentSessionFiles(directory);
   const started = Date.now();
   const unreadable = [...discovery.unreadable];
+  const truncated = [...discovery.truncated];
   let scannedFiles = 0;
   const state = {
     seen: [],
@@ -20009,12 +20034,14 @@ async function routeHistory(route) {
     if (state.stopReason === "timeout" || state.stopReason === "partial") break;
   }
   if (state.stopReason === "ok" && unreadable.length > 0) state.stopReason = "partial";
+  if (state.stopReason === "ok" && truncated.length > 0) state.stopReason = "partial";
   if (state.stopReason === "ok" && state.corrupt) state.stopReason = "corrupt";
   return {
     complete: state.stopReason === "ok",
     models: dedupe(state.seen).sort(),
     scannedFiles,
     unreadableFiles: dedupe(unreadable).sort().slice(0, 20),
+    truncatedDirectories: dedupe(truncated).sort().slice(0, 20),
     bytesRead: state.bytesRead,
     elapsedMs: Date.now() - started,
     stopReason: state.stopReason
@@ -20022,6 +20049,18 @@ async function routeHistory(route) {
 }
 function dedupe(values) {
   return [...new Set(values)];
+}
+function defaultRecommendation(provider) {
+  const eligible = provider.catalog.models.filter(
+    ({ label, description, capabilities, efforts }) => efforts.includes("high") && /cod(?:e|ing)|software/iu.test(JSON.stringify({ label, description, capabilities }))
+  );
+  if (eligible.length === 1) return eligible[0];
+  const recentlyUsed = new Set(provider.history.models);
+  const recent = eligible.filter(({ id: id2 }) => recentlyUsed.has(id2));
+  if (recent.length === 1) return recent[0];
+  const currentOrientation = { codex: "gpt-5.6-sol", claude: "opus[1m]" }[provider.route];
+  const oriented = eligible.filter(({ id: id2 }) => id2 === currentOrientation);
+  return oriented.length === 1 ? oriented[0] : null;
 }
 function familyAndGeneration(model) {
   const id2 = String(model).split("/").pop() ?? "";
@@ -20099,7 +20138,6 @@ async function commandCatalog(routeFilter, asJson) {
 `);
     return;
   }
-  const currentDefaults = { codex: "gpt-5.6-sol", claude: "opus[1m]" };
   for (const provider of providers) {
     if (provider.catalog.status === "ok") {
       process.stdout.write(
@@ -20126,18 +20164,13 @@ async function commandCatalog(routeFilter, asJson) {
       process.stdout.write(`  history incomplete (${provider.history.stopReason})
 `);
     }
-    const preferred = provider.catalog.models.find(
-      ({ id: id2, label, description, capabilities, efforts }) => {
-        const positioningEvidence = JSON.stringify({ label, description, capabilities });
-        return id2 === currentDefaults[provider.route] && efforts.includes("high") && /cod(?:e|ing)|software/iu.test(positioningEvidence);
-      }
-    );
+    const preferred = defaultRecommendation(provider);
     if (preferred) {
       process.stdout.write(
         `  default recommendation: ${provider.route}/${preferred.id}/high (catalog coding-positioning evidence)
 `
       );
-    } else if (Object.hasOwn(currentDefaults, provider.route)) {
+    } else if ((/* @__PURE__ */ new Set(["codex", "claude"])).has(provider.route)) {
       process.stdout.write(
         "  no_default_recommendation (catalog has no admissible coding-positioning evidence)\n"
       );
@@ -20396,6 +20429,13 @@ ${USAGE}`);
       process.exitCode = 1;
       return;
     }
+  }
+  for (const location of retiredRoleLocations(settings)) {
+    const role = location.split(".").at(-1);
+    process.stderr.write(
+      `mo-models: retired settings role ${location} is ignored; ${RETIRED_ROLES.get(role)}.
+`
+    );
   }
   try {
     let cached = null;

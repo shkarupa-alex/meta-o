@@ -215,17 +215,15 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
   assert.throws(() => validateEvidence(ROOT, repeated, HEAD), /invalid repetition/u);
 });
 
-test("blocking verdicts fail the live gate while evidenced inapplicability is accepted", () => {
+test("blocking verdicts fail the live gate and applicability cannot be invented", () => {
   const evidence = finalizedEnvelope("find-reuse");
   evidence.results[2].verdict = "UNKNOWN";
   assert.deepEqual(validateEvidence(ROOT, evidence, HEAD).nonPass, [evidence.results[2]]);
 
   evidence.results[2].verdict = "NOT_APPLICABLE";
   evidence.results[2].observations = ["documented applicability rule did not select this case"];
-  assert.deepEqual(validateEvidence(ROOT, evidence, HEAD).nonPass, []);
-
-  evidence.results[2].observations = [];
-  assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /needs an observation/);
+  for (const oracle of evidence.results[2].oracleEvidence) oracle.satisfied = false;
+  assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /corpus applicability rule/u);
 });
 
 test("desired profile can materialize as evidenced NOT_AVAILABLE", () => {
@@ -270,6 +268,49 @@ test("desired profile can materialize as evidenced NOT_AVAILABLE", () => {
   assert.throws(
     () => validateEvidence(ROOT, evidence, HEAD),
     /must not invent effective identity/u,
+  );
+});
+
+test("required profile unavailability stays blocking without invented runtime identity", () => {
+  const evidence = finalizedEnvelope("find-reuse");
+  for (const [index, result] of evidence.results.entries()) {
+    result.verdict = index === 0 ? "BLOCKED" : "NOT_RUN";
+    result.observations = ["approved required harness was unavailable"];
+    for (const oracle of result.oracleEvidence) {
+      oracle.satisfied = false;
+      oracle.evidence = "not evaluated because the required harness was unavailable";
+    }
+  }
+  evidence.harness = {
+    name: "Codex",
+    version: null,
+    profileVersion: null,
+    quantization: null,
+    context: null,
+    sampling: null,
+    toolPermissions: [],
+  };
+  evidence.execution = {
+    id: "codex-required-availability-probe-1",
+    source: "codex",
+    startedAt: "2026-09-02T10:00:00.000Z",
+    completedAt: "2026-09-02T10:00:00.100Z",
+    exitCode: 127,
+    effective: null,
+    availability: { status: "not_available", reason: "approved_profile_unavailable" },
+    identityEvidence: "native provider rejected the approved required model",
+    evaluationDigest: "",
+  };
+  evidence.execution.evaluationDigest = evaluationDigest(
+    loadCorpus(ROOT).get("find-reuse"),
+    evidence,
+  );
+  assert.deepEqual(validateEvidence(ROOT, evidence, HEAD).nonPass, evidence.results);
+
+  evidence.results[1].verdict = "PASS";
+  assert.throws(
+    () => validateEvidence(ROOT, evidence, HEAD),
+    /unavailable required envelope must stay BLOCKED or NOT_RUN/u,
   );
 });
 

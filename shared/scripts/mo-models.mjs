@@ -50,6 +50,11 @@ const ROLES = [
   "testOpenCodeDesired",
 ];
 
+/** Retired keys stay visible so a settings vocabulary change is never silent. */
+const RETIRED_ROLES = new Map([
+  ["testOpenCode", "configure testOpenCodeDesired for the current optional OpenCode coordinate"],
+]);
+
 /** Only this schema is understood; a newer file is left strictly alone. */
 const SCHEMA_VERSION = 1;
 
@@ -161,13 +166,13 @@ export function parseSelection(value) {
 // ships next — possibly a far more expensive model — and a substring test on the
 // generation digit also matches the tail of a release date, which is how
 // `claude-sonnet-4-5-20250929` and `deepseek-v3-4-flash` passed as the approved
-// generation. The provider prefix stays free-form because the real ids live in
-// the user's configuration and are not hardcoded here.
+// generation. Required identities are closed values because an unreviewed
+// suffix is a different provider model, not a harmless display variant.
 const TESTING_PROFILES = {
   testClaude: {
     route: "claude",
     effort: "low",
-    id: /^(?:claude-)?opus(?:\[1m\]|-1m)(?:-[\w.-]+)?$/u,
+    id: /^opus\[1m\]$/u,
     requirement: "testClaude must be claude/opus[1m]/low",
   },
   testCodex: {
@@ -327,6 +332,17 @@ function effectiveRoles(settings, key) {
     if (value) merged[role] = value;
   }
   return merged;
+}
+
+function retiredRoleLocations(settings) {
+  const locations = [];
+  for (const role of RETIRED_ROLES.keys()) {
+    if (settings.defaults?.[role]) locations.push(`defaults.${role}`);
+    for (const [project, value] of Object.entries(settings.projects ?? {})) {
+      if (value?.roles?.[role]) locations.push(`projects.${project}.roles.${role}`);
+    }
+  }
+  return locations;
 }
 
 // ---------------------------------------------------------------------------
@@ -565,12 +581,18 @@ async function routeCatalog(route) {
 
 /** Every regular non-symlink `.jsonl` under a directory, newest first. */
 function recentSessionFiles(directory) {
-  if (!directory || !existsSync(directory)) return { files: [], unreadable: [], missing: true };
+  if (!directory || !existsSync(directory)) {
+    return { files: [], unreadable: [], truncated: [], missing: true };
+  }
   const cutoff = Date.now() - HISTORY_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
   const found = [];
   const unreadable = [];
+  const truncated = [];
   const walk = (path, depth) => {
-    if (depth > 6) return;
+    if (depth > 6) {
+      truncated.push(relative(directory, path) || ".");
+      return;
+    }
     let entries;
     try {
       entries = readdirSync(path, { withFileTypes: true });
@@ -596,7 +618,12 @@ function recentSessionFiles(directory) {
   };
   walk(directory, 0);
   found.sort((a, b) => b.mtimeMs - a.mtimeMs || a.path.localeCompare(b.path));
-  return { files: found.map((entry) => entry.path), unreadable, missing: false };
+  return {
+    files: found.map((entry) => entry.path),
+    unreadable,
+    truncated,
+    missing: false,
+  };
 }
 
 /**
@@ -659,6 +686,7 @@ async function routeHistory(route) {
   const discovery = recentSessionFiles(directory);
   const started = Date.now();
   const unreadable = [...discovery.unreadable];
+  const truncated = [...discovery.truncated];
   let scannedFiles = 0;
   const state = {
     seen: [],
@@ -681,12 +709,14 @@ async function routeHistory(route) {
     if (state.stopReason === "timeout" || state.stopReason === "partial") break;
   }
   if (state.stopReason === "ok" && unreadable.length > 0) state.stopReason = "partial";
+  if (state.stopReason === "ok" && truncated.length > 0) state.stopReason = "partial";
   if (state.stopReason === "ok" && state.corrupt) state.stopReason = "corrupt";
   return {
     complete: state.stopReason === "ok",
     models: dedupe(state.seen).sort(),
     scannedFiles,
     unreadableFiles: dedupe(unreadable).sort().slice(0, 20),
+    truncatedDirectories: dedupe(truncated).sort().slice(0, 20),
     bytesRead: state.bytesRead,
     elapsedMs: Date.now() - started,
     stopReason: state.stopReason,
@@ -695,6 +725,21 @@ async function routeHistory(route) {
 
 function dedupe(values) {
   return [...new Set(values)];
+}
+
+function defaultRecommendation(provider) {
+  const eligible = provider.catalog.models.filter(
+    ({ label, description, capabilities, efforts }) =>
+      efforts.includes("high") &&
+      /cod(?:e|ing)|software/iu.test(JSON.stringify({ label, description, capabilities })),
+  );
+  if (eligible.length === 1) return eligible[0];
+  const recentlyUsed = new Set(provider.history.models);
+  const recent = eligible.filter(({ id }) => recentlyUsed.has(id));
+  if (recent.length === 1) return recent[0];
+  const currentOrientation = { codex: "gpt-5.6-sol", claude: "opus[1m]" }[provider.route];
+  const oriented = eligible.filter(({ id }) => id === currentOrientation);
+  return oriented.length === 1 ? oriented[0] : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -800,7 +845,6 @@ async function commandCatalog(routeFilter, asJson) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     return;
   }
-  const currentDefaults = { codex: "gpt-5.6-sol", claude: "opus[1m]" };
   for (const provider of providers) {
     if (provider.catalog.status === "ok") {
       process.stdout.write(
@@ -824,22 +868,13 @@ async function commandCatalog(routeFilter, asJson) {
     if (!provider.history.complete) {
       process.stdout.write(`  history incomplete (${provider.history.stopReason})\n`);
     }
-    const preferred = provider.catalog.models.find(
-      ({ id, label, description, capabilities, efforts }) => {
-        const positioningEvidence = JSON.stringify({ label, description, capabilities });
-        return (
-          id === currentDefaults[provider.route] &&
-          efforts.includes("high") &&
-          /cod(?:e|ing)|software/iu.test(positioningEvidence)
-        );
-      },
-    );
+    const preferred = defaultRecommendation(provider);
     if (preferred) {
       process.stdout.write(
         `  default recommendation: ${provider.route}/${preferred.id}/high ` +
           `(catalog coding-positioning evidence)\n`,
       );
-    } else if (Object.hasOwn(currentDefaults, provider.route)) {
+    } else if (new Set(["codex", "claude"]).has(provider.route)) {
       process.stdout.write(
         "  no_default_recommendation (catalog has no admissible coding-positioning evidence)\n",
       );
@@ -1163,6 +1198,13 @@ async function main() {
       process.exitCode = 1;
       return;
     }
+  }
+
+  for (const location of retiredRoleLocations(settings)) {
+    const role = location.split(".").at(-1);
+    process.stderr.write(
+      `mo-models: retired settings role ${location} is ignored; ${RETIRED_ROLES.get(role)}.\n`,
+    );
   }
 
   try {

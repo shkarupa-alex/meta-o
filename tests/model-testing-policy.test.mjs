@@ -58,13 +58,7 @@ test("desired OpenCode testing identity is Qwen only", () => {
 });
 
 test("the testing profiles accept an exact model id and reject a floating alias", () => {
-  for (const accepted of [
-    "claude/opus[1m]/low",
-    "claude/opus-1m/low",
-    "claude/claude-opus-1m-20260401/low",
-  ]) {
-    assert.equal(testingPolicyError("testClaude", accepted), null, accepted);
-  }
+  assert.equal(testingPolicyError("testClaude", "claude/opus[1m]/low"), null);
   // A bare family name is whatever the provider ships next, so it cannot prove
   // the approved profile even though it reads like it.
   assert.match(testingPolicyError("testClaude", "claude/opus/low"), /opus\[1m\]/u);
@@ -76,6 +70,11 @@ test("the testing profiles accept an exact model id and reject a floating alias"
   );
   assert.match(testingPolicyError("testClaude", "claude/opus[1m]/medium"), /opus\[1m\]\/low/u);
   assert.match(testingPolicyError("testClaude", "claude/opus-5/low"), /opus\[1m\]\/low/u);
+  assert.match(
+    testingPolicyError("testClaude", "claude/opus[1m]-totally-unapproved/low"),
+    /opus\[1m\]\/low/u,
+  );
+  assert.match(testingPolicyError("testClaude", "claude/opus-1m/low"), /opus\[1m\]\/low/u);
   assert.match(testingPolicyError("testCodex", "codex/gpt-5.6/low"), /gpt-5\.6-sol/u);
   assert.match(
     testingPolicyError("testOpenCodeDesired", "opencode/deepseek/deepseek-v3-4-flash/low"),

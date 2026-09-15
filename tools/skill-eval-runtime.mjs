@@ -63,9 +63,6 @@ export function validateActorIdentity(envelope, criticalProfile, unavailable) {
   if (unavailable && envelope.execution?.effective !== null) {
     throw new Error(`${envelope.skill}: unavailable profile must not invent effective identity`);
   }
-  if (unavailable && envelope.tier !== "desired") {
-    throw new Error(`${envelope.skill}: only a desired profile can be unavailable`);
-  }
   const identity = unavailable ? envelope.requested : envelope.execution.effective;
   if (!unavailable && JSON.stringify(envelope.requested) !== JSON.stringify(identity)) {
     throw new Error(`${envelope.skill}: requested/effective identity mismatch`);

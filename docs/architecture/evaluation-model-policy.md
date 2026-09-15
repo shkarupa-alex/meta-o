@@ -6,8 +6,8 @@
 knowledge_id_changes:
   - action: reuse
     id: §A-EVAL-01
-    reason: Durable policy фиксирует единственную принимаемую repetition для evidence coordinate.
-    new_boundary: V3 evidence принимает только repetition=1 и не считает повторный model run новым доказательством.
+    reason: Review закрыл ложную неприменимость и дал required unavailability честную блокирующую форму.
+    new_boundary: NOT_APPLICABLE требует corpus-owned rule, а unavailable required envelope хранит null effective identity и BLOCKED или NOT_RUN cases.
     references_updated: true
   - action: reuse
     id: §B-EVAL-01
@@ -32,7 +32,13 @@ candidate, requested/effective model+effort и native harness identity.
 создаёт дополнительного принимаемого доказательства и не оправдывает лишний
 расход model actor.
 Неприменимый сценарий имеет доказанный `not_applicable`; недоступная required
-coordinate — `blocked|not_run`, не `PASS`.
+coordinate — `blocked|not_run`, не `PASS`. `not_applicable` принимается только
+при наличии точного правила применимости в corpus самого case, с этим правилом
+в observation и без якобы наблюдённых oracle. Если corpus такого правила не
+задаёт, model actor не может объявить case неприменимым. Недоступная required
+coordinate сохраняет requested identity, но несёт `effective: null`, typed
+availability reason и ненулевой exit code native probe; все её cases остаются
+`blocked|not_run` и поэтому блокируют gate.
 
 Desired coordinates Codex `gpt-5.6-luna/max` и OpenCode/Qwen materialize'ятся
 как `not_available`, когда отсутствуют. Запущенный `fail|unknown` блокирует.
