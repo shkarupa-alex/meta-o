@@ -711,6 +711,23 @@ test("corrupt history is explicitly incomplete while preserving observed hints",
   assert.deepEqual(history.models, ["observed-model"]);
 });
 
+test("history JSON remains valid when UTF-8 spans the stream chunk boundary", () => {
+  const home = sandbox();
+  const sessions = join(home, ".codex", "sessions");
+  mkdirSync(sessions, { recursive: true });
+  const prefix = '{"padding":"';
+  const padding = "a".repeat(65_535 - Buffer.byteLength(prefix));
+  writeFileSync(
+    join(sessions, "utf8-boundary.jsonl"),
+    `${prefix}${padding}é","model":"utf8-observed"}\n`,
+  );
+  const result = run(home, ["--catalog", "--route", "codex", "--json"]);
+  assert.equal(result.status, 0, result.stderr);
+  const history = provider(JSON.parse(result.stdout), "codex").history;
+  assert.equal(history.complete, true);
+  assert.deepEqual(history.models, ["utf8-observed"]);
+});
+
 test("a selection is stored with the gap named when the catalog cannot answer", () => {
   const home = sandbox();
   // The SDK is bundled, so the honest hermetic gap is a missing system Claude.

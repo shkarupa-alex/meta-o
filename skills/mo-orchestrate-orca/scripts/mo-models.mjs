@@ -19962,15 +19962,16 @@ function collectHistoryLine(route, line, state) {
 }
 async function scanHistoryFile(route, file, state, started) {
   const stream = createReadStream(file);
+  stream.setEncoding("utf8");
   let carry = "";
   for await (const chunk of stream) {
-    state.bytesRead += chunk.length;
+    state.bytesRead += Buffer.byteLength(chunk, "utf8");
     if (state.bytesRead > HISTORY_BYTE_BUDGET) {
       state.stopReason = "partial";
       stream.destroy();
       break;
     }
-    carry += chunk.toString("utf8");
+    carry += chunk;
     const lines = carry.split("\n");
     carry = lines.pop() ?? "";
     lines.forEach((line) => collectHistoryLine(route, line, state));

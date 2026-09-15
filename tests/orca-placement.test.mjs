@@ -40,16 +40,21 @@ function recordedReview(surface, { failAt = null, cleanupFails = false } = {}) {
   const baselineResources = normalized(surface.resources);
   const resources = [...surface.resources];
   const owned = [];
-  const finish = (result) => ({
-    ...result,
-    header:
-      `REVIEW-START version=1 status=${result.status} reason=${result.reason ?? "none"} ` +
-      `project=${surface.project?.id ?? "none"} candidate=${surface.children?.[0]?.sha ?? "none"}`,
-    calls,
-    registrationUnchanged: registrationSet(surface) === baselineRegistration,
-    baselineResources,
-    finalResources: normalized(resources),
-  });
+  const finish = (result) => {
+    const unsupported = result.status !== "started";
+    return {
+      ...result,
+      header: unsupported
+        ? `REVIEW-START version=1 status=unsupported reason=${result.reason} ` +
+          `project=${surface.project?.id ?? "none"} candidate=${surface.children?.[0]?.sha ?? "none"}`
+        : null,
+      handover: result.status === "UNKNOWN" ? "needs_attention" : null,
+      calls,
+      registrationUnchanged: registrationSet(surface) === baselineRegistration,
+      baselineResources,
+      finalResources: normalized(resources),
+    };
+  };
 
   if (surface.project.kind !== "git" || surface.project.sourceRepoIds.length !== 1) {
     return finish({
@@ -127,6 +132,7 @@ test("missing context and remote-only placement are typed before any start", () 
 test("Git new-child placement attributes exactly two isolated reviewer resources", () => {
   const result = recordedReview(fixture.git);
   assert.equal(result.status, "started");
+  assert.equal(result.header, null);
   assert.equal(result.registrationUnchanged, true);
   assert.equal(result.ownedDelta.length, 2);
   assert.deepEqual(
@@ -150,6 +156,11 @@ test("partial start removes only exact-owned resources and types incomplete clea
   result = recordedReview(fixture.git, { failAt: "review-b", cleanupFails: true });
   assert.equal(result.status, "UNKNOWN");
   assert.equal(result.reason, "cleanup_incomplete");
+  assert.match(
+    result.header,
+    /^REVIEW-START version=1 status=unsupported reason=cleanup_incomplete /u,
+  );
+  assert.equal(result.handover, "needs_attention");
   assert.deepEqual(
     result.ownedDelta.map(({ id }) => id),
     ["review-a"],

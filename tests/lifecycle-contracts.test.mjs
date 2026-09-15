@@ -215,6 +215,24 @@ function githubCoverage(documents, hosting) {
 }
 
 /** §A-BACKLOG-01 binds one literal GitLab job to MR rules and hosting policy. */
+function exactGitlabRule(rule, condition) {
+  return (
+    rule &&
+    Object.keys(rule).every((key) => new Set(["if", "when"]).has(key)) &&
+    rule.if === condition &&
+    new Set([undefined, "always", "on_success"]).has(rule.when)
+  );
+}
+
+function gitlabWorkflowReachable(workflowRules) {
+  return (
+    workflowRules === undefined ||
+    (Array.isArray(workflowRules) &&
+      workflowRules.length === 1 &&
+      exactGitlabRule(workflowRules[0], "$CI_MERGE_REQUEST_ID"))
+  );
+}
+
 function gitlabCoverage(documents, hosting) {
   const reserved = new Set(["include", "stages", "workflow", "default", "variables"]);
   const jobs = documents.flatMap(({ parsed }) =>
@@ -226,26 +244,22 @@ function gitlabCoverage(documents, hosting) {
   if (commandJobs.length !== 1) return "unknown";
   const [jobName, job] = commandJobs[0];
   const rules = Array.isArray(job.rules) ? job.rules : [];
+  const noCompetingReachability = job.only === undefined && job.except === undefined;
   const supportedRule =
+    noCompetingReachability &&
     rules.length === 1 &&
-    rules.every(
-      (rule) =>
-        rule &&
-        Object.keys(rule).every((key) => new Set(["if", "when"]).has(key)) &&
-        rule.if === "$CI_PIPELINE_SOURCE == 'merge_request_event'" &&
-        new Set([undefined, "on_success"]).has(rule.when),
-    );
+    rules.every((rule) => exactGitlabRule(rule, "$CI_PIPELINE_SOURCE == 'merge_request_event'"));
   const only = Array.isArray(job.only) ? job.only : [job.only];
-  const supportedOnly = only.length === 1 && only[0] === "merge_requests";
+  const supportedOnly =
+    job.rules === undefined &&
+    job.except === undefined &&
+    only.length === 1 &&
+    only[0] === "merge_requests";
   const mergeRequest = supportedRule || supportedOnly;
   const workflowRules = documents[0].parsed?.workflow?.rules;
-  const workflowReachable =
-    workflowRules === undefined ||
-    (Array.isArray(workflowRules) &&
-      workflowRules.length === 1 &&
-      workflowRules[0]?.if === "$CI_MERGE_REQUEST_ID" &&
-      new Set([undefined, "always", "on_success"]).has(workflowRules[0]?.when));
-  if (!mergeRequest || !workflowReachable || job.allow_failure === true) return "unknown";
+  const workflowReachable = gitlabWorkflowReachable(workflowRules);
+  const automatic = job.allow_failure !== true && new Set([undefined, "on_success"]).has(job.when);
+  if (!mergeRequest || !workflowReachable || !automatic) return "unknown";
   const required =
     hosting.ciEnabled === true &&
     hosting.requiredJob === jobName &&
@@ -324,6 +338,33 @@ test("CI fixture evaluation covers both hosts and never invents required policy"
     "include:\n  - local: jobs.yml\nworkflow:\n  rules:\n    - if: $CI_MERGE_REQUEST_ID\n";
   const job =
     "backlog:\n  script:\n    - make mo-backlog-empty\n  rules:\n    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'\n";
+  for (const files of [
+    {
+      ".gitlab-ci.yml": gitlab,
+      "jobs.yml":
+        "backlog:\n  script: make mo-backlog-empty\n  only: merge_requests\n  except: schedules\n",
+    },
+    {
+      ".gitlab-ci.yml":
+        "include:\n  - local: jobs.yml\nworkflow:\n  rules:\n    - if: $CI_MERGE_REQUEST_ID\n      changes: [src/**]\n",
+      "jobs.yml": job,
+    },
+  ]) {
+    assert.equal(
+      ciCoverage({
+        provider: "gitlab",
+        entrypoint: ".gitlab-ci.yml",
+        files,
+        hosting: {
+          ciEnabled: true,
+          requiredJob: "backlog",
+          mergeRequestPipelines: true,
+          mergeTrains: true,
+        },
+      }),
+      "unknown",
+    );
+  }
   assert.equal(
     ciCoverage({
       provider: "gitlab",

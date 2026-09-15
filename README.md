@@ -140,7 +140,7 @@ skills. Команды live GPU-run и валидации внешнего JSON 
 [Сквозная проверка](docs/e2e.md), [Карта acceptance](docs/acceptance.md),
 [Бэклог](docs/backlog.md), [Грабли и команды проекта](docs/papercut.md) и
 [§A-ORCHESTRATION-01 — Скилы и reasoning — слой оркестрации процесса][skills-first].
-Новый lifecycle дополняют:
+Ключевые решения жизненного цикла:
 
 - [§A-BACKLOG-01 — Backlog — временный notebook с отдельным closure gate][backlog-notebook];
 - [§A-ISSUE-01 — Подтверждённая внешняя работа маршрутизируется в Issues][issue-routing];
