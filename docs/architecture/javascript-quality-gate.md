@@ -4,8 +4,8 @@
 knowledge_id_changes:
   - action: reuse
     id: §A-QUALITY-01
-    reason: Host-sensitive posture tests не должны конкурировать с тяжёлым обходом Git history внутри одного mo-test.
-    new_boundary: Node test files выполняются последовательно; внутренняя полнота каждого test file сохраняется.
+    reason: Host-sensitive posture tests требуют отдельного process lifecycle без состояния общего Node test runner.
+    new_boundary: Обычные test files выполняются последовательно, затем provider-posture запускается в отдельном Node process.
     references_updated: true
 ```
 
@@ -33,10 +33,11 @@ knowledge_id_changes:
 Gate non-mutating: `eslint .` только судит tracked source. Auto-fix в
 `make mo-qc` не входит.
 
-`mo-test` последовательно запускает test files через `--test-concurrency=1`.
-Это сохраняет полный набор assertions, но не даёт host-sensitive
-`provider-posture` конкурировать за процессы и таймауты с тяжёлым обходом Git
-history.
+`mo-test` последовательно запускает обычные test files через
+`--test-concurrency=1`, а затем проверяет host-sensitive `provider-posture` в
+отдельном Node process. Это сохраняет полный набор assertions, но не переносит
+process-group состояние и нагрузку тяжёлого обхода Git history в runner
+posture-проверок.
 
 ## Бизнес-причина
 
