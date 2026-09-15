@@ -206,6 +206,10 @@ const MACHINE_PATH_KEYS = [
   "c:/users/alex/private",
   "\\\\buildserver\\private\\repo",
   "/etc/acme/private.conf",
+  "file:///home/alex/repo",
+  "at file:///home/alex/app/index.mjs:14:3",
+  "cwd:/home/alex/private",
+  "Error:/root/secret",
 ];
 
 test("sensitive evidence classification stays bounded on separator-heavy input", () => {
@@ -216,6 +220,17 @@ test("sensitive evidence classification stays bounded on separator-heavy input",
     const started = performance.now();
     assert.equal(forbiddenPublicDataReason(input), expected);
     assert.ok(performance.now() - started < 1_000, "96 KB classification exceeded one second");
+  }
+});
+
+test("machine paths stay distinct from complete public HTTP URLs", () => {
+  for (const value of [
+    "docs/backlog.md",
+    "https://github.com/example/project/issues/1",
+    "https://example.com/docs?redirect=/api/v1",
+    "https://github.com/example/project?path=/issues",
+  ]) {
+    assert.equal(forbiddenPublicDataReason(value), null, value);
   }
 });
 

@@ -36,22 +36,27 @@ const PATTERNS = [
 ];
 
 function containsAbsoluteMachinePath(value) {
-  return value
-    .split(/[\s"'`()<>[\]{},;=]+/u)
-    .some((token) => posix.isAbsolute(token) || win32.isAbsolute(token));
+  return value.split(/[\s"'`()<>[\]{},;]+/u).some((token) => {
+    if (/^https?:\/\//iu.test(token)) return false;
+    if (token.toLowerCase().includes("file://")) return true;
+    if (posix.isAbsolute(token) || win32.isAbsolute(token)) return true;
+    const label = token.indexOf(":");
+    if (label < 0) return false;
+    const payload = token.slice(label + 1);
+    return posix.isAbsolute(payload) || win32.isAbsolute(payload);
+  });
 }
 
 /** §A-EVAL-01 and §A-ISSUE-01 return only a stable class, never sensitive bytes. */
 export function forbiddenPublicDataReason(value) {
   if (typeof value !== "string") return null;
-  if (containsAbsoluteMachinePath(value)) return "machine_path";
   const environmentRows = value
     .split(/\r?\n/u)
     .filter((line) => /^[A-Z_][A-Z0-9_]*=.*$/u.test(line));
   if (environmentRows.length >= 2) return "environment_dump";
-  return (
+  const patternReason =
     PATTERNS.find(
       ([, pattern, applies]) => (!applies || applies(value)) && pattern.test(value),
-    )?.[0] ?? null
-  );
+    )?.[0] ?? null;
+  return patternReason ?? (containsAbsoluteMachinePath(value) ? "machine_path" : null);
 }

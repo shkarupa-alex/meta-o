@@ -348,6 +348,10 @@ test("Issue routing fails closed for overlapping facts, truncated search, unknow
     "c:/users/alex/private",
     "\\\\buildserver\\private\\repo",
     "/etc/acme/private.conf",
+    "file:///home/alex/repo",
+    "at file:///home/alex/app/index.mjs:14:3",
+    "cwd:/home/alex/private",
+    "Error:/root/secret",
   ]) {
     for (const field of ISSUE_PUBLIC_FIELDS) {
       assert.equal(
@@ -362,7 +366,7 @@ test("Issue routing fails closed for overlapping facts, truncated search, unknow
       title: "Public defect",
       summary: "public defect",
       versions: "gh 2.96.0",
-      links: "https://github.com/example/project/issues/1",
+      links: "https://github.com/example/project/issues/1?redirect=/docs/public",
     }).status,
     "ready",
   );
