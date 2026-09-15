@@ -215,12 +215,12 @@ function githubCoverage(documents, hosting) {
 }
 
 /** §A-BACKLOG-01 binds one literal GitLab job to MR rules and hosting policy. */
-function exactGitlabRule(rule, condition) {
+function exactGitlabRule(rule, condition, allowedWhen) {
   return (
     rule &&
     Object.keys(rule).every((key) => new Set(["if", "when"]).has(key)) &&
     rule.if === condition &&
-    new Set([undefined, "always", "on_success"]).has(rule.when)
+    allowedWhen.has(rule.when)
   );
 }
 
@@ -229,7 +229,7 @@ function gitlabWorkflowReachable(workflowRules) {
     workflowRules === undefined ||
     (Array.isArray(workflowRules) &&
       workflowRules.length === 1 &&
-      exactGitlabRule(workflowRules[0], "$CI_MERGE_REQUEST_ID"))
+      exactGitlabRule(workflowRules[0], "$CI_MERGE_REQUEST_ID", new Set([undefined, "always"])))
   );
 }
 
@@ -248,7 +248,13 @@ function gitlabCoverage(documents, hosting) {
   const supportedRule =
     noCompetingReachability &&
     rules.length === 1 &&
-    rules.every((rule) => exactGitlabRule(rule, "$CI_PIPELINE_SOURCE == 'merge_request_event'"));
+    rules.every((rule) =>
+      exactGitlabRule(
+        rule,
+        "$CI_PIPELINE_SOURCE == 'merge_request_event'",
+        new Set([undefined, "on_success"]),
+      ),
+    );
   const only = Array.isArray(job.only) ? job.only : [job.only];
   const supportedOnly =
     job.rules === undefined &&
@@ -347,6 +353,10 @@ test("CI fixture evaluation covers both hosts and never invents required policy"
     {
       ".gitlab-ci.yml":
         "include:\n  - local: jobs.yml\nworkflow:\n  rules:\n    - if: $CI_MERGE_REQUEST_ID\n      changes: [src/**]\n",
+      "jobs.yml": job,
+    },
+    {
+      ".gitlab-ci.yml": `${gitlab}      when: on_success\n`,
       "jobs.yml": job,
     },
   ]) {

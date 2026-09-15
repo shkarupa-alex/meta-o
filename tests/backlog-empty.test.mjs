@@ -50,7 +50,7 @@ function repositoryFixture(content = EMPTY) {
   const parent = mkdtempSync(join(tmpdir(), "mo-backlog-repository-"));
   roots.push(parent);
   const root = join(parent, "checkout");
-  const clone = spawnSync("git", ["clone", "-q", "--no-hardlinks", ROOT, root], {
+  const clone = spawnSync("git", ["clone", "-q", "--shared", ROOT, root], {
     encoding: "utf8",
   });
   assert.equal(clone.status, 0, clone.stderr);
