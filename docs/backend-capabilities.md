@@ -13,11 +13,11 @@ Meta-O поддерживает backend только тогда, когда ег
 
 ## Обязательные companions
 
-| Backend | Control              | Companion skill |
-| ------- | -------------------- | --------------- |
-| Orca    | `orca` or `orca-cli` | `orchestration` |
+| Backend | Control              | Required companion guides   |
+| ------- | -------------------- | --------------------------- |
+| Orca    | `orca` or `orca-cli` | `orchestration`, `orca-cli` |
 
-Control и companion проверяются отдельно. Наличие executable не доказывает, что
+Control и каждый guide проверяются отдельно. Наличие executable не доказывает, что
 агент знает семантику backend. Документированный version-matched bundle backend
 считается источником companion, если полный guide читается и controlling agent
 прочитал его до действий; установка в личный harness-каталог для этого не нужна.

@@ -62,12 +62,12 @@ methodology for that failure.
 
 Declare and check the control executable separately from the companion skill:
 
-| Backend | Control executable/package | Required companion skill |
-| ------- | -------------------------- | ------------------------ |
-| Orca    | `orca-cli` / `orca`        | upstream `orchestration` |
+| Backend | Control executable/package | Required companion guides            |
+| ------- | -------------------------- | ------------------------------------ |
+| Orca    | `orca-cli` / `orca`        | upstream `orchestration`, `orca-cli` |
 
-Retain upstream names. In particular, do not invent a Meta-O alias for Orca's
-`orchestration` skill.
+Retain upstream names. In particular, do not invent Meta-O aliases for Orca's
+`orchestration` and `orca-cli` guides.
 
 ## Acceptance probe
 

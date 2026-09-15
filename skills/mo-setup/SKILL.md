@@ -23,6 +23,8 @@ language gates and one deterministic non-mutating aggregate QC. Require the
 smallest regression test for a confirmed behavioral defect and an invariant
 comment for substantial ownership/concurrency/trust/security/compatibility/
 transaction/resource-lifetime repair.
+Do not create a backend fixture document in an ordinary target project without
+a named consumer.
 
 Find the project's documented backlog path and closure command. Verify
 `MO-BACKLOG/1` in a disposable fixture: committed-blob identity, empty,

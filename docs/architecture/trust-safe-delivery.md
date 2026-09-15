@@ -1,5 +1,14 @@
 # §A-DELIVERY-01 — Task bytes доставляются только в доказанный agent prompt
 
+```yaml
+knowledge_id_change:
+  action: reuse
+  id: §A-DELIVERY-01
+  reason: Durable решение отделено от временных version и credential observations.
+  new_boundary: Trust-UI route остаётся fail-closed, а изменчивые диагностические факты живут только в papercut evidence.
+  references_updated: true
+```
+
 ## Решение
 
 Meta-O резолвит один абсолютный `orca` binary, читает из него непустые bundled
@@ -17,9 +26,8 @@ fallback не дублирует flags. Неоднозначность дела�
 §B-PORTABILITY-07. Без §A-DELIVERY-01 task может исполниться shell или попасть в
 trust UI, а guide/version и posture ownership перестают быть доказуемыми.
 
-Upstream Issue для отдельного публичного trust-UI state сейчас
-`unsupported`: точный duplicate в публичном tracker не найден, а установленные
-host CLI не имеют рабочей аутентификации (`gh` возвращает 401, `glab auth
-status` не завершает bounded probe). До появления canonical URL route обязан
-fail closed. Смежный пробел аудита effective worker identity уже ведётся в
+Отдельный публичный trust-UI state остаётся `unsupported` до появления
+canonical URL; route обязан fail closed, а version/credential наблюдения живут
+в [Грабли и команды проекта](../papercut.md). Смежный пробел аудита effective
+worker identity уже ведётся в
 [Orca issue #16527](https://github.com/stablyai/orca/issues/16527).

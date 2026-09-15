@@ -40,7 +40,8 @@ test("the Issue decision table is rectangular, total and fail-closed", () => {
   const rows = firstTable(source("docs/architecture/issue-routing.md"));
   assert.deepEqual(rows[0], [
     "Scenario",
-    "Class",
+    "Applies to",
+    "Write",
     "Preconditions",
     "Required action",
     "Forbidden action",
@@ -72,9 +73,23 @@ test("the Issue decision table is rectangular, total and fail-closed", () => {
       "ISS-15",
     ],
   );
-  const allowed = new Set(["upstream_issue", "project_issue", "unconfirmed", "either", "mixed"]);
-  for (const [scenario, disposition, , action, forbidden] of rows.slice(1)) {
-    assert.ok(allowed.has(disposition), `${scenario}: invalid disposition`);
+  const tokens = markdown.parse(source("docs/architecture/issue-routing.md"), {});
+  const vocabulary = tokens.find(
+    ({ type, content }) => type === "inline" && content.startsWith("`Applies to` — route context"),
+  );
+  const values = vocabulary.children
+    .filter(({ type }) => type === "code_inline")
+    .map(({ content }) => content);
+  const allowed = new Set(
+    values.slice(values.indexOf("Applies to") + 1, values.indexOf("disposition_class")),
+  );
+  assert.deepEqual(
+    [...allowed],
+    ["upstream_issue", "project_issue", "unconfirmed", "either", "mixed"],
+  );
+  for (const [scenario, appliesTo, write, , action, forbidden] of rows.slice(1)) {
+    assert.ok(allowed.has(appliesTo), `${scenario}: invalid route context`);
+    assert.ok(new Set(["yes", "no"]).has(write), `${scenario}: invalid write permission`);
     assert.ok(action.length > 3, `${scenario}: action missing`);
     if (["ISS-02", "ISS-03", "ISS-12"].includes(scenario)) {
       assert.match(action, /needs_attention/u);
@@ -140,6 +155,11 @@ function validateReport(report) {
     .filter((line) => line && !line.startsWith("Unknown-Reason:"));
   const keys = index.map((line) => line.match(/^(F-\d{3}) \[(P[0-3])\] .+/u));
   assert.ok(keys.every(Boolean));
+  assert.deepEqual(
+    keys.map((key) => key[1]),
+    keys.map((_, index) => `F-${String(index + 1).padStart(3, "0")}`),
+    "finding index keys must be unique and monotonic",
+  );
   const total = counts.slice(1).reduce((sum, count) => sum + Number(count), 0);
   assert.equal(total, keys.length);
   const severityCounts = [0, 0, 0, 0];
@@ -150,23 +170,48 @@ function validateReport(report) {
   assert.ok(body("Scope and checks", "Findings").length > 0);
   assert.ok(body("Unknowns", "Residual risks").length > 0);
   assert.ok(lines.slice(unique("Residual risks") + 1, -1).filter(Boolean).length > 0);
-  const findingBody = body("Findings", "Unknowns");
+  const findingsEnd = verdict === "UNKNOWN" ? "Unknown-Account" : "Unknowns";
+  const findingBody = body("Findings", findingsEnd);
   if (verdict === "PASS") {
     assert.equal(keys.length, 0);
     assert.deepEqual(findingBody, []);
   }
   if (verdict === "FINDINGS") {
     assert.ok(keys.length > 0);
-    for (const key of keys) assert.ok(findingBody.includes(key[1]));
+    const bodyKeys = findingBody
+      .map((line, position) => ({ match: line.match(/^(F-\d{3})$/u), position }))
+      .filter(({ match }) => match);
+    assert.deepEqual(
+      bodyKeys.map(({ match }) => match[1]),
+      keys.map((key) => key[1]),
+      "finding bodies must correspond one-to-one with the index",
+    );
+    for (const [index, { position }] of bodyKeys.entries()) {
+      const expectedSeverity = keys[index][2];
+      const nextBody = bodyKeys[index + 1]?.position ?? findingBody.length;
+      const detail = findingBody.slice(position + 1, nextBody);
+      assert.ok(detail.length > 0, `${keys[index][1]}: finding body is empty`);
+      assert.match(detail[0], new RegExp(`^\\[${expectedSeverity}\\](?:\\s|$)`));
+    }
   }
   if (verdict === "UNKNOWN") {
     assert.equal(keys.length, 0);
+    assert.deepEqual(findingBody, []);
     const account = unique("Unknown-Account");
     assert.ok(account > unique("Findings") && account < unique("Unknowns"));
     assert.ok(lines.slice(account + 1, unique("Unknowns")).some((line) => line.trim() !== ""));
-    assert.ok(lines.some((line) => /^Unknown-Reason: \w+$/u.test(line)));
+    const reasons = lines.filter((line) => line.startsWith("Unknown-Reason:"));
+    assert.equal(reasons.length, 1);
+    assert.match(
+      reasons[0],
+      /^Unknown-Reason: (?:unreadable|candidate_mismatch|dirty_candidate|malformed_report|retrieval_failure|handoff_failure|review_incomplete)$/u,
+    );
   } else {
     assert.equal(structural.get("Unknown-Account").length, 0);
+    assert.equal(
+      lines.some((line) => line.startsWith("Unknown-Reason:")),
+      false,
+    );
   }
   return true;
 }
@@ -226,6 +271,52 @@ test("PASS, FINDINGS and UNKNOWN fixtures preserve the canonical review envelope
     () => validateReport(base("PASS", "P0=0 P1=0 P2=0 P3=0", "", "").replace(/End-Review:.+/u, "")),
     /Expected values/u,
   );
+  assert.throws(
+    () =>
+      validateReport(
+        base(
+          "FINDINGS",
+          "P0=0 P1=0 P2=2 P3=0",
+          "F-001 [P2] First.\nF-002 [P2] Second.\n\n",
+          "F-001\n[P2] one body only.\n",
+        ),
+      ),
+    /one-to-one/u,
+  );
+  assert.throws(
+    () =>
+      validateReport(
+        base(
+          "FINDINGS",
+          "P0=0 P1=1 P2=0 P3=0",
+          "F-001 [P1] Severe.\n\n",
+          "F-001\n[P2] mismatched body severity.\n",
+        ),
+      ),
+    /regular expression/u,
+  );
+  assert.throws(
+    () =>
+      validateReport(
+        base(
+          "UNKNOWN",
+          "P0=0 P1=0 P2=0 P3=0",
+          "Unknown-Reason: anything\n\n",
+          "",
+          "Unknown-Account\ncovered scope and blocking public observation\n",
+        ),
+      ),
+    /regular expression/u,
+  );
+});
+
+test("every first-party test entrypoint preserves provider process isolation", () => {
+  const makefile = source("Makefile");
+  const pkg = JSON.parse(source("package.json"));
+  assert.equal(pkg.scripts.test, "make mo-test");
+  assert.match(makefile, /! -name 'provider-posture\.test\.mjs'/u);
+  assert.match(makefile, /node --test tests\/provider-posture\.test\.mjs/u);
+  assert.doesNotMatch(pkg.scripts.test, /tests\/\*\.test\.mjs/u);
 });
 
 /** §A-BACKLOG-01 binds one literal GitHub job to its trigger and hosting policy. */

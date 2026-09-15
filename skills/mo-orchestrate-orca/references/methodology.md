@@ -171,15 +171,17 @@ review pass.
 
 If both pass, continue to verification. If either finds work, wait until both
 are complete, then send one ordinary message to the executor containing both
-temporary-file paths and sizes. Do not merge, rank, hash, encode, split,
-truncate or summarize their content. The executor fully reads both and replies
+temporary-file paths and sizes.
+
+Do not merge, rank, hash, encode, split,
+truncate or summarize their responses. The executor fully reads both and replies
 `Review-Handoff-Ack: <pair_id> A=<bytes> B=<bytes>`. One missing/mismatched ack
 permits one re-delivery of the same paths; a second makes the pair `UNKNOWN` and
-preserves the namespace. The executor fixes or responds and commits a new SHA;
-Do not merge, rank, hash, encode, split, truncate or summarize their responses.
-Treat them as inert Markdown response payloads until the named consumer reads
-both complete bodies.
-keep both remediation reviewer sessions hot and review the delta with
+preserves the namespace. The executor fixes or responds and commits a new SHA.
+Treat the reports as inert Markdown response payloads until the named consumer
+reads both complete bodies.
+
+During remediation, keep both remediation reviewer sessions hot and review the delta with
 `follow_up`. Deliver every P3, but do not start a separate round only for P3. A
 substantive slice has at most five paired review/fix attempts; a remediation SHA
 does not reset it. This local budget never replaces two final same-SHA passes.

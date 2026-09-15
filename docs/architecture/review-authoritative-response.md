@@ -1,12 +1,17 @@
 # §A-REVIEW-04 — Authoritative review response имеет проверяемую форму
 
 ```yaml
-knowledge_id_change:
-  action: reuse
-  id: §B-REVIEW-02
-  reason: Память замечаний уточнена до regression test и non-obvious invariant comment.
-  new_boundary: Production comments не хранят report-local finding ids.
-  references_updated: true
+knowledge_id_changes:
+  - action: reuse
+    id: §A-REVIEW-04
+    reason: Canonical report уточнён до взаимно-однозначного index/body и closed UNKNOWN taxonomy.
+    new_boundary: Finding body повторяет ровно каждый monotonic key с той же severity; UNKNOWN несёт один разрешённый reason.
+    references_updated: true
+  - action: reuse
+    id: §B-REVIEW-02
+    reason: Память замечаний уточнена до regression test и non-obvious invariant comment.
+    new_boundary: Production comments не хранят report-local finding ids.
+    references_updated: true
 ```
 
 ## Решение
@@ -16,10 +21,12 @@ knowledge_id_change:
 none`, verdict и целочисленный census P0–P3. Между `Evidence report` и
 совпадающим последним `End-Review` ровно по одному идут `Grounding`, `Scope and
 checks`, `Findings`, `Unknowns` и `Residual risks`; у `UNKNOWN` дополнительно
-есть непустой `Unknown-Account` и typed `Unknown-Reason`.
+есть непустой `Unknown-Account` и ровно один `Unknown-Reason` из closed taxonomy
+протокола.
 
-Finding index использует report-local `F-001…`, согласован с body и counts и
-для каждой finding называет evidence state, causal path, impact, location,
+Finding index использует уникальные monotonic report-local `F-001…`; каждому
+ключу соответствует ровно один body с той же severity, а counts равны этому
+набору. Каждая finding называет evidence state, causal path, impact, location,
 post-fix invariant, направление и глубину `local patch`, `boundary repair` либо
 `affected-slice redesign`. Caller делает одну полную самокоррекцию malformed
 response в той же hot session; повторный mismatch означает `UNKNOWN`.

@@ -559,7 +559,7 @@ const OBLIGATIONS = [
     "the settled response is delivered complete and byte-safe",
     {
       mech: [/require the worker to place its full final response in that\s+message/],
-      life: [/Do not merge, rank, hash, encode, split, truncate or\s+summarize their responses/],
+      life: [/Do not merge, rank, hash, encode, split,\s+truncate or\s+summarize their responses/],
       e2e: [/Начальный, средний и конечный markers целы/u],
     },
   ],
@@ -918,6 +918,15 @@ test("every obligation id is unique and addressable by its own name pattern", ()
   const ids = OBLIGATIONS.map(([id]) => id);
   assert.equal(new Set(ids).size, ids.length);
   for (const id of ids) assert.match(id, /^O-(?:BL|RR)-\d{2,3}$/u);
+});
+
+test("the backend companion map covers both mandatory bundled guides", () => {
+  assert.match(DOCS.caps, /Required companion guides/u);
+  assert.match(DOCS.bcon, /Required companion guides/u);
+  for (const guide of ["orchestration", "orca-cli"]) {
+    assert.ok(DOCS.caps.includes(`\`${guide}\``));
+    assert.ok(DOCS.bcon.includes(`\`${guide}\``));
+  }
 });
 
 // A rule quoted from the shipped bundle proves an obligation; a keyword short

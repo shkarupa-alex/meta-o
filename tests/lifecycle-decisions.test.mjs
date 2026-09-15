@@ -30,7 +30,8 @@ function issueRows(
   }
   assert.deepEqual(rows[0], [
     "Scenario",
-    "Class",
+    "Applies to",
+    "Write",
     "Preconditions",
     "Required action",
     "Forbidden action",
@@ -39,10 +40,20 @@ function issueRows(
   return new Map(
     rows
       .slice(1)
-      .map(([scenario, issueClass, preconditions, requiredAction, forbiddenAction, evidence]) => [
-        scenario,
-        { issueClass, preconditions, requiredAction, forbiddenAction, evidence },
-      ]),
+      .map(
+        ([
+          scenario,
+          issueClass,
+          writePermission,
+          preconditions,
+          requiredAction,
+          forbiddenAction,
+          evidence,
+        ]) => [
+          scenario,
+          { issueClass, writePermission, preconditions, requiredAction, forbiddenAction, evidence },
+        ],
+      ),
   );
 }
 
@@ -72,9 +83,10 @@ function issueDecision(facts, rows = issueRows()) {
   const [, scenario] = matched;
   const row = rows.get(scenario);
   if (!row) return { status: "needs_attention", reason: "canonical_route_missing" };
-  const mayWrite = /(?:comment|create|add one|add sanitized|cross-linked Issues)/iu.test(
-    row.requiredAction,
-  );
+  if (!new Set(["yes", "no"]).has(row.writePermission)) {
+    return { status: "needs_attention", reason: "canonical_write_permission_invalid" };
+  }
+  const mayWrite = row.writePermission === "yes";
   return { status: "settled", scenario, class: row.issueClass, ...row, mayWrite };
 }
 
@@ -141,7 +153,12 @@ test("the parsed canonical row owns every normative routing field and missing ro
     ...rewordedRows.get("ISS-12"),
     requiredAction: "create needs_attention record",
   });
-  assert.equal(issueDecision({ repositoryRank: "ambiguous" }, rewordedRows).mayWrite, true);
+  assert.equal(issueDecision({ repositoryRank: "ambiguous" }, rewordedRows).mayWrite, false);
+  rewordedRows.get("ISS-12").writePermission = "maybe";
+  assert.deepEqual(issueDecision({ repositoryRank: "ambiguous" }, rewordedRows), {
+    status: "needs_attention",
+    reason: "canonical_write_permission_invalid",
+  });
 });
 
 test("Issue routing fails closed for overlapping facts, truncated search, unknown effect, and secrets", () => {

@@ -31,7 +31,7 @@ test("lifecycle keeps the orchestrator out of product code and binds every gate 
     source,
     /send one ordinary message to the executor containing both\s+temporary-file paths/,
   );
-  assert.match(source, /Do not merge, rank, hash, encode, split, truncate or\s+summarize/);
+  assert.match(source, /Do not merge, rank, hash, encode, split,\s+truncate or\s+summarize/);
   assert.match(source, /inert Markdown response payloads/);
   assert.doesNotMatch(source, /MO_[A-Z0-9_]+/);
 });

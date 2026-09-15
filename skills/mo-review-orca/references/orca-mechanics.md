@@ -137,8 +137,7 @@ public receipt.
 
 Keep the executor and remediation reviewers in their exact owned terminals.
 Release old reviewers only before the fresh final pair. Stable titles are
-`<feature>:orchestrator`, `<feature>:executor`, `<feature>:review:<vendor>` and
-`<feature>:e2e:<n>`. Cleanup follows complete pair delivery and consumer
+defined once in the Run section and reused here. Cleanup follows complete pair delivery and consumer
 acknowledgement. A partial start rechecks both inventories and hands ambiguous
 handles to the human. Never close unnamed human tabs, neighboring Run resources or
 another project container.

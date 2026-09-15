@@ -4,8 +4,8 @@
 knowledge_id_changes:
   - action: reuse
     id: §A-QUALITY-01
-    reason: Host-sensitive posture tests требуют отдельного process lifecycle без состояния общего Node test runner.
-    new_boundary: Обычные test files выполняются последовательно, затем provider-posture запускается в отдельном Node process.
+    reason: Все first-party test entrypoints должны сохранять отдельный process lifecycle host-sensitive posture tests.
+    new_boundary: Обычные test files выполняются последовательно, затем provider-posture запускается в отдельном Node process; npm test делегирует этому же gate.
     references_updated: true
 ```
 
@@ -38,6 +38,9 @@ Gate non-mutating: `eslint .` только судит tracked source. Auto-fix �
 отдельном Node process. Это сохраняет полный набор assertions, но не переносит
 process-group состояние и нагрузку тяжёлого обхода Git history в runner
 posture-проверок.
+
+`npm test` делегирует тому же `make mo-test`: параллельного first-party
+entrypoint с прежним single-process wildcard нет.
 
 ## Бизнес-причина
 
