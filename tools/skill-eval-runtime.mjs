@@ -26,6 +26,9 @@ function sameIdentity(left, right) {
 export function rejectSensitiveOrMachineLocal(value, label) {
   const visit = (node, path = label) => {
     if (typeof node === "string") {
+      if (Buffer.byteLength(node, "utf8") > 16_384) {
+        throw new Error(`${path}: evidence value exceeds portable scan bound`);
+      }
       const reason = forbiddenPublicDataReason(node);
       if (reason === "machine_path") {
         throw new Error(`${path}: absolute machine path is forbidden`);
@@ -34,6 +37,9 @@ export function rejectSensitiveOrMachineLocal(value, label) {
     }
     if (!node || typeof node !== "object") return;
     for (const [key, child] of Object.entries(node)) {
+      if (Buffer.byteLength(key, "utf8") > 1_024) {
+        throw new Error(`${path}: evidence key exceeds portable scan bound`);
+      }
       const keyReason = forbiddenPublicDataReason(key);
       if (keyReason === "machine_path") {
         throw new Error(`${path}: absolute machine path is forbidden in an evidence key`);

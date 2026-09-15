@@ -168,6 +168,15 @@ function assertMachinePathKeyRejected(key) {
   assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /machine path is forbidden/u);
 }
 
+function assertMachinePathValueRejected(value) {
+  const evidence = finalizedEnvelope("find-reuse");
+  evidence.results[0].oracleEvidence[0].evidence = value;
+  assert.throws(
+    () => validateEvidence(ROOT, evidence, HEAD),
+    /absolute machine path is forbidden/u,
+  );
+}
+
 const SENSITIVE_CREDENTIALS = [
   "Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==",
   "https://alice:s3cr3t@build-host.internal/api",
@@ -181,6 +190,9 @@ const SENSITIVE_CREDENTIALS = [
   "auth-token=abcdefghijklmnop",
   '{"access_token":"abcdefghijklmnop"}',
   '{"api-token":"abcdefghijklmnop"}',
+  '{"Authorization":"Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ=="}',
+  '{"Proxy-Authorization":"Digest abcdefghijklmnop"}',
+  '{"Authorization":"Negotiate abcdefghijklmnop"}',
   "-----BEGIN PRIVATE KEY-----",
 ];
 
@@ -191,13 +203,20 @@ const MACHINE_PATH_KEYS = [
   "C:\\Users\\alex\\repo",
   "c:\\users\\alex\\repo",
   "d:\\temp\\private",
+  "c:/users/alex/private",
+  "\\\\buildserver\\private\\repo",
+  "/etc/acme/private.conf",
 ];
 
 test("sensitive evidence classification stays bounded on separator-heavy input", () => {
-  const input = "a1_b2-".repeat(16_000);
-  const started = performance.now();
-  assert.equal(forbiddenPublicDataReason(input), null);
-  assert.ok(performance.now() - started < 1_000, "96 KB classification exceeded one second");
+  for (const [input, expected] of [
+    ["a1_b2-".repeat(16_000), null],
+    [`local-part@${"a.".repeat(48_000)}`, "personal_data"],
+  ]) {
+    const started = performance.now();
+    assert.equal(forbiddenPublicDataReason(input), expected);
+    assert.ok(performance.now() - started < 1_000, "96 KB classification exceeded one second");
+  }
 });
 
 test("evidence fails closed on identity drift, missing coverage and sensitive fields", () => {
@@ -227,7 +246,10 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
 
   for (const credential of SENSITIVE_CREDENTIALS) assertSensitiveValueRejected(credential);
 
-  for (const key of MACHINE_PATH_KEYS) assertMachinePathKeyRejected(key);
+  for (const path of MACHINE_PATH_KEYS) {
+    assertMachinePathKeyRejected(path);
+    assertMachinePathValueRejected(path);
+  }
 
   const oversized = finalizedEnvelope("find-reuse");
   oversized.results[0].observations = ["a1_b2-".repeat(16_000)];
@@ -235,6 +257,10 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
     () => validateEvidence(ROOT, oversized, HEAD),
     /observations\[0\] exceeds 4096 bytes/u,
   );
+
+  const unknownOversized = finalizedEnvelope("find-reuse");
+  unknownOversized.extra = `local-part@${"a.".repeat(48_000)}`;
+  assert.throws(() => validateEvidence(ROOT, unknownOversized, HEAD), /portable scan bound/u);
 
   const wrongHarness = finalizedEnvelope("find-reuse");
   wrongHarness.harness.name = "Claude";

@@ -5,14 +5,12 @@
  * sensitive value.
  */
 
+import { posix, win32 } from "node:path";
+
 const PATTERNS = [
   [
-    "machine_path",
-    /(?:\/(?:home|Users|mnt|tmp|root|private)\/|\b[A-Za-z]:\\(?:[Uu][Ss][Ee][Rr][Ss]|[Tt][Ee][Mm][Pp]|[Ww][Ii][Nn][Dd][Oo][Ww][Ss])\\)/u,
-  ],
-  [
     "credential",
-    /\b(?:Authorization|Proxy-Authorization)\s*:\s*(?:Basic|Bearer|Digest|Negotiate)\s+\S+/iu,
+    /\b(?:Authorization|Proxy-Authorization)\s*["']?\s*:\s*["']?\s*(?:Basic|Bearer|Digest|Negotiate)\s+\S+/iu,
   ],
   [
     "credential",
@@ -26,16 +24,27 @@ const PATTERNS = [
   ],
   ["environment_dump", /\b(?:HOME|PATH|USER|HOSTNAME|SHELL|LANG|CI)=\S+/u],
   ["private_hostname", /\b[a-z0-9-]+\.(?:internal|local|lan|corp)\b/iu],
-  ["personal_data", /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/iu, (value) => value.includes("@")],
+  [
+    "personal_data",
+    /\b[A-Z0-9._%+-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)+\b/iu,
+    (value) => value.includes("@"),
+  ],
   [
     "internal_context",
     /(?:internal specification|client context|customer context|session transcript)/iu,
   ],
 ];
 
+function containsAbsoluteMachinePath(value) {
+  return value
+    .split(/[\s"'`()<>[\]{},;=]+/u)
+    .some((token) => posix.isAbsolute(token) || win32.isAbsolute(token));
+}
+
 /** §A-EVAL-01 and §A-ISSUE-01 return only a stable class, never sensitive bytes. */
 export function forbiddenPublicDataReason(value) {
   if (typeof value !== "string") return null;
+  if (containsAbsoluteMachinePath(value)) return "machine_path";
   const environmentRows = value
     .split(/\r?\n/u)
     .filter((line) => /^[A-Z_][A-Z0-9_]*=.*$/u.test(line));

@@ -335,6 +335,9 @@ test("Issue routing fails closed for overlapping facts, truncated search, unknow
     "auth-token=abcdefghijklmnop",
     '{"access_token":"abcdefghijklmnop"}',
     '{"api-token":"abcdefghijklmnop"}',
+    '{"Authorization":"Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ=="}',
+    '{"Proxy-Authorization":"Digest abcdefghijklmnop"}',
+    '{"Authorization":"Negotiate abcdefghijklmnop"}',
     "-----BEGIN PRIVATE KEY-----",
     "SHELL=/bin/bash\nLANG=C\nCI=true",
     "build-host.internal",
@@ -342,6 +345,9 @@ test("Issue routing fails closed for overlapping facts, truncated search, unknow
     "person@example.com",
     "internal specification excerpt",
     "session transcript excerpt",
+    "c:/users/alex/private",
+    "\\\\buildserver\\private\\repo",
+    "/etc/acme/private.conf",
   ]) {
     for (const field of ISSUE_PUBLIC_FIELDS) {
       assert.equal(
