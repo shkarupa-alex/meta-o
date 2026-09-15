@@ -42,6 +42,9 @@ function recordedReview(surface, { failAt = null, cleanupFails = false } = {}) {
   const owned = [];
   const finish = (result) => ({
     ...result,
+    header:
+      `REVIEW-START version=1 status=${result.status} reason=${result.reason ?? "none"} ` +
+      `project=${surface.project?.id ?? "none"} candidate=${surface.children?.[0]?.sha ?? "none"}`,
     calls,
     registrationUnchanged: registrationSet(surface) === baselineRegistration,
     baselineResources,
@@ -59,11 +62,15 @@ function recordedReview(surface, { failAt = null, cleanupFails = false } = {}) {
     surface.currentContext?.projectId !== surface.project.id ||
     !surface.project.sourceRepoIds.includes(surface.currentContext?.repoId)
   ) {
-    return finish({ status: "unsupported", reason: "no_current_context", ownedDelta: [] });
+    return finish({ status: "unsupported", reason: "no_project_context", ownedDelta: [] });
   }
   const repository = surface.repositories.find(({ id }) => id === surface.currentContext.repoId);
   if (repository?.kind !== "git") {
-    return finish({ status: "unsupported", reason: "remote_unsupported", ownedDelta: [] });
+    return finish({
+      status: "unsupported",
+      reason: "remote_placement_unsupported",
+      ownedDelta: [],
+    });
   }
 
   for (const child of surface.children) {
@@ -75,7 +82,7 @@ function recordedReview(surface, { failAt = null, cleanupFails = false } = {}) {
       }
       return finish({
         status: cleanupFails ? "UNKNOWN" : "unsupported",
-        reason: cleanupFails ? "cleanup_incomplete" : "partial_start_cleaned",
+        reason: cleanupFails ? "cleanup_incomplete" : "partial_start_failed",
         ownedDelta: resources.filter(({ owner }) => owner === "candidate-run"),
       });
     }
@@ -97,18 +104,23 @@ test("folder placement fails before pair artifacts or registry calls", () => {
   assert.deepEqual(result.ownedDelta, []);
   assert.equal(result.registrationUnchanged, true);
   assert.equal(result.finalResources, result.baselineResources);
+  assert.match(
+    result.header,
+    /^REVIEW-START version=1 status=unsupported reason=placement_unsupported /u,
+  );
 });
 
 test("missing context and remote-only placement are typed before any start", () => {
   for (const [surface, reason] of [
-    [fixture.noContext, "no_current_context"],
-    [fixture.remote, "remote_unsupported"],
+    [fixture.noContext, "no_project_context"],
+    [fixture.remote, "remote_placement_unsupported"],
   ]) {
     const result = recordedReview(surface);
     assert.equal(result.status, "unsupported");
     assert.equal(result.reason, reason);
     assert.deepEqual(result.calls, []);
     assert.equal(result.registrationUnchanged, true);
+    assert.match(result.header, new RegExp(`reason=${reason} `, "u"));
   }
 });
 
@@ -131,7 +143,7 @@ test("Git new-child placement attributes exactly two isolated reviewer resources
 
 test("partial start removes only exact-owned resources and types incomplete cleanup", () => {
   let result = recordedReview(fixture.git, { failAt: "review-b" });
-  assert.equal(result.reason, "partial_start_cleaned");
+  assert.equal(result.reason, "partial_start_failed");
   assert.equal(result.finalResources, result.baselineResources);
   assert.equal(result.registrationUnchanged, true);
 

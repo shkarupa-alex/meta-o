@@ -24,7 +24,11 @@ import { dirname, extname, join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 
-import { testingPolicyError } from "../shared/scripts/mo-models.mjs";
+import {
+  validateActorIdentity,
+  validateExecution,
+  validateHarness,
+} from "./skill-eval-runtime.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CONTRACT = "meta-o.skill-eval-cases.v2";
@@ -233,6 +237,7 @@ function makePrompt(root, corpus, skill, values) {
         model: "<observed effective model id>",
         effort: "<observed effective effort>",
       },
+      availability: null,
       identityEvidence: "<bounded native identity evidence, not a transcript>",
       evaluationDigest: "",
     },
@@ -264,6 +269,7 @@ function makePrompt(root, corpus, skill, values) {
     "Replace every angle-bracket placeholder from native harness facts and case observations; never copy requested identity into effective identity without observing it.",
     "Set PASS only when every oracle has distinct satisfied=true evidence and observations are non-empty; otherwise use FAIL or UNKNOWN.",
     "For a desired matrix profile whose approved harness cannot run, materialize the envelope with NOT_AVAILABLE and bounded availability evidence; never omit the coordinate.",
+    "In that unavailable envelope set every result to NOT_AVAILABLE, execution.effective to null, execution.availability to {status: not_available, reason: <native reason>}, and preserve the nonzero native probe exit code; do not invent harness metadata.",
     `\nCASES\n${JSON.stringify(document, null, 2)}`,
     `\nEVIDENCE TEMPLATE\n${JSON.stringify(envelope, null, 2)}`,
     `\nINSTALLABLE INSTRUCTIONS${instructionBundle(root, skill)}`,
@@ -285,113 +291,6 @@ function rejectSensitiveOrMachineLocal(value, label) {
     }
   };
   visit(value);
-}
-
-function validateCriticalIdentity(envelope, criticalProfile) {
-  assertString(criticalProfile, `${envelope.skill}: critical orchestrator profile`);
-  const expected = criticalProfile.split("/");
-  if (expected.length < 3)
-    throw new Error("critical orchestrator profile must be route/model/effort");
-  const expectedIdentity = {
-    route: expected[0],
-    model: expected.slice(1, -1).join("/"),
-    effort: expected.at(-1),
-  };
-  const effective = envelope.execution.effective;
-  const harness = envelope.harness?.name?.toLowerCase() ?? "";
-  const quantization =
-    envelope.harness?.quantization?.toLowerCase().replace(/[^a-z0-9]/gu, "") ?? "";
-  const context = Number(envelope.harness?.context);
-  const qualified = [
-    JSON.stringify(envelope.requested) === JSON.stringify(expectedIdentity),
-    JSON.stringify(effective) === JSON.stringify(expectedIdentity),
-    effective.route === "opencode",
-    harness.includes("opencode"),
-    quantization.includes("q4km"),
-    Number.isSafeInteger(context),
-    context >= 32768,
-  ];
-  if (qualified.every(Boolean)) return;
-  throw new Error(
-    `${envelope.skill}: critical evidence does not match the configured orchestrator profile`,
-  );
-}
-
-function validateActorIdentity(envelope, criticalProfile) {
-  for (const side of ["requested", "effective"]) {
-    for (const field of ["route", "model", "effort"]) {
-      const identity = side === "requested" ? envelope.requested : envelope.execution?.effective;
-      assertString(identity?.[field], `${envelope.skill}: ${side}.${field}`);
-    }
-  }
-  if (JSON.stringify(envelope.requested) !== JSON.stringify(envelope.execution.effective)) {
-    throw new Error(`${envelope.skill}: requested/effective identity mismatch`);
-  }
-  if (envelope.tier === "critical") {
-    validateCriticalIdentity(envelope, criticalProfile);
-    return;
-  }
-  const role =
-    envelope.tier === "desired"
-      ? { codex: "testCodexDesired", opencode: "testOpenCodeDesired" }[
-          envelope.execution.effective.route
-        ]
-      : { claude: "testClaude", codex: "testCodex" }[envelope.execution.effective.route];
-  if (!role) throw new Error(`${envelope.skill}: unapproved testing route`);
-  const policyError = testingPolicyError(role, envelope.execution.effective);
-  if (policyError) throw new Error(`${envelope.skill}: ${policyError}`);
-  const expectedProfile =
-    {
-      testClaude: "required-claude",
-      testCodex: "required-codex",
-      testCodexDesired: "desired-codex",
-      testOpenCodeDesired: "desired-opencode",
-    }[role] ?? null;
-  if (envelope.matrixProfile !== expectedProfile) {
-    throw new Error(`${envelope.skill}: matrix profile does not match actor identity`);
-  }
-}
-
-function validateExecution(envelope, document) {
-  const execution = envelope.execution;
-  assertString(execution?.id, `${envelope.skill}: execution.id`);
-  assertString(execution?.source, `${envelope.skill}: execution.source`);
-  assertString(execution?.identityEvidence, `${envelope.skill}: execution.identityEvidence`);
-  if (execution.source !== execution.effective.route) {
-    throw new Error(`${envelope.skill}: execution source/effective route mismatch`);
-  }
-  const started = Date.parse(execution.startedAt);
-  const completed = Date.parse(execution.completedAt);
-  if (!Number.isFinite(started) || !Number.isFinite(completed) || completed < started) {
-    throw new Error(`${envelope.skill}: invalid execution interval`);
-  }
-  if (execution.exitCode !== 0)
-    throw new Error(`${envelope.skill}: native harness did not exit zero`);
-  if (execution.evaluationDigest !== evaluationDigest(document, envelope)) {
-    throw new Error(`${envelope.skill}: evaluation digest mismatch`);
-  }
-  if (JSON.stringify(execution).includes("<")) {
-    throw new Error(`${envelope.skill}: unresolved execution placeholder`);
-  }
-}
-
-function validateHarness(envelope) {
-  for (const field of [
-    "name",
-    "version",
-    "profileVersion",
-    "quantization",
-    "context",
-    "sampling",
-  ]) {
-    assertString(envelope.harness?.[field], `${envelope.skill}: harness.${field}`);
-  }
-  if (
-    !Array.isArray(envelope.harness.toolPermissions) ||
-    envelope.harness.toolPermissions.length === 0
-  ) {
-    throw new Error(`${envelope.skill}: tool permissions are missing`);
-  }
 }
 
 function oracleKeys(item) {
@@ -423,6 +322,12 @@ function validateResult(result, item, tier) {
   }
   if (result.verdict === "PASS" && result.oracleEvidence.some(({ satisfied }) => !satisfied))
     throw new Error(`${result.caseId}: PASS has an unsatisfied oracle`);
+  if (
+    result.verdict === "NOT_AVAILABLE" &&
+    result.oracleEvidence.some(({ satisfied }) => satisfied)
+  ) {
+    throw new Error(`${result.caseId}: NOT_AVAILABLE cannot claim an observed oracle`);
+  }
 }
 
 function validateResults(envelope, document) {
@@ -456,10 +361,18 @@ function validateEnvelope(root, corpus, envelope, candidate, criticalProfile) {
   if (!Number.isSafeInteger(envelope.repetition) || envelope.repetition < 1) {
     throw new Error(`${envelope.skill}: invalid repetition`);
   }
+  const unavailableResults = (envelope.results ?? []).filter(
+    ({ verdict }) => verdict === "NOT_AVAILABLE",
+  );
+  const unavailable =
+    unavailableResults.length > 0 && unavailableResults.length === envelope.results?.length;
+  if (unavailableResults.length > 0 && !unavailable) {
+    throw new Error(`${envelope.skill}: NOT_AVAILABLE must cover the whole desired envelope`);
+  }
   rejectSensitiveOrMachineLocal(envelope, envelope.skill);
-  validateActorIdentity(envelope, criticalProfile);
-  validateHarness(envelope);
-  validateExecution(envelope, document);
+  validateActorIdentity(envelope, criticalProfile, unavailable);
+  validateHarness(envelope, unavailable);
+  validateExecution(envelope, unavailable, evaluationDigest(document, envelope));
   validateResults(envelope, document);
   return envelope.results.filter(({ verdict }) =>
     new Set(["FAIL", "UNKNOWN", "BLOCKED", "NOT_RUN"]).has(verdict),

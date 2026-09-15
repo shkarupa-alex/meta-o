@@ -55,13 +55,11 @@ function repositoryFixture(content = EMPTY) {
   });
   assert.equal(clone.status, 0, clone.stderr);
   symlinkSync(join(ROOT, "node_modules"), join(root, "node_modules"));
-  if (content !== EMPTY) {
-    writeFileSync(join(root, "docs", "backlog.md"), content);
-    git(root, ["config", "user.name", "Fixture"]);
-    git(root, ["config", "user.email", "fixture@example.invalid"]);
-    git(root, ["add", "docs/backlog.md"]);
-    git(root, ["commit", "-qm", "fixture backlog"]);
-  }
+  writeFileSync(join(root, "docs", "backlog.md"), content);
+  git(root, ["config", "user.name", "Fixture"]);
+  git(root, ["config", "user.email", "fixture@example.invalid"]);
+  git(root, ["add", "docs/backlog.md"]);
+  git(root, ["commit", "--allow-empty", "-qm", "materialize fixture backlog"]);
   return root;
 }
 

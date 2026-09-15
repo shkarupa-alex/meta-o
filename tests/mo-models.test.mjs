@@ -648,7 +648,7 @@ test("31-day history streams beyond ten files and never becomes a catalog", () =
   const codex = join(bin, "codex");
   writeFileSync(
     codex,
-    `#!/bin/sh\nprintf '%s\\n' '{"models":[{"slug":"gpt-5.6-sol","display_name":"Sol coding","description":"software engineering model","capabilities":["coding"],"visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}]}]}'\n`,
+    `#!/bin/sh\nprintf '%s\\n' '{"models":[{"slug":"gpt-5.6-sol","display_name":"Sol coding","description":"software engineering model","visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}]}]}'\n`,
   );
   chmodSync(codex, 0o755);
   for (let index = 0; index < 12; index += 1) {
@@ -678,6 +678,24 @@ test("31-day history streams beyond ten files and never becomes a catalog", () =
   assert.equal(human.status, 0, human.stderr);
   assert.match(human.stdout, /recently used \(13 files, hint only, not a catalog\)/u);
   assert.match(human.stdout, /default recommendation: codex\/gpt-5\.6-sol\/high/u);
+});
+
+test("default recommendation requires the recommended high effort to be offered", () => {
+  const home = sandbox();
+  const bin = join(home, "bin");
+  mkdirSync(bin, { recursive: true });
+  const codex = join(bin, "codex");
+  writeFileSync(
+    codex,
+    `#!/bin/sh\nprintf '%s\\n' '{"models":[{"slug":"gpt-5.6-sol","display_name":"Coding model","visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"low"}]}]}'\n`,
+  );
+  chmodSync(codex, 0o755);
+  const result = run(home, ["--catalog", "--route", "codex"], ROOT, {
+    PATH: `${bin}${delimiter}${process.env.PATH}`,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /no_default_recommendation/u);
+  assert.doesNotMatch(result.stdout, /\/high/u);
 });
 
 test("corrupt history is explicitly incomplete while preserving observed hints", () => {

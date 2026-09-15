@@ -823,14 +823,16 @@ async function commandCatalog(routeFilter, asJson) {
     if (!provider.history.complete) {
       process.stdout.write(`  history incomplete (${provider.history.stopReason})\n`);
     }
-    const preferred = provider.catalog.models.find(({ id, capabilities, efforts }) => {
-      const capabilityEvidence = JSON.stringify(capabilities ?? {});
-      return (
-        id === currentDefaults[provider.route] &&
-        efforts.includes("high") &&
-        /cod(?:e|ing)|software/iu.test(capabilityEvidence)
-      );
-    });
+    const preferred = provider.catalog.models.find(
+      ({ id, label, description, capabilities, efforts }) => {
+        const positioningEvidence = JSON.stringify({ label, description, capabilities });
+        return (
+          id === currentDefaults[provider.route] &&
+          efforts.includes("high") &&
+          /cod(?:e|ing)|software/iu.test(positioningEvidence)
+        );
+      },
+    );
     if (preferred) {
       process.stdout.write(
         `  default recommendation: ${provider.route}/${preferred.id}/high ` +

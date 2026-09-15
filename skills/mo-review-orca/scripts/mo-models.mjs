@@ -20125,10 +20125,12 @@ async function commandCatalog(routeFilter, asJson) {
       process.stdout.write(`  history incomplete (${provider.history.stopReason})
 `);
     }
-    const preferred = provider.catalog.models.find(({ id: id2, capabilities, efforts }) => {
-      const capabilityEvidence = JSON.stringify(capabilities ?? {});
-      return id2 === currentDefaults[provider.route] && efforts.includes("high") && /cod(?:e|ing)|software/iu.test(capabilityEvidence);
-    });
+    const preferred = provider.catalog.models.find(
+      ({ id: id2, label, description, capabilities, efforts }) => {
+        const positioningEvidence = JSON.stringify({ label, description, capabilities });
+        return id2 === currentDefaults[provider.route] && efforts.includes("high") && /cod(?:e|ing)|software/iu.test(positioningEvidence);
+      }
+    );
     if (preferred) {
       process.stdout.write(
         `  default recommendation: ${provider.route}/${preferred.id}/high (catalog coding-positioning evidence)

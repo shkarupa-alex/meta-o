@@ -115,7 +115,9 @@ case/requested/harness inputs, требует native execution id/interval/exit 
 observed effective identity и отдельное evidence для каждого `must`/`mustNot`
 oracle. `--require-all` требует все 32 coordinates: required и desired для
 каждого из 8 skills; desired отсутствие сохраняется envelope с
-`NOT_AVAILABLE`, а не пропуском. `PASS` не предзаполняется и невозможен при
+`NOT_AVAILABLE`, а не пропуском. Такой envelope несёт `effective: null`,
+ненулевой exit code native availability probe и typed reason; он не выдумывает
+harness version или effective model. `PASS` не предзаполняется и невозможен при
 пустом observation или неподтверждённом oracle. Critical identity сравнивается
 с явно переданным user-owned orchestrator profile, а не с hard-coded display
 label. Полные

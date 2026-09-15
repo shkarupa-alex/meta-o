@@ -197,8 +197,41 @@ test("desired profile can materialize as evidenced NOT_AVAILABLE", () => {
   for (const result of evidence.results) {
     result.verdict = "NOT_AVAILABLE";
     result.observations = ["approved desired harness was unavailable"];
+    for (const oracle of result.oracleEvidence) {
+      oracle.satisfied = false;
+      oracle.evidence = "not evaluated because the approved desired harness was unavailable";
+    }
   }
+  evidence.harness = {
+    name: "OpenCode",
+    version: null,
+    profileVersion: null,
+    quantization: null,
+    context: null,
+    sampling: null,
+    toolPermissions: [],
+  };
+  evidence.execution = {
+    id: "opencode-availability-probe-1",
+    source: "opencode",
+    startedAt: "2026-09-02T10:00:00.000Z",
+    completedAt: "2026-09-02T10:00:00.100Z",
+    exitCode: 127,
+    effective: null,
+    availability: { status: "not_available", reason: "command_unavailable" },
+    identityEvidence: "native executable lookup reported command unavailable",
+    evaluationDigest: "",
+  };
+  evidence.execution.evaluationDigest = evaluationDigest(
+    loadCorpus(ROOT).get("find-reuse"),
+    evidence,
+  );
   assert.deepEqual(validateEvidence(ROOT, evidence, HEAD).nonPass, []);
+  evidence.execution.effective = { ...evidence.requested };
+  assert.throws(
+    () => validateEvidence(ROOT, evidence, HEAD),
+    /must not invent effective identity/u,
+  );
 });
 
 test("PASS cannot be accepted without case-specific oracle evidence", () => {

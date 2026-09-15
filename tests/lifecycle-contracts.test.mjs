@@ -225,8 +225,27 @@ function gitlabCoverage(documents, hosting) {
   );
   if (commandJobs.length !== 1) return "unknown";
   const [jobName, job] = commandJobs[0];
-  const mergeRequest = JSON.stringify(job.rules ?? job.only ?? "").includes("merge_request");
-  if (!mergeRequest || job.allow_failure === true) return "unknown";
+  const rules = Array.isArray(job.rules) ? job.rules : [];
+  const supportedRule =
+    rules.length === 1 &&
+    rules.every(
+      (rule) =>
+        rule &&
+        Object.keys(rule).every((key) => new Set(["if", "when"]).has(key)) &&
+        rule.if === "$CI_PIPELINE_SOURCE == 'merge_request_event'" &&
+        new Set([undefined, "on_success"]).has(rule.when),
+    );
+  const only = Array.isArray(job.only) ? job.only : [job.only];
+  const supportedOnly = only.length === 1 && only[0] === "merge_requests";
+  const mergeRequest = supportedRule || supportedOnly;
+  const workflowRules = documents[0].parsed?.workflow?.rules;
+  const workflowReachable =
+    workflowRules === undefined ||
+    (Array.isArray(workflowRules) &&
+      workflowRules.length === 1 &&
+      workflowRules[0]?.if === "$CI_MERGE_REQUEST_ID" &&
+      new Set([undefined, "always", "on_success"]).has(workflowRules[0]?.when));
+  if (!mergeRequest || !workflowReachable || job.allow_failure === true) return "unknown";
   const required =
     hosting.ciEnabled === true &&
     hosting.requiredJob === jobName &&
@@ -338,6 +357,45 @@ test("CI fixture evaluation covers both hosts and never invents required policy"
       },
     }),
     "covered",
+  );
+  for (const rejectedRule of [
+    "- if: $CI_PIPELINE_SOURCE == 'merge_request_event'\n      when: never",
+    "- if: $CI_PIPELINE_SOURCE != 'merge_request_event'",
+  ]) {
+    assert.equal(
+      ciCoverage({
+        provider: "gitlab",
+        entrypoint: ".gitlab-ci.yml",
+        files: {
+          ".gitlab-ci.yml": gitlab,
+          "jobs.yml": `backlog:\n  script: make mo-backlog-empty\n  rules:\n    ${rejectedRule}\n`,
+        },
+        hosting: {
+          ciEnabled: true,
+          requiredJob: "backlog",
+          mergeRequestPipelines: true,
+          mergeTrains: true,
+        },
+      }),
+      "unknown",
+    );
+  }
+  assert.equal(
+    ciCoverage({
+      provider: "gitlab",
+      entrypoint: ".gitlab-ci.yml",
+      files: {
+        ".gitlab-ci.yml": `${gitlab}      when: never\n`,
+        "jobs.yml": job,
+      },
+      hosting: {
+        ciEnabled: true,
+        requiredJob: "backlog",
+        mergeRequestPipelines: true,
+        mergeTrains: true,
+      },
+    }),
+    "unknown",
   );
   assert.equal(
     ciCoverage({
