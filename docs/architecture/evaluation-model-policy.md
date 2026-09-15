@@ -6,8 +6,8 @@
 knowledge_id_changes:
   - action: reuse
     id: §A-EVAL-01
-    reason: Approved set расширен обязательной vendor pair и желательными portability coordinates.
-    new_boundary: V3 evidence доказывает полную required matrix и typed desired availability.
+    reason: Durable policy фиксирует единственную принимаемую repetition для evidence coordinate.
+    new_boundary: V3 evidence принимает только repetition=1 и не считает повторный model run новым доказательством.
     references_updated: true
   - action: reuse
     id: §B-EVAL-01
@@ -27,6 +27,10 @@ actor запускается только для named scenario, который 
 Каждый применимый case запускается на Claude `opus[1m]/low` и Codex
 `gpt-5.6-sol/low`. Evidence v3 связывает case, contract id, tier, matrix profile,
 candidate, requested/effective model+effort и native harness identity.
+Координата evidence фиксирована как
+`(skillRevision, caseId, matrixProfile, repetition=1)`: повторный запуск не
+создаёт дополнительного принимаемого доказательства и не оправдывает лишний
+расход model actor.
 Неприменимый сценарий имеет доказанный `not_applicable`; недоступная required
 coordinate — `blocked|not_run`, не `PASS`.
 
