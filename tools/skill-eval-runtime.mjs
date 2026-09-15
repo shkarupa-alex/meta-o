@@ -28,7 +28,7 @@ export function rejectSensitiveOrMachineLocal(value, label) {
     throw new Error(`${label}: absolute machine path is forbidden`);
   }
   const credentialValue =
-    /(?:\bBearer\s+[A-Za-z0-9._~+/-]{3,}|\b(?:api[_-]?key|access[_-]?token|token|secret|password)\s*[:=]\s*["']?[^\s"',}]{3,}|\b(?:gh[opsu]_[A-Za-z0-9]{8,}|glpat-[A-Za-z0-9_-]{8,}|sk-[A-Za-z0-9_-]{8,}))/iu;
+    /(?:\b(?:Authorization|Proxy-Authorization)\s*:\s*(?:Basic|Bearer|Digest|Negotiate)\s+\S+|\bBearer\s+[A-Za-z0-9._~+/-]{3,}|https?:\/\/[^/\s:@]+:[^@\s/]+@|-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----|\b(?:api[_-]?key|access[_-]?token|token|secret|password)\s*[:=]\s*["']?[^\s"',}]{3,}|\b(?:gh[opsu]_[A-Za-z0-9]{8,}|glpat-[A-Za-z0-9_-]{8,}|sk-[A-Za-z0-9_-]{8,}))/iu;
   const visit = (node, path = label) => {
     if (typeof node === "string" && credentialValue.test(node)) {
       throw new Error(`${path}: secret-bearing evidence value is forbidden`);

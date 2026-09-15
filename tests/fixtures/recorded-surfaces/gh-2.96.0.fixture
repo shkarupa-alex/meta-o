@@ -1,7 +1,7 @@
 {
   "contract": "recorded-cli-help.v2",
   "binary": "gh",
-  "resolvedBinary": "/home/alex/.local/bin/gh",
+  "resolvedBinary": "<home>/.local/bin/gh",
   "version": "gh version 2.96.0 (2026-07-02)",
   "observations": [
     { "command": "gh issue list --help", "exitStatus": 0, "provenance": "stdout", "output": "USAGE\n  gh issue list [flags]\n\nFLAGS\n  -L, --limit int          Maximum number of issues to fetch (default 30)\n  -s, --state string       Filter by state: {open|closed|all} (default \"open\")\n      --json fields        Output JSON with the specified fields\n\nJSON FIELDS\n  state, stateReason, title, updatedAt, url" },

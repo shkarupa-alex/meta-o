@@ -1,7 +1,7 @@
 {
   "contract": "recorded-cli-help.v2",
   "binary": "glab",
-  "resolvedBinary": "/home/alex/.local/bin/glab",
+  "resolvedBinary": "<home>/.local/bin/glab",
   "version": "glab 1.117.0 (44790937b)",
   "observations": [
     { "command": "glab issue list --help", "exitStatus": 0, "provenance": "stdout", "output": "USAGE\n  glab issue list [--flags]\n\nFLAGS\n  -A --all            Get all issues.\n  -c --closed         Get only closed issues.\n  -O --output         Options: 'text' or 'json'. (text)\n  -p --page           Page number. (1)\n  -P --per-page       Number of items to list per page. (30)" },

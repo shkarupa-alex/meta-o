@@ -179,6 +179,19 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
   secretValue.results[0].observations = ["Bearer abcdefghijklmnop"];
   assert.throws(() => validateEvidence(ROOT, secretValue, HEAD), /secret-bearing evidence value/u);
 
+  for (const credential of [
+    "Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==",
+    "https://alice:s3cr3t@build-host.internal/api",
+    "-----BEGIN PRIVATE KEY-----",
+  ]) {
+    const credentialEvidence = finalizedEnvelope("find-reuse");
+    credentialEvidence.results[0].oracleEvidence[0].evidence = credential;
+    assert.throws(
+      () => validateEvidence(ROOT, credentialEvidence, HEAD),
+      /secret-bearing evidence value/u,
+    );
+  }
+
   const wrongHarness = finalizedEnvelope("find-reuse");
   wrongHarness.harness.name = "Claude";
   assert.throws(

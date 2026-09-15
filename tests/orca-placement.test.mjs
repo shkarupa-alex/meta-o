@@ -17,6 +17,27 @@ const fixture = JSON.parse(
   ),
 );
 
+const REVIEW_START_REASONS = new Set([
+  "no_project_context",
+  "inventory_unreadable",
+  "inventory_partial",
+  "registration_kind_unknown",
+  "placement_unsupported",
+  "remote_placement_unsupported",
+  "candidate_unverifiable",
+  "inventory_changed",
+  "partial_start_failed",
+  "cleanup_incomplete",
+]);
+
+function reviewStartHeader(reason, project, candidate) {
+  assert.ok(REVIEW_START_REASONS.has(reason), `unknown REVIEW-START reason ${reason}`);
+  return (
+    `REVIEW-START version=1 status=unsupported reason=${reason} ` +
+    `project=${project ?? "none"} candidate=${candidate ?? "none"}`
+  );
+}
+
 function normalized(values) {
   return JSON.stringify(
     [...values].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
@@ -52,19 +73,31 @@ function placementReason(surface) {
     : null;
 }
 
-function validReviewerInventory(surface, candidate) {
+function reviewerInventoryReason(surface, candidate) {
   const children = surface.children ?? [];
-  return (
-    children.length === 2 &&
-    children.every(
+  if (children.length !== 2) return "inventory_partial";
+  if (
+    children.some(
       (child) =>
-        child.kind === "worktree" &&
-        child.owner === "candidate-run" &&
-        child.projectId === surface.project.id &&
-        child.sha === candidate &&
-        child.clean === true,
+        typeof child.id !== "string" ||
+        typeof child.path !== "string" ||
+        child.kind !== "worktree" ||
+        child.projectId !== surface.project.id,
     )
-  );
+  ) {
+    return "inventory_unreadable";
+  }
+  if (children.some((child) => child.sha !== candidate || child.clean !== true)) {
+    return "candidate_unverifiable";
+  }
+  if (
+    children.some((child) => child.owner !== "candidate-run") ||
+    new Set(children.map(({ id }) => id)).size !== 2 ||
+    new Set(children.map(({ path }) => path)).size !== 2
+  ) {
+    return "inventory_changed";
+  }
+  return null;
 }
 
 function recordedReview(
@@ -85,8 +118,7 @@ function recordedReview(
     return {
       ...result,
       header: unsupported
-        ? `REVIEW-START version=1 status=unsupported reason=${result.reason} ` +
-          `project=${surface.project?.id ?? "none"} candidate=${surface.children?.[0]?.sha ?? "none"}`
+        ? reviewStartHeader(result.reason, surface.project?.id, surface.children?.[0]?.sha)
         : null,
       handover: result.status === "UNKNOWN" ? "needs_attention" : null,
       calls,
@@ -102,8 +134,9 @@ function recordedReview(
   }
 
   const children = surface.children ?? [];
-  if (!validReviewerInventory(surface, candidate)) {
-    return finish({ status: "unsupported", reason: "reviewer_inventory_invalid", ownedDelta: [] });
+  const inventoryReason = reviewerInventoryReason(surface, candidate);
+  if (inventoryReason) {
+    return finish({ status: "unsupported", reason: inventoryReason, ownedDelta: [] });
   }
   if (surface.project.kind === "folder") {
     if (!children.every(({ existing }) => existing === true)) {
@@ -146,24 +179,55 @@ test("folder placement accepts two existing clean exact-candidate reviewer workt
   assert.equal(result.header, null);
 });
 
-test("inventory proof precedes placement and rejects dirty, wrong-SHA, missing, or mixed ownership", () => {
+test("inventory proof uses the closed reason vocabulary before any reviewer task", () => {
   const variants = [
-    { children: fixture.folder.children.slice(0, 1) },
-    { children: fixture.folder.children.map((child, index) => ({ ...child, clean: index > 0 })) },
-    { children: fixture.folder.children.map((child) => ({ ...child, sha: "f".repeat(40) })) },
-    {
-      children: fixture.folder.children.map((child, index) => ({
-        ...child,
-        owner: index === 0 ? "foreign" : child.owner,
-      })),
-    },
+    [{ children: fixture.folder.children.slice(0, 1) }, "inventory_partial"],
+    [
+      { children: fixture.folder.children.map((child, index) => ({ ...child, clean: index > 0 })) },
+      "candidate_unverifiable",
+    ],
+    [
+      { children: fixture.folder.children.map((child) => ({ ...child, sha: "f".repeat(40) })) },
+      "candidate_unverifiable",
+    ],
+    [
+      { children: fixture.folder.children.map((child) => ({ ...child, path: null })) },
+      "inventory_unreadable",
+    ],
+    [
+      {
+        children: fixture.folder.children.map((child, index) => ({
+          ...child,
+          owner: index === 0 ? "foreign" : child.owner,
+        })),
+      },
+      "inventory_changed",
+    ],
+    [
+      { children: [fixture.folder.children[0], { ...fixture.folder.children[0] }] },
+      "inventory_changed",
+    ],
+    [
+      {
+        children: [
+          fixture.folder.children[0],
+          { ...fixture.folder.children[1], path: fixture.folder.children[0].path },
+        ],
+      },
+      "inventory_changed",
+    ],
   ];
-  for (const variant of variants) {
+  for (const [variant, reason] of variants) {
     const surface = { ...fixture.folder, ...variant };
     const result = recordedReview(surface);
-    assert.equal(result.reason, "reviewer_inventory_invalid");
+    assert.equal(result.reason, reason);
     assert.deepEqual(result.calls, []);
+    assert.match(result.header, new RegExp(`reason=${reason} `, "u"));
   }
+  assert.throws(
+    () => reviewStartHeader("reviewer_inventory_invalid", "project-folder", "f".repeat(40)),
+    /unknown REVIEW-START reason/u,
+  );
   const unsupported = recordedReview({
     ...fixture.folder,
     project: { ...fixture.folder.project, kind: "unknown" },

@@ -8,6 +8,7 @@
     "children": [
       {
         "id": "review-a",
+        "path": "/recorded/review-a",
         "kind": "worktree",
         "owner": "candidate-run",
         "projectId": "project-folder",
@@ -18,6 +19,7 @@
       },
       {
         "id": "review-b",
+        "path": "/recorded/review-b",
         "kind": "worktree",
         "owner": "candidate-run",
         "projectId": "project-folder",
@@ -36,6 +38,7 @@
     "children": [
       {
         "id": "review-a",
+        "path": "/recorded/review-a",
         "kind": "worktree",
         "owner": "candidate-run",
         "projectId": "project-git",
@@ -46,6 +49,7 @@
       },
       {
         "id": "review-b",
+        "path": "/recorded/review-b",
         "kind": "worktree",
         "owner": "candidate-run",
         "projectId": "project-git",

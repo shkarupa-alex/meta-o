@@ -17,7 +17,8 @@ function recording(name, source = null) {
   );
   assert.equal(document.contract, "recorded-cli-help.v2");
   assert.match(document.binary, /^[a-z][a-z0-9-]*$/u);
-  assert.match(document.resolvedBinary, /^\//u);
+  assert.match(document.resolvedBinary, /^<home>\//u);
+  assert.doesNotMatch(document.resolvedBinary, /\/(?:home|Users|mnt)\//u);
   assert.equal(typeof document.version, "string");
   assert.ok(document.version.length > 0);
   assert.ok(Array.isArray(document.observations));
@@ -68,10 +69,104 @@ test("recorded Orca surfaces expose both guides and owned-resource operations", 
   for (const section of ["project", "repo", "worktree", "terminal", "orchestration"]) {
     assert.match(help.output(`orca ${section} --help`), /Commands:/u);
   }
-  assert.match(
-    help.output("orca orchestration --help"),
-    /check[\s\S]*reply[\s\S]*worker-start[\s\S]*worker-list[\s\S]*worker-release/u,
+  for (const guide of ["orchestration", "orca-cli"]) {
+    const command = help.observations.find(({ command: value }) =>
+      value.startsWith(`orca skills get ${guide} --json |`),
+    );
+    assert.ok(command, `${guide}: retrieval observation missing`);
+    const evidence = JSON.parse(command.output);
+    assert.equal(evidence.name, guide);
+    assert.ok(evidence.markdown_bytes > 1000);
+    assert.deepEqual(evidence.markdown_prefix.slice(0, 2), ["---", `name: ${guide}`]);
+  }
+  const expectedCommands = [
+    "run-create",
+    "run-use",
+    "run-current",
+    "run-list",
+    "run-show",
+    "send",
+    "check",
+    "reply",
+    "inbox",
+    "task-create",
+    "task-list",
+    "task-update",
+    "worker-start",
+    "worker-show",
+    "worker-read",
+    "worker-stop",
+    "worker-abandon",
+    "worker-release",
+    "worker-retain",
+    "worker-list",
+    "dispatch",
+    "dispatch-show",
+    "ask",
+    "coordinator-start",
+    "coordinator-stop",
+    "gate-create",
+    "gate-resolve",
+    "gate-list",
+    "reset",
+  ];
+  const observedCommands = help
+    .output("orca orchestration --help")
+    .split("\n")
+    .slice(1)
+    .map((line) => line.trim().split(/\s+/u)[0]);
+  assert.deepEqual(observedCommands, expectedCommands);
+});
+
+test("Orca guide and ordered-help evidence fails closed under mutation", () => {
+  const source = readFileSync(
+    join(ROOT, "tests", "fixtures", "recorded-surfaces", "orca-installed.fixture"),
+    "utf8",
   );
+  const valid = JSON.parse(source);
+  for (const mutate of [
+    (value) => {
+      value.observations = value.observations.filter(
+        ({ command }) => !command.startsWith("orca skills get orchestration"),
+      );
+    },
+    (value) => {
+      const guide = value.observations.find(({ command }) =>
+        command.startsWith("orca skills get orca-cli"),
+      );
+      guide.output = guide.output.replace('"markdown_bytes":24457', '"markdown_bytes":0');
+    },
+    (value) => {
+      const help = value.observations.find(
+        ({ command }) => command === "orca orchestration --help",
+      );
+      help.output = help.output.replace(
+        / {2}worker-release[^\n]+\n {2}worker-retain/u,
+        "  worker-retain",
+      );
+    },
+  ]) {
+    const changed = structuredClone(valid);
+    mutate(changed);
+    const parsed = recording("mutated-orca.fixture", JSON.stringify(changed));
+    assert.throws(() => {
+      for (const guide of ["orchestration", "orca-cli"]) {
+        const observation = parsed.observations.find(({ command }) =>
+          command.startsWith(`orca skills get ${guide} --json |`),
+        );
+        assert.ok(observation);
+        assert.ok(JSON.parse(observation.output).markdown_bytes > 1000);
+      }
+      const commands = parsed
+        .output("orca orchestration --help")
+        .split("\n")
+        .slice(1)
+        .map((line) => line.trim().split(/\s+/u)[0]);
+      assert.equal(commands.length, 29);
+      assert.equal(commands[17], "worker-release");
+      assert.equal(commands[18], "worker-retain");
+    });
+  }
 });
 
 test("recording metadata and field provenance fail closed under mutation", () => {

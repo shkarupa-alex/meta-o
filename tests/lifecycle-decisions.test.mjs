@@ -63,7 +63,7 @@ const ISSUE_RULES = [
   [(facts) => facts.search === "incomplete", "ISS-14"],
   [(facts) => facts.capability === "missing", "ISS-15"],
   [(facts) => facts.writeEffect === "rejected", "ISS-13"],
-  [(facts) => facts.auth === "unavailable", "ISS-11"],
+  [(facts) => facts.repositoryKnown && facts.auth === "unavailable", "ISS-11"],
   [(facts) => facts.repositoryRank === "ambiguous", "ISS-12"],
   [(facts) => facts.mixedWorkaround, "ISS-10"],
   [(facts) => facts.match === "open_exact", "ISS-06"],
@@ -78,7 +78,23 @@ const ISSUE_RULES = [
 ];
 
 function currentWritePermission(facts) {
+  const routeBlocker =
+    facts.rootCause === "external"
+      ? facts.owner === "verified" && facts.upstreamRepository === "verified"
+        ? null
+        : "upstream_ownership_unproved"
+      : facts.rootCause === "project"
+        ? facts.projectRepository === "verified"
+          ? null
+          : "project_repository_unproved"
+        : facts.mixedWorkaround &&
+            facts.owner === "verified" &&
+            facts.upstreamRepository === "verified" &&
+            facts.projectRepository === "verified"
+          ? null
+          : "root_cause_unproved";
   const blockers = [
+    [routeBlocker !== null, routeBlocker],
     [facts.forbiddenData === true, "forbidden_data"],
     [facts.writeEffect === "ambiguous", "write_effect_ambiguous"],
     [facts.writeEffect === "rejected", "write_rejected"],
@@ -115,6 +131,19 @@ function issueDecision(facts, rows = issueRows()) {
 
 const ISSUE_BODY_FIELDS = ["summary", "reproduction", "expected", "actual", "versions", "links"];
 
+function forbiddenIssueData(serialized) {
+  return [
+    /\/(?:home|Users|mnt|tmp)\//u,
+    /\b(?:Authorization|Proxy-Authorization)\s*:\s*(?:Basic|Bearer|Digest|Negotiate)\s+\S+/iu,
+    /https?:\/\/[^/\s:@]+:[^@\s/]+@/iu,
+    /(?:\bBearer\s+|\b(?:token|secret|password|api[_-]?key)\s*[:=])/iu,
+    /\b(?:HOME|PATH|USER|HOSTNAME)=\S+/u,
+    /\b[a-z0-9-]+\.(?:internal|local|lan|corp)\b/iu,
+    /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/iu,
+    /(?:internal specification|client context|customer context|session transcript)/iu,
+  ].some((pattern) => pattern.test(serialized));
+}
+
 function projectIssueBody(draft) {
   const projected = Object.fromEntries(
     ISSUE_BODY_FIELDS.filter((field) => typeof draft[field] === "string").map((field) => [
@@ -123,10 +152,7 @@ function projectIssueBody(draft) {
     ]),
   );
   const serialized = JSON.stringify(projected);
-  if (
-    /\/(?:home|Users|mnt|tmp)\//u.test(serialized) ||
-    /(?:\bBearer\s+|\b(?:token|secret|password|api[_-]?key)\s*[:=])/iu.test(serialized)
-  ) {
+  if (forbiddenIssueData(serialized)) {
     return { status: "needs_attention", reason: "forbidden_data" };
   }
   return { status: "ready", body: projected };
@@ -138,21 +164,42 @@ const WRITE_READY = {
   capability: "available",
   projection: "allowlisted",
 };
+const UPSTREAM_READY = {
+  ...WRITE_READY,
+  rootCause: "external",
+  owner: "verified",
+  upstreamRepository: "verified",
+};
+const PROJECT_READY = {
+  ...WRITE_READY,
+  rootCause: "project",
+  projectRepository: "verified",
+};
 
 test("ISS-01 through ISS-15 route distinct facts to canonical actions", () => {
   const fixtures = [
-    [{ ...WRITE_READY, rootCause: "external", owner: "verified" }, "ISS-01", true],
+    [UPSTREAM_READY, "ISS-01", true],
     [{ rootCause: "external", owner: "ambiguous" }, "ISS-02", false],
     [{ rootCause: "external", owner: "project_remotes_only" }, "ISS-03", false],
-    [{ ...WRITE_READY, rootCause: "project" }, "ISS-04", true],
+    [PROJECT_READY, "ISS-04", true],
     [{ rootCause: "unknown" }, "ISS-05", false],
-    [{ ...WRITE_READY, match: "open_exact" }, "ISS-06", true],
-    [{ ...WRITE_READY, match: "closed_fixed_installed" }, "ISS-07A", true],
+    [{ ...UPSTREAM_READY, match: "open_exact" }, "ISS-06", true],
+    [{ ...UPSTREAM_READY, match: "closed_fixed_installed" }, "ISS-07A", true],
     [{ match: "closed_fixed_newer" }, "ISS-07B", false],
-    [{ ...WRITE_READY, match: "closed_wontfix_alive" }, "ISS-07C", true],
+    [{ ...UPSTREAM_READY, match: "closed_wontfix_alive" }, "ISS-07C", true],
     [{ forbiddenData: true }, "ISS-08", false],
     [{ writeEffect: "ambiguous" }, "ISS-09", false],
-    [{ ...WRITE_READY, mixedWorkaround: true }, "ISS-10", true],
+    [
+      {
+        ...WRITE_READY,
+        mixedWorkaround: true,
+        owner: "verified",
+        upstreamRepository: "verified",
+        projectRepository: "verified",
+      },
+      "ISS-10",
+      true,
+    ],
     [{ repositoryKnown: true, auth: "unavailable" }, "ISS-11", false],
     [{ repositoryRank: "ambiguous" }, "ISS-12", false],
     [{ writeEffect: "rejected" }, "ISS-13", false],
@@ -219,6 +266,36 @@ test("Issue routing fails closed for overlapping facts, truncated search, unknow
       false,
     );
   }
+  for (const facts of [
+    { ...WRITE_READY, match: "open_exact", rootCause: "unknown" },
+    { ...WRITE_READY, match: "open_exact", rootCause: "external", owner: "ambiguous" },
+    {
+      ...WRITE_READY,
+      match: "closed_wontfix_alive",
+      rootCause: "external",
+      owner: "project_remotes_only",
+    },
+    { ...WRITE_READY, match: "closed_fixed_installed", rootCause: "project" },
+  ]) {
+    assert.equal(issueDecision(facts).mayWrite, false);
+    assert.match(
+      issueDecision(facts).writeBlocker,
+      /(?:root_cause|ownership|repository)_unproved/u,
+    );
+  }
+  assert.equal(issueDecision({ rootCause: "unknown", auth: "unavailable" }).scenario, "ISS-05");
+  assert.equal(
+    issueDecision({ rootCause: "external", owner: "ambiguous", auth: "unavailable" }).scenario,
+    "ISS-02",
+  );
+  assert.equal(
+    issueDecision({
+      rootCause: "external",
+      owner: "project_remotes_only",
+      auth: "unavailable",
+    }).scenario,
+    "ISS-03",
+  );
   assert.deepEqual(
     projectIssueBody({
       summary: "bounded defect",
@@ -235,6 +312,27 @@ test("Issue routing fails closed for overlapping facts, truncated search, unknow
     status: "needs_attention",
     reason: "forbidden_data",
   });
+  for (const forbidden of [
+    "Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==",
+    "https://alice:s3cr3t@build.example/api",
+    "build-host.internal",
+    "HOME=/private/place",
+    "person@example.com",
+    "internal specification excerpt",
+    "session transcript excerpt",
+  ]) {
+    for (const field of ISSUE_BODY_FIELDS) {
+      assert.equal(projectIssueBody({ [field]: forbidden }).status, "needs_attention", field);
+    }
+  }
+  assert.equal(
+    projectIssueBody({
+      summary: "public defect",
+      versions: "gh 2.96.0",
+      links: "https://github.com/example/project/issues/1",
+    }).status,
+    "ready",
+  );
 });
 
 function readiness(observation) {
