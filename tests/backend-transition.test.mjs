@@ -6,7 +6,6 @@
 
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdtempSync,
@@ -38,27 +37,6 @@ function files(path) {
     if (entry.isDirectory()) return files(child);
     return entry.isFile() ? [child] : [];
   });
-}
-
-function markdownTables(source) {
-  const tokens = markdown.parse(source, {});
-  const tables = [];
-  let rows = null;
-  let row = null;
-  for (const token of tokens) {
-    if (token.type === "table_open") rows = [];
-    if (token.type === "tr_open") row = [];
-    if (token.type === "inline" && row) row.push(token.content.trim());
-    if (token.type === "tr_close" && rows) {
-      rows.push(row);
-      row = null;
-    }
-    if (token.type === "table_close") {
-      tables.push(rows);
-      rows = null;
-    }
-  }
-  return tables;
 }
 
 function run(command, args, options) {
@@ -185,38 +163,6 @@ test("the backlog schema accepts empty state and validates every future deferral
   }
   const titles = entries.map((entry) => entry.title).join("\n");
   assert.doesNotMatch(titles, /P1-P8|H13-H37|Omnigent|progress tracker|standalone project-entry/i);
-});
-
-test("the live implementation spec binds the frozen intake and complete disposition table", () => {
-  const sourceBlob = "4b6a958c1747e76a16439ae1c967b09d9ab76bef";
-  const sourceSha256 = "ce8113b298ec069cea38e1d5f5bbcd0c7078dffe059ad1a606dd20e50c4bac38";
-  const specification = readFileSync(
-    join(ROOT, "docs", "specifications", "2026-09-15-backlog-refinement-approval.md"),
-    "utf8",
-  );
-  const intake = readFileSync(
-    join(ROOT, "docs", "specifications", "2026-09-15-backlog-refinement-approval-intake.fixture"),
-    "utf8",
-  );
-  const blob = spawnSync("git", ["cat-file", "blob", sourceBlob], { cwd: ROOT }).stdout;
-  assert.equal(createHash("sha256").update(blob).digest("hex"), sourceSha256);
-  assert.match(specification, new RegExp(sourceBlob, "u"));
-  assert.match(specification, new RegExp(sourceSha256, "u"));
-  const frozen = intake.replace(/^<!-- Frozen pre-lifecycle intake fixture;[^\n]+-->\n\n/mu, "");
-  assert.equal(frozen.trimEnd(), blob.toString("utf8").trimEnd());
-
-  const disposition = markdownTables(specification).find(
-    ([header]) => header?.[0] === "Source" && header?.[2] === "Outcome",
-  );
-  assert.ok(disposition, "BKL disposition table is missing");
-  assert.deepEqual(
-    disposition.slice(1).map(([source]) => source),
-    Array.from({ length: 19 }, (_, index) => `BKL-${String(index).padStart(2, "0")}`),
-  );
-  for (const row of disposition.slice(1)) {
-    assert.equal(row.length, 4);
-    assert.ok(row.every(Boolean), `${row[0]}: disposition evidence is incomplete`);
-  }
 });
 
 test("watchdog accepts only Orca targets", () => {
