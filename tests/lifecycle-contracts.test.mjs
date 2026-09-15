@@ -409,13 +409,18 @@ function githubJobAutomatic(job) {
 /** §A-BACKLOG-01 recognizes the literal unfiltered pull-request subset. */
 function githubPullRequestReachable(root, events) {
   const pullRequest = root?.on?.pull_request;
+  if (!events.includes("pull_request")) return false;
+  if (pullRequest === null) return true;
+  if (!pullRequest || typeof pullRequest !== "object" || Array.isArray(pullRequest)) return false;
   const pullRequestKeys =
     pullRequest && typeof pullRequest === "object" ? Object.keys(pullRequest) : [];
+  if (pullRequestKeys.length === 0) return true;
+  const branches = [pullRequest.branches].flat();
   return (
-    events.includes("pull_request") &&
-    pullRequestKeys.every((key) => key === "branches") &&
-    (pullRequestKeys.length === 0 ||
-      [pullRequest.branches].flat().some((branch) => branch === "develop"))
+    pullRequestKeys.length === 1 &&
+    pullRequestKeys[0] === "branches" &&
+    branches.length === 1 &&
+    branches[0] === "develop"
   );
 }
 
@@ -578,6 +583,20 @@ test("GitHub CI fixtures never invent candidate reachability or required policy"
     requiredCheck: "backlog",
     mergeQueueEnabled: false,
   };
+  for (const invalidTrigger of [
+    ordinary.replace("  pull_request:\n    branches: [develop]", "  pull_request: false"),
+    ordinary.replace("branches: [develop]", "branches: [develop, '!develop']"),
+  ]) {
+    assert.equal(
+      ciCoverage({
+        provider: "github",
+        entrypoint: "ci.yml",
+        files: { "ci.yml": invalidTrigger },
+        hosting: protectedHosting,
+      }),
+      "unknown",
+    );
+  }
   const pathFiltered = ordinary.replace(
     "    branches: [develop]",
     "    branches: [develop]\n    paths-ignore: [docs/backlog.md, tools/backlog-empty.mjs]",

@@ -219,7 +219,24 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
       validateEvidence(ROOT, selfConsistentNonQwen, HEAD, false, {
         criticalProfile: "opencode/llamacpp/deepseek-v4/default",
       }),
-    /configured orchestrator profile/u,
+    /Qwen model/u,
+  );
+
+  const configuredNewerQwen = finalizedEnvelope("mo-orchestrate-orca", {
+    tier: "critical",
+    matrixProfile: "critical-orchestration",
+  });
+  configuredNewerQwen.requested.model = "llamacpp/qwen3.9-27b";
+  configuredNewerQwen.execution.effective.model = "llamacpp/qwen3.9-27b";
+  configuredNewerQwen.execution.evaluationDigest = evaluationDigest(
+    loadCorpus(ROOT).get("mo-orchestrate-orca"),
+    configuredNewerQwen,
+  );
+  assert.deepEqual(
+    validateEvidence(ROOT, configuredNewerQwen, HEAD, false, {
+      criticalProfile: "opencode/llamacpp/qwen3.9-27b/default",
+    }).nonPass,
+    [],
   );
 
   const impersonatedMatrix = finalizedEnvelope("mo-orchestrate-orca", {

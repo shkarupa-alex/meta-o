@@ -768,6 +768,23 @@ test("incidental encoding prose is not coding-positioning evidence", () => {
   assert.doesNotMatch(result.stdout, /default recommendation:/u);
 });
 
+test("structured code-generation capability is coding-positioning evidence", () => {
+  const home = sandbox();
+  const bin = join(home, "bin");
+  mkdirSync(bin, { recursive: true });
+  const codex = join(bin, "codex");
+  writeFileSync(
+    codex,
+    `#!/bin/sh\nprintf '%s\\n' '{"models":[{"slug":"capability-model","display_name":"General model","description":"Broad model","capabilities":["code_generation","vision"],"visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"high"}]}]}'\n`,
+  );
+  chmodSync(codex, 0o755);
+  const result = run(home, ["--catalog", "--route", "codex"], ROOT, {
+    PATH: `${bin}${delimiter}${process.env.PATH}`,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /default recommendation: codex\/capability-model\/high/u);
+});
+
 test("an ambiguous catalog is not resolved by the current orientation id", () => {
   const home = sandbox();
   const bin = join(home, "bin");

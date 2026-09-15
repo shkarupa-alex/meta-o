@@ -19647,7 +19647,7 @@ var TESTING_PROFILES = {
 };
 function isApprovedQwen38_27bModel(model) {
   const identifier = String(model).split("/").at(-1)?.toLowerCase() ?? "";
-  return /^qwen[-_.]?3[._-]?8[-_.]?27b(?:[-_.][a-z0-9]+)*$/u.test(identifier);
+  return identifier === "qwen3.8-27b";
 }
 function testingPolicyError(role, value) {
   const profile = TESTING_PROFILES[role];
@@ -20064,12 +20064,13 @@ function dedupe(values) {
   return [...new Set(values)];
 }
 function eligibleRecommendations(provider) {
+  const hasCodingToken = (value) => /(?:^|[^\p{L}\p{N}_])(?:code|coding|software(?:[ -]engineering)?)(?:$|[^\p{L}\p{N}_])/iu.test(
+    value
+  );
   return provider.catalog.models.filter(
-    ({ label, description, capabilities, efforts }) => efforts.includes("high") && (/(?:^|[^\p{L}\p{N}_])(?:code|coding|software(?:[ -]engineering)?)(?:$|[^\p{L}\p{N}_])/iu.test(
+    ({ label, description, capabilities, efforts }) => efforts.includes("high") && (hasCodingToken(
       [label, description].filter((value) => typeof value === "string").join(" ")
-    ) || (Array.isArray(capabilities) ? capabilities : [capabilities]).filter((value) => typeof value === "string").map((value) => value.trim().toLowerCase().replace(/[ _]+/gu, "-")).some(
-      (value) => (/* @__PURE__ */ new Set(["code", "coding", "software", "software-engineering"])).has(value)
-    ))
+    ) || (Array.isArray(capabilities) ? capabilities : [capabilities]).filter((value) => typeof value === "string").map((value) => value.trim().replace(/_+/gu, "-")).some(hasCodingToken))
   );
 }
 function defaultRecommendation(provider) {

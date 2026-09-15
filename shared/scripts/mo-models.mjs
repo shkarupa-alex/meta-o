@@ -203,10 +203,10 @@ const TESTING_PROFILES = {
   },
 };
 
-/** §A-EVAL-01 recognizes only the configured Qwen 3.8 27B model family. */
+/** §A-EVAL-01 recognizes only the approved closed Qwen 3.8 27B testing id. */
 export function isApprovedQwen38_27bModel(model) {
   const identifier = String(model).split("/").at(-1)?.toLowerCase() ?? "";
-  return /^qwen[-_.]?3[._-]?8[-_.]?27b(?:[-_.][a-z0-9]+)*$/u.test(identifier);
+  return identifier === "qwen3.8-27b";
 }
 
 /** §A-EVAL-01 rejects testing selections outside the approved low-cost routes. */
@@ -750,18 +750,20 @@ function dedupe(values) {
 }
 
 function eligibleRecommendations(provider) {
+  const hasCodingToken = (value) =>
+    /(?:^|[^\p{L}\p{N}_])(?:code|coding|software(?:[ -]engineering)?)(?:$|[^\p{L}\p{N}_])/iu.test(
+      value,
+    );
   return provider.catalog.models.filter(
     ({ label, description, capabilities, efforts }) =>
       efforts.includes("high") &&
-      (/(?:^|[^\p{L}\p{N}_])(?:code|coding|software(?:[ -]engineering)?)(?:$|[^\p{L}\p{N}_])/iu.test(
+      (hasCodingToken(
         [label, description].filter((value) => typeof value === "string").join(" "),
       ) ||
         (Array.isArray(capabilities) ? capabilities : [capabilities])
           .filter((value) => typeof value === "string")
-          .map((value) => value.trim().toLowerCase().replace(/[ _]+/gu, "-"))
-          .some((value) =>
-            new Set(["code", "coding", "software", "software-engineering"]).has(value),
-          )),
+          .map((value) => value.trim().replace(/_+/gu, "-"))
+          .some(hasCodingToken)),
   );
 }
 

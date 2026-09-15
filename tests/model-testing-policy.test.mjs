@@ -57,6 +57,11 @@ test("desired OpenCode testing identity is Qwen only", () => {
     "qwen-anything-27b",
     "qwen3.80-27b",
     "qwen3.8-anything-27b",
+    "qwen38-27b",
+    "qwen3.827b",
+    "qwen3827b",
+    "qwen3.8-27b-preview",
+    "qwen3.8-27b-uncensored",
   ]) {
     assert.match(
       testingPolicyError("testOpenCodeDesired", `opencode/local/${model}/low`),

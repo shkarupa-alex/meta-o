@@ -5,7 +5,7 @@
  * executions so completeness never requires a fabricated effective identity.
  */
 
-import { isApprovedQwen38_27bModel, testingPolicyError } from "../shared/scripts/mo-models.mjs";
+import { testingPolicyError } from "../shared/scripts/mo-models.mjs";
 
 function assertString(value, label) {
   if (typeof value !== "string" || value.trim() === "") throw new Error(`${label} is empty`);
@@ -314,36 +314,57 @@ export function diagnoseLegacyEvidenceAtCandidate(evidence, candidate, adapter) 
   });
 }
 
-function validateCriticalIdentity(envelope, criticalProfile) {
+/** §A-EVAL-01 keeps critical B22 on a configured Qwen without coupling its generation to evals. */
+function isQwenModel(model) {
+  const identifier = String(model).split("/").at(-1)?.toLowerCase() ?? "";
+  return /^qwen(?:[-_.]|\d)[a-z0-9._-]*$/u.test(identifier);
+}
+
+/** §A-EVAL-01 parses the user-owned critical coordinate independently of evidence. */
+function criticalProfileIdentity(envelope, criticalProfile) {
   assertString(criticalProfile, `${envelope.skill}: critical orchestrator profile`);
   const expected = criticalProfile.split("/");
   if (expected.length < 3)
     throw new Error("critical orchestrator profile must be route/model/effort");
-  const expectedIdentity = {
+  return {
     route: expected[0],
     model: expected.slice(1, -1).join("/"),
     effort: expected.at(-1),
   };
-  const effective = envelope.execution.effective;
+}
+
+/** §A-EVAL-01 proves the configured identity also ran on the required local Qwen harness. */
+function validateCriticalHarness(envelope, effective) {
   const harness = envelope.harness?.name?.toLowerCase() ?? "";
   const quantization =
     envelope.harness?.quantization?.toLowerCase().replace(/[^a-z0-9]/gu, "") ?? "";
   const context = Number(envelope.harness?.context);
-  const qualified = [
-    sameIdentity(envelope.requested, expectedIdentity),
-    sameIdentity(effective, expectedIdentity),
-    effective.route === "opencode",
-    isApprovedQwen38_27bModel(effective.model),
-    harness.includes("opencode"),
-    quantization.includes("q4km"),
-    Number.isSafeInteger(context),
-    context >= 32768,
-  ];
-  if (!qualified.every(Boolean)) {
+  if (effective.route !== "opencode" || !harness.includes("opencode")) {
+    throw new Error(`${envelope.skill}: critical orchestrator must run through OpenCode`);
+  }
+  if (!isQwenModel(effective.model)) {
+    throw new Error(`${envelope.skill}: critical orchestrator profile must name a Qwen model`);
+  }
+  if (!quantization.includes("q4km")) {
+    throw new Error(`${envelope.skill}: critical orchestrator must report Q4_K_M quantization`);
+  }
+  if (!Number.isSafeInteger(context) || context < 32768) {
+    throw new Error(`${envelope.skill}: critical orchestrator context must be at least 32768`);
+  }
+}
+
+function validateCriticalIdentity(envelope, criticalProfile) {
+  const expectedIdentity = criticalProfileIdentity(envelope, criticalProfile);
+  const effective = envelope.execution.effective;
+  if (
+    !sameIdentity(envelope.requested, expectedIdentity) ||
+    !sameIdentity(effective, expectedIdentity)
+  ) {
     throw new Error(
       `${envelope.skill}: critical evidence does not match the configured orchestrator profile`,
     );
   }
+  validateCriticalHarness(envelope, effective);
 }
 
 function identityRole(tier, route) {
