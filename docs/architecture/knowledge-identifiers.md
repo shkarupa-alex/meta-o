@@ -560,6 +560,13 @@ knowledge_id_changes:
       - §A-WAIT-01
     reason: Термин waiter в заголовке заменён русским эквивалентом.
     references_updated: true
+  - action: editorial
+    ids:
+      - §A-WAIT-01
+      - §A-WATCHDOG-02
+    reason:
+      Заголовки уточнены естественной русской формулировкой без смены границ.
+    references_updated: true
 ```
 
 ## Решение

@@ -47,7 +47,7 @@ test("acceptance maps all major requirements to deterministic and live proof", (
     "Codex, Claude Code и OpenCode",
     "полной парой",
     "`Deferral lens`",
-    "Шаблонный наблюдатель",
+    "Наблюдатель по шаблонам состояния",
     "смысловые подписи Markdown",
     "Один финальный SHA",
   ])

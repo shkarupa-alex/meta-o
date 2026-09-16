@@ -36,7 +36,7 @@ SHA должен пройти QC, две независимые проверки
 - [§A-REVIEW-04 — Авторитетный ответ ревьюера имеет проверяемую форму](docs/architecture/review-authoritative-response.md)
 - [§A-SESSION-01 — Исполнители Orca остаются ресурсами исходного проекта](docs/architecture/orca-session-ownership.md)
 - [§A-DELIVERY-01 — Байты задачи доставляются только в подтверждённое поле ввода агента](docs/architecture/trust-safe-delivery.md)
-- [§A-WAIT-01 — Ожиданием активности всех исполнителей запуска владеет одна общая точка](docs/architecture/blocking-wait-cadence.md)
+- [§A-WAIT-01 — Одна общая точка ожидания следит за активностью всех исполнителей запуска](docs/architecture/blocking-wait-cadence.md)
 - [§A-ACTIVATION-01 — Скилы Meta-O запускаются только по явному графу](docs/architecture/skill-activation.md)
 - [§A-MODELS-01 — Рекомендация выводится из каталога и ограниченной истории](docs/architecture/model-recommendation.md)
 
