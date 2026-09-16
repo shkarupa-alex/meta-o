@@ -41,14 +41,53 @@ function text(node) {
   return (node.children ?? []).map(text).join("");
 }
 
+function authorizationPayload(node) {
+  if (node?.type !== "code" || node.lang !== "yaml") return null;
+  try {
+    const parsed = yaml.load(node.value);
+    return parsed?.knowledge_id_changes ?? parsed?.knowledge_id_change ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function isAuthorizationBlock(node) {
+  return authorizationPayload(node) !== null;
+}
+
 function semanticNode(node) {
-  if (Array.isArray(node)) return node.map(semanticNode);
+  if (Array.isArray(node))
+    return node.filter((item) => !isAuthorizationBlock(item)).map(semanticNode);
   if (!node || typeof node !== "object") return node;
   return Object.fromEntries(
     Object.entries(node)
       .filter(([key]) => key !== "position")
       .map(([key, value]) => [key, semanticNode(value)]),
   );
+}
+
+function normalizedLiteral(value) {
+  return value.trim().replaceAll(/\s+/gu, " ");
+}
+
+function editorialSurface(nodes) {
+  const literals = new Set();
+  const citedIds = new Set();
+  const visit = (node) => {
+    if (isAuthorizationBlock(node)) return;
+    if (node.type === "inlineCode" || node.type === "code") {
+      literals.add(`${node.type}:${node.lang ?? ""}:${normalizedLiteral(node.value)}`);
+    }
+    if (typeof node.value === "string") {
+      for (const [id] of node.value.matchAll(CITATION)) citedIds.add(id);
+    }
+    for (const child of node.children ?? []) visit(child);
+  };
+  for (const node of nodes) visit(node);
+  return {
+    literals: [...literals].sort(),
+    citedIds: [...citedIds].sort(),
+  };
 }
 
 /** §A-MEMORY-01 extracts knowledge definitions from a real Markdown AST. */
@@ -77,6 +116,7 @@ export function definitions(markdown, path) {
             heading,
             path,
             semantic: JSON.stringify(semanticNode(children.slice(index, end))),
+            editorial: JSON.stringify(editorialSurface(children.slice(index, end))),
           });
         }
       }
@@ -117,9 +157,9 @@ function trailers(root, commit) {
   const body = git(root, ["show", "-s", "--format=%B", commit]);
   return body
     .split("\n")
-    .map((line) => line.match(/^Knowledge-ID-Change: (remove|reuse) (\S+) via (\S+)$/))
+    .map((line) => line.match(/^Knowledge-ID-Change: (remove|reuse|editorial) (\S+) via (\S+)$/))
     .filter(Boolean)
-    .map((match) => ({ action: match[1], id: match[2], via: match[3] }));
+    .map((match) => ({ action: match[1], ids: match[2].split(","), via: match[3] }));
 }
 
 function authorizationRecords(markdown, architectureId) {
@@ -156,8 +196,66 @@ function stableValue(value) {
   );
 }
 
-function authorized(root, parent, commit, action, id, previous, current, enforceCurrentRecord) {
-  const match = trailers(root, commit).find((entry) => entry.action === action && entry.id === id);
+function sameSortedIds(left, right) {
+  return (
+    left.length === right.length &&
+    left.every((id, index) => id === right[index]) &&
+    new Set(left).size === left.length
+  );
+}
+
+function coversChange(entry, action, id, editorialIds) {
+  if (entry.action === action && entry.ids.length === 1 && entry.ids[0] === id) return true;
+  // Editorial authorization is deliberately all-or-nothing for one parent
+  // edge after individually authorized reuse ids are removed: accepting a
+  // subset would let an unlisted semantic change ride with a mechanical rewrite.
+  return (
+    action === "reuse" && entry.action === "editorial" && sameSortedIds(entry.ids, editorialIds)
+  );
+}
+
+function recordCoversChange(record, match, action, id, editorialIds) {
+  if (record?.action === action && record?.id === id) return true;
+  return (
+    action === "reuse" &&
+    match.action === "editorial" &&
+    record?.action === "editorial" &&
+    Array.isArray(record.ids) &&
+    sameSortedIds(record.ids, editorialIds)
+  );
+}
+
+function validAuthorizationRecord(record, action, id) {
+  const common =
+    typeof record?.reason === "string" &&
+    record.reason.trim().length > 0 &&
+    record.references_updated === true;
+  if (record?.action === "editorial") return common && record.new_boundary === undefined;
+  return (
+    common &&
+    record?.action === action &&
+    record?.id === id &&
+    typeof record.new_boundary === "string" &&
+    record.new_boundary.trim().length > 0
+  );
+}
+
+function authorized(
+  root,
+  parent,
+  commit,
+  action,
+  id,
+  editorialIds,
+  previous,
+  current,
+  enforceCurrentRecord,
+) {
+  // `editorial` is a reuse-only path. Deletion never reaches this branch, so a
+  // wording-only record cannot retire a durable identifier.
+  const match = trailers(root, commit).find((entry) =>
+    coversChange(entry, action, id, editorialIds),
+  );
   if (!match || !/^§A-[A-Z][A-Z0-9-]*-\d{2}$/.test(match.via)) return false;
   const owner = current.get(match.via);
   if (!owner || owner.kind !== "A") return false;
@@ -174,19 +272,12 @@ function authorized(root, parent, commit, action, id, previous, current, enforce
   // authorizing every later semantic reuse at this trust boundary.
   const record = authorizationRecords(decision, match.via).find(
     (candidate) =>
-      candidate?.action === action &&
-      candidate?.id === id &&
+      recordCoversChange(candidate, match, action, id, editorialIds) &&
       (!enforceCurrentRecord || !priorFingerprints.has(JSON.stringify(stableValue(candidate)))),
   );
-  return (
-    record?.action === action &&
-    record?.id === id &&
-    typeof record.reason === "string" &&
-    record.reason.trim().length > 0 &&
-    typeof record.new_boundary === "string" &&
-    record.new_boundary.trim().length > 0 &&
-    record.references_updated === true
-  );
+  if (!validAuthorizationRecord(record, action, id)) return false;
+  if (record.action !== "editorial") return true;
+  return previous.get(id)?.editorial === current.get(id)?.editorial;
 }
 
 function prose(node) {
@@ -255,10 +346,35 @@ export function edgeViolations(
   const before = snapshot(root, parent);
   const after = snapshot(root, commit);
   const siblings = siblingParents.map((sha) => snapshot(root, sha));
+  const changedIds = [...after]
+    .filter(([id, entry]) => {
+      const prior = before.get(id);
+      return prior && prior.semantic !== entry.semantic;
+    })
+    .map(([id]) => id)
+    .sort();
+  const individuallyAuthorizedIds = new Set(
+    trailers(root, commit)
+      .filter((entry) => entry.action === "reuse" && entry.ids.length === 1)
+      .map((entry) => entry.ids[0]),
+  );
+  const editorialIds = changedIds.filter((id) => !individuallyAuthorizedIds.has(id));
   const errors = [];
   for (const id of before.keys()) {
     if (after.has(id) || deletedOnSibling(root, parent, id, siblingParents)) continue;
-    if (!authorized(root, parent, commit, "remove", id, before, after, enforceCurrentRecord)) {
+    if (
+      !authorized(
+        root,
+        parent,
+        commit,
+        "remove",
+        id,
+        editorialIds,
+        before,
+        after,
+        enforceCurrentRecord,
+      )
+    ) {
       errors.push(`${parent}..${commit}: silent deletion ${id}`);
     }
   }
@@ -270,7 +386,17 @@ export function edgeViolations(
       enforceSemantic &&
       changed &&
       !sameFromSibling &&
-      !authorized(root, parent, commit, "reuse", id, before, after, enforceCurrentRecord)
+      !authorized(
+        root,
+        parent,
+        commit,
+        "reuse",
+        id,
+        editorialIds,
+        before,
+        after,
+        enforceCurrentRecord,
+      )
     ) {
       errors.push(`${parent}..${commit}: semantic reuse ${id}`);
     }

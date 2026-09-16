@@ -12,7 +12,7 @@ import { after, test } from "node:test";
 
 import { fromMarkdown } from "mdast-util-from-markdown";
 
-import { edgeViolations, git, verifyHistory } from "../tools/knowledge-history.mjs";
+import { definitions, edgeViolations, git, verifyHistory } from "../tools/knowledge-history.mjs";
 
 const BUSINESS_ID = `§${"B-FIXTURE-01"}`;
 const ARCHITECTURE_ID = `§${"A-FIXTURE-01"}`;
@@ -58,6 +58,20 @@ function commit(root, message) {
   git(root, ["add", "-A"]);
   git(root, ["commit", "-qm", message]);
 }
+
+test("editorial surfaces normalize whitespace inside exact literals", () => {
+  const id = `§${"A-WHITESPACE-01"}`;
+  const before = definitions(
+    `# ${id} — Decision\n\n\`REVIEW-START version=1 status=unsupported\`\n`,
+    "before.md",
+  ).get(id);
+  const after = definitions(
+    `# ${id} — Решение\n\n\`REVIEW-START version=1\nstatus=unsupported\`\n`,
+    "after.md",
+  ).get(id);
+  assert.notEqual(before.semantic, after.semantic);
+  assert.equal(before.editorial, after.editorial);
+});
 
 test("the real history is reachable and valid from program input", () => {
   const cutoff = pinned("program_input_sha");
@@ -192,6 +206,106 @@ test("a trailer works only through a same-commit architecture decision", () => {
   commit(
     state.root,
     `authorize reuse\n\nKnowledge-ID-Change: reuse ${BUSINESS_ID} via ${MISSING_ARCHITECTURE_ID}`,
+  );
+  assert.deepEqual(verifyHistory(state.root, state.cutoff), []);
+});
+
+test("one editorial record covers exactly the changed ids on its parent edge", () => {
+  const state = fixture();
+  writeFileSync(
+    join(state.root, "docs", "business.md"),
+    `# Business\n\n### ${BUSINESS_ID} — Русский заголовок\n\nRequirement.\n`,
+  );
+  writeFileSync(
+    join(state.root, "docs", "architecture", "decision.md"),
+    `# ${ARCHITECTURE_ID} — Русский заголовок\n\nServes ${BUSINESS_ID}.\n`,
+  );
+  writeFileSync(
+    join(state.root, "docs", "architecture", "authorization.md"),
+    `# ${MISSING_ARCHITECTURE_ID} — Authorization\n\n\`\`\`yaml\nknowledge_id_change:\n  action: editorial\n  ids:\n    - ${ARCHITECTURE_ID}\n    - ${BUSINESS_ID}\n  reason: Human-facing headings now use the project language.\n  references_updated: true\n\`\`\`\n`,
+  );
+  const validMessage =
+    `authorize editorial wording\n\nKnowledge-ID-Change: editorial ` +
+    `${ARCHITECTURE_ID},${BUSINESS_ID} via ${MISSING_ARCHITECTURE_ID}`;
+  commit(state.root, validMessage);
+  assert.deepEqual(verifyHistory(state.root, state.cutoff), []);
+
+  const parent = git(state.root, ["rev-parse", "HEAD^"]).trim();
+  const authorizationPath = join(state.root, "docs", "architecture", "authorization.md");
+  const validAuthorization = readFileSync(authorizationPath, "utf8");
+  writeFileSync(
+    authorizationPath,
+    validAuthorization.replace(
+      "  references_updated: true",
+      "  new_boundary: Editorial records must not claim a semantic boundary.\n  references_updated: true",
+    ),
+  );
+  git(state.root, ["add", "-A"]);
+  git(state.root, ["commit", "--amend", "-qm", validMessage]);
+  let current = git(state.root, ["rev-parse", "HEAD"]).trim();
+  assert.deepEqual(edgeViolations(state.root, parent, current), [
+    `${parent}..${current}: semantic reuse ${ARCHITECTURE_ID}`,
+    `${parent}..${current}: semantic reuse ${BUSINESS_ID}`,
+  ]);
+
+  writeFileSync(authorizationPath, validAuthorization);
+  git(state.root, ["add", "-A"]);
+  git(state.root, ["commit", "--amend", "-qm", validMessage.replace(`,${BUSINESS_ID}`, "")]);
+  current = git(state.root, ["rev-parse", "HEAD"]).trim();
+  assert.deepEqual(edgeViolations(state.root, parent, current), [
+    `${parent}..${current}: semantic reuse ${ARCHITECTURE_ID}`,
+    `${parent}..${current}: semantic reuse ${BUSINESS_ID}`,
+  ]);
+});
+
+test("editorial authorization preserves literals and cannot remove an id", () => {
+  let state = fixture();
+  writeFileSync(
+    join(state.root, "docs", "business.md"),
+    `# Business\n\n### ${BUSINESS_ID} — Русский заголовок\n\nRequirement with \`new literal\`.\n`,
+  );
+  writeFileSync(
+    join(state.root, "docs", "architecture", "authorization.md"),
+    `# ${MISSING_ARCHITECTURE_ID} — Authorization\n\n\`\`\`yaml\nknowledge_id_change:\n  action: editorial\n  ids:\n    - ${BUSINESS_ID}\n  reason: Human-facing wording changed.\n  references_updated: true\n\`\`\`\n`,
+  );
+  commit(
+    state.root,
+    `change a literal\n\nKnowledge-ID-Change: editorial ${BUSINESS_ID} via ${MISSING_ARCHITECTURE_ID}`,
+  );
+  assert.match(verifyHistory(state.root, state.cutoff).join("\n"), /semantic reuse/);
+
+  state = fixture();
+  writeFileSync(join(state.root, "docs", "business.md"), "# Business\n");
+  writeFileSync(
+    join(state.root, "docs", "architecture", "authorization.md"),
+    `# ${MISSING_ARCHITECTURE_ID} — Authorization\n\n\`\`\`yaml\nknowledge_id_change:\n  action: editorial\n  ids:\n    - ${BUSINESS_ID}\n  reason: Human-facing wording changed.\n  references_updated: true\n\`\`\`\n`,
+  );
+  commit(
+    state.root,
+    `hide a deletion\n\nKnowledge-ID-Change: editorial ${BUSINESS_ID} via ${MISSING_ARCHITECTURE_ID}`,
+  );
+  assert.match(verifyHistory(state.root, state.cutoff).join("\n"), /silent deletion/);
+});
+
+test("editorial and semantic reuse can share one parent edge", () => {
+  const state = fixture();
+  writeFileSync(
+    join(state.root, "docs", "business.md"),
+    `# Business\n\n### ${BUSINESS_ID} — New boundary\n\nDifferent requirement.\n`,
+  );
+  writeFileSync(
+    join(state.root, "docs", "architecture", "decision.md"),
+    `# ${ARCHITECTURE_ID} — Русский заголовок\n\nServes ${BUSINESS_ID}.\n`,
+  );
+  writeFileSync(
+    join(state.root, "docs", "architecture", "authorization.md"),
+    `# ${MISSING_ARCHITECTURE_ID} — Authorization\n\n\`\`\`yaml\nknowledge_id_changes:\n  - action: reuse\n    id: ${BUSINESS_ID}\n    reason: The fixture requirement changed meaning.\n    new_boundary: The id now names the replacement requirement.\n    references_updated: true\n  - action: editorial\n    ids:\n      - ${ARCHITECTURE_ID}\n    reason: The decision heading now uses the project language.\n    references_updated: true\n\`\`\`\n`,
+  );
+  commit(
+    state.root,
+    `mix semantic and editorial changes\n\n` +
+      `Knowledge-ID-Change: reuse ${BUSINESS_ID} via ${MISSING_ARCHITECTURE_ID}\n` +
+      `Knowledge-ID-Change: editorial ${ARCHITECTURE_ID} via ${MISSING_ARCHITECTURE_ID}`,
   );
   assert.deepEqual(verifyHistory(state.root, state.cutoff), []);
 });
