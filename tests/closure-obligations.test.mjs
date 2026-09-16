@@ -524,7 +524,7 @@ const OBLIGATIONS = [
       mech: [/A low-level injected terminal is not a supervised worker resource/],
       wdog: [/`term_` handle is the authorized nudge target/],
       wdedup: [
-        /Перед разрешённой подсказкой шаблонный наблюдатель хранит одну запись с режимом\s+`0600` на указатель бэкенда/u,
+        /Перед разрешённой подсказкой наблюдатель хранит одну запись с режимом\s+`0600` на указатель бэкенда/u,
       ],
     },
   ],
