@@ -19,6 +19,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  createReadStream,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -30,8 +31,14 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { basename, delimiter, dirname, isAbsolute, join } from "node:path";
+import { basename, delimiter, dirname, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import {
+  isPortableModelId,
+  portableCatalogReason,
+  portableCatalogRow,
+} from "./model-catalog-data.mjs";
 
 import { query as claudeQuery } from "@anthropic-ai/claude-agent-sdk";
 
@@ -45,8 +52,14 @@ const ROLES = [
   "e2eTester",
   "testClaude",
   "testCodex",
-  "testOpenCode",
+  "testCodexDesired",
+  "testOpenCodeDesired",
 ];
+
+/** Retired keys stay visible so a settings vocabulary change is never silent. */
+const RETIRED_ROLES = new Map([
+  ["testOpenCode", "configure testOpenCodeDesired for the current optional OpenCode coordinate"],
+]);
 
 /** Only this schema is understood; a newer file is left strictly alone. */
 const SCHEMA_VERSION = 1;
@@ -54,8 +67,15 @@ const SCHEMA_VERSION = 1;
 /** History older than this is not evidence about what the user runs today. */
 const HISTORY_MAX_AGE_DAYS = 31;
 
-/** Ten recent sessions is a hint, never a catalog. */
-const HISTORY_MAX_SESSIONS = 10;
+/** §A-MODELS-01 bounds provider history without silently truncating by file count. */
+const configuredHistoryTimeout = Number(process.env.MO_MODELS_HISTORY_TIMEOUT_MS);
+const HISTORY_TIMEOUT_MS =
+  Number.isSafeInteger(configuredHistoryTimeout) &&
+  configuredHistoryTimeout >= 1 &&
+  configuredHistoryTimeout <= 5_000
+    ? configuredHistoryTimeout
+    : 5_000;
+const HISTORY_BYTE_BUDGET = 64 * 1024 * 1024;
 
 /** Resolving the project is one local `git` call; it may never be the slow part. */
 const GIT_TIMEOUT_MS = 5_000;
@@ -72,7 +92,6 @@ const CATALOG_TIMEOUT_MS =
 const HOME = homedir();
 const SETTINGS_DIR = join(HOME, ".meta-o");
 const SETTINGS_FILE = join(SETTINGS_DIR, "models.json");
-
 /**
  * Where each route's authoritative catalog comes from.
  *
@@ -146,10 +165,15 @@ export function parseSelection(value) {
       `unknown route "${route}" in "${value}"; known: ${Object.keys(ROUTES).join(", ")}`,
     );
   }
+  const model = parts.slice(1, -1).join("/");
+  const effort = parts[parts.length - 1];
+  if (!isPortableModelId(model) || !isPortableModelId(effort)) {
+    throw new Error("selection contains an invalid model or effort identifier");
+  }
   return {
     route,
-    model: parts.slice(1, -1).join("/"),
-    effort: parts[parts.length - 1],
+    model,
+    effort,
   };
 }
 
@@ -158,30 +182,40 @@ export function parseSelection(value) {
 // ships next — possibly a far more expensive model — and a substring test on the
 // generation digit also matches the tail of a release date, which is how
 // `claude-sonnet-4-5-20250929` and `deepseek-v3-4-flash` passed as the approved
-// generation. The provider prefix stays free-form because the real ids live in
-// the user's configuration and are not hardcoded here.
+// generation. Required identities are closed values because an unreviewed
+// suffix is a different provider model, not a harmless display variant.
 const TESTING_PROFILES = {
   testClaude: {
     route: "claude",
     effort: "low",
-    id: /^(?:claude-)?sonnet-?5(?:[.-]\d+)?(?:-\d{8})?$/u,
-    requirement: "testClaude must name an exact sonnet5/low model id through claude",
+    id: /^opus\[1m\]$/u,
+    requirement: "testClaude must be claude/opus[1m]/low",
   },
   testCodex: {
     route: "codex",
     effort: "low",
-    id: /^gpt-5\.6-terra$/u,
-    requirement: "testCodex must be codex/gpt-5.6-terra/low",
+    id: /^gpt-5\.6-sol$/u,
+    requirement: "testCodex must be codex/gpt-5.6-sol/low",
   },
-  testOpenCode: {
+  testCodexDesired: {
+    route: "codex",
+    effort: "max",
+    id: /^gpt-5\.6-luna$/u,
+    requirement: "testCodexDesired must be codex/gpt-5.6-luna/max",
+  },
+  testOpenCodeDesired: {
     route: "opencode",
     effort: "low",
-    id: /^deepseek-?v?4(?:[.-]\d+)?-flash$/u,
-    requirement:
-      "testOpenCode must name an exact deepseek 4 flash model id " +
-      "through opencode at low effort",
+    matches: isApprovedQwen38_27bModel,
+    requirement: "testOpenCodeDesired must be opencode/<provider>/qwen3.8-27b/low",
   },
 };
+
+/** §A-EVAL-01 recognizes only the approved closed Qwen 3.8 27B testing id. */
+function isApprovedQwen38_27bModel(model) {
+  const identifier = String(model).split("/").at(-1)?.toLowerCase() ?? "";
+  return identifier === "qwen3.8-27b";
+}
 
 /** §A-EVAL-01 rejects testing selections outside the approved low-cost routes. */
 export function testingPolicyError(role, value) {
@@ -190,7 +224,9 @@ export function testingPolicyError(role, value) {
   const selection = typeof value === "string" ? parseSelection(value) : value;
   // An OpenCode selection carries `provider/model`; the id is the last segment.
   const identifier = selection.model.split("/").pop() ?? "";
-  const namesApprovedProfile = profile.id.test(identifier.toLowerCase());
+  const namesApprovedProfile = profile.matches
+    ? profile.matches(identifier)
+    : profile.id.test(identifier.toLowerCase());
   if (selection.route !== profile.route || selection.effort !== profile.effort) {
     return profile.requirement;
   }
@@ -320,11 +356,28 @@ function effectiveRoles(settings, key) {
   return merged;
 }
 
+function retiredRoleLocations(settings) {
+  const locations = [];
+  for (const role of RETIRED_ROLES.keys()) {
+    if (settings.defaults?.[role]) locations.push(`defaults.${role}`);
+    for (const [project, value] of Object.entries(settings.projects ?? {})) {
+      if (value?.roles?.[role]) locations.push(`projects.${project}.roles.${role}`);
+    }
+  }
+  return locations;
+}
+
 // ---------------------------------------------------------------------------
 // Catalogs and history
 // ---------------------------------------------------------------------------
 
-const unavailable = (reason) => ({ available: false, models: [], efforts: {}, reason });
+const unavailable = (reason) => ({
+  available: false,
+  models: [],
+  efforts: {},
+  details: {},
+  reason,
+});
 
 /** One `provider/model` per line, comments and blanks dropped. */
 function lineListing(descriptor) {
@@ -335,14 +388,16 @@ function lineListing(descriptor) {
   if (result.error || result.status !== 0) {
     return unavailable(result.error?.message ?? `${descriptor.command} listing failed`);
   }
-  const models = dedupe(
-    String(result.stdout)
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith("#")),
-  );
+  const rows = String(result.stdout)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"));
+  if (rows.some((model) => !isPortableModelId(model))) {
+    return unavailable("model listing contained invalid identifiers");
+  }
+  const models = dedupe(rows).sort();
   return models.length > 0
-    ? { available: true, models, efforts: {}, reason: null }
+    ? { available: true, models, efforts: {}, details: {}, reason: null }
     : unavailable("empty listing");
 }
 
@@ -356,6 +411,45 @@ function lineListing(descriptor) {
  */
 export function parseCodexModels(text) {
   const source = String(text);
+  const json = firstJsonObject(source);
+  let parsed;
+  try {
+    parsed = JSON.parse(json);
+  } catch (error) {
+    return unavailable(`codex debug models returned unparseable JSON: ${error.message}`);
+  }
+  const rows = (parsed?.models ?? []).filter(
+    (model) => model?.visibility === "list" && model?.supported_in_api === true,
+  );
+  if (rows.some((model) => !portableCatalogRow(model))) {
+    return unavailable("codex catalog contained invalid model data");
+  }
+  const efforts = Object.fromEntries(
+    rows
+      .map((model) => [
+        model.slug,
+        (model.supported_reasoning_levels ?? []).map(({ effort }) => effort).filter(Boolean),
+      ])
+      .filter(([, levels]) => levels.length > 0),
+  );
+  const details = Object.fromEntries(
+    rows.map((model) => [
+      model.slug,
+      {
+        label: model.display_name ?? model.name ?? null,
+        description: model.description ?? null,
+        capabilities: model.capabilities ?? null,
+      },
+    ]),
+  );
+  const models = dedupe(rows.map((model) => model.slug).filter(Boolean)).sort();
+  return models.length > 0
+    ? { available: true, models, efforts, details, reason: null }
+    : unavailable("no listable models");
+}
+
+/** Return the first balanced JSON object while ignoring braces inside strings. */
+function firstJsonObject(source) {
   const start = source.indexOf("{");
   let end = -1;
   let depth = 0;
@@ -376,26 +470,7 @@ export function parseCodexModels(text) {
       break;
     }
   }
-  let parsed;
-  try {
-    parsed = JSON.parse(start >= 0 && end > start ? source.slice(start, end) : source);
-  } catch (error) {
-    return unavailable(`codex debug models returned unparseable JSON: ${error.message}`);
-  }
-  const rows = (parsed?.models ?? []).filter(
-    (model) => model?.visibility === "list" && model?.supported_in_api === true,
-  );
-  const efforts = {};
-  for (const model of rows) {
-    const levels = (model.supported_reasoning_levels ?? [])
-      .map((level) => level?.effort)
-      .filter(Boolean);
-    if (levels.length > 0) efforts[model.slug] = levels;
-  }
-  const models = dedupe(rows.map((model) => model.slug).filter(Boolean));
-  return models.length > 0
-    ? { available: true, models, efforts, reason: null }
-    : unavailable("no listable models");
+  return start >= 0 && end > start ? source.slice(start, end) : source;
 }
 
 function codexJsonListing(descriptor) {
@@ -441,7 +516,7 @@ function resolveSystemClaude() {
  * query is then interrupted and returned. This is the one place the helper
  * starts a provider process, and it must stay incapable of spending a token.
  */
-async function claudeSdkListing() {
+async function claudeSdkListingWorker() {
   const claudeExecutable = resolveSystemClaude();
   if (!claudeExecutable) return unavailable("system claude executable not found on PATH");
   const abortController = new AbortController();
@@ -474,14 +549,23 @@ async function claudeSdkListing() {
       ),
     ]);
     const efforts = {};
+    const details = {};
+    if (supported.some((model) => !portableCatalogRow(model))) {
+      return unavailable("Claude catalog contained invalid model data");
+    }
     for (const model of supported) {
       const levels = model.supportedEffortLevels ?? [];
       if (levels.length > 0) efforts[model.value] = levels;
+      details[model.value] = {
+        label: model.displayName ?? model.display_name ?? null,
+        description: model.description ?? null,
+        capabilities: model.capabilities ?? null,
+      };
     }
-    const models = dedupe(supported.map((model) => model.value).filter(Boolean));
+    const models = dedupe(supported.map((model) => model.value).filter(Boolean)).sort();
     listing =
       models.length > 0
-        ? { available: true, models, efforts, reason: null }
+        ? { available: true, models, efforts, details, reason: null }
         : unavailable("SDK reported no supported models");
   } catch (error) {
     listingFailure = error;
@@ -501,6 +585,28 @@ async function claudeSdkListing() {
     return unavailable(`supportedModels() failed: ${listingFailure.message}`);
   }
   return listing;
+}
+
+/** Keep SDK transport failures inside a disposable process so one provider cannot erase the catalog. */
+async function claudeSdkListing() {
+  const result = spawnSync(
+    process.execPath,
+    [fileURLToPath(import.meta.url), "--claude-catalog-worker"],
+    {
+      encoding: "utf8",
+      timeout: CATALOG_TIMEOUT_MS + 2_000,
+      stdio: ["ignore", "pipe", "ignore"],
+    },
+  );
+  if (result.error || result.status !== 0) return unavailable("Claude catalog worker failed");
+  try {
+    const listing = JSON.parse(result.stdout);
+    return listing?.available === true || listing?.available === false
+      ? listing
+      : unavailable("Claude catalog worker returned an invalid result");
+  } catch {
+    return unavailable("Claude catalog worker returned invalid JSON");
+  }
 }
 
 /**
@@ -525,36 +631,71 @@ async function routeCatalog(route) {
   }
 }
 
-/** Every `.jsonl` under a directory, newest first, bounded by age and count. */
-function recentSessionFiles(directory) {
-  if (!directory || !existsSync(directory)) return [];
-  const cutoff = Date.now() - HISTORY_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+/** §A-EVAL-01 probes one exact desired model/effort through the route catalog. */
+export async function probeModelProfile(route, model, effort) {
+  if (!Object.hasOwn(ROUTES, route)) return { status: "unavailable" };
+  if (!isPortableModelId(model) || !isPortableModelId(effort)) return { status: "unavailable" };
+  const catalog = await routeCatalog(route);
+  if (!catalog.available) return { status: "unavailable" };
+  if (!catalog.models.includes(model)) return { status: "not_available" };
+  const efforts = catalog.efforts[model] ?? [];
+  if (efforts.length > 0 && !efforts.includes(effort)) return { status: "not_available" };
+  return { status: "available" };
+}
+
+/** Every regular non-symlink `.jsonl` under a directory, newest first. */
+function recentSessionFiles(directory, started) {
+  const timedOut = () => Date.now() - started >= HISTORY_TIMEOUT_MS;
+  if (!directory || !existsSync(directory)) {
+    return { files: [], unreadable: [], truncated: [], missing: true, timedOut: false };
+  }
+  const cutoff = started - HISTORY_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
   const found = [];
+  const unreadable = [];
+  const truncated = [];
+  let deadlineReached = timedOut();
   const walk = (path, depth) => {
-    if (depth > 6) return;
+    if (deadlineReached) return;
+    if (depth > 6) {
+      truncated.push(relative(directory, path) || ".");
+      return;
+    }
     let entries;
     try {
       entries = readdirSync(path, { withFileTypes: true });
     } catch {
+      unreadable.push(relative(directory, path) || ".");
       return;
     }
     for (const entry of entries) {
+      if (timedOut()) {
+        deadlineReached = true;
+        return;
+      }
       const child = join(path, entry.name);
       if (entry.isDirectory()) {
         walk(child, depth + 1);
+      } else if (entry.isSymbolicLink()) {
+        continue;
       } else if (entry.isFile() && entry.name.endsWith(".jsonl")) {
         try {
           const { mtimeMs } = statSync(child);
           if (mtimeMs >= cutoff) found.push({ path: child, mtimeMs });
         } catch {
-          /* a session file that vanished mid-scan is not an error worth raising */
+          unreadable.push(relative(directory, child));
         }
       }
     }
   };
   walk(directory, 0);
-  found.sort((a, b) => b.mtimeMs - a.mtimeMs);
-  return found.slice(0, HISTORY_MAX_SESSIONS).map((entry) => entry.path);
+  found.sort((a, b) => b.mtimeMs - a.mtimeMs || a.path.localeCompare(b.path));
+  return {
+    files: found.map((entry) => entry.path),
+    unreadable,
+    truncated,
+    missing: false,
+    timedOut: deadlineReached,
+  };
 }
 
 /**
@@ -564,23 +705,142 @@ function recentSessionFiles(directory) {
  * newer generation the settings have not caught up with. They are never
  * presented as the route's catalog.
  */
-function routeHistory(route) {
-  const files = recentSessionFiles(ROUTES[route]?.historyDir);
-  const seen = [];
-  for (const file of files) {
-    let text;
-    try {
-      text = readFileSync(file, "utf8");
-    } catch {
+function collectModels(route, value, state) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+  const candidates = {
+    claude: [value.model, value.message?.model],
+    codex: [
+      value.model,
+      new Set(["session_meta", "turn_context"]).has(value.type) ? value.payload?.model : null,
+    ],
+    opencode: [value.model, value.info?.modelID, value.session?.model],
+  }[route];
+  for (const model of candidates ?? []) {
+    if (model === null || model === undefined || model === "") continue;
+    if (!isPortableModelId(model)) {
+      state.corrupt = true;
       continue;
     }
-    for (const match of text.matchAll(/"model"\s*:\s*"([^"]+)"/g)) seen.push(match[1]);
+    state.seen.push(model);
   }
-  return { sessions: files.length, models: dedupe(seen) };
+}
+
+function collectHistoryLine(route, line, state) {
+  if (!line.trim()) return;
+  try {
+    collectModels(route, JSON.parse(line), state);
+  } catch {
+    state.corrupt = true;
+  }
+}
+
+async function scanHistoryFile(route, file, state, started) {
+  const stream = createReadStream(file);
+  stream.setEncoding("utf8");
+  let carry = "";
+  for await (const chunk of stream) {
+    state.bytesRead += Buffer.byteLength(chunk, "utf8");
+    if (state.bytesRead > HISTORY_BYTE_BUDGET) {
+      state.stopReason = "partial";
+      stream.destroy();
+      break;
+    }
+    carry += chunk;
+    const lines = carry.split("\n");
+    carry = lines.pop() ?? "";
+    lines.forEach((line) => collectHistoryLine(route, line, state));
+    if (Date.now() - started >= HISTORY_TIMEOUT_MS) {
+      state.stopReason = "timeout";
+      stream.destroy();
+      break;
+    }
+  }
+  if (carry.trim() && state.stopReason === "ok") collectHistoryLine(route, carry, state);
+}
+
+async function routeHistory(route) {
+  const directory = ROUTES[route]?.historyDir;
+  const started = Date.now();
+  const discovery = recentSessionFiles(directory, started);
+  const unreadable = [...discovery.unreadable];
+  const truncated = [...discovery.truncated];
+  let scannedFiles = 0;
+  const state = {
+    seen: [],
+    bytesRead: 0,
+    corrupt: false,
+    stopReason: discovery.missing ? "unavailable" : discovery.timedOut ? "timeout" : "ok",
+  };
+
+  for (const file of discovery.files) {
+    if (Date.now() - started >= HISTORY_TIMEOUT_MS) {
+      state.stopReason = "timeout";
+      break;
+    }
+    try {
+      await scanHistoryFile(route, file, state, started);
+      scannedFiles += 1;
+    } catch {
+      unreadable.push(relative(directory, file));
+    }
+    if (state.stopReason === "timeout" || state.stopReason === "partial") break;
+  }
+  if (state.stopReason === "ok" && unreadable.length > 0) state.stopReason = "partial";
+  if (state.stopReason === "ok" && truncated.length > 0) state.stopReason = "partial";
+  if (state.stopReason === "ok" && state.corrupt) state.stopReason = "corrupt";
+  return {
+    complete: state.stopReason === "ok",
+    models: dedupe(state.seen).sort(),
+    scannedFiles,
+    unreadableFiles: dedupe(unreadable).sort().slice(0, 20),
+    truncatedDirectories: dedupe(truncated).sort().slice(0, 20),
+    bytesRead: state.bytesRead,
+    elapsedMs: Date.now() - started,
+    stopReason: state.stopReason,
+  };
 }
 
 function dedupe(values) {
   return [...new Set(values)];
+}
+
+function eligibleRecommendations(provider) {
+  const hasCodingToken = (value) =>
+    /(?:^|[^\p{L}\p{N}_])(?:code|coding|software(?:[ -]engineering)?)(?:$|[^\p{L}\p{N}_])/iu.test(
+      value,
+    );
+  return provider.catalog.models.filter(
+    ({ id, label, description, capabilities, efforts }) =>
+      efforts.includes("high") &&
+      // §A-EVAL-01 keeps Astra/Fable-class models visible in the catalogue but
+      // never turns them into the unattended default, regardless of metadata.
+      !/(?:^|[-_./ ])(?:astra|fable)(?:$|[-_./ ])/iu.test(
+        [id, label].filter((value) => typeof value === "string").join(" "),
+      ) &&
+      (hasCodingToken(
+        [label, description].filter((value) => typeof value === "string").join(" "),
+      ) ||
+        (Array.isArray(capabilities) ? capabilities : [capabilities])
+          .filter((value) => typeof value === "string")
+          .map((value) => value.trim().replace(/_+/gu, "-"))
+          .some(hasCodingToken)),
+  );
+}
+
+function defaultRecommendation(provider) {
+  const eligible = eligibleRecommendations(provider);
+  if (eligible.length === 1) return eligible[0];
+  const recentlyUsed = new Set(provider.history.models);
+  const recent = eligible.filter(({ id }) => recentlyUsed.has(id));
+  if (recent.length === 1) return recent[0];
+  return null;
+}
+
+function noRecommendationReason(provider) {
+  const eligible = eligibleRecommendations(provider);
+  return eligible.length === 0
+    ? "catalog_has_no_admissible_coding_positioning_evidence"
+    : `catalog_has_${eligible.length}_ambiguous_admissible_candidates`;
 }
 
 // ---------------------------------------------------------------------------
@@ -658,39 +918,65 @@ async function commandCatalog(routeFilter, asJson) {
   if (routeFilter !== null && !Object.hasOwn(ROUTES, routeFilter)) {
     throw new Error(`unknown route "${routeFilter}"; known: ${Object.keys(ROUTES).join(", ")}`);
   }
-  const report = {};
+  const providers = [];
   for (const route of Object.keys(ROUTES)) {
     if (routeFilter && route !== routeFilter) continue;
     const catalog = await routeCatalog(route);
-    const history = routeHistory(route);
-    report[route] = {
-      source: ROUTES[route].catalog?.kind ?? null,
-      catalog: catalog.available ? catalog.models : null,
-      efforts: catalog.efforts,
-      catalogUnavailableReason: catalog.available ? null : catalog.reason,
-      recentlyUsed: history.models,
-      recentSessionsRead: history.sessions,
-    };
+    const history = await routeHistory(route);
+    providers.push({
+      route,
+      catalog: {
+        status: catalog.available ? "ok" : "unavailable",
+        exhaustive: ROUTES[route].catalog?.exhaustive === true,
+        models: catalog.models.map((id) => ({
+          id,
+          label: catalog.details[id]?.label ?? null,
+          description: catalog.details[id]?.description ?? null,
+          capabilities: catalog.details[id]?.capabilities ?? null,
+          efforts: catalog.efforts[id] ?? [],
+          sourceKind: ROUTES[route].catalog?.kind ?? null,
+        })),
+        reason: catalog.available ? null : portableCatalogReason(catalog.reason),
+      },
+      history,
+    });
   }
+  const report = { contract: "meta-o.model-discovery.v2", providers };
   if (asJson) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     return;
   }
-  for (const [route, data] of Object.entries(report)) {
-    if (data.catalog) {
-      process.stdout.write(`${route}: ${data.catalog.length} models (via ${data.source})\n`);
-      for (const model of data.catalog) {
-        const levels = data.efforts[model];
-        process.stdout.write(`  ${model}${levels ? `  [${levels.join(" ")}]` : ""}\n`);
+  for (const provider of providers) {
+    if (provider.catalog.status === "ok") {
+      process.stdout.write(
+        `${provider.route}: ${provider.catalog.models.length} models ` +
+          `(via ${provider.catalog.models[0]?.sourceKind ?? "unknown"})\n`,
+      );
+      for (const model of provider.catalog.models) {
+        process.stdout.write(
+          `  ${model.id}${model.efforts.length > 0 ? `  [${model.efforts.join(" ")}]` : ""}\n`,
+        );
       }
     } else {
-      process.stdout.write(`${route}: catalog unavailable (${data.catalogUnavailableReason})\n`);
+      process.stdout.write(`${provider.route}: catalog unavailable (${provider.catalog.reason})\n`);
     }
-    if (data.recentlyUsed.length > 0) {
+    if (provider.history.models.length > 0) {
       process.stdout.write(
-        `  recently used (${data.recentSessionsRead} sessions, hint only, not a catalog): ` +
-          `${data.recentlyUsed.join(", ")}\n`,
+        `  recently used (${provider.history.scannedFiles} files, hint only, not a catalog): ` +
+          `${provider.history.models.join(", ")}\n`,
       );
+    }
+    if (!provider.history.complete) {
+      process.stdout.write(`  history incomplete (${provider.history.stopReason})\n`);
+    }
+    const preferred = defaultRecommendation(provider);
+    if (preferred) {
+      process.stdout.write(
+        `  default recommendation: ${provider.route}/${preferred.id}/high ` +
+          `(catalog coding-positioning evidence)\n`,
+      );
+    } else if (new Set(["codex", "claude"]).has(provider.route)) {
+      process.stdout.write(`  no_default_recommendation (${noRecommendationReason(provider)})\n`);
     }
   }
 }
@@ -798,7 +1084,9 @@ async function commandSet(settings, key, assignments, useDefaults, force) {
 /** Remove a role override so the layer below it applies again. */
 function commandUnset(settings, key, roles, useDefaults) {
   for (const role of roles) {
-    if (!ROLES.includes(role)) throw new Error(`unknown role "${role}"`);
+    if (!ROLES.includes(role) && !RETIRED_ROLES.has(role)) {
+      throw new Error(`unknown role "${role}"`);
+    }
     if (useDefaults) delete settings.defaults?.[role];
     else delete settings.projects?.[key]?.roles?.[role];
   }
@@ -830,7 +1118,7 @@ async function commandCheckUpgrades(settings, key, asJson) {
     }
     if (!available.has(current.route)) {
       const catalog = await routeCatalog(current.route);
-      const history = routeHistory(current.route);
+      const history = await routeHistory(current.route);
       available.set(current.route, dedupe([...catalog.models, ...history.models]));
     }
     const successor = findUpgrade(current, available.get(current.route) ?? []);
@@ -1013,6 +1301,13 @@ async function main() {
     }
   }
 
+  for (const location of retiredRoleLocations(settings)) {
+    const role = location.split(".").at(-1);
+    process.stderr.write(
+      `mo-models: retired settings role ${location} is ignored; ${RETIRED_ROLES.get(role)}.\n`,
+    );
+  }
+
   try {
     // Resolved on demand: `--catalog` and `--dismiss-upgrade` are not scoped to a
     // project, and neither should pay for a `git` call to learn which one it is.
@@ -1052,8 +1347,16 @@ function invokedDirectly() {
 if (invokedDirectly()) {
   // A rejected top-level promise would exit 0 on some Node versions; a settings
   // editor that reports success after failing is the one outcome to rule out.
-  main().catch((error) => {
-    process.stderr.write(`mo-models: ${error.message}\n`);
-    process.exitCode = 1;
-  });
+  if (process.argv.length === 3 && process.argv[2] === "--claude-catalog-worker") {
+    claudeSdkListingWorker()
+      .then((listing) => process.stdout.write(`${JSON.stringify(listing)}\n`))
+      .catch(() => {
+        process.exitCode = 1;
+      });
+  } else {
+    main().catch((error) => {
+      process.stderr.write(`mo-models: ${error.message}\n`);
+      process.exitCode = 1;
+    });
+  }
 }

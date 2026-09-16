@@ -1,10 +1,13 @@
 ---
 name: mo-e2e
-description: Run the end-to-end scenarios that genuinely require an agent against one frozen full candidate SHA and report complete per-scenario evidence without editing the candidate.
+description: Use only when the user explicitly requests mo-e2e or an active mo-orchestrate-orca calls it; verify agent-required scenarios on one frozen exact SHA.
 license: MIT
 ---
 
 # Agent-required end-to-end verification
+
+Start only when the user names `mo-e2e` or the active orchestration skill calls
+it. A generic request to run tests does not activate this agent lifecycle.
 
 Act as a separate read-only E2E actor. Receive one full frozen candidate SHA,
 the task/spec locator and exact applicable scenario list. Read the project's E2E
@@ -36,3 +39,13 @@ pass.
 Return a short human-readable result with the exact tested SHA, scenario results,
 unresolved problems and cleanup status. Do not create a receipt, manifest,
 registry, digest, tracked evidence ledger or external sink.
+
+Use one run-wide 300000 ms blocking waiter for active E2E actors. A quiet
+timeout permits one public liveness snapshot and immediate re-arm without
+narration; one repeated transport failure gives `UNKNOWN`. Task bytes wait for
+a proven normal agent prompt and every resource must preserve the initial Orca
+project-registration inventory.
+
+## Meta-O calls
+
+- none

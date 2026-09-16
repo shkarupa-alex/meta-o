@@ -1,0 +1,13 @@
+{
+  "contract": "recorded-cli-help.v2",
+  "binary": "gh",
+  "binaryIdentity": "home-relative:.local/bin/gh",
+  "resolution": "one absolute path with its home prefix redacted",
+  "version": "gh version 2.96.0 (2026-07-02)",
+  "observations": [
+    { "invokedBinary": "home-relative:.local/bin/gh", "command": "gh issue list --help", "exitStatus": 0, "provenance": "stdout", "output": "USAGE\n  gh issue list [flags]\n\nFLAGS\n  -L, --limit int          Maximum number of issues to fetch (default 30)\n  -s, --state string       Filter by state: {open|closed|all} (default \"open\")\n      --json fields        Output JSON with the specified fields\n\nJSON FIELDS\n  state, stateReason, title, updatedAt, url" },
+    { "invokedBinary": "home-relative:.local/bin/gh", "command": "gh search issues --help", "exitStatus": 0, "provenance": "stdout", "output": "USAGE\n  gh search issues [<query>] [flags]\n\nFLAGS\n  -L, --limit int              Maximum number of results to fetch (default 30)\n      --state string           Filter based on state: {open|closed}\n      --json fields            Output JSON with the specified fields\n\nJSON FIELDS\n  repository, state, title, updatedAt, url" },
+    { "invokedBinary": "home-relative:.local/bin/gh", "command": "gh issue create --help", "exitStatus": 0, "provenance": "stdout", "output": "USAGE\n  gh issue create [flags]\n\nFLAGS\n  -F, --body-file file       Read body text from file (use \"-\" to read from standard input)\n  -t, --title string         Supply a title. Will prompt for one otherwise." },
+    { "invokedBinary": "home-relative:.local/bin/gh", "command": "gh issue comment --help", "exitStatus": 0, "provenance": "stdout", "output": "USAGE\n  gh issue comment {<number> | <url>} [flags]\n\nFLAGS\n  -F, --body-file file   Read body text from file (use \"-\" to read from standard input)" }
+  ]
+}

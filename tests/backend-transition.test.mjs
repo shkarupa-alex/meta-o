@@ -22,6 +22,7 @@ import { fileURLToPath } from "node:url";
 
 import MarkdownIt from "markdown-it";
 
+import { backlogEntries, inspectBacklog } from "../tools/backlog-empty.mjs";
 import { SYSTEM_PATH, exposeFlock, fakeOrca } from "./fixtures/orca-control.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -105,11 +106,15 @@ test("internal Markdown links resolve and use target H1 titles as labels", () =>
         ) {
           if (["text", "code_inline"].includes(token.children[index].type)) {
             label.push(token.children[index].content);
+          } else if (["softbreak", "hardbreak"].includes(token.children[index].type)) {
+            label.push(" ");
           }
         }
+        const normalizedLabel = label.join("").replace(/\s+/gu, " ").trim();
+        const normalizedTitle = targetTokens[h1 + 1].content.replace(/\s+/gu, " ").trim();
         assert.ok(
-          label.join("").includes(targetTokens[h1 + 1].content),
-          `${path}: "${label.join("")}" does not contain "${targetTokens[h1 + 1].content}"`,
+          normalizedLabel.includes(normalizedTitle),
+          `${path}: "${normalizedLabel}" does not contain "${normalizedTitle}"`,
         );
       }
     }
@@ -142,51 +147,18 @@ test("entry contracts link every essential knowledge document", () => {
   }
 });
 
-function backlogEntries(source) {
-  const tokens = markdown.parse(source, {});
-  const entries = [];
-  for (let index = 0; index < tokens.length; index += 1) {
-    if (tokens[index].type !== "heading_open" || tokens[index].tag !== "h3") continue;
-    const title = tokens[index + 1].content;
-    const body = [];
-    for (index += 3; index < tokens.length; index += 1) {
-      if (tokens[index].type === "heading_open" && Number(tokens[index].tag.slice(1)) <= 3) {
-        index -= 1;
-        break;
-      }
-      if (tokens[index].type === "inline") body.push(tokens[index].content);
-    }
-    entries.push({ title, body: body.join("\n") });
-  }
-  return { entries, tokens };
-}
-
 test("the backlog schema accepts empty state and validates every future deferral", () => {
   const source = readFileSync(join(ROOT, "docs", "backlog.md"), "utf8");
-  const { entries, tokens } = backlogEntries(source);
-  // The document keeps its two structural headings, and every heading after
-  // them is an entry. Requiring an empty list here would make the project
-  // instruction to record a real deferral fail the gate that asks for it.
-  const structure = tokens
-    .filter((entry) => entry.type === "heading_open")
-    .map((entry) => ({ tag: entry.tag, title: tokens[tokens.indexOf(entry) + 1].content }));
-  assert.deepEqual(structure.slice(0, 2), [
-    { tag: "h1", title: "Бэклог" },
-    { tag: "h2", title: "Открыто" },
-  ]);
-  assert.deepEqual(
-    structure.slice(2).filter(({ tag }) => tag !== "h3"),
-    [],
-  );
-  assert.deepEqual(
-    entries.map(({ title }) => title),
-    structure.slice(2).map(({ title }) => title),
+  const entries = backlogEntries(source);
+  assert.ok(
+    new Set(["empty", "not_empty"]).has(inspectBacklog(source).kind),
+    "ordinary QC validates the live schema without requiring lifecycle closure",
   );
 
   const future = backlogEntries(
     "# Бэклог\n\n## Открыто\n\n### Deferred\n\n**Причина.** R\n\n" +
       "**Практическое влияние.** I\n\n**Следующий шаг.** N\n",
-  ).entries;
+  );
   assert.equal(future.length, 1);
   for (const entry of [...entries, ...future]) {
     for (const field of ["Причина.", "Практическое влияние.", "Следующий шаг."]) {

@@ -12,7 +12,7 @@
     "skills": "node tools/build-skills.mjs",
     "lint": "markdownlint-cli2 && prettier --check .",
     "format": "prettier --write .",
-    "test": "node --test \"tests/*.test.mjs\""
+    "test": "make mo-test"
   },
   "devDependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.191",

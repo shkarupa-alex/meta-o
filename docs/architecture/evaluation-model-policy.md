@@ -1,4 +1,4 @@
-# §A-EVAL-01 — Model actors запускаются только по применимости и на approved profile
+# §A-EVAL-01 — Модельные исполнители запускаются только по применимости и на одобренном профиле
 
 Статус: принято.
 
@@ -6,40 +6,91 @@
 knowledge_id_changes:
   - action: reuse
     id: §A-EVAL-01
-    reason: Решение дополнено проверкой native execution identity и read-path policy.
-    new_boundary: Решение определяет и выбор профиля, и доказательство фактического запуска.
+    reason:
+      Review закрыл ложную неприменимость, required unavailability и
+      самодекларируемое происхождение case observations.
+    new_boundary:
+      Каждый v3 case типом action ссылается на exact execution и bounded
+      locator; v2 получает полную проверку frozen формы только для typed
+      diagnostic.
     references_updated: true
   - action: reuse
     id: §B-EVAL-01
-    reason: Бизнес-тезис уточнён после отделения локальной orchestration capability.
-    new_boundary: Тезис относится только к low-cost testing actors, а не к orchestrator.
+    reason:
+      Testing policy теперь требует оба vendor-diverse low-effort profiles для
+      каждого applicable case.
+    new_boundary:
+      Required Codex/Claude coordinates блокируют; desired Luna/OpenCode
+      coordinates materialize availability.
+    references_updated: true
+  - action: reuse
+    id: §B-EVAL-01
+    reason:
+      Desired OpenCode coordinate закреплена за точным model id вместо
+      неоднозначного названия семейства.
+    new_boundary:
+      Desired OpenCode profile принимает только
+      opencode/<provider>/qwen3.8-27b/low и сообщает этот literal при отказе.
+    references_updated: true
+  - action: reuse
+    id: §A-EVAL-01
+    reason:
+      Решение фиксирует authorization record для точного desired OpenCode model
+      id вместе с изменением бизнес-границы.
+    new_boundary:
+      История §A-EVAL-01 сохраняет отдельную запись о каждом повторном
+      использовании §B-EVAL-01 вместо опоры на прежнюю запись.
     references_updated: true
 ```
 
 ## Решение
 
-Детерминированный test/fixture является первым способом доказательства. Model
-actor запускается только для named scenario, который нельзя равноценно доказать
-детерминированно. Запуск использует выбор из единственного user-owned
-`~/.meta-o/models.json`, сверяет requested/effective route, model и effort и не
-делает автоматический fallback.
+Детерминированный тест или фикстура — основной способ доказательства. Модельный
+исполнитель запускается только для именованного сценария, который нельзя
+равноценно доказать детерминированно. Запуск использует выбор из единственного
+пользовательского `~/.meta-o/models.json`, сверяет запрошенные и фактические
+маршрут, модель и уровень рассуждений и не применяет автоматический резервный
+вариант.
 
-Для testing применяются Claude `sonnet5/low`, Codex `gpt-5.6-terra/low` и
-настроенная effective identity профиля OpenCode `deepseek 4 flash`. Более дорогая
-модель или effort требуют нового разрешения пользователя. Неприменимый сценарий
-имеет `not_applicable`; применимый, но не запущенный — `blocked|not_run`, не
-`PASS`.
+Каждый применимый оценочный случай запускается на Claude `opus[1m]/low` и Codex
+`gpt-5.6-sol/low`. Доказательство v3 связывает случай, id контракта, уровень,
+профиль матрицы, кандидата, запрошенные и фактические модель с уровнем
+рассуждений и нативную идентичность среды агента. Координата доказательства
+фиксирована как `(skillRevision, caseId, matrixProfile, repetition=1)`:
+`observedAction` равен `case_evaluation:<execution.id>` или
+`availability_probe:<execution.id>`, а `evidenceRef` даёт ограниченный публичный
+указатель. `file:` и `fixture:` принимают только путь относительно репозитория
+без выхода наружу; повторный запуск не создаёт дополнительного принимаемого
+доказательства и не оправдывает лишний расход модельного исполнителя.
+Неприменимый сценарий имеет доказанный `not_applicable`; недоступная
+обязательная координата — `blocked|not_run`, не `PASS`. `not_applicable`
+принимается только при наличии точного правила применимости в корпусе самого
+случая, с этим правилом в наблюдении и без якобы наблюдённых `oracle`. Если
+корпус такого правила не задаёт, модельный исполнитель не может объявить случай
+неприменимым. Недоступная обязательная координата сохраняет запрошенную
+идентичность, но несёт `effective: null`, типизированную причину недоступности и
+ненулевой код выхода нативной пробы; все её случаи остаются `blocked|not_run` и
+поэтому блокируют проверку. Ни одна недоступная координата не может заявлять
+выполненный `oracle`; её действие и указатель описывают только реальную пробу
+доступности.
 
-Критический Qwen/OpenCode profile остаётся отдельной проверкой orchestration и не
-заменяется DeepSeek comparator. Evidence хранит scenario id, candidate SHA,
-requested/effective identity, harness version и результат, но не secrets или
-полные transcripts.
+Желаемые координаты Codex `gpt-5.6-luna/max` и OpenCode/Qwen материализуются как
+`not_available`, когда отсутствуют. Запущенный `fail|unknown` блокирует.
+Требуется полное декартово произведение обязательных профилей; повтор составной
+идентичности запрещён; доказательство v2 читается со старой формой только как
+`{status: legacy_v2, accepted: false}` и лишь после полной проверки
+зафиксированных формы v2, словаря, идентичности, исполнения, корпуса, ревизии и
+связей `oracle`. Оно не может закрыть проверку реальным запуском.
 
-Решение служит §B-EVAL-01, §B-CONTROL-01, §B-PORTABILITY-07 и
-§B-PORTABILITY-08.
+Критический профиль Qwen/OpenCode остаётся отдельной проверкой оркестрации и не
+заменяется сравнением с DeepSeek. Доказательство хранит id сценария, SHA
+кандидата, запрошенную и фактическую идентичность, версию среды агента и
+результат, но не секреты или полные расшифровки.
+
+Решение служит §B-EVAL-01, §B-CONTROL-01, §B-PORTABILITY-07 и §B-PORTABILITY-08.
 
 ## Если §A-EVAL-01 отменяется
 
-Станут лишними policy fixtures, проверка effective identity и distinction между
-`not_applicable`, `not_run` и `PASS`. Изменение допустимо только вместе с новой
-границей расходов и authority.
+Станут лишними фикстуры политики, проверка фактической идентичности и различие
+между `not_applicable`, `not_run` и `PASS`. Изменение допустимо только вместе с
+новой границей расходов и полномочий.

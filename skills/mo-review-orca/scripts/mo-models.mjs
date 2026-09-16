@@ -4,6 +4,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  createReadStream,
   existsSync as existsSync2,
   mkdirSync as mkdirSync2,
   readFileSync as readFileSync2,
@@ -15,8 +16,103 @@ import {
   writeFileSync
 } from "node:fs";
 import { homedir } from "node:os";
-import { basename, delimiter, dirname, isAbsolute, join } from "node:path";
+import { basename, delimiter, dirname, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+
+// shared/scripts/public-data.mjs
+import { posix, win32 } from "node:path";
+var PATTERNS = [
+  [
+    "credential",
+    /\b(?:Authorization|Proxy-Authorization)\s*["']?\s*:\s*["']?\s*(?:Basic|Bearer|Digest|Negotiate)\s+\S+/iu
+  ],
+  [
+    "credential",
+    /\b[a-z][a-z0-9+.-]*:\/\/[^/\s:@]+:[^@\s/]+@/iu,
+    (value) => value.includes("://") && value.includes("@")
+  ],
+  ["credential", /-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----/u],
+  [
+    "credential",
+    /(?:\bBearer\s+|(?:(?:access|refresh|auth|api|id)[_-]?token|secret[_-]?access[_-]?key|client[_-]?secret|private[_-]?key|api[_-]?key|password|passphrase|credential|token|secret)\s*["']?\s*[:=]|\b(?:gh[opsu]_[A-Za-z0-9]{8,}|glpat-[A-Za-z0-9_-]{8,}|sk-[A-Za-z0-9_-]{8,}))/iu
+  ],
+  ["environment_dump", /\b(?:HOME|PATH|USER|HOSTNAME|SHELL|LANG|CI)=\S+/u],
+  ["private_hostname", /\b[a-z0-9-]+\.(?:internal|local|lan|corp)\b/iu],
+  [
+    "personal_data",
+    /\b[A-Z0-9._%+-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)+\b/iu,
+    (value) => value.includes("@")
+  ],
+  [
+    "internal_context",
+    /(?:internal specification|client context|customer context|session transcript)/iu
+  ]
+];
+function containsAbsoluteMachinePath(value) {
+  if (value.toLowerCase().includes("file://")) return true;
+  return value.split(/[\s"'`()<>{},;]+/u).some((token) => {
+    try {
+      const url = new URL(token);
+      if (url.protocol === "http:" || url.protocol === "https:") return false;
+    } catch {
+    }
+    if (posix.isAbsolute(token) || win32.isAbsolute(token)) return true;
+    return /(?:^|[^A-Za-z0-9._/\\])\/(?!\/)/u.test(token) || /(?:^|[^A-Za-z0-9._/\\])\\\\[^\\]/u.test(token) || /[A-Za-z]:[\\/]/u.test(token);
+  });
+}
+function forbiddenPublicDataReason(value) {
+  if (typeof value !== "string") return null;
+  const environmentRows = value.split(/\r?\n/u).filter((line) => /^[A-Z_][A-Z0-9_]*=.*$/u.test(line));
+  if (environmentRows.length >= 2) return "environment_dump";
+  const patternReason = PATTERNS.find(
+    ([, pattern, applies]) => (!applies || applies(value)) && pattern.test(value)
+  )?.[0] ?? null;
+  return patternReason ?? (containsAbsoluteMachinePath(value) ? "machine_path" : null);
+}
+
+// shared/scripts/model-catalog-data.mjs
+var MODEL_ID_MAX_BYTES = 256;
+var DISPLAY_TEXT_MAX_BYTES = 1024;
+function isPortableModelId(value) {
+  if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > MODEL_ID_MAX_BYTES) {
+    return false;
+  }
+  if (value === "" || /[\p{Cc}\p{Z}\s\\]/u.test(value) || value.startsWith("/")) return false;
+  const segments = value.split("/");
+  return segments.every(
+    (segment) => segment !== "." && segment !== ".." && /^[A-Za-z0-9][A-Za-z0-9._+:[\]()-]*$/u.test(segment)
+  );
+}
+function isPortableDisplayText(value) {
+  if (value === null || value === void 0) return true;
+  if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > DISPLAY_TEXT_MAX_BYTES) {
+    return false;
+  }
+  return !/[\p{Cc}]/u.test(value) && forbiddenPublicDataReason(value) === null;
+}
+function portableCatalogRow(model) {
+  return isPortableModelId(model?.slug ?? model?.value) && catalogEfforts(model).every(isPortableModelId) && catalogDisplayValues(model).every(isPortableDisplayText);
+}
+function catalogEfforts(model) {
+  const reasoning = model?.supported_reasoning_levels ?? [];
+  return [...reasoning.map(({ effort }) => effort), ...model?.supportedEffortLevels ?? []];
+}
+function catalogDisplayValues(model) {
+  const capabilities = model?.capabilities;
+  return [
+    model?.display_name,
+    model?.displayName,
+    model?.name,
+    model?.description,
+    ...Array.isArray(capabilities) ? capabilities : [capabilities]
+  ];
+}
+function portableCatalogReason(reason) {
+  if (typeof reason !== "string" || Buffer.byteLength(reason, "utf8") > DISPLAY_TEXT_MAX_BYTES || forbiddenPublicDataReason(reason) !== null) {
+    return "catalog unavailable with a non-portable diagnostic";
+  }
+  return reason;
+}
 
 // node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs
 import { createRequire as qz } from "node:module";
@@ -19565,11 +19661,17 @@ var ROLES = [
   "e2eTester",
   "testClaude",
   "testCodex",
-  "testOpenCode"
+  "testCodexDesired",
+  "testOpenCodeDesired"
 ];
+var RETIRED_ROLES = /* @__PURE__ */ new Map([
+  ["testOpenCode", "configure testOpenCodeDesired for the current optional OpenCode coordinate"]
+]);
 var SCHEMA_VERSION = 1;
 var HISTORY_MAX_AGE_DAYS = 31;
-var HISTORY_MAX_SESSIONS = 10;
+var configuredHistoryTimeout = Number(process.env.MO_MODELS_HISTORY_TIMEOUT_MS);
+var HISTORY_TIMEOUT_MS = Number.isSafeInteger(configuredHistoryTimeout) && configuredHistoryTimeout >= 1 && configuredHistoryTimeout <= 5e3 ? configuredHistoryTimeout : 5e3;
+var HISTORY_BYTE_BUDGET = 64 * 1024 * 1024;
 var GIT_TIMEOUT_MS = 5e3;
 var configuredCatalogTimeout = Number(process.env.MO_MODELS_CATALOG_TIMEOUT_MS);
 var CATALOG_TIMEOUT_MS = Number.isSafeInteger(configuredCatalogTimeout) && configuredCatalogTimeout >= 100 && configuredCatalogTimeout <= 2e4 ? configuredCatalogTimeout : 2e4;
@@ -19606,38 +19708,53 @@ function parseSelection(value) {
       `unknown route "${route}" in "${value}"; known: ${Object.keys(ROUTES).join(", ")}`
     );
   }
+  const model = parts.slice(1, -1).join("/");
+  const effort = parts[parts.length - 1];
+  if (!isPortableModelId(model) || !isPortableModelId(effort)) {
+    throw new Error("selection contains an invalid model or effort identifier");
+  }
   return {
     route,
-    model: parts.slice(1, -1).join("/"),
-    effort: parts[parts.length - 1]
+    model,
+    effort
   };
 }
 var TESTING_PROFILES = {
   testClaude: {
     route: "claude",
     effort: "low",
-    id: /^(?:claude-)?sonnet-?5(?:[.-]\d+)?(?:-\d{8})?$/u,
-    requirement: "testClaude must name an exact sonnet5/low model id through claude"
+    id: /^opus\[1m\]$/u,
+    requirement: "testClaude must be claude/opus[1m]/low"
   },
   testCodex: {
     route: "codex",
     effort: "low",
-    id: /^gpt-5\.6-terra$/u,
-    requirement: "testCodex must be codex/gpt-5.6-terra/low"
+    id: /^gpt-5\.6-sol$/u,
+    requirement: "testCodex must be codex/gpt-5.6-sol/low"
   },
-  testOpenCode: {
+  testCodexDesired: {
+    route: "codex",
+    effort: "max",
+    id: /^gpt-5\.6-luna$/u,
+    requirement: "testCodexDesired must be codex/gpt-5.6-luna/max"
+  },
+  testOpenCodeDesired: {
     route: "opencode",
     effort: "low",
-    id: /^deepseek-?v?4(?:[.-]\d+)?-flash$/u,
-    requirement: "testOpenCode must name an exact deepseek 4 flash model id through opencode at low effort"
+    matches: isApprovedQwen38_27bModel,
+    requirement: "testOpenCodeDesired must be opencode/<provider>/qwen3.8-27b/low"
   }
 };
+function isApprovedQwen38_27bModel(model) {
+  const identifier = String(model).split("/").at(-1)?.toLowerCase() ?? "";
+  return identifier === "qwen3.8-27b";
+}
 function testingPolicyError(role, value) {
   const profile = TESTING_PROFILES[role];
   if (!profile) return null;
   const selection = typeof value === "string" ? parseSelection(value) : value;
   const identifier = selection.model.split("/").pop() ?? "";
-  const namesApprovedProfile = profile.id.test(identifier.toLowerCase());
+  const namesApprovedProfile = profile.matches ? profile.matches(identifier) : profile.id.test(identifier.toLowerCase());
   if (selection.route !== profile.route || selection.effort !== profile.effort) {
     return profile.requirement;
   }
@@ -19720,7 +19837,23 @@ function effectiveRoles(settings, key) {
   }
   return merged;
 }
-var unavailable = (reason) => ({ available: false, models: [], efforts: {}, reason });
+function retiredRoleLocations(settings) {
+  const locations = [];
+  for (const role of RETIRED_ROLES.keys()) {
+    if (settings.defaults?.[role]) locations.push(`defaults.${role}`);
+    for (const [project, value] of Object.entries(settings.projects ?? {})) {
+      if (value?.roles?.[role]) locations.push(`projects.${project}.roles.${role}`);
+    }
+  }
+  return locations;
+}
+var unavailable = (reason) => ({
+  available: false,
+  models: [],
+  efforts: {},
+  details: {},
+  reason
+});
 function lineListing(descriptor) {
   const result = spawnSync(descriptor.command, descriptor.args, {
     encoding: "utf8",
@@ -19729,13 +19862,48 @@ function lineListing(descriptor) {
   if (result.error || result.status !== 0) {
     return unavailable(result.error?.message ?? `${descriptor.command} listing failed`);
   }
-  const models = dedupe(
-    String(result.stdout).split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("#"))
-  );
-  return models.length > 0 ? { available: true, models, efforts: {}, reason: null } : unavailable("empty listing");
+  const rows = String(result.stdout).split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
+  if (rows.some((model) => !isPortableModelId(model))) {
+    return unavailable("model listing contained invalid identifiers");
+  }
+  const models = dedupe(rows).sort();
+  return models.length > 0 ? { available: true, models, efforts: {}, details: {}, reason: null } : unavailable("empty listing");
 }
 function parseCodexModels(text) {
   const source = String(text);
+  const json = firstJsonObject(source);
+  let parsed;
+  try {
+    parsed = JSON.parse(json);
+  } catch (error) {
+    return unavailable(`codex debug models returned unparseable JSON: ${error.message}`);
+  }
+  const rows = (parsed?.models ?? []).filter(
+    (model) => model?.visibility === "list" && model?.supported_in_api === true
+  );
+  if (rows.some((model) => !portableCatalogRow(model))) {
+    return unavailable("codex catalog contained invalid model data");
+  }
+  const efforts = Object.fromEntries(
+    rows.map((model) => [
+      model.slug,
+      (model.supported_reasoning_levels ?? []).map(({ effort }) => effort).filter(Boolean)
+    ]).filter(([, levels]) => levels.length > 0)
+  );
+  const details = Object.fromEntries(
+    rows.map((model) => [
+      model.slug,
+      {
+        label: model.display_name ?? model.name ?? null,
+        description: model.description ?? null,
+        capabilities: model.capabilities ?? null
+      }
+    ])
+  );
+  const models = dedupe(rows.map((model) => model.slug).filter(Boolean)).sort();
+  return models.length > 0 ? { available: true, models, efforts, details, reason: null } : unavailable("no listable models");
+}
+function firstJsonObject(source) {
   const start = source.indexOf("{");
   let end = -1;
   let depth = 0;
@@ -19756,22 +19924,7 @@ function parseCodexModels(text) {
       break;
     }
   }
-  let parsed;
-  try {
-    parsed = JSON.parse(start >= 0 && end > start ? source.slice(start, end) : source);
-  } catch (error) {
-    return unavailable(`codex debug models returned unparseable JSON: ${error.message}`);
-  }
-  const rows = (parsed?.models ?? []).filter(
-    (model) => model?.visibility === "list" && model?.supported_in_api === true
-  );
-  const efforts = {};
-  for (const model of rows) {
-    const levels = (model.supported_reasoning_levels ?? []).map((level) => level?.effort).filter(Boolean);
-    if (levels.length > 0) efforts[model.slug] = levels;
-  }
-  const models = dedupe(rows.map((model) => model.slug).filter(Boolean));
-  return models.length > 0 ? { available: true, models, efforts, reason: null } : unavailable("no listable models");
+  return start >= 0 && end > start ? source.slice(start, end) : source;
 }
 function codexJsonListing(descriptor) {
   const result = spawnSync(descriptor.command, descriptor.args, {
@@ -19797,7 +19950,7 @@ function resolveSystemClaude() {
   }
   return null;
 }
-async function claudeSdkListing() {
+async function claudeSdkListingWorker() {
   const claudeExecutable = resolveSystemClaude();
   if (!claudeExecutable) return unavailable("system claude executable not found on PATH");
   const abortController = new AbortController();
@@ -19829,12 +19982,21 @@ async function claudeSdkListing() {
       )
     ]);
     const efforts = {};
+    const details = {};
+    if (supported.some((model) => !portableCatalogRow(model))) {
+      return unavailable("Claude catalog contained invalid model data");
+    }
     for (const model of supported) {
       const levels = model.supportedEffortLevels ?? [];
       if (levels.length > 0) efforts[model.value] = levels;
+      details[model.value] = {
+        label: model.displayName ?? model.display_name ?? null,
+        description: model.description ?? null,
+        capabilities: model.capabilities ?? null
+      };
     }
-    const models = dedupe(supported.map((model) => model.value).filter(Boolean));
-    listing = models.length > 0 ? { available: true, models, efforts, reason: null } : unavailable("SDK reported no supported models");
+    const models = dedupe(supported.map((model) => model.value).filter(Boolean)).sort();
+    listing = models.length > 0 ? { available: true, models, efforts, details, reason: null } : unavailable("SDK reported no supported models");
   } catch (error) {
     listingFailure = error;
   } finally {
@@ -19854,6 +20016,24 @@ async function claudeSdkListing() {
   }
   return listing;
 }
+async function claudeSdkListing() {
+  const result = spawnSync(
+    process.execPath,
+    [fileURLToPath(import.meta.url), "--claude-catalog-worker"],
+    {
+      encoding: "utf8",
+      timeout: CATALOG_TIMEOUT_MS + 2e3,
+      stdio: ["ignore", "pipe", "ignore"]
+    }
+  );
+  if (result.error || result.status !== 0) return unavailable("Claude catalog worker failed");
+  try {
+    const listing = JSON.parse(result.stdout);
+    return listing?.available === true || listing?.available === false ? listing : unavailable("Claude catalog worker returned an invalid result");
+  } catch {
+    return unavailable("Claude catalog worker returned invalid JSON");
+  }
+}
 async function routeCatalog(route) {
   const descriptor = ROUTES[route]?.catalog;
   if (!descriptor) return unavailable("no listing surface");
@@ -19868,51 +20048,187 @@ async function routeCatalog(route) {
       return unavailable(`unknown catalog kind "${descriptor.kind}"`);
   }
 }
-function recentSessionFiles(directory) {
-  if (!directory || !existsSync2(directory)) return [];
-  const cutoff = Date.now() - HISTORY_MAX_AGE_DAYS * 24 * 60 * 60 * 1e3;
+async function probeModelProfile(route, model, effort) {
+  if (!Object.hasOwn(ROUTES, route)) return { status: "unavailable" };
+  if (!isPortableModelId(model) || !isPortableModelId(effort)) return { status: "unavailable" };
+  const catalog = await routeCatalog(route);
+  if (!catalog.available) return { status: "unavailable" };
+  if (!catalog.models.includes(model)) return { status: "not_available" };
+  const efforts = catalog.efforts[model] ?? [];
+  if (efforts.length > 0 && !efforts.includes(effort)) return { status: "not_available" };
+  return { status: "available" };
+}
+function recentSessionFiles(directory, started) {
+  const timedOut = () => Date.now() - started >= HISTORY_TIMEOUT_MS;
+  if (!directory || !existsSync2(directory)) {
+    return { files: [], unreadable: [], truncated: [], missing: true, timedOut: false };
+  }
+  const cutoff = started - HISTORY_MAX_AGE_DAYS * 24 * 60 * 60 * 1e3;
   const found = [];
+  const unreadable = [];
+  const truncated = [];
+  let deadlineReached = timedOut();
   const walk = (path, depth) => {
-    if (depth > 6) return;
+    if (deadlineReached) return;
+    if (depth > 6) {
+      truncated.push(relative(directory, path) || ".");
+      return;
+    }
     let entries;
     try {
       entries = readdirSync2(path, { withFileTypes: true });
     } catch {
+      unreadable.push(relative(directory, path) || ".");
       return;
     }
     for (const entry of entries) {
+      if (timedOut()) {
+        deadlineReached = true;
+        return;
+      }
       const child = join(path, entry.name);
       if (entry.isDirectory()) {
         walk(child, depth + 1);
+      } else if (entry.isSymbolicLink()) {
+        continue;
       } else if (entry.isFile() && entry.name.endsWith(".jsonl")) {
         try {
           const { mtimeMs } = statSync2(child);
           if (mtimeMs >= cutoff) found.push({ path: child, mtimeMs });
         } catch {
+          unreadable.push(relative(directory, child));
         }
       }
     }
   };
   walk(directory, 0);
-  found.sort((a, b3) => b3.mtimeMs - a.mtimeMs);
-  return found.slice(0, HISTORY_MAX_SESSIONS).map((entry) => entry.path);
+  found.sort((a, b3) => b3.mtimeMs - a.mtimeMs || a.path.localeCompare(b3.path));
+  return {
+    files: found.map((entry) => entry.path),
+    unreadable,
+    truncated,
+    missing: false,
+    timedOut: deadlineReached
+  };
 }
-function routeHistory(route) {
-  const files = recentSessionFiles(ROUTES[route]?.historyDir);
-  const seen = [];
-  for (const file of files) {
-    let text;
-    try {
-      text = readFileSync2(file, "utf8");
-    } catch {
+function collectModels(route, value, state) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+  const candidates = {
+    claude: [value.model, value.message?.model],
+    codex: [
+      value.model,
+      (/* @__PURE__ */ new Set(["session_meta", "turn_context"])).has(value.type) ? value.payload?.model : null
+    ],
+    opencode: [value.model, value.info?.modelID, value.session?.model]
+  }[route];
+  for (const model of candidates ?? []) {
+    if (model === null || model === void 0 || model === "") continue;
+    if (!isPortableModelId(model)) {
+      state.corrupt = true;
       continue;
     }
-    for (const match of text.matchAll(/"model"\s*:\s*"([^"]+)"/g)) seen.push(match[1]);
+    state.seen.push(model);
   }
-  return { sessions: files.length, models: dedupe(seen) };
+}
+function collectHistoryLine(route, line, state) {
+  if (!line.trim()) return;
+  try {
+    collectModels(route, JSON.parse(line), state);
+  } catch {
+    state.corrupt = true;
+  }
+}
+async function scanHistoryFile(route, file, state, started) {
+  const stream = createReadStream(file);
+  stream.setEncoding("utf8");
+  let carry = "";
+  for await (const chunk of stream) {
+    state.bytesRead += Buffer.byteLength(chunk, "utf8");
+    if (state.bytesRead > HISTORY_BYTE_BUDGET) {
+      state.stopReason = "partial";
+      stream.destroy();
+      break;
+    }
+    carry += chunk;
+    const lines = carry.split("\n");
+    carry = lines.pop() ?? "";
+    lines.forEach((line) => collectHistoryLine(route, line, state));
+    if (Date.now() - started >= HISTORY_TIMEOUT_MS) {
+      state.stopReason = "timeout";
+      stream.destroy();
+      break;
+    }
+  }
+  if (carry.trim() && state.stopReason === "ok") collectHistoryLine(route, carry, state);
+}
+async function routeHistory(route) {
+  const directory = ROUTES[route]?.historyDir;
+  const started = Date.now();
+  const discovery = recentSessionFiles(directory, started);
+  const unreadable = [...discovery.unreadable];
+  const truncated = [...discovery.truncated];
+  let scannedFiles = 0;
+  const state = {
+    seen: [],
+    bytesRead: 0,
+    corrupt: false,
+    stopReason: discovery.missing ? "unavailable" : discovery.timedOut ? "timeout" : "ok"
+  };
+  for (const file of discovery.files) {
+    if (Date.now() - started >= HISTORY_TIMEOUT_MS) {
+      state.stopReason = "timeout";
+      break;
+    }
+    try {
+      await scanHistoryFile(route, file, state, started);
+      scannedFiles += 1;
+    } catch {
+      unreadable.push(relative(directory, file));
+    }
+    if (state.stopReason === "timeout" || state.stopReason === "partial") break;
+  }
+  if (state.stopReason === "ok" && unreadable.length > 0) state.stopReason = "partial";
+  if (state.stopReason === "ok" && truncated.length > 0) state.stopReason = "partial";
+  if (state.stopReason === "ok" && state.corrupt) state.stopReason = "corrupt";
+  return {
+    complete: state.stopReason === "ok",
+    models: dedupe(state.seen).sort(),
+    scannedFiles,
+    unreadableFiles: dedupe(unreadable).sort().slice(0, 20),
+    truncatedDirectories: dedupe(truncated).sort().slice(0, 20),
+    bytesRead: state.bytesRead,
+    elapsedMs: Date.now() - started,
+    stopReason: state.stopReason
+  };
 }
 function dedupe(values) {
   return [...new Set(values)];
+}
+function eligibleRecommendations(provider) {
+  const hasCodingToken = (value) => /(?:^|[^\p{L}\p{N}_])(?:code|coding|software(?:[ -]engineering)?)(?:$|[^\p{L}\p{N}_])/iu.test(
+    value
+  );
+  return provider.catalog.models.filter(
+    ({ id: id2, label, description, capabilities, efforts }) => efforts.includes("high") && // §A-EVAL-01 keeps Astra/Fable-class models visible in the catalogue but
+    // never turns them into the unattended default, regardless of metadata.
+    !/(?:^|[-_./ ])(?:astra|fable)(?:$|[-_./ ])/iu.test(
+      [id2, label].filter((value) => typeof value === "string").join(" ")
+    ) && (hasCodingToken(
+      [label, description].filter((value) => typeof value === "string").join(" ")
+    ) || (Array.isArray(capabilities) ? capabilities : [capabilities]).filter((value) => typeof value === "string").map((value) => value.trim().replace(/_+/gu, "-")).some(hasCodingToken))
+  );
+}
+function defaultRecommendation(provider) {
+  const eligible = eligibleRecommendations(provider);
+  if (eligible.length === 1) return eligible[0];
+  const recentlyUsed = new Set(provider.history.models);
+  const recent = eligible.filter(({ id: id2 }) => recentlyUsed.has(id2));
+  if (recent.length === 1) return recent[0];
+  return null;
+}
+function noRecommendationReason(provider) {
+  const eligible = eligibleRecommendations(provider);
+  return eligible.length === 0 ? "catalog_has_no_admissible_coding_positioning_evidence" : `catalog_has_${eligible.length}_ambiguous_admissible_candidates`;
 }
 function familyAndGeneration(model) {
   const id2 = String(model).split("/").pop() ?? "";
@@ -19961,43 +20277,70 @@ async function commandCatalog(routeFilter, asJson) {
   if (routeFilter !== null && !Object.hasOwn(ROUTES, routeFilter)) {
     throw new Error(`unknown route "${routeFilter}"; known: ${Object.keys(ROUTES).join(", ")}`);
   }
-  const report = {};
+  const providers = [];
   for (const route of Object.keys(ROUTES)) {
     if (routeFilter && route !== routeFilter) continue;
     const catalog = await routeCatalog(route);
-    const history = routeHistory(route);
-    report[route] = {
-      source: ROUTES[route].catalog?.kind ?? null,
-      catalog: catalog.available ? catalog.models : null,
-      efforts: catalog.efforts,
-      catalogUnavailableReason: catalog.available ? null : catalog.reason,
-      recentlyUsed: history.models,
-      recentSessionsRead: history.sessions
-    };
+    const history = await routeHistory(route);
+    providers.push({
+      route,
+      catalog: {
+        status: catalog.available ? "ok" : "unavailable",
+        exhaustive: ROUTES[route].catalog?.exhaustive === true,
+        models: catalog.models.map((id2) => ({
+          id: id2,
+          label: catalog.details[id2]?.label ?? null,
+          description: catalog.details[id2]?.description ?? null,
+          capabilities: catalog.details[id2]?.capabilities ?? null,
+          efforts: catalog.efforts[id2] ?? [],
+          sourceKind: ROUTES[route].catalog?.kind ?? null
+        })),
+        reason: catalog.available ? null : portableCatalogReason(catalog.reason)
+      },
+      history
+    });
   }
+  const report = { contract: "meta-o.model-discovery.v2", providers };
   if (asJson) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}
 `);
     return;
   }
-  for (const [route, data] of Object.entries(report)) {
-    if (data.catalog) {
-      process.stdout.write(`${route}: ${data.catalog.length} models (via ${data.source})
-`);
-      for (const model of data.catalog) {
-        const levels = data.efforts[model];
-        process.stdout.write(`  ${model}${levels ? `  [${levels.join(" ")}]` : ""}
-`);
-      }
-    } else {
-      process.stdout.write(`${route}: catalog unavailable (${data.catalogUnavailableReason})
-`);
-    }
-    if (data.recentlyUsed.length > 0) {
+  for (const provider of providers) {
+    if (provider.catalog.status === "ok") {
       process.stdout.write(
-        `  recently used (${data.recentSessionsRead} sessions, hint only, not a catalog): ${data.recentlyUsed.join(", ")}
+        `${provider.route}: ${provider.catalog.models.length} models (via ${provider.catalog.models[0]?.sourceKind ?? "unknown"})
 `
       );
+      for (const model of provider.catalog.models) {
+        process.stdout.write(
+          `  ${model.id}${model.efforts.length > 0 ? `  [${model.efforts.join(" ")}]` : ""}
+`
+        );
+      }
+    } else {
+      process.stdout.write(`${provider.route}: catalog unavailable (${provider.catalog.reason})
+`);
+    }
+    if (provider.history.models.length > 0) {
+      process.stdout.write(
+        `  recently used (${provider.history.scannedFiles} files, hint only, not a catalog): ${provider.history.models.join(", ")}
+`
+      );
+    }
+    if (!provider.history.complete) {
+      process.stdout.write(`  history incomplete (${provider.history.stopReason})
+`);
+    }
+    const preferred = defaultRecommendation(provider);
+    if (preferred) {
+      process.stdout.write(
+        `  default recommendation: ${provider.route}/${preferred.id}/high (catalog coding-positioning evidence)
+`
+      );
+    } else if ((/* @__PURE__ */ new Set(["codex", "claude"])).has(provider.route)) {
+      process.stdout.write(`  no_default_recommendation (${noRecommendationReason(provider)})
+`);
     }
   }
 }
@@ -20067,7 +20410,9 @@ async function commandSet(settings, key, assignments, useDefaults, force) {
 }
 function commandUnset(settings, key, roles, useDefaults) {
   for (const role of roles) {
-    if (!ROLES.includes(role)) throw new Error(`unknown role "${role}"`);
+    if (!ROLES.includes(role) && !RETIRED_ROLES.has(role)) {
+      throw new Error(`unknown role "${role}"`);
+    }
     if (useDefaults) delete settings.defaults?.[role];
     else delete settings.projects?.[key]?.roles?.[role];
   }
@@ -20090,7 +20435,7 @@ async function commandCheckUpgrades(settings, key, asJson) {
     }
     if (!available.has(current.route)) {
       const catalog = await routeCatalog(current.route);
-      const history = routeHistory(current.route);
+      const history = await routeHistory(current.route);
       available.set(current.route, dedupe([...catalog.models, ...history.models]));
     }
     const successor = findUpgrade(current, available.get(current.route) ?? []);
@@ -20254,6 +20599,13 @@ ${USAGE}`);
       return;
     }
   }
+  for (const location of retiredRoleLocations(settings)) {
+    const role = location.split(".").at(-1);
+    process.stderr.write(
+      `mo-models: retired settings role ${location} is ignored; ${RETIRED_ROLES.get(role)}.
+`
+    );
+  }
   try {
     let cached = null;
     const key = () => cached ??= projectKey(options.project);
@@ -20281,16 +20633,24 @@ function invokedDirectly() {
   }
 }
 if (invokedDirectly()) {
-  main().catch((error) => {
-    process.stderr.write(`mo-models: ${error.message}
+  if (process.argv.length === 3 && process.argv[2] === "--claude-catalog-worker") {
+    claudeSdkListingWorker().then((listing) => process.stdout.write(`${JSON.stringify(listing)}
+`)).catch(() => {
+      process.exitCode = 1;
+    });
+  } else {
+    main().catch((error) => {
+      process.stderr.write(`mo-models: ${error.message}
 `);
-    process.exitCode = 1;
-  });
+      process.exitCode = 1;
+    });
+  }
 }
 export {
   familyAndGeneration,
   findUpgrade,
   parseCodexModels,
   parseSelection,
+  probeModelProfile,
   testingPolicyError
 };

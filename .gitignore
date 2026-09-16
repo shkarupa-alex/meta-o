@@ -11,3 +11,8 @@ node_modules
 dist/
 __pycache__/
 *.pyc
+
+# Meta-O runtime and private specification workspaces must never become tracked
+# inputs; canonical implementation specs use the project-owned docs/ path.
+.orca/
+spec/

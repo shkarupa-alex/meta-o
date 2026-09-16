@@ -62,6 +62,12 @@ function run(home, args, cwd = ROOT, extraEnv = {}) {
   });
 }
 
+/** One route from the versioned model-discovery envelope. */
+function provider(report, route) {
+  assert.equal(report.contract, "meta-o.model-discovery.v2");
+  return report.providers.find((entry) => entry.route === route);
+}
+
 after(() => {
   for (const home of sandboxes) rmSync(home, { recursive: true, force: true });
 });
@@ -93,6 +99,7 @@ function fakeClaude(home, mode = "success") {
 import { spawn } from "node:child_process";
 import { appendFileSync, renameSync, writeFileSync } from "node:fs";
 const mode = process.env.FAKE_CLAUDE_MODE;
+if (mode === "dies-immediately") process.exit(9);
 const pids = { parent: process.pid, attempts: 0, denied: 0, descendants: [] };
 const persistPids = () => {
   const temporary = process.env.FAKE_CLAUDE_PIDS + "." + process.pid + ".tmp";
@@ -243,7 +250,8 @@ test("show reports every role and writes nothing", () => {
     "e2eTester",
     "testClaude",
     "testCodex",
-    "testOpenCode",
+    "testCodexDesired",
+    "testOpenCodeDesired",
   ]) {
     assert.match(result.stdout, new RegExp(`${role}=unset`));
   }
@@ -252,18 +260,22 @@ test("show reports every role and writes nothing", () => {
 });
 
 test("testing profiles fail closed above the approved cost", () => {
-  assert.equal(testingPolicyError("testClaude", "claude/sonnet5/low"), null);
-  assert.equal(testingPolicyError("testCodex", "codex/gpt-5.6-terra/low"), null);
-  assert.equal(testingPolicyError("testOpenCode", "opencode/provider/deepseek-v4-flash/low"), null);
-  assert.match(testingPolicyError("testClaude", "claude/opus/high"), /sonnet5\/low/);
-  assert.match(testingPolicyError("testCodex", "codex/gpt-5.6-sol/high"), /terra\/low/);
+  assert.equal(testingPolicyError("testClaude", "claude/opus[1m]/low"), null);
+  assert.equal(testingPolicyError("testCodex", "codex/gpt-5.6-sol/low"), null);
+  assert.equal(testingPolicyError("testCodexDesired", "codex/gpt-5.6-luna/max"), null);
+  assert.equal(
+    testingPolicyError("testOpenCodeDesired", "opencode/provider/qwen3.8-27b/low"),
+    null,
+  );
+  assert.match(testingPolicyError("testClaude", "claude/opus[1m]/high"), /opus\[1m\]\/low/);
+  assert.match(testingPolicyError("testCodex", "codex/gpt-5.6-sol/high"), /sol\/low/);
   assert.match(
-    testingPolicyError("testOpenCode", "opencode/provider/deepseek-v4-flash/high"),
-    /deepseek 4 flash.*low effort/,
+    testingPolicyError("testOpenCodeDesired", "opencode/provider/qwen3.8-27b/high"),
+    /qwen3\.8-27b\/low/,
   );
   assert.match(
-    testingPolicyError("testOpenCode", "opencode/provider/qwen3.8-27b/low"),
-    /deepseek 4 flash/,
+    testingPolicyError("testOpenCodeDesired", "opencode/provider/deepseek-v4-flash/low"),
+    /qwen3\.8-27b/,
   );
 });
 
@@ -326,6 +338,27 @@ test("an unknown role or a malformed selection is refused before any write", () 
     /ENOENT/,
     "one bad assignment must not persist the good one beside it",
   );
+});
+
+test("a retired testing role in version-one settings is reported", () => {
+  const home = sandbox();
+  const directory = join(home, ".meta-o");
+  mkdirSync(directory);
+  writeFileSync(
+    join(directory, "models.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      defaults: { testOpenCode: "opencode/provider/deepseek-v4-flash/low" },
+      projects: {},
+    }),
+  );
+  const shown = run(home, ["--show"]);
+  assert.equal(shown.status, 0, shown.stderr);
+  assert.match(shown.stderr, /retired settings role defaults\.testOpenCode is ignored/u);
+  assert.match(shown.stderr, /configure testOpenCodeDesired/u);
+  const removed = run(home, ["--unset", "testOpenCode", "--global"]);
+  assert.equal(removed.status, 0, removed.stderr);
+  assert.doesNotMatch(run(home, ["--show"]).stderr, /retired settings role/u);
 });
 
 test("an unknown flag is an error, not a silent default", () => {
@@ -406,13 +439,22 @@ test("codex listings keep only the rows the CLI itself would offer", () => {
         supported_in_api: true,
         supported_reasoning_levels: [{ effort: "low" }, { effort: "high" }],
       },
+      {
+        slug: "gpt-1.0",
+        visibility: "list",
+        supported_in_api: true,
+        supported_reasoning_levels: [{ effort: "low" }],
+      },
       { slug: "internal-only", visibility: "hidden", supported_in_api: true },
       { slug: "no-api", visibility: "list", supported_in_api: false },
     ],
   });
   const listing = parseCodexModels(fixture);
-  assert.deepEqual(listing.models, ["gpt-9.9"], "hidden and API-unsupported rows are dropped");
-  assert.deepEqual(listing.efforts, { "gpt-9.9": ["low", "high"] });
+  assert.deepEqual(listing.models, ["gpt-1.0", "gpt-9.9"]);
+  assert.deepEqual(listing.efforts, {
+    "gpt-9.9": ["low", "high"],
+    "gpt-1.0": ["low"],
+  });
 });
 
 test("codex catalog parsing ignores wrapper diagnostics around one complete JSON value", () => {
@@ -453,15 +495,14 @@ test(
     const home = sandbox();
     const result = run(home, ["--catalog", "--route", "codex", "--json"]);
     assert.equal(result.status, 0, result.stderr);
-    const report = JSON.parse(result.stdout);
-    if (!Array.isArray(report.codex.catalog)) {
-      context.skip(report.codex.catalogUnavailableReason);
+    const report = provider(JSON.parse(result.stdout), "codex");
+    if (report.catalog.status !== "ok") {
+      context.skip(report.catalog.reason);
       return;
     }
-    assert.equal(report.codex.source, "codex-json");
-    assert.ok(Array.isArray(report.codex.catalog) && report.codex.catalog.length > 0);
-    const [first] = report.codex.catalog;
-    assert.ok(Array.isArray(report.codex.efforts[first]) && report.codex.efforts[first].length > 0);
+    assert.equal(report.catalog.models[0].sourceKind, "codex-json");
+    assert.ok(report.catalog.models.length > 0);
+    assert.ok(report.catalog.models[0].efforts.length > 0);
   },
 );
 
@@ -470,9 +511,13 @@ test("the bundled Claude SDK reads supported models without sending a user turn"
   const fixture = fakeClaude(home, "success");
   const result = run(home, ["--catalog", "--route", "claude", "--json"], home, fixture.env);
   assert.equal(result.status, 0, result.stderr);
-  const report = JSON.parse(result.stdout).claude;
-  assert.deepEqual(report.catalog, ["fake-opus"], JSON.stringify(report));
-  assert.deepEqual(report.efforts, { "fake-opus": ["low", "high"] });
+  const report = provider(JSON.parse(result.stdout), "claude");
+  assert.deepEqual(
+    report.catalog.models.map(({ id }) => id),
+    ["fake-opus"],
+    JSON.stringify(report),
+  );
+  assert.deepEqual(report.catalog.models[0].efforts, ["low", "high"]);
   const records = readFileSync(fixture.log, "utf8").trim().split("\n").map(JSON.parse);
   assert.ok(records[0].args.includes("--input-format"));
   assert.ok(records[0].args.includes("stream-json"));
@@ -490,10 +535,24 @@ test("Claude SDK cleanup reaps the transient catalogue process", () => {
   const fixture = fakeClaude(home, "success-exit");
   const result = run(home, ["--catalog", "--route", "claude", "--json"], home, fixture.env);
   assert.equal(result.status, 0, result.stderr);
-  const report = JSON.parse(result.stdout).claude;
-  assert.deepEqual(report.catalog, ["fake-opus"]);
+  const report = provider(JSON.parse(result.stdout), "claude");
+  assert.deepEqual(
+    report.catalog.models.map(({ id }) => id),
+    ["fake-opus"],
+  );
   const pids = JSON.parse(readFileSync(fixture.pids, "utf8"));
   assert.equal(waitUntilGone(pids.parent), true, `provider ${pids.parent} was not reaped`);
+});
+
+test("a Claude process that dies during SDK startup leaves a typed provider row", () => {
+  const home = sandbox();
+  const fixture = fakeClaude(home, "dies-immediately");
+  const result = run(home, ["--catalog", "--json"], home, fixture.env);
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.providers.length, 3);
+  assert.equal(provider(report, "claude").catalog.status, "unavailable");
+  assert.equal(result.stdout.includes(fixture.executable), false);
 });
 
 test("a Claude catalogue timeout is bounded and leaves no provider child", () => {
@@ -503,9 +562,9 @@ test("a Claude catalogue timeout is bounded and leaves no provider child", () =>
   const result = run(home, ["--catalog", "--route", "claude", "--json"], home, fixture.env);
   assert.equal(result.status, 0, result.stderr);
   assert.ok(Date.now() - started < 2_500, "catalogue timeout exceeded its cleanup bound");
-  const report = JSON.parse(result.stdout).claude;
-  assert.equal(report.catalog, null);
-  assert.match(report.catalogUnavailableReason, /no answer within 200ms/);
+  const report = provider(JSON.parse(result.stdout), "claude");
+  assert.equal(report.catalog.status, "unavailable");
+  assert.match(report.catalog.reason, /no answer within 200ms/);
   if (existsSync(fixture.pids)) {
     const pids = JSON.parse(readFileSync(fixture.pids, "utf8"));
     assert.equal(waitUntilGone(pids.parent), true, `timed-out provider ${pids.parent} leaked`);
@@ -523,8 +582,11 @@ test("an isolated generated helper needs no ambient node_modules", () => {
     { cwd: home, encoding: "utf8", env: { ...process.env, ...fixture.env, HOME: home } },
   );
   assert.equal(result.status, 0, result.stderr);
-  const report = JSON.parse(result.stdout).claude;
-  assert.deepEqual(report.catalog, ["fake-opus"]);
+  const report = provider(JSON.parse(result.stdout), "claude");
+  assert.deepEqual(
+    report.catalog.models.map(({ id }) => id),
+    ["fake-opus"],
+  );
 });
 
 test("roles are scoped to the Git root, so any subdirectory is the same project", () => {
@@ -573,10 +635,12 @@ test("an effort the model does not offer is refused before anything is written",
   );
   chmodSync(codex, 0o755);
   const environment = { PATH: `${bin}${delimiter}${process.env.PATH}` };
-  const listed = JSON.parse(
-    run(home, ["--catalog", "--route", "codex", "--json"], ROOT, environment).stdout,
-  ).codex;
-  const model = Object.keys(listed.efforts)[0];
+  const listed = provider(
+    JSON.parse(run(home, ["--catalog", "--route", "codex", "--json"], ROOT, environment).stdout),
+    "codex",
+  ).catalog;
+  const available = listed.models.find(({ efforts }) => efforts.length > 0);
+  const model = available?.id;
   assert.ok(model, "this test needs one codex model that publishes effort levels");
 
   const badEffort = run(
@@ -600,12 +664,339 @@ test("an effort the model does not offer is refused before anything is written",
   // The real thing is accepted, and the same value goes through with --force.
   const good = run(
     home,
-    ["--set", `executor=codex/${model}/${listed.efforts[model][0]}`],
+    ["--set", `executor=codex/${model}/${available.efforts[0]}`],
     ROOT,
     environment,
   );
   assert.equal(good.status, 0, good.stderr);
   assert.equal(run(home, ["--set", "executor=codex/no-such-model-9/high", "--force"]).status, 0);
+});
+
+test("31-day history streams beyond ten files and never becomes a catalog", () => {
+  const home = sandbox();
+  const bin = join(home, "bin");
+  const sessions = join(home, ".codex", "sessions", "2026", "09");
+  mkdirSync(bin, { recursive: true });
+  mkdirSync(sessions, { recursive: true });
+  const codex = join(bin, "codex");
+  writeFileSync(
+    codex,
+    `#!/bin/sh\nprintf '%s\\n' '{"models":[{"slug":"gpt-5.6-sol","display_name":"Sol coding","description":"software engineering model","visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}]}]}'\n`,
+  );
+  chmodSync(codex, 0o755);
+  for (let index = 0; index < 12; index += 1) {
+    writeFileSync(
+      join(sessions, `${index}.jsonl`),
+      `${JSON.stringify({ model: `history-${index}` })}\n`,
+    );
+  }
+  writeFileSync(
+    join(sessions, "nested-secret.jsonl"),
+    `${JSON.stringify({ type: "tool_result", payload: { request: { model: "secret-model" } } })}\n`,
+  );
+  const environment = { PATH: `${bin}${delimiter}${process.env.PATH}` };
+  const json = run(home, ["--catalog", "--route", "codex", "--json"], ROOT, environment);
+  assert.equal(json.status, 0, json.stderr);
+  const report = provider(JSON.parse(json.stdout), "codex");
+  assert.equal(report.history.scannedFiles, 13);
+  assert.equal(report.history.models.length, 12);
+  assert.equal(report.history.models.includes("secret-model"), false);
+  assert.deepEqual(
+    report.catalog.models.map(({ id }) => id),
+    ["gpt-5.6-sol"],
+  );
+  assert.equal(JSON.stringify(report).includes("recommend"), false);
+
+  const human = run(home, ["--catalog", "--route", "codex"], ROOT, environment);
+  assert.equal(human.status, 0, human.stderr);
+  assert.match(human.stdout, /recently used \(13 files, hint only, not a catalog\)/u);
+  assert.match(human.stdout, /default recommendation: codex\/gpt-5\.6-sol\/high/u);
+});
+
+test("depth-truncated history is explicitly incomplete", () => {
+  const home = sandbox();
+  const sessions = join(home, ".codex", "sessions", "a", "b", "c", "d", "e", "f", "g");
+  mkdirSync(sessions, { recursive: true });
+  writeFileSync(join(sessions, "deep.jsonl"), '{"model":"too-deep"}\n');
+  const result = run(home, ["--catalog", "--route", "codex", "--json"]);
+  assert.equal(result.status, 0, result.stderr);
+  const history = provider(JSON.parse(result.stdout), "codex").history;
+  assert.equal(history.complete, false);
+  assert.equal(history.stopReason, "partial");
+  assert.ok(history.truncatedDirectories.length > 0);
+  assert.equal(history.models.includes("too-deep"), false);
+});
+
+test("history discovery consumes the same provider-wide timeout budget", () => {
+  const home = sandbox();
+  const sessions = join(home, ".codex", "sessions");
+  mkdirSync(sessions, { recursive: true });
+  for (let index = 0; index < 500; index += 1) {
+    writeFileSync(join(sessions, `${String(index).padStart(3, "0")}.jsonl`), '{"model":"x"}\n');
+  }
+  const result = run(home, ["--catalog", "--route", "codex", "--json"], ROOT, {
+    MO_MODELS_HISTORY_TIMEOUT_MS: "1",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const history = provider(JSON.parse(result.stdout), "codex").history;
+  assert.equal(history.complete, false);
+  assert.equal(history.stopReason, "timeout");
+  assert.ok(history.scannedFiles < 500);
+  assert.ok(history.elapsedMs >= 1);
+});
+
+test("a sole evidence-qualified successor can become the default recommendation", () => {
+  const home = sandbox();
+  const bin = join(home, "bin");
+  mkdirSync(bin, { recursive: true });
+  const codex = join(bin, "codex");
+  writeFileSync(
+    codex,
+    `#!/bin/sh\nprintf '%s\\n' '{"models":[{"slug":"gpt-successor","display_name":"Successor coding","description":"software engineering model","visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"high"}]}]}'\n`,
+  );
+  chmodSync(codex, 0o755);
+  const result = run(home, ["--catalog", "--route", "codex"], ROOT, {
+    PATH: `${bin}${delimiter}${process.env.PATH}`,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /default recommendation: codex\/gpt-successor\/high/u);
+});
+
+test("Astra and Fable classes stay visible but never become the default recommendation", () => {
+  for (const slug of ["gpt-astra", "gpt-fable"]) {
+    const home = sandbox();
+    const bin = join(home, "bin");
+    mkdirSync(bin, { recursive: true });
+    const codex = join(bin, "codex");
+    writeFileSync(
+      codex,
+      `#!/bin/sh\nprintf '%s\\n' '{"models":[{"slug":"${slug}","display_name":"${slug} coding","description":"software engineering model","visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"high"}]}]}'\n`,
+    );
+    chmodSync(codex, 0o755);
+    const environment = { PATH: `${bin}${delimiter}${process.env.PATH}` };
+    const result = run(home, ["--catalog", "--route", "codex"], ROOT, environment);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, new RegExp(slug, "u"));
+    assert.match(result.stdout, /no_default_recommendation/u);
+    assert.doesNotMatch(result.stdout, /default recommendation:/u);
+  }
+});
+
+test("recent history cannot promote an Astra-class candidate over an ordinary ambiguity", () => {
+  const home = sandbox();
+  const bin = join(home, "bin");
+  const sessions = join(home, ".codex", "sessions");
+  mkdirSync(bin, { recursive: true });
+  mkdirSync(sessions, { recursive: true });
+  writeFileSync(join(sessions, "recent.jsonl"), '{"model":"gpt-astra"}\n');
+  const codex = join(bin, "codex");
+  writeFileSync(
+    codex,
+    `#!/bin/sh\nprintf '%s\\n' '{"models":[{"slug":"gpt-astra","display_name":"Astra coding","description":"software engineering model","visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"high"}]},{"slug":"ordinary-a","display_name":"Coding A","description":"software engineering model","visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"high"}]},{"slug":"ordinary-b","display_name":"Coding B","description":"software engineering model","visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"high"}]}]}'\n`,
+  );
+  chmodSync(codex, 0o755);
+  const result = run(home, ["--catalog", "--route", "codex"], ROOT, {
+    PATH: `${bin}${delimiter}${process.env.PATH}`,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /no_default_recommendation \(catalog_has_2_ambiguous/u);
+  assert.doesNotMatch(result.stdout, /default recommendation:/u);
+});
+
+test("incidental encoding prose is not coding-positioning evidence", () => {
+  const home = sandbox();
+  const bin = join(home, "bin");
+  mkdirSync(bin, { recursive: true });
+  const codex = join(bin, "codex");
+  writeFileSync(
+    codex,
+    `#!/bin/sh\nprintf '%s\\n' '{"models":[{"slug":"image-encoder","display_name":"Image encoder","description":"High quality image encoding","visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"high"}]}]}'\n`,
+  );
+  chmodSync(codex, 0o755);
+  const result = run(home, ["--catalog", "--route", "codex"], ROOT, {
+    PATH: `${bin}${delimiter}${process.env.PATH}`,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /no_default_recommendation/u);
+  assert.doesNotMatch(result.stdout, /default recommendation:/u);
+});
+
+test("structured code-generation capability is coding-positioning evidence", () => {
+  const home = sandbox();
+  const bin = join(home, "bin");
+  mkdirSync(bin, { recursive: true });
+  const codex = join(bin, "codex");
+  writeFileSync(
+    codex,
+    `#!/bin/sh\nprintf '%s\\n' '{"models":[{"slug":"capability-model","display_name":"General model","description":"Broad model","capabilities":["code_generation","vision"],"visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"high"}]}]}'\n`,
+  );
+  chmodSync(codex, 0o755);
+  const result = run(home, ["--catalog", "--route", "codex"], ROOT, {
+    PATH: `${bin}${delimiter}${process.env.PATH}`,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /default recommendation: codex\/capability-model\/high/u);
+});
+
+test("an ambiguous catalog is not resolved by the current orientation id", () => {
+  const home = sandbox();
+  const bin = join(home, "bin");
+  mkdirSync(bin, { recursive: true });
+  const codex = join(bin, "codex");
+  writeFileSync(
+    codex,
+    `#!/bin/sh\nprintf '%s\\n' '{"models":[{"slug":"gpt-5.6-sol","display_name":"Current coding","description":"software engineering model","visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"high"}]},{"slug":"gpt-successor","display_name":"Successor coding","description":"software engineering model","visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"high"}]}]}'\n`,
+  );
+  chmodSync(codex, 0o755);
+  const result = run(home, ["--catalog", "--route", "codex"], ROOT, {
+    PATH: `${bin}${delimiter}${process.env.PATH}`,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /no_default_recommendation \(catalog_has_2_ambiguous/u);
+  assert.doesNotMatch(result.stdout, /default recommendation:/u);
+});
+
+test("default recommendation requires the recommended high effort to be offered", () => {
+  const home = sandbox();
+  const bin = join(home, "bin");
+  mkdirSync(bin, { recursive: true });
+  const codex = join(bin, "codex");
+  writeFileSync(
+    codex,
+    `#!/bin/sh\nprintf '%s\\n' '{"models":[{"slug":"gpt-5.6-sol","display_name":"Coding model","visibility":"list","supported_in_api":true,"supported_reasoning_levels":[{"effort":"low"}]}]}'\n`,
+  );
+  chmodSync(codex, 0o755);
+  const result = run(home, ["--catalog", "--route", "codex"], ROOT, {
+    PATH: `${bin}${delimiter}${process.env.PATH}`,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /no_default_recommendation/u);
+  assert.doesNotMatch(result.stdout, /\/high/u);
+});
+
+test("corrupt history is explicitly incomplete while preserving observed hints", () => {
+  const home = sandbox();
+  const sessions = join(home, ".codex", "sessions");
+  mkdirSync(sessions, { recursive: true });
+  writeFileSync(join(sessions, "mixed.jsonl"), '{"model":"observed-model"}\nnot-json\n');
+  const result = run(home, ["--catalog", "--route", "codex", "--json"]);
+  assert.equal(result.status, 0, result.stderr);
+  const history = provider(JSON.parse(result.stdout), "codex").history;
+  assert.equal(history.complete, false);
+  assert.equal(history.stopReason, "corrupt");
+  assert.deepEqual(history.models, ["observed-model"]);
+});
+
+test("unsafe provider model identifiers are never projected or used as history hints", () => {
+  const home = sandbox();
+  const bin = join(home, "bin");
+  const sessions = join(home, ".codex", "sessions");
+  mkdirSync(bin, { recursive: true });
+  mkdirSync(sessions, { recursive: true });
+  const codex = join(bin, "codex");
+  writeFileSync(
+    codex,
+    `#!/bin/sh\nprintf '%s\\n' '{"models":[{"slug":"/home/private/model","visibility":"list","supported_in_api":true}]}'\n`,
+  );
+  chmodSync(codex, 0o755);
+  const unsafeHistory = [
+    "/root/private-model",
+    "access_token=abcdefghijklmnop",
+    "line\nbreak",
+    "ansi\u001b[31m",
+  ];
+  writeFileSync(
+    join(sessions, "unsafe.jsonl"),
+    `${unsafeHistory.map((model) => JSON.stringify({ model })).join("\n")}\n`,
+  );
+  const environment = { PATH: `${bin}${delimiter}${process.env.PATH}` };
+  const json = run(home, ["--catalog", "--route", "codex", "--json"], ROOT, environment);
+  assert.equal(json.status, 0, json.stderr);
+  const report = provider(JSON.parse(json.stdout), "codex");
+  assert.equal(report.catalog.status, "unavailable");
+  assert.equal(report.history.complete, false);
+  assert.equal(report.history.stopReason, "corrupt");
+  assert.deepEqual(report.history.models, []);
+  for (const value of unsafeHistory) assert.equal(json.stdout.includes(value), false);
+
+  const human = run(home, ["--catalog", "--route", "codex"], ROOT, environment);
+  assert.equal(human.status, 0, human.stderr);
+  assert.doesNotMatch(human.stdout, /private-model|access_token|ansi/u);
+  assert.doesNotMatch(human.stdout, /default recommendation:/u);
+});
+
+test("unsafe catalog display metadata never reaches any projection or recommendation", () => {
+  const unsafeRows = [
+    ["display_name", "/Users/alex/private/model"],
+    ["description", "weights at /mnt/SMALL/private/model.bin"],
+    ["description", "cache at /var/private/model.bin"],
+    ["description", "file:///srv/private/model.bin"],
+    ["description", "access_token=abcdefghijklmnop"],
+    ["capabilities", ["code_generation", "ansi\u001b[31m"]],
+  ];
+  for (const [field, unsafe] of unsafeRows) {
+    const home = sandbox();
+    const bin = join(home, "bin");
+    mkdirSync(bin, { recursive: true });
+    const row = {
+      slug: "safe-model",
+      display_name: "Safe model",
+      description: "software engineering model",
+      capabilities: ["code_generation"],
+      visibility: "list",
+      supported_in_api: true,
+      supported_reasoning_levels: [{ effort: "high" }],
+      [field]: unsafe,
+    };
+    const codex = join(bin, "codex");
+    writeFileSync(codex, `#!/bin/sh\nprintf '%s\\n' '${JSON.stringify({ models: [row] })}'\n`);
+    chmodSync(codex, 0o755);
+    const environment = { PATH: `${bin}${delimiter}${process.env.PATH}` };
+    for (const args of [
+      ["--catalog", "--route", "codex", "--json"],
+      ["--catalog", "--route", "codex"],
+    ]) {
+      const result = run(home, args, ROOT, environment);
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.stdout.includes(Array.isArray(unsafe) ? unsafe.at(-1) : unsafe), false);
+      assert.doesNotMatch(result.stdout, /default recommendation:/u);
+    }
+  }
+
+  const safe = parseCodexModels(
+    JSON.stringify({
+      models: [
+        {
+          slug: "safe-model",
+          display_name: "Safe coding model",
+          description: "Public software engineering model",
+          capabilities: ["code_generation"],
+          visibility: "list",
+          supported_in_api: true,
+          supported_reasoning_levels: [{ effort: "high" }],
+        },
+      ],
+    }),
+  );
+  assert.equal(safe.available, true);
+  assert.deepEqual(safe.models, ["safe-model"]);
+});
+
+test("history JSON remains valid when UTF-8 spans the stream chunk boundary", () => {
+  const home = sandbox();
+  const sessions = join(home, ".codex", "sessions");
+  mkdirSync(sessions, { recursive: true });
+  const prefix = '{"padding":"';
+  const padding = "a".repeat(65_535 - Buffer.byteLength(prefix));
+  writeFileSync(
+    join(sessions, "utf8-boundary.jsonl"),
+    `${prefix}${padding}é","model":"utf8-observed"}\n`,
+  );
+  const result = run(home, ["--catalog", "--route", "codex", "--json"]);
+  assert.equal(result.status, 0, result.stderr);
+  const history = provider(JSON.parse(result.stdout), "codex").history;
+  assert.equal(history.complete, true);
+  assert.deepEqual(history.models, ["utf8-observed"]);
 });
 
 test("a selection is stored with the gap named when the catalog cannot answer", () => {

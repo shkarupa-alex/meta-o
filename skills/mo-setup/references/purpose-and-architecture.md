@@ -18,10 +18,11 @@ A purpose explains:
 - which invariant, responsibility or business role it serves;
 - what would become wrong or redundant if it were deleted.
 
-Restating the implementation is **not** a purpose. `"Loops over items and
-returns the sum"` describes what a reader can already see. `"Totals a basket
-without tax, because tax depends on the shipping address, which is not known
-here"` says why the function exists and why it is not the obvious one-liner.
+Restating the implementation is **not** a purpose.
+`"Loops over items and returns the sum"` describes what a reader can already
+see.
+`"Totals a basket without tax, because tax depends on the shipping address, which is not known here"`
+says why the function exists and why it is not the obvious one-liner.
 
 ## 2. Where purpose is mandatory
 
@@ -51,11 +52,11 @@ Presence is the linter's problem. The reviewer asks:
 - is it still true after this change, or was it written for an earlier design?
 - for an overload: does it say what distinguishes _this_ signature?
 
-A purpose that restates the implementation is a finding, not a style
-preference. The reasoning is the whole contract in one sentence: what
-consistently gets lost between sessions is the hidden intent — the business
-reason, the constraint, the non-obvious trade-off, the forbidden alternative,
-the edge case — and the code itself is the one thing a model can already read.
+A purpose that restates the implementation is a finding, not a style preference.
+The reasoning is the whole contract in one sentence: what consistently gets lost
+between sessions is the hidden intent — the business reason, the constraint, the
+non-obvious trade-off, the forbidden alternative, the edge case — and the code
+itself is the one thing a model can already read.
 
 ## 4. The architecture contract
 
@@ -88,8 +89,8 @@ mechanically, so each one carries a stable identifier and names the layer above.
 - a module purpose names the architecture id; a symbol names its module or the
   same decision. Neither cites the business layer directly, because the chain
   already passes through the decision;
-- ids are unique, stable and never reused, and the link reads as ordinary
-  prose, not as a `Derived from` block.
+- ids are unique, stable and never reused, and the link reads as ordinary prose,
+  not as a `Derived from` block.
 
 Presence, uniqueness and resolution belong in the project's own blocking gate,
 parsed with a real Markdown AST. Ids belong to the project that owns those
@@ -101,5 +102,5 @@ foreign coordinate instead of a dangling local reference.
 ## 6. Documentation that is a program's input
 
 If Markdown has to be parsed programmatically, use a mature real AST library. A
-regex Markdown parser is not acceptable — it is the
-classic case of a home-grown checker that is wrong in ways nobody owns.
+regex Markdown parser is not acceptable — it is the classic case of a home-grown
+checker that is wrong in ways nobody owns.

@@ -21,13 +21,15 @@ test("durable business and architecture layers preserve the low-cost policy", ()
   const business = read("docs", "business.md");
   const architecture = read("docs", "architecture", "evaluation-model-policy.md");
   for (const source of [business, architecture]) {
-    assert.match(source, /sonnet5\/low/);
-    assert.match(source, /gpt-5\.6-terra\/low/);
-    assert.match(source, /deepseek 4 flash/);
+    assert.match(source, /opus\[1m\]\/low/);
+    assert.match(source, /gpt-5\.6-sol\/low/);
+    assert.match(source, /gpt-5\.6-luna\/max/);
     assert.match(source, /Qwen\/OpenCode/);
-    assert.match(source, /effective\s+identity/);
-    assert.match(source, /fallback/);
   }
+  assert.match(business, /фактической\s+идентичностью/);
+  assert.match(business, /резервный путь/);
+  assert.match(architecture, /фактическ(?:ую|ой)\s+идентичност/u);
+  assert.match(architecture, /не применяет автоматический резервный\s+вариант/u);
   assert.match(architecture, new RegExp(`§${"B-EVAL-01"}`));
 });
 
@@ -37,7 +39,7 @@ test("lifecycle makes model actors named, applicable and fail closed", () => {
   assert.match(methodology, /deterministic proof remains\s+preferred/);
   assert.match(methodology, /`blocked\|not_run`/);
   assert.match(methodology, /`not_applicable`/);
-  assert.match(methodology, /Never raise\s+model cost\/effort or fall back automatically/);
+  assert.match(methodology, /Never fall back/);
   assert.match(methodology, /floating family alias/);
   assert.match(methodology, /launch\.requested == launch\.effective/);
 });
@@ -49,37 +51,49 @@ test("generated methodology removes the source-only architecture marker", () => 
   assert.doesNotMatch(generated, /mo:source-anchor|§A-EVAL-01/);
 });
 
-test("OpenCode testing identity cannot silently select the Qwen orchestrator", () => {
-  assert.equal(testingPolicyError("testOpenCode", "opencode/local/deepseek-4-flash/low"), null);
-  assert.match(
-    testingPolicyError("testOpenCode", "opencode/local/qwen3.8-27b/low"),
-    /deepseek 4 flash/,
-  );
+test("desired OpenCode testing identity is Qwen only", () => {
+  assert.equal(testingPolicyError("testOpenCodeDesired", "opencode/local/qwen3.8-27b/low"), null);
+  for (const model of [
+    "deepseek-4-flash",
+    "qwen-2.5-27b",
+    "qwen-anything-27b",
+    "qwen3.80-27b",
+    "qwen3.8-anything-27b",
+    "qwen38-27b",
+    "qwen3.827b",
+    "qwen3827b",
+    "qwen3.8-27b-preview",
+    "qwen3.8-27b-uncensored",
+  ]) {
+    assert.match(
+      testingPolicyError("testOpenCodeDesired", `opencode/local/${model}/low`),
+      /qwen3\.8-27b/,
+    );
+  }
 });
 
 test("the testing profiles accept an exact model id and reject a floating alias", () => {
-  for (const accepted of [
-    "claude/sonnet5/low",
-    "claude/claude-sonnet-5/low",
-    "claude/claude-sonnet-5-20260401/low",
-  ]) {
-    assert.equal(testingPolicyError("testClaude", accepted), null, accepted);
-  }
+  assert.equal(testingPolicyError("testClaude", "claude/opus[1m]/low"), null);
   // A bare family name is whatever the provider ships next, so it cannot prove
   // the approved profile even though it reads like it.
-  assert.match(testingPolicyError("testClaude", "claude/sonnet/low"), /exact/u);
+  assert.match(testingPolicyError("testClaude", "claude/opus/low"), /opus\[1m\]/u);
   // The generation digit must be the model's own, not the tail of a date or of
   // an older generation's version pair.
   assert.match(
-    testingPolicyError("testClaude", "claude/claude-sonnet-4-5-20250929/low"),
-    /sonnet5\/low/u,
+    testingPolicyError("testClaude", "claude/claude-opus-5-20250929/low"),
+    /opus\[1m\]\/low/u,
   );
-  assert.match(testingPolicyError("testClaude", "claude/sonnet/medium"), /sonnet5\/low/u);
-  assert.match(testingPolicyError("testClaude", "claude/opus-5/low"), /sonnet5\/low/u);
-  assert.match(testingPolicyError("testCodex", "codex/gpt-5.6/low"), /gpt-5\.6-terra/u);
+  assert.match(testingPolicyError("testClaude", "claude/opus[1m]/medium"), /opus\[1m\]\/low/u);
+  assert.match(testingPolicyError("testClaude", "claude/opus-5/low"), /opus\[1m\]\/low/u);
   assert.match(
-    testingPolicyError("testOpenCode", "opencode/deepseek/deepseek-v3-4-flash/low"),
-    /deepseek 4 flash/u,
+    testingPolicyError("testClaude", "claude/opus[1m]-totally-unapproved/low"),
+    /opus\[1m\]\/low/u,
+  );
+  assert.match(testingPolicyError("testClaude", "claude/opus-1m/low"), /opus\[1m\]\/low/u);
+  assert.match(testingPolicyError("testCodex", "codex/gpt-5.6/low"), /gpt-5\.6-sol/u);
+  assert.match(
+    testingPolicyError("testOpenCodeDesired", "opencode/deepseek/deepseek-v3-4-flash/low"),
+    /qwen3\.8-27b/u,
   );
   assert.equal(testingPolicyError("executor", "codex/gpt-5.6-sol/medium"), null);
 });
@@ -102,7 +116,7 @@ test("the consumed show path rejects hand-written expensive or invalid selection
     };
     let result = run({ testClaude: "claude/opus-5/high" });
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /testClaude.*sonnet5\/low/u);
+    assert.match(result.stderr, /testClaude.*opus\[1m\]\/low/u);
     result = run({ testCodex: "codex/gpt-5.6-sol/high" });
     assert.equal(result.status, 1);
     assert.match(result.stderr, /testCodex must be/u);

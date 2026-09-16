@@ -161,8 +161,8 @@ test("every architecture decision carries a unique id and names an existing thes
     assert.ok(cited.length > 0, `${match[1]}: names no business thesis`);
     for (const id of cited) assert.ok(defined.has(id), `${match[1]}: cites unknown ${id}`);
     assert.match(
-      decision.body,
-      new RegExp(`(?:${match[1]}[\\s\\S]{0,40}отмен|(?:Отмена|Без) ${match[1]})`),
+      decision.body.replace(/\s+/gu, " "),
+      new RegExp(`(?:${match[1]}.{0,40}отмен|(?:Отмена|Без)\\s+${match[1]})`),
       `${match[1]}: does not say what becomes redundant if cancelled`,
     );
   }

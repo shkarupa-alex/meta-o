@@ -32,6 +32,10 @@ const ZSH_LOOKUP = spawnSync("/bin/sh", ["-c", "command -v zsh"], { encoding: "u
 const HAS_ZSH = ZSH_LOOKUP.status === 0;
 const ZSH_EXECUTABLE = ZSH_LOOKUP.stdout.trim();
 const temporary = [];
+// Startup matrices execute real shell profiles and process-group cleanup. Keep
+// the watchdog generous enough for a loaded development host while retaining a
+// finite bound for a genuinely stuck fixture.
+const MATRIX_TIMEOUT_MS = 60_000;
 
 const test = nodeTest;
 function zshTest(name, body) {
@@ -67,7 +71,7 @@ function runMatrix(shell, environment, providers = [], script = SCRIPT) {
     cwd: ROOT,
     encoding: "utf8",
     env: { ...process.env, ...environment },
-    timeout: 10_000,
+    timeout: MATRIX_TIMEOUT_MS,
   });
 }
 
@@ -81,7 +85,7 @@ function runThroughExportedFunction(functionName, shell, environment, script = S
     cwd: ROOT,
     encoding: "utf8",
     env: { ...process.env, ...environment },
-    timeout: 10_000,
+    timeout: MATRIX_TIMEOUT_MS,
   });
 }
 
