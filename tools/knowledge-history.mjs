@@ -66,6 +66,14 @@ function semanticNode(node) {
   );
 }
 
+function authorizationRecordsFromNodes(nodes) {
+  return nodes.flatMap((node) => {
+    const payload = authorizationPayload(node);
+    if (payload === null) return [];
+    return Array.isArray(payload) ? payload : [payload];
+  });
+}
+
 function normalizedLiteral(value) {
   return value.trim().replaceAll(/\s+/gu, " ");
 }
@@ -90,6 +98,33 @@ function editorialSurface(nodes) {
   };
 }
 
+function strictEditorialNode(node, flexibleText = false) {
+  if (Array.isArray(node)) {
+    return node
+      .filter((item) => !isAuthorizationBlock(item))
+      .map((item) => strictEditorialNode(item, flexibleText));
+  }
+  if (!node || typeof node !== "object") return node;
+  const allowLabelChange = flexibleText || node.type === "heading" || node.type === "link";
+  return Object.fromEntries(
+    Object.entries(node)
+      .filter(([key]) => key !== "position")
+      .map(([key, value]) => {
+        if (key === "value" && typeof value === "string") {
+          if (node.type === "text" && allowLabelChange) return [key, "<editorial-text>"];
+          return [key, normalizedLiteral(value)];
+        }
+        return [key, strictEditorialNode(value, allowLabelChange && key === "children")];
+      }),
+  );
+}
+
+function authorizationFingerprints(nodes) {
+  return authorizationRecordsFromNodes(nodes)
+    .map((record) => JSON.stringify(stableValue(record)))
+    .sort();
+}
+
 /** §A-MEMORY-01 extracts knowledge definitions from a real Markdown AST. */
 export function definitions(markdown, path) {
   const found = new Map();
@@ -110,13 +145,16 @@ export function definitions(markdown, path) {
           ) {
             end += 1;
           }
+          const section = children.slice(index, end);
           found.set(id, {
             id,
             kind: match[1],
             heading,
             path,
-            semantic: JSON.stringify(semanticNode(children.slice(index, end))),
-            editorial: JSON.stringify(editorialSurface(children.slice(index, end))),
+            semantic: JSON.stringify(semanticNode(section)),
+            editorial: JSON.stringify(editorialSurface(section)),
+            strictEditorial: JSON.stringify(strictEditorialNode(section)),
+            authorizations: authorizationFingerprints(section),
           });
         }
       }
@@ -210,7 +248,10 @@ function coversChange(entry, action, id, editorialIds) {
   // edge after individually authorized reuse ids are removed: accepting a
   // subset would let an unlisted semantic change ride with a mechanical rewrite.
   return (
-    action === "reuse" && entry.action === "editorial" && sameSortedIds(entry.ids, editorialIds)
+    action === "reuse" &&
+    entry.action === "editorial" &&
+    entry.ids.includes(id) &&
+    sameSortedIds(entry.ids, editorialIds)
   );
 }
 
@@ -221,6 +262,7 @@ function recordCoversChange(record, match, action, id, editorialIds) {
     match.action === "editorial" &&
     record?.action === "editorial" &&
     Array.isArray(record.ids) &&
+    record.ids.includes(id) &&
     sameSortedIds(record.ids, editorialIds)
   );
 }
@@ -250,6 +292,7 @@ function authorized(
   previous,
   current,
   enforceCurrentRecord,
+  enforceStrictEditorial,
 ) {
   // `editorial` is a reuse-only path. Deletion never reaches this branch, so a
   // wording-only record cannot retire a durable identifier.
@@ -277,7 +320,24 @@ function authorized(
   );
   if (!validAuthorizationRecord(record, action, id)) return false;
   if (record.action !== "editorial") return true;
-  return previous.get(id)?.editorial === current.get(id)?.editorial;
+  const fingerprint = enforceStrictEditorial ? "strictEditorial" : "editorial";
+  return previous.get(id)?.[fingerprint] === current.get(id)?.[fingerprint];
+}
+
+function authorizationHistoryChanged(previous, current) {
+  const currentRecords = new Set(current.authorizations);
+  return previous.authorizations.some((record) => !currentRecords.has(record));
+}
+
+function authorizationHistoryViolations(before, after, parent, commit) {
+  const errors = [];
+  for (const [id, prior] of before) {
+    const current = after.get(id);
+    if (current && authorizationHistoryChanged(prior, current)) {
+      errors.push(`${parent}..${commit}: authorization history changed ${id}`);
+    }
+  }
+  return errors;
 }
 
 function prose(node) {
@@ -342,6 +402,7 @@ export function edgeViolations(
   siblingParents = [],
   enforceSemantic = true,
   enforceCurrentRecord = true,
+  enforceStrictEditorial = true,
 ) {
   const before = snapshot(root, parent);
   const after = snapshot(root, commit);
@@ -359,7 +420,10 @@ export function edgeViolations(
       .map((entry) => entry.ids[0]),
   );
   const editorialIds = changedIds.filter((id) => !individuallyAuthorizedIds.has(id));
-  const errors = [];
+  // Authorization records are an append-only audit trail. They stay outside
+  // semantic fingerprints so a newly added record does not recursively demand
+  // authorization, but an old record may never be edited or removed unnoticed.
+  const errors = authorizationHistoryViolations(before, after, parent, commit);
   for (const id of before.keys()) {
     if (after.has(id) || deletedOnSibling(root, parent, id, siblingParents)) continue;
     if (
@@ -373,6 +437,7 @@ export function edgeViolations(
         before,
         after,
         enforceCurrentRecord,
+        enforceStrictEditorial,
       )
     ) {
       errors.push(`${parent}..${commit}: silent deletion ${id}`);
@@ -396,6 +461,7 @@ export function edgeViolations(
         before,
         after,
         enforceCurrentRecord,
+        enforceStrictEditorial,
       )
     ) {
       errors.push(`${parent}..${commit}: semantic reuse ${id}`);
@@ -416,8 +482,16 @@ export function edgeViolations(
  * require a distinct authorization record rather than the legacy shape check.
  * It exempts only 3a292e7..a811313 (`§A-DELIVERY-01`), which predates the rule;
  * history is not rewritten to fabricate an authorization that did not exist.
+ * `strictEditorialFrom` pins the first parent whose outgoing edges restrict
+ * editorial authorization to headings, link labels and whitespace.
  */
-export function verifyHistory(root, cutoff, semanticFrom = null, currentRecordFrom = null) {
+export function verifyHistory(
+  root,
+  cutoff,
+  semanticFrom = null,
+  currentRecordFrom = null,
+  strictEditorialFrom = null,
+) {
   // Resolving a commit is insufficient: a sibling boundary would make every
   // per-edge ancestry test false and silently disable the associated rule.
   const isReachable = (ref) =>
@@ -426,12 +500,13 @@ export function verifyHistory(root, cutoff, semanticFrom = null, currentRecordFr
   if (!isReachable(cutoff)) {
     return [`history_unavailable: cutoff ${cutoff} is unreachable`];
   }
-  if (semanticFrom && !isReachable(semanticFrom)) {
-    return [`history_unavailable: semantic boundary ${semanticFrom} is unreachable`];
-  }
-  if (currentRecordFrom && !isReachable(currentRecordFrom)) {
-    return [`history_unavailable: current-record boundary ${currentRecordFrom} is unreachable`];
-  }
+  const unreachable = [
+    [semanticFrom, "semantic"],
+    [currentRecordFrom, "current-record"],
+    [strictEditorialFrom, "strict-editorial"],
+  ].find(([ref]) => ref && !isReachable(ref));
+  if (unreachable)
+    return [`history_unavailable: ${unreachable[1]} boundary ${unreachable[0]} is unreachable`];
   const lines = git(root, ["rev-list", "--topo-order", "--reverse", "--parents", `${cutoff}..HEAD`])
     .trim()
     .split("\n")
@@ -441,20 +516,17 @@ export function verifyHistory(root, cutoff, semanticFrom = null, currentRecordFr
     const [commit, ...parents] = line.split(" ");
     errors.push(...referenceViolations(root, commit));
     for (const parent of parents) {
-      const enforceSemantic =
-        !semanticFrom ||
-        git(root, ["merge-base", "--is-ancestor", semanticFrom, parent], true) !== null;
-      const enforceCurrentRecord =
-        !currentRecordFrom ||
-        git(root, ["merge-base", "--is-ancestor", currentRecordFrom, parent], true) !== null;
+      const enforced = (boundary) =>
+        !boundary || git(root, ["merge-base", "--is-ancestor", boundary, parent], true) !== null;
       errors.push(
         ...edgeViolations(
           root,
           parent,
           commit,
           parents.filter((sha) => sha !== parent),
-          enforceSemantic,
-          enforceCurrentRecord,
+          enforced(semanticFrom),
+          enforced(currentRecordFrom),
+          enforced(strictEditorialFrom),
         ),
       );
     }
@@ -467,12 +539,18 @@ function main() {
   const cutoff = process.argv[3];
   if (!cutoff) {
     process.stderr.write(
-      "usage: knowledge-history.mjs [repository] <cutoff> [semantic-from] [current-record-from]\n",
+      "usage: knowledge-history.mjs [repository] <cutoff> [semantic-from] [current-record-from] [strict-editorial-from]\n",
     );
     process.exitCode = 2;
     return;
   }
-  const errors = verifyHistory(root, cutoff, process.argv[4] ?? null, process.argv[5] ?? null);
+  const errors = verifyHistory(
+    root,
+    cutoff,
+    process.argv[4] ?? null,
+    process.argv[5] ?? null,
+    process.argv[6] ?? null,
+  );
   if (errors.length > 0) {
     process.stderr.write(`${errors.join("\n")}\n`);
     process.exitCode = 1;
