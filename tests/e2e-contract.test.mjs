@@ -23,32 +23,32 @@ test("Orca gets the complete B1-B42 acceptance matrix", () => {
   assert.match(e2eProse, /Выполните эту матрицу для Orca/);
   for (const harness of ["Codex", "Claude Code", "OpenCode"])
     assert.match(e2eProse, new RegExp(harness));
-  assert.match(e2eProse, /markers `BEGIN`, `MIDDLE` и `END`/);
-  assert.match(e2eProse, /обычный и harness-UI вопрос/);
-  assert.match(e2eProse, /Оба public pending states\/requests и оба точных reply paths/);
+  assert.match(e2eProse, /маркерами `BEGIN`, `MIDDLE` и `END`/);
+  assert.match(e2eProse, /обычный вопрос и вопрос интерфейса среды агента/);
+  assert.match(e2eProse, /Оба публичных ожидающих состояния и оба точных пути ответа/);
   assert.match(
     e2eProse,
-    /Private provider transcripts, hook stores и inferred session databases запрещены как evidence/,
+    /Закрытые расшифровки поставщика, хранилища hooks и выведенные из наблюдений базы сессий запрещены как доказательства/,
   );
 });
 
 test("watchdog and documentation carry-forward scenarios are explicit", () => {
   for (let index = 1; index <= 4; index += 1) assert.match(e2e, new RegExp(`\\| W${index}\\s+\\|`));
-  assert.match(e2eProse, /одно nonblocking exact message/);
-  assert.match(e2eProse, /неизменившийся duplicate блокирует delivery/);
-  assert.match(e2eProse, /оба reviewer финального SHA явно подтвердили/);
-  assert.match(e2eProse, /skill или agent instructions, acceptance или этот контракт/);
+  assert.match(e2eProse, /одно неблокирующее точное сообщение/);
+  assert.match(e2eProse, /неизменившийся дубликат блокирует доставку/);
+  assert.match(e2eProse, /оба ревьюера финального SHA явно подтвердили/);
+  assert.match(e2eProse, /скил, инструкции агента, критерии приёмки или этот контракт/);
 });
 
 test("acceptance maps all major requirements to deterministic and live proof", () => {
   for (const phrase of [
     "точный именованный набор скилов",
-    "Orchestration и review через Orca",
+    "Оркестрация и ревью через Orca",
     "Codex, Claude Code и OpenCode",
     "полной парой",
     "backlog",
     "Pattern watchdog",
-    "semantic Markdown labels",
+    "смысловые подписи Markdown",
     "Один финальный SHA",
   ])
     assert.match(acceptance, new RegExp(phrase, "i"));

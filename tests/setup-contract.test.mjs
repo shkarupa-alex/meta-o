@@ -92,28 +92,31 @@ test("entry files treat material dictation anomalies as questions, not silent co
   );
   assert.match(
     agents,
-    /imperfect dictation[\s\S]*materially change scope or outcome[\s\S]*ask the\s+user/,
+    /неточной диктовки[\s\S]*существенно изменить область или результат[\s\S]*спросите\s+пользователя/,
   );
-  assert.match(agents, /Preserve confirmed intent\s+verbatim/);
+  assert.match(agents, /Сохраняйте подтверждённое намерение дословно/);
 });
 
 test("entry files define the contradiction-resolution hierarchy", () => {
   for (const source of [agents, claude]) {
-    assert.match(source, /Resolve contradictions in this order/);
-    assert.match(source, /business requirements[\s\S]*architecture decisions[\s\S]*implementation/);
+    assert.match(source, /Разрешайте противоречия в таком порядке/);
+    assert.match(source, /бизнес-требования[\s\S]*архитектурные решения[\s\S]*реализация/);
     assert.match(source, /\[Зачем существует Meta-O\]\(docs\/business\.md\)/);
-    assert.match(source, /lower layer cannot override a higher one/);
+    assert.match(source, /Нижний слой не может переопределять верхний/);
   }
 });
 
 test("entry files preserve the mandatory branch and commit contract", () => {
   for (const source of [agents, claude]) {
-    assert.match(source, /Never develop directly on `main`, `master`, `develop` or `default`/);
-    assert.match(source, /up-to-date `develop` as `feature\/<short-slug>`/);
-    assert.match(source, /Commit every coherent, independently\s+verifiable increment/);
+    assert.match(
+      source,
+      /Никогда не разрабатывайте напрямую в `main`, `master`, `develop` или `default`/,
+    );
+    assert.match(source, /от актуальной `develop` ветку\s+`feature\/<short-slug>`/);
+    assert.match(source, /Коммитьте каждое связное,\s+независимо проверяемое приращение/);
     assert.match(source, /`<type>: <what changed and why>`/);
     for (const type of ["feat", "fix", "refactor", "test", "docs", "chore"])
       assert.match(source, new RegExp("`" + type + "`"));
-    assert.match(source, /Do not add `Assisted-by`, `Co-authored-by`/);
+    assert.match(source, /Не добавляйте `Assisted-by`, `Co-authored-by`/);
   }
 });

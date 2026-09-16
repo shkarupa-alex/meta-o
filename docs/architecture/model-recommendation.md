@@ -1,4 +1,4 @@
-# §A-MODELS-01 — Recommendation выводится из catalog и bounded history
+# §A-MODELS-01 — Рекомендация выводится из каталога и ограниченной истории
 
 ```yaml
 knowledge_id_change:

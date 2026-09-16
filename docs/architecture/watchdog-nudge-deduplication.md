@@ -1,4 +1,4 @@
-# §A-WATCHDOG-01 — Deduplication nudge watchdog хранит один private digest
+# §A-WATCHDOG-01 — Дедупликация подсказок watchdog хранит один закрытый дайджест
 
 ## Решение
 

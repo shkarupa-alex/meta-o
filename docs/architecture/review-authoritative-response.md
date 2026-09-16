@@ -1,4 +1,4 @@
-# §A-REVIEW-04 — Authoritative review response имеет проверяемую форму
+# §A-REVIEW-04 — Авторитетный ответ ревьюера имеет проверяемую форму
 
 ```yaml
 knowledge_id_changes:

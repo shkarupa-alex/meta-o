@@ -1,4 +1,4 @@
-# §A-ORCHESTRATION-01 — Скилы и reasoning — слой оркестрации процесса
+# §A-ORCHESTRATION-01 — Скилы и рассуждения — слой оркестрации процесса
 
 ```yaml
 knowledge_id_changes:
@@ -72,7 +72,7 @@ evidence понятно человеку и эфемерно; manifest, receipt,
 registry или external evidence sink не создаются. Private delivery digest
 watchdog не является run evidence: у него один внешний consumer и явная семантика
 удаления, описанная в
-[§A-WATCHDOG-01 — Deduplication nudge watchdog хранит один private digest][watchdog].
+[§A-WATCHDOG-01 — Дедупликация подсказок watchdog хранит один закрытый дайджест][watchdog].
 
 Restart начинает новый run и не переиспользует прежний gate или scratch state.
 Работа может повториться, зато recovery database не сможет одобрить stale evidence.

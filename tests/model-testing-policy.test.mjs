@@ -25,9 +25,11 @@ test("durable business and architecture layers preserve the low-cost policy", ()
     assert.match(source, /gpt-5\.6-sol\/low/);
     assert.match(source, /gpt-5\.6-luna\/max/);
     assert.match(source, /Qwen\/OpenCode/);
-    assert.match(source, /effective\s+identity/);
-    assert.match(source, /fallback/);
   }
+  assert.match(business, /фактической\s+идентичностью/);
+  assert.match(business, /резервный путь/);
+  assert.match(architecture, /effective\s+identity/);
+  assert.match(architecture, /fallback/);
   assert.match(architecture, new RegExp(`§${"B-EVAL-01"}`));
 });
 

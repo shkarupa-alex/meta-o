@@ -1,4 +1,4 @@
-# §A-ACTIVATION-01 — Meta-O skills запускаются только по explicit graph
+# §A-ACTIVATION-01 — Скилы Meta-O запускаются только по явному графу
 
 ## Решение
 

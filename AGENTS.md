@@ -1,126 +1,136 @@
-# meta-o — project contract
+# meta-o — контракт проекта
 
-`CLAUDE.md` is a byte-for-byte copy of this file. Change both together, or
-`make mo-qc` fails.
+`CLAUDE.md` — побайтовая копия этого файла. Изменяйте их вместе, иначе
+`make mo-qc` завершится ошибкой.
 
-## Scope and outcomes
+## Область и результат
 
-Meta-O is a set of agent skills that runs a feature from a spec to one verified
-candidate commit through Orca. Skills and reasoning orchestrate the work; the project adds
-no workflow engine or general state store. See
-[§A-ORCHESTRATION-01 — Скилы и reasoning — слой оркестрации процесса](docs/architecture/skills-first.md)
-and the narrow state exception in
-[§A-WATCHDOG-01 — Deduplication nudge watchdog хранит один private digest](docs/architecture/watchdog-nudge-deduplication.md).
+Meta-O — набор агентских скилов, который проводит фичу от спецификации до одного
+проверенного коммита-кандидата через Orca. Работой управляют скилы и рассуждения;
+проект не добавляет движок процесса или общее хранилище состояния. См.
+[§A-ORCHESTRATION-01 — Скилы и рассуждения — слой оркестрации процесса](docs/architecture/skills-first.md)
+и узкое исключение для состояния в
+[§A-WATCHDOG-01 — Дедупликация подсказок watchdog хранит один закрытый дайджест](docs/architecture/watchdog-nudge-deduplication.md).
 
-Under [Feature lifecycle](shared/references/methodology.md), one full Git SHA must
-pass QC, two independent vendor-diverse reviews and applicable E2E. An unreadable
-verdict is `unknown`, and humans are interrupted only at the named product,
-irreversible, credential, subscription, dispute and watchdog boundaries.
+Согласно [Feature lifecycle](shared/references/methodology.md), один полный Git SHA
+должен пройти QC, две независимые проверки моделями разных поставщиков и
+применимые E2E. Нечитаемый вердикт считается `unknown`; человека привлекают
+только на явно названных границах продукта, необратимых действий, учётных
+данных, подписки, спора и watchdog.
 
-## Decision hierarchy and architecture
+## Иерархия решений и архитектура
 
-Resolve contradictions in this order: business requirements in
-[Зачем существует Meta-O](docs/business.md) → architecture decisions →
-implementation. A lower layer cannot override a higher one; clarify or change
-the lower layer instead.
+Разрешайте противоречия в таком порядке: бизнес-требования из документа
+[Зачем существует Meta-O](docs/business.md) → архитектурные решения →
+реализация. Нижний слой не может переопределять верхний: вместо этого уточните
+или измените нижний слой.
 
-- [§A-ORCHESTRATION-01 — Скилы и reasoning — слой оркестрации процесса](docs/architecture/skills-first.md)
-- [§A-RESPONSE-01 — Settled final responses остаются на публичных поверхностях backend](docs/architecture/settled-final-response.md)
-- [Один владелец source, самодостаточные generated skills](docs/architecture/distribution.md)
-- [§A-MEMORY-01 — Уровни знаний связаны уникальными id](docs/architecture/knowledge-identifiers.md)
-- [§A-EVAL-01 — Model actors запускаются только по применимости и на approved profile](docs/architecture/evaluation-model-policy.md)
-- [§A-BACKLOG-01 — Backlog — временный notebook с отдельным closure gate](docs/architecture/backlog-notebook.md)
+- [§A-ORCHESTRATION-01 — Скилы и рассуждения — слой оркестрации процесса](docs/architecture/skills-first.md)
+- [§A-RESPONSE-01 — Полный финальный ответ остаётся на публичных поверхностях бэкенда](docs/architecture/settled-final-response.md)
+- [Один владелец исходников, самодостаточные сгенерированные скилы](docs/architecture/distribution.md)
+- [§A-MEMORY-01 — Уровни знаний связаны уникальными идентификаторами](docs/architecture/knowledge-identifiers.md)
+- [§A-EVAL-01 — Модельные исполнители запускаются только по применимости и на одобренном профиле](docs/architecture/evaluation-model-policy.md)
+- [§A-BACKLOG-01 — Временный блокнот фичи с отдельной проверкой закрытия](docs/architecture/backlog-notebook.md)
 - [§A-ISSUE-01 — Подтверждённая внешняя работа маршрутизируется в Issues](docs/architecture/issue-routing.md)
-- [§A-REVIEW-04 — Authoritative review response имеет проверяемую форму](docs/architecture/review-authoritative-response.md)
-- [§A-SESSION-01 — Orca actors остаются ресурсами исходного project](docs/architecture/orca-session-ownership.md)
-- [§A-DELIVERY-01 — Task bytes доставляются только в доказанный agent prompt](docs/architecture/trust-safe-delivery.md)
-- [§A-WAIT-01 — Один run-wide waiter владеет liveness actors](docs/architecture/blocking-wait-cadence.md)
-- [§A-ACTIVATION-01 — Meta-O skills запускаются только по explicit graph](docs/architecture/skill-activation.md)
-- [§A-MODELS-01 — Recommendation выводится из catalog и bounded history](docs/architecture/model-recommendation.md)
+- [§A-REVIEW-04 — Авторитетный ответ ревьюера имеет проверяемую форму](docs/architecture/review-authoritative-response.md)
+- [§A-SESSION-01 — Исполнители Orca остаются ресурсами исходного проекта](docs/architecture/orca-session-ownership.md)
+- [§A-DELIVERY-01 — Байты задачи доставляются только в подтверждённое поле ввода агента](docs/architecture/trust-safe-delivery.md)
+- [§A-WAIT-01 — Один общий waiter владеет ожиданием активности всех исполнителей запуска](docs/architecture/blocking-wait-cadence.md)
+- [§A-ACTIVATION-01 — Скилы Meta-O запускаются только по явному графу](docs/architecture/skill-activation.md)
+- [§A-MODELS-01 — Рекомендация выводится из каталога и ограниченной истории](docs/architecture/model-recommendation.md)
 
-No native CLI is wrapped in a project proxy. Do not create a manifest, receipt,
-digest or baseline without a named external consumer.
+Проект не оборачивает нативные CLI собственным прокси. Не создавайте манифест,
+квитанцию, дайджест или базовый снимок без явно названного внешнего потребителя.
 
-## Purpose
+## Назначение
 
-Significant first-party modules and public symbols explain why they exist and
-name their `§A-*` decision; see
+Значимые собственные модули и публичные символы объясняют, зачем существуют, и
+называют своё решение `§A-*`; см.
 [Purpose and architecture contract](shared/references/purpose-and-architecture.md).
 
-## Knowledge
+## Знания
 
-| Document                                              | Role                                         |
-| ----------------------------------------------------- | -------------------------------------------- |
-| [Зачем существует Meta-O](docs/business.md)           | stable business framing and reasons          |
-| [meta-o](README.md)                                   | purpose, use, constraints and entry commands |
-| [Глоссарий](docs/glossary.md)                         | one meaning per project term                 |
-| [Карта acceptance](docs/acceptance.md)                | requirements and their actual proof          |
-| [Сквозная проверка](docs/e2e.md)                      | live scenarios and actors                    |
-| [Возможности backend](docs/backend-capabilities.md)   | support boundary and companion map           |
-| [Бэклог](docs/backlog.md)                             | temporary notebook of the active feature     |
-| [Грабли и команды проекта](docs/papercut.md)          | routine commands and failed approaches       |
-| [Feature lifecycle](shared/references/methodology.md) | complete orchestration methodology           |
+| Документ                                              | Роль                                                   |
+| ----------------------------------------------------- | ------------------------------------------------------ |
+| [Зачем существует Meta-O](docs/business.md)           | устойчивое описание бизнеса и его причин               |
+| [meta-o](README.md)                                   | назначение, применение, ограничения и основные команды |
+| [Глоссарий](docs/glossary.md)                         | одно значение для каждого термина проекта              |
+| [Карта acceptance](docs/acceptance.md)                | требования и их фактические доказательства             |
+| [Сквозная проверка](docs/e2e.md)                      | реальные сценарии и исполнители                        |
+| [Возможности бэкенда](docs/backend-capabilities.md)   | граница поддержки и карта companion-скилов             |
+| [Бэклог](docs/backlog.md)                             | временный блокнот активной фичи                        |
+| [Грабли и команды проекта](docs/papercut.md)          | повседневные команды и неудачные подходы               |
+| [Feature lifecycle](shared/references/methodology.md) | полная методология оркестрации                         |
 
-`docs/references/` is source material and archive, never current requirements.
-Update knowledge in the same change that made it new or false.
+`docs/references/` содержит исходные материалы и архив, а не действующие
+требования. Обновляйте знания в том же изменении, которое сделало их новыми или
+неверными.
 
-User input may come from imperfect dictation. If anomalous wording could
-materially change scope or outcome, ask the user instead of guessing.
-Preserve confirmed intent verbatim; do not rewrite the original ledger entry to
-hide the dictation error.
+Пользовательский ввод может поступить из неточной диктовки. Если странная
+формулировка способна существенно изменить область или результат, спросите
+пользователя, а не угадывайте. Сохраняйте подтверждённое намерение дословно; не
+переписывайте исходную запись журнала, чтобы скрыть ошибку диктовки.
 
-Temporary feature observations may go into [Бэклог](docs/backlog.md) with their
-reason, practical impact and next step. Confirmed out-of-scope work goes to the
-correct project/upstream Issue; unresolved ownership is `needs_attention`.
-`docs/backlog.md` must be empty at G0 and GC, and its committed exact SHA must
-pass `make mo-backlog` immediately before any agent-managed MR/PR create
-or merge. Never waive `NOT-EMPTY` or `UNKNOWN`.
+Временные наблюдения по фиче можно заносить в [Бэклог](docs/backlog.md) вместе с
+причиной, практическим влиянием и следующим шагом. Подтверждённая работа за
+пределами области уходит в Issue правильного проекта или внешнего владельца; неясное
+владение получает `needs_attention`. На G0 и GC файл `docs/backlog.md` должен
+быть пуст, а его закоммиченный точный SHA обязан пройти `make mo-backlog`
+непосредственно перед созданием или слиянием MR/PR агентом. Никогда не обходите
+`NOT-EMPTY` или `UNKNOWN`.
 
-A confirmed reproducible behavioral defect gets the smallest focused regression
-test. Substantial ownership, concurrency, trust, security, compatibility,
-transaction or resource-lifetime code keeps a nearby comment explaining the
-non-obvious invariant. Production comments never contain review finding ids.
+Подтверждённый воспроизводимый дефект поведения получает минимальный точечный
+регрессионный тест. Рядом с существенным кодом владения, конкурентности,
+доверия, безопасности, совместимости, транзакций или времени жизни ресурсов
+оставляйте комментарий, объясняющий неочевидный инвариант. Рабочие комментарии
+никогда не содержат идентификаторы замечаний проверки.
 
-Human-facing knowledge uses the user's language. Code, identifiers, commands,
-protocol literals and upstream names remain in English.
+Знания для человека пишутся на языке пользователя. Код, идентификаторы, команды,
+литералы протоколов и upstream-названия остаются на английском. Термин из
+глоссария сам по себе не становится литералом: в связной русской прозе
+используйте естественный русский эквивалент и нормальное согласование.
 
-## Commands
+## Команды
 
 ```bash
-make mo-qc          # authoritative non-mutating aggregate gate
-make mo-lint        # Markdown, formatting, ESLint, syntax and posture self-checks
-make mo-test        # node --test over tests/
-make mo-smoke       # helpers boot under a throwaway HOME
-make mo-backlog # prove committed feature notebook is empty (closure only)
-make skills         # rebuild skills/ from src/skills/ + shared/
-make mo-e2e         # print agent-required scenarios and exit 2
+make mo-qc          # авторитетная сводная проверка без изменения файлов
+make mo-lint        # Markdown, форматирование, ESLint, синтаксис и проверки режима запуска
+make mo-test        # node --test для tests/
+make mo-smoke       # запуск помощников с одноразовым HOME
+make mo-backlog     # доказательство пустоты закоммиченного блокнота при закрытии
+make skills         # пересборка skills/ из src/skills/ и shared/
+make mo-e2e         # печать сценариев для агента и завершение с кодом 2
 ```
 
-`mo-qc` and reviewer checks never rewrite the files they judge. Run a
-potentially mutating diagnostic only in an isolated disposable location, never
-in the frozen candidate worktree.
+`mo-qc` и проверки ревьюеров никогда не перезаписывают оцениваемые файлы.
+Диагностику, способную что-либо изменить, запускайте только в изолированном
+одноразовом каталоге, но не в замороженном рабочем дереве кандидата.
 
-## Version control
+## Управление версиями
 
-Never develop directly on `main`, `master`, `develop` or `default`. Create
-each task branch from an up-to-date `develop` as `feature/<short-slug>`.
+Никогда не разрабатывайте напрямую в `main`, `master`, `develop` или `default`.
+Для каждой задачи создавайте от актуальной `develop` ветку
+`feature/<short-slug>`.
 
-Run relevant checks before committing. Commit every coherent, independently
-verifiable increment instead of accumulating the whole task. Use
-`<type>: <what changed and why>` with `feat`, `fix`, `refactor`, `test`,
-`docs` or `chore`. Reference an issue or specification when one exists.
+Перед коммитом запускайте подходящие проверки. Коммитьте каждое связное,
+независимо проверяемое приращение, а не накапливайте всю задачу целиком.
+Используйте формат `<type>: <what changed and why>` с типом `feat`, `fix`,
+`refactor`, `test`, `docs` или `chore`. Если есть Issue или спецификация,
+сошлитесь на неё.
 
-Do not add `Assisted-by`, `Co-authored-by` or other agent/tool attribution.
-The final verified result is one full Git object ID; any later commit invalidates
-its reviews and verification.
+Не добавляйте `Assisted-by`, `Co-authored-by` или иное указание агента либо
+инструмента. Финальный проверенный результат — один полный Git object ID; любой
+последующий коммит аннулирует его проверки и подтверждение.
 
-## Repository conventions
+## Соглашения репозитория
 
-- Skill frontmatter allows only `name`, `description`, `license`,
-  `compatibility`, `metadata` and `allowed-tools`; directory and `name:`
-  must match.
-- Never edit `skills/`. Never shadow a `shared/` file from
+- Frontmatter скила допускает только `name`, `description`, `license`,
+  `compatibility`, `metadata` и `allowed-tools`; каталог и `name:` должны
+  совпадать.
+- Никогда не редактируйте `skills/`. Не перекрывайте файл из `shared/` файлом из
   `src/skills/<name>/`.
-- Prefer a mature tool with project-owned configuration. A custom checker needs
-  proof in its commit message that a plugin or configuration cannot solve it.
-- Parse Markdown programmatically only with a real AST library, never regex.
+- Предпочитайте зрелый инструмент с конфигурацией проекта. Для собственного
+  проверяющего инструмента в сообщении коммита нужно доказать, что плагин или
+  конфигурация не решают задачу.
+- Программно разбирайте Markdown только настоящей AST-библиотекой, не регулярным
+  выражением.

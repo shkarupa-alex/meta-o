@@ -22,9 +22,9 @@ const contracts = ["AGENTS.md", "CLAUDE.md"].map((name) => [
 
 test("both contract copies keep the dictation rule and its verbatim guarantee", () => {
   for (const [name, source] of contracts) {
-    assert.match(source, /imperfect dictation/, name);
-    assert.match(source, /Preserve confirmed intent\s+verbatim/, name);
-    assert.match(source, /do not rewrite the original ledger entry/, name);
+    assert.match(source, /неточной диктовки/, name);
+    assert.match(source, /Сохраняйте подтверждённое намерение дословно/, name);
+    assert.match(source, /не\s+переписывайте исходную запись журнала/, name);
   }
 });
 

@@ -1,44 +1,50 @@
-# §A-SESSION-01 — Orca actors остаются ресурсами исходного project
+# §A-SESSION-01 — Исполнители Orca остаются ресурсами исходного проекта
 
 ```yaml
 knowledge_id_change:
   action: reuse
   id: §A-SESSION-01
-  reason: Review обнаружил, что resource delta не связывал fallback terminal с Dispatch при no_owned_resource.
-  new_boundary: OwnedResourceSet хранит worktree, terminal и worker; fallback закрывает только записанный exact terminal handle.
+  reason: Ревью обнаружило, что изменение ресурсов не связывало резервный терминал с Dispatch при no_owned_resource.
+  new_boundary: OwnedResourceSet хранит рабочее дерево, терминал и исполнителя; резервный путь закрывает только записанный точный дескриптор терминала.
   references_updated: true
 ```
 
 ## Решение
 
-Перед запуском Meta-O строит read-only `ProjectRegistrationSet/1` и
-`OwnedResourceSet/1` из version-matched project/repo/worktree/terminal/worker
-surfaces. После start и cleanup registration set byte-semantically неизменен;
-resource delta содержит только exact-owned handles текущего Run.
+Перед запуском Meta-O строит доступные только для чтения
+`ProjectRegistrationSet/1` и `OwnedResourceSet/1` по согласованным с версией
+представлениям проекта, репозитория, рабочего дерева, терминала и исполнителя.
+После запуска и очистки набор регистраций побайтово и семантически неизменен;
+изменение ресурсов содержит только точные дескрипторы текущего запуска, которыми
+он владеет.
 
-Review допускает existing clean isolated worktree исходного project или Orca
-`new-child`, доказанно атрибутированный Git project. Shared current worktree,
-raw `git worktree add`, `orca repo add`, `new-top-level` и недоказанная remote
-placement запрещены. До pair это даёт один `REVIEW-START version=1
-status=unsupported reason=<typed-code>`, без reports/namespace/handoff.
+Для ревью допустимо существующее чистое изолированное рабочее дерево исходного
+проекта или Orca `new-child`, доказанно связанный с Git-проектом. Запрещены общее
+текущее рабочее дерево, прямой `git worktree add`, `orca repo add`,
+`new-top-level` и недоказанное удалённое размещение. До создания пары это даёт
+один `REVIEW-START version=1 status=unsupported reason=<typed-code>` без отчётов,
+пространства имён и передачи результатов.
 
-Standalone review создаёт только двух reviewers и не присваивает caller/executor.
-При `FINDINGS` sessions остаются hot; перед final proof они освобождаются и
-создаётся fresh pair. Cleanup затрагивает только сохранённые exact handles; при
-partial start сохраняет foreign/ambiguous resources и повторно сравнивает обе
-проекции. Visible titles имеют форму `<work-slug>:<role>`.
+Отдельное ревью создаёт только двух ревьюеров и не назначает вызывающую сторону
+или исполнителя реализации. При `FINDINGS` сессии сохраняют накопленный контекст;
+перед финальным доказательством их освобождают и создают новую пару. Очистка
+затрагивает только сохранённые точные дескрипторы; при частичном запуске она
+сохраняет чужие и неоднозначные ресурсы и повторно сравнивает обе проекции.
+Видимые заголовки имеют форму `<work-slug>:<role>`.
 
-Ответ `worker-release: no_owned_resource` разрешает fallback только для заранее
-сохранённой пары Dispatch → exact low-level terminal handle: закрывается ровно
-этот handle, затем перечитывается resource projection. Без пары cleanup даёт
-`needs_attention` и ничего не закрывает. До подтверждённого canonical upstream
-Issue этот обход помечен `unsupported` в `docs/papercut.md`.
+Ответ `worker-release: no_owned_resource` разрешает резервный путь только для
+заранее сохранённой пары Dispatch → точный низкоуровневый дескриптор терминала:
+закрывают ровно этот дескриптор, затем перечитывают проекцию ресурсов. Без пары
+очистка даёт `needs_attention` и ничего не закрывает. До подтверждённого
+канонического Issue внешнего проекта этот обход помечен `unsupported` в
+`docs/papercut.md`.
 
 Решение служит §B-SESSION-01, §B-REVIEW-04 и §B-PORTABILITY-07.
-Без §A-SESSION-01 reviewer isolation снова может создавать побочные project
-registrations, а exact cleanup и hot/fresh ownership становятся неразличимы.
+Без §A-SESSION-01 изоляция ревьюеров снова может создавать побочные регистрации
+проекта, а точная очистка и владение старыми и новыми сессиями становятся
+неразличимы.
 
-Публичный Orca gap для нескольких workspace поверх folder project уже ведётся в
+Публичный пробел Orca для нескольких рабочих пространств поверх проекта-папки уже ведётся в
 [Orca issue #2654](https://github.com/stablyai/orca/issues/2654). Пока он открыт, отсутствие
-атрибутированного same-project route даёт `REVIEW-START/1 unsupported`, а не
-временную регистрацию нового project.
+подтверждённого маршрута в том же проекте даёт `REVIEW-START/1 unsupported`, а не
+временную регистрацию нового проекта.

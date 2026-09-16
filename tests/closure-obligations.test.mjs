@@ -121,7 +121,7 @@ const OBLIGATIONS = [
     "a real review run has a pair barrier, hot remediation and a fresh final pair",
     {
       life: [/keep both remediation reviewer sessions hot/, /two fresh independent reviewers/],
-      e2e: [/Запустить fresh final review pair/u],
+      e2e: [/Запустить новую финальную пару ревьюеров/u],
     },
   ],
   [
@@ -185,8 +185,8 @@ const OBLIGATIONS = [
     "the authoritative report is the complete worker_done, and the TUI is a projection",
     {
       settled: [
-        /полное orchestration message `worker_done`/u,
-        /bounded\s+preview не доказывают полный final response/u,
+        /полное сообщение оркестрации `worker_done`/u,
+        /ограниченный предпросмотр не доказывают полный финальный ответ/u,
       ],
       mech: [/complete `worker_done` body is the settled final response/],
     },
@@ -209,7 +209,7 @@ const OBLIGATIONS = [
         /Временная closure map существует только в checkpoint-коммите/u,
         /Он не\s+считает структурную биекцию доказательством семантического закрытия/u,
       ],
-      acc: [/Карта даёт каждому obligation\s+собственную executable proof command/u],
+      acc: [/Карта даёт каждому обязательству\s+собственную исполняемую команду доказательства/u],
     },
   ],
 
@@ -402,7 +402,7 @@ const OBLIGATIONS = [
     {
       bcon: [/expose agent and harness-UI questions and accept an answer/],
       life: [/ordinary public question and permission surfaces/],
-      e2e: [/Задать и ответить на обычный и harness-UI вопрос/u],
+      e2e: [/Задать обычный вопрос и вопрос интерфейса среды агента и ответить на них/u],
     },
   ],
   [
@@ -411,7 +411,7 @@ const OBLIGATIONS = [
     {
       mech: [/An early message must wake the wait/],
       life: [/Re-read state at a sane interval measured in minutes/],
-      e2e: [/Разбудить blocking wait early и обработать quiet timeout/u],
+      e2e: [/Рано разбудить блокирующее ожидание и обработать тихий тайм-аут/u],
     },
   ],
   [
@@ -466,7 +466,7 @@ const OBLIGATIONS = [
     "a ready completion wakes the coordinator without a user ping",
     {
       mech: [/orca orchestration check --wait/],
-      e2e: [/Event будит wait; timeout создаёт один checkpoint без restart/u],
+      e2e: [/Событие будит ожидание; тайм-аут создаёт одну контрольную точку без перезапуска/u],
     },
   ],
   [
@@ -508,7 +508,7 @@ const OBLIGATIONS = [
     "O-RR-033",
     "the TUI final is a diagnostic projection of the authoritative report",
     {
-      settled: [/Whole-session view остаётся для редкой диагностики/u],
+      settled: [/Полный вид сессии остаётся для редкой диагностики/u],
       bcon: [
         /Whole-session\s+output is diagnostic and cannot replace a missing complete final response/,
       ],
@@ -560,7 +560,7 @@ const OBLIGATIONS = [
     {
       mech: [/require the worker to place its full final response in that\s+message/],
       life: [/Do not merge, rank, hash, encode, split,\s+truncate or\s+summarize their responses/],
-      e2e: [/Начальный, средний и конечный markers целы/u],
+      e2e: [/Начальный, средний и конечный маркеры целы/u],
     },
   ],
   [
@@ -700,7 +700,9 @@ const OBLIGATIONS = [
         /never starts a second full gate against a\s+worktree that already has one running/,
       ],
       rev: [/only after the caller grants the shared lock or a\s+worktree of your own/],
-      acc: [/Host-sensitive full gate сериализован, foreground и без orphan-процессов/u],
+      acc: [
+        /проверка, чувствительная к хосту, выполняется последовательно, на переднем плане и не оставляет процессов/iu,
+      ],
     },
   ],
   [
@@ -889,7 +891,7 @@ const OBLIGATIONS = [
     "a lost coordinator pane is taken over through authorized public run state",
     {
       mech: [/retain exact run\/task\/dispatch\/terminal locators in current reasoning/],
-      e2e: [/Effect остаётся unknown; exact-owned cleanup сохраняет соседние ресурсы/u],
+      e2e: [/Effect остаётся unknown; очистка точно своих ресурсов сохраняет соседние/u],
     },
   ],
   [
@@ -921,7 +923,7 @@ test("every obligation id is unique and addressable by its own name pattern", ()
 });
 
 test("the backend companion map covers both mandatory bundled guides", () => {
-  assert.match(DOCS.caps, /Required companion guides/u);
+  assert.match(DOCS.caps, /Обязательные companion-руководства/u);
   assert.match(DOCS.bcon, /Required companion guides/u);
   for (const guide of ["orchestration", "orca-cli"]) {
     assert.ok(DOCS.caps.includes(`\`${guide}\``));

@@ -163,7 +163,8 @@ test("Issue disposition records have the spec-owned fields and closed outcomes",
 test("the harvested intake has one closed disposition for every BKL source", () => {
   const table = markdownTables(source("docs/acceptance.md")).find(
     ([header]) =>
-      JSON.stringify(header) === JSON.stringify(["Source", "Outcome", "Durable evidence"]),
+      JSON.stringify(header) ===
+      JSON.stringify(["Источник", "Исход", "Долговечное доказательство"]),
   );
   assert.ok(table, "BKL harvest table missing");
   const rows = table.slice(1);
@@ -1007,11 +1008,14 @@ test("shipped handoff and live-eval instructions match their fail-closed callers
   for (const document of [review, methodology, response]) {
     assert.match(document, /hard[- ]link/u);
     assert.match(document, /create-if-absent/u);
-    assert.match(document, /overwrite-capable rename/iu);
+    assert.match(document, /overwrite-capable rename|Переименование с возможностью перезаписи/iu);
   }
   assert.match(
     source("docs/e2e.md"),
     /--execution-observations <all-coordinate-executions\.json>/u,
   );
-  assert.match(source("docs/e2e.md"), /Caller отдельно, не копируя actor output/u);
+  assert.match(
+    source("docs/e2e.md"),
+    /Вызывающая сторона\s+отдельно, не копируя вывод модельного исполнителя/u,
+  );
 });

@@ -44,6 +44,50 @@ knowledge_id_changes:
       §-id; отдельно перечисленные смысловые reuse могут быть в том же коммите,
       а удаления и прочие смысловые изменения требуют remove или reuse.
     references_updated: true
+  - action: editorial
+    ids:
+      - §A-ACTIVATION-01
+      - §A-BACKEND-01
+      - §A-BACKLOG-01
+      - §A-DISTRIBUTION-01
+      - §A-DISTRIBUTION-02
+      - §A-DISTRIBUTION-03
+      - §A-DISTRIBUTION-04
+      - §A-DISTRIBUTION-05
+      - §A-DISTRIBUTION-06
+      - §A-EVAL-01
+      - §A-MODELS-01
+      - §A-ORCHESTRATION-01
+      - §A-ORCHESTRATION-03
+      - §A-POSTURE-01
+      - §A-RESPONSE-01
+      - §A-RESPONSE-02
+      - §A-RESPONSE-03
+      - §A-REUSE-01
+      - §A-REVIEW-02
+      - §A-REVIEW-04
+      - §A-SESSION-01
+      - §A-WAIT-01
+      - §A-WATCHDOG-01
+      - §A-WATCHDOG-02
+      - §B-EVAL-01
+      - §B-HUMAN-04
+      - §B-LONGEVITY-04
+      - §B-PORTABILITY-05
+      - §B-PORTABILITY-06
+      - §B-PORTABILITY-07
+      - §B-PORTABILITY-08
+      - §B-REVIEW-02
+      - §B-REVIEW-03
+      - §B-REVIEW-04
+      - §B-SESSION-01
+      - §B-SESSION-02
+      - §B-UPTIME-02
+    reason: >-
+      Человекочитаемые знания приведены к русской прозе без изменения границ
+      решений и требований; ошибочные сужения терминов из первой редакции
+      исправлены до публикации результата.
+    references_updated: true
 ```
 
 ## Решение
