@@ -89,7 +89,13 @@ test("the real history is reachable and valid from program input", () => {
     [],
   );
   // And the exemption may not quietly cover anything after the boundary.
-  for (const error of verifyHistory(process.cwd(), cutoff, null, currentRecordBoundary)) {
+  for (const error of verifyHistory(
+    process.cwd(),
+    cutoff,
+    null,
+    currentRecordBoundary,
+    strictEditorialBoundary,
+  )) {
     const [parent] = error.split("..");
     assert.equal(
       git(process.cwd(), ["merge-base", "--is-ancestor", boundary, parent], true),
