@@ -15,9 +15,10 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const prose = (source) => source.replace(/\s+/gu, " ");
 const contracts = ["AGENTS.md", "CLAUDE.md"].map((name) => [
   name,
-  readFileSync(join(ROOT, name), "utf8"),
+  prose(readFileSync(join(ROOT, name), "utf8")),
 ]);
 
 test("both contract copies keep the dictation rule and its verbatim guarantee", () => {
@@ -29,7 +30,9 @@ test("both contract copies keep the dictation rule and its verbatim guarantee", 
 });
 
 test("methodology preserves product intent but excludes narrow run-control approvals", () => {
-  const methodology = readFileSync(join(ROOT, "shared", "references", "methodology.md"), "utf8");
+  const methodology = prose(
+    readFileSync(join(ROOT, "shared", "references", "methodology.md"), "utf8"),
+  );
   assert.match(
     methodology,
     /append it verbatim\s+to the task ledger before implementation continues/,
@@ -42,7 +45,9 @@ test("methodology preserves product intent but excludes narrow run-control appro
 });
 
 test("ledger redaction names every kind it handles and the false positive it must not", () => {
-  const methodology = readFileSync(join(ROOT, "shared", "references", "methodology.md"), "utf8");
+  const methodology = prose(
+    readFileSync(join(ROOT, "shared", "references", "methodology.md"), "utf8"),
+  );
   // Spec 2 moved this duty from the retired reuse skill to lifecycle
   // materialization, and it is only a duty if each named kind is covered.
   for (const kind of [
@@ -60,25 +65,26 @@ test("ledger redaction names every kind it handles and the false positive it mus
   // credential must survive, or redaction corrupts the normative ledger.
   assert.match(methodology, /only\s+resembles a secret/);
   assert.match(methodology, /stays verbatim/);
-  const generated = readFileSync(
-    join(ROOT, "skills", "mo-orchestrate-orca", "references", "methodology.md"),
-    "utf8",
+  const generated = prose(
+    readFileSync(
+      join(ROOT, "skills", "mo-orchestrate-orca", "references", "methodology.md"),
+      "utf8",
+    ),
   );
   assert.match(generated, /\[REDACTED:<kind>\]/);
   assert.match(generated, /only\s+resembles a secret/);
 });
 
 test("the business framing says where the verbatim ledger lives and what it keeps", () => {
-  const business = readFileSync(join(ROOT, "docs", "business.md"), "utf8");
+  const business = prose(readFileSync(join(ROOT, "docs", "business.md"), "utf8"));
   assert.match(business, /Дословные пользовательские интенты ведутся/);
   assert.match(business, /вместе с задачей или\s+спецификацией/);
   assert.match(business, /сохраняется смысл, а не\s+формулировка/);
 });
 
 test("the architecture layer owns the split between ledger and framing", () => {
-  const decision = readFileSync(
-    join(ROOT, "docs", "architecture", "knowledge-identifiers.md"),
-    "utf8",
+  const decision = prose(
+    readFileSync(join(ROOT, "docs", "architecture", "knowledge-identifiers.md"), "utf8"),
   );
   assert.match(decision, /§A-MEMORY-02 — Дословный реестр живёт с задачей/);
   assert.match(decision, /нормативен для исполнителя и ревьюеров/);

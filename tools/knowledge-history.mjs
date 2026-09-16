@@ -493,7 +493,8 @@ export function edgeViolations(
  * It exempts only 3a292e7..a811313 (`§A-DELIVERY-01`), which predates the rule;
  * history is not rewritten to fabricate an authorization that did not exist.
  * `strictEditorialFrom` pins the first parent whose outgoing edges restrict
- * editorial authorization to headings, link labels and whitespace.
+ * editorial authorization to headings, link labels and ordinary-text
+ * whitespace, and make authorization records append-only.
  */
 export function verifyHistory(
   root,

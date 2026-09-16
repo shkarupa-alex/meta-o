@@ -114,6 +114,11 @@ test("the real history is reachable and valid from program input", () => {
       `exempted edge is not before the boundary: ${error}`,
     );
   }
+  // We deliberately do not repeat this full-DAG audit with the strict/editorial
+  // boundary removed: that would add another complete history traversal to every
+  // test run. Focused fixtures below prove that the shared switch gates both exact
+  // editorial comparison and append-only history; the configured traversal above
+  // proves that every edge at or after the pinned boundary satisfies both rules.
 });
 
 test("a citation no tree can resolve fails closed on the commit that made it", () => {

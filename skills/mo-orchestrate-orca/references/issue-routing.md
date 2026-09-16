@@ -1,8 +1,8 @@
 # Маршрутизация подтверждённой внешней работы
 
 Этот переносимый контракт определяет operational-решение проекта Meta-O.
-Установленный orchestrator читает его до поиска или записи Issue; ему не
-нужен доступ к исходному репозиторию Meta-O.
+Установленный orchestrator читает его до поиска или записи Issue; ему не нужен
+доступ к исходному репозиторию Meta-O.
 
 
 Сначала установи `in_scope`, `unconfirmed`, `project_issue`, `upstream_issue`,
@@ -12,17 +12,19 @@ project remote никогда не fallback. Для project Issue precedence: ex
 repository, tracking remote, `origin`.
 
 Hosting выводится из URL host. Для enterprise/self-hosted host требуется ровно
-один успешный authenticated `gh auth status --hostname` или `glab auth status
---hostname`. Перед записью выполняется bounded search открытых и закрытых Issues;
-усечённый результат не доказывает отсутствие duplicate. Root cause совпадает
-только при той же публичной поверхности, нарушенном invariant и классе симптома.
+один успешный authenticated `gh auth status --hostname` или
+`glab auth status --hostname`. Перед записью выполняется bounded search открытых
+и закрытых Issues; усечённый результат не доказывает отсутствие duplicate. Root
+cause совпадает только при той же публичной поверхности, нарушенном invariant и
+классе симптома.
 
 Write использует native `gh`/`glab`; финальные title и explicit body из private
 temporary file проходят одну closed redaction policy перед записью и post-write
-lookup. Неопределённый effect не повторяется. Closed fixed Issue либо связывается
-с требуемой версией, либо получает новый use case/new Issue; автоматического
-reopen нет. Локальный workaround публичного пробела разрешён только рядом с
-verified canonical upstream Issue URL; иначе route объявляется unsupported.
+lookup. Неопределённый effect не повторяется. Closed fixed Issue либо
+связывается с требуемой версией, либо получает новый use case/new Issue;
+автоматического reopen нет. Локальный workaround публичного пробела разрешён
+только рядом с verified canonical upstream Issue URL; иначе route объявляется
+unsupported.
 
 ## Canonical decision table
 
@@ -53,20 +55,23 @@ verified canonical upstream Issue URL; иначе route объявляется u
 ## Native CLI surface
 
 Перед записью зафиксируй installed version и перечитай help точной subcommand.
-GitHub repo-scoped dedup использует `gh issue list --state all --limit <n>
---json number,title,state,stateReason,url,updatedAt`; comments/creates используют
-`--body-file`. Cross-repo `gh search issues` не получает `--state all` и не
-выдаёт отсутствие `stateReason` за repo-scoped доказательство.
+GitHub repo-scoped dedup использует
+`gh issue list --state all --limit <n> --json number,title,state,stateReason,url,updatedAt`;
+comments/creates используют `--body-file`. Cross-repo `gh search issues` не
+получает `--state all` и не выдаёт отсутствие `stateReason` за repo-scoped
+доказательство.
 
-GitLab dedup использует `glab issue list --all --output json --per-page <n>
---page <k>` до короткой страницы. Creates используют `--description-file`.
-`glab issue note` не читает body из файла или stdin и без `--message` открывает
-editor. Поэтому многострочная note публикуется через
+GitLab dedup использует
+`glab issue list --all --output json --per-page <n> --page <k>` до короткой
+страницы. Creates используют `--description-file`. `glab issue note` не читает
+body из файла или stdin и без `--message` открывает editor. Поэтому
+многострочная note публикуется через
 `glab api --hostname <host> --method POST projects/<url-encoded-path>/issues/<iid>/notes --input <prepared-note.json>`,
-где JSON собирается file-safe командой `jq -Rs '{body: .}' < body.md > note.json`.
-Это локальный workaround: рядом с инструкцией обязателен canonical upstream
-Issue URL; пока он не подтверждён, route даёт `needs_attention`, а не guessed
-write. Bodyless command, editor invocation и shell substitution запрещены.
+где JSON собирается file-safe командой
+`jq -Rs '{body: .}' < body.md > note.json`. Это локальный workaround: рядом с
+инструкцией обязателен canonical upstream Issue URL; пока он не подтверждён,
+route даёт `needs_attention`, а не guessed write. Bodyless command, editor
+invocation и shell substitution запрещены.
 
 Каждый write body готовится под `umask 077`, передаётся файлом или stdin без
 shell substitution и удаляется только после settled outcome. Версионные и

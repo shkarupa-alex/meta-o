@@ -30,11 +30,11 @@ Perform and retain evidence for these stages in order:
 
 1. Grounding — establish intent, instructions, candidate identity and scope.
 2. Change discovery — read the diff before constructing the initial risk map;
-   identify changed artifacts, reachable implementation, tests/configuration
-   and relevant history.
-3. Risk mapping — activate only applicable security/effects,
-   concurrency/state, compatibility/data, performance/resources and
-   maintainability/test-gap lenses. Expand the map when evidence requires it.
+   identify changed artifacts, reachable implementation, tests/configuration and
+   relevant history.
+3. Risk mapping — activate only applicable security/effects, concurrency/state,
+   compatibility/data, performance/resources and maintainability/test-gap
+   lenses. Expand the map when evidence requires it.
 4. Candidate discovery — trace requirements and activated risk surfaces without
    manufacturing findings to fill categories.
 5. Candidate verification — try to falsify each candidate with a test, trace,
@@ -63,12 +63,12 @@ code must cite durable business/architecture contracts, never finding ids.
 
 ## Deferral lens
 
-An empty backlog is valid and is required at lifecycle closure. Inspect the change
-and behavior for postponed, deliberately omitted, blocked or knowingly unfixed
-work. A temporary notebook entry needs reason, practical impact and next step;
-confirmed out-of-scope work belongs in a correctly routed project/upstream Issue.
-An unresolved disposition is `needs_attention`, not permission to leave closure
-non-empty. Do not manufacture an entry to fill a category.
+An empty backlog is valid and is required at lifecycle closure. Inspect the
+change and behavior for postponed, deliberately omitted, blocked or knowingly
+unfixed work. A temporary notebook entry needs reason, practical impact and next
+step; confirmed out-of-scope work belongs in a correctly routed project/upstream
+Issue. An unresolved disposition is `needs_attention`, not permission to leave
+closure non-empty. Do not manufacture an entry to fill a category.
 
 ## Diagnostics
 
@@ -97,10 +97,10 @@ Counts: P0=<n> P1=<n> P2=<n> P3=<n>
 ```
 
 Then include an optional keyed finding index, `Evidence report`, and exactly one
-each of `Grounding`, `Scope and checks`, `Findings`, `Unknowns`, `Residual risks`
-in that order. `UNKNOWN` additionally includes a non-empty `Unknown-Account`
-between Findings and Unknowns and a typed `Unknown-Reason`. End with
-`End-Review: <Review-Execution>` as the last non-empty line.
+each of `Grounding`, `Scope and checks`, `Findings`, `Unknowns`,
+`Residual risks` in that order. `UNKNOWN` additionally includes a non-empty
+`Unknown-Account` between Findings and Unknowns and a typed `Unknown-Reason`.
+End with `End-Review: <Review-Execution>` as the last non-empty line.
 
 The complete textual report includes:
 

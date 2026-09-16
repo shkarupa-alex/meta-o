@@ -106,11 +106,15 @@ test("internal Markdown links resolve and use target H1 titles as labels", () =>
         ) {
           if (["text", "code_inline"].includes(token.children[index].type)) {
             label.push(token.children[index].content);
+          } else if (["softbreak", "hardbreak"].includes(token.children[index].type)) {
+            label.push(" ");
           }
         }
+        const normalizedLabel = label.join("").replace(/\s+/gu, " ").trim();
+        const normalizedTitle = targetTokens[h1 + 1].content.replace(/\s+/gu, " ").trim();
         assert.ok(
-          label.join("").includes(targetTokens[h1 + 1].content),
-          `${path}: "${label.join("")}" does not contain "${targetTokens[h1 + 1].content}"`,
+          normalizedLabel.includes(normalizedTitle),
+          `${path}: "${normalizedLabel}" does not contain "${normalizedTitle}"`,
         );
       }
     }

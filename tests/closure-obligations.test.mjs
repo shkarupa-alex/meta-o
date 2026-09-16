@@ -915,7 +915,10 @@ for (const [id, summary, requires, probe] of OBLIGATIONS) {
     for (const [key, patterns] of checks) {
       const source = DOCS[key];
       assert.ok(source, `${id}: unknown document ${key}`);
-      for (const pattern of patterns) assert.match(source, pattern, `${id}: ${key} ${pattern}`);
+      const normalizedSource = source.replace(/\s+/gu, " ");
+      for (const pattern of patterns) {
+        assert.match(normalizedSource, pattern, `${id}: ${key} ${pattern}`);
+      }
     }
     probe?.();
   });
