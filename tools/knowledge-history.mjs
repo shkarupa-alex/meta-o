@@ -41,14 +41,91 @@ function text(node) {
   return (node.children ?? []).map(text).join("");
 }
 
+function authorizationPayload(node) {
+  if (node?.type !== "code" || node.lang !== "yaml") return null;
+  try {
+    const parsed = yaml.load(node.value);
+    return parsed?.knowledge_id_changes ?? parsed?.knowledge_id_change ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function isAuthorizationBlock(node) {
+  return authorizationPayload(node) !== null;
+}
+
 function semanticNode(node) {
-  if (Array.isArray(node)) return node.map(semanticNode);
+  if (Array.isArray(node))
+    return node.filter((item) => !isAuthorizationBlock(item)).map(semanticNode);
   if (!node || typeof node !== "object") return node;
   return Object.fromEntries(
     Object.entries(node)
       .filter(([key]) => key !== "position")
       .map(([key, value]) => [key, semanticNode(value)]),
   );
+}
+
+function authorizationRecordsFromNodes(nodes) {
+  return nodes.flatMap((node) => {
+    const payload = authorizationPayload(node);
+    if (payload === null) return [];
+    return Array.isArray(payload) ? payload : [payload];
+  });
+}
+
+function normalizedLiteral(value) {
+  return value.trim().replaceAll(/\s+/gu, " ");
+}
+
+function editorialSurface(nodes) {
+  const literals = new Set();
+  const citedIds = new Set();
+  const visit = (node) => {
+    if (isAuthorizationBlock(node)) return;
+    if (node.type === "inlineCode" || node.type === "code") {
+      literals.add(`${node.type}:${node.lang ?? ""}:${normalizedLiteral(node.value)}`);
+    }
+    if (typeof node.value === "string") {
+      for (const [id] of node.value.matchAll(CITATION)) citedIds.add(id);
+    }
+    for (const child of node.children ?? []) visit(child);
+  };
+  for (const node of nodes) visit(node);
+  return {
+    literals: [...literals].sort(),
+    citedIds: [...citedIds].sort(),
+  };
+}
+
+function strictEditorialNode(node, flexibleText = false) {
+  if (Array.isArray(node)) {
+    return node
+      .filter((item) => !isAuthorizationBlock(item))
+      .map((item) => strictEditorialNode(item, flexibleText));
+  }
+  if (!node || typeof node !== "object") return node;
+  const allowLabelChange = flexibleText || node.type === "heading" || node.type === "link";
+  return Object.fromEntries(
+    Object.entries(node)
+      .filter(([key]) => key !== "position")
+      .map(([key, value]) => {
+        if (key === "value" && typeof value === "string") {
+          if (node.type === "text" && allowLabelChange) return [key, "<editorial-text>"];
+          if (node.type === "text") return [key, normalizedLiteral(value)];
+          // Inline and fenced code are exact interface literals. Whitespace can
+          // change their grammar, so strict editorial comparison keeps every byte.
+          return [key, value];
+        }
+        return [key, strictEditorialNode(value, allowLabelChange && key === "children")];
+      }),
+  );
+}
+
+function authorizationFingerprints(nodes) {
+  return authorizationRecordsFromNodes(nodes)
+    .map((record) => JSON.stringify(stableValue(record)))
+    .sort();
 }
 
 /** §A-MEMORY-01 extracts knowledge definitions from a real Markdown AST. */
@@ -71,12 +148,16 @@ export function definitions(markdown, path) {
           ) {
             end += 1;
           }
+          const section = children.slice(index, end);
           found.set(id, {
             id,
             kind: match[1],
             heading,
             path,
-            semantic: JSON.stringify(semanticNode(children.slice(index, end))),
+            semantic: JSON.stringify(semanticNode(section)),
+            editorial: JSON.stringify(editorialSurface(section)),
+            strictEditorial: JSON.stringify(strictEditorialNode(section)),
+            authorizations: authorizationFingerprints(section),
           });
         }
       }
@@ -117,17 +198,17 @@ function trailers(root, commit) {
   const body = git(root, ["show", "-s", "--format=%B", commit]);
   return body
     .split("\n")
-    .map((line) => line.match(/^Knowledge-ID-Change: (remove|reuse) (\S+) via (\S+)$/))
+    .map((line) => line.match(/^Knowledge-ID-Change: (remove|reuse|editorial) (\S+) via (\S+)$/))
     .filter(Boolean)
-    .map((match) => ({ action: match[1], id: match[2], via: match[3] }));
+    .map((match) => ({ action: match[1], ids: match[2].split(","), via: match[3] }));
 }
 
-function authorizationRecord(markdown, architectureId, action, id) {
+function authorizationRecords(markdown, architectureId) {
   const children = fromMarkdown(markdown).children;
   const start = children.findIndex(
     (node) => node.type === "heading" && text(node).trim().startsWith(architectureId),
   );
-  if (start < 0) return null;
+  if (start < 0) return [];
   const depth = children[start].depth;
   const section = children.slice(
     start + 1,
@@ -140,28 +221,127 @@ function authorizationRecord(markdown, architectureId, action, id) {
         ),
   );
   const block = section.find((node) => node.type === "code" && node.lang === "yaml");
-  if (!block) return null;
+  if (!block) return [];
   const parsed = yaml.load(block.value);
   const records = parsed?.knowledge_id_changes ?? [parsed?.knowledge_id_change].filter(Boolean);
-  return records.find((record) => record?.action === action && record?.id === id) ?? null;
+  return Array.isArray(records) ? records : [];
 }
 
-function authorized(root, commit, action, id, current) {
-  const match = trailers(root, commit).find((entry) => entry.action === action && entry.id === id);
+function stableValue(value) {
+  if (Array.isArray(value)) return value.map(stableValue);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => [key, stableValue(nested)]),
+  );
+}
+
+function sameSortedIds(left, right) {
+  return (
+    left.length === right.length &&
+    left.every((id, index) => id === right[index]) &&
+    new Set(left).size === left.length
+  );
+}
+
+function coversChange(entry, action, id, editorialIds) {
+  if (entry.action === action && entry.ids.length === 1 && entry.ids[0] === id) return true;
+  // Editorial authorization is deliberately all-or-nothing for one parent
+  // edge after individually authorized reuse ids are removed: accepting a
+  // subset would let an unlisted semantic change ride with a mechanical rewrite.
+  return (
+    action === "reuse" &&
+    entry.action === "editorial" &&
+    entry.ids.includes(id) &&
+    sameSortedIds(entry.ids, editorialIds)
+  );
+}
+
+function recordCoversChange(record, match, action, id, editorialIds) {
+  if (record?.action === action && record?.id === id) return true;
+  return (
+    action === "reuse" &&
+    match.action === "editorial" &&
+    record?.action === "editorial" &&
+    Array.isArray(record.ids) &&
+    record.ids.includes(id) &&
+    sameSortedIds(record.ids, editorialIds)
+  );
+}
+
+function validAuthorizationRecord(record, action, id) {
+  const common =
+    typeof record?.reason === "string" &&
+    record.reason.trim().length > 0 &&
+    record.references_updated === true;
+  if (record?.action === "editorial") return common && record.new_boundary === undefined;
+  return (
+    common &&
+    record?.action === action &&
+    record?.id === id &&
+    typeof record.new_boundary === "string" &&
+    record.new_boundary.trim().length > 0
+  );
+}
+
+function authorized(
+  root,
+  parent,
+  commit,
+  action,
+  id,
+  editorialIds,
+  previous,
+  current,
+  enforceCurrentRecord,
+  enforcePostMigrationRules,
+) {
+  // `editorial` is a reuse-only path. Deletion never reaches this branch, so a
+  // wording-only record cannot retire a durable identifier.
+  const match = trailers(root, commit).find((entry) =>
+    coversChange(entry, action, id, editorialIds),
+  );
   if (!match || !/^§A-[A-Z][A-Z0-9-]*-\d{2}$/.test(match.via)) return false;
   const owner = current.get(match.via);
   if (!owner || owner.kind !== "A") return false;
   const decision = git(root, ["show", `${commit}:${owner.path}`]);
-  const record = authorizationRecord(decision, match.via, action, id);
-  return (
-    record?.action === action &&
-    record?.id === id &&
-    typeof record.reason === "string" &&
-    record.reason.trim().length > 0 &&
-    typeof record.new_boundary === "string" &&
-    record.new_boundary.trim().length > 0 &&
-    record.references_updated === true
+  const priorOwner = previous.get(match.via);
+  const priorRecords = priorOwner
+    ? authorizationRecords(git(root, ["show", `${parent}:${priorOwner.path}`]), match.via)
+    : [];
+  const priorFingerprints = new Set(
+    priorRecords.map((record) => JSON.stringify(stableValue(record))),
   );
+  // A historical record may explain only its own parent edge. Requiring a
+  // distinct current record prevents one old non-empty boundary from
+  // authorizing every later semantic reuse at this trust boundary.
+  const record = authorizationRecords(decision, match.via).find(
+    (candidate) =>
+      recordCoversChange(candidate, match, action, id, editorialIds) &&
+      (!enforceCurrentRecord || !priorFingerprints.has(JSON.stringify(stableValue(candidate)))),
+  );
+  if (!validAuthorizationRecord(record, action, id)) return false;
+  if (record.action !== "editorial") return true;
+  const fingerprint = enforcePostMigrationRules ? "strictEditorial" : "editorial";
+  return previous.get(id)?.[fingerprint] === current.get(id)?.[fingerprint];
+}
+
+function authorizationHistoryChanged(previous, current) {
+  const currentRecords = new Set(current.authorizations);
+  return previous.authorizations.some((record) => !currentRecords.has(record));
+}
+
+function authorizationHistoryViolations(before, after, parent, commit, enforce) {
+  if (!enforce) return [];
+  const errors = [];
+  for (const [id, prior] of before) {
+    const current = after.get(id);
+    if (current && authorizationHistoryChanged(prior, current)) {
+      errors.push(`${parent}..${commit}: authorization history changed ${id}`);
+    }
+  }
+  return errors;
 }
 
 function prose(node) {
@@ -219,14 +399,57 @@ function deletedOnSibling(root, parent, id, siblingParents) {
 }
 
 /** §A-MEMORY-01 compares one parent edge and reports unauthorized loss or reuse. */
-export function edgeViolations(root, parent, commit, siblingParents = [], enforceSemantic = true) {
+export function edgeViolations(
+  root,
+  parent,
+  commit,
+  siblingParents = [],
+  enforceSemantic = true,
+  enforceCurrentRecord = true,
+  enforcePostMigrationRules = true,
+) {
   const before = snapshot(root, parent);
   const after = snapshot(root, commit);
   const siblings = siblingParents.map((sha) => snapshot(root, sha));
-  const errors = [];
+  const changedIds = [...after]
+    .filter(([id, entry]) => {
+      const prior = before.get(id);
+      return prior && prior.semantic !== entry.semantic;
+    })
+    .map(([id]) => id)
+    .sort();
+  const individuallyAuthorizedIds = new Set(
+    trailers(root, commit)
+      .filter((entry) => entry.action === "reuse" && entry.ids.length === 1)
+      .map((entry) => entry.ids[0]),
+  );
+  const editorialIds = changedIds.filter((id) => !individuallyAuthorizedIds.has(id));
+  // Authorization records are an append-only audit trail. They stay outside
+  // semantic fingerprints so a newly added record does not recursively demand
+  // authorization, but an old record may never be edited or removed unnoticed.
+  const errors = authorizationHistoryViolations(
+    before,
+    after,
+    parent,
+    commit,
+    enforcePostMigrationRules,
+  );
   for (const id of before.keys()) {
     if (after.has(id) || deletedOnSibling(root, parent, id, siblingParents)) continue;
-    if (!authorized(root, commit, "remove", id, after)) {
+    if (
+      !authorized(
+        root,
+        parent,
+        commit,
+        "remove",
+        id,
+        editorialIds,
+        before,
+        after,
+        enforceCurrentRecord,
+        enforcePostMigrationRules,
+      )
+    ) {
       errors.push(`${parent}..${commit}: silent deletion ${id}`);
     }
   }
@@ -238,7 +461,18 @@ export function edgeViolations(root, parent, commit, siblingParents = [], enforc
       enforceSemantic &&
       changed &&
       !sameFromSibling &&
-      !authorized(root, commit, "reuse", id, after)
+      !authorized(
+        root,
+        parent,
+        commit,
+        "reuse",
+        id,
+        editorialIds,
+        before,
+        after,
+        enforceCurrentRecord,
+        enforcePostMigrationRules,
+      )
     ) {
       errors.push(`${parent}..${commit}: semantic reuse ${id}`);
     }
@@ -254,14 +488,36 @@ export function edgeViolations(root, parent, commit, siblingParents = [], enforc
  * two edges between the cutoff and the checker's own introduction changed a
  * section body under a rule that did not exist yet, and history is not
  * rewritten to hide that. An absent `semanticFrom` enforces everywhere.
+ * `currentRecordFrom` similarly pins the first parent whose outgoing edges
+ * require a distinct authorization record rather than the legacy shape check.
+ * It exempts only 3a292e7..a811313 (`§A-DELIVERY-01`), which predates the rule;
+ * history is not rewritten to fabricate an authorization that did not exist.
+ * `strictEditorialFrom` pins the first parent whose outgoing edges restrict
+ * editorial authorization to headings, link labels and ordinary-text
+ * whitespace, and make authorization records append-only.
  */
-export function verifyHistory(root, cutoff, semanticFrom = null) {
-  if (!git(root, ["rev-parse", "--verify", `${cutoff}^{commit}`], true)) {
+export function verifyHistory(
+  root,
+  cutoff,
+  semanticFrom = null,
+  currentRecordFrom = null,
+  strictEditorialFrom = null,
+) {
+  // Resolving a commit is insufficient: a sibling boundary would make every
+  // per-edge ancestry test false and silently disable the associated rule.
+  const isReachable = (ref) =>
+    Boolean(git(root, ["rev-parse", "--verify", `${ref}^{commit}`], true)) &&
+    git(root, ["merge-base", "--is-ancestor", ref, "HEAD"], true) !== null;
+  if (!isReachable(cutoff)) {
     return [`history_unavailable: cutoff ${cutoff} is unreachable`];
   }
-  if (semanticFrom && !git(root, ["rev-parse", "--verify", `${semanticFrom}^{commit}`], true)) {
-    return [`history_unavailable: semantic boundary ${semanticFrom} is unreachable`];
-  }
+  const unreachable = [
+    [semanticFrom, "semantic"],
+    [currentRecordFrom, "current-record"],
+    [strictEditorialFrom, "strict-editorial"],
+  ].find(([ref]) => ref && !isReachable(ref));
+  if (unreachable)
+    return [`history_unavailable: ${unreachable[1]} boundary ${unreachable[0]} is unreachable`];
   const lines = git(root, ["rev-list", "--topo-order", "--reverse", "--parents", `${cutoff}..HEAD`])
     .trim()
     .split("\n")
@@ -271,16 +527,17 @@ export function verifyHistory(root, cutoff, semanticFrom = null) {
     const [commit, ...parents] = line.split(" ");
     errors.push(...referenceViolations(root, commit));
     for (const parent of parents) {
-      const enforceSemantic =
-        !semanticFrom ||
-        git(root, ["merge-base", "--is-ancestor", semanticFrom, parent], true) !== null;
+      const enforced = (boundary) =>
+        !boundary || git(root, ["merge-base", "--is-ancestor", boundary, parent], true) !== null;
       errors.push(
         ...edgeViolations(
           root,
           parent,
           commit,
           parents.filter((sha) => sha !== parent),
-          enforceSemantic,
+          enforced(semanticFrom),
+          enforced(currentRecordFrom),
+          enforced(strictEditorialFrom),
         ),
       );
     }
@@ -292,11 +549,19 @@ function main() {
   const root = process.argv[2] ? resolve(process.argv[2]) : ROOT;
   const cutoff = process.argv[3];
   if (!cutoff) {
-    process.stderr.write("usage: knowledge-history.mjs [repository] <cutoff> [semantic-from]\n");
+    process.stderr.write(
+      "usage: knowledge-history.mjs [repository] <cutoff> [semantic-from] [current-record-from] [strict-editorial-from]\n",
+    );
     process.exitCode = 2;
     return;
   }
-  const errors = verifyHistory(root, cutoff, process.argv[4] ?? null);
+  const errors = verifyHistory(
+    root,
+    cutoff,
+    process.argv[4] ?? null,
+    process.argv[5] ?? null,
+    process.argv[6] ?? null,
+  );
   if (errors.length > 0) {
     process.stderr.write(`${errors.join("\n")}\n`);
     process.exitCode = 1;

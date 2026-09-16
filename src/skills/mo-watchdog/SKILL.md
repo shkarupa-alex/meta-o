@@ -1,6 +1,6 @@
 ---
 name: mo-watchdog
-description: Observe one target or scan reachable Orca sessions for limits, overload, failures, questions, work, and completion. Use only when the user explicitly names Meta-O watchdog or mo-watchdog; nudge only an explicitly authorized exact target.
+description: Use only when the user explicitly requests mo-watchdog or Meta-O watchdog; observe Orca sessions and nudge only an authorized exact target.
 license: MIT
 ---
 
@@ -25,3 +25,7 @@ fail closed, and do not nudge or guess the target state.
 Do not inspect tracked project content or private provider state. Report the
 native locator, classified state and action. Pattern misses are refined from
 observed failures rather than hidden behind a support claim.
+
+## Meta-O calls
+
+- none

@@ -92,11 +92,11 @@ test("README states the proven local scope and the owner's remote responsibility
   assert.match(readme, /--skill mo-review-orca/);
   assert.match(
     readme,
-    /Публикация и\s+проверка remote installation остаются ответственностью владельца проекта/,
+    /Публикация и\s+проверка удалённой установки остаются ответственностью владельца проекта/,
   );
   assert.match(readme, /Meta-O поддерживает только\s+Orca/);
-  assert.match(readme, /Последнее дерево, содержащее их\s+orchestration и review skills/);
+  assert.match(readme, /Последнее дерево, содержащее их скилы\s+оркестрации и проверки/);
   assert.match(readme, /2eb85bebe14aa35419db192db66938e14e0be6f1/);
   assert.match(readme, /единственное узкое исключение/);
-  assert.match(readme, /требует `jq`.*и `flock`/s);
+  assert.match(readme, /требует `jq`.*`flock`|требуются.*`jq`.*`flock`/s);
 });

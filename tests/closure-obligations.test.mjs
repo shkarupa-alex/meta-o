@@ -90,8 +90,11 @@ const OBLIGATIONS = [
     "O-BL-02",
     "symbol-level purpose reaches every exported declaration and names the shell boundary",
     {
-      ident: [/exported function\/class declarations несут JSDoc/, /machine-checked module header/],
-      jsgate: [/JSDoc у public API и classes/u],
+      ident: [
+        /экспортируемые объявления функций и классов несут JSDoc/u,
+        /машинно проверяемый заголовок/u,
+      ],
+      jsgate: [/JSDoc у публичного API и\s+классов/u],
       purp: [/a module purpose names the architecture id; a symbol names its module or the/],
     },
   ],
@@ -121,7 +124,7 @@ const OBLIGATIONS = [
     "a real review run has a pair barrier, hot remediation and a fresh final pair",
     {
       life: [/keep both remediation reviewer sessions hot/, /two fresh independent reviewers/],
-      e2e: [/Запустить fresh final review pair/u],
+      e2e: [/Запустить новую финальную пару ревьюеров/u],
     },
   ],
   [
@@ -140,8 +143,8 @@ const OBLIGATIONS = [
     "an ensemble of reviewers stays deferred behind a registered differential eval",
     {
       ensem: [
-        /differential eval остаётся условием только для будущего пересмотра границы, не\s+отложенной обязательной работой/u,
-        /Отмена §A-REVIEW-02 требует pre-registered differential eval/u,
+        /дифференциальная оценка остаётся условием только для будущего пересмотра\s+границы, не отложенной обязательной работой/u,
+        /Отмена §A-REVIEW-02 требует заранее зарегистрированной дифференциальной оценки/u,
       ],
     },
   ],
@@ -168,8 +171,8 @@ const OBLIGATIONS = [
     "the review skill runs only on an explicit request",
     {
       revskill: [
-        /description: Independently review one exact candidate with two vendor-diverse Orca workers/,
-        /Accept only an exact 40-hex `candidate_sha`, intent source, scope, mode and two\s+user-approved reviewer selections/,
+        /description: Use only when the user explicitly requests mo-review-orca/,
+        /Accept only an exact 40-hex `candidate_sha`, intent source, scope, mode and two\s+user-approved vendor-diverse selections/,
       ],
     },
   ],
@@ -185,8 +188,8 @@ const OBLIGATIONS = [
     "the authoritative report is the complete worker_done, and the TUI is a projection",
     {
       settled: [
-        /полное orchestration message `worker_done`/u,
-        /bounded\s+preview не доказывают полный final response/u,
+        /полное сообщение оркестрации `worker_done`/u,
+        /ограниченный предпросмотр не доказывают полный финальный ответ/u,
       ],
       mech: [/complete `worker_done` body is the settled final response/],
     },
@@ -206,10 +209,10 @@ const OBLIGATIONS = [
     "the raw real-runs ledger closes through a lossless map, not a summary",
     {
       ident: [
-        /Временная closure map существует только в checkpoint-коммите/u,
+        /Временная карта закрытия существует только в контрольном коммите/u,
         /Он не\s+считает структурную биекцию доказательством семантического закрытия/u,
       ],
-      acc: [/Карта даёт каждому obligation\s+собственную executable proof command/u],
+      acc: [/Карта даёт каждому обязательству\s+собственную исполняемую команду доказательства/u],
     },
   ],
 
@@ -316,7 +319,7 @@ const OBLIGATIONS = [
       life: [/floating family alias/, /launch\.requested == launch\.effective/],
       mech: [/`launch\.requested == launch\.effective` for model and effort/],
       evalp: [
-        /сверяет requested\/effective route, model и effort и не\s+делает автоматический fallback/u,
+        /сверяет запрошенные и фактические\s+маршрут, модель и уровень рассуждений и не применяет автоматический резервный\s+вариант/u,
       ],
     },
   ],
@@ -380,7 +383,7 @@ const OBLIGATIONS = [
     {
       life: [/It does not inspect, judge\s+or edit product code/],
       first: [
-        /Orchestrator управляет процессом и сессиями, но не читает, не оценивает и не\s+редактирует product code/u,
+        /Оркестратор управляет процессом и сессиями, но не читает, не оценивает и не\s+редактирует продуктовый код/u,
       ],
     },
   ],
@@ -402,7 +405,7 @@ const OBLIGATIONS = [
     {
       bcon: [/expose agent and harness-UI questions and accept an answer/],
       life: [/ordinary public question and permission surfaces/],
-      e2e: [/Задать и ответить на обычный и harness-UI вопрос/u],
+      e2e: [/Задать обычный вопрос и вопрос интерфейса среды агента и ответить на них/u],
     },
   ],
   [
@@ -411,7 +414,7 @@ const OBLIGATIONS = [
     {
       mech: [/An early message must wake the wait/],
       life: [/Re-read state at a sane interval measured in minutes/],
-      e2e: [/Разбудить blocking wait early и обработать quiet timeout/u],
+      e2e: [/Рано разбудить блокирующее ожидание и обработать тихий тайм-аут/u],
     },
   ],
   [
@@ -466,7 +469,7 @@ const OBLIGATIONS = [
     "a ready completion wakes the coordinator without a user ping",
     {
       mech: [/orca orchestration check --wait/],
-      e2e: [/Event будит wait; timeout создаёт один checkpoint без restart/u],
+      e2e: [/Событие будит ожидание; тайм-аут создаёт одну контрольную точку без перезапуска/u],
     },
   ],
   [
@@ -508,7 +511,7 @@ const OBLIGATIONS = [
     "O-RR-033",
     "the TUI final is a diagnostic projection of the authoritative report",
     {
-      settled: [/Whole-session view остаётся для редкой диагностики/u],
+      settled: [/Полный вид сессии остаётся для редкой диагностики/u],
       bcon: [
         /Whole-session\s+output is diagnostic and cannot replace a missing complete final response/,
       ],
@@ -521,7 +524,7 @@ const OBLIGATIONS = [
       mech: [/A low-level injected terminal is not a supervised worker resource/],
       wdog: [/`term_` handle is the authorized nudge target/],
       wdedup: [
-        /Перед разрешённым nudge pattern watchdog хранит одну mode-`0600` запись на\s+backend locator/u,
+        /Перед разрешённой подсказкой наблюдатель хранит одну запись с режимом\s+`0600` на указатель бэкенда/u,
       ],
     },
   ],
@@ -559,8 +562,8 @@ const OBLIGATIONS = [
     "the settled response is delivered complete and byte-safe",
     {
       mech: [/require the worker to place its full final response in that\s+message/],
-      life: [/Do not merge, rank, hash, encode, split, truncate or\s+summarize their responses/],
-      e2e: [/Начальный, средний и конечный markers целы/u],
+      life: [/Do not merge, rank, hash, encode, split,\s+truncate or\s+summarize their responses/],
+      e2e: [/Начальный, средний и конечный маркеры целы/u],
     },
   ],
   [
@@ -659,7 +662,9 @@ const OBLIGATIONS = [
         /wait for the exact process this review owns and confirm it left no\s+orphan descendant/,
         /a host-sensitive failure under those conditions is not reported as\s+a candidate finding without clean process evidence/,
       ],
-      post: [/Script владеет одной process group и читает private NUL-framed child evidence/u],
+      post: [
+        /Скрипт владеет одной группой процессов и читает закрытое дочернее доказательство\s+с NUL-разделителями/u,
+      ],
     },
   ],
   [
@@ -700,7 +705,9 @@ const OBLIGATIONS = [
         /never starts a second full gate against a\s+worktree that already has one running/,
       ],
       rev: [/only after the caller grants the shared lock or a\s+worktree of your own/],
-      acc: [/Host-sensitive full gate сериализован, foreground и без orphan-процессов/u],
+      acc: [
+        /проверка, чувствительная к хосту, выполняется последовательно, на переднем плане и не оставляет процессов/iu,
+      ],
     },
   ],
   [
@@ -717,7 +724,7 @@ const OBLIGATIONS = [
     "O-RR-054",
     "discovery origin and the pinned inventory must agree before an external call",
     {
-      reuse: [/хранит обязательные source adapters как данные/u],
+      reuse: [/хранит обязательные адаптеры источников как данные/u],
       frskill: [/Reject an absent or unknown contract before\s+searching/],
     },
   ],
@@ -790,9 +797,7 @@ const OBLIGATIONS = [
       mech: [
         /Never close unnamed human tabs, neighboring Run resources or\s+another project container/,
       ],
-      life: [
-        /cleanup\s+is best effort and failure is reported rather than broadened destructively/,
-      ],
+      life: [/Ambiguous or incomplete cleanup is\s+reported rather than broadened destructively/],
     },
   ],
   [
@@ -891,7 +896,7 @@ const OBLIGATIONS = [
     "a lost coordinator pane is taken over through authorized public run state",
     {
       mech: [/retain exact run\/task\/dispatch\/terminal locators in current reasoning/],
-      e2e: [/Effect остаётся unknown; exact-owned cleanup сохраняет соседние ресурсы/u],
+      e2e: [/Эффект остаётся неизвестным; очистка точно своих ресурсов сохраняет соседние/u],
     },
   ],
   [
@@ -910,7 +915,10 @@ for (const [id, summary, requires, probe] of OBLIGATIONS) {
     for (const [key, patterns] of checks) {
       const source = DOCS[key];
       assert.ok(source, `${id}: unknown document ${key}`);
-      for (const pattern of patterns) assert.match(source, pattern, `${id}: ${key} ${pattern}`);
+      const normalizedSource = source.replace(/\s+/gu, " ");
+      for (const pattern of patterns) {
+        assert.match(normalizedSource, pattern, `${id}: ${key} ${pattern}`);
+      }
     }
     probe?.();
   });
@@ -920,6 +928,15 @@ test("every obligation id is unique and addressable by its own name pattern", ()
   const ids = OBLIGATIONS.map(([id]) => id);
   assert.equal(new Set(ids).size, ids.length);
   for (const id of ids) assert.match(id, /^O-(?:BL|RR)-\d{2,3}$/u);
+});
+
+test("the backend companion map covers both mandatory bundled guides", () => {
+  assert.match(DOCS.caps, /Обязательные companion-руководства/u);
+  assert.match(DOCS.bcon, /Required companion guides/u);
+  for (const guide of ["orchestration", "orca-cli"]) {
+    assert.ok(DOCS.caps.includes(`\`${guide}\``));
+    assert.ok(DOCS.bcon.includes(`\`${guide}\``));
+  }
 });
 
 // A rule quoted from the shipped bundle proves an obligation; a keyword short

@@ -4,7 +4,7 @@
 # authoritative gate, it rewrites nothing, and every gate under it is a mature
 # tool or a plain shell comparison rather than a checker this project wrote.
 
-.PHONY: mo-qc mo-lint mo-test mo-smoke mo-e2e mo-eval-cases mo-live-adapters skills skills-check format contract
+.PHONY: mo-qc mo-lint mo-test mo-smoke mo-e2e mo-eval-cases mo-live-adapters mo-backlog skills skills-check format contract
 
 # The authoritative gate.
 mo-qc: mo-lint contract skills-check mo-eval-cases mo-test mo-smoke
@@ -23,6 +23,8 @@ mo-lint:
 	node --check tools/knowledge-history.mjs
 	node --check tools/live-adapters.mjs
 	node --check tools/skill-evals.mjs
+	node --check tools/skill-eval-runtime.mjs
+	node --check tools/backlog-empty.mjs
 	node tools/adapter-contract.mjs --validate
 	bash -n shared/scripts/mo-posture.sh
 	bash -n shared/scripts/mo-watchdog.sh
@@ -51,7 +53,14 @@ skills:
 
 mo-test:
 	@command -v zsh >/dev/null 2>&1 || { echo "mo-test blocked: zsh is required for the cross-shell contract" >&2; exit 1; }
-	node --test "tests/*.test.mjs"
+	@ordinary_tests=$$(find tests -maxdepth 1 -name '*.test.mjs' ! -name 'provider-posture.test.mjs' -print | sort); \
+		node --test --test-concurrency=1 $$ordinary_tests
+	node --test tests/provider-posture.test.mjs
+
+# §A-BACKLOG-01 is a lifecycle closure gate, intentionally not a dependency of
+# mid-feature mo-qc: valid temporary notebook entries must remain testable.
+mo-backlog:
+	@node tools/backlog-empty.mjs
 
 # Do the source helper and shipped Orca copy boot and answer? Under a throwaway HOME, because
 # this gate judges the repository: a settings file the developer happens to have
@@ -73,7 +82,7 @@ mo-e2e:
 	@echo "AGENT_REQUIRED: not executed"
 	@echo
 	@echo "Docs:      docs/e2e.md, docs/backend-capabilities.md"
-	@echo "Scenarios: B1-B22 — Orca backend and Qwen profile"
+	@echo "Scenarios: B1-B42 — Orca backend, lifecycle and Qwen profile"
 	@echo "           W1-W4 — watchdog target, scan, nudge, suppression"
 	@echo "           24 embedded cases — positive/forbidden/degraded for 8 skills"
 	@echo "           local and authorized remote installation"

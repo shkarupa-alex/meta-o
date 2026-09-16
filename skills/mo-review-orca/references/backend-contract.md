@@ -1,7 +1,8 @@
 # Backend contract
 
 This document defines the minimum public observable behavior required from Orca.
-The Orca mechanics file says how its native surface demonstrates each capability.
+The Orca mechanics file says how its native surface demonstrates each
+capability.
 
 ## Required capabilities
 
@@ -32,8 +33,8 @@ outcome: none | succeeded | failed | quota | capacity | reconnecting | compacted
 
 Malformed identity or fields are `unknown`. `sent|queued|delivered` never proves
 consumption. Acknowledgement follows processing of the complete delivery batch.
-`input_blocked` may be rebriefed or replaced; `output_blocked_after_work` must not
-repeat product work and needs the settled response or `needs_attention`.
+`input_blocked` may be rebriefed or replaced; `output_blocked_after_work` must
+not repeat product work and needs the settled response or `needs_attention`.
 
 Effectful native operations expose a stable operation/target id, idempotency
 semantics and authoritative confirmation. A receipt is not an effect.
@@ -62,12 +63,12 @@ methodology for that failure.
 
 Declare and check the control executable separately from the companion skill:
 
-| Backend | Control executable/package | Required companion skill |
-| ------- | -------------------------- | ------------------------ |
-| Orca    | `orca-cli` / `orca`        | upstream `orchestration` |
+| Backend | Control executable/package | Required companion guides            |
+| ------- | -------------------------- | ------------------------------------ |
+| Orca    | `orca-cli` / `orca`        | upstream `orchestration`, `orca-cli` |
 
-Retain upstream names. In particular, do not invent a Meta-O alias for Orca's
-`orchestration` skill.
+Retain upstream names. In particular, do not invent Meta-O aliases for Orca's
+`orchestration` and `orca-cli` guides.
 
 ## Acceptance probe
 
@@ -86,5 +87,5 @@ For Orca, record current-run human-readable evidence for:
 10. targeted and scan watchdog behavior;
 11. actionable missing-control and missing-companion reporting.
 
-Acceptance runs against one named candidate SHA. A missing capability blocks
-the feature; it is not silently omitted.
+Acceptance runs against one named candidate SHA. A missing capability blocks the
+feature; it is not silently omitted.

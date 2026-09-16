@@ -1,42 +1,74 @@
 ---
 name: mo-orchestrate-orca
-description: Run a whole feature from task or spec to one verified candidate SHA through Orca orchestration workers, with two independent reviews and applicable E2E.
+description: Use only when the user explicitly requests mo-orchestrate-orca; run one full feature to a verified exact SHA through Orca.
 license: MIT
 ---
 
 # Orchestrate a feature through Orca
 
+Start only when the user names `mo-orchestrate-orca`; a generic implementation,
+planning or review request does not activate this lifecycle.
+
 Read [Feature lifecycle](references/methodology.md),
 [Backend contract](references/backend-contract.md),
 [Portable review protocol](references/review-protocol.md),
 [Orca native mechanics](references/orca-mechanics.md), and
+[Маршрутизация подтверждённой внешней работы](references/issue-routing.md), and
 [Purpose and architecture contract](references/purpose-and-architecture.md)
-completely. Read the purpose contract before constructing reviewer prompts.
-
-Use Orca only. Confirm `orca`, its version-matched upstream `orchestration`
-companion skill, the bound worktree and all required public capabilities. Follow
-the shared lifecycle exactly.
+completely. Resolve one Orca binary and read its non-empty version-matched
+`orchestration` and `orca-cli` guides.
 
 Read role selections with bundled `scripts/mo-models.mjs --show --project
-<root>`. Require the configured `orchestrator`, executor, reviewer and applicable
-E2E roles; never select a model/effort fallback. Use stable titles
-`<feature>:orchestrator`, `<feature>:executor`, `<feature>:review:<vendor>` and
-`<feature>:e2e:<n>`.
+<root>`; require exact user-approved values and never select a model, effort,
+placement or posture fallback. Prove provider-native auth, account freshness and
+one real launch with requested/effective identity equal. Task bytes wait for a
+publicly proven normal agent prompt, never trust UI or shell.
 
-Verify the expected Orca instance/worktree, provider-native auth, account
-projection freshness and one exact real harness launch whose requested/effective
-model and effort match. A receipt does not prove a process, task consumption,
-message delivery or an effect. Preserve returned run/task/dispatch/terminal
-locators in current reasoning, not a project state store.
+Use titles `<feature>:orchestrator`, `<feature>:executor`,
+`<feature>:review:<vendor>` and `<feature>:e2e:<n>`. Preserve exact
+Run/task/Dispatch/terminal identities in reasoning, not a state store. Before
+actors, record project registrations/resources; every actor must remain in the
+same Orca project and cleanup may touch only exact-owned delta.
 
-The orchestrator delegates product/spec commits to one hot executor. It creates
-both review tasks before launching either reviewer, keeps remediation roles hot,
-and starts fresh reviewers only for the final same-SHA pair. Use blocking public
-waits for `worker_done`, questions and escalations; timeout is a checkpoint, not
-failure. Process a complete delivery batch before acknowledgement.
+Run G0 through the project's `MO-BACKLOG/1` command after intake migration and
+before substantive work. The one hot executor owns all product/spec edits,
+regression tests, invariant comments and coherent commits. The orchestrator
+does not inspect or edit product code.
 
-The complete `worker_done` message is the settled response; never substitute a
-private transcript or terminal preview. Do not automatically retry an
-`unknown_effect`, kill foreign resources, or finish while a required task, gate,
-review, E2E or user decision remains. The orchestrator does not inspect or edit
-product code. Return one verified full SHA or honest `needs_attention`.
+Use one run-wide blocking waiter: 600000 ms for executor-only and 300000 ms when
+reviewer/E2E is active. Demultiplex exact handles, process complete event batches,
+re-arm quiet timeouts without narration, and allow only one same-arm retry after
+transport failure.
+
+Call `mo-review-orca` for the first deep pair and remediation follow-ups. Give
+the executor both immutable reports only through its verified
+pair paths/sizes; wait for exact `Review-Handoff-Ack` before cleanup. Keep
+remediation reviewers hot, and use a fresh final same-SHA pair. Public updates
+contain only candidate, pair verdict and summed authored P0–P3 census.
+
+For a confirmed out-of-scope technical defect, apply the bundled Issue-routing
+decision table:
+route to project/upstream only after verified ownership, search open+closed with
+explicit complete limits, then reread and redact the final title and every
+allowlisted field of the private file-safe body with the same closed policy. Use native
+`gh`/`glab`. A technical Issue with established root cause/owner is
+pre-authorized; credentials, product disputes, subscriptions, irreversible or
+unknown effects and watchdog remain human boundaries. Never retry an unknown
+write effect.
+
+Run foreground serialized QC and call `mo-e2e` for applicable scenarios.
+After knowledge harvest and removal of the implemented spec, require GC on the
+exact candidate. Immediately before any agent-owned MR/PR create run G1 and
+verify remote source head equality. Immediately before merge run G2 and bind the
+provider write to that head/required policy; unsupported integration candidate
+proof is `needs_attention`.
+
+Return only when one unchanged full SHA has QC, two fresh vendor-diverse PASS
+reports, applicable E2E and empty GC. Otherwise return honest
+`needs_attention`. Never finish with unacknowledged reports, unresolved backlog,
+foreign cleanup or a required question.
+
+## Meta-O calls
+
+- `mo-review-orca`
+- `mo-e2e`

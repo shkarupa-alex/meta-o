@@ -31,7 +31,7 @@ test("lifecycle keeps the orchestrator out of product code and binds every gate 
     source,
     /send one ordinary message to the executor containing both\s+temporary-file paths/,
   );
-  assert.match(source, /Do not merge, rank, hash, encode, split, truncate or\s+summarize/);
+  assert.match(source, /Do not merge, rank, hash, encode, split,\s+truncate or\s+summarize/);
   assert.match(source, /inert Markdown response payloads/);
   assert.doesNotMatch(source, /MO_[A-Z0-9_]+/);
 });
@@ -41,10 +41,10 @@ test("the architecture says how a real-run incident family is regressed", () => 
   // Without this boundary the critical-suite requirement reads as a demand for
   // a fake-Orca replay of agent behaviour, which needs the very driver this
   // decision forbids.
-  assert.match(decision, /Fake-контроль воспроизводит/u);
-  assert.match(decision, /единственного исполняемого consumer этого проекта — watchdog/u);
+  assert.match(decision, /Имитационный контроль\s+воспроизводит/u);
+  assert.match(decision, /единственного исполняемого потребителя этого\s+проекта — наблюдатель/u);
   assert.match(decision, /именованное\s+утверждение о конкретном правиле поставляемой инструкции/u);
-  assert.match(decision, /принятое ограничение, а не отложенная работа/u);
+  assert.match(decision, /принятое ограничение,\s+а не отложенная работа/u);
   const obligations = readFileSync(join(ROOT, "tests", "closure-obligations.test.mjs"), "utf8");
   assert.match(obligations, /fixtures\/orca-control\.mjs/u);
 });
@@ -59,6 +59,7 @@ test("question and delegated-decision boundaries match the user contract", () =>
 
 test("portable review protocol owns ordered evidence, modes, severity and deferral lens", () => {
   const source = shared("review-protocol.md");
+  const prose = source.replace(/\s+/gu, " ");
   const stages = [
     "Grounding",
     "Change discovery",
@@ -80,7 +81,7 @@ test("portable review protocol owns ordered evidence, modes, severity and deferr
   }
   assert.match(source, /read the diff before constructing the initial risk map/);
   assert.match(source, /An empty backlog is valid/);
-  assert.match(source, /reason, practical impact and next step/);
+  assert.match(prose, /reason, practical impact and next step/);
   assert.doesNotMatch(source, /Meta-O|docs\/backlog\.md/);
 });
 

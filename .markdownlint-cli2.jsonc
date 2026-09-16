@@ -1,9 +1,10 @@
 // Markdown lint for a project whose product is Markdown.
 //
 // Rules are relaxed only where the default fights the content rather than the
-// quality: 100 columns instead of 80 because tables and command lines need it,
-// and duplicate headings are allowed across sections because a reference
-// document legitimately repeats "Evidence" or "Why".
+// quality: ordinary lines allow 100 columns, while tables and code blocks are
+// excluded because their structure determines width. Duplicate headings are
+// allowed across sections because a reference document legitimately repeats
+// "Evidence" or "Why".
 {
   "globs": ["**/*.md"],
   "ignores": [

@@ -34,11 +34,11 @@ count. An authorized delivery attempt first reserves only mode-`0600` state and
 message digests keyed by backend and locator under the user state directory; a
 changed state replaces its prior message set. It stores no prompt, response,
 candidate, gate or actor registry. Delivery is nonblocking, and completion is
-observed separately. The helper requires `jq` so native JSON is parsed per session instead
-of with regular expressions, and `flock` so process exit releases per-locator
-delivery ownership through the kernel. Classification uses scalar values rather
-than key names, and stable comparison excludes volatile Orca envelope IDs.
-Patterns will improve from real failures.
+observed separately. The helper requires `jq` so native JSON is parsed per
+session instead of with regular expressions, and `flock` so process exit
+releases per-locator delivery ownership through the kernel. Classification uses
+scalar values rather than key names, and stable comparison excludes volatile
+Orca envelope IDs. Patterns will improve from real failures.
 
 A status-zero Orca target read is trusted only when its native JSON envelope and
 locator-specific shape validate. Malformed or mismatched output is an
@@ -48,18 +48,17 @@ process state plus `lastOutputAt`; connection is never promoted to agent
 `working`, and raw preview text never overrides those process tokens. A terminal
 without native process flags is `unclassified`. Any scan item without a native
 locator makes that surface an `observe-error` rather than an observed `unknown`
-session.
-For a `ctx_` worker envelope, the embedded terminal is diagnostic only: discard
-its preview and classify only typed dispatch, worker, observation, error and
-permission fields. Paths, launch options and other scalar metadata cannot name a
-state. Missing typed dispatch or worker state makes a targeted observation
-invalid. Terminal `preview`, `title` and `lastOutputAt` are diagnostics rather
-than stable-state inputs, so repainting cannot suppress a nudge forever;
-connection and orphaning flags remain semantic inputs.
-The caller supplies the known target or scan surface kind; field names such as
-`handle` cannot reclassify a worker item as a terminal. Only permission arrays on
-the native observation object participate, never similarly named launch metadata;
-a present permission field with any non-array type invalidates the observation.
+session. For a `ctx_` worker envelope, the embedded terminal is diagnostic only:
+discard its preview and classify only typed dispatch, worker, observation, error
+and permission fields. Paths, launch options and other scalar metadata cannot
+name a state. Missing typed dispatch or worker state makes a targeted
+observation invalid. Terminal `preview`, `title` and `lastOutputAt` are
+diagnostics rather than stable-state inputs, so repainting cannot suppress a
+nudge forever; connection and orphaning flags remain semantic inputs. The caller
+supplies the known target or scan surface kind; field names such as `handle`
+cannot reclassify a worker item as a terminal. Only permission arrays on the
+native observation object participate, never similarly named launch metadata; a
+present permission field with any non-array type invalidates the observation.
 Successful dispatch outcome also takes precedence over a stopped worker process,
 which is normal Orca process accounting after completion.
 
