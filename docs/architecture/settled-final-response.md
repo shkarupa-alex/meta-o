@@ -1,12 +1,17 @@
 # §A-RESPONSE-01 — Settled final responses остаются на публичных поверхностях backend
 
 ```yaml
-knowledge_id_change:
-  action: reuse
-  id: §A-RESPONSE-01
-  reason: Authoritative worker_done получил обязательную проверяемую grammar.
-  new_boundary: Полноту доказывают anchored sections и matching End-Review.
-  references_updated: true
+knowledge_id_changes:
+  - action: reuse
+    id: §A-RESPONSE-01
+    reason: Authoritative worker_done получил обязательную проверяемую grammar.
+    new_boundary: Полноту доказывают anchored sections и matching End-Review.
+    references_updated: true
+  - action: reuse
+    id: §A-RESPONSE-01
+    reason: No-overwrite handoff уточнил смысл полного settled response на уровне всего решения.
+    new_boundary: Settled payload публикуется только create-if-absent и не может заменить ранее опубликованные bytes.
+    references_updated: true
 ```
 
 ## Решение
@@ -59,18 +64,30 @@ ordinary message передаёт named consumer оба exact path и size. Orch
 
 ## §A-RESPONSE-03 — Pair handoff атомарен и принадлежит named consumer
 
+```yaml
+knowledge_id_change:
+  action: reuse
+  id: §A-RESPONSE-03
+  reason: Review обнаружил, что ordinary rename может перезаписать уже опубликованный final payload.
+  new_boundary: Publication использует atomic create-if-absent hard link; любой existing final остаётся неизменным и даёт UNKNOWN.
+  references_updated: true
+```
+
 Caller под `umask 077` создаёт через secure `mktemp -d` namespace с mode `0700`
 в system temp. Slots A/B назначаются до start; path-safe vendor slug не является
 identity. Payload эксклюзивно пишется во временный regular file `0600`,
-fsync/close и same-directory rename публикуют его атомарно. Caller перечитывает
-size и `End-Review`, затем передаёт `pair_id`, оба path и size.
+fsync/close, после чего complete inode публикуется атомарным create-if-absent:
+same-directory hard link на final slot и удаление временного имени.
+Overwrite-capable rename запрещён. Caller перечитывает size и `End-Review`,
+затем передаёт `pair_id`, оба path и size.
 
 Machine consumer после полного чтения отвечает ровно
 `Review-Handoff-Ack: <pair_id> A=<bytes> B=<bytes>`. Один mismatch допускает
 одну re-delivery тех же paths; второй даёт `UNKNOWN` и сохраняет namespace как
 evidence. Human-caller получает paths/sizes в финальном ответе, и автоматический
-cleanup запрещён. Symlink, collision, truncation или reread failure сразу дают
-`UNKNOWN` без пересборки payload.
+cleanup запрещён. Existing regular file, symlink, nonregular path, неподдержанный
+hard link, truncation или reread failure сразу дают `UNKNOWN` без изменения
+существующего final и без пересборки payload.
 
 Решение служит §B-REVIEW-01, §B-REVIEW-05 и §B-SESSION-02.
 Отмена §A-RESPONSE-03 делает private namespace, atomic publication, acknowledgement retry и

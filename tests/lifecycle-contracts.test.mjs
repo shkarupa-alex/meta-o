@@ -999,3 +999,19 @@ test("session, delivery, handoff and waiter invariants remain executable instruc
   assert.match(setup, /git check-ignore -v --no-index/u);
   assert.match(setup, /git ls-files -- \.orca\/ spec\//u);
 });
+
+test("shipped handoff and live-eval instructions match their fail-closed callers", () => {
+  const review = source("src/skills/mo-review-orca/SKILL.md");
+  const methodology = source("shared/references/methodology.md");
+  const response = source("docs/architecture/settled-final-response.md");
+  for (const document of [review, methodology, response]) {
+    assert.match(document, /hard[- ]link/u);
+    assert.match(document, /create-if-absent/u);
+    assert.match(document, /overwrite-capable rename/iu);
+  }
+  assert.match(
+    source("docs/e2e.md"),
+    /--execution-observations <all-coordinate-executions\.json>/u,
+  );
+  assert.match(source("docs/e2e.md"), /Caller отдельно, не копируя actor output/u);
+});

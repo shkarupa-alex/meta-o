@@ -164,10 +164,12 @@ matching final `End-Review`. A structural mismatch receives one full correction
 in the same hot session; a second mismatch is `UNKNOWN`.
 
 Under `umask 077`, save them unchanged through exclusive `0600` temporary files
-and same-directory atomic rename into a unique `mktemp -d` namespace mode
-`0700`. Verify realpath, regular files, sizes and end markers. Any collision,
-symlink, truncation, retrieval or reread failure is `UNKNOWN`, never a partial
-review pass.
+in a unique `mktemp -d` namespace mode `0700`, then fsync/close. Publish each
+complete inode atomically create-if-absent with a same-directory hard link and
+unlink its temporary name; overwrite-capable rename is forbidden. Verify
+realpath, regular files, sizes and end markers. Any existing final object,
+unsupported hard link, symlink, truncation, retrieval or reread failure is
+`UNKNOWN`, never a partial review pass, and the existing final remains untouched.
 
 If both pass, continue to verification. If either finds work, wait until both
 are complete, then send one ordinary message to the executor containing both

@@ -148,11 +148,14 @@ platform `mktemp -d` random suffix of at least eight symbols. Prove its realpath
 is below system temp and mode `0700`. Assign slots A/B before launch and accept
 only vendor slugs matching `^[a-z0-9][a-z0-9-]{0,31}$`.
 
-Write each payload exclusively to a regular `0600` sibling, fsync/close, then
-atomically rename. Collision, symlink, permission, rename, reread, size or end
-marker failure is `UNKNOWN`. Send the named consumer one ordinary message with
-`pair_id`, both exact paths and decimal sizes. A machine consumer acknowledges
-only after reading both:
+Write each payload exclusively to a regular `0600` sibling and fsync/close.
+Publish it atomically create-if-absent by hard-linking that complete sibling to
+the final same-directory slot, then unlink the sibling. Never use
+overwrite-capable rename. Existing regular, symlink or nonregular final paths,
+unsupported hard links, permission, publication, reread, size or end-marker
+failure are `UNKNOWN` and leave the existing final path untouched. Send the
+named consumer one ordinary message with `pair_id`, both exact paths and decimal
+sizes. A machine consumer acknowledges only after reading both:
 
 ```text
 Review-Handoff-Ack: <pair_id> A=<decimal-bytes> B=<decimal-bytes>

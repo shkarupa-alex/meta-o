@@ -106,16 +106,26 @@ node tools/skill-evals.mjs --prompt <skill> \
 существующий. Его сохраняют до model turn как caller-frozen input, а records
 всех coordinates объединяют во внешний untracked JSON-array. Prompt передают
 user-approved harness без изменения checkout. Ответ сохраняют во внешнем
-untracked JSON-файле и проверяют:
+untracked JSON-файле. Caller отдельно, не копируя actor output, собирает из
+public native launch/process observations точный `execution` каждого coordinate
+(`id`, `source`, interval, exit code, effective identity, availability и
+identity evidence) в private untracked JSON-array вида
+`[{"coordinate":"<skill>:<profile>:1","execution":{...}}]`. После model turn
+caller подставляет это же independently observed `execution` в evidence
+envelope; actor-controlled несовпадение id в case provenance остаётся ошибкой.
+Evidence проверяют:
 
 ```bash
 node tools/skill-evals.mjs --validate-evidence <evidence.json> \
   --expectations <all-coordinate-expectations.json> \
+  --execution-observations <all-coordinate-executions.json> \
   --candidate <full-sha> --require-all \
   --critical-profile <configured-orchestrator-route/model/effort>
 ```
 
-Validator связывает evidence с Git tree revision каждого skill и digest точных
+Validator требует отдельный caller-owned execution record для каждого
+coordinate и byte-semantically сверяет его с envelope. Затем он связывает
+evidence с Git tree revision каждого skill и digest точных
 case/requested/harness inputs, требует native execution id/interval/exit status,
 observed effective identity и отдельное evidence для каждого `must`/`mustNot`
 oracle. `--require-all` требует все 32 coordinates: required и desired для
