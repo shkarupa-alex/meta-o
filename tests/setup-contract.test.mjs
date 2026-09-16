@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const setup = readFileSync(join(ROOT, "src", "skills", "mo-setup", "SKILL.md"), "utf8");
 const contract = readFileSync(join(ROOT, "shared", "references", "project-setup.md"), "utf8");
+const contractProse = contract.replace(/\s+/gu, " ");
 const agents = readFileSync(join(ROOT, "AGENTS.md"), "utf8");
 const claude = readFileSync(join(ROOT, "CLAUDE.md"), "utf8");
 
@@ -49,7 +50,7 @@ test("setup checks controls, companions and every harness posture separately", (
   assert.match(contract, /Missing, divergent or unreadable posture is not support/);
   assert.match(contract, /Detect Orca/);
   assert.match(contract, /unsupported\s+or ambiguous environments/);
-  assert.match(contract, /Orca exposes\s+its version-matched `orchestration` guide/);
+  assert.match(contractProse, /Orca exposes its version-matched `orchestration` guide/);
   assert.match(contract, /Backend-wide health does not prove harness readiness/);
   assert.match(setup, /check mature `jq` and `flock` dependencies/);
   assert.match(contract, /require `jq` and `flock` separately\s+from the Orca control/);
@@ -81,7 +82,7 @@ test("knowledge policy covers verbatim intent, language, semantic links and back
   assert.match(contract, /label containing the target document's H1 title/);
   assert.match(contract, /mature Markdown AST\/link\s+tool, never a regex Markdown parser/);
   for (const field of ["reason", "practical impact", "next step"])
-    assert.match(contract, new RegExp(field));
+    assert.match(contractProse, new RegExp(field));
 });
 
 test("entry files treat material dictation anomalies as questions, not silent corrections", () => {

@@ -59,6 +59,7 @@ test("question and delegated-decision boundaries match the user contract", () =>
 
 test("portable review protocol owns ordered evidence, modes, severity and deferral lens", () => {
   const source = shared("review-protocol.md");
+  const prose = source.replace(/\s+/gu, " ");
   const stages = [
     "Grounding",
     "Change discovery",
@@ -80,7 +81,7 @@ test("portable review protocol owns ordered evidence, modes, severity and deferr
   }
   assert.match(source, /read the diff before constructing the initial risk map/);
   assert.match(source, /An empty backlog is valid/);
-  assert.match(source, /reason, practical impact and next step/);
+  assert.match(prose, /reason, practical impact and next step/);
   assert.doesNotMatch(source, /Meta-O|docs\/backlog\.md/);
 });
 
