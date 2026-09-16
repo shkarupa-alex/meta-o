@@ -28,8 +28,8 @@ test("durable business and architecture layers preserve the low-cost policy", ()
   }
   assert.match(business, /фактической\s+идентичностью/);
   assert.match(business, /резервный путь/);
-  assert.match(architecture, /effective\s+identity/);
-  assert.match(architecture, /fallback/);
+  assert.match(architecture, /фактическ(?:ую|ой)\s+идентичност/u);
+  assert.match(architecture, /не применяет автоматический резервный\s+вариант/u);
   assert.match(architecture, new RegExp(`§${"B-EVAL-01"}`));
 });
 

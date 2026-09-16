@@ -48,8 +48,7 @@
 
 **Проверка закрытия (`Closure gate`)** — принадлежащее проекту доказательство
 `MO-BACKLOG/1` для закоммиченного объекта бэклога на G0, GC, G1 и G2.
-`NOT-EMPTY` и `UNKNOWN` одинаково
-блокируют границу.
+`NOT-EMPTY` и `UNKNOWN` одинаково блокируют границу.
 
 **Исход Issue (`Issue disposition`)** — один из `in_scope`, `unconfirmed`, `project_issue`,
 `upstream_issue`, `duplicate`, `needs_attention`, выбранный до репозитория.

@@ -316,7 +316,7 @@ const OBLIGATIONS = [
       life: [/floating family alias/, /launch\.requested == launch\.effective/],
       mech: [/`launch\.requested == launch\.effective` for model and effort/],
       evalp: [
-        /сверяет requested\/effective route, model и effort и не\s+делает автоматический fallback/u,
+        /сверяет запрошенные и фактические\s+маршрут, модель и уровень рассуждений и не применяет автоматический резервный\s+вариант/u,
       ],
     },
   ],
@@ -380,7 +380,7 @@ const OBLIGATIONS = [
     {
       life: [/It does not inspect, judge\s+or edit product code/],
       first: [
-        /Orchestrator управляет процессом и сессиями, но не читает, не оценивает и не\s+редактирует product code/u,
+        /Оркестратор управляет процессом и сессиями, но не читает, не оценивает и не\s+редактирует продуктовый код/u,
       ],
     },
   ],
@@ -659,7 +659,9 @@ const OBLIGATIONS = [
         /wait for the exact process this review owns and confirm it left no\s+orphan descendant/,
         /a host-sensitive failure under those conditions is not reported as\s+a candidate finding without clean process evidence/,
       ],
-      post: [/Script владеет одной process group и читает private NUL-framed child evidence/u],
+      post: [
+        /Скрипт владеет одной группой процессов и читает закрытое дочернее доказательство\s+с NUL-разделителями/u,
+      ],
     },
   ],
   [
@@ -719,7 +721,7 @@ const OBLIGATIONS = [
     "O-RR-054",
     "discovery origin and the pinned inventory must agree before an external call",
     {
-      reuse: [/хранит обязательные source adapters как данные/u],
+      reuse: [/хранит обязательные адаптеры источников как данные/u],
       frskill: [/Reject an absent or unknown contract before\s+searching/],
     },
   ],

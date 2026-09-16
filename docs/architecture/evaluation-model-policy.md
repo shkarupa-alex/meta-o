@@ -28,51 +28,53 @@ knowledge_id_changes:
 
 ## Решение
 
-Детерминированный test/fixture является первым способом доказательства. Model
-actor запускается только для named scenario, который нельзя равноценно доказать
-детерминированно. Запуск использует выбор из единственного user-owned
-`~/.meta-o/models.json`, сверяет requested/effective route, model и effort и не
-делает автоматический fallback.
+Детерминированный тест или фикстура — основной способ доказательства. Модельный
+исполнитель запускается только для именованного сценария, который нельзя
+равноценно доказать детерминированно. Запуск использует выбор из единственного
+пользовательского `~/.meta-o/models.json`, сверяет запрошенные и фактические
+маршрут, модель и уровень рассуждений и не применяет автоматический резервный
+вариант.
 
-Каждый применимый case запускается на Claude `opus[1m]/low` и Codex
-`gpt-5.6-sol/low`. Evidence v3 связывает case, contract id, tier, matrix profile,
-candidate, requested/effective model+effort и native harness identity.
-Координата evidence фиксирована как
+Каждый применимый оценочный случай запускается на Claude `opus[1m]/low` и Codex
+`gpt-5.6-sol/low`. Доказательство v3 связывает случай, id контракта, уровень,
+профиль матрицы, кандидата, запрошенные и фактические модель с уровнем
+рассуждений и нативную идентичность среды агента. Координата доказательства
+фиксирована как
 `(skillRevision, caseId, matrixProfile, repetition=1)`: `observedAction` равен
 `case_evaluation:<execution.id>` или
-`availability_probe:<execution.id>`, а `evidenceRef` даёт ограниченный public
-locator. `file:` и `fixture:` принимают только repository-relative path без
-traversal; повторный запуск не создаёт дополнительного принимаемого
-доказательства и не оправдывает лишний расход model actor.
-Неприменимый сценарий имеет доказанный `not_applicable`; недоступная required
-coordinate — `blocked|not_run`, не `PASS`. `not_applicable` принимается только
-при наличии точного правила применимости в corpus самого case, с этим правилом
-в observation и без якобы наблюдённых oracle. Если corpus такого правила не
-задаёт, model actor не может объявить case неприменимым. Недоступная required
-coordinate сохраняет requested identity, но несёт `effective: null`, typed
-availability reason и ненулевой exit code native probe; все её cases остаются
-`blocked|not_run` и поэтому блокируют gate. Ни одна unavailable coordinate не
-может заявлять satisfied oracle; её action и locator описывают только реальный
-availability probe.
+`availability_probe:<execution.id>`, а `evidenceRef` даёт ограниченный публичный
+указатель. `file:` и `fixture:` принимают только путь относительно репозитория
+без выхода наружу; повторный запуск не создаёт дополнительного принимаемого
+доказательства и не оправдывает лишний расход модельного исполнителя.
+Неприменимый сценарий имеет доказанный `not_applicable`; недоступная обязательная
+координата — `blocked|not_run`, не `PASS`. `not_applicable` принимается только
+при наличии точного правила применимости в корпусе самого случая, с этим
+правилом в наблюдении и без якобы наблюдённых `oracle`. Если корпус такого
+правила не задаёт, модельный исполнитель не может объявить случай неприменимым.
+Недоступная обязательная координата сохраняет запрошенную идентичность, но несёт
+`effective: null`, типизированную причину недоступности и ненулевой код выхода
+нативной пробы; все её случаи остаются `blocked|not_run` и поэтому блокируют
+проверку. Ни одна недоступная координата не может заявлять выполненный `oracle`;
+её действие и указатель описывают только реальную пробу доступности.
 
-Desired coordinates Codex `gpt-5.6-luna/max` и OpenCode/Qwen materialize'ятся
-как `not_available`, когда отсутствуют. Запущенный `fail|unknown` блокирует.
-Полный required Cartesian product обязателен, duplicate composite identity
-запрещён; evidence v2 читается с проверкой старой формы только как
-`{status: legacy_v2, accepted: false}` только после полной проверки frozen v2
-shape, vocabulary, identity, execution, corpus, revision и oracle relationships
-и не может закрыть live gate.
+Желаемые координаты Codex `gpt-5.6-luna/max` и OpenCode/Qwen материализуются как
+`not_available`, когда отсутствуют. Запущенный `fail|unknown` блокирует. Полное
+обязательное декартово произведение обязательно, повтор составной идентичности
+запрещён; доказательство v2 читается со старой формой только как
+`{status: legacy_v2, accepted: false}` и лишь после полной проверки
+зафиксированных формы v2, словаря, идентичности, исполнения, корпуса, ревизии и
+связей `oracle`. Оно не может закрыть проверку реальным запуском.
 
-Критический Qwen/OpenCode profile остаётся отдельной проверкой orchestration и не
-заменяется DeepSeek comparator. Evidence хранит scenario id, candidate SHA,
-requested/effective identity, harness version и результат, но не secrets или
-полные transcripts.
+Критический профиль Qwen/OpenCode остаётся отдельной проверкой оркестрации и не
+заменяется сравнением с DeepSeek. Доказательство хранит id сценария, SHA
+кандидата, запрошенную и фактическую идентичность, версию среды агента и
+результат, но не секреты или полные расшифровки.
 
 Решение служит §B-EVAL-01, §B-CONTROL-01, §B-PORTABILITY-07 и
 §B-PORTABILITY-08.
 
 ## Если §A-EVAL-01 отменяется
 
-Станут лишними policy fixtures, проверка effective identity и distinction между
-`not_applicable`, `not_run` и `PASS`. Изменение допустимо только вместе с новой
-границей расходов и authority.
+Станут лишними фикстуры политики, проверка фактической идентичности и различие
+между `not_applicable`, `not_run` и `PASS`. Изменение допустимо только вместе с
+новой границей расходов и полномочий.
