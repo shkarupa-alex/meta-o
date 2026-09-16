@@ -59,7 +59,7 @@ function commit(root, message) {
   git(root, ["commit", "-qm", message]);
 }
 
-test("editorial surfaces normalize whitespace inside exact literals", () => {
+test("legacy editorial normalized literals but strict editorial keeps exact bytes", () => {
   const id = `§${"A-WHITESPACE-01"}`;
   const before = definitions(
     `# ${id} — Decision\n\n\`REVIEW-START version=1 status=unsupported\`\n`,
@@ -71,6 +71,17 @@ test("editorial surfaces normalize whitespace inside exact literals", () => {
   ).get(id);
   assert.notEqual(before.semantic, after.semantic);
   assert.equal(before.editorial, after.editorial);
+  assert.notEqual(before.strictEditorial, after.strictEditorial);
+
+  const fencedBefore = definitions(
+    `# ${id} — Decision\n\n\`\`\`yaml\nrules:\n  allow: false\n\`\`\`\n`,
+    "before.md",
+  ).get(id);
+  const fencedAfter = definitions(
+    `# ${id} — Решение\n\n\`\`\`yaml\nrules: allow: false\n\`\`\`\n`,
+    "after.md",
+  ).get(id);
+  assert.notEqual(fencedBefore.strictEditorial, fencedAfter.strictEditorial);
 });
 
 test("the real history is reachable and valid from program input", () => {

@@ -112,7 +112,10 @@ function strictEditorialNode(node, flexibleText = false) {
       .map(([key, value]) => {
         if (key === "value" && typeof value === "string") {
           if (node.type === "text" && allowLabelChange) return [key, "<editorial-text>"];
-          return [key, normalizedLiteral(value)];
+          if (node.type === "text") return [key, normalizedLiteral(value)];
+          // Inline and fenced code are exact interface literals. Whitespace can
+          // change their grammar, so strict editorial comparison keeps every byte.
+          return [key, value];
         }
         return [key, strictEditorialNode(value, allowLabelChange && key === "children")];
       }),
@@ -292,7 +295,7 @@ function authorized(
   previous,
   current,
   enforceCurrentRecord,
-  enforceStrictEditorial,
+  enforcePostMigrationRules,
 ) {
   // `editorial` is a reuse-only path. Deletion never reaches this branch, so a
   // wording-only record cannot retire a durable identifier.
@@ -320,7 +323,7 @@ function authorized(
   );
   if (!validAuthorizationRecord(record, action, id)) return false;
   if (record.action !== "editorial") return true;
-  const fingerprint = enforceStrictEditorial ? "strictEditorial" : "editorial";
+  const fingerprint = enforcePostMigrationRules ? "strictEditorial" : "editorial";
   return previous.get(id)?.[fingerprint] === current.get(id)?.[fingerprint];
 }
 
@@ -403,7 +406,7 @@ export function edgeViolations(
   siblingParents = [],
   enforceSemantic = true,
   enforceCurrentRecord = true,
-  enforceStrictEditorial = true,
+  enforcePostMigrationRules = true,
 ) {
   const before = snapshot(root, parent);
   const after = snapshot(root, commit);
@@ -429,7 +432,7 @@ export function edgeViolations(
     after,
     parent,
     commit,
-    enforceStrictEditorial,
+    enforcePostMigrationRules,
   );
   for (const id of before.keys()) {
     if (after.has(id) || deletedOnSibling(root, parent, id, siblingParents)) continue;
@@ -444,7 +447,7 @@ export function edgeViolations(
         before,
         after,
         enforceCurrentRecord,
-        enforceStrictEditorial,
+        enforcePostMigrationRules,
       )
     ) {
       errors.push(`${parent}..${commit}: silent deletion ${id}`);
@@ -468,7 +471,7 @@ export function edgeViolations(
         before,
         after,
         enforceCurrentRecord,
-        enforceStrictEditorial,
+        enforcePostMigrationRules,
       )
     ) {
       errors.push(`${parent}..${commit}: semantic reuse ${id}`);
