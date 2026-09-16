@@ -896,7 +896,7 @@ const OBLIGATIONS = [
     "a lost coordinator pane is taken over through authorized public run state",
     {
       mech: [/retain exact run\/task\/dispatch\/terminal locators in current reasoning/],
-      e2e: [/Effect остаётся unknown; очистка точно своих ресурсов сохраняет соседние/u],
+      e2e: [/Эффект остаётся `unknown`; очистка точно своих ресурсов сохраняет соседние/u],
     },
   ],
   [
