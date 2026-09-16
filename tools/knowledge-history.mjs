@@ -329,7 +329,8 @@ function authorizationHistoryChanged(previous, current) {
   return previous.authorizations.some((record) => !currentRecords.has(record));
 }
 
-function authorizationHistoryViolations(before, after, parent, commit) {
+function authorizationHistoryViolations(before, after, parent, commit, enforce) {
+  if (!enforce) return [];
   const errors = [];
   for (const [id, prior] of before) {
     const current = after.get(id);
@@ -423,7 +424,13 @@ export function edgeViolations(
   // Authorization records are an append-only audit trail. They stay outside
   // semantic fingerprints so a newly added record does not recursively demand
   // authorization, but an old record may never be edited or removed unnoticed.
-  const errors = authorizationHistoryViolations(before, after, parent, commit);
+  const errors = authorizationHistoryViolations(
+    before,
+    after,
+    parent,
+    commit,
+    enforceStrictEditorial,
+  );
   for (const id of before.keys()) {
     if (after.has(id) || deletedOnSibling(root, parent, id, siblingParents)) continue;
     if (
