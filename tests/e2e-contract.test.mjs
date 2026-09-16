@@ -46,8 +46,8 @@ test("acceptance maps all major requirements to deterministic and live proof", (
     "Оркестрация и ревью через Orca",
     "Codex, Claude Code и OpenCode",
     "полной парой",
-    "backlog",
-    "Pattern watchdog",
+    "блокнота",
+    "Наблюдатель",
     "смысловые подписи Markdown",
     "Один финальный SHA",
   ])
