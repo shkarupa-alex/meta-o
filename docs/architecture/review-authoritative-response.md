@@ -16,25 +16,29 @@ knowledge_id_changes:
 
 ## Решение
 
-Каждый Orca reviewer публикует полный отчёт в `worker_done`. Header содержит
-`Review-Execution`, exact candidate, requested/effective mode, `Delegation:
-none`, verdict и целочисленный census P0–P3. Между `Evidence report` и
+Каждый ревьюер Orca публикует полный отчёт в `worker_done`. Заголовок содержит
+`Review-Execution`, точного кандидата, запрошенный и фактический режимы,
+`Delegation: none`, вердикт и целочисленные количества P0–P3. Между
+`Evidence report` и
 совпадающим последним `End-Review` ровно по одному идут `Grounding`, `Scope and
-checks`, `Findings`, `Unknowns` и `Residual risks`; markers берутся только из
-top-level CommonMark prose, а code/quote/list bytes ими не становятся. Caller
-сверяет `Candidate`, `Review-Execution` и оба mode с внешним frozen context, а
-не доверяет самосогласованному header. У `UNKNOWN` дополнительно есть непустой
-`Unknown-Account` и ровно один `Unknown-Reason` из closed taxonomy entry skill.
+checks`, `Findings`, `Unknowns` и `Residual risks`; маркеры берутся только из
+прозы верхнего уровня CommonMark, а байты кода, цитат и списков ими не становятся.
+Вызывающая сторона сверяет `Candidate`, `Review-Execution` и оба режима с внешним
+зафиксированным контекстом, а не доверяет самосогласованному заголовку. У
+`UNKNOWN` дополнительно есть непустой `Unknown-Account` и ровно один
+`Unknown-Reason` из замкнутой таксономии входного скила.
 
-Finding index использует уникальные monotonic report-local `F-001…`; каждому
-ключу соответствует ровно один body с той же severity, а counts равны этому
-набору. Каждая finding называет evidence state, causal path, impact, location,
-post-fix invariant, направление и глубину `local patch`, `boundary repair` либо
-`affected-slice redesign`. Caller делает одну полную самокоррекцию malformed
-response в той же hot session; повторный mismatch означает `UNKNOWN`.
+Индекс замечаний использует уникальные монотонные локальные для отчёта
+`F-001…`; каждому ключу соответствует ровно одно тело с той же серьёзностью, а
+количества равны этому набору. Каждое замечание называет состояние доказательства,
+причинный путь, влияние, расположение, инвариант после исправления, направление
+и глубину `local patch`, `boundary repair` либо `affected-slice redesign`.
+Вызывающая сторона делает одну полную самокоррекцию повреждённого ответа в той же
+активной сессии; повторное несовпадение означает `UNKNOWN`.
 
-Человеку показываются только exact SHA, pair verdict и сумма authored P0–P3
-counts без dedup, ranking или пересказа. Executor получает исходные полные
-reports. Решение служит §B-REVIEW-01, §B-REVIEW-04 и §B-REVIEW-05.
-Без §A-REVIEW-04 исчезают grammar fixtures, self-correction и безопасная census
-projection, а terminal summary снова ошибочно подменяет authoritative response.
+Человеку показываются только точный SHA, вердикт пары и сумма опубликованных
+количеств P0–P3 без дедупликации, ранжирования или пересказа. Исполнитель получает
+исходные полные отчёты. Решение служит §B-REVIEW-01, §B-REVIEW-04 и
+§B-REVIEW-05. Без §A-REVIEW-04 исчезают фикстуры грамматики, самокоррекция и
+безопасная проекция количеств, а сводка терминала снова ошибочно подменяет
+авторитетный ответ.

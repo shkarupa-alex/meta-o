@@ -325,6 +325,9 @@ test("editorial authorization cannot change normative prose", () => {
     state.root,
     `weaken prose\n\nKnowledge-ID-Change: editorial ${BUSINESS_ID} via ${MISSING_ARCHITECTURE_ID}`,
   );
+  const parent = git(state.root, ["rev-parse", "HEAD^"]).trim();
+  const current = git(state.root, ["rev-parse", "HEAD"]).trim();
+  assert.deepEqual(edgeViolations(state.root, parent, current, [], true, true, false), []);
   assert.match(verifyHistory(state.root, state.cutoff).join("\n"), /semantic reuse/);
 });
 
@@ -377,6 +380,9 @@ test("authorization history is append-only", () => {
     ),
   );
   commit(state.root, "rewrite authorization history");
+  const parent = git(state.root, ["rev-parse", "HEAD^"]).trim();
+  const current = git(state.root, ["rev-parse", "HEAD"]).trim();
+  assert.deepEqual(edgeViolations(state.root, parent, current, [], true, true, false), []);
   assert.match(verifyHistory(state.root, state.cutoff).join("\n"), /authorization history changed/);
 });
 

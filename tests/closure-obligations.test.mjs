@@ -90,8 +90,11 @@ const OBLIGATIONS = [
     "O-BL-02",
     "symbol-level purpose reaches every exported declaration and names the shell boundary",
     {
-      ident: [/exported function\/class declarations несут JSDoc/, /machine-checked module header/],
-      jsgate: [/JSDoc у public API и classes/u],
+      ident: [
+        /экспортируемые объявления функций и классов несут JSDoc/u,
+        /машинно проверяемый заголовок/u,
+      ],
+      jsgate: [/JSDoc у публичного API и\s+классов/u],
       purp: [/a module purpose names the architecture id; a symbol names its module or the/],
     },
   ],
@@ -140,8 +143,8 @@ const OBLIGATIONS = [
     "an ensemble of reviewers stays deferred behind a registered differential eval",
     {
       ensem: [
-        /differential eval остаётся условием только для будущего пересмотра границы, не\s+отложенной обязательной работой/u,
-        /Отмена §A-REVIEW-02 требует pre-registered differential eval/u,
+        /дифференциальная оценка остаётся условием только для будущего пересмотра\s+границы, не отложенной обязательной работой/u,
+        /Отмена §A-REVIEW-02 требует заранее зарегистрированной дифференциальной оценки/u,
       ],
     },
   ],
@@ -206,7 +209,7 @@ const OBLIGATIONS = [
     "the raw real-runs ledger closes through a lossless map, not a summary",
     {
       ident: [
-        /Временная closure map существует только в checkpoint-коммите/u,
+        /Временная карта закрытия существует только в контрольном коммите/u,
         /Он не\s+считает структурную биекцию доказательством семантического закрытия/u,
       ],
       acc: [/Карта даёт каждому обязательству\s+собственную исполняемую команду доказательства/u],
@@ -521,7 +524,7 @@ const OBLIGATIONS = [
       mech: [/A low-level injected terminal is not a supervised worker resource/],
       wdog: [/`term_` handle is the authorized nudge target/],
       wdedup: [
-        /Перед разрешённым nudge pattern watchdog хранит одну mode-`0600` запись на\s+backend locator/u,
+        /Перед разрешённой подсказкой шаблонный наблюдатель хранит одну запись с режимом\s+`0600` на указатель бэкенда/u,
       ],
     },
   ],

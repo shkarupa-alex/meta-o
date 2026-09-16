@@ -10,7 +10,7 @@ Meta-O — набор агентских скилов, который прово
 проект не добавляет движок процесса или общее хранилище состояния. См.
 [§A-ORCHESTRATION-01 — Скилы и рассуждения — слой оркестрации процесса](docs/architecture/skills-first.md)
 и узкое исключение для состояния в
-[§A-WATCHDOG-01 — Дедупликация подсказок watchdog хранит один закрытый дайджест](docs/architecture/watchdog-nudge-deduplication.md).
+[§A-WATCHDOG-01 — Наблюдатель дедуплицирует подсказки с помощью одного закрытого дайджеста](docs/architecture/watchdog-nudge-deduplication.md).
 
 Согласно [Feature lifecycle](shared/references/methodology.md), один полный Git SHA
 должен пройти QC, две независимые проверки моделями разных поставщиков и

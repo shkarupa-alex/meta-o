@@ -80,7 +80,7 @@ test("the architecture layer owns the split between ledger and framing", () => {
     join(ROOT, "docs", "architecture", "knowledge-identifiers.md"),
     "utf8",
   );
-  assert.match(decision, /§A-MEMORY-02 — Дословный ledger живёт с задачей/);
+  assert.match(decision, /§A-MEMORY-02 — Дословный реестр живёт с задачей/);
   assert.match(decision, /нормативен для исполнителя и ревьюеров/);
   assert.match(decision, /Если §A-MEMORY-02 отменяется/);
 });
