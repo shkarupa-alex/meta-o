@@ -8,7 +8,7 @@
 долговечная работа вне scope переносится в project/upstream Issue, а после
 disposition запись удаляется. Пустой notebook в начале и в конце нормален.
 
-Project-owned `make mo-backlog-empty` реализует `MO-BACKLOG/1`. Он дважды
+Project-owned `make mo-backlog` реализует `MO-BACKLOG/1`. Он дважды
 резолвит `HEAD`, читает только regular UTF-8 blob `HEAD:docs/backlog.md`,
 разбирает Markdown настоящим AST и печатает один из `MO-BACKLOG-EMPTY`,
 `MO-BACKLOG-NOT-EMPTY` или `MO-BACKLOG-UNKNOWN`. Dirty declared path и смена
@@ -29,10 +29,15 @@ Setup проверяет project contract и CI coverage, но не создаё
 agent-managed hosting write теряет доказательство пустоты exact candidate.
 
 ```yaml
-knowledge_id_change:
-  action: reuse
-  id: §B-LONGEVITY-04
-  reason: Backlog перестал быть долговечным sink и стал notebook активной feature branch.
-  new_boundary: Долговечная подтверждённая работа живёт в Issues; пустота проверяется на G0, GC, G1 и G2.
-  references_updated: true
+knowledge_id_changes:
+  - action: reuse
+    id: §B-LONGEVITY-04
+    reason: Backlog перестал быть долговечным sink и стал notebook активной feature branch.
+    new_boundary: Долговечная подтверждённая работа живёт в Issues; пустота проверяется на G0, GC, G1 и G2.
+    references_updated: true
+  - action: reuse
+    id: §A-BACKLOG-01
+    reason: Публичная make-цель closure gate переименована без изменения протокола MO-BACKLOG/1.
+    new_boundary: Решение определяет closure gate через короткую публичную цель make mo-backlog.
+    references_updated: true
 ```

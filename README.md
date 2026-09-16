@@ -121,7 +121,7 @@ make mo-eval-cases
 печатает сценарии, которым нужен агент, и завершается с кодом 2, поэтому его
 невозможно принять за успешный прогон.
 
-`make mo-backlog-empty` — отдельный non-mutating lifecycle closure gate. Он
+`make mo-backlog` — отдельный non-mutating lifecycle closure gate. Он
 читает `HEAD:docs/backlog.md`; ordinary `make mo-qc` намеренно допускает
 корректные временные feature entries.
 

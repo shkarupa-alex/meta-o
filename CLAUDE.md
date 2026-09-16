@@ -73,7 +73,7 @@ Temporary feature observations may go into [Бэклог](docs/backlog.md) with 
 reason, practical impact and next step. Confirmed out-of-scope work goes to the
 correct project/upstream Issue; unresolved ownership is `needs_attention`.
 `docs/backlog.md` must be empty at G0 and GC, and its committed exact SHA must
-pass `make mo-backlog-empty` immediately before any agent-managed MR/PR create
+pass `make mo-backlog` immediately before any agent-managed MR/PR create
 or merge. Never waive `NOT-EMPTY` or `UNKNOWN`.
 
 A confirmed reproducible behavioral defect gets the smallest focused regression
@@ -91,7 +91,7 @@ make mo-qc          # authoritative non-mutating aggregate gate
 make mo-lint        # Markdown, formatting, ESLint, syntax and posture self-checks
 make mo-test        # node --test over tests/
 make mo-smoke       # helpers boot under a throwaway HOME
-make mo-backlog-empty # prove committed feature notebook is empty (closure only)
+make mo-backlog # prove committed feature notebook is empty (closure only)
 make skills         # rebuild skills/ from src/skills/ + shared/
 make mo-e2e         # print agent-required scenarios and exit 2
 ```

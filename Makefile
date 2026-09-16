@@ -4,7 +4,7 @@
 # authoritative gate, it rewrites nothing, and every gate under it is a mature
 # tool or a plain shell comparison rather than a checker this project wrote.
 
-.PHONY: mo-qc mo-lint mo-test mo-smoke mo-e2e mo-eval-cases mo-live-adapters mo-backlog-empty skills skills-check format contract
+.PHONY: mo-qc mo-lint mo-test mo-smoke mo-e2e mo-eval-cases mo-live-adapters mo-backlog skills skills-check format contract
 
 # The authoritative gate.
 mo-qc: mo-lint contract skills-check mo-eval-cases mo-test mo-smoke
@@ -59,7 +59,7 @@ mo-test:
 
 # §A-BACKLOG-01 is a lifecycle closure gate, intentionally not a dependency of
 # mid-feature mo-qc: valid temporary notebook entries must remain testable.
-mo-backlog-empty:
+mo-backlog:
 	@node tools/backlog-empty.mjs
 
 # Do the source helper and shipped Orca copy boot and answer? Under a throwaway HOME, because

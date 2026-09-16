@@ -34,7 +34,7 @@ function git(root, args) {
 
 /** §A-BACKLOG-01 builds isolated Git histories so worktree bytes cannot fake a PASS. */
 function fixture(content = EMPTY) {
-  const root = mkdtempSync(join(tmpdir(), "mo-backlog-empty-"));
+  const root = mkdtempSync(join(tmpdir(), "mo-backlog-"));
   roots.push(root);
   git(root, ["init", "-q"]);
   git(root, ["config", "user.name", "Fixture"]);
@@ -188,7 +188,7 @@ test("missing, symlink, invalid UTF-8, and malformed schema never pass", () => {
 test("the public Make target emits the portable PASS header and changes no Git state", () => {
   const before = git(ROOT, ["status", "--porcelain=v1"]);
   const isolated = repositoryFixture();
-  const result = spawnSync("make", ["mo-backlog-empty"], {
+  const result = spawnSync("make", ["mo-backlog"], {
     cwd: isolated,
     encoding: "utf8",
   });
@@ -199,7 +199,7 @@ test("the public Make target emits the portable PASS header and changes no Git s
 
 test("ordinary QC tests the closure target without requiring the live notebook to be empty", () => {
   const isolated = repositoryFixture(`${EMPTY}\n### Deferred\n\n**Причина.** R\n`);
-  const result = spawnSync("make", ["mo-backlog-empty"], {
+  const result = spawnSync("make", ["mo-backlog"], {
     cwd: isolated,
     encoding: "utf8",
   });

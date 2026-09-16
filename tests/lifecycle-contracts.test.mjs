@@ -482,7 +482,7 @@ test("every first-party test entrypoint preserves provider process isolation", (
 
 /** §A-BACKLOG-01 rejects conditional jobs and prerequisites it cannot prove reachable. */
 function githubJobAutomatic(job) {
-  const commandSteps = (job.steps ?? []).filter(({ run = "" }) => run === "make mo-backlog-empty");
+  const commandSteps = (job.steps ?? []).filter(({ run = "" }) => run === "make mo-backlog");
   return (
     job.if === undefined &&
     job.needs === undefined &&
@@ -541,7 +541,7 @@ function githubCoverage(documents, hosting) {
       const covered = Object.values(called.jobs ?? {}).filter((child) => jobCoverage(child, next));
       return covered.length === 1 && githubJobAutomatic(job) && githubJobAutomatic(covered[0]);
     }
-    return (job?.steps ?? []).some(({ run = "" }) => run === "make mo-backlog-empty");
+    return (job?.steps ?? []).some(({ run = "" }) => run === "make mo-backlog");
   };
   let commandJobs;
   try {
@@ -592,7 +592,7 @@ function gitlabCoverage(documents, hosting) {
     Object.entries(parsed ?? {}).filter(([name, value]) => !reserved.has(name) && value?.script),
   );
   const commandJobs = jobs.filter(([, job]) =>
-    (Array.isArray(job.script) ? job.script : [job.script]).includes("make mo-backlog-empty"),
+    (Array.isArray(job.script) ? job.script : [job.script]).includes("make mo-backlog"),
   );
   if (commandJobs.length !== 1) return "unknown";
   const [jobName, job] = commandJobs[0];
@@ -680,7 +680,7 @@ function ciCoverage({ provider, entrypoint, files, hosting = {} }) {
 
 test("GitHub CI fixtures never invent candidate reachability or required policy", () => {
   const ordinary =
-    "on:\n  pull_request:\n    branches: [develop]\njobs:\n  backlog:\n    steps:\n      - run: make mo-backlog-empty\n";
+    "on:\n  pull_request:\n    branches: [develop]\njobs:\n  backlog:\n    steps:\n      - run: make mo-backlog\n";
   assert.equal(
     ciCoverage({ provider: "github", entrypoint: "ci.yml", files: { "ci.yml": ordinary } }),
     "config_present",
@@ -739,7 +739,7 @@ test("GitHub CI fixtures never invent candidate reachability or required policy"
   const skippedDependency =
     "on:\n  pull_request:\n    branches: [develop]\njobs:\n" +
     "  prepare:\n    if: false\n    steps:\n      - run: echo skipped\n" +
-    "  backlog:\n    needs: prepare\n    steps:\n      - run: make mo-backlog-empty\n";
+    "  backlog:\n    needs: prepare\n    steps:\n      - run: make mo-backlog\n";
   assert.equal(
     ciCoverage({
       provider: "github",
@@ -780,7 +780,7 @@ test("GitHub CI fixtures never invent candidate reachability or required policy"
     ciCoverage({
       provider: "github",
       entrypoint: "ci.yml",
-      files: { "ci.yml": ordinary.replace("make mo-backlog-empty", "${{ matrix.command }}") },
+      files: { "ci.yml": ordinary.replace("make mo-backlog", "${{ matrix.command }}") },
     }),
     "unknown",
   );
@@ -790,7 +790,7 @@ test("GitHub local reusable workflows are resolved through a finite literal call
   const entry =
     "on:\n  pull_request:\n    branches: [develop]\njobs:\n  backlog:\n    uses: ./.github/workflows/backlog.yml\n";
   const called =
-    "on:\n  workflow_call:\njobs:\n  gate:\n    steps:\n      - run: make mo-backlog-empty\n";
+    "on:\n  workflow_call:\njobs:\n  gate:\n    steps:\n      - run: make mo-backlog\n";
   const files = {
     ".github/workflows/ci.yml": entry,
     ".github/workflows/backlog.yml": called,
@@ -840,12 +840,12 @@ test("GitLab CI fixtures never invent candidate reachability or required policy"
   const gitlab =
     "include:\n  - local: jobs.yml\nworkflow:\n  rules:\n    - if: $CI_MERGE_REQUEST_ID\n";
   const job =
-    "backlog:\n  script:\n    - make mo-backlog-empty\n  rules:\n    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'\n";
+    "backlog:\n  script:\n    - make mo-backlog\n  rules:\n    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'\n";
   for (const files of [
     {
       ".gitlab-ci.yml": gitlab,
       "jobs.yml":
-        "backlog:\n  script: make mo-backlog-empty\n  only: merge_requests\n  except: schedules\n",
+        "backlog:\n  script: make mo-backlog\n  only: merge_requests\n  except: schedules\n",
     },
     {
       ".gitlab-ci.yml":
@@ -887,7 +887,7 @@ test("GitLab CI fixtures never invent candidate reachability or required policy"
       files: {
         ".gitlab-ci.yml": gitlab,
         "jobs.yml":
-          "backlog:\n  script: make mo-backlog-empty\nverify:\n  script: echo ok\n  rules:\n    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'\n",
+          "backlog:\n  script: make mo-backlog\nverify:\n  script: echo ok\n  rules:\n    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'\n",
       },
     }),
     "unknown",
@@ -939,7 +939,7 @@ test("GitLab CI fixtures never invent candidate reachability or required policy"
         entrypoint: ".gitlab-ci.yml",
         files: {
           ".gitlab-ci.yml": gitlab,
-          "jobs.yml": `backlog:\n  script: make mo-backlog-empty\n  rules:\n    ${rejectedRule}\n`,
+          "jobs.yml": `backlog:\n  script: make mo-backlog\n  rules:\n    ${rejectedRule}\n`,
         },
         hosting: {
           ciEnabled: true,

@@ -24,7 +24,7 @@
 
 - `make mo-qc` — единственный авторитетный гейт, он ничего не перезаписывает.
   Правит файлы только `make format`, и в гейт он не входит.
-- `make mo-backlog-empty` — отдельный closure gate committed `HEAD`; он не входит
+- `make mo-backlog` — отдельный closure gate committed `HEAD`; он не входит
   в `mo-qc`, потому что mid-feature notebook может законно быть непустым.
 - После любой правки в `shared/` нужен `make skills`. Иначе `skills-check` внутри
   `mo-qc` красный с «skills/ is out of date», и это не дефект гейта.
