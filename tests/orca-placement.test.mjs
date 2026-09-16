@@ -333,10 +333,11 @@ test("filesystem realpath identity rejects two symlink aliases of one worktree",
     const alias = join(root, "alias");
     mkdirSync(target);
     symlinkSync(target, alias, "dir");
+    const realTarget = realpathSync.native(target);
     const children = fixture.folder.children.map((child, index) => ({
       ...child,
       path: index === 0 ? target : alias,
-      realPath: target,
+      realPath: realTarget,
       realPathProvenance: `realpath -- ${index === 0 ? target : alias}`,
     }));
     const result = recordedReview({ ...fixture.folder, children });
@@ -357,7 +358,12 @@ test("filesystem realpath identity rejects two symlink aliases of one worktree",
     mkdirSync(second);
     const distinct = children.map((child, index) => {
       const path = index === 0 ? target : second;
-      return { ...child, path, realPath: path, realPathProvenance: `realpath -- ${path}` };
+      return {
+        ...child,
+        path,
+        realPath: realpathSync.native(path),
+        realPathProvenance: `realpath -- ${path}`,
+      };
     });
     assert.equal(recordedReview({ ...fixture.folder, children: distinct }).status, "started");
   } finally {

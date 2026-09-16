@@ -41,10 +41,10 @@ test("the architecture says how a real-run incident family is regressed", () => 
   // Without this boundary the critical-suite requirement reads as a demand for
   // a fake-Orca replay of agent behaviour, which needs the very driver this
   // decision forbids.
-  assert.match(decision, /Fake-контроль воспроизводит/u);
-  assert.match(decision, /единственного исполняемого consumer этого проекта — watchdog/u);
+  assert.match(decision, /Имитационный контроль\s+воспроизводит/u);
+  assert.match(decision, /единственного исполняемого потребителя этого\s+проекта — наблюдатель/u);
   assert.match(decision, /именованное\s+утверждение о конкретном правиле поставляемой инструкции/u);
-  assert.match(decision, /принятое ограничение, а не отложенная работа/u);
+  assert.match(decision, /принятое ограничение,\s+а не отложенная работа/u);
   const obligations = readFileSync(join(ROOT, "tests", "closure-obligations.test.mjs"), "utf8");
   assert.match(obligations, /fixtures\/orca-control\.mjs/u);
 });
