@@ -541,6 +541,25 @@ knowledge_id_changes:
     reason:
       Markdown механически перенесён Prettier без изменения текста и границ.
     references_updated: true
+  - action: reuse
+    id: §A-WATCHDOG-02
+    reason: Термин `watchdog` заменён единым русским термином «наблюдатель».
+    new_boundary: >-
+      Граница сохранена — наблюдатель классифицирует нативное состояние
+      детерминированно, без локальной модели.
+    references_updated: true
+  - action: reuse
+    id: §B-HUMAN-04
+    reason: Граница `watchdog` названа по-русски как граница наблюдателя.
+    new_boundary: >-
+      Граница сохранена — человек нужен для явно названной границы наблюдателя,
+      но не для однозначной записи подтверждённого Issue.
+    references_updated: true
+  - action: editorial
+    ids:
+      - §A-WAIT-01
+    reason: Термин waiter в заголовке заменён русским эквивалентом.
+    references_updated: true
 ```
 
 ## Решение
