@@ -6,8 +6,32 @@
 
 .PHONY: mo-qc mo-lint mo-test mo-smoke mo-e2e mo-eval-cases mo-live-adapters mo-backlog skills skills-check format contract
 
-# The authoritative gate.
-mo-qc: mo-lint contract skills-check mo-eval-cases mo-test mo-smoke
+# The authoritative gate, in the order it has always run.
+#
+# It became a recipe so it can say how long each stage took. Nobody could tell
+# which stage was slow without running them by hand, and guessing produced the
+# wrong answer. The number is a diagnostic and never a threshold: a limit in
+# seconds passes on one machine and fails on another, which makes the gate
+# report the hardware rather than the repository.
+#
+# `date +%N` is not portable to macOS, so the clock is Node, which this project
+# already requires. Nothing is written to disk: a timing file would be a
+# baseline with no external consumer.
+MO_QC_STAGES = mo-lint contract skills-check mo-eval-cases mo-test mo-smoke
+
+# The authoritative aggregate was always sequential; saying so keeps a `-j` on
+# the command line from interleaving stages and scrambling both the timings and
+# the first-failure exit code.
+.NOTPARALLEL: mo-qc
+
+mo-qc:
+	@set -e; for stage in $(MO_QC_STAGES); do \
+		start=$$(node -e 'process.stdout.write(String(Date.now()))'); \
+		status=0; $(MAKE) --no-print-directory $$stage || status=$$?; \
+		end=$$(node -e 'process.stdout.write(String(Date.now()))'); \
+		echo "MO-QC-TIMING/1 stage=$$stage ms=$$((end - start)) status=$$status"; \
+		if [ "$$status" -ne 0 ]; then exit "$$status"; fi; \
+	done
 	@echo "mo-qc ok"
 
 # markdownlint and prettier judge; `make format` is the half that rewrites.
