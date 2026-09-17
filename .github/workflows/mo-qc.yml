@@ -1,0 +1,43 @@
+# Hosted copy of the local gates: the authoritative non-mutating `make mo-qc`
+# and, separately, the §A-BACKLOG-01 closure proof on the hosting-provided
+# checkout. Triggers and jobs stay literal and unconditional so CI-Coverage/1
+# can prove pull-request and merge-queue reachability; whether these checks are
+# required is a server-side protection decision, not this file's.
+name: mo-qc
+
+on:
+  pull_request:
+  merge_group:
+  push:
+    branches: [develop, master]
+
+permissions:
+  contents: read
+
+jobs:
+  mo-qc:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # mo-test and the posture self-check need zsh beside bash; the watchdog
+      # tests need jq. Name both rather than rely on the runner image.
+      - run: sudo apt-get update && sudo apt-get install -y zsh jq
+      - run: npm ci
+      - run: make mo-qc
+
+  # Kept out of mo-qc: a feature branch may hold valid temporary entries, but
+  # an integration candidate must carry an empty committed notebook.
+  mo-backlog:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: make mo-backlog
