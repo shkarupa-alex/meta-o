@@ -51,9 +51,12 @@ orca orchestration worker-start --task <id> --worktree current --agent <codex|cl
 Use the exact returned run, task, dispatch and terminal identities. Stable
 titles are `<feature>:orchestrator`, `<feature>:executor`,
 `<feature>:review:<vendor>` and `<feature>:e2e:<n>`; set and verify them through
-public surfaces. The worker's injected lifecycle preamble is part of Orca's
-public orchestration surface. Use `orchestration send --to dispatch:<id>` for
-ordinary follow-ups.
+public surfaces. `terminal create --title` and `terminal rename` set the tab
+title; verify it under `visualLayouts[].root.tabs[].title` from
+`terminal list --include-visual-layouts --json`, because `terminals[].title` is
+the pane title a running harness repaints. The worker's injected lifecycle
+preamble is part of Orca's public orchestration surface. Use
+`orchestration send --to dispatch:<id>` for ordinary follow-ups.
 
 `worker-start` reporting `ready` and `input_accepted` is only a transport
 receipt. Before treating the task as delivered, verify through the public worker
