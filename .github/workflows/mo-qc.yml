@@ -18,7 +18,10 @@ jobs:
   mo-qc:
     runs-on: ubuntu-24.04
     steps:
+      # Several gates read historical Git objects; a shallow clone lacks them.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
