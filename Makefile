@@ -44,7 +44,9 @@ mo-lint:
 	node --check skills/mo-review-orca/scripts/mo-models.mjs
 	node --check tools/build-skills.mjs
 	node --check tools/adapter-contract.mjs
-	node --check tools/knowledge-history.mjs
+	node --check shared/scripts/knowledge-documents.mjs
+	node --check shared/scripts/knowledge-history-reader.mjs
+	node --check shared/scripts/mo-knowledge-history.mjs
 	node --check tools/live-adapters.mjs
 	node --check tools/skill-evals.mjs
 	node --check tools/skill-eval-runtime.mjs

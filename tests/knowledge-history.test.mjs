@@ -5,6 +5,7 @@
  */
 
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,7 +13,15 @@ import { after, test } from "node:test";
 
 import { fromMarkdown } from "mdast-util-from-markdown";
 
-import { definitions, edgeViolations, git, verifyHistory } from "../tools/knowledge-history.mjs";
+import {
+  definitions,
+  edgeViolations,
+  git,
+  runHistory,
+  verifyHistory,
+} from "../shared/scripts/mo-knowledge-history.mjs";
+
+const CLI = join(process.cwd(), "shared", "scripts", "mo-knowledge-history.mjs");
 
 const BUSINESS_ID = `§${"B-FIXTURE-01"}`;
 const ARCHITECTURE_ID = `§${"A-FIXTURE-01"}`;
@@ -82,6 +91,93 @@ test("legacy editorial normalized literals but strict editorial keeps exact byte
     "after.md",
   ).get(id);
   assert.notEqual(fencedBefore.strictEditorial, fencedAfter.strictEditorial);
+});
+
+function realPins() {
+  return {
+    semanticFrom: pinned("semantic_enforcement_sha"),
+    currentRecordFrom: pinned("current_record_enforcement_sha"),
+    strictEditorialFrom: pinned("strict_editorial_enforcement_sha"),
+  };
+}
+
+test("one run reads every object once and parses every document once", () => {
+  const run = runHistory(process.cwd(), pinned("program_input_sha"), realPins());
+  assert.deepEqual(run.errors, []);
+  // Repetition, not volume, is what this budget forbids: the same document used
+  // to be read and reparsed once per edge and per lookup that touched its
+  // commit, so the cost grew with the graph rather than with the documents.
+  assert.equal(run.stats.objectRequests, run.stats.uniqueObjects);
+  assert.ok(
+    run.stats.markdownParses <= run.stats.uniqueMarkdownBlobs,
+    `${run.stats.markdownParses} parses for ${run.stats.uniqueMarkdownBlobs} documents`,
+  );
+  // Spawns answer the shape of the graph — boundaries, merges, batch rounds —
+  // never one per commit, which is what a per-commit `git show` loop costs.
+  assert.ok(
+    run.stats.spawns < run.commits,
+    `${run.stats.spawns} spawns for ${run.commits} commits`,
+  );
+});
+
+test("--help answers the grammar without a repository, stdin or a cutoff", () => {
+  const help = spawnSync(process.execPath, [CLI, "--help"], {
+    cwd: tmpdir(),
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  assert.equal(help.status, 0);
+  assert.equal(help.stderr, "");
+  assert.match(help.stdout, /--cutoff <sha>/u);
+  assert.match(help.stdout, /exit: 0 ok \| 1 violations or unavailable \| 2 call error/u);
+});
+
+test("a call error is exit two and never a silent pass", () => {
+  for (const argv of [[], ["--repo", "."], ["--cutoff"], ["--cutoff", "HEAD", "--nope"]]) {
+    const run = spawnSync(process.execPath, [CLI, ...argv], { encoding: "utf8" });
+    assert.equal(run.status, 2, `${argv.join(" ")} should be a call error`);
+    assert.equal(run.stdout, "");
+  }
+});
+
+test("the status line reports the run and only measures when asked", () => {
+  const cutoff = pinned("program_input_sha");
+  const pins = realPins();
+  const argv = [
+    CLI,
+    "--repo",
+    ".",
+    "--cutoff",
+    cutoff,
+    "--semantic-from",
+    pins.semanticFrom,
+    "--current-record-from",
+    pins.currentRecordFrom,
+    "--strict-editorial-from",
+    pins.strictEditorialFrom,
+  ];
+  const quiet = spawnSync(process.execPath, argv, { encoding: "utf8" });
+  assert.equal(quiet.status, 0);
+  assert.match(
+    quiet.stdout,
+    new RegExp(
+      `^MO-KNOWLEDGE-HISTORY/1 status=ok cutoff=${cutoff} commits=\\d+ edges=\\d+\\n$`,
+      "u",
+    ),
+  );
+  const timed = spawnSync(process.execPath, [...argv, "--timing"], { encoding: "utf8" });
+  assert.match(timed.stdout, /ms=\d+ spawns=\d+ blobs=\d+\n$/u);
+});
+
+test("an unreadable object graph is unavailable, never a pass", () => {
+  const { root, cutoff } = fixture();
+  const run = runHistory(root, cutoff, { architecture: "docs/architecture" });
+  assert.deepEqual(run.errors, []);
+  rmSync(join(root, ".git", "objects"), { recursive: true, force: true });
+  const broken = runHistory(root, cutoff);
+  assert.ok(broken.unavailable, "a repository without objects cannot pass");
+  assert.equal(broken.errors.length, 1);
+  assert.match(broken.errors[0], /^history_unavailable: /u);
 });
 
 test("the real history is reachable and valid from program input", () => {
