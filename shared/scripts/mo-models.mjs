@@ -41,6 +41,10 @@ import {
 } from "./model-catalog-data.mjs";
 
 import { query as claudeQuery } from "@anthropic-ai/claude-agent-sdk";
+import {
+  testingEffectiveIdentityError as effectiveIdentityError,
+  testingProfileError,
+} from "./model-testing-policy.mjs";
 
 /** The role names a run addresses. Anything else is a typo, not a new role. */
 const ROLES = [
@@ -177,60 +181,20 @@ export function parseSelection(value) {
   };
 }
 
-// §A-EVAL-01: an approved testing profile has to name one exact provider model
-// id at the approved effort. A floating alias resolves to whatever the provider
-// ships next — possibly a far more expensive model — and a substring test on the
-// generation digit also matches the tail of a release date, which is how
-// `claude-sonnet-4-5-20250929` and `deepseek-v3-4-flash` passed as the approved
-// generation. Required identities are closed values because an unreviewed
-// suffix is a different provider model, not a harmless display variant.
-const TESTING_PROFILES = {
-  testClaude: {
-    route: "claude",
-    effort: "low",
-    id: /^opus\[1m\]$/u,
-    requirement: "testClaude must be claude/opus[1m]/low",
-  },
-  testCodex: {
-    route: "codex",
-    effort: "low",
-    id: /^gpt-5\.6-sol$/u,
-    requirement: "testCodex must be codex/gpt-5.6-sol/low",
-  },
-  testCodexDesired: {
-    route: "codex",
-    effort: "max",
-    id: /^gpt-5\.6-luna$/u,
-    requirement: "testCodexDesired must be codex/gpt-5.6-luna/max",
-  },
-  testOpenCodeDesired: {
-    route: "opencode",
-    effort: "low",
-    matches: isApprovedQwen38_27bModel,
-    requirement: "testOpenCodeDesired must be opencode/<provider>/qwen3.8-27b/low",
-  },
-};
-
-/** §A-EVAL-01 recognizes only the approved closed Qwen 3.8 27B testing id. */
-function isApprovedQwen38_27bModel(model) {
-  const identifier = String(model).split("/").at(-1)?.toLowerCase() ?? "";
-  return identifier === "qwen3.8-27b";
+/**
+ * §A-EVAL-01 keeps one entry point for both halves of an approved identity.
+ *
+ * Callers already import the settings guard from here; splitting the observed
+ * half onto a second import path would let a consumer check one and forget the
+ * other, which is precisely the drift this pair exists to catch.
+ */
+export function testingEffectiveIdentityError(role, requestedModel, effectiveModel) {
+  return effectiveIdentityError(role, requestedModel, effectiveModel);
 }
 
 /** §A-EVAL-01 rejects testing selections outside the approved low-cost routes. */
 export function testingPolicyError(role, value) {
-  const profile = TESTING_PROFILES[role];
-  if (!profile) return null;
-  const selection = typeof value === "string" ? parseSelection(value) : value;
-  // An OpenCode selection carries `provider/model`; the id is the last segment.
-  const identifier = selection.model.split("/").pop() ?? "";
-  const namesApprovedProfile = profile.matches
-    ? profile.matches(identifier)
-    : profile.id.test(identifier.toLowerCase());
-  if (selection.route !== profile.route || selection.effort !== profile.effort) {
-    return profile.requirement;
-  }
-  return namesApprovedProfile ? null : profile.requirement;
+  return testingProfileError(role, typeof value === "string" ? parseSelection(value) : value);
 }
 
 function validateEffectiveRoles(roles) {

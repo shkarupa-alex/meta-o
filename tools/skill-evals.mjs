@@ -36,13 +36,14 @@ import {
 
 import {
   assertBoundedString,
-  diagnoseLegacyEvidenceAtCandidate,
   rejectSensitiveOrMachineLocal,
   validateActorIdentity,
   validateExecution,
   validateHarness,
   validateResultProvenance,
 } from "./skill-eval-runtime.mjs";
+
+import { diagnoseLegacyEvidenceAtCandidate } from "./skill-eval-legacy.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CONTRACT = "meta-o.skill-eval-cases.v2";

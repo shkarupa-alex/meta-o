@@ -19651,6 +19651,64 @@ function uz(e, t) {
   return null;
 }
 
+// shared/scripts/model-testing-policy.mjs
+var TESTING_PROFILES = {
+  testClaude: {
+    route: "claude",
+    effort: "low",
+    id: /^sonnet$/u,
+    effectiveId: /^claude-sonnet-5$/u,
+    effectiveRequirement: "claude-sonnet-5",
+    requirement: "testClaude must be claude/sonnet/low resolving to claude-sonnet-5"
+  },
+  testCodex: {
+    route: "codex",
+    effort: "low",
+    id: /^gpt-5\.6-luna$/u,
+    effectiveId: /^gpt-5\.6-luna$/u,
+    effectiveRequirement: "gpt-5.6-luna",
+    requirement: "testCodex must be codex/gpt-5.6-luna/low"
+  },
+  testCodexDesired: {
+    route: "codex",
+    effort: "max",
+    id: /^gpt-5\.6-luna$/u,
+    effectiveId: /^gpt-5\.6-luna$/u,
+    effectiveRequirement: "gpt-5.6-luna",
+    requirement: "testCodexDesired must be codex/gpt-5.6-luna/max"
+  },
+  testOpenCodeDesired: {
+    route: "opencode",
+    effort: "low",
+    matches: isApprovedQwen38_27bModel,
+    effectiveMatches: isApprovedQwen38_27bModel,
+    effectiveRequirement: "qwen3.8-27b",
+    requirement: "testOpenCodeDesired must be opencode/<provider>/qwen3.8-27b/low"
+  }
+};
+function isApprovedQwen38_27bModel(model) {
+  const identifier = String(model).split("/").at(-1)?.toLowerCase() ?? "";
+  return identifier === "qwen3.8-27b";
+}
+function testingProfileError(role, selection) {
+  const profile = TESTING_PROFILES[role];
+  if (!profile) return null;
+  const identifier = selection.model.split("/").pop() ?? "";
+  const namesApprovedProfile = profile.matches ? profile.matches(identifier) : profile.id.test(identifier.toLowerCase());
+  if (selection.route !== profile.route || selection.effort !== profile.effort) {
+    return profile.requirement;
+  }
+  return namesApprovedProfile ? null : profile.requirement;
+}
+function testingEffectiveIdentityError(role, requestedModel, effectiveModel) {
+  const profile = TESTING_PROFILES[role];
+  if (!profile) return null;
+  const identifier = String(effectiveModel).split("/").pop() ?? "";
+  const accepted = profile.effectiveMatches ? profile.effectiveMatches(identifier) : profile.effectiveId.test(identifier.toLowerCase());
+  if (accepted) return null;
+  return `alias_resolution_changed: ${role} requested ${requestedModel} and ${effectiveModel} ran, but the approved effective id is ${profile.effectiveRequirement}`;
+}
+
 // shared/scripts/mo-models.mjs
 var ROLES = [
   "orchestrator",
@@ -19719,46 +19777,11 @@ function parseSelection(value) {
     effort
   };
 }
-var TESTING_PROFILES = {
-  testClaude: {
-    route: "claude",
-    effort: "low",
-    id: /^opus\[1m\]$/u,
-    requirement: "testClaude must be claude/opus[1m]/low"
-  },
-  testCodex: {
-    route: "codex",
-    effort: "low",
-    id: /^gpt-5\.6-sol$/u,
-    requirement: "testCodex must be codex/gpt-5.6-sol/low"
-  },
-  testCodexDesired: {
-    route: "codex",
-    effort: "max",
-    id: /^gpt-5\.6-luna$/u,
-    requirement: "testCodexDesired must be codex/gpt-5.6-luna/max"
-  },
-  testOpenCodeDesired: {
-    route: "opencode",
-    effort: "low",
-    matches: isApprovedQwen38_27bModel,
-    requirement: "testOpenCodeDesired must be opencode/<provider>/qwen3.8-27b/low"
-  }
-};
-function isApprovedQwen38_27bModel(model) {
-  const identifier = String(model).split("/").at(-1)?.toLowerCase() ?? "";
-  return identifier === "qwen3.8-27b";
+function testingEffectiveIdentityError2(role, requestedModel, effectiveModel) {
+  return testingEffectiveIdentityError(role, requestedModel, effectiveModel);
 }
 function testingPolicyError(role, value) {
-  const profile = TESTING_PROFILES[role];
-  if (!profile) return null;
-  const selection = typeof value === "string" ? parseSelection(value) : value;
-  const identifier = selection.model.split("/").pop() ?? "";
-  const namesApprovedProfile = profile.matches ? profile.matches(identifier) : profile.id.test(identifier.toLowerCase());
-  if (selection.route !== profile.route || selection.effort !== profile.effort) {
-    return profile.requirement;
-  }
-  return namesApprovedProfile ? null : profile.requirement;
+  return testingProfileError(role, typeof value === "string" ? parseSelection(value) : value);
 }
 function validateEffectiveRoles(roles) {
   for (const [role, value] of Object.entries(roles)) {
@@ -20652,5 +20675,6 @@ export {
   parseCodexModels,
   parseSelection,
   probeModelProfile,
+  testingEffectiveIdentityError2 as testingEffectiveIdentityError,
   testingPolicyError
 };

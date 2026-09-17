@@ -24,6 +24,7 @@ mo-lint:
 	node --check tools/live-adapters.mjs
 	node --check tools/skill-evals.mjs
 	node --check tools/skill-eval-runtime.mjs
+	node --check tools/skill-eval-legacy.mjs
 	node --check tools/backlog-empty.mjs
 	node tools/adapter-contract.mjs --validate
 	bash -n shared/scripts/mo-posture.sh

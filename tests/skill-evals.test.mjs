@@ -13,7 +13,7 @@ import { performance } from "node:perf_hooks";
 import { test } from "node:test";
 
 import { forbiddenPublicDataReason } from "../tools/sensitive-evidence.mjs";
-import { diagnoseLegacyEvidence } from "../tools/skill-eval-runtime.mjs";
+import { diagnoseLegacyEvidence } from "../tools/skill-eval-legacy.mjs";
 import {
   diagnoseLegacyEvidenceForCandidate,
   evaluationCoordinate,
@@ -35,8 +35,8 @@ function revision(skill) {
 function envelope(skill, { tier = "required", matrixProfile = "required-codex" } = {}) {
   const document = loadCorpus(ROOT).get(skill);
   const identity = {
-    "required-claude": { route: "claude", model: "opus[1m]", effort: "low" },
-    "required-codex": { route: "codex", model: "gpt-5.6-sol", effort: "low" },
+    "required-claude": { route: "claude", model: "sonnet", effort: "low" },
+    "required-codex": { route: "codex", model: "gpt-5.6-luna", effort: "low" },
     "desired-codex": { route: "codex", model: "gpt-5.6-luna", effort: "max" },
     "desired-opencode": { route: "opencode", model: "provider/qwen3.8-27b", effort: "low" },
     "critical-orchestration": {
@@ -46,6 +46,19 @@ function envelope(skill, { tier = "required", matrixProfile = "required-codex" }
     },
   }[matrixProfile];
   assert.ok(identity, `unknown fixture matrix profile ${matrixProfile}`);
+  // The required Claude coordinate is stored as the catalogue alias and runs as
+  // an exact id, so the fixture has to carry both halves; every other route
+  // answers with exact ids and therefore resolves nothing.
+  const observed =
+    identity.route === "claude" ? { ...identity, model: "claude-sonnet-5" } : { ...identity };
+  const aliasResolution =
+    observed.model === identity.model
+      ? null
+      : {
+          requested: identity.model,
+          effective: observed.model,
+          source: `native claude run reported canonical model ${observed.model}`,
+        };
   return {
     contract: "meta-o.skill-eval-evidence.v3",
     candidate: HEAD,
@@ -76,8 +89,9 @@ function envelope(skill, { tier = "required", matrixProfile = "required-codex" }
       startedAt: "2026-09-02T10:00:00.000Z",
       completedAt: "2026-09-02T10:00:01.000Z",
       exitCode: 0,
-      effective: { ...identity },
-      identityEvidence: `native ${identity.route} result named ${identity.model}`,
+      effective: observed,
+      aliasResolution,
+      identityEvidence: `native ${identity.route} result named ${observed.model}`,
       evaluationDigest: "",
     },
     results: document.cases.map((item) => ({
@@ -318,9 +332,70 @@ test("actor-authored native identity cannot replace the caller-owned execution o
   );
 });
 
+test("a resolved catalogue alias is proof, and only on the route that has aliases", () => {
+  // The happy path: the owner stores `sonnet`, `claude-sonnet-5` actually ran,
+  // and the envelope says so. This is the evidence U7 demands, and a verbatim
+  // model comparison used to reject it.
+  const resolved = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
+  assert.deepEqual(validateEvidence(ROOT, resolved, HEAD).nonPass, []);
+
+  // Default closed: drop the record and the difference is the old mismatch again.
+  const unrecorded = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
+  unrecorded.execution.aliasResolution = null;
+  assert.throws(
+    () => validateEvidence(ROOT, unrecorded, HEAD),
+    /requested\/effective identity mismatch/u,
+  );
+
+  // The record may not assert a resolution of its own; it quotes the envelope.
+  for (const field of ["requested", "effective"]) {
+    const forged = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
+    forged.execution.aliasResolution[field] = "claude-opus-5";
+    assert.throws(() => validateEvidence(ROOT, forged, HEAD), /does not quote the envelope/u);
+  }
+
+  const unsourced = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
+  unsourced.execution.aliasResolution.source = "";
+  assert.throws(() => validateEvidence(ROOT, unsourced, HEAD), /aliasResolution\.source is empty/u);
+
+  // A drifting alias is a typed event, not general unavailability: the literal
+  // must be updated by a person, so the run stops instead of migrating itself.
+  const drifted = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
+  drifted.execution.effective.model = "claude-sonnet-6";
+  drifted.execution.aliasResolution.effective = "claude-sonnet-6";
+  drifted.execution.identityEvidence = "native claude run reported canonical model claude-sonnet-6";
+  assert.throws(() => validateEvidence(ROOT, drifted, HEAD), /alias_resolution_changed/u);
+
+  // Codex and OpenCode answer with exact ids, so a resolution claim there is a
+  // substituted model wearing a nickname.
+  const codex = finalizedEnvelope("find-reuse", { matrixProfile: "required-codex" });
+  codex.execution.aliasResolution = {
+    requested: "gpt-5.6-luna",
+    effective: "gpt-5.6-luna",
+    source: "invented resolution",
+  };
+  assert.throws(
+    () => validateEvidence(ROOT, codex, HEAD),
+    /alias_resolution_unsupported_route codex/u,
+  );
+
+  // Equal models leave nothing to resolve, so a record there is noise.
+  const pointless = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
+  pointless.execution.effective.model = "sonnet";
+  pointless.execution.aliasResolution.effective = "sonnet";
+  assert.throws(() => validateEvidence(ROOT, pointless, HEAD), /present without a resolved alias/u);
+
+  // And an unresolved alias is still not an approved identity: claiming the
+  // alias itself ran leaves the exact generation unproven.
+  const unresolved = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
+  unresolved.execution.effective.model = "sonnet";
+  unresolved.execution.aliasResolution = null;
+  assert.throws(() => validateEvidence(ROOT, unresolved, HEAD), /alias_resolution_changed/u);
+});
+
 test("evidence fails closed on identity drift, missing coverage and sensitive fields", () => {
   const drift = finalizedEnvelope("find-reuse");
-  drift.execution.effective.model = "gpt-5.6-luna";
+  drift.execution.effective.model = "gpt-5.6-sol";
   assert.throws(
     () => validateEvidence(ROOT, drift, HEAD),
     /requested\/effective identity mismatch/,
@@ -770,7 +845,7 @@ test("the CLI exposes a bounded prompt without launching a model", () => {
     "--route",
     "codex",
     "--model",
-    "gpt-5.6-sol",
+    "gpt-5.6-luna",
     "--effort",
     "low",
     "--harness",

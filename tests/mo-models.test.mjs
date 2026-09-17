@@ -260,15 +260,15 @@ test("show reports every role and writes nothing", () => {
 });
 
 test("testing profiles fail closed above the approved cost", () => {
-  assert.equal(testingPolicyError("testClaude", "claude/opus[1m]/low"), null);
-  assert.equal(testingPolicyError("testCodex", "codex/gpt-5.6-sol/low"), null);
+  assert.equal(testingPolicyError("testClaude", "claude/sonnet/low"), null);
+  assert.equal(testingPolicyError("testCodex", "codex/gpt-5.6-luna/low"), null);
   assert.equal(testingPolicyError("testCodexDesired", "codex/gpt-5.6-luna/max"), null);
   assert.equal(
     testingPolicyError("testOpenCodeDesired", "opencode/provider/qwen3.8-27b/low"),
     null,
   );
-  assert.match(testingPolicyError("testClaude", "claude/opus[1m]/high"), /opus\[1m\]\/low/);
-  assert.match(testingPolicyError("testCodex", "codex/gpt-5.6-sol/high"), /sol\/low/);
+  assert.match(testingPolicyError("testClaude", "claude/sonnet/high"), /sonnet\/low/);
+  assert.match(testingPolicyError("testCodex", "codex/gpt-5.6-luna/high"), /luna\/low/);
   assert.match(
     testingPolicyError("testOpenCodeDesired", "opencode/provider/qwen3.8-27b/high"),
     /qwen3\.8-27b\/low/,
