@@ -572,7 +572,6 @@ function verifiedRun(values) {
   try {
     return runHistory(values.root, values.cutoff, options);
   } catch (error) {
-    if (error.historyUnavailable) throw error;
     return {
       errors: [`history_unavailable: ${error.message}`],
       unavailable: true,

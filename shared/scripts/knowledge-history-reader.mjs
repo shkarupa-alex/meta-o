@@ -30,7 +30,9 @@ const BUSINESS_DOCUMENT = "docs/business.md";
 const OBJECT_TYPES = ["blob", "tree", "commit", "tag"];
 // A raw tree object stores a directory as `40000`. Only `ls-tree` pads it to
 // `040000`, so testing the padded form skips every subdirectory in silence.
-const TREE_MODE = "40000";
+const TREE_MODE = Buffer.from("40000");
+const MARKDOWN_SUFFIX = Buffer.from(".md");
+const SEPARATOR = Buffer.from("/");
 const UTF8 = new TextDecoder("utf-8", { fatal: true });
 
 /** §A-MEMORY-01 marks a read the gate must report as `unavailable`, not as a pass. */
@@ -91,10 +93,14 @@ function treeEntries(body, oidBytes) {
     if (nul < 0 || nul + 1 + oidBytes > body.length) {
       throw unreadable("a tree object ends inside an entry");
     }
+    // Names stay bytes. A Git path name is opaque, and decoding one the checker
+    // never needs would let a legacy-encoded filename anywhere in the repository
+    // replace a real violation with a generic unavailability. A name that is not
+    // valid UTF-8 can never equal an ASCII knowledge path, so bytes answer it.
     entries.push({
-      name: decode(body.subarray(space + 1, nul), "a tree entry name"),
+      name: body.subarray(space + 1, nul),
       oid: body.subarray(nul + 1, nul + 1 + oidBytes).toString("hex"),
-      tree: decode(body.subarray(offset, space), "a tree entry mode") === TREE_MODE,
+      tree: body.subarray(offset, space).equals(TREE_MODE),
     });
     offset = nul + 1 + oidBytes;
   }
@@ -176,12 +182,14 @@ function prime(commits, context) {
   let level = unique.map(rootTree);
   for (let depth = 0; depth < Math.max(...segments.map((path) => path.length)); depth += 1) {
     fetch(level);
-    const names = new Set(segments.map((path) => path[depth]).filter(Boolean));
+    const names = [...new Set(segments.map((path) => path[depth]).filter(Boolean))].map((name) =>
+      Buffer.from(name),
+    );
     level = level.flatMap((oid) => {
       const value = object(oid);
       if (value?.type !== "tree") return [];
       return treeEntries(value.body, oidLength())
-        .filter((entry) => names.has(entry.name))
+        .filter((entry) => names.some((name) => entry.name.equals(name)))
         .map((entry) => entry.oid);
     });
   }
@@ -220,7 +228,8 @@ function createTreeNavigator(cache) {
     let entry = null;
     let oid = rootTree(commit);
     for (const name of path.split("/")) {
-      entry = readTree(oid).find((item) => item.name === name) ?? null;
+      const wanted = Buffer.from(name);
+      entry = readTree(oid).find((item) => item.name.equals(wanted)) ?? null;
       if (!entry) return null;
       oid = entry.oid;
     }
@@ -250,15 +259,22 @@ export function createHistoryReader(root, options = {}) {
 
   const { must, readTree, rootTree, locate } = createTreeNavigator(cache);
 
+  // The prefix stays bytes for the same reason the names do. Only a path that
+  // names a knowledge document is decoded, and that one has to be decodable:
+  // a violation message has to be able to say which document it is about.
   const walk = (prefix, treeOid, found) => {
     const nested = [];
     for (const entry of readTree(treeOid)) {
       if (entry.tree) nested.push(entry);
-      else if (entry.name.endsWith(".md"))
-        found.push({ path: `${prefix}/${entry.name}`, oid: entry.oid });
+      else if (entry.name.subarray(-MARKDOWN_SUFFIX.length).equals(MARKDOWN_SUFFIX)) {
+        const path = Buffer.concat([prefix, SEPARATOR, entry.name]);
+        found.push({ path: decode(path, "a knowledge document path"), oid: entry.oid });
+      }
     }
     fetch(nested.map((entry) => entry.oid));
-    for (const entry of nested) walk(`${prefix}/${entry.name}`, entry.oid, found);
+    for (const entry of nested) {
+      walk(Buffer.concat([prefix, SEPARATOR, entry.name]), entry.oid, found);
+    }
   };
 
   const documents = (commit) => {
@@ -266,7 +282,7 @@ export function createHistoryReader(root, options = {}) {
       const found = [];
       const [architectureRoot, businessDocument] = paths;
       const architecture = locate(commit, architectureRoot);
-      if (architecture?.tree) walk(architectureRoot, architecture.oid, found);
+      if (architecture?.tree) walk(Buffer.from(architectureRoot), architecture.oid, found);
       const business = locate(commit, businessDocument);
       if (business && !business.tree) found.push({ path: businessDocument, oid: business.oid });
       caches.paths.set(commit, found);

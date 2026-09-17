@@ -622,6 +622,18 @@ test("desired profile can materialize as evidenced NOT_AVAILABLE", () => {
     evidence,
   );
   assert.deepEqual(validateEvidence(ROOT, evidence, HEAD).nonPass, []);
+  // A coordinate where no model ran can neither claim an identity nor explain
+  // how an alias resolved: there was nothing to resolve it for.
+  evidence.execution.aliasResolution = {
+    requested: evidence.requested.model,
+    effective: "some-other-model",
+    source: "invented",
+  };
+  assert.throws(
+    () => validateEvidence(ROOT, evidence, HEAD),
+    /must not invent an alias resolution/u,
+  );
+  delete evidence.execution.aliasResolution;
   evidence.execution.effective = { ...evidence.requested };
   assert.throws(
     () => validateEvidence(ROOT, evidence, HEAD),

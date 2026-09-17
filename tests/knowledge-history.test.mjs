@@ -194,6 +194,52 @@ test("a document the rules cannot interpret still answers with one status line",
   assert.match(run.stdout, /^MO-KNOWLEDGE-HISTORY\/1 status=unavailable /u);
 });
 
+test("a filename the checker never reads cannot mask a violation", () => {
+  // Git path names are opaque bytes. A legacy-encoded filename in a directory
+  // the checker walks past must not replace a real, actionable violation with a
+  // generic unavailability the target project has no way to clear.
+  for (const where of [[], ["docs"], ["docs", "architecture"]]) {
+    const { root, cutoff } = fixture();
+    // The path has to be raw bytes: a JS string is re-encoded as UTF-8 on the
+    // way to the filesystem, which would quietly make the name decodable again.
+    writeFileSync(
+      Buffer.concat([Buffer.from(`${join(root, ...where)}/`), Buffer.from([0xff, 0xfe])]),
+      "opaque\n",
+    );
+    rewriteBusiness(root, "second");
+    commit(root, "unauthorized change beside an undecodable filename");
+    const head = git(root, ["rev-parse", "HEAD"]).trim();
+    assert.deepEqual(
+      verifyHistory(root, cutoff),
+      [`${cutoff}..${head}: semantic reuse ${BUSINESS_ID}`],
+      `an undecodable name under ${where.join("/") || "the repository root"} hid the violation`,
+    );
+  }
+});
+
+test("a repeated or absent pin is a call error, not a boundary the run invents", () => {
+  const { root } = fixture();
+  const document = join(root, "pins.md");
+  const pins = [
+    "program_input_sha: " + "0".repeat(40),
+    "semantic_enforcement_sha: " + "1".repeat(40),
+    "current_record_enforcement_sha: " + "2".repeat(40),
+    "strict_editorial_enforcement_sha: " + "3".repeat(40),
+  ];
+  const write = (lines) =>
+    writeFileSync(document, `# Pins\n\n\`\`\`yaml\n${lines.join("\n")}\n\`\`\`\n`);
+  const call = () =>
+    spawnSync(process.execPath, [CLI, "--repo", root, "--pins-from", document], {
+      encoding: "utf8",
+    });
+  write(pins);
+  assert.notEqual(call().status, 2, "four distinct pins are a valid call");
+  write([...pins, pins[0]]);
+  assert.equal(call().status, 2, "a repeated pin is a call error");
+  write(pins.slice(1));
+  assert.equal(call().status, 2, "a missing pin is a call error");
+});
+
 test("a knowledge document below a subdirectory is not invisible", () => {
   const nestedId = `§${"A-NESTED-01"}`;
   const { root, cutoff } = fixture();
