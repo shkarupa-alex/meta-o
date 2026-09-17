@@ -102,6 +102,8 @@ mo-smoke:
 	@set -e; smoke_dir=$$(mktemp -d); trap 'rm -rf "$$smoke_dir"' 0 HUP INT TERM; \
 		HOME=$$smoke_dir node shared/scripts/mo-models.mjs --help > /dev/null; \
 		HOME=$$smoke_dir node shared/scripts/mo-models.mjs --show > /dev/null; \
+		(cd $$smoke_dir && HOME=$$smoke_dir \
+			node $(CURDIR)/shared/scripts/mo-knowledge-history.mjs --help > /dev/null); \
 		for backend in mo-orchestrate-orca mo-review-orca; do \
 			cp skills/$$backend/scripts/mo-models.mjs $$smoke_dir/$$backend.mjs; \
 			(cd $$smoke_dir && HOME=$$smoke_dir node ./$$backend.mjs --help > /dev/null); \

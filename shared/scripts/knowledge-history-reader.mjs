@@ -13,6 +13,12 @@
  * once per blob rather than once per path per commit. Nothing here decides
  * anything: it returns exactly what Git stores, so the rules above it stay the
  * only place where a violation is defined.
+ *
+ * Paths are resolved by descending object ids from each commit's own root tree
+ * rather than by asking for `<commit>:<path>`. Git answers `missing` both for a
+ * path a tree does not carry and for an object it cannot read, and those two
+ * must not look alike: the first means the document is absent, the second means
+ * the gate has no idea what the commit contained and has to fail closed.
  */
 
 import { spawnSync } from "node:child_process";
@@ -21,6 +27,11 @@ import { definitionsFromTree, parseDocument } from "./knowledge-documents.mjs";
 
 const ARCHITECTURE_ROOT = "docs/architecture";
 const BUSINESS_DOCUMENT = "docs/business.md";
+const OBJECT_TYPES = ["blob", "tree", "commit", "tag"];
+// A raw tree object stores a directory as `40000`. Only `ls-tree` pads it to
+// `040000`, so testing the padded form skips every subdirectory in silence.
+const TREE_MODE = "40000";
+const UTF8 = new TextDecoder("utf-8", { fatal: true });
 
 /** §A-MEMORY-01 marks a read the gate must report as `unavailable`, not as a pass. */
 export function unreadable(detail) {
@@ -36,13 +47,21 @@ export function git(root, args, allowMissing = false) {
   return result.status === 0 ? result.stdout : null;
 }
 
+function decode(buffer, what) {
+  try {
+    return UTF8.decode(buffer);
+  } catch {
+    throw unreadable(`${what} is not valid UTF-8`);
+  }
+}
+
 function parseBatch(buffer, keys) {
   const answers = new Map();
   let offset = 0;
   for (const key of keys) {
     const end = buffer.indexOf(0x0a, offset);
     if (end < 0) throw unreadable(`truncated answer for ${key}`);
-    const header = buffer.toString("utf8", offset, end);
+    const header = decode(buffer.subarray(offset, end), `the answer header for ${key}`);
     offset = end + 1;
     if (header.endsWith(" missing")) {
       answers.set(key, null);
@@ -50,12 +69,13 @@ function parseBatch(buffer, keys) {
     }
     const [oid, type, size] = header.split(" ");
     const length = Number(size);
-    if (!Number.isInteger(length) || offset + length > buffer.length) {
+    if (!Number.isInteger(length) || offset + length >= buffer.length) {
       throw unreadable(`short frame for ${key}`);
     }
-    if (!["blob", "tree", "commit", "tag"].includes(type)) {
-      throw unreadable(`unknown object type ${type} for ${key}`);
-    }
+    if (!OBJECT_TYPES.includes(type)) throw unreadable(`unknown object type ${type} for ${key}`);
+    // Every frame ends with its own newline. Checking it here catches a
+    // desynchronised stream at the frame that broke it, not one frame later.
+    if (buffer[offset + length] !== 0x0a) throw unreadable(`unterminated frame for ${key}`);
     answers.set(key, { oid, type, body: buffer.subarray(offset, offset + length) });
     offset += length + 1;
   }
@@ -67,11 +87,14 @@ function treeEntries(body, oidBytes) {
   let offset = 0;
   while (offset < body.length) {
     const space = body.indexOf(0x20, offset);
-    const nul = body.indexOf(0x00, space);
+    const nul = space < 0 ? -1 : body.indexOf(0x00, space);
+    if (nul < 0 || nul + 1 + oidBytes > body.length) {
+      throw unreadable("a tree object ends inside an entry");
+    }
     entries.push({
-      name: body.toString("utf8", space + 1, nul),
+      name: decode(body.subarray(space + 1, nul), "a tree entry name"),
       oid: body.subarray(nul + 1, nul + 1 + oidBytes).toString("hex"),
-      tree: body.toString("utf8", offset, space).startsWith("040"),
+      tree: decode(body.subarray(offset, space), "a tree entry mode") === TREE_MODE,
     });
     offset = nul + 1 + oidBytes;
   }
@@ -79,6 +102,10 @@ function treeEntries(body, oidBytes) {
 }
 
 function commitMessage(body) {
+  // Deliberately lossy: a commit message is not a knowledge document, Git lets
+  // it carry any encoding, and the trailer grammar is pure ASCII, which a lossy
+  // decode can neither invent nor destroy. Failing closed here would block the
+  // gate on a legitimate repository whose old message is not UTF-8.
   const text = body.toString("utf8");
   const blank = text.indexOf("\n\n");
   return blank < 0 ? "" : text.slice(blank + 2);
@@ -137,21 +164,70 @@ function createObjectCache(root, stats) {
   };
 }
 
-// Two rounds answer a whole run: the commits with their knowledge trees, then
-// every distinct document those trees name. Anything the rules ask for later is
-// already in the cache, so a late read is a cache miss worth noticing.
-function prime(commits, { fetch, documents, stats, roots }) {
+// One round per path segment, shared by every commit: the trees at one depth
+// are all requested before any of them is read, so the number of Git processes
+// follows the depth of the knowledge paths and the shape of the graph, never
+// the number of commits.
+function prime(commits, context) {
+  const { fetch, object, oidLength, rootTree, documents, stats, paths } = context;
   const unique = [...new Set(commits)];
-  fetch(
-    unique.flatMap((commit) => [
-      commit,
-      `${commit}:${roots.architecture}`,
-      `${commit}:${roots.business}`,
-    ]),
-  );
-  const blobs = new Set(unique.flatMap((c) => documents(c).map((entry) => entry.oid)));
+  fetch(unique);
+  const segments = paths.map((path) => path.split("/"));
+  let level = unique.map(rootTree);
+  for (let depth = 0; depth < Math.max(...segments.map((path) => path.length)); depth += 1) {
+    fetch(level);
+    const names = new Set(segments.map((path) => path[depth]).filter(Boolean));
+    level = level.flatMap((oid) => {
+      const value = object(oid);
+      if (value?.type !== "tree") return [];
+      return treeEntries(value.body, oidLength())
+        .filter((entry) => names.has(entry.name))
+        .map((entry) => entry.oid);
+    });
+  }
+  fetch(level);
+  const blobs = new Set(unique.flatMap((commit) => documents(commit).map((item) => item.oid)));
   fetch([...blobs]);
   stats.uniqueMarkdownBlobs = blobs.size;
+}
+
+/** §A-MEMORY-01 resolves a path through the objects a commit itself names. */
+function createTreeNavigator(cache) {
+  const must = (key, what) => {
+    const value = cache.object(key);
+    if (!value) throw unreadable(`${what} ${key} cannot be read`);
+    return value;
+  };
+
+  const readTree = (oid) => {
+    const value = must(oid, "tree");
+    if (value.type !== "tree") throw unreadable(`${oid} is not a tree`);
+    return treeEntries(value.body, cache.oidLength());
+  };
+
+  const rootTree = (commit) => {
+    const value = must(commit, "commit");
+    if (value.type !== "commit") throw unreadable(`${commit} is not a commit`);
+    const end = value.body.indexOf(0x0a);
+    const first = end < 0 ? "" : decode(value.body.subarray(0, end), `commit ${commit}`);
+    const oid = first.startsWith("tree ") ? first.slice(5) : "";
+    if (!/^[0-9a-f]+$/u.test(oid)) throw unreadable(`commit ${commit} names no tree`);
+    return oid;
+  };
+
+  // Only a name a readable tree does not carry means the document is absent.
+  const locate = (commit, path) => {
+    let entry = null;
+    let oid = rootTree(commit);
+    for (const name of path.split("/")) {
+      entry = readTree(oid).find((item) => item.name === name) ?? null;
+      if (!entry) return null;
+      oid = entry.oid;
+    }
+    return entry;
+  };
+
+  return { must, readTree, rootTree, locate };
 }
 
 /**
@@ -161,8 +237,7 @@ function prime(commits, { fetch, documents, stats, roots }) {
  * can prove no Git child outlives the run that started it.
  */
 export function createHistoryReader(root, options = {}) {
-  const architectureRoot = options.architecture ?? ARCHITECTURE_ROOT;
-  const businessDocument = options.business ?? BUSINESS_DOCUMENT;
+  const paths = [options.architecture ?? ARCHITECTURE_ROOT, options.business ?? BUSINESS_DOCUMENT];
   const caches = {
     trees: new Map(),
     definitions: new Map(),
@@ -172,15 +247,12 @@ export function createHistoryReader(root, options = {}) {
   const stats = { spawns: 0, objectRequests: 0, markdownParses: 0, uniqueMarkdownBlobs: 0 };
   const cache = createObjectCache(root, stats);
   const { fetch, object } = cache;
-  const roots = { architecture: architectureRoot, business: businessDocument };
 
-  // `ls-tree -r` would answer this with one spawn per commit. Walking the trees
-  // that are already in the batch keeps the same depth-first order for free.
+  const { must, readTree, rootTree, locate } = createTreeNavigator(cache);
+
   const walk = (prefix, treeOid, found) => {
-    const tree = object(treeOid);
-    if (!tree) return;
     const nested = [];
-    for (const entry of treeEntries(tree.body, cache.oidLength())) {
+    for (const entry of readTree(treeOid)) {
       if (entry.tree) nested.push(entry);
       else if (entry.name.endsWith(".md"))
         found.push({ path: `${prefix}/${entry.name}`, oid: entry.oid });
@@ -192,10 +264,11 @@ export function createHistoryReader(root, options = {}) {
   const documents = (commit) => {
     if (!caches.paths.has(commit)) {
       const found = [];
-      const architecture = object(`${commit}:${architectureRoot}`);
-      if (architecture?.type === "tree") walk(architectureRoot, architecture.oid, found);
-      const business = object(`${commit}:${businessDocument}`);
-      if (business) found.push({ path: businessDocument, oid: business.oid });
+      const [architectureRoot, businessDocument] = paths;
+      const architecture = locate(commit, architectureRoot);
+      if (architecture?.tree) walk(architectureRoot, architecture.oid, found);
+      const business = locate(commit, businessDocument);
+      if (business && !business.tree) found.push({ path: businessDocument, oid: business.oid });
       caches.paths.set(commit, found);
     }
     return caches.paths.get(commit);
@@ -206,10 +279,9 @@ export function createHistoryReader(root, options = {}) {
   // number of distinct documents the history actually contains.
   const tree = (oid) => {
     if (!caches.trees.has(oid)) {
-      const blob = object(oid);
-      if (!blob) throw unreadable(`missing blob ${oid}`);
+      const blob = must(oid, "document");
       stats.markdownParses += 1;
-      caches.trees.set(oid, parseDocument(blob.body.toString("utf8")));
+      caches.trees.set(oid, parseDocument(decode(blob.body, `document ${oid}`)));
     }
     return caches.trees.get(oid);
   };
@@ -220,18 +292,23 @@ export function createHistoryReader(root, options = {}) {
     documents,
     tree,
     snapshots: caches.snapshot,
-    prime: (commits) => prime(commits, { fetch, documents, stats, roots }),
+    prime: (commits) =>
+      prime(commits, {
+        fetch,
+        object,
+        oidLength: cache.oidLength,
+        rootTree,
+        documents,
+        stats,
+        paths,
+      }),
     definitions: (oid, path) => {
-      const key = `${oid}\u0000${path}`;
+      const key = `${oid} ${path}`;
       if (!caches.definitions.has(key))
         caches.definitions.set(key, definitionsFromTree(tree(oid), path));
       return caches.definitions.get(key);
     },
-    trailers: (commit) => {
-      const body = object(commit);
-      if (!body) throw unreadable(`missing commit ${commit}`);
-      return commitMessage(body.body);
-    },
+    trailers: (commit) => commitMessage(must(commit, "commit").body),
     stats: () => ({ ...stats, uniqueObjects: cache.size() }),
     close: () => {
       cache.close();

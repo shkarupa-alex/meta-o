@@ -95,6 +95,7 @@ test("the stored coordinate and the model that actually ran are closed separatel
     /sonnet\/low/u,
   );
   assert.match(testingPolicyError("testCodex", "codex/gpt-5.6/low"), /gpt-5\.6-luna/u);
+  assert.match(testingPolicyError("testClaude", "claude/anything/sonnet/low"), /sonnet\/low/u);
   assert.match(
     testingPolicyError("testOpenCodeDesired", "opencode/deepseek/deepseek-v3-4-flash/low"),
     /qwen3\.8-27b/u,
@@ -110,6 +111,10 @@ test("the stored coordinate and the model that actually ran are closed separatel
     "claude-sonnet-5-20250929",
     "claude-sonnet-6",
     "claude-opus-5",
+    // Only OpenCode qualifies an id with a provider. Tolerating the prefix
+    // everywhere would let the envelope name any provider it liked in front of
+    // the approved generation and still be believed.
+    "anything/claude-sonnet-5",
   ]) {
     assert.match(
       testingEffectiveIdentityError("testClaude", "sonnet", observed),

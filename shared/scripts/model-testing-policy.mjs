@@ -69,8 +69,10 @@ function isApprovedQwen38_27bModel(model) {
 export function testingProfileError(role, selection) {
   const profile = TESTING_PROFILES[role];
   if (!profile) return null;
-  // An OpenCode selection carries `provider/model`; the id is the last segment.
-  const identifier = selection.model.split("/").pop() ?? "";
+  // Compared verbatim. Only OpenCode qualifies an id as `provider/model`, and
+  // its profile says so in `matches`; stripping a prefix for every route would
+  // let `anything/sonnet` pass as the approved Claude coordinate.
+  const identifier = String(selection.model);
   const namesApprovedProfile = profile.matches
     ? profile.matches(identifier)
     : profile.id.test(identifier.toLowerCase());
@@ -92,7 +94,10 @@ export function testingProfileError(role, selection) {
 export function testingEffectiveIdentityError(role, requestedModel, effectiveModel) {
   const profile = TESTING_PROFILES[role];
   if (!profile) return null;
-  const identifier = String(effectiveModel).split("/").pop() ?? "";
+  // Same rule, and it matters more here: this value is what the actor reported
+  // as the model that actually ran, so a tolerated prefix would let the
+  // envelope name any provider it liked in front of the approved generation.
+  const identifier = String(effectiveModel);
   const accepted = profile.effectiveMatches
     ? profile.effectiveMatches(identifier)
     : profile.effectiveId.test(identifier.toLowerCase());

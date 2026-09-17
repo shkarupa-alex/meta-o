@@ -19693,7 +19693,7 @@ function isApprovedQwen38_27bModel(model) {
 function testingProfileError(role, selection) {
   const profile = TESTING_PROFILES[role];
   if (!profile) return null;
-  const identifier = selection.model.split("/").pop() ?? "";
+  const identifier = String(selection.model);
   const namesApprovedProfile = profile.matches ? profile.matches(identifier) : profile.id.test(identifier.toLowerCase());
   if (selection.route !== profile.route || selection.effort !== profile.effort) {
     return profile.requirement;
@@ -19703,7 +19703,7 @@ function testingProfileError(role, selection) {
 function testingEffectiveIdentityError(role, requestedModel, effectiveModel) {
   const profile = TESTING_PROFILES[role];
   if (!profile) return null;
-  const identifier = String(effectiveModel).split("/").pop() ?? "";
+  const identifier = String(effectiveModel);
   const accepted = profile.effectiveMatches ? profile.effectiveMatches(identifier) : profile.effectiveId.test(identifier.toLowerCase());
   if (accepted) return null;
   return `alias_resolution_changed: ${role} requested ${requestedModel} and ${effectiveModel} ran, but the approved effective id is ${profile.effectiveRequirement}`;

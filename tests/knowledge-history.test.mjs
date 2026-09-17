@@ -23,6 +23,9 @@ import {
 } from "../shared/scripts/mo-knowledge-history.mjs";
 
 const CLI = join(process.cwd(), "shared", "scripts", "mo-knowledge-history.mjs");
+// Resolving the cutoff and each declared boundary, listing the graph, and the
+// batch rounds that answer it. Nothing here scales with the number of commits.
+const SETUP_SPAWNS = 12;
 
 const BUSINESS_ID = `§${"B-FIXTURE-01"}`;
 const ARCHITECTURE_ID = `§${"A-FIXTURE-01"}`;
@@ -102,23 +105,92 @@ function realPins() {
   };
 }
 
-test("one run reads every object once and parses every document once", () => {
-  const run = runHistory(process.cwd(), pinned("program_input_sha"), realPins());
-  assert.deepEqual(run.errors, []);
-  // Repetition, not volume, is what this budget forbids: the same document used
-  // to be read and reparsed once per edge and per lookup that touched its
-  // commit, so the cost grew with the graph rather than with the documents.
-  assert.equal(run.stats.objectRequests, run.stats.uniqueObjects);
-  assert.ok(
-    run.stats.markdownParses <= run.stats.uniqueMarkdownBlobs,
-    `${run.stats.markdownParses} parses for ${run.stats.uniqueMarkdownBlobs} documents`,
+function linear(extra) {
+  const { root, cutoff } = fixture();
+  for (let step = 0; step < extra; step += 1) {
+    writeFileSync(join(root, "unrelated.txt"), `step ${step}\n`);
+    commit(root, `step ${step}`);
+  }
+  return runHistory(root, cutoff);
+}
+
+test("the process budget follows the shape of the graph, not its size", () => {
+  const short = linear(2);
+  const long = linear(11);
+  assert.deepEqual(short.errors, []);
+  assert.deepEqual(long.errors, []);
+  assert.equal(long.commits - short.commits, 9);
+  // This is the property the batching exists for. A per-commit `git show` loop
+  // satisfies every other budget below and still fails here.
+  assert.equal(
+    long.stats.spawns,
+    short.stats.spawns,
+    `${long.stats.spawns} spawns for ${long.commits} commits, ` +
+      `${short.stats.spawns} for ${short.commits}`,
   );
-  // Spawns answer the shape of the graph — boundaries, merges, batch rounds —
-  // never one per commit, which is what a per-commit `git show` loop costs.
-  assert.ok(
-    run.stats.spawns < run.commits,
-    `${run.stats.spawns} spawns for ${run.commits} commits`,
+  assert.ok(short.stats.spawns <= SETUP_SPAWNS, `${short.stats.spawns} spawns to set up a run`);
+  // The knowledge documents never change across those commits, so one parse of
+  // each is the whole budget however long the history gets.
+  assert.equal(long.stats.markdownParses, long.stats.uniqueMarkdownBlobs);
+  assert.equal(long.stats.markdownParses, short.stats.markdownParses);
+});
+
+test("a knowledge document below a subdirectory is not invisible", () => {
+  const nestedId = `§${"A-NESTED-01"}`;
+  const { root, cutoff } = fixture();
+  mkdirSync(join(root, "docs", "architecture", "nested"), { recursive: true });
+  writeFileSync(
+    join(root, "docs", "architecture", "nested", "deep.md"),
+    `# ${nestedId} — Nested decision\n\nServes ${BUSINESS_ID}.\n`,
   );
+  commit(root, "add a decision in a subdirectory");
+  const added = git(root, ["rev-parse", "HEAD"]).trim();
+  assert.deepEqual(verifyHistory(root, cutoff), []);
+  git(root, ["rm", "-q", "docs/architecture/nested/deep.md"]);
+  commit(root, "drop it with no authorization");
+  const head = git(root, ["rev-parse", "HEAD"]).trim();
+  assert.deepEqual(verifyHistory(root, added), [`${added}..${head}: silent deletion ${nestedId}`]);
+});
+
+function corrupted(what) {
+  const { root, cutoff } = fixture();
+  writeFileSync(
+    join(root, "docs", "business.md"),
+    `# Business\n\n### ${BUSINESS_ID} — Rewritten meaning\n\nDifferent requirement.\n`,
+  );
+  commit(root, "unauthorized semantic change");
+  const head = git(root, ["rev-parse", "HEAD"]).trim();
+  // The violation has to be visible before the object is removed, or the test
+  // would pass against a checker that reports nothing at all.
+  assert.deepEqual(verifyHistory(root, cutoff), [
+    `${cutoff}..${head}: semantic reuse ${BUSINESS_ID}`,
+  ]);
+  const oid = git(root, ["rev-parse", `${cutoff}:${what}`]).trim();
+  rmSync(join(root, ".git", "objects", oid.slice(0, 2), oid.slice(2)));
+  return runHistory(root, cutoff);
+}
+
+test("an object the history names but Git cannot read is unavailable, never a pass", () => {
+  // `cat-file` says `missing` both for a path a tree does not carry and for an
+  // object it cannot read. Treating the second as absence hides the violation.
+  for (const what of ["docs/business.md", "docs/architecture"]) {
+    const run = corrupted(what);
+    assert.ok(run.unavailable, `${what}: expected unavailable, got ${JSON.stringify(run.errors)}`);
+    assert.equal(run.errors.length, 1);
+    assert.match(run.errors[0], /^history_unavailable: .*cannot be read$/u);
+  }
+});
+
+test("a knowledge document that is not UTF-8 is unavailable, never a pass", () => {
+  const { root, cutoff } = fixture();
+  writeFileSync(
+    join(root, "docs", "architecture", "broken.md"),
+    Buffer.from([0x23, 0x20, 0xff, 0xfe, 0x0a]),
+  );
+  commit(root, "add an undecodable document");
+  const run = runHistory(root, cutoff);
+  assert.ok(run.unavailable, `expected unavailable, got ${JSON.stringify(run.errors)}`);
+  assert.match(run.errors[0], /is not valid UTF-8$/u);
 });
 
 test("--help answers the grammar without a repository, stdin or a cutoff", () => {
@@ -180,32 +252,19 @@ test("an audited exemption reports the edges it would have to cover", () => {
 });
 
 test("the status line reports the run and only measures when asked", () => {
-  const cutoff = pinned("program_input_sha");
-  const pins = realPins();
-  const argv = [
-    CLI,
-    "--repo",
-    ".",
-    "--cutoff",
-    cutoff,
-    "--semantic-from",
-    pins.semanticFrom,
-    "--current-record-from",
-    pins.currentRecordFrom,
-    "--strict-editorial-from",
-    pins.strictEditorialFrom,
-  ];
+  const { root, cutoff } = fixture();
+  writeFileSync(join(root, "unrelated.txt"), "one\n");
+  commit(root, "an ordinary commit");
+  const argv = [CLI, "--repo", root, "--cutoff", cutoff];
   const quiet = spawnSync(process.execPath, argv, { encoding: "utf8" });
   assert.equal(quiet.status, 0);
-  assert.match(
+  assert.equal(quiet.stderr, "");
+  assert.equal(
     quiet.stdout,
-    new RegExp(
-      `^MO-KNOWLEDGE-HISTORY/1 status=ok cutoff=${cutoff} commits=\\d+ edges=\\d+\\n$`,
-      "u",
-    ),
+    `MO-KNOWLEDGE-HISTORY/1 status=ok cutoff=${cutoff} commits=1 edges=1\n`,
   );
   const timed = spawnSync(process.execPath, [...argv, "--timing"], { encoding: "utf8" });
-  assert.match(timed.stdout, /ms=\d+ spawns=\d+ blobs=\d+\n$/u);
+  assert.match(timed.stdout, /^MO-KNOWLEDGE-HISTORY\/1 status=ok .* ms=\d+ spawns=\d+ blobs=2\n$/u);
 });
 
 test("an unreadable object graph is unavailable, never a pass", () => {
