@@ -679,6 +679,21 @@ function ciCoverage({ provider, entrypoint, files, hosting = {} }) {
   return "unknown";
 }
 
+test("the hosted workflow stays provable and gives mo-qc the full history", () => {
+  const path = ".github/workflows/mo-qc.yml";
+  const text = source(path);
+  assert.equal(
+    ciCoverage({ provider: "github", entrypoint: path, files: { [path]: text } }),
+    "config_present",
+  );
+  // mo-qc reads historical objects (backlog provenance, knowledge history,
+  // legacy eval evidence), which a default depth-1 checkout does not contain.
+  const checkout = yaml
+    .load(text)
+    .jobs["mo-qc"].steps.find((step) => String(step.uses).startsWith("actions/checkout@"));
+  assert.equal(checkout?.with?.["fetch-depth"], 0);
+});
+
 test("GitHub CI fixtures never invent candidate reachability or required policy", () => {
   const ordinary =
     "on:\n  pull_request:\n    branches: [develop]\njobs:\n  backlog:\n    steps:\n      - run: make mo-backlog\n";
