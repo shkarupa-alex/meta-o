@@ -131,8 +131,9 @@ export const MODEL_BUNDLE_MAX_BYTES = Math.ceil(MODEL_BUNDLE_BASELINE_BYTES * 1.
  *
  * Every entry is a deliberate decision about standalone installability:
  * Orchestrators and standalone reviewers each carry their backend mechanics
- * plus the shared contracts they consume. Setup owns project readiness and the
- * watchdog owns only its methodology-independent observer helper.
+ * plus the shared contracts they consume. Setup owns project readiness and
+ * carries the Orca mechanics it must prove; the watchdog owns only its
+ * methodology-independent observer helper.
  */
 export const SHARED_PLAN = {
   "mo-orchestrate-orca": [
@@ -158,6 +159,7 @@ export const SHARED_PLAN = {
     ["references/project-setup.md", "references/project-setup.md"],
     ["references/backend-contract.md", "references/backend-contract.md"],
     ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
+    ["references/orca-mechanics.md", "references/orca-mechanics.md"],
     ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],
   ],
   "mo-watchdog": [

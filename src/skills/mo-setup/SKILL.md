@@ -43,7 +43,8 @@ Resolve one absolute Orca binary. Require non-empty version-matched bundled
 never install guide copies. Separately prove native status/project identity,
 provider auth, account freshness, selected-harness launch, normal prompt versus
 trust UI/shell, stable title capability, one owner of unsandboxed posture, and
-supported blocking-wait duration.
+supported blocking-wait duration, using the surfaces named in
+[Orca native mechanics](references/orca-mechanics.md).
 
 Check `orca`/`orca-cli` separately from the upstream
 `orchestration` companion. Also check mature `jq` and `flock` dependencies.

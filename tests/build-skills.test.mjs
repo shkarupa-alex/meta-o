@@ -178,6 +178,12 @@ test("review and setup packages carry every contract their entry skill routes to
     assert.equal(existsSync(join(OUTPUT, "mo-setup", "references", profile)), true);
     assert.match(setupEntry, new RegExp(profile));
   }
+  // Setup must prove the stable title capability from its own package.
+  assert.match(setupEntry, /\(references\/orca-mechanics\.md\)/);
+  assert.match(
+    readFileSync(join(OUTPUT, "mo-setup", "references", "orca-mechanics.md"), "utf8"),
+    /visualLayouts\[\]\.root\.tabs\[\]\.title/,
+  );
 });
 
 test("watchdog is shipped executable and source/build file sets agree", () => {
