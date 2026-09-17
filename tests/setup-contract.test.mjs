@@ -121,3 +121,14 @@ test("entry files preserve the mandatory branch and commit contract", () => {
     assert.match(source, /Не добавляйте `Assisted-by`, `Co-authored-by`/);
   }
 });
+
+test("entry files name every backlog closure gate and the remote head check", () => {
+  assert.match(contract, /G0\/GC\/G1\/G2 rules in the entry contract/);
+  for (const source of [agents, claude]) {
+    const prose = source.replace(/\s+/gu, " ");
+    for (const gate of ["G0", "GC", "G1", "G2"]) assert.match(prose, new RegExp(`\\b${gate}\\b`));
+    assert.match(prose, /G1[^.]*созданием MR\/PR/);
+    assert.match(prose, /G2[^.]*слиянием/);
+    assert.match(prose, /На G1 и G2 удалённый исходный HEAD обязан совпасть/);
+  }
+});
