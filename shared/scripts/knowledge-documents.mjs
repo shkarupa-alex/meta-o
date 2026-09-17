@@ -219,3 +219,41 @@ export function citedIdsFromTree(tree) {
   for (const [id] of prose(tree).matchAll(CITATION)) found.add(id);
   return found;
 }
+
+// The lower boundaries of the verified history are knowledge, not configuration:
+// they live in the decision that explains them, and the checker reads them from
+// there so a boundary can never be moved by a flag nobody reviewed.
+const PINS = {
+  program_input_sha: "cutoff",
+  semantic_enforcement_sha: "semanticFrom",
+  current_record_enforcement_sha: "currentRecordFrom",
+  strict_editorial_enforcement_sha: "strictEditorialFrom",
+};
+
+function yamlBlocks(node, found = []) {
+  if (node.type === "code" && node.lang === "yaml") found.push(node);
+  for (const child of node.children ?? []) yamlBlocks(child, found);
+  return found;
+}
+
+/** §A-MEMORY-01 reads the four history boundaries a decision document pins. */
+export function historyPins(markdown, path) {
+  const found = new Map();
+  for (const block of yamlBlocks(parseDocument(markdown))) {
+    let parsed;
+    try {
+      parsed = yaml.load(block.value);
+    } catch {
+      throw new Error(`${path} has a YAML block the pin reader cannot parse`);
+    }
+    if (!parsed || typeof parsed !== "object") continue;
+    for (const key of Object.keys(PINS)) {
+      if (!Object.hasOwn(parsed, key)) continue;
+      if (found.has(key)) throw new Error(`${path} names ${key} more than once`);
+      found.set(key, String(parsed[key]));
+    }
+  }
+  const missing = Object.keys(PINS).filter((key) => !found.has(key));
+  if (missing.length > 0) throw new Error(`${path} is missing ${missing.join(", ")}`);
+  return Object.fromEntries([...found].map(([key, value]) => [PINS[key], value]));
+}

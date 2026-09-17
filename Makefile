@@ -4,7 +4,7 @@
 # authoritative gate, it rewrites nothing, and every gate under it is a mature
 # tool or a plain shell comparison rather than a checker this project wrote.
 
-.PHONY: mo-qc mo-lint mo-test mo-smoke mo-e2e mo-eval-cases mo-live-adapters mo-backlog skills skills-check format contract
+.PHONY: mo-qc mo-lint mo-test mo-smoke mo-e2e mo-eval-cases mo-knowledge-history mo-live-adapters mo-backlog skills skills-check format contract
 
 # The authoritative gate, in the order it has always run.
 #
@@ -17,7 +17,7 @@
 # `date +%N` is not portable to macOS, so the clock is Node, which this project
 # already requires. Nothing is written to disk: a timing file would be a
 # baseline with no external consumer.
-MO_QC_STAGES = mo-lint contract skills-check mo-eval-cases mo-test mo-smoke
+MO_QC_STAGES = mo-lint contract skills-check mo-eval-cases mo-knowledge-history mo-test mo-smoke
 
 # The authoritative aggregate was always sequential; saying so keeps a `-j` on
 # the command line from interleaving stages and scrambling both the timings and
@@ -77,6 +77,12 @@ skills-check:
 
 skills:
 	node tools/build-skills.mjs
+
+# The boundaries come from the decision that explains them, never from a flag:
+# a run whose exemption nobody reviewed would prove nothing.
+mo-knowledge-history:
+	node shared/scripts/mo-knowledge-history.mjs --repo . \
+		--pins-from docs/architecture/knowledge-identifiers.md --audit-exemptions
 
 mo-test:
 	@command -v zsh >/dev/null 2>&1 || { echo "mo-test blocked: zsh is required for the cross-shell contract" >&2; exit 1; }

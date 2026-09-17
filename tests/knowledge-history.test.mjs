@@ -13,6 +13,7 @@ import { after, test } from "node:test";
 
 import { fromMarkdown } from "mdast-util-from-markdown";
 
+import { historyPins } from "../shared/scripts/knowledge-documents.mjs";
 import {
   definitions,
   edgeViolations,
@@ -132,12 +133,50 @@ test("--help answers the grammar without a repository, stdin or a cutoff", () =>
   assert.match(help.stdout, /exit: 0 ok \| 1 violations or unavailable \| 2 call error/u);
 });
 
+test("pinned mode reads the four boundaries the decision itself records", () => {
+  const path = join(process.cwd(), "docs", "architecture", "knowledge-identifiers.md");
+  assert.deepEqual(historyPins(readFileSync(path, "utf8"), path), {
+    cutoff: pinned("program_input_sha"),
+    ...realPins(),
+  });
+});
+
 test("a call error is exit two and never a silent pass", () => {
-  for (const argv of [[], ["--repo", "."], ["--cutoff"], ["--cutoff", "HEAD", "--nope"]]) {
+  const document = "docs/architecture/knowledge-identifiers.md";
+  for (const argv of [
+    [],
+    ["--repo", "."],
+    ["--cutoff"],
+    ["--cutoff", "HEAD", "--nope"],
+    ["--cutoff", "HEAD", "--cutoff", "HEAD"],
+    // Neither mode may borrow from the other: a half-pinned run is unreviewable.
+    ["--pins-from", document, "--cutoff", "HEAD"],
+    ["--pins-from", "docs/glossary.md"],
+    // An exemption cannot be audited when nothing was exempted.
+    ["--cutoff", "HEAD", "--audit-exemptions"],
+  ]) {
     const run = spawnSync(process.execPath, [CLI, ...argv], { encoding: "utf8" });
     assert.equal(run.status, 2, `${argv.join(" ")} should be a call error`);
     assert.equal(run.stdout, "");
   }
+});
+
+test("an audited exemption reports the edges it would have to cover", () => {
+  const { root, cutoff } = fixture();
+  writeFileSync(
+    join(root, "docs", "business.md"),
+    `# Business\n\n### ${BUSINESS_ID} — Rewritten meaning\n\nDifferent requirement.\n`,
+  );
+  commit(root, "unauthorized semantic change");
+  const run = spawnSync(
+    process.execPath,
+    [CLI, "--repo", root, "--cutoff", cutoff, "--semantic-from", cutoff, "--audit-exemptions"],
+    { encoding: "utf8" },
+  );
+  assert.equal(run.status, 1);
+  assert.match(run.stdout, /status=violations/u);
+  assert.match(run.stderr, new RegExp(`semantic reuse ${BUSINESS_ID}`, "u"));
+  assert.match(run.stderr, new RegExp(`^exemption_overreach: .*semantic reuse`, "mu"));
 });
 
 test("the status line reports the run and only measures when asked", () => {
@@ -178,43 +217,6 @@ test("an unreadable object graph is unavailable, never a pass", () => {
   assert.ok(broken.unavailable, "a repository without objects cannot pass");
   assert.equal(broken.errors.length, 1);
   assert.match(broken.errors[0], /^history_unavailable: /u);
-});
-
-test("the real history is reachable and valid from program input", () => {
-  const cutoff = pinned("program_input_sha");
-  const boundary = pinned("semantic_enforcement_sha");
-  const currentRecordBoundary = pinned("current_record_enforcement_sha");
-  const strictEditorialBoundary = pinned("strict_editorial_enforcement_sha");
-  assert.deepEqual(
-    verifyHistory(process.cwd(), cutoff, boundary, currentRecordBoundary, strictEditorialBoundary),
-    [],
-  );
-  // The declared boundary has to be the whole exemption: every edge from it
-  // onwards must survive semantic enforcement on its own.
-  assert.deepEqual(
-    verifyHistory(process.cwd(), boundary, null, currentRecordBoundary, strictEditorialBoundary),
-    [],
-  );
-  // And the exemption may not quietly cover anything after the boundary.
-  for (const error of verifyHistory(
-    process.cwd(),
-    cutoff,
-    null,
-    currentRecordBoundary,
-    strictEditorialBoundary,
-  )) {
-    const [parent] = error.split("..");
-    assert.equal(
-      git(process.cwd(), ["merge-base", "--is-ancestor", boundary, parent], true),
-      null,
-      `exempted edge is not before the boundary: ${error}`,
-    );
-  }
-  // We deliberately do not repeat this full-DAG audit with the strict/editorial
-  // boundary removed: that would add another complete history traversal to every
-  // test run. Focused fixtures below prove that the shared switch gates both exact
-  // editorial comparison and append-only history; the configured traversal above
-  // proves that every edge at or after the pinned boundary satisfies both rules.
 });
 
 test("a citation no tree can resolve fails closed on the commit that made it", () => {

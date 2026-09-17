@@ -19,16 +19,17 @@
  * Implements §A-MEMORY-01.
  */
 
-import { realpathSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
   authorizationRecordsFromTree,
   citedIdsFromTree,
+  historyPins,
   stableValue,
 } from "./knowledge-documents.mjs";
-import { createHistoryReader } from "./knowledge-history-reader.mjs";
+import { createHistoryReader, git } from "./knowledge-history-reader.mjs";
 
 export { authorizationRecords, definitions } from "./knowledge-documents.mjs";
 export { createHistoryReader, git } from "./knowledge-history-reader.mjs";
@@ -36,6 +37,7 @@ export { createHistoryReader, git } from "./knowledge-history-reader.mjs";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const TRAILER = /^Knowledge-ID-Change: (remove|reuse|editorial) (\S+) via (\S+)$/;
 const USAGE = `usage: mo-knowledge-history.mjs --repo <root> --cutoff <sha> [options]
+       mo-knowledge-history.mjs --repo <root> --pins-from <markdown> [options]
 
   --repo <root>                  repository to verify (default: this checkout)
   --cutoff <sha>                 lower boundary of the verified history
@@ -44,6 +46,8 @@ const USAGE = `usage: mo-knowledge-history.mjs --repo <root> --cutoff <sha> [opt
   --strict-editorial-from <sha>  first parent under strict editorial rules
   --business <path>              business document (default: docs/business.md)
   --architecture <dir>           architecture directory (default: docs/architecture)
+  --pins-from <markdown>         read all four boundaries from one decision document
+  --audit-exemptions             also prove the semantic boundary exempts no more
   --timing                       add ms, spawns and blobs to the status line
   --help                         print this grammar and exit
 
@@ -422,6 +426,7 @@ const OPTIONS = new Set([
   "--strict-editorial-from",
   "--business",
   "--architecture",
+  "--pins-from",
 ]);
 
 function callError(detail) {
@@ -431,9 +436,10 @@ function callError(detail) {
 function parseArguments(argv) {
   const given = new Map();
   const timing = argv.includes("--timing");
+  const audit = argv.includes("--audit-exemptions");
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
-    if (flag === "--timing") continue;
+    if (flag === "--timing" || flag === "--audit-exemptions") continue;
     if (!OPTIONS.has(flag)) throw callError(`unknown argument ${flag}`);
     if (given.has(flag)) throw callError(`${flag} is given twice`);
     index += 1;
@@ -441,21 +447,74 @@ function parseArguments(argv) {
     if (value === undefined || value.startsWith("--")) throw callError(`${flag} needs a value`);
     given.set(flag, value);
   }
-  if (!given.has("--cutoff")) throw callError("--cutoff is required");
+  const pins = resolvePins(given);
+  if (audit && !pins.semanticFrom) {
+    throw callError("--audit-exemptions needs a semantic boundary to audit");
+  }
   return {
     timing,
+    audit,
     root: resolve(given.get("--repo") ?? ROOT),
-    cutoff: given.get("--cutoff"),
+    cutoff: pins.cutoff,
     documents: {
       business: given.get("--business"),
       architecture: given.get("--architecture"),
     },
     pins: {
-      semanticFrom: given.get("--semantic-from") ?? null,
-      currentRecordFrom: given.get("--current-record-from") ?? null,
-      strictEditorialFrom: given.get("--strict-editorial-from") ?? null,
+      semanticFrom: pins.semanticFrom ?? null,
+      currentRecordFrom: pins.currentRecordFrom ?? null,
+      strictEditorialFrom: pins.strictEditorialFrom ?? null,
     },
   };
+}
+
+// The two modes are exclusive on purpose: a run that took some boundaries from
+// the reviewed document and some from the command line would be neither
+// reproducible nor reviewable.
+const EXPLICIT = [
+  "--cutoff",
+  "--semantic-from",
+  "--current-record-from",
+  "--strict-editorial-from",
+];
+
+function resolvePins(given) {
+  const explicit = EXPLICIT.filter((flag) => given.has(flag));
+  const source = given.get("--pins-from");
+  if (source && explicit.length > 0) {
+    throw callError(`--pins-from cannot be combined with ${explicit.join(", ")}`);
+  }
+  if (!source) {
+    if (!given.has("--cutoff")) throw callError("--cutoff or --pins-from is required");
+    return {
+      cutoff: given.get("--cutoff"),
+      semanticFrom: given.get("--semantic-from"),
+      currentRecordFrom: given.get("--current-record-from"),
+      strictEditorialFrom: given.get("--strict-editorial-from"),
+    };
+  }
+  try {
+    return historyPins(readFileSync(source, "utf8"), source);
+  } catch (error) {
+    throw callError(`--pins-from ${error.message}`);
+  }
+}
+
+/**
+ * A declared exemption has to be the whole exemption. Two more passes prove it:
+ * every edge from the boundary onwards survives semantic enforcement on its own,
+ * and nothing after the boundary quietly rides on the exemption.
+ */
+function exemptionOverreach(root, values) {
+  const unexempted = { ...values.pins, ...values.documents, semanticFrom: null };
+  const boundary = values.pins.semanticFrom;
+  const overreach = runHistory(root, boundary, unexempted).errors;
+  for (const error of runHistory(root, values.cutoff, unexempted).errors) {
+    const [parent] = error.split("..");
+    const exempted = git(root, ["merge-base", "--is-ancestor", boundary, parent], true) === null;
+    if (!exempted) overreach.push(error);
+  }
+  return overreach.map((error) => `exemption_overreach: ${error}`);
 }
 
 function report(values, run) {
@@ -489,7 +548,11 @@ function main(argv) {
     process.exitCode = 2;
     return;
   }
-  report(values, runHistory(values.root, values.cutoff, { ...values.pins, ...values.documents }));
+  const run = runHistory(values.root, values.cutoff, { ...values.pins, ...values.documents });
+  if (values.audit && !run.unavailable) {
+    run.errors.push(...exemptionOverreach(values.root, values));
+  }
+  report(values, run);
 }
 
 function invokedDirectly() {
