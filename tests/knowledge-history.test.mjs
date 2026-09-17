@@ -135,6 +135,65 @@ test("the process budget follows the shape of the graph, not its size", () => {
   assert.equal(long.stats.markdownParses, short.stats.markdownParses);
 });
 
+function rewriteBusiness(root, meaning) {
+  writeFileSync(
+    join(root, "docs", "business.md"),
+    `# Business\n\n### ${BUSINESS_ID} — ${meaning}\n\nRequirement ${meaning}.\n`,
+  );
+}
+
+test("a semantic boundary exempts its own ancestors and nothing else", () => {
+  const { root, cutoff } = fixture();
+  rewriteBusiness(root, "second");
+  commit(root, "unauthorized change before the boundary");
+  const boundary = git(root, ["rev-parse", "HEAD"]).trim();
+  rewriteBusiness(root, "third");
+  commit(root, "unauthorized change on the boundary's own outgoing edge");
+  const after = git(root, ["rev-parse", "HEAD"]).trim();
+  // The edge into the boundary is exempt; the edge out of it is not. Forgetting
+  // that the boundary is a descendant of itself would exempt both.
+  assert.deepEqual(verifyHistory(root, cutoff, boundary), [
+    `${boundary}..${after}: semantic reuse ${BUSINESS_ID}`,
+  ]);
+});
+
+test("a boundary exempts a merge parent that never descended from it", () => {
+  const { root, cutoff } = fixture();
+  rewriteBusiness(root, "second");
+  commit(root, "unauthorized change before the boundary");
+  const boundary = git(root, ["rev-parse", "HEAD"]).trim();
+  git(root, ["switch", "-qc", "aside", cutoff]);
+  rewriteBusiness(root, "aside");
+  commit(root, "unauthorized change on a branch that never saw the boundary");
+  git(root, ["switch", "-q", "master"]);
+  git(root, ["merge", "--no-ff", "--no-commit", "-q", "-X", "theirs", "aside"]);
+  // A third meaning, so neither parent can excuse the merge as inherited.
+  rewriteBusiness(root, "merged");
+  commit(root, "merge into a meaning neither side had");
+  const merge = git(root, ["rev-parse", "HEAD"]).trim();
+  // The aside parent is inside `boundary..HEAD` and so is reachable from HEAD,
+  // but it never descended from the boundary, so its edge stays exempt. Only
+  // ancestry decides. Reachability would enforce both edges of this merge.
+  assert.deepEqual(verifyHistory(root, cutoff, boundary), [
+    `${boundary}..${merge}: semantic reuse ${BUSINESS_ID}`,
+  ]);
+});
+
+test("a document the rules cannot interpret still answers with one status line", () => {
+  const { root, cutoff } = fixture();
+  writeFileSync(
+    join(root, "docs", "architecture", "twin.md"),
+    `# ${ARCHITECTURE_ID} — A second section claiming one id\n\nServes ${BUSINESS_ID}.\n`,
+  );
+  commit(root, "two sections claim one identifier");
+  const run = spawnSync(process.execPath, [CLI, "--repo", root, "--cutoff", cutoff], {
+    encoding: "utf8",
+  });
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /^history_unavailable: .*duplicate /u);
+  assert.match(run.stdout, /^MO-KNOWLEDGE-HISTORY\/1 status=unavailable /u);
+});
+
 test("a knowledge document below a subdirectory is not invisible", () => {
   const nestedId = `§${"A-NESTED-01"}`;
   const { root, cutoff } = fixture();

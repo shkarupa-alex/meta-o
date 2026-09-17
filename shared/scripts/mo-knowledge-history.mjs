@@ -505,12 +505,20 @@ function resolvePins(given) {
  * every edge from the boundary onwards survives semantic enforcement on its own,
  * and nothing after the boundary quietly rides on the exemption.
  */
-function exemptionOverreach(root, values) {
+function exemptionOverreach(root, values, reported) {
   const unexempted = { ...values.pins, ...values.documents, semanticFrom: null };
   const boundary = values.pins.semanticFrom;
   const overreach = runHistory(root, boundary, unexempted).errors;
+  const already = new Set(reported);
   for (const error of runHistory(root, values.cutoff, unexempted).errors) {
-    const [parent] = error.split("..");
+    const [parent, edge] = error.split("..");
+    // Only an edge error can be attributed to a boundary. Every other class is
+    // independent of the exemption and so is already in the primary pass; if a
+    // new one ever is not, reporting it beats dropping it on the floor.
+    if (edge === undefined) {
+      if (!already.has(error)) overreach.push(error);
+      continue;
+    }
     const exempted = git(root, ["merge-base", "--is-ancestor", boundary, parent], true) === null;
     if (!exempted) overreach.push(error);
   }
@@ -548,11 +556,31 @@ function main(argv) {
     process.exitCode = 2;
     return;
   }
-  const run = runHistory(values.root, values.cutoff, { ...values.pins, ...values.documents });
+  const run = verifiedRun(values);
   if (values.audit && !run.unavailable) {
-    run.errors.push(...exemptionOverreach(values.root, values));
+    run.errors.push(...exemptionOverreach(values.root, values, run.errors));
   }
   report(values, run);
+}
+
+// A document the rules cannot interpret at all — two sections claiming one id, an
+// authorization block that is not YAML — is still an answer a consuming project
+// has to be able to read. Crashing would leave it with an exit code and no
+// status line, which is the one thing this command exists to produce.
+function verifiedRun(values) {
+  const options = { ...values.pins, ...values.documents };
+  try {
+    return runHistory(values.root, values.cutoff, options);
+  } catch (error) {
+    if (error.historyUnavailable) throw error;
+    return {
+      errors: [`history_unavailable: ${error.message}`],
+      unavailable: true,
+      commits: 0,
+      edges: 0,
+      stats: { spawns: 0, markdownParses: 0, uniqueMarkdownBlobs: 0, uniqueObjects: 0 },
+    };
+  }
 }
 
 function invokedDirectly() {
