@@ -178,12 +178,18 @@ test("review and setup packages carry every contract their entry skill routes to
     assert.equal(existsSync(join(OUTPUT, "mo-setup", "references", profile)), true);
     assert.match(setupEntry, new RegExp(profile));
   }
-  // Setup must prove the stable title capability from its own package.
-  assert.match(setupEntry, /\(references\/orca-mechanics\.md\)/);
-  assert.match(
-    readFileSync(join(OUTPUT, "mo-setup", "references", "orca-mechanics.md"), "utf8"),
-    /visualLayouts\[\]\.root\.tabs\[\]\.title/,
-  );
+  // Setup must prove the stable title capability from its own package, and
+  // every helper or reference its shipped prose points to must ship with it.
+  const setupRoot = join(OUTPUT, "mo-setup");
+  const setupProse = walk(setupRoot)
+    .filter((file) => file.endsWith(".md"))
+    .map((file) => readFileSync(join(setupRoot, file), "utf8"))
+    .join("\n");
+  assert.match(setupProse, /visualLayouts\[\]\.root\.tabs\[\]\.title/);
+  for (const [, dir, name] of setupProse.matchAll(/\b(scripts|references)\/([\w.-]+\.\w+)/gu))
+    assert.equal(existsSync(join(setupRoot, dir, name)), true, `${dir}/${name}`);
+  for (const [, name] of setupProse.matchAll(/bundled `([\w.-]+\.\w+)`/gu))
+    assert.equal(existsSync(join(setupRoot, "scripts", name)), true, name);
 });
 
 test("watchdog is shipped executable and source/build file sets agree", () => {

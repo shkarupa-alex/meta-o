@@ -98,6 +98,10 @@ launch and observation surfaces to verify every selected harness. Before task
 bytes, distinguish a normal agent prompt from Claude trust UI and a shell
 prompt; an ambiguous public surface makes that route unsupported. Verify one
 owner of unsandboxed posture so a fallback never duplicates wrapper flags.
+`terminal create --title` and `terminal rename` set the tab title: prove a
+stable title under `visualLayouts[].root.tabs[].title` from
+`terminal list --include-visual-layouts --json`, not from `terminals[].title`,
+which a running harness repaints.
 
 Inspect `ProjectRegistrationSet/1` and `OwnedResourceSet/1`. A folder/no-project
 context without existing same-project isolated worktrees is a typed placement
