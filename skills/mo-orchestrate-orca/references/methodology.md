@@ -228,12 +228,14 @@ repeated; there is no partial pass.
 
 When a named scenario genuinely needs a model actor, deterministic proof remains
 preferred. Every applicable case uses both required selections: Claude
-`opus[1m]/low` and Codex `gpt-5.6-sol/low`; record requested and effective
-identity. Desired Codex `gpt-5.6-luna/max` and OpenCode/Qwen coordinates are
-materialized as `not_available` when absent and become blocking if run as
-`FAIL|UNKNOWN`. A missing required profile is `blocked|not_run`, and a
-deterministic scenario is `not_applicable`. Never fall back. These skill tests
-do not replace the critical local Qwen/OpenCode orchestrator lifecycle.
+`sonnet`/low, which must actually resolve to `claude-sonnet-5`, and Codex
+`gpt-5.6-luna/low`; record requested and effective identity, and record the
+alias resolution whenever the two model strings differ. Desired Codex
+`gpt-5.6-luna/max` and OpenCode/Qwen coordinates are materialized as
+`not_available` when absent and become blocking if run as `FAIL|UNKNOWN`. A
+missing required profile is `blocked|not_run`, and a deterministic scenario is
+`not_applicable`. Never fall back. These skill tests do not replace the critical
+local Qwen/OpenCode orchestrator lifecycle.
 
 Any executable or instruction change creates a new SHA and invalidates all
 gates. Return failures to the executor as ordinary messages and restart from the

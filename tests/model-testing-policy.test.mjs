@@ -21,15 +21,25 @@ test("durable business and architecture layers preserve the low-cost policy", ()
   const business = read("docs", "business.md");
   const architecture = read("docs", "architecture", "evaluation-model-policy.md");
   for (const source of [business, architecture]) {
-    assert.match(source, /opus\[1m\]\/low/);
-    assert.match(source, /gpt-5\.6-sol\/low/);
-    assert.match(source, /gpt-5\.6-luna\/max/);
-    assert.match(source, /Qwen\/OpenCode/);
+    // The required Claude coordinate is stored as a catalogue alias, so the
+    // durable layers have to carry both halves: what is written down and what
+    // must actually have run. One literal alone would let the other drift.
+    assert.match(source, /`sonnet`\/low/u);
+    assert.match(source, /gpt-5\.6-luna\/low/u);
+    assert.match(source, /gpt-5\.6-luna\/max/u);
+    assert.match(source, /Qwen\/OpenCode/u);
+    assert.doesNotMatch(source, /opus\[1m\]\/low/u);
+    assert.doesNotMatch(source, /gpt-5\.6-sol\/low/u);
   }
   assert.match(business, /фактической\s+идентичностью/);
   assert.match(business, /резервный путь/);
   assert.match(architecture, /фактическ(?:ую|ой)\s+идентичност/u);
   assert.match(architecture, /не применяет автоматический резервный\s+вариант/u);
+  // The exact effective id belongs to the architecture layer, not the business
+  // thesis: the thesis owns the rule, the decision owns the literal it resolves
+  // to, and only the decision may be the place a drifting alias is caught.
+  assert.match(architecture, /claude-sonnet-5/u);
+  assert.doesNotMatch(business, /claude-sonnet-5/u);
   assert.match(architecture, new RegExp(`§${"B-EVAL-01"}`));
 });
 
