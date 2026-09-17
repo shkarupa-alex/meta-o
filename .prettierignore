@@ -8,6 +8,9 @@ templates/
 # Council transcripts and proposals are historical artefacts, kept verbatim.
 spec/
 
+# Meta-O's own runtime workspace: untracked orchestrator drafts and drops.
+.orca/
+
 # Imported reference material, kept as received.
 docs/references/
 docs/research/
