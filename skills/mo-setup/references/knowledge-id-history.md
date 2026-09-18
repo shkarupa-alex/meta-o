@@ -13,8 +13,7 @@ contract, must hold a level-two section whose heading contains
 
 - exactly one fenced block holding exactly one command line — the history stage;
 - exactly one line naming the project's authoritative QC command;
-- exactly one YAML record with key `history_cutoff_sha` — the project's floor.
-
+- exactly one YAML record with key `history_cutoff_sha` — the project's floor;
 - the locations identifiers live in: the business document and the architecture
   directory the stage reads.
 

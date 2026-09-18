@@ -74,6 +74,29 @@ test("identifier locations are declared, never inherited from this project", () 
   // damage a guessed location does is a commit, and that is not reversible in
   // someone else's repository.
   assert.match(contract, /both touch only the declared locations/u);
+
+  // Every shipped document that states the declaration must state all of it.
+  // Editing one and forgetting another is how the skill came to ship two
+  // answers to the same question, so the rule is checked per document.
+  const documents = {
+    "SKILL.md": prose,
+    "references/knowledge-id-history.md": contract.replace(/\s+/gu, " "),
+    "references/project-setup.md": readFileSync(
+      join(ROOT, "skills", "mo-setup", "references", "project-setup.md"),
+      "utf8",
+    ).replace(/\s+/gu, " "),
+  };
+  const elements = {
+    "the stage command block": /exactly one fenced/u,
+    "the authoritative QC line": /authoritative (?:QC|quality) command/u,
+    "the cutoff record": /history_cutoff_sha/u,
+    "the identifier locations": /identifiers live/u,
+  };
+  for (const [name, text] of Object.entries(documents)) {
+    for (const [element, pattern] of Object.entries(elements)) {
+      assert.match(text, pattern, `${name} does not state ${element}`);
+    }
+  }
 });
 
 test("an exhausted budget is unknown, never a missing gate", () => {

@@ -172,7 +172,6 @@ export const BUNDLES = {
   },
 };
 
-/** A root under other terms breaks generation exactly as an unexpected root does. */
 /**
  * The bundles a copy of which has to answer "am I stale?" without this repo.
  *
@@ -183,6 +182,7 @@ export const BUNDLES = {
  */
 export const STAMPED = new Set(["scripts/mo-knowledge-history.mjs"]);
 
+/** A root under other terms breaks generation exactly as an unexpected root does. */
 export const LICENSE_ALLOWLIST = new Set(["MIT"]);
 
 /**

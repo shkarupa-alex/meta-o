@@ -65,11 +65,17 @@ whose heading contains `Knowledge id history` and which holds:
   stage;
 - exactly one line naming the project's authoritative quality command;
 - exactly one YAML record with the key `history_cutoff_sha`, the project's lower
-  boundary.
+  boundary;
+- the locations identifiers live in: the business document and the architecture
+  directory the stage reads.
 
 Parse that section with a real Markdown AST, never with a regular expression
-over the document. If the section is missing, or any of those counts is not
-exactly one, the result is `history=unknown` with `cutoff=none` and no guess.
+over the document. If the section is missing, if any of those counts is not
+exactly one, or if the locations are unnamed, ambiguous or contradictory, the
+result is `history=unknown` with `cutoff=none` and no guess. Locations are read
+rather than assumed for the same reason as the rest: one project's layout is its
+own convention, and a probe that supplies the missing half either certifies
+documents the stage never reads or edits whichever file matched the shape.
 
 The stage must be a substring of the declared quality command: a stage that
 exists but is not part of the authoritative check is not a gate. Its presence is

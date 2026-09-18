@@ -206,8 +206,10 @@ test("the shipped CI examples keep full history and a separate closure job", () 
 });
 
 test("the shipped backlog checker answers for a foreign notebook as installed", () => {
-  // The path CI names has to be runnable exactly as shipped: bundled, without
-  // node_modules anywhere above it, and holding no default of this project.
+  // The path CI names has to be runnable exactly as shipped: bundled, and
+  // holding no default of this project. `mo-smoke` owns the harder half —
+  // running every shipped bundle from a directory with no `node_modules` on any
+  // ancestor — because ESM resolves from the module's own location, not `cwd`.
   const scratch = mkdtempSync(join(tmpdir(), "mo-foreign-notebook-"));
   try {
     const repository = join(scratch, "project");
@@ -290,6 +292,17 @@ test("the setup contract separates current-tree checking from history checking",
     assert.ok(contractProse.includes(phrase.replace(/\s+/gu, " ")), phrase);
   }
   assert.match(contractProse, /history=unknown/u);
+  // Two shipped documents that disagree about a complete declaration make the
+  // agent pick one, and both picks are wrong: one falsely accuses a compliant
+  // project, the other guesses the layout the rule exists to stop it guessing.
+  assert.match(
+    contractProse,
+    /locations identifiers live in: the business document and the architecture/u,
+  );
+  assert.match(
+    contractProse,
+    /locations are unnamed, ambiguous or contradictory, the result is `history=unknown`/u,
+  );
   // A regex Markdown parser is what the project contract forbids everywhere
   // else; the one document that tells other projects how to parse must say so.
   assert.match(contractProse, /never with a regular expression/u);

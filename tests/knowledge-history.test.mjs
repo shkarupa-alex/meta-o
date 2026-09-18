@@ -522,33 +522,45 @@ test("an audited exemption reports the edges it would have to cover", () => {
 });
 
 test("the audit finds the edge only its own traversal can reach, and once", () => {
-  // The aside branch never descended from the boundary, so the exemption keeps
-  // covering it and the primary pass stays silent. Only the pass that starts at
-  // the boundary can attribute it, which is why that pass cannot be dropped as
-  // a duplicate of the one starting at the cutoff.
+  // The aside branch forks from the cutoff, so it never descended from the
+  // boundary and the declared exemption still covers it: the primary pass is
+  // silent about it by design. Only the pass anchored at the boundary sees it,
+  // which is why that pass cannot be folded into the one anchored at the
+  // cutoff. A fixture whose aside is a child of the boundary proves nothing —
+  // both passes reach that edge — and this test used to build exactly that.
   const { root, cutoff } = fixture();
   rewriteBusiness(root, "second");
-  commit(root, "authorized-looking change before the boundary");
+  commit(root, "unauthorized change before the boundary");
   const boundary = git(root, ["rev-parse", "HEAD"]).trim();
-  git(root, ["switch", "-qc", "aside", boundary]);
+  git(root, ["switch", "-qc", "aside", cutoff]);
   rewriteBusiness(root, "aside");
-  commit(root, "unauthorized change after the boundary on a side branch");
+  commit(root, "unauthorized change on a branch that never saw the boundary");
   const aside = git(root, ["rev-parse", "HEAD"]).trim();
-  const run = spawnSync(
-    process.execPath,
-    [CLI, "--repo", root, "--cutoff", cutoff, "--semantic-from", boundary, "--audit-exemptions"],
-    { encoding: "utf8" },
-  );
-  assert.equal(run.status, 1);
-  const lines = run.stderr.trimEnd().split("\n");
-  assert.equal(
-    lines.filter((line) => line.startsWith("exemption_overreach: ")).length,
-    1,
-    `expected one audited edge, got ${JSON.stringify(lines)}`,
-  );
-  assert.ok(
-    lines.some((line) => line.includes(`${boundary}..${aside}`)),
-    run.stderr,
+  git(root, ["switch", "-q", "master"]);
+  git(root, ["merge", "--no-ff", "--no-commit", "-q", "-X", "theirs", "aside"]);
+  rewriteBusiness(root, "merged");
+  commit(root, "merge into a meaning neither side had");
+
+  const exempt = `${cutoff}..${aside}: semantic reuse ${BUSINESS_ID}`;
+  const run = (...extra) =>
+    spawnSync(
+      process.execPath,
+      [CLI, "--repo", root, "--cutoff", cutoff, "--semantic-from", boundary, ...extra],
+      { encoding: "utf8" },
+    );
+
+  // Without the audit the edge is exempt and must stay unreported, or the
+  // audited run below would be repeating a finding instead of making one.
+  const plain = run();
+  assert.equal(plain.status, 1);
+  assert.ok(!plain.stderr.includes(exempt), `the exempt edge was reported: ${plain.stderr}`);
+
+  const audited = run("--audit-exemptions");
+  assert.equal(audited.status, 1);
+  const lines = audited.stderr.trimEnd().split("\n");
+  assert.deepEqual(
+    lines.filter((line) => line.includes(exempt)),
+    [`exemption_overreach: ${exempt}`],
   );
 });
 
