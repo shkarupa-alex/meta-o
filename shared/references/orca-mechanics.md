@@ -155,6 +155,13 @@ The same lifecycle runs from an ordinary shell. The sign is exact:
 no `path` in `orca worktree list --json`. Nothing about the backend is degraded
 — only the coordinator's own placement is unknown to Orca.
 
+The path answers where the shell stands, not what owns it: an ordinary shell
+started inside a registered worktree matches a `path` and still has no terminal
+of its own. So a match is confirmed once, publicly, before any relative selector
+is used — `orca terminal read --terminal current --screen --json`. A readable
+frame proves the coordinator is inside; `terminal_handle_stale`, an unknown
+handle or any other refusal means outside, whatever the path said.
+
 Outside, a relative selector names nothing: a worktree selector is
 `id:<repo>::<path>` or `path:<path>`, written out in full. The Run is created
 without `--from`, the wait is `orca orchestration check --run <id> --wait`

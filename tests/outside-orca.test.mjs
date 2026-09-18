@@ -99,6 +99,15 @@ test("the outside route is named by its sign and by the commands it changes", ()
   ]) {
     assert.ok(mechanics.includes(phrase), `mechanics never says: ${phrase}`);
   }
+  // A live rehearsal shell stood inside a registered worktree and still had no
+  // terminal: the path matched while `current` answered `terminal_handle_stale`.
+  for (const phrase of [
+    "orca terminal read --terminal current --screen --json",
+    "`terminal_handle_stale`",
+    "means outside, whatever the path said",
+  ]) {
+    assert.ok(mechanics.includes(phrase), `mechanics never confirms the sign: ${phrase}`);
+  }
 });
 
 test("the watchdog is an option the coordinator names, not a condition it waits on", () => {
