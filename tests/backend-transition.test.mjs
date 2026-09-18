@@ -146,6 +146,21 @@ test("the commands document never licenses skipping a stage of the gate", () => 
   assert.ok(posture, "the posture trap is no longer recorded at all");
   assert.match(posture, /управляющ/u);
   assert.match(posture, /script|pty|PTY/u);
+  // Both positives are satisfied by the remedy sentence alone, so the trigger
+  // itself is held by naming what it is not. `\p{L}` rather than `\w`: `\w`
+  // stays ASCII-only even under `u`, and an assertion that cannot match a
+  // Cyrillic document is an assertion that can never fire.
+  const plain = posture.replaceAll("*", "").replaceAll("`", "");
+  assert.doesNotMatch(
+    plain,
+    /агентск\p{L}+ терминал/u,
+    "the agent terminal is not the trigger; a controlling terminal is",
+  );
+  assert.doesNotMatch(
+    plain,
+    /обычн\p{L}+ чекаут/u,
+    "an ordinary checkout is not the discriminator; a green run in a worktree disproves it",
+  );
 });
 
 test("entry contracts link every essential knowledge document", () => {
