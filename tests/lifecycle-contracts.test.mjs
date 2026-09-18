@@ -1034,3 +1034,34 @@ test("shipped handoff and live-eval instructions match their fail-closed callers
     /Вызывающая сторона\s+отдельно, не копируя вывод модельного исполнителя/u,
   );
 });
+
+test("report completeness is required before delivery, not repaired after it", () => {
+  const protocol = source("shared/references/review-protocol.md");
+  const review = source("src/skills/mo-review-orca/SKILL.md");
+  const decision = source("docs/architecture/review-authoritative-response.md");
+
+  // A backend that completes the session by delivering the response leaves no
+  // second chance, so the demand has to reach the reviewer in the task bytes.
+  assert.match(protocol, /Deliver the whole report inside the single authoritative response/u);
+  assert.match(protocol, /promise to send it separately are each a malformed report/u);
+  assert.match(protocol, /Read the body back before delivering it/u);
+  assert.match(
+    review,
+    /Say so in the task\s+bytes, because `worker_done` is what completes the Dispatch/u,
+  );
+
+  // Correction is bounded by observed liveness rather than assumed; the old
+  // "same hot session" wording promised a repair path Orca does not have.
+  assert.match(review, /only while public evidence still shows\s+that Dispatch active/u);
+  assert.match(review, /`UNKNOWN` with `malformed_report`/u);
+  assert.match(review, /new review with its own cost, never a correction/u);
+  assert.doesNotMatch(review, /corrected report in that hot\s+session/u);
+
+  // Acceptance that cannot be turned into a check sends remediation guessing,
+  // and each guess buys another full round of the same reviewers.
+  for (const document of [protocol, review]) {
+    assert.match(document, /acceptance\s+proof[\s\S]{0,40}concrete cases/u);
+    assert.match(document, /input and state, expected behavior/u);
+  }
+  assert.match(decision, /конкретные случаи и ситуации, покрытие которых его\s+снимает/u);
+});

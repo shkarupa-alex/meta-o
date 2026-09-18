@@ -113,12 +113,24 @@ The complete textual report includes:
 - Unknowns and residual risks;
 - exactly one terminal verdict: `PASS`, `FINDINGS` or `UNKNOWN`.
 
+Deliver the whole report inside the single authoritative response the caller
+named. A summary of it, a pointer to where its full text can be read, and a
+promise to send it separately are each a malformed report. On some backends
+delivering that response is exactly what ends the session, so whatever stayed
+outside it is the part nobody can retrieve afterwards, and the review has to be
+bought again. Read the body back before delivering it; assume there is no second
+chance.
+
 Index keys start at `F-001`, are report-local and match finding body/severity
 one-to-one. Counts equal authored findings. `PASS` has zero counts and empty
 index/Findings, while grounding, checks, Unknowns and residual risks remain
 explicit and non-empty. A finding also states its post-fix invariant, technical
-direction, acceptance proof and depth `local patch`, `boundary repair` or
-`affected-slice redesign`.
+direction and depth `local patch`, `boundary repair` or
+`affected-slice redesign`. Its acceptance proof is named as concrete cases —
+input and state, expected behavior, and where the check belongs — precise enough
+to write them without asking the reviewer a second question. A finding whose
+acceptance is "make it correct" sends remediation guessing, and every guess
+costs another full review round.
 
 `PASS` means no required change remains and evidence covers the complete scope.
 Dirty or mismatched checkout, unknown SHA, truncated/unreadable output or

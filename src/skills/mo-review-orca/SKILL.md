@@ -91,8 +91,11 @@ Wait for both full reports before disposition or handoff.
 ## Authoritative response
 
 Each reviewer proves full SHA and clean status, performs non-mutating review and
-places its entire report in authoritative `worker_done`. Require this exact
-shape and anchored order:
+places its entire report in authoritative `worker_done`. Say so in the task
+bytes, because `worker_done` is what completes the Dispatch: a body holding a
+summary, a pointer to the terminal or a promise to send more cannot be repaired
+afterwards, and that reviewer is spent. Require this exact shape and anchored
+order:
 
 ```text
 Review-Execution: <opaque dispatch id>
@@ -130,10 +133,16 @@ observation and recovery evidence.
 
 Every finding states `confirmed|strongly_supported` evidence, causal path,
 impact, actionable location, proof, post-fix invariant, technical direction,
-acceptance proof and depth `local patch|boundary repair|affected-slice redesign`.
-On structural mismatch request one complete corrected report in that hot
-session; a second mismatch is `UNKNOWN`. Terminal text never replaces
-`worker_done`.
+depth `local patch|boundary repair|affected-slice redesign` and an acceptance
+proof named as concrete cases: input and state, expected behavior and where the
+check belongs, precise enough to write without a second question to a reviewer
+who may no longer exist.
+
+Request one complete corrected report only while public evidence still shows
+that Dispatch active. `worker_done` ends it, so a structurally wrong body is
+`UNKNOWN` with `malformed_report` for that reviewer; a further Dispatch on the
+same candidate is a new review with its own cost, never a correction. Terminal
+text never replaces `worker_done`.
 
 Validate the report against caller-owned expected values: exact candidate,
 native Dispatch id, requested mode and observed effective mode. A stale but
