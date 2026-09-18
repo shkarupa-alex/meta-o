@@ -82,9 +82,30 @@ function documentTree(reader, commit, path) {
   return entry ? reader.tree(entry.oid) : null;
 }
 
+/**
+ * A YAML parser reports a reason, a position and a snippet of what it read. The
+ * snippet spans lines, and one violation per line is the grammar every consumer
+ * of this gate parses, so only the reason and the position survive the trip.
+ */
+function oneLine(error) {
+  const where = Number.isInteger(error?.mark?.line) ? ` at line ${error.mark.line + 1}` : "";
+  const reason = error?.reason ?? error?.message ?? "unreadable";
+  return `${reason}${where}`.replace(/\s+/gu, " ").trim();
+}
+
 function records(reader, commit, path, architectureId) {
   const tree = documentTree(reader, commit, path);
-  return tree ? authorizationRecordsFromTree(tree, architectureId) : [];
+  if (!tree) return [];
+  try {
+    return authorizationRecordsFromTree(tree, architectureId);
+  } catch (error) {
+    // The parser knows only the block it choked on. Which commit, which
+    // document and which decision is what a consuming project needs in order to
+    // repair the record, and this caller is the only place holding all three.
+    throw unreadable(
+      `${commit} ${path} has an unreadable ${architectureId} authorization record: ${oneLine(error)}`,
+    );
+  }
 }
 
 function sameSortedIds(left, right) {

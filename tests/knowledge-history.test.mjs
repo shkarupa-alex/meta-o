@@ -198,10 +198,32 @@ test("an audit of an uninterpretable record still answers with one status line",
     [CLI, "--repo", root, "--cutoff", cutoff, "--semantic-from", boundary, "--audit-exemptions"],
     { encoding: "utf8" },
   );
+  // Accepting any of the three statuses here would let a regression that turns
+  // this refusal into a silent pass keep the test green, which is the one
+  // outcome the fixture exists to forbid.
+  assert.equal(run.status, 1, `the gate's own mode exited ${run.status}`);
   assert.match(
     run.stdout,
-    /^MO-KNOWLEDGE-HISTORY\/1 status=(ok|violations|unavailable) /u,
+    /^MO-KNOWLEDGE-HISTORY\/1 status=unavailable /u,
     `the gate's own mode answered with ${JSON.stringify(run.stdout)}`,
+  );
+  // A refusal a consuming project cannot act on is as expensive as a wrong
+  // answer: the commit, the document and the decision are what it repairs.
+  const stderr = run.stderr.trimEnd();
+  assert.equal(
+    stderr.split("\n").length,
+    1,
+    `one violation per line, got ${JSON.stringify(stderr)}`,
+  );
+  assert.match(stderr, /^history_unavailable: /u);
+  assert.match(stderr, /\b[0-9a-f]{40}\b/u);
+  assert.ok(
+    stderr.includes("docs/architecture/authorization.md"),
+    `the refusal names no document: ${JSON.stringify(stderr)}`,
+  );
+  assert.ok(
+    stderr.includes(MISSING_ARCHITECTURE_ID),
+    `the refusal names no decision: ${JSON.stringify(stderr)}`,
   );
 });
 
