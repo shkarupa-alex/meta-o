@@ -556,11 +556,7 @@ function main(argv) {
     process.exitCode = 2;
     return;
   }
-  const run = verifiedRun(values);
-  if (values.audit && !run.unavailable) {
-    run.errors.push(...exemptionOverreach(values.root, values, run.errors));
-  }
-  report(values, run);
+  report(values, verifiedRun(values));
 }
 
 // A document the rules cannot interpret at all — two sections claiming one id, an
@@ -570,7 +566,14 @@ function main(argv) {
 function verifiedRun(values) {
   const options = { ...values.pins, ...values.documents };
   try {
-    return runHistory(values.root, values.cutoff, options);
+    const run = runHistory(values.root, values.cutoff, options);
+    // Inside the guard, not beside it. The audit re-runs the traversal with the
+    // semantic exemption lifted, so it reaches edges the primary pass never
+    // interpreted — and it is the mode the quality gate itself invokes.
+    if (values.audit && !run.unavailable) {
+      run.errors.push(...exemptionOverreach(values.root, values, run.errors));
+    }
+    return run;
   } catch (error) {
     return {
       errors: [`history_unavailable: ${error.message}`],

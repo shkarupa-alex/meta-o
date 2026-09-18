@@ -179,6 +179,32 @@ test("a boundary exempts a merge parent that never descended from it", () => {
   ]);
 });
 
+test("an audit of an uninterpretable record still answers with one status line", () => {
+  const { root, cutoff } = fixture();
+  rewriteBusiness(root, "second");
+  // A trailer is what makes the checker open the record at all, and only the
+  // audit pass — which lifts the semantic exemption — ever gets that far here.
+  writeFileSync(
+    join(root, "docs", "architecture", "authorization.md"),
+    `# ${MISSING_ARCHITECTURE_ID} — Authorization\n\n\`\`\`yaml\nknowledge_id_change: [unclosed\n\`\`\`\n`,
+  );
+  commit(
+    root,
+    `authorize reuse\n\nKnowledge-ID-Change: reuse ${BUSINESS_ID} via ${MISSING_ARCHITECTURE_ID}`,
+  );
+  const boundary = git(root, ["rev-parse", "HEAD"]).trim();
+  const run = spawnSync(
+    process.execPath,
+    [CLI, "--repo", root, "--cutoff", cutoff, "--semantic-from", boundary, "--audit-exemptions"],
+    { encoding: "utf8" },
+  );
+  assert.match(
+    run.stdout,
+    /^MO-KNOWLEDGE-HISTORY\/1 status=(ok|violations|unavailable) /u,
+    `the gate's own mode answered with ${JSON.stringify(run.stdout)}`,
+  );
+});
+
 test("a document the rules cannot interpret still answers with one status line", () => {
   const { root, cutoff } = fixture();
   writeFileSync(
@@ -221,23 +247,31 @@ test("a repeated or absent pin is a call error, not a boundary the run invents",
   const { root } = fixture();
   const document = join(root, "pins.md");
   const pins = [
-    "program_input_sha: " + "0".repeat(40),
-    "semantic_enforcement_sha: " + "1".repeat(40),
-    "current_record_enforcement_sha: " + "2".repeat(40),
-    "strict_editorial_enforcement_sha: " + "3".repeat(40),
+    `program_input_sha: ${"0".repeat(40)}`,
+    `semantic_enforcement_sha: ${"1".repeat(40)}`,
+    `current_record_enforcement_sha: ${"2".repeat(40)}`,
+    `strict_editorial_enforcement_sha: ${"3".repeat(40)}`,
   ];
-  const write = (lines) =>
-    writeFileSync(document, `# Pins\n\n\`\`\`yaml\n${lines.join("\n")}\n\`\`\`\n`);
+  const write = (...blocks) =>
+    writeFileSync(
+      document,
+      `# Pins\n\n${blocks.map((lines) => `\`\`\`yaml\n${lines.join("\n")}\n\`\`\`\n`).join("\n")}`,
+    );
   const call = () =>
     spawnSync(process.execPath, [CLI, "--repo", root, "--pins-from", document], {
       encoding: "utf8",
     });
   write(pins);
   assert.notEqual(call().status, 2, "four distinct pins are a valid call");
-  write([...pins, pins[0]]);
-  assert.equal(call().status, 2, "a repeated pin is a call error");
   write(pins.slice(1));
   assert.equal(call().status, 2, "a missing pin is a call error");
+  // The dangerous shape is a second block further down the document, not a
+  // duplicate key inside one block — js-yaml rejects that on its own. Letting
+  // the last occurrence win would move a history boundary nobody reviewed.
+  write(pins, [`program_input_sha: ${"4".repeat(40)}`]);
+  const repeated = call();
+  assert.equal(repeated.status, 2, "a pin repeated in a second block is a call error");
+  assert.match(repeated.stderr, /names program_input_sha more than once/u);
 });
 
 test("a knowledge document below a subdirectory is not invisible", () => {
@@ -340,10 +374,7 @@ test("a call error is exit two and never a silent pass", () => {
 
 test("an audited exemption reports the edges it would have to cover", () => {
   const { root, cutoff } = fixture();
-  writeFileSync(
-    join(root, "docs", "business.md"),
-    `# Business\n\n### ${BUSINESS_ID} — Rewritten meaning\n\nDifferent requirement.\n`,
-  );
+  rewriteBusiness(root, "second");
   commit(root, "unauthorized semantic change");
   const run = spawnSync(
     process.execPath,
@@ -353,7 +384,27 @@ test("an audited exemption reports the edges it would have to cover", () => {
   assert.equal(run.status, 1);
   assert.match(run.stdout, /status=violations/u);
   assert.match(run.stderr, new RegExp(`semantic reuse ${BUSINESS_ID}`, "u"));
-  assert.match(run.stderr, new RegExp(`^exemption_overreach: .*semantic reuse`, "mu"));
+  assert.match(run.stderr, /^exemption_overreach: .*semantic reuse/mu);
+});
+
+test("an exemption that covers only its own past is audited clean", () => {
+  // The boundary has to sit strictly after the cutoff, or passes one and three
+  // degenerate onto the primary range and the predicate stops mattering: an
+  // inverted `exempted` test would then still look correct.
+  const { root, cutoff } = fixture();
+  rewriteBusiness(root, "second");
+  commit(root, "unauthorized change before the boundary");
+  rewriteBusiness(root, "third");
+  commit(root, "another unauthorized change before the boundary");
+  const boundary = git(root, ["rev-parse", "HEAD"]).trim();
+  const run = spawnSync(
+    process.execPath,
+    [CLI, "--repo", root, "--cutoff", cutoff, "--semantic-from", boundary, "--audit-exemptions"],
+    { encoding: "utf8" },
+  );
+  assert.equal(run.stderr, "", "every unauthorized edge is genuinely before the boundary");
+  assert.equal(run.status, 0);
+  assert.match(run.stdout, /status=ok/u);
 });
 
 test("the status line reports the run and only measures when asked", () => {
