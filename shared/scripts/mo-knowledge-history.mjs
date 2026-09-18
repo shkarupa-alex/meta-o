@@ -29,7 +29,7 @@ import {
   historyPins,
   stableValue,
 } from "./knowledge-documents.mjs";
-import { createHistoryReader, git } from "./knowledge-history-reader.mjs";
+import { createHistoryReader, git, unreadable } from "./knowledge-history-reader.mjs";
 
 export { authorizationRecords, definitions } from "./knowledge-documents.mjs";
 export { createHistoryReader, git } from "./knowledge-history-reader.mjs";
@@ -508,9 +508,18 @@ function resolvePins(given) {
 function exemptionOverreach(root, values, reported) {
   const unexempted = { ...values.pins, ...values.documents, semanticFrom: null };
   const boundary = values.pins.semanticFrom;
-  const overreach = runHistory(root, boundary, unexempted).errors;
+  const first = runHistory(root, boundary, unexempted);
+  const second = runHistory(root, values.cutoff, unexempted);
+  // A pass that could not read the history has not audited anything, so it
+  // answers `unavailable` rather than dressing the reason up as overreach.
+  if (first.unavailable || second.unavailable) {
+    throw unreadable(
+      (first.unavailable ? first : second).errors[0].replace(/^history_unavailable: /u, ""),
+    );
+  }
+  const overreach = first.errors;
   const already = new Set(reported);
-  for (const error of runHistory(root, values.cutoff, unexempted).errors) {
+  for (const error of second.errors) {
     const [parent, edge] = error.split("..");
     // Only an edge error can be attributed to a boundary. Every other class is
     // independent of the exemption and so is already in the primary pass; if a
@@ -565,8 +574,12 @@ function main(argv) {
 // status line, which is the one thing this command exists to produce.
 function verifiedRun(values) {
   const options = { ...values.pins, ...values.documents };
+  let counted = { commits: 0, edges: 0 };
   try {
     const run = runHistory(values.root, values.cutoff, options);
+    // Keep what the primary traversal already established, so a failure in the
+    // audit does not report a graph nobody looked at.
+    counted = { commits: run.commits, edges: run.edges };
     // Inside the guard, not beside it. The audit re-runs the traversal with the
     // semantic exemption lifted, so it reaches edges the primary pass never
     // interpreted — and it is the mode the quality gate itself invokes.
@@ -578,8 +591,7 @@ function verifiedRun(values) {
     return {
       errors: [`history_unavailable: ${error.message}`],
       unavailable: true,
-      commits: 0,
-      edges: 0,
+      ...counted,
       stats: { spawns: 0, markdownParses: 0, uniqueMarkdownBlobs: 0, uniqueObjects: 0 },
     };
   }

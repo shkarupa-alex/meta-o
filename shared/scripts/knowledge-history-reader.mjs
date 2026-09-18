@@ -223,14 +223,20 @@ function createTreeNavigator(cache) {
     return oid;
   };
 
-  // Only a name a readable tree does not carry means the document is absent.
+  // Absence has two shapes, and neither is corruption: a readable tree that does
+  // not carry the name, and a segment that is readable but is not a directory at
+  // all. A project may legitimately keep `docs` as a symlink or a file, and the
+  // knowledge path simply is not there — descending into it is what would be
+  // wrong. `readTree` therefore only ever sees an entry whose mode says tree.
   const locate = (commit, path) => {
+    const names = path.split("/");
     let entry = null;
     let oid = rootTree(commit);
-    for (const name of path.split("/")) {
+    for (const [index, name] of names.entries()) {
       const wanted = Buffer.from(name);
       entry = readTree(oid).find((item) => item.name.equals(wanted)) ?? null;
       if (!entry) return null;
+      if (index < names.length - 1 && !entry.tree) return null;
       oid = entry.oid;
     }
     return entry;

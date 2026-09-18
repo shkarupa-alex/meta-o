@@ -6,7 +6,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -218,6 +218,33 @@ test("a document the rules cannot interpret still answers with one status line",
   assert.equal(run.status, 1);
   assert.match(run.stderr, /^history_unavailable: .*duplicate /u);
   assert.match(run.stdout, /^MO-KNOWLEDGE-HISTORY\/1 status=unavailable /u);
+});
+
+function emptyRepository() {
+  const root = mkdtempSync(join(tmpdir(), "mo-knowledge-history-"));
+  roots.push(root);
+  git(root, ["init", "-q"]);
+  git(root, ["config", "user.email", "test@example.invalid"]);
+  git(root, ["config", "user.name", "fixture"]);
+  return root;
+}
+
+test("a knowledge path that is not a directory is absent, not corruption", () => {
+  // A project may keep `docs` as a symlink or a plain file. That is the
+  // knowledge path being absent — the repository is perfectly readable, and a
+  // target project has no way to clear an unavailability it never caused.
+  for (const place of [
+    (root) => symlinkSync("site/docs", join(root, "docs")),
+    (root) => writeFileSync(join(root, "docs"), "this project keeps its docs elsewhere\n"),
+  ]) {
+    const root = emptyRepository();
+    place(root);
+    commit(root, "a tree whose docs are not a directory");
+    const cutoff = git(root, ["rev-parse", "HEAD"]).trim();
+    writeFileSync(join(root, "unrelated.txt"), "one\n");
+    commit(root, "an ordinary commit");
+    assert.deepEqual(verifyHistory(root, cutoff), []);
+  }
 });
 
 test("a filename the checker never reads cannot mask a violation", () => {
