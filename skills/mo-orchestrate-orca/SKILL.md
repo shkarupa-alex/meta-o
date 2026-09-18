@@ -2,6 +2,8 @@
 name: mo-orchestrate-orca
 description: Use only when the user explicitly requests mo-orchestrate-orca; run one full feature to a verified exact SHA through Orca.
 license: MIT
+metadata:
+  repository: https://github.com/shkarupa-alex/meta-o
 ---
 
 # Orchestrate a feature through Orca

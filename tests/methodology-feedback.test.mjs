@@ -10,6 +10,8 @@ import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { ALLOWED_FRONTMATTER, frontmatter } from "../tools/build-skills.mjs";
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const flat = (text) => text.replace(/\s+/gu, " ");
 const shipped = (skill, file) => join(ROOT, "skills", skill, file);
@@ -46,6 +48,29 @@ test("the five lifecycle skills carry the feedback contract and the three writer
       existsSync(shipped(skill, "references/issue-routing.md")),
       `${skill}: a writer without the routing table`,
     );
+  }
+});
+
+test("every skill that may report friction names the repository it reports to", () => {
+  // The addressee is a field of the installed package, not something inferred
+  // from a remote: an installed skill has no idea which project it is sitting
+  // in, and guessing would file Meta-O's friction in somebody's product.
+  for (const skill of [...WRITERS, ...CHANNELS]) {
+    const { data } = frontmatter(read(shipped(skill, "SKILL.md")));
+    assert.equal(
+      data.metadata?.repository,
+      "https://github.com/shkarupa-alex/meta-o",
+      `${skill}: no repository in metadata`,
+    );
+    assert.deepEqual(
+      Object.keys(data).filter((key) => !ALLOWED_FRONTMATTER.has(key)),
+      [],
+      `${skill}: non-canonical frontmatter`,
+    );
+  }
+  for (const skill of ADVISORY) {
+    const { data } = frontmatter(read(shipped(skill, "SKILL.md")));
+    assert.equal(data.metadata, undefined, `${skill}: an advisory skill has an addressee`);
   }
 });
 

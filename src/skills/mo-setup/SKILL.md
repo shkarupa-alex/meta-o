@@ -2,6 +2,8 @@
 name: mo-setup
 description: Use only when the user explicitly requests mo-setup; inspect or bring a project and its environment to the Meta-O contract.
 license: MIT
+metadata:
+  repository: https://github.com/shkarupa-alex/meta-o
 ---
 
 # Set up a project for Meta-O

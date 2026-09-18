@@ -2,6 +2,8 @@
 name: mo-review-orca
 description: Use only when the user explicitly requests mo-review-orca or an active mo-orchestrate-orca calls it; independently review one exact candidate through two vendor-diverse Orca workers.
 license: MIT
+metadata:
+  repository: https://github.com/shkarupa-alex/meta-o
 ---
 
 # Review through Orca

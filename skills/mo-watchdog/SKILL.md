@@ -2,6 +2,8 @@
 name: mo-watchdog
 description: Use only when the user explicitly requests mo-watchdog or Meta-O watchdog; observe Orca sessions and nudge only an authorized exact target.
 license: MIT
+metadata:
+  repository: https://github.com/shkarupa-alex/meta-o
 ---
 
 # Watch backend sessions

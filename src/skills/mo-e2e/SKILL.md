@@ -2,6 +2,8 @@
 name: mo-e2e
 description: Use only when the user explicitly requests mo-e2e or an active mo-orchestrate-orca calls it; verify agent-required scenarios on one frozen exact SHA.
 license: MIT
+metadata:
+  repository: https://github.com/shkarupa-alex/meta-o
 ---
 
 # Agent-required end-to-end verification
