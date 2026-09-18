@@ -7,7 +7,8 @@
 import assert from "node:assert/strict";
 import yaml from "js-yaml";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -177,6 +178,81 @@ test("the shipped CI examples keep full history and a separate closure job", () 
   // licence to write someone else's pipeline for them.
   assert.match(String(github.jobs.qc.steps.at(-1).run), /<qc-command>/u);
   assert.ok(gitlab.qc.script.some((line) => line.includes("<qc-command>")));
+
+  // A shipped example that names a path no repair creates is a proposal to
+  // break the target's pipeline: the job fails on every merge request with a
+  // module-not-found error, and mo-setup would report it as coverage.
+  const commands = [
+    ...Object.values(github.jobs).flatMap((job) => job.steps.map((step) => String(step.run ?? ""))),
+    ...Object.values(gitlab)
+      .filter((job) => Array.isArray(job?.script))
+      .flatMap((job) => job.script.map(String)),
+  ];
+  const named = [...new Set(commands.flatMap((line) => line.match(/\btools\/\S+/gu) ?? []))];
+  assert.ok(named.length > 0, "the examples run no repository path at all");
+  for (const path of named) {
+    assert.ok(setup.includes(path), `${path} is named by CI but created by no accepted repair`);
+  }
+
+  // Half a schema is a call error, so an example that shows the call without it
+  // teaches the one invocation that cannot work.
+  for (const line of commands.filter((command) => command.includes("mo-backlog"))) {
+    assert.match(line, /<backlog-schema>/u);
+  }
+  for (const flag of ["--path", "--title", "--open-heading", "--entry-field"]) {
+    assert.ok(setup.includes(flag), `the accepted repair never names ${flag}`);
+  }
+  assert.match(contractProse, /path, title, open heading and\s*every entry field/u);
+});
+
+test("the shipped backlog checker answers for a foreign notebook as installed", () => {
+  // The path CI names has to be runnable exactly as shipped: bundled, without
+  // node_modules anywhere above it, and holding no default of this project.
+  const scratch = mkdtempSync(join(tmpdir(), "mo-foreign-notebook-"));
+  try {
+    const repository = join(scratch, "project");
+    mkdirSync(join(repository, "notes"), { recursive: true });
+    const git = (...args) => {
+      const run = spawnSync("git", ["-C", repository, ...args], { encoding: "utf8" });
+      assert.equal(run.status, 0, run.stderr);
+    };
+    git("init", "-q");
+    git("config", "user.name", "Fixture");
+    git("config", "user.email", "fixture@example.invalid");
+    writeFileSync(
+      join(repository, "notes", "backlog.md"),
+      "# Backlog\n\nTemporary notebook of the active feature branch only.\n\n## Open\n",
+    );
+    git("add", ".");
+    git("commit", "-qm", "foreign notebook");
+    const checker = join(ROOT, "skills", "mo-setup", "scripts", "mo-backlog.mjs");
+    const run = spawnSync(
+      process.execPath,
+      [
+        checker,
+        "--repo",
+        repository,
+        "--path",
+        "notes/backlog.md",
+        "--title",
+        "Backlog",
+        "--open-heading",
+        "Open",
+        "--intro",
+        "Temporary notebook of the active feature branch only.",
+        "--entry-field",
+        "Reason.",
+      ],
+      { cwd: scratch, encoding: "utf8" },
+    );
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(
+      run.stdout,
+      /^MO-BACKLOG-EMPTY version=1 sha=[a-f0-9]{40} worktree=clean path="notes\/backlog\.md" entries=0 content_nodes=0\n$/u,
+    );
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
 });
 
 test("mo-setup ships a papercut template and the history contract it must apply", () => {

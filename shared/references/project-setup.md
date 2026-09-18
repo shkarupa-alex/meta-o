@@ -15,7 +15,11 @@ Inspect substance, not file presence. A ready project has:
   it serves;
 - a branch-local feature backlog whose temporary entries have reason, practical
   impact and next step, plus a project-owned non-mutating `MO-BACKLOG/1` closure
-  command and G0/GC/G1/G2 rules in the entry contract;
+  command and G0/GC/G1/G2 rules in the entry contract. Accepted repair installs
+  the shipped checker as the project's own `tools/mo-backlog.mjs` and calls it
+  with that project's whole notebook schema — path, title, open heading and
+  every entry field — because half a schema silently checks a foreign notebook
+  against the supplier's wording;
 - a short commands-and-papercuts document, `docs/papercut.md` by default and any
   equivalent accepted on content, linked from `AGENTS.md`, whose writing rule is
   narrow on purpose: a frequent or routine command hung or failed and the cause

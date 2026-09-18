@@ -81,12 +81,19 @@ Find the commands-and-papercuts document by content, not only at
 where `linked` means `AGENTS.md` actually links it. Accepted repair starts from
 [Commands and papercuts template](references/papercut-template.md).
 
-Accepted repair copies the shipped bundle to the project's
-`tools/mo-knowledge-history.mjs` with its `tools/licenses/` and its version line,
-adds a stage to the project's own QC with the project's own cutoff, and adds the
-declaration section plus the trailer grammar with verbs `remove|reuse|editorial`
-to `AGENTS.md`. Never copy this project's boundaries or commit ids: a foreign
-cutoff exempts exactly the history the target needs checked.
+Accepted repair copies two shipped bundles into the project, each with its
+`tools/licenses/`, and both then belong to the project. `scripts/mo-backlog.mjs`
+goes to `tools/mo-backlog.mjs`, and the closure command that calls it must name
+that project's own `--path`, `--title`, `--open-heading` and every
+`--entry-field`: without the whole schema the checker would hold a foreign
+notebook to this project's Russian wording, and a partial schema is a call
+error. `scripts/mo-knowledge-history.mjs` goes to
+`tools/mo-knowledge-history.mjs` with its version line; a stage calling it joins
+the project's own QC with the project's own cutoff, and `AGENTS.md` gains the
+declaration section plus the trailer grammar with verbs `remove|reuse|editorial`.
+Never copy this project's boundaries or commit ids: a foreign cutoff exempts
+exactly the history the target needs checked. Propose no CI job naming a path
+this repair does not create.
 
 Check `.orca/` and `spec/` independently through
 `git check-ignore -v --no-index`; accept only a match from a tracked repository
