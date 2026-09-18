@@ -121,45 +121,67 @@ test("internal Markdown links resolve and use target H1 titles as labels", () =>
   }
 });
 
-test("the commands document never licenses skipping a stage of the gate", () => {
-  // A line that tells a reader part of the authoritative check is optional
-  // turns the gate into a partial one by instruction. `mo-qc` is the only
-  // thing that speaks for the candidate, so the document may describe an
-  // environment that breaks a stage, never permission to leave it out.
-  const source = readFileSync(join(ROOT, "docs", "papercut.md"), "utf8");
+// The visible text of an inline token: Markdown reaches the same reader
+// through `**`, `_` or a code span, so a guard that edits marker bytes out of
+// the raw source holds only the spelling it happened to see. Formatting
+// open/close tokens carry no content; text and code spans carry all of it.
+function visibleText(token) {
+  const out = [];
+  for (const child of token.children ?? []) {
+    if (["text", "code_inline"].includes(child.type)) out.push(child.content);
+    else if (["softbreak", "hardbreak"].includes(child.type)) out.push(" ");
+  }
+  return out.join("").replace(/\s+/gu, " ");
+}
+
+// A line that tells a reader part of the authoritative check is optional turns
+// the gate into a partial one by instruction. `mo-qc` is the only thing that
+// speaks for the candidate, so the document may describe an environment that
+// breaks a stage, never permission to leave it out. The posture entry must
+// also keep naming its real trigger: the stop needs a controlling terminal,
+// and an agent's own tool shell has none, which is why the trap misses exactly
+// the reader who runs the gate most often.
+function postureFaults(source) {
   const items = markdown
     .parse(source, {})
     .filter((token) => token.type === "inline")
-    .map((token) => token.content.replace(/\s+/gu, " "));
-  for (const item of items) {
-    assert.doesNotMatch(
-      item,
-      /достаточно прогнать остальные стадии|можно пропустить стад|стадию можно не/u,
-      `the commands document permits skipping a gate stage: ${item}`,
-    );
-  }
-  // The positive half: a future edit may not quietly restore the wrong
-  // condition. The stop needs a controlling terminal, and an agent's own tool
-  // shell has none, which is why the trap misses exactly the reader who runs
-  // the gate most often.
+    .map(visibleText);
+  const faults = items
+    .filter((item) =>
+      /достаточно прогнать остальные стадии|можно пропустить стад|стадию можно не/u.test(item),
+    )
+    .map((item) => `skip_licensed: ${item}`);
   const posture = items.find((item) => item.includes("provider-posture"));
-  assert.ok(posture, "the posture trap is no longer recorded at all");
-  assert.match(posture, /управляющ/u);
-  assert.match(posture, /script|pty|PTY/u);
+  if (posture === undefined) return [...faults, "posture_absent"];
+  if (!/управляющ/u.test(posture)) faults.push("controlling_terminal_unnamed");
+  if (!/script|pty|PTY/u.test(posture)) faults.push("reproduction_unnamed");
   // Both positives are satisfied by the remedy sentence alone, so the trigger
   // itself is held by naming what it is not. `\p{L}` rather than `\w`: `\w`
   // stays ASCII-only even under `u`, and an assertion that cannot match a
   // Cyrillic document is an assertion that can never fire.
-  const plain = posture.replaceAll("*", "").replaceAll("`", "");
-  assert.doesNotMatch(
-    plain,
-    /агентск\p{L}+ терминал/u,
-    "the agent terminal is not the trigger; a controlling terminal is",
+  if (/агентск\p{L}+ терминал/u.test(posture)) faults.push("agent_terminal_blamed");
+  if (/обычн\p{L}+ чекаут/u.test(posture)) faults.push("ordinary_checkout_blamed");
+  return faults;
+}
+
+test("the commands document never licenses skipping a stage of the gate", () => {
+  const source = readFileSync(join(ROOT, "docs", "papercut.md"), "utf8");
+  assert.deepEqual(postureFaults(source), []);
+  // The committed entry passes, so the guard is held by mutations the raw-byte
+  // version let through: underscore emphasis is exactly as visible as `**`.
+  assert.deepEqual(
+    postureFaults(source.replace("**управляющий** терминал", "_агентский_ терминал")),
+    ["agent_terminal_blamed"],
   );
-  assert.doesNotMatch(
-    plain,
-    /обычн\p{L}+ чекаут/u,
-    "an ordinary checkout is not the discriminator; a green run in a worktree disproves it",
+  assert.deepEqual(
+    postureFaults(
+      source.replace("зелёная. Поэтому", "зелёная, тот же SHA в _обычном_ чекауте. Поэтому"),
+    ),
+    ["ordinary_checkout_blamed"],
+  );
+  assert.deepEqual(
+    postureFaults(source.replaceAll("tests/provider-posture.test.mjs", "эта стадия")),
+    ["posture_absent"],
   );
 });
 
