@@ -237,6 +237,15 @@ missing required profile is `blocked|not_run`, and a deterministic scenario is
 `not_applicable`. Never fall back. These skill tests do not replace the critical
 local Qwen/OpenCode orchestrator lifecycle.
 
+Required coordinates are constant except for one named valve: a skill whose own
+cases are provably unstable raises **its own** required Codex coordinate one
+step, and only once the reason, date and instability observation are written
+into the project's evaluation policy. The orchestrator skill is never raised,
+the Claude coordinate never moves, and one skill's valve never moves the matrix.
+Until that record exists, repetition stays at one and the skill text is what
+changes, never the profile: an unrecorded raise is profile-shopping for a green
+result, and the proof is bound to the profile it ran on.
+
 Any executable or instruction change creates a new SHA and invalidates all
 gates. Return failures to the executor as ordinary messages and restart from the
 new candidate.
