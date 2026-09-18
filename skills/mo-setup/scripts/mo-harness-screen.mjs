@@ -220,7 +220,9 @@ export function readEnvelope(text) {
   const { tail } = terminal;
   const frame = Array.isArray(tail) ? tail.join("\n") : tail;
   if (typeof frame !== "string" || frame.trim() === "") return { error: "screen_empty" };
-  return { frame, handle: terminal.handle, draft: terminal.draft };
+  const { draft } = terminal;
+  if (draft !== undefined && typeof draft !== "string") return { error: "draft_unreadable" };
+  return { frame, handle: terminal.handle, draft };
 }
 
 /**
@@ -256,8 +258,10 @@ export function decideScreen(text, { harness, expectPath, fixturesVersion, draft
   const verdict = classifyScreen(text);
   const record = { state: verdict.state, screen_version: verdict.version, action: "refuse" };
   // A waiting draft is invisible in the frame by construction, so no amount of
-  // agreement about the frame can license delivery while one exists.
-  if (typeof draft === "string" && draft.trim() !== "") {
+  // agreement about the frame can license delivery while one exists. Whitespace
+  // is bytes too: Orca never promises the composer is empty when it trims empty,
+  // and a newline decides how appended input is framed.
+  if (draft !== undefined && draft !== "") {
     return { ...record, reason: "composer_draft_present" };
   }
   if (fixturesVersion !== undefined && verdict.version !== fixturesVersion) {

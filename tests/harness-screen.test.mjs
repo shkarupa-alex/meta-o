@@ -153,6 +153,15 @@ test("the documented command consumes a real terminal-read envelope", () => {
       JSON.stringify({ ok: true, result: { terminal: { source: "screen", tail: [] } } }),
       "screen_empty",
     ],
+    // A draft that is not composer text is a field this classifier does not
+    // understand, and an unreadable envelope never becomes a licensed frame.
+    [
+      JSON.stringify({
+        ok: true,
+        result: { terminal: { source: "screen", tail: ["x"], draft: 7 } },
+      }),
+      "draft_unreadable",
+    ],
   ]) {
     assert.equal(readEnvelope(text).error, error, text.slice(0, 40));
   }
@@ -168,15 +177,11 @@ test("a draft the frame never shows still stops delivery", () => {
     for (const draft of [undefined, ""]) {
       assert.equal(decideScreen(text, { expectPath: "/tmp/x", draft }).action, "inject", name);
     }
-    for (const draft of ["rm -rf /tmp/project", "   ", "\n unsent line "]) {
+    // Whitespace is not emptiness: " " and "\n" are bytes the frame never shows.
+    for (const draft of ["rm -rf /tmp/project", " ", "\t", "\n", " unsent ", 7, null]) {
       const refused = decideScreen(text, { expectPath: "/tmp/x", draft });
-      const empty = draft.trim() === "";
-      assert.equal(
-        refused.action,
-        empty ? "inject" : "refuse",
-        `${name}: ${JSON.stringify(draft)}`,
-      );
-      if (!empty) assert.equal(refused.reason, "composer_draft_present");
+      assert.equal(refused.action, "refuse", `${name}: ${JSON.stringify(draft)}`);
+      assert.equal(refused.reason, "composer_draft_present");
     }
     // Neither an exact harness and path nor a pinned fixture version overrides
     // it: the draft is the fact, and the rest is agreement about the frame.
@@ -399,17 +404,20 @@ test("the shipped CLI answers the exact contract of §4.5", () => {
   assert.match(miscalled.stderr, /--harness is required/u);
 
   // The whole point of decoding the envelope is that the draft travels in it.
-  const withDraft = JSON.stringify({
-    ok: true,
-    result: {
-      terminal: {
-        source: "screen",
-        tail: readFileSync(join(SURFACES, "claude-prompt.screen"), "utf8").split("\n"),
-        draft: "rm -rf /tmp/project",
-      },
-    },
-  });
-  const drafted = run(["--harness", "claude", "--expect-path", "/tmp/x"], withDraft);
-  assert.equal(drafted.status, 0);
-  assert.match(drafted.stdout, /state=agent_prompt .*action=refuse/u);
+  const prompt = readFileSync(join(SURFACES, "claude-prompt.screen"), "utf8").split("\n");
+  const withDraft = (draft) =>
+    JSON.stringify({ ok: true, result: { terminal: { source: "screen", tail: prompt, draft } } });
+  for (const draft of ["rm -rf /tmp/project", " ", "\t", "\n", " unsent "]) {
+    const drafted = run(["--harness", "claude", "--expect-path", "/tmp/x"], withDraft(draft));
+    assert.equal(drafted.status, 0, JSON.stringify(draft));
+    assert.match(drafted.stdout, /state=agent_prompt .*action=refuse/u, JSON.stringify(draft));
+  }
+  for (const draft of [undefined, ""]) {
+    const free = run(["--harness", "claude", "--expect-path", "/tmp/x"], withDraft(draft));
+    assert.equal(free.status, 0, JSON.stringify(draft));
+    assert.match(free.stdout, /state=agent_prompt .*action=inject/u, JSON.stringify(draft));
+  }
+  const malformed = run(["--harness", "claude", "--expect-path", "/tmp/x"], withDraft(7));
+  assert.equal(malformed.status, 2);
+  assert.match(malformed.stderr, /draft_unreadable/u);
 });

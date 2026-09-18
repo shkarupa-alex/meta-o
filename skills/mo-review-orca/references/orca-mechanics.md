@@ -62,8 +62,9 @@ orca terminal create --worktree id:<repo>::<path> --title <title> --command "<ag
 orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 120000 --json
 orca terminal read --terminal <handle> --screen --json \
   | node scripts/mo-harness-screen.mjs --harness <claude|codex|opencode> --expect-path <abs>
-  # reads the envelope, requires source=screen, refuses while `draft` holds
-  # composer text the frame does not show, and answers one line:
+  # reads the envelope, requires source=screen, refuses while `draft` holds any
+  # composer bytes the frame does not show — a space or a newline is such a byte —
+  # and answers one line:
   # MO-HARNESS-SCREEN/1 state=<...> [trust_path=<json>] [selection=<yes|no|unknown>]
   #                     [path_match=<yes|no>] [screen_version=<id>] action=<inject|accept_trust|confirm_trust|refuse|wait>
   # exit 0 classified, 2 unreadable input or a call it cannot answer
