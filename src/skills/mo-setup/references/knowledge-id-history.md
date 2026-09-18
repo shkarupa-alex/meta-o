@@ -27,8 +27,15 @@ documents the gate never reads or rewrites whichever file happened to match.
 ## What proves the stage is present
 
 The behavior of the declared stage, never the full QC, and only in a disposable
-clone: the candidate worktree stays untouched. The stage must be a substring of
-the declared QC command, or it exists but no authoritative check runs it.
+clone: the candidate worktree stays untouched. The stage must also be part of
+the authoritative check, and the declaration says which way it is: either the
+stage command appears verbatim in the declared QC command, or the line naming
+that command also names this stage and the tracked runner definition it points
+at — a `Makefile` target list, a `package.json` script — contains it. Reading a
+tracked runner file is deterministic and changes nothing, while running the full
+QC to find out is forbidden here. Neither proof is `gate_missing`: a stage
+outside the authoritative check is a stage nobody runs. An aggregate command
+that reaches its stages indirectly is the ordinary case, not a gap.
 
 Two fixtures decide it, and both touch only the declared locations. A silent
 deletion of a definition the AST found there, committed without a trailer, must
@@ -55,6 +62,12 @@ Staleness is a comparison: the supplier hashes its own bundle by the same rule.
 Equal is `stale=no`. Different is `stale=yes`, and both versions go into the
 report. A missing, duplicated or unparsable line is `stale=unknown`. The version
 decides nothing — it explains a difference to a human.
+
+A project that owns the tool has nothing to compare against. When the project is
+the supplier itself — its `package.json` names the same package this bundle was
+built from — the declared stage runs the source the bundle is built from, and
+the record is `stale=no`: the absent version line is the absence of a copy, not
+an unreadable stamp. Anywhere else the absent line stays `stale=unknown`.
 
 Supplier boundaries and commit ids are never copied: every project owns its own
 cutoff.

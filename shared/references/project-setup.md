@@ -77,10 +77,15 @@ rather than assumed for the same reason as the rest: one project's layout is its
 own convention, and a probe that supplies the missing half either certifies
 documents the stage never reads or edits whichever file matched the shape.
 
-The stage must be a substring of the declared quality command: a stage that
-exists but is not part of the authoritative check is not a gate. Its presence is
-proven by behaviour in a disposable clone, never by running the project's full
-quality command and never by touching the candidate worktree.
+The stage must be part of the declared quality command: a stage that exists but
+is not part of the authoritative check is not a gate. The declaration proves it
+one of two ways — the stage command appears verbatim in that command, or the
+line naming the command also names this stage and the tracked runner definition
+it points at, a `Makefile` target list or a `package.json` script, contains it.
+Reading a tracked runner file changes nothing; running the whole quality command
+to find out is not allowed. Its presence is proven by behaviour in a disposable
+clone, never by running the project's full quality command and never by touching
+the candidate worktree.
 
 The entry contract also states the authorization grammar the stage enforces: a
 commit trailer with the verbs `remove`, `reuse` or `editorial`, and a matching

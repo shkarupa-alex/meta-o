@@ -53,8 +53,10 @@ a disposable clone: `git clone --no-hardlinks --no-local <path> <tmp>` under a
 disposable `TMPDIR`, no network. The candidate worktree is never opened for
 writing. Budget 600 s for the whole probe and 120 s for one stage run; exceeding
 either is `unknown` naming the exhausted budget, never `gate_missing`. The stage
-must be a substring of the declared QC command, or it is `gate_missing`: a stage
-outside the authoritative check is a stage nobody runs. A red baseline run in the
+must be part of the declared QC command — appearing in it verbatim, or named as
+its stage by the same line and present in the tracked runner definition that line
+points at — or it is `gate_missing`: a stage outside the authoritative check is a
+stage nobody runs. A red baseline run in the
 clean clone is `gate_failing` and stops the probe.
 
 Then two fixtures, in the clone only, touching only the declared locations and
@@ -77,8 +79,10 @@ Compute `stale` by hashing, not by trusting the version string: hash the bundle
 you ship by the documented rule and compare with the hash in the copy's last-line
 `MO-KNOWLEDGE-HISTORY-SOURCE` comment. Equal is `stale=no`; different is
 `stale=yes` and both `<semver>` values go in the report; a missing, duplicated or
-unparsable line is `stale=unknown`. The version explains a difference to a human
-and never decides it.
+unparsable line is `stale=unknown`, except in the supplier project itself — whose
+`package.json` names the package this bundle came from — where the stage runs the
+source the bundle is built from and the record is `stale=no`. The version
+explains a difference to a human and never decides it.
 
 Find the commands-and-papercuts document by content, not only at
 `docs/papercut.md`, and report `Papercut/1 path=<json|none> linked=<yes|no>`

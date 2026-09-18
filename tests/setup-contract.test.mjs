@@ -286,7 +286,10 @@ test("the setup contract separates current-tree checking from history checking",
     "Knowledge id history",
     "history_cutoff_sha",
     "exactly one fenced block",
-    "substring of the declared quality command",
+    "part of the declared quality command",
+    // An aggregate runner reaches its stage indirectly, and the rule says how
+    // that is proven without running the whole check.
+    "tracked runner definition",
     "disposable clone",
   ]) {
     assert.ok(contractProse.includes(phrase.replace(/\s+/gu, " ")), phrase);

@@ -10,6 +10,9 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
+import yaml from "js-yaml";
+import { fromMarkdown } from "mdast-util-from-markdown";
+import { toString } from "mdast-util-to-string";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const version = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version;
@@ -36,6 +39,11 @@ const contract = readFileSync(
   join(ROOT, "src", "skills", "mo-setup", "references", "knowledge-id-history.md"),
   "utf8",
 );
+
+/** Every link node below one section, whose target names a place by itself. */
+function links(nodes) {
+  return nodes.flatMap((node) => (node.type === "link" ? [node] : links(node.children ?? [])));
+}
 
 test("the probe is declared, clone-only and budgeted, never guessed", () => {
   // Every count here is "exactly one" on purpose: a section with two command
@@ -200,4 +208,53 @@ test("repair never copies this project's own boundary", () => {
   assert.match(prose, /tools\/mo-knowledge-history\.mjs/u);
   assert.match(prose, /remove\|reuse\|editorial/u);
   assert.match(prose, /Never copy this project's boundaries or commit ids/u);
+});
+
+test("the supplier project is not a stale copy of itself", () => {
+  // meta-o runs the source the bundle is built from, so it has no version line
+  // and nothing to compare. Reporting that as `unknown` would accuse the one
+  // project that cannot possibly be behind.
+  for (const text of [prose, contract.replace(/\s+/gu, " ")]) {
+    assert.match(text, /supplier project itself|project is the supplier itself/u);
+    assert.match(text, /`package.json` names the (?:same )?package this bundle/u);
+    assert.match(text, /the record is `stale=no`/u);
+  }
+});
+
+test("this project's own contract satisfies the declaration form it ships", () => {
+  // The rule is applied to its author first: if meta-o cannot be read by it,
+  // the form is not a contract but a wish.
+  const document = fromMarkdown(readFileSync(join(ROOT, "AGENTS.md"), "utf8"));
+  const headings = document.children
+    .map((node, index) => ({ node, index }))
+    .filter(({ node }) => node.type === "heading" && node.depth === 2);
+  const declared = headings.filter(({ node }) => toString(node).includes("Knowledge id history"));
+  assert.equal(declared.length, 1, "the declaration section is not exactly one");
+  const next = headings.find(({ index }) => index > declared[0].index);
+  const body = document.children.slice(declared[0].index + 1, next?.index);
+  const fences = body.filter((node) => node.type === "code");
+  const stage = fences.filter((node) => node.lang !== "yaml");
+  assert.equal(stage.length, 1, "not exactly one stage block");
+  assert.equal(stage[0].value.split("\n").length, 1, "the stage block is not one line");
+  const records = fences.filter((node) => /^history_cutoff_sha:/u.test(node.value));
+  assert.equal(records.length, 1, "not exactly one cutoff record");
+  assert.match(yaml.load(records[0].value).history_cutoff_sha, /^[0-9a-f]{40}$/u);
+  const text = body.map((node) => toString(node)).join(" ");
+  // The stage is named as a stage of the authoritative command, and the runner
+  // definition that line points at really lists it.
+  const quality = body
+    .filter((node) => node.type === "paragraph")
+    .map((node) => toString(node))
+    .filter((line) => line.includes("make mo-qc"));
+  assert.equal(quality.length, 1, "not exactly one line names the quality command");
+  assert.ok(quality[0].includes(stage[0].value), "the quality line does not name the stage");
+  assert.ok(
+    readFileSync(join(ROOT, "Makefile"), "utf8").includes("mo-knowledge-history"),
+    "the runner definition does not contain the stage",
+  );
+  // A link says where by its target; prose says it in words. Both are readable
+  // by an AST, and the rule asks for the place, not for the spelling.
+  const targets = [text, ...links(body).map((node) => node.url)].join(" ");
+  assert.match(targets, /docs\/business.md/u);
+  assert.match(targets, /docs\/architecture\//u);
 });
