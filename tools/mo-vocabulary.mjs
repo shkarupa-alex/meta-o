@@ -198,15 +198,58 @@ function suppressed(lines, index) {
 }
 
 /**
+ * The declaration block a file opens with, before its first content.
+ *
+ * §A-MEMORY-01 needs a file-wide claim to be a claim, not a coincidence. A
+ * marker anywhere in the bytes would let a runtime string, a quoted example or
+ * a paragraph three screens down disable the gate for the whole file, and
+ * nobody reading the top would know. Only comments, a shebang and leading
+ * frontmatter count; the first line of real content ends the block.
+ */
+export function leadingHeader(text) {
+  const kept = [];
+  let closing = null;
+  for (const line of String(text).split("\n")) {
+    const trimmed = line.trim();
+    if (closing !== null) {
+      kept.push(line);
+      if (trimmed.endsWith(closing)) closing = null;
+      continue;
+    }
+    const opened = openedBlock(trimmed, kept);
+    if (opened === undefined) break;
+    kept.push(line);
+    closing = opened;
+  }
+  return kept.join("\n");
+}
+
+/**
+ * What a header line opens, `null` when it opens nothing, `undefined` when the
+ * line is already content. §A-MEMORY-01 ends the block at the first such line.
+ */
+function openedBlock(trimmed, kept) {
+  if (trimmed === "" || trimmed.startsWith("#!") || trimmed.startsWith("//")) return null;
+  if (trimmed === "---" && kept.every((entry) => entry.trim() === "")) return "---";
+  const pair = [
+    ["/*", "*/"],
+    ["<!--", "-->"],
+  ].find(([open]) => trimmed.startsWith(open));
+  if (pair === undefined) return undefined;
+  return trimmed.endsWith(pair[1]) ? null : pair[1];
+}
+
+/**
  * Whether a whole file is deliberate examples.
  *
  * §A-MEMORY-01 has to survive the file that tests it: a corpus of undefined
  * identifiers is this checker's input, and marking every fixture line would
  * bury the fixtures. The file-wide form follows `eslint-disable`: the same
- * marker, one extra word, declared where a reader opening the file sees it.
+ * marker, one extra word, and only in the opening declaration block, so a
+ * reader sees the exemption before the first line it covers.
  */
 export function deliberateFixture(text) {
-  return text.includes(SUPPRESS_FILE);
+  return leadingHeader(text).includes(SUPPRESS_FILE);
 }
 
 /**

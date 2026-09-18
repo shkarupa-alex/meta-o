@@ -203,6 +203,20 @@ test("every anchor reference in the project resolves to a defined id", () => {
   }
 });
 
+test("a fixture declaration is read from the file's opening block only", () => {
+  // Assembled rather than written out: a literal dangling anchor in this file
+  // would be a real citation, and this gate is right to refuse one.
+  const ghost = ["§A", "GHOST", "01"].join("-");
+  const dangling = `const cases = ["${ghost}", "${ghost}"];`;
+  const declared = `/** Fixtures: mo-vocabulary-ok file. */\n${dangling}`;
+  assert.ok(deliberateFixture(declared), "an opening declaration is not recognized");
+  assert.deepEqual(references(declared, "declared.mjs"), [ghost, ghost]);
+  // The same words below the first statement claim nothing, so this gate still
+  // reads the file and still refuses an anchor that resolves to no decision.
+  const late = `${dangling}\n// mo-vocabulary-ok file`;
+  assert.equal(deliberateFixture(late), false, "a late marker suppressed the file");
+});
+
 test("every first-party module names a decision and never the business layer", () => {
   const defined = new Set(decisions().map((decision) => decision.title.split(" ")[0]));
   const found = modules();

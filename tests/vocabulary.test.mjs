@@ -186,6 +186,36 @@ test("a file of fixtures declares itself once instead of line by line", () => {
   assert.deepEqual(kinds(findings({ "tests/f.test.mjs": third })), ["undefined_id §A-GHOST-01"]);
 });
 
+test("a file-wide claim counts only where a reader meets it first", () => {
+  const cited = 'const live = ["§A-GHOST-01", "§A-GHOST-01"];';
+  // Below the first statement the same bytes are just bytes: a runtime string,
+  // a quoted example or a paragraph three screens down must not be able to
+  // switch the gate off for a file whose top says nothing about it.
+  for (const [where, source] of [
+    ["after the first statement", `${cited}\n// mo-vocabulary-ok file`],
+    ["inside a string", `${cited}\nconst note = "mo-vocabulary-ok file";`],
+    [
+      "in later prose",
+      `# Title\n\nMentions §A-GHOST-01 and §A-GHOST-01.\n\nmo-vocabulary-ok file\n`,
+    ],
+  ]) {
+    const name = where.endsWith("prose") ? "docs/late.md" : "tests/late.test.mjs";
+    assert.equal(deliberateFixture(source), false, `${where}: suppressed anyway`);
+    assert.deepEqual(kinds(findings({ [name]: source })), ["undefined_id §A-GHOST-01"], where);
+  }
+  // The declaration blocks a reader actually opens with.
+  for (const [where, header] of [
+    ["a JSDoc block", "/**\n * Fixtures: mo-vocabulary-ok file.\n */"],
+    ["line comments", "#!/usr/bin/env node\n// mo-vocabulary-ok file"],
+    ["an HTML comment", "<!-- mo-vocabulary-ok file -->"],
+    ["frontmatter", "---\nname: fixtures mo-vocabulary-ok file\n---"],
+  ]) {
+    const source = `${header}\n${cited}`;
+    assert.ok(deliberateFixture(source), `${where}: declaration not recognized`);
+    assert.deepEqual(findings({ "tests/head.test.mjs": source }), [], where);
+  }
+});
+
 test("errors block and warnings do not, unless asked", () => {
   const warned = vocabularyReport([
     {
