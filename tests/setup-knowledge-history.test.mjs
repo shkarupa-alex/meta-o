@@ -6,11 +6,30 @@
 
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 
 const ROOT = resolve(import.meta.dirname, "..");
+const version = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version;
+
+/**
+ * The staleness rule of the setup contract, executed instead of paraphrased.
+ *
+ * A missing, duplicated or unparsable line is `unknown`, never `yes`: "I cannot
+ * tell" and "these differ" send a project to different places.
+ */
+function stale(path) {
+  const copy = readFileSync(path, "utf8");
+  const lines = copy.split("\n");
+  const stamps = lines.filter((line) => line.startsWith("// MO-KNOWLEDGE-HISTORY-SOURCE "));
+  if (stamps.length !== 1 || lines.at(-2) !== stamps[0]) return "unknown";
+  const parsed = /^\/\/ MO-KNOWLEDGE-HISTORY-SOURCE (\S+) ([0-9a-f]{64})$/u.exec(stamps[0]);
+  if (!parsed) return "unknown";
+  const body = copy.slice(0, copy.length - `${stamps[0]}\n`.length);
+  return createHash("sha256").update(body).digest("hex") === parsed[2] ? "no" : "yes";
+}
 const skill = readFileSync(join(ROOT, "src", "skills", "mo-setup", "SKILL.md"), "utf8");
 const prose = skill.replace(/\s+/gu, " ");
 const contract = readFileSync(
@@ -80,6 +99,49 @@ test("staleness is decided by the hash and only explained by the version", () =>
       .update(stamped.slice(0, stamped.length - stamp.length))
       .digest("hex")}\n`;
   assert.equal(restamped, stamped);
+});
+
+test("the shipped copy can answer the staleness question on its own", () => {
+  // An installed skill has no package.json and no repository around it, so the
+  // version and the hash have to travel inside the file mo-setup tells a
+  // project to copy. Without them every repaired copy is `stale=unknown`.
+  const bundle = join(ROOT, "skills", "mo-setup", "scripts", "mo-knowledge-history.mjs");
+  const shipped = readFileSync(bundle, "utf8");
+  const lines = shipped.split("\n");
+  assert.equal(lines.at(-1), "", "the stamp must end with a newline");
+  const stamp = lines.at(-2);
+  const match = /^\/\/ MO-KNOWLEDGE-HISTORY-SOURCE (\S+) ([0-9a-f]{64})$/u.exec(stamp ?? "");
+  assert.ok(match, `the shipped bundle carries no source stamp: ${JSON.stringify(stamp)}`);
+  assert.equal(match[1], version);
+  assert.equal(
+    shipped.split("\n").filter((line) => line.includes("MO-KNOWLEDGE-HISTORY-SOURCE")).length,
+    1,
+    "a duplicated stamp is unparsable and would report stale=unknown",
+  );
+
+  // The documented domain: everything before the line. Supplier and copy must
+  // therefore hash identical bytes, and re-stamping must change nothing.
+  const body = shipped.slice(0, shipped.length - `${stamp}\n`.length);
+  assert.equal(createHash("sha256").update(body).digest("hex"), match[2]);
+  assert.notEqual(createHash("sha256").update(`${body} `).digest("hex"), match[2]);
+
+  // A copy is compared, not trusted: prove the comparison a target project runs.
+  const scratch = mkdtempSync(join(tmpdir(), "mo-stamp-"));
+  try {
+    const copy = join(scratch, "mo-knowledge-history.mjs");
+    writeFileSync(copy, shipped);
+    assert.equal(stale(copy), "no");
+    // One byte of body, the stamp untouched: this is the drift the comparison
+    // exists to catch, and the version string alone would never have seen it.
+    writeFileSync(copy, ` ${body}${stamp}\n`);
+    assert.equal(stale(copy), "yes");
+    writeFileSync(copy, body);
+    assert.equal(stale(copy), "unknown");
+    writeFileSync(copy, `${shipped}${stamp}\n`);
+    assert.equal(stale(copy), "unknown");
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
 });
 
 test("the report records name their fields and hide local paths", () => {

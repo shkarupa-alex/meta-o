@@ -36,6 +36,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { isBuiltin } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -46,6 +47,7 @@ import { buildSync } from "esbuild";
 import { fromMarkdown } from "mdast-util-from-markdown";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const VERSION = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version;
 const SKILLS_SRC = join(ROOT, "src", "skills");
 const SHARED_SRC = join(ROOT, "shared");
 const OUTPUT = join(ROOT, "skills");
@@ -171,6 +173,16 @@ export const BUNDLES = {
 };
 
 /** A root under other terms breaks generation exactly as an unexpected root does. */
+/**
+ * The bundles a copy of which has to answer "am I stale?" without this repo.
+ *
+ * mo-setup tells a target project to copy the history checker into its own
+ * `tools/`, and later has to compare that copy with what this project ships.
+ * A copy can only answer that question if it carries the supplier's version and
+ * a hash of its own bytes, because an installed skill has no package.json.
+ */
+export const STAMPED = new Set(["scripts/mo-knowledge-history.mjs"]);
+
 export const LICENSE_ALLOWLIST = new Set(["MIT"]);
 
 /**
@@ -298,6 +310,20 @@ export function bundleShared(source, destination, closure, label) {
     throw new Error(`${label} bundle is ${bytes} bytes; measured ceiling is ${ceiling}`);
   }
   return roots;
+}
+
+/**
+ * §A-DISTRIBUTION-03 stamps a bundle with the version and hash of its own bytes.
+ *
+ * The hash covers everything before the line, so supplier and copy hash exactly
+ * the same bytes and re-stamping is a no-op. Without it a copied checker can
+ * only be compared by reading it, which is the comparison nobody performs.
+ */
+export function stampSource(destination, version) {
+  const body = readFileSync(destination, "utf8");
+  const digest = createHash("sha256").update(body).digest("hex");
+  writeFileSync(destination, `${body}// MO-KNOWLEDGE-HISTORY-SOURCE ${version} ${digest}\n`);
+  return digest;
 }
 
 /**
@@ -528,6 +554,7 @@ export function build(outputRoot) {
       const closure = BUNDLES[destination];
       if (closure) {
         writeLicenses(join(outputRoot, name), bundleShared(from, to, closure, destination), name);
+        if (STAMPED.has(destination)) stampSource(to, VERSION);
       } else cpSync(from, to);
     }
     stripGeneratedAnchors(join(outputRoot, name), name);
