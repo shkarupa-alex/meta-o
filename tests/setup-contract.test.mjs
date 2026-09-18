@@ -198,3 +198,33 @@ test("mo-setup ships a papercut template and the history contract it must apply"
   // guessed, so the template may not leave it to the reader.
   assert.match(history, /без этой строки/u);
 });
+
+test("the setup contract separates current-tree checking from history checking", () => {
+  // Without the declaration form, "does this project gate its history?" is a
+  // guess, and a guess here is indistinguishable from a real answer.
+  for (const phrase of [
+    "Knowledge id history",
+    "history_cutoff_sha",
+    "exactly one fenced block",
+    "substring of the declared quality command",
+    "disposable clone",
+  ]) {
+    assert.ok(contractProse.includes(phrase.replace(/\s+/gu, " ")), phrase);
+  }
+  assert.match(contractProse, /history=unknown/u);
+  // A regex Markdown parser is what the project contract forbids everywhere
+  // else; the one document that tells other projects how to parse must say so.
+  assert.match(contractProse, /never with a regular expression/u);
+  // Boundaries are per-project: copying the supplier's cutoff would silently
+  // exempt exactly the history the target project needs checked.
+  assert.match(contractProse, /never copied from the supplier/u);
+});
+
+test("the setup contract requires a linked commands-and-papercuts document", () => {
+  for (const phrase of ["docs/papercut.md", "linked from", "stale line is removed"]) {
+    assert.ok(contractProse.includes(phrase), phrase);
+  }
+  // The narrow rule is the whole value: a document that collects one-off
+  // incidents stops being read, and methodology friction has its own channel.
+  assert.match(contractProse, /one-off incidents and methodology friction/u);
+});

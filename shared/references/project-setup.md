@@ -16,6 +16,12 @@ Inspect substance, not file presence. A ready project has:
 - a branch-local feature backlog whose temporary entries have reason, practical
   impact and next step, plus a project-owned non-mutating `MO-BACKLOG/1` closure
   command and G0/GC/G1/G2 rules in the entry contract;
+- a short commands-and-papercuts document, `docs/papercut.md` by default and any
+  equivalent accepted on content, linked from `AGENTS.md`, whose writing rule is
+  narrow on purpose: a frequent or routine command hung or failed and the cause
+  is known, so one short line records what it does, what it is for and what did
+  not work; a stale line is removed by the change that made it wrong; one-off
+  incidents and methodology friction belong elsewhere and would be lost here;
 - E2E scenarios and an acceptance-to-proof mapping;
 - a plain-language README explaining purpose, use, constraints, commands and
   links to the knowledge layer;
@@ -38,6 +44,38 @@ mixed artifacts; only a genuinely undecidable case belongs in backlog.
 Internal Markdown links use a label containing the target document's H1 title,
 not its path. Enforce resolution and labels with a mature Markdown AST/link
 tool, never a regex Markdown parser.
+
+## Knowledge id history
+
+Current-tree checking and history checking are different claims. The tree shows
+the identifiers agree now; the history shows no meaning was redefined and no
+identifier deleted unnoticed on the way here. Neither proves the other, so a
+ready project states both.
+
+Guessing is forbidden, which makes the absence of a declaration `unknown` rather
+than "probably none". A ready project declares the stage in `AGENTS.md`, or in
+the document `AGENTS.md` names as its quality contract, as a level-two section
+whose heading contains `Knowledge id history` and which holds:
+
+- exactly one fenced block containing exactly one command line — the history
+  stage;
+- exactly one line naming the project's authoritative quality command;
+- exactly one YAML record with the key `history_cutoff_sha`, the project's lower
+  boundary.
+
+Parse that section with a real Markdown AST, never with a regular expression
+over the document. If the section is missing, or any of those counts is not
+exactly one, the result is `history=unknown` with `cutoff=none` and no guess.
+
+The stage must be a substring of the declared quality command: a stage that
+exists but is not part of the authoritative check is not a gate. Its presence is
+proven by behaviour in a disposable clone, never by running the project's full
+quality command and never by touching the candidate worktree.
+
+The entry contract also states the authorization grammar the stage enforces: a
+commit trailer with the verbs `remove`, `reuse` or `editorial`, and a matching
+`knowledge_id_change` record in the same commit. A boundary and its commit ids
+belong to the project that owns them and are never copied from the supplier.
 
 ## Tooling and purpose
 
