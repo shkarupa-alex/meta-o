@@ -41,6 +41,14 @@ Before starting agents:
    committed SHA before substantive implementation; `NOT-EMPTY` and `UNKNOWN`
    both block.
 
+A project that cannot answer these is not ready, and no lifecycle skill prepares
+it on its own initiative. A missing `MO-BACKLOG/1` command, a missing papercut
+document or a missing identifier-history gate is a readiness gap: report it as
+`needs_attention`, name what is missing, and recommend that the human run the
+setup skill. Setting a project up changes files a human never asked to change,
+which is why it is their call and not a step taken silently on the way to
+something else.
+
 The executor's first coherent commit materializes a temporary feature bundle:
 the accepted specification, `user-ledger.md` and a short `checklist.md` of
 observable outcomes, tests/knowledge, applicable E2E and two final review

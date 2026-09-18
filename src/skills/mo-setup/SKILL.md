@@ -10,7 +10,9 @@ Start only when the user names `mo-setup`; a generic environment or tooling
 question does not activate setup mutation.
 
 Read [Project setup contract](references/project-setup.md),
-[Backend contract](references/backend-contract.md), and
+[Backend contract](references/backend-contract.md),
+[Обратная связь о методологии](references/methodology-feedback.md),
+[Маршрутизация подтверждённой внешней работы](references/issue-routing.md), and
 [Purpose and architecture contract](references/purpose-and-architecture.md)
 completely. For Python read [Python QC profile](references/qc-python.md); for
 JavaScript/TypeScript read

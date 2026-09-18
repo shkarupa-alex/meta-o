@@ -13,7 +13,8 @@ Read [Feature lifecycle](references/methodology.md),
 [Backend contract](references/backend-contract.md),
 [Portable review protocol](references/review-protocol.md),
 [Orca native mechanics](references/orca-mechanics.md), and
-[Маршрутизация подтверждённой внешней работы](references/issue-routing.md), and
+[Маршрутизация подтверждённой внешней работы](references/issue-routing.md),
+[Обратная связь о методологии](references/methodology-feedback.md), and
 [Purpose and architecture contract](references/purpose-and-architecture.md)
 completely. Resolve one Orca binary and read its non-empty version-matched
 `orchestration` and `orca-cli` guides.
@@ -64,6 +65,14 @@ the executor both immutable reports only through its verified
 pair paths/sizes; wait for exact `Review-Handoff-Ack` before cleanup. Keep
 remediation reviewers hot, and use a fresh final same-SHA pair. Public updates
 contain only candidate, pair verdict and summed authored P0–P3 census.
+
+Confirmed friction in a Meta-O skill, reference or script is `ISS-16`: search
+the repository named by this skill's `metadata.repository`, comment on a match
+or create one sanitized Issue, and never write it anywhere else. Without that
+field there is no addressee, so the observation goes to the human as
+`needs_attention`. A worker reports friction to you as one ordinary
+`Methodology-Friction:` message; in an eval or E2E run nothing is written
+outside at all.
 
 For a confirmed out-of-scope technical defect, apply the bundled Issue-routing
 decision table:

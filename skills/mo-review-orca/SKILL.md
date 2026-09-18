@@ -10,6 +10,8 @@ This skill starts only when the user names `mo-review-orca` or the active
 orchestration skill calls it. A generic code-review request is not activation.
 
 Read [Portable review protocol](references/review-protocol.md),
+[Обратная связь о методологии](references/methodology-feedback.md),
+[Маршрутизация подтверждённой внешней работы](references/issue-routing.md),
 [Review brief](references/review-brief.md),
 [Backend contract](references/backend-contract.md),
 [Orca native mechanics](references/orca-mechanics.md), and

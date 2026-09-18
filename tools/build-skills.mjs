@@ -233,6 +233,7 @@ export const SHARED_PLAN = {
     ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
     ["references/orca-mechanics.md", "references/orca-mechanics.md"],
     ["references/issue-routing.md", "references/issue-routing.md"],
+    ["references/methodology-feedback.md", "references/methodology-feedback.md"],
     ["scripts/mo-models.mjs", "scripts/mo-models.mjs"],
     ["scripts/mo-backlog.mjs", "scripts/mo-backlog.mjs"],
     ["scripts/mo-harness-screen.mjs", "scripts/mo-harness-screen.mjs"],
@@ -241,6 +242,8 @@ export const SHARED_PLAN = {
   ],
   "mo-review-orca": [
     ["references/backend-contract.md", "references/backend-contract.md"],
+    ["references/issue-routing.md", "references/issue-routing.md"],
+    ["references/methodology-feedback.md", "references/methodology-feedback.md"],
     ["references/review-protocol.md", "references/review-protocol.md"],
     ["references/review-brief.md", "references/review-brief.md"],
     ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
@@ -252,6 +255,8 @@ export const SHARED_PLAN = {
   ],
   "mo-setup": [
     ["references/project-setup.md", "references/project-setup.md"],
+    ["references/issue-routing.md", "references/issue-routing.md"],
+    ["references/methodology-feedback.md", "references/methodology-feedback.md"],
     ["scripts/mo-backlog.mjs", "scripts/mo-backlog.mjs"],
     ["scripts/mo-harness-screen.mjs", "scripts/mo-harness-screen.mjs"],
     ["scripts/mo-knowledge-history.mjs", "scripts/mo-knowledge-history.mjs"],
@@ -259,8 +264,10 @@ export const SHARED_PLAN = {
     ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
     ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],
   ],
+  "mo-e2e": [["references/methodology-feedback.md", "references/methodology-feedback.md"]],
   "mo-watchdog": [
     ["references/watchdog.md", "references/watchdog.md"],
+    ["references/methodology-feedback.md", "references/methodology-feedback.md"],
     ["scripts/mo-watchdog.sh", "scripts/mo-watchdog.sh"],
   ],
 };

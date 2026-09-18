@@ -92,6 +92,7 @@ test("the Issue decision table is rectangular, total and fail-closed", () => {
       "ISS-13",
       "ISS-14",
       "ISS-15",
+      "ISS-16",
     ],
   );
   const tokens = markdown.parse(source("shared/references/issue-routing.md"), {});
@@ -105,7 +106,7 @@ test("the Issue decision table is rectangular, total and fail-closed", () => {
   const allowed = new Set(values.slice(1, values.indexOf("required_action")));
   assert.deepEqual(
     [...allowed],
-    ["upstream_issue", "project_issue", "unconfirmed", "either", "mixed"],
+    ["upstream_issue", "project_issue", "methodology_issue", "unconfirmed", "either", "mixed"],
   );
   for (const [scenario, appliesTo, , action, forbidden] of rows.slice(1)) {
     assert.ok(allowed.has(appliesTo), `${scenario}: invalid route context`);
@@ -127,7 +128,7 @@ test("the installable orchestrator carries the complete Issue-routing contract",
     source("skills/mo-orchestrate-orca/SKILL.md"),
     /\[Маршрутизация подтверждённой внешней работы\]\(references\/issue-routing\.md\)/u,
   );
-  for (const scenario of ["ISS-01", "ISS-07A", "ISS-10", "ISS-15"]) {
+  for (const scenario of ["ISS-01", "ISS-07A", "ISS-10", "ISS-15", "ISS-16"]) {
     assert.match(shared, new RegExp(`\\| ${scenario}\\s+\\|`, "u"));
   }
   assert.match(shared, /glab issue note.*glab api --hostname.*--input/su);
