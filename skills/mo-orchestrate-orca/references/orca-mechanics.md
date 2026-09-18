@@ -158,9 +158,13 @@ no `path` in `orca worktree list --json`. Nothing about the backend is degraded
 The path answers where the shell stands, not what owns it: an ordinary shell
 started inside a registered worktree matches a `path` and still has no terminal
 of its own. So a match is confirmed once, publicly, before any relative selector
-is used — `orca terminal read --terminal current --screen --json`. A readable
-frame proves the coordinator is inside; `terminal_handle_stale`, an unknown
-handle or any other refusal means outside, whatever the path said.
+is used — `orca terminal read --screen --json` with no `--terminal`, which the
+help defines as the active terminal of the current worktree. A readable frame
+proves the coordinator is inside; `no_active_terminal` or any other refusal
+means outside, whatever the path said. `--terminal` takes a runtime-issued
+handle and nothing else, so the relative words that select a worktree are not
+handles at all: given one, Orca answers `terminal_handle_stale` on both sides of
+the boundary, which decides nothing.
 
 Outside, the Run still comes back with a `coordinator_handle`, and it may name a
 terminal belonging to somebody else's session: Orca fills the field from its own

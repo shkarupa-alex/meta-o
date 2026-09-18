@@ -100,11 +100,15 @@ test("the outside route is named by its sign and by the commands it changes", ()
     assert.ok(mechanics.includes(phrase), `mechanics never says: ${phrase}`);
   }
   // A live rehearsal shell stood inside a registered worktree and still had no
-  // terminal: the path matched while `current` answered `terminal_handle_stale`.
+  // terminal of its own: the path matched while the handle-free screen read
+  // answered `no_active_terminal`. The word `current` is not a selector of
+  // `--terminal`, which takes a runtime-issued handle, so it answers
+  // `terminal_handle_stale` on both sides of the boundary and proves nothing.
   for (const phrase of [
-    "orca terminal read --terminal current --screen --json",
-    "`terminal_handle_stale`",
+    "orca terminal read --screen --json",
+    "`no_active_terminal`",
     "means outside, whatever the path said",
+    "runtime-issued handle",
     // Observed live: the Run came back bound to an unrelated session's tab, and
     // releasing a worker bound to a caller-made terminal freed no process.
     "may name",

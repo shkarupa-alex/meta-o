@@ -45,6 +45,7 @@ test("every recorded frame classifies as the surface it was captured from", () =
     });
   assert.deepEqual(observed, [
     "claude-prompt-cold.screen agent_prompt inject claude",
+    "claude-prompt-meter-row.screen agent_prompt inject claude",
     "claude-prompt.screen agent_prompt inject claude",
     "claude-trust-no.screen trust_ui accept_trust claude",
     "claude-trust-yes.screen trust_ui confirm_trust claude",
@@ -54,20 +55,25 @@ test("every recorded frame classifies as the surface it was captured from", () =
   ]);
 });
 
-test("a reviewer that has spent no context is still at an agent prompt", () => {
-  // The warm frame keeps the context meter inside the status line, after a
-  // `│`; a session that has said nothing yet puts it on its own row. A fresh
-  // session is exactly the state the final review pair starts in, so the
-  // classifier that refuses it blocks the one delivery it must allow.
-  const cold = frame("claude-prompt-cold.screen");
-  assert.match(cold, /^\s*Context [░▒▓]+ 0\/1\.0M$/mu);
-  assert.doesNotMatch(cold, /│.*Context /u);
-  const verdict = classifyScreen(cold);
-  assert.equal(verdict.state, "agent_prompt");
-  assert.equal(verdict.action, "inject");
-  assert.equal(verdict.version, "claude-prompt-cold-2026-09-18");
-  // The composer is still read from the same row, so a typed draft refuses.
-  assert.equal(classifyScreen(cold.replace(/^❯$/mu, "❯ unsent")).action, "refuse");
+test("the context meter is recognized wherever the status line puts it", () => {
+  // One frame is a session that has said nothing, the other the same session
+  // after a full review. Both carry a branch label long enough to push the
+  // meter off the status line, and the second one's bar is partly filled: the
+  // row position follows width, and the fill follows work. A fresh session is
+  // the state every final pair starts in and an idle spent one is the state
+  // every follow_up finds, so refusing either blocks a required delivery.
+  for (const name of ["claude-prompt-cold.screen", "claude-prompt-meter-row.screen"]) {
+    const captured = frame(name);
+    assert.doesNotMatch(captured, /│.*Context /u, name);
+    const verdict = classifyScreen(captured);
+    assert.equal(verdict.state, "agent_prompt", name);
+    assert.equal(verdict.action, "inject", name);
+    assert.equal(verdict.version, "claude-prompt-meter-row-2026-09-18", name);
+    // The composer is still read from the same row, so a typed draft refuses.
+    assert.equal(classifyScreen(captured.replace(/^❯$/mu, "❯ unsent")).action, "refuse", name);
+  }
+  assert.match(frame("claude-prompt-cold.screen"), /^\s*Context ░+ 0\/1\.0M$/mu);
+  assert.match(frame("claude-prompt-meter-row.screen"), /^\s*Context █[░▒▓]* \d+k\/1\.0M$/mu);
 });
 
 test("each stored frame says where it came from", () => {

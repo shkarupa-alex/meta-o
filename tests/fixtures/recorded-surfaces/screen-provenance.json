@@ -23,8 +23,14 @@
     {
       "file": "claude-prompt-cold.screen",
       "harness": "claude",
-      "how": "orca terminal read --screen on a freshly started reviewer terminal of this run, before any message; the same harness version as claude-prompt.screen, with an unspent context meter",
+      "how": "orca terminal read --screen on a freshly started reviewer terminal of this run, before any message; the same harness version as claude-prompt.screen, with a branch label long enough to push the context meter onto its own row",
       "trimmed": "dropped the shell line that launched the harness; nothing else"
+    },
+    {
+      "file": "claude-prompt-meter-row.screen",
+      "harness": "claude",
+      "how": "orca terminal read --screen on the same terminal after it had finished a review, so the meter sits on its own row with a partly filled bar; captured to prove the row position follows status-line width, not spent context",
+      "trimmed": "kept the last six rows; the scrollback above them is review prose"
     },
     {
       "file": "codex-prompt.screen",

@@ -40,14 +40,16 @@ export const SCREENS = [
     input: /^[ \t]*❯[ \t]?(.*)$/mu,
   },
   {
-    // The same harness version, cold. A session that has spent no context puts
-    // the meter on its own row instead of after the `│` of the status line, so
-    // the warm anchor above does not match the one state a fresh reviewer is
-    // always in. Both frames were captured live from this harness.
-    version: "claude-prompt-cold-2026-09-18",
+    // The same harness version, one row wider. What moves the context meter off
+    // the status line is the width of that line, not how much context was
+    // spent: a long branch label pushes the meter onto its own row, where the
+    // `│` anchor above cannot see it. The fill glyph is part of the meter, so
+    // the class spans an empty bar and a filled one — a frame recognized while
+    // idle must stay recognized after the session has worked.
+    version: "claude-prompt-meter-row-2026-09-18",
     harness: "claude",
     state: "agent_prompt",
-    anchors: [/^\s*❯/mu, /^\s*Context [░▒▓]+ \d/mu],
+    anchors: [/^\s*❯/mu, /^\s*Context [░▒▓█]+ \d/mu],
     input: /^[ \t]*❯[ \t]?(.*)$/mu,
   },
   {

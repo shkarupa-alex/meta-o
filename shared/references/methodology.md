@@ -168,7 +168,10 @@ No universal question classes, correlation IDs or option grammar are required.
 After the executor settles, validate the branch, clean worktree, commit object
 and full `HEAD`, then freeze that SHA. Start both reviewer sessions concurrently
 and independently. Give them the same task/spec, complete intent ledger and the
-same candidate SHA. Do not give either reviewer peer output.
+same candidate SHA. On the post-cleanup candidate of section 7 those artifacts
+are no longer in the tree: give the frozen object ids the deletion recorded, and
+the durable knowledge that replaced them. Do not give either reviewer peer
+output.
 
 Each reviewer is a native interactive Codex, Claude Code or OpenCode instance
 started inside a terminal, pane or session by the selected backend's native

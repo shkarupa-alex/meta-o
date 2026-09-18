@@ -47,6 +47,15 @@ is tracked and therefore reachable at the candidate SHA. Name it there. The same
 holds for every other cited document: cite the tracked path, not the copy that
 happened to be open.
 
+Closure deletes that specification, so the final same-SHA pair reviews a
+candidate whose tree no longer holds it. There the brief names the durable
+knowledge instead — the acceptance map, the architecture decisions, the
+methodology — and cites the specification by the frozen object id the project
+recorded when it removed the file. A blob id is reachable from the repository
+with `git cat-file blob <id>` even though no tree points at it; a path that the
+candidate does not contain is not a citation but a dead reference, and a brief
+that names one has to say so rather than let the reviewer discover it.
+
 ## What may be said to a human requester
 
 A human requester who asks for business questions receives, at most: one

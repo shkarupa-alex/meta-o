@@ -887,6 +887,28 @@ test("session, delivery, handoff and waiter invariants remain executable instruc
   assert.match(setup, /git ls-files -- \.orca\/ spec\//u);
 });
 
+test("the final pair is told where its grounding went after cleanup", () => {
+  // Closure deletes the specification, and the fresh final pair reads the SHA
+  // that no longer holds it. Without a second route the brief must cite a path
+  // the candidate does not contain, which is how a reviewer ends up reasoning
+  // from a section it never read.
+  const brief = source("shared/references/review-brief.md").replace(/\s+/gu, " ");
+  assert.match(brief, /Closure deletes that specification/u);
+  assert.match(brief, /frozen object id/u);
+  assert.match(brief, /git cat-file blob <id>/u);
+  const methodology = source("shared/references/methodology.md").replace(/\s+/gu, " ");
+  assert.match(methodology, /give the frozen object ids the deletion recorded/u);
+  for (const path of ["src/skills/mo-review-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
+    const review = source(path).replace(/\s+/gu, " ");
+    assert.match(review, /until closure removes it/u, path);
+    assert.match(review, /cites the removed specification by its frozen object id/u, path);
+  }
+  // The route only works if the project really records those ids on deletion.
+  const acceptance = source("docs/acceptance.md");
+  assert.match(acceptance, /issue_fixes_closure:/u);
+  assert.match(acceptance, /spec_blob: [0-9a-f]{40}/u);
+});
+
 test("every reviewer wave has a mode the protocol can actually issue", () => {
   // A wave whose mode is unnamed is not a free choice, it is three impossible
   // ones: `follow_up` needs a prior report the fresh pair has none of, `fast`
