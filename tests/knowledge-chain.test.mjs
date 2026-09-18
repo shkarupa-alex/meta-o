@@ -196,7 +196,7 @@ test("every anchor reference in the project resolves to a defined id", () => {
     // data. It says so with the same marker `make mo-vocabulary` reads, so one
     // declaration answers both gates instead of two mechanisms disagreeing.
     const text = readFileSync(path, "utf8");
-    if (deliberateFixture(text)) continue;
+    if (deliberateFixture(text, path)) continue;
     for (const id of references(text, path)) {
       assert.ok(defined.has(id), `${path}: dangling reference ${id}`);
     }
@@ -235,7 +235,7 @@ test("every first-party module names a decision and never the business layer", (
     assert.ok(cited.length > 0, `${path}: purpose names no architecture decision`);
     for (const id of cited) assert.ok(defined.has(id), `${path}: cites unknown ${id}`);
     const body = readFileSync(path, "utf8");
-    const business = (deliberateFixture(body) ? [] : references(body, path)).filter((id) =>
+    const business = (deliberateFixture(body, path) ? [] : references(body, path)).filter((id) =>
       id.startsWith("§B-"),
     );
     assert.deepEqual(business, [], `${path}: code cites the business layer directly`);

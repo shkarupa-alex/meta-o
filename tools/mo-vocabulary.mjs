@@ -206,7 +206,12 @@ function suppressed(lines, index) {
  * nobody reading the top would know. Only comments, a shebang and leading
  * frontmatter count; the first line of real content ends the block.
  */
-export function leadingHeader(text) {
+export function leadingHeader(text, path = "") {
+  // `#` opens a comment in Python, shell and YAML and a heading in Markdown, so
+  // the answer depends on which file this is. Getting it wrong either way is
+  // bad: a heading that exempts its own document, or a language whose only
+  // comment syntax cannot make the declaration at all.
+  const hash = [".py", ".sh", ".yml", ".yaml"].some((suffix) => path.endsWith(suffix));
   const kept = [];
   let closing = null;
   for (const line of String(text).split("\n")) {
@@ -216,7 +221,7 @@ export function leadingHeader(text) {
       if (trimmed.endsWith(closing)) closing = null;
       continue;
     }
-    const opened = openedBlock(trimmed, kept);
+    const opened = openedBlock(trimmed, kept, hash);
     if (opened === undefined) break;
     kept.push(line);
     closing = opened;
@@ -228,8 +233,9 @@ export function leadingHeader(text) {
  * What a header line opens, `null` when it opens nothing, `undefined` when the
  * line is already content. §A-MEMORY-01 ends the block at the first such line.
  */
-function openedBlock(trimmed, kept) {
+function openedBlock(trimmed, kept, hash) {
   if (trimmed === "" || trimmed.startsWith("#!") || trimmed.startsWith("//")) return null;
+  if (hash && trimmed.startsWith("#")) return null;
   if (trimmed === "---" && kept.every((entry) => entry.trim() === "")) return "---";
   const pair = [
     ["/*", "*/"],
@@ -248,8 +254,8 @@ function openedBlock(trimmed, kept) {
  * marker, one extra word, and only in the opening declaration block, so a
  * reader sees the exemption before the first line it covers.
  */
-export function deliberateFixture(text) {
-  return leadingHeader(text).includes(SUPPRESS_FILE);
+export function deliberateFixture(text, path = "") {
+  return leadingHeader(text, path).includes(SUPPRESS_FILE);
 }
 
 /**
@@ -263,7 +269,7 @@ export function vocabularyFindings({ files, read, layers = DEFAULT_LAYERS, minMe
   const mentions = new Map();
   for (const path of files) {
     const text = read(path);
-    if (deliberateFixture(text)) continue;
+    if (deliberateFixture(text, path)) continue;
     const markdown = path.endsWith(".md");
     if (markdown) for (const token of definedTokens(text)) defined.add(token);
     for (const { token, line } of markdown ? citedTokens(text) : citedInSource(text)) {

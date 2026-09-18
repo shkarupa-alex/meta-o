@@ -216,6 +216,32 @@ test("a file-wide claim counts only where a reader meets it first", () => {
   }
 });
 
+test("each scanned language can make the declaration in its own comment syntax", () => {
+  const ghost = ["§A", "GHOST", "01"].join("-");
+  const corpus = (marker) => [marker, "", `first: ${ghost}`, `second: ${ghost}`].join("\n");
+  for (const path of ["fixtures/a.py", "fixtures/a.sh", "fixtures/a.yml", "fixtures/a.yaml"]) {
+    const declared = corpus("# mo-vocabulary-ok file");
+    assert.ok(deliberateFixture(declared, path), `${path}: hash declaration not recognized`);
+    assert.deepEqual(findings({ [path]: declared }), [], path);
+    // Below the first content line the same words claim nothing.
+    const late = [`first: ${ghost}`, `second: ${ghost}`, "# mo-vocabulary-ok file"].join("\n");
+    assert.equal(deliberateFixture(late, path), false, `${path}: a late marker suppressed`);
+    assert.deepEqual(kinds(findings({ [path]: late })), [`undefined_id ${ghost}`], path);
+  }
+  // A Markdown heading is content, not a comment: a document may not exempt
+  // itself by writing the words in its own title.
+  const heading = corpus("# mo-vocabulary-ok file");
+  assert.equal(deliberateFixture(heading, "docs/a.md"), false);
+  assert.deepEqual(kinds(findings({ "docs/a.md": heading })), [`undefined_id ${ghost}`]);
+  // Markdown keeps the syntaxes it does have.
+  for (const marker of [
+    "<!-- mo-vocabulary-ok file -->",
+    "---\nnote: mo-vocabulary-ok file\n---",
+  ]) {
+    assert.ok(deliberateFixture(corpus(marker), "docs/b.md"), marker);
+  }
+});
+
 test("errors block and warnings do not, unless asked", () => {
   const warned = vocabularyReport([
     {
