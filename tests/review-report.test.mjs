@@ -158,6 +158,43 @@ test("a container before the evidence is diagnostic text, not an index entry", (
   assert.equal(validateReport(paired, context()).status, "valid");
 });
 
+test("a wrapped summary is one entry, and two rows are two", () => {
+  // Reviewers write the index as consecutive rows and formatters wrap long
+  // sentences. Both shapes are ordinary, and both have to keep meaning what
+  // their author meant.
+  const wrapped = report({
+    verdict: "FINDINGS",
+    counts: "P0=0 P1=0 P2=1 P3=0",
+    index:
+      "F-001 [P2] The guard is evadable when the summary is long enough to\nwrap onto a second row.\n\n",
+    findings: "F-001\n[P2] confirmed.\nProof and direction.\n",
+  });
+  assert.equal(validateReport(wrapped, context()).status, "valid");
+
+  const two = report({
+    verdict: "FINDINGS",
+    counts: "P0=0 P1=0 P2=2 P3=0",
+    index:
+      "F-001 [P2] The first finding, whose summary also happens to\nwrap.\nF-002 [P2] The second finding, on its own row.\n\n",
+    findings: "F-001\n[P2] one.\nF-002\n[P2] two.\n",
+  });
+  assert.equal(validateReport(two, context()).status, "valid");
+
+  // A paragraph that does not open with a key is still malformed: that is the
+  // difference between a continuation and prose nobody keyed.
+  assert.equal(
+    reasonOf(
+      report({
+        verdict: "FINDINGS",
+        counts: "P0=0 P1=0 P2=1 P3=0",
+        index: "A note before the index.\nF-001 [P2] First.\n\n",
+        findings: "F-001\n[P2] one.\n",
+      }),
+    ),
+    "index_key_order",
+  );
+});
+
 test("a report that answers a different call is rejected before its body", () => {
   assert.equal(reasonOf(report({ execution: "ctx_stale" })), "execution_mismatch");
   assert.equal(reasonOf(report({ candidate: "b".repeat(40) })), "candidate_mismatch");

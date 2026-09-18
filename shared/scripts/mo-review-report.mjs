@@ -43,24 +43,28 @@ const UNKNOWN_REASONS = new Set([
 
 const fail = (reason, line) => ({ status: "malformed", reason, line: line + 1 });
 
-/**
- * The line numbers that are top-level prose, and nothing else.
- *
- * §A-REVIEW-04 says a marker inside a code span, a quote or a list is body
- * evidence: a reviewer quoting `End-Review` while explaining a finding has not
- * ended the report. Only a top-level paragraph of the block AST can carry a
- * structural marker, so the structure is read from the AST and the text is
- * then indexed by line.
- */
+/** §A-REVIEW-04 indexes those same paragraphs by line for the section markers. */
 export function topLevelProse(text) {
-  const positions = new Set();
-  for (const node of fromMarkdown(text).children) {
-    if (node.type !== "paragraph") continue;
-    for (let line = node.position.start.line; line <= node.position.end.line; line += 1) {
-      positions.add(line - 1);
-    }
-  }
-  return positions;
+  return new Set(
+    topLevelParagraphs(text).flatMap(({ line, rows }) => rows.map((_, step) => line + step)),
+  );
+}
+
+/**
+ * The top-level paragraph nodes, each as its first line and its own rows.
+ *
+ * §A-REVIEW-04 reads structure from the block AST: a marker inside a code span,
+ * a quote or a list is body evidence, and a reviewer quoting `End-Review` while
+ * explaining a finding has not ended the report.
+ */
+export function topLevelParagraphs(text) {
+  const lines = text.split("\n");
+  return fromMarkdown(text)
+    .children.filter((node) => node.type === "paragraph")
+    .map((node) => ({
+      line: node.position.start.line - 1,
+      rows: lines.slice(node.position.start.line - 1, node.position.end.line),
+    }));
 }
 
 /** §A-REVIEW-04 reads the anchored envelope before any body byte is trusted. */
@@ -138,30 +142,39 @@ function readSections(lines, prose) {
 /**
  * §A-REVIEW-04 keys the index monotonically so a body can answer it one to one.
  *
- * Only top-level prose is an index entry. A reviewer who quotes a command, a
- * previous finding or a list of checks between the counts and the evidence is
- * still writing the same report, and reading those lines as index keys threw
- * away a valid authoritative response as malformed.
+ * Reviewers write the index as consecutive rows, and a long summary wraps. So
+ * an entry starts where a row starts with its key, and every row after it that
+ * does not is the same entry continued. Reading each row as an entry rejected a
+ * wrapped summary; reading each paragraph as one entry rejected every report
+ * with two findings. Containers stay out of this entirely: only top-level
+ * paragraphs are offered here.
  */
-function readIndex(lines, prose, from, to, counts) {
-  const positions = [...prose]
-    .filter((position) => position >= from && position < to)
-    .sort((left, right) => left - right)
-    .filter((position) => lines[position] && !lines[position].startsWith("Unknown-Reason:"));
-  const entries = positions.map((position) => lines[position].match(/^(F-\d{3}) \[(P[0-3])\] .+/u));
-  const bad = entries.findIndex((entry) => entry === null);
-  if (bad !== -1) return fail("index_key_order", positions[bad]);
+function readIndex(paragraphs, from, to, counts) {
+  const found = paragraphs.filter(
+    ({ line, rows }) => line >= from && line < to && !rows[0].startsWith("Unknown-Reason:"),
+  );
+  const entries = [];
+  for (const { line, rows } of found) {
+    for (const [step, row] of rows.entries()) {
+      const match = row.match(/^(F-\d{3}) \[(P[0-3])\] .+/u);
+      // An entry opens a paragraph; a row that follows one is that entry
+      // continued, however much it looks like structure on its own.
+      if (match) entries.push({ key: match[1], severity: match[2], line: line + step });
+      else if (step === 0) return fail("index_key_order", line);
+    }
+  }
   for (const [step, entry] of entries.entries()) {
-    if (entry[1] !== `F-${String(step + 1).padStart(3, "0")}`) return fail("index_key_order", from);
+    if (entry.key !== `F-${String(step + 1).padStart(3, "0")}`)
+      return fail("index_key_order", from);
   }
   const severities = [0, 0, 0, 0];
-  for (const entry of entries) severities[Number(entry[2].slice(1))] += 1;
+  for (const entry of entries) severities[Number(entry.severity.slice(1))] += 1;
   const total = counts.reduce((sum, count) => sum + count, 0);
   if (total !== entries.length) return fail("counts_mismatch", 5);
   for (const [step, count] of counts.entries()) {
     if (severities[step] !== count) return fail("counts_mismatch", 5);
   }
-  return { keys: entries.map((entry) => ({ key: entry[1], severity: entry[2] })) };
+  return { keys: entries.map(({ key, severity }) => ({ key, severity })) };
 }
 
 /** §A-REVIEW-04 pairs every index key with a body that states its own severity. */
@@ -231,7 +244,7 @@ export function validateReport(text, expected) {
   const prose = topLevelProse(text);
   const sections = readSections(lines, prose);
   if (sections.status === "malformed") return sections;
-  const index = readIndex(lines, prose, 6, sections.evidence, header.counts);
+  const index = readIndex(topLevelParagraphs(text), 6, sections.evidence, header.counts);
   if (index.status === "malformed") return index;
   const at = sections.at;
   if (bodyOf(lines, at.get("Grounding"), at.get("Scope and checks")).length === 0) {
