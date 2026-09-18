@@ -904,6 +904,15 @@ test("the CLI exposes a bounded prompt without launching a model", () => {
   assert.doesNotMatch(result.stdout, /"verdict": "PASS"/u);
   assert.match(result.stdout, /native harness execution id/u);
   assert.match(result.stdout, /BLOCKED\|NOT_RUN\|NOT_AVAILABLE/u);
+  // Both mandatory actors once read "do not invoke the skill" as "no run is
+  // possible" and answered that their own harness was unavailable. The prompt
+  // now says whose execution is being recorded before it describes any
+  // unavailable shape.
+  assert.match(result.stdout, /documentary judgement, not a live run/u);
+  assert.match(result.stdout, /describes this evaluation turn/u);
+  assert.match(result.stdout, /never report it unavailable, blocked or not run/u);
+  const framing = result.stdout.indexOf("describes this evaluation turn");
+  assert.ok(framing < result.stdout.indexOf("cannot run, materialize"), "unavailable shapes lead");
   const frozen = JSON.parse(readFileSync(expectations, "utf8"));
   assert.equal(frozen.length, 1);
   assert.equal(frozen[0].coordinate, "find-reuse:required-codex:1");
