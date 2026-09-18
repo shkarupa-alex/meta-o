@@ -34,7 +34,10 @@ outcome: none | succeeded | failed | quota | capacity | reconnecting | compacted
 Malformed identity or fields are `unknown`. `sent|queued|delivered` never proves
 consumption. Acknowledgement follows processing of the complete delivery batch.
 `input_blocked` may be rebriefed or replaced; `output_blocked_after_work` must
-not repeat product work and needs the settled response or `needs_attention`.
+not repeat product work and needs the settled response or `needs_attention`. A
+run that did the work and then refused to deliver it is exactly that state: the
+outcome may read `refused`, but work stays `output_blocked_after_work`, because
+treating it as an ordinary refusal throws away work already done.
 
 Effectful native operations expose a stable operation/target id, idempotency
 semantics and authoritative confirmation. A receipt is not an effect.
