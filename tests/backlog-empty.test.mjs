@@ -11,9 +11,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, test } from "node:test";
 
-import { asciiJson, evaluate, inspectBacklog } from "../tools/backlog-empty.mjs";
+import { asciiJson, evaluate, inspectBacklog } from "../shared/scripts/mo-backlog.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
+const CLI = resolve(ROOT, "shared", "scripts", "mo-backlog.mjs");
 const roots = [];
 after(() => roots.forEach((root) => rmSync(root, { recursive: true, force: true })));
 
@@ -91,10 +92,14 @@ test("the AST owner distinguishes empty, entries, and arbitrary content", () => 
 });
 
 test("malformed CLI input is an internal error rather than an ambiguous backlog path", () => {
-  const result = spawnSync(process.execPath, ["tools/backlog-empty.mjs", "--candidate", "bad"], {
-    cwd: ROOT,
-    encoding: "utf8",
-  });
+  const result = spawnSync(
+    process.execPath,
+    ["shared/scripts/mo-backlog.mjs", "--candidate", "bad"],
+    {
+      cwd: ROOT,
+      encoding: "utf8",
+    },
+  );
   assert.equal(result.status, 2);
   assert.match(result.stderr, /reason=internal_error/u);
   assert.doesNotMatch(result.stderr, /reason=path_ambiguous/u);
@@ -205,4 +210,67 @@ test("ordinary QC tests the closure target without requiring the live notebook t
   });
   assert.equal(result.status, 2);
   assert.match(result.stderr, /MO-BACKLOG-NOT-EMPTY/u);
+});
+
+test("a foreign notebook needs its whole schema, never half of this project's", () => {
+  const isolated = repositoryFixture();
+  const run = (...args) =>
+    spawnSync(process.execPath, [CLI, "--repo", isolated, ...args], { encoding: "utf8" });
+  // Any one schema flag commits the caller to declaring all of it. Half a
+  // schema would silently check a foreign notebook against Russian headings.
+  for (const partial of [
+    ["--path", "notes/backlog.md"],
+    ["--title", "Backlog"],
+    ["--open-heading", "Open"],
+    ["--entry-field", "Reason."],
+    ["--path", "notes/backlog.md", "--title", "Backlog"],
+    ["--path", "notes/backlog.md", "--title", "Backlog", "--open-heading", "Open"],
+  ]) {
+    const result = run(...partial);
+    assert.equal(result.status, 2, partial.join(" "));
+    assert.match(result.stderr, /MO-BACKLOG-UNKNOWN version=1 reason=internal_error /u);
+  }
+  // A complete foreign schema is accepted and answers about that notebook.
+  const complete = run(
+    "--path",
+    "notes/backlog.md",
+    "--title",
+    "Backlog",
+    "--open-heading",
+    "Open",
+    "--entry-field",
+    "Reason.",
+  );
+  assert.equal(complete.status, 2);
+  assert.match(complete.stderr, /reason=missing_file .*notes\/backlog\.md/u);
+});
+
+test("the frozen line keeps its field order, names and streams", () => {
+  const isolated = repositoryFixture();
+  const empty = spawnSync(process.execPath, [CLI, "--repo", isolated], { encoding: "utf8" });
+  // §4.3 freezes this grammar byte for byte: an earlier revision renamed `sha=`
+  // to `head=` and dropped three fields, which broke every existing consumer.
+  assert.equal(empty.status, 0);
+  assert.equal(empty.stderr, "");
+  assert.match(
+    empty.stdout,
+    /^MO-BACKLOG-EMPTY version=1 sha=[a-f0-9]{40} worktree=(?:clean|dirty) path="docs\/backlog\.md" entries=0 content_nodes=0\n$/u,
+  );
+  const head = spawnSync(
+    process.execPath,
+    [CLI, "--repo", isolated, "--expect-head", "0".repeat(40)],
+    {
+      encoding: "utf8",
+    },
+  );
+  assert.equal(head.status, 2);
+  assert.equal(head.stdout, "");
+  assert.match(head.stderr, /^MO-BACKLOG-UNKNOWN version=1 reason=candidate_mismatch /u);
+  const remote = spawnSync(
+    process.execPath,
+    [CLI, "--repo", isolated, "--remote-head", "0".repeat(40)],
+    { encoding: "utf8" },
+  );
+  assert.equal(remote.status, 2);
+  assert.match(remote.stderr, /^MO-BACKLOG-UNKNOWN version=1 reason=remote_head_unreadable /u);
 });

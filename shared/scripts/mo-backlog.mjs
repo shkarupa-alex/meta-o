@@ -14,8 +14,7 @@ import { dirname, posix, resolve } from "node:path";
 
 import { fromMarkdown } from "mdast-util-from-markdown";
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const DEFAULT_PATH = "docs/backlog.md";
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const REASONS = new Set([
   "not_git_repository",
   "command_unavailable",
@@ -35,10 +34,45 @@ const REASONS = new Set([
   "internal_error",
 ]);
 
-const INTRO = [
-  "Здесь находится временная записная книжка только активной ветки фичи. Подтверждённая работа вне текущего объёма живёт в Issues проекта или внешнего владельца, а не здесь.",
-  "Каждая временная запись — раздел третьего уровня с полями Причина., Практическое влияние. и Следующий шаг.. Перед завершением жизненного цикла для каждой записи определяют исход, после чего раздел открытых записей снова пуст.",
-];
+/**
+ * The notebook schema this project declares for itself.
+ *
+ * §A-BACKLOG-01 ships the checker to other projects, and their notebook is
+ * written in their own language with their own field names. The defaults stay
+ * exactly what meta-o had, so a call without schema flags answers byte for byte
+ * as before; a foreign project must declare the whole schema rather than inherit
+ * half of this one.
+ */
+export const META_O_SCHEMA = {
+  path: "docs/backlog.md",
+  title: "Бэклог",
+  openHeading: "Открыто",
+  intro: [
+    "Здесь находится временная записная книжка только активной ветки фичи. Подтверждённая работа вне текущего объёма живёт в Issues проекта или внешнего владельца, а не здесь.",
+    "Каждая временная запись — раздел третьего уровня с полями Причина., Практическое влияние. и Следующий шаг.. Перед завершением жизненного цикла для каждой записи определяют исход, после чего раздел открытых записей снова пуст.",
+  ],
+  entryFields: ["Причина.", "Практическое влияние.", "Следующий шаг."],
+};
+
+const USAGE = `usage: mo-backlog.mjs [--candidate <40hex>] [--repo <root>] [schema options]
+
+  --candidate <40hex>    fail unless the observed HEAD is exactly this commit
+  --expect-head <sha>    same comparison under the name the gates use
+  --remote-head <sha>    fail unless the remote source HEAD is this commit
+  --repo <root>          repository to inspect (default: this checkout)
+  --path <rel>           notebook path inside the repository
+  --title <text>         expected level-one heading
+  --open-heading <text>  expected heading of the open section
+  --intro <text>         expected introductory paragraph, repeatable in order
+  --entry-field <text>   required field label of one entry, repeatable
+  --help                 print this grammar and exit
+
+Declaring any schema option requires --path, --title, --open-heading and at
+least one --entry-field: a partial schema would check a foreign notebook
+against this project's own wording.
+
+exit: 0 empty | 1 not empty | 2 unknown or call error
+`;
 
 /** §A-BACKLOG-01 keeps the diagnostic path stable and safe to embed in one line. */
 export function asciiJson(value) {
@@ -59,15 +93,13 @@ function normalizedText(node) {
 }
 
 /** §A-BACKLOG-01 rejects every non-schema node before the open section. */
-function isCanonicalPreamble(before) {
-  if (before.length !== 3) return false;
-  const [title, first, second] = before;
+function isCanonicalPreamble(before, schema) {
+  if (before.length !== schema.intro.length + 1) return false;
+  const [title, ...paragraphs] = before;
   if (title?.type !== "heading" || title.depth !== 1) return false;
-  if (first?.type !== "paragraph" || second?.type !== "paragraph") return false;
-  return (
-    normalizedText(title) === "Бэклог" &&
-    normalizedText(first) === INTRO[0] &&
-    normalizedText(second) === INTRO[1]
+  if (normalizedText(title) !== schema.title) return false;
+  return paragraphs.every(
+    (node, index) => node?.type === "paragraph" && normalizedText(node) === schema.intro[index],
   );
 }
 
@@ -75,7 +107,7 @@ function isCanonicalPreamble(before) {
  * §A-BACKLOG-01 owns the one backlog schema used by both closure and tests.
  * Nodes after `Открыто` are deliberately NOT-EMPTY, even when they are not H3.
  */
-export function inspectBacklog(source) {
+export function inspectBacklog(source, schema = META_O_SCHEMA) {
   let tree;
   try {
     tree = fromMarkdown(source);
@@ -85,11 +117,17 @@ export function inspectBacklog(source) {
   const children = tree.children;
   const h1 = children.filter((node) => node.type === "heading" && node.depth === 1);
   const open = children.filter(
-    (node) => node.type === "heading" && node.depth === 2 && normalizedText(node) === "Открыто",
+    (node) =>
+      node.type === "heading" && node.depth === 2 && normalizedText(node) === schema.openHeading,
   );
   const openIndex = children.indexOf(open[0]);
   const before = children.slice(0, openIndex);
-  if (h1.length !== 1 || open.length !== 1 || openIndex < 0 || !isCanonicalPreamble(before)) {
+  if (
+    h1.length !== 1 ||
+    open.length !== 1 ||
+    openIndex < 0 ||
+    !isCanonicalPreamble(before, schema)
+  ) {
     return { kind: "unknown", reason: "schema_invalid" };
   }
   const content = children.slice(openIndex + 1);
@@ -100,7 +138,7 @@ export function inspectBacklog(source) {
 }
 
 /** §A-BACKLOG-01 gives ordinary QC the same AST owner for temporary entry schema. */
-export function backlogEntries(source) {
+export function backlogEntries(source, schema = META_O_SCHEMA) {
   const tree = fromMarkdown(source);
   const entries = [];
   for (let index = 0; index < tree.children.length; index += 1) {
@@ -115,7 +153,12 @@ export function backlogEntries(source) {
       }
       body.push(normalizedText(child));
     }
-    entries.push({ title: normalizedText(node), body: body.join("\n") });
+    const text = body.join("\n");
+    entries.push({
+      title: normalizedText(node),
+      body: text,
+      missingFields: schema.entryFields.filter((field) => !text.includes(field)),
+    });
   }
   return entries;
 }
@@ -199,11 +242,34 @@ function settledResult(inspected, sha, worktree, path) {
   };
 }
 
+/**
+ * A stable HEAD alone does not freeze checkout bytes, so the exact path probe
+ * is repeated after the blob is read: a concurrent edit must not settle closure.
+ */
+function stillFrozen(root, path, sha, runGit) {
+  const after = runGit(root, ["rev-parse", "--verify", "HEAD"]);
+  if (after.status !== 0 || after.stdout.trim() !== sha) return "snapshot_changed";
+  return backlogPathState(root, path, runGit).reason ?? null;
+}
+
+/**
+ * The gates bind a merge to the HEAD they actually observed, so a declared
+ * remote source HEAD that is not this commit fails the same way a declared
+ * candidate does; only the typed reason differs.
+ */
+function headMismatch(sha, candidate, remoteHead) {
+  if (candidate !== null && candidate !== sha) return "candidate_mismatch";
+  if (remoteHead !== null && remoteHead !== sha) return "remote_head_unreadable";
+  return null;
+}
+
 /** §A-BACKLOG-01 proves one immutable committed backlog snapshot and no checkout bytes. */
 export function evaluate({
   root = ROOT,
-  path = DEFAULT_PATH,
+  schema = META_O_SCHEMA,
+  path = schema.path,
   candidate = null,
+  remoteHead = null,
   runGit = git,
 } = {}) {
   const worktree = worktreeState(root, runGit);
@@ -213,37 +279,94 @@ export function evaluate({
   const before = headSnapshot(root, runGit);
   if (before.reason) return unknown(before.reason, null, "unknown", normalized);
   const { sha } = before;
-  if (candidate !== null && candidate !== sha)
-    return unknown("candidate_mismatch", sha, worktree, normalized);
+  const declaredHead = headMismatch(sha, candidate, remoteHead);
+  if (declaredHead) return unknown(declaredHead, sha, worktree, normalized);
   const beforePath = backlogPathState(root, normalized, runGit);
   if (beforePath.reason) return unknown(beforePath.reason, sha, worktree, normalized);
   const committed = committedSource(root, normalized, runGit);
   if (committed.reason) return unknown(committed.reason, sha, worktree, normalized);
-  const inspected = inspectBacklog(committed.source);
-  const after = runGit(root, ["rev-parse", "--verify", "HEAD"]);
-  if (after.status !== 0 || after.stdout.trim() !== sha) {
-    return unknown("snapshot_changed", sha, worktree, normalized);
-  }
-  // A stable HEAD alone does not freeze checkout bytes: repeat the exact path
-  // probe after reading the blob so a concurrent edit cannot settle closure.
-  const afterPath = backlogPathState(root, normalized, runGit);
-  if (afterPath.reason) return unknown(afterPath.reason, sha, worktree, normalized);
+  const inspected = inspectBacklog(committed.source, schema);
+  const moved = stillFrozen(root, normalized, sha, runGit);
+  if (moved) return unknown(moved, sha, worktree, normalized);
   return settledResult(inspected, sha, worktree, normalized);
 }
 
-function main() {
-  const args = process.argv.slice(2);
-  let candidate = null;
-  if (args.length > 0) {
-    if (args.length !== 2 || args[0] !== "--candidate" || !/^[a-f0-9]{40}$/u.test(args[1])) {
-      const result = unknown("internal_error", null, worktreeState(ROOT), DEFAULT_PATH);
-      process.stderr.write(`${result.line}\n`);
-      process.exitCode = 2;
-      return;
-    }
-    candidate = args[1];
+const SCHEMA_FLAGS = new Set(["--path", "--title", "--open-heading", "--intro", "--entry-field"]);
+const REPEATABLE = new Set(["--intro", "--entry-field"]);
+const VALUED = new Set([
+  "--candidate",
+  "--expect-head",
+  "--remote-head",
+  "--repo",
+  ...SCHEMA_FLAGS,
+]);
+
+function collectArguments(args) {
+  const given = new Map();
+  for (let index = 0; index < args.length; index += 1) {
+    const flag = args[index];
+    if (flag === "--help") return { help: true };
+    if (!VALUED.has(flag) || index + 1 >= args.length) return { invalid: true };
+    const value = args[(index += 1)];
+    if (REPEATABLE.has(flag)) given.set(flag, [...(given.get(flag) ?? []), value]);
+    else if (given.has(flag)) return { invalid: true };
+    else given.set(flag, value);
   }
-  const result = evaluate({ candidate });
+  return { given };
+}
+
+// Half a schema is worse than none: the missing half falls back to this
+// project's own wording and checks a foreign notebook against it.
+function schemaComplete(given) {
+  return (
+    given.has("--path") &&
+    given.has("--title") &&
+    given.has("--open-heading") &&
+    (given.get("--entry-field") ?? []).length > 0
+  );
+}
+
+function parseArguments(args) {
+  const collected = collectArguments(args);
+  if (collected.help || collected.invalid) return collected;
+  const { given } = collected;
+  for (const flag of ["--candidate", "--expect-head", "--remote-head"]) {
+    if (given.has(flag) && !/^[a-f0-9]{40}$/u.test(given.get(flag))) return { invalid: true };
+  }
+  const declared = [...SCHEMA_FLAGS].some((flag) => given.has(flag));
+  if (declared && !schemaComplete(given)) return { invalid: true };
+  return { given, declared };
+}
+
+function main() {
+  const parsed = parseArguments(process.argv.slice(2));
+  if (parsed.help) {
+    process.stdout.write(USAGE);
+    return;
+  }
+  const root = parsed.given?.get("--repo") ?? ROOT;
+  if (parsed.invalid) {
+    const result = unknown("internal_error", null, worktreeState(root), META_O_SCHEMA.path);
+    process.stderr.write(`${result.line}\n`);
+    process.exitCode = 2;
+    return;
+  }
+  const { given, declared } = parsed;
+  const schema = declared
+    ? {
+        path: given.get("--path"),
+        title: given.get("--title"),
+        openHeading: given.get("--open-heading"),
+        intro: given.get("--intro") ?? [],
+        entryFields: given.get("--entry-field"),
+      }
+    : META_O_SCHEMA;
+  const result = evaluate({
+    root,
+    schema,
+    candidate: given.get("--candidate") ?? given.get("--expect-head") ?? null,
+    remoteHead: given.get("--remote-head") ?? null,
+  });
   const stream = result.status === "PASS" ? process.stdout : process.stderr;
   stream.write(`${result.line}\n`);
   if (result.status !== "PASS") process.exitCode = result.status === "NOT_EMPTY" ? 1 : 2;

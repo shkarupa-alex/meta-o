@@ -741,7 +741,7 @@ test("GitHub CI fixtures never invent candidate reachability or required policy"
   }
   const pathFiltered = ordinary.replace(
     "    branches: [develop]",
-    "    branches: [develop]\n    paths-ignore: [docs/backlog.md, tools/backlog-empty.mjs]",
+    "    branches: [develop]\n    paths-ignore: [docs/backlog.md, shared/scripts/mo-backlog.mjs]",
   );
   assert.equal(
     ciCoverage({

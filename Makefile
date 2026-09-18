@@ -51,7 +51,7 @@ mo-lint:
 	node --check tools/skill-evals.mjs
 	node --check tools/skill-eval-runtime.mjs
 	node --check tools/skill-eval-legacy.mjs
-	node --check tools/backlog-empty.mjs
+	node --check shared/scripts/mo-backlog.mjs
 	node tools/adapter-contract.mjs --validate
 	bash -n shared/scripts/mo-posture.sh
 	bash -n shared/scripts/mo-watchdog.sh
@@ -93,7 +93,7 @@ mo-test:
 # §A-BACKLOG-01 is a lifecycle closure gate, intentionally not a dependency of
 # mid-feature mo-qc: valid temporary notebook entries must remain testable.
 mo-backlog:
-	@node tools/backlog-empty.mjs
+	@node shared/scripts/mo-backlog.mjs
 
 # Do the source helper and shipped Orca copy boot and answer? Under a throwaway HOME, because
 # this gate judges the repository: a settings file the developer happens to have
@@ -109,9 +109,10 @@ mo-smoke:
 			(cd $$smoke_dir && HOME=$$smoke_dir node ./$$backend.mjs --help > /dev/null); \
 			(cd $$smoke_dir && HOME=$$smoke_dir node ./$$backend.mjs --show > /dev/null); \
 		done; \
-		for bundle in $$(git ls-files 'skills/*/scripts/mo-knowledge-history.mjs'); do \
-			cp $$bundle $$smoke_dir/bundle-history.mjs; \
-			(cd $$smoke_dir && HOME=$$smoke_dir node ./bundle-history.mjs --help > /dev/null); \
+		for bundle in $$(git ls-files 'skills/*/scripts/mo-backlog.mjs' \
+				'skills/*/scripts/mo-knowledge-history.mjs'); do \
+			cp $$bundle $$smoke_dir/bundled-helper.mjs; \
+			(cd $$smoke_dir && HOME=$$smoke_dir node ./bundled-helper.mjs --help > /dev/null); \
 		done
 	@echo "mo-smoke ok"
 

@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 
 import MarkdownIt from "markdown-it";
 
-import { backlogEntries, inspectBacklog } from "../tools/backlog-empty.mjs";
+import { backlogEntries, inspectBacklog } from "../shared/scripts/mo-backlog.mjs";
 import { SYSTEM_PATH, exposeFlock, fakeOrca } from "./fixtures/orca-control.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");

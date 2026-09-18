@@ -160,6 +160,10 @@ export const BUNDLES = {
     baselineBytes: 1_012_923,
     roots: ["@anthropic-ai/claude-agent-sdk"],
   },
+  "scripts/mo-backlog.mjs": {
+    baselineBytes: 196_079,
+    roots: MARKDOWN_ROOTS,
+  },
   "scripts/mo-knowledge-history.mjs": {
     baselineBytes: 321_157,
     roots: [...MARKDOWN_ROOTS, "js-yaml"],
@@ -213,6 +217,7 @@ export const SHARED_PLAN = {
     ["references/orca-mechanics.md", "references/orca-mechanics.md"],
     ["references/issue-routing.md", "references/issue-routing.md"],
     ["scripts/mo-models.mjs", "scripts/mo-models.mjs"],
+    ["scripts/mo-backlog.mjs", "scripts/mo-backlog.mjs"],
     ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],
   ],
   "mo-review-orca": [
@@ -221,9 +226,11 @@ export const SHARED_PLAN = {
     ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
     ["references/orca-mechanics.md", "references/orca-mechanics.md"],
     ["scripts/mo-models.mjs", "scripts/mo-models.mjs"],
+    ["scripts/mo-backlog.mjs", "scripts/mo-backlog.mjs"],
   ],
   "mo-setup": [
     ["references/project-setup.md", "references/project-setup.md"],
+    ["scripts/mo-backlog.mjs", "scripts/mo-backlog.mjs"],
     ["scripts/mo-knowledge-history.mjs", "scripts/mo-knowledge-history.mjs"],
     ["references/backend-contract.md", "references/backend-contract.md"],
     ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
