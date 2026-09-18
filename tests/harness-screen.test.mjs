@@ -44,6 +44,7 @@ test("every recorded frame classifies as the surface it was captured from", () =
       return `${name} ${verdict.state} ${verdict.action} ${verdict.harness}`;
     });
   assert.deepEqual(observed, [
+    "claude-prompt-cold.screen agent_prompt inject claude",
     "claude-prompt.screen agent_prompt inject claude",
     "claude-trust-no.screen trust_ui accept_trust claude",
     "claude-trust-yes.screen trust_ui confirm_trust claude",
@@ -51,6 +52,22 @@ test("every recorded frame classifies as the surface it was captured from", () =
     "opencode-prompt.screen agent_prompt inject opencode",
     "shell-prompt.screen shell_prompt refuse shell",
   ]);
+});
+
+test("a reviewer that has spent no context is still at an agent prompt", () => {
+  // The warm frame keeps the context meter inside the status line, after a
+  // `│`; a session that has said nothing yet puts it on its own row. A fresh
+  // session is exactly the state the final review pair starts in, so the
+  // classifier that refuses it blocks the one delivery it must allow.
+  const cold = frame("claude-prompt-cold.screen");
+  assert.match(cold, /^\s*Context [░▒▓]+ 0\/1\.0M$/mu);
+  assert.doesNotMatch(cold, /│.*Context /u);
+  const verdict = classifyScreen(cold);
+  assert.equal(verdict.state, "agent_prompt");
+  assert.equal(verdict.action, "inject");
+  assert.equal(verdict.version, "claude-prompt-cold-2026-09-18");
+  // The composer is still read from the same row, so a typed draft refuses.
+  assert.equal(classifyScreen(cold.replace(/^❯$/mu, "❯ unsent")).action, "refuse");
 });
 
 test("each stored frame says where it came from", () => {

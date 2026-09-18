@@ -21,6 +21,12 @@
       "trimmed": "kept the last nine rows; the scrollback above them is review prose, not the prompt"
     },
     {
+      "file": "claude-prompt-cold.screen",
+      "harness": "claude",
+      "how": "orca terminal read --screen on a freshly started reviewer terminal of this run, before any message; the same harness version as claude-prompt.screen, with an unspent context meter",
+      "trimmed": "dropped the shell line that launched the harness; nothing else"
+    },
+    {
       "file": "codex-prompt.screen",
       "harness": "codex",
       "how": "orca terminal read --screen on the idle reviewer terminal of this run",

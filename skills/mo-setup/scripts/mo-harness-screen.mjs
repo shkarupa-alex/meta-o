@@ -40,6 +40,17 @@ export const SCREENS = [
     input: /^[ \t]*❯[ \t]?(.*)$/mu,
   },
   {
+    // The same harness version, cold. A session that has spent no context puts
+    // the meter on its own row instead of after the `│` of the status line, so
+    // the warm anchor above does not match the one state a fresh reviewer is
+    // always in. Both frames were captured live from this harness.
+    version: "claude-prompt-cold-2026-09-18",
+    harness: "claude",
+    state: "agent_prompt",
+    anchors: [/^\s*❯/mu, /^\s*Context [░▒▓]+ \d/mu],
+    input: /^[ \t]*❯[ \t]?(.*)$/mu,
+  },
+  {
     version: "codex-prompt-2026-09-18",
     harness: "codex",
     state: "agent_prompt",
