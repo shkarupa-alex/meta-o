@@ -229,19 +229,27 @@ function referenceErrors(reader, commit) {
  * A merge may drop an id only because the other side deleted it. A sibling that
  * simply branched before the id existed never had it to delete, so treating its
  * absence as inheritance would let a merge lose an id in silence.
+ *
+ * The base of the two parents is a property of the graph, not of any identifier,
+ * so each side is resolved once for the whole edge. Resolving it per identifier
+ * tied the process count to how many ids the tree carries.
  */
-function deletedOnSibling(reader, parent, id, siblingParents) {
-  return siblingParents.some((sibling) => {
-    if (snapshot(reader, sibling).has(id)) return false;
-    const base = reader.git(["merge-base", parent, sibling], true)?.trim();
-    return Boolean(base) && snapshot(reader, base).has(id);
+function mergeSides(reader, parent, siblingParents) {
+  return siblingParents.map((sibling) => {
+    const base = reader.mergeBase(parent, sibling);
+    return { present: snapshot(reader, sibling), base: base ? snapshot(reader, base) : null };
   });
+}
+
+function deletedOnSibling(sides, id) {
+  return sides.some((side) => !side.present.has(id) && Boolean(side.base?.has(id)));
 }
 
 function edgeErrors(reader, edge, siblingParents, rules) {
   const before = snapshot(reader, edge.parent);
   const after = snapshot(reader, edge.commit);
-  const siblings = siblingParents.map((sha) => snapshot(reader, sha));
+  const sides = mergeSides(reader, edge.parent, siblingParents);
+  const siblings = sides.map((side) => side.present);
   const changedIds = [...after]
     .filter(([id, entry]) => {
       const prior = before.get(id);
@@ -263,7 +271,7 @@ function edgeErrors(reader, edge, siblingParents, rules) {
   // authorization, but an old record may never be edited or removed unnoticed.
   const errors = authorizationHistoryViolations(before, after, edge, rules.postMigration);
   for (const id of before.keys()) {
-    if (after.has(id) || deletedOnSibling(reader, edge.parent, id, siblingParents)) continue;
+    if (after.has(id) || deletedOnSibling(sides, id)) continue;
     if (!permits("remove", id))
       errors.push(`${edge.parent}..${edge.commit}: silent deletion ${id}`);
   }
@@ -540,6 +548,20 @@ function exemptionOverreach(root, values, reported) {
   }
   const overreach = first.errors;
   const already = new Set(reported);
+  // One `rev-list --ancestry-path` answers for every reported edge at once what
+  // a `merge-base --is-ancestor` per error asked one process at a time, which
+  // tied the process count to how many findings the audit happened to produce.
+  // Every process this audit starts goes through one counter, so the budget it
+  // advertises is the work it really did. A fixed number here would have hidden
+  // exactly the per-finding growth the count exists to expose.
+  const counted = { spawns: 0 };
+  const run = (args, allowMissing) => {
+    counted.spawns += 1;
+    return git(root, args, allowMissing);
+  };
+  const listed = run(["rev-list", "--ancestry-path", `${boundary}..HEAD`], true) ?? "";
+  const enforced = new Set(listed.trim().split("\n").filter(Boolean));
+  enforced.add(run(["rev-parse", "--verify", `${boundary}^{commit}`]).trim());
   for (const error of second.errors) {
     const [parent, edge] = error.split("..");
     // Only an edge error can be attributed to a boundary. Every other class is
@@ -549,10 +571,14 @@ function exemptionOverreach(root, values, reported) {
       if (!already.has(error)) overreach.push(error);
       continue;
     }
-    const exempted = git(root, ["merge-base", "--is-ancestor", boundary, parent], true) === null;
-    if (!exempted) overreach.push(error);
+    if (enforced.has(parent)) overreach.push(error);
   }
-  return overreach.map((error) => `exemption_overreach: ${error}`);
+  return {
+    errors: overreach.map((error) => `exemption_overreach: ${error}`),
+    // Both traversals and this pass are work the gate really did. Leaving them
+    // out of the reported budget let the audit grow unmeasured.
+    spawns: first.stats.spawns + second.stats.spawns + counted.spawns,
+  };
 }
 
 function report(values, run) {
@@ -605,7 +631,9 @@ function verifiedRun(values) {
     // semantic exemption lifted, so it reaches edges the primary pass never
     // interpreted — and it is the mode the quality gate itself invokes.
     if (values.audit && !run.unavailable) {
-      run.errors.push(...exemptionOverreach(values.root, values, run.errors));
+      const audit = exemptionOverreach(values.root, values, run.errors);
+      run.errors.push(...audit.errors);
+      run.stats = { ...run.stats, spawns: run.stats.spawns + audit.spawns };
     }
     return run;
   } catch (error) {

@@ -246,6 +246,22 @@ function createTreeNavigator(cache) {
 }
 
 /**
+ * §A-MEMORY-01 resolves the base of two parents once per distinct pair.
+ *
+ * The base depends on the graph alone, never on what the commits contain, so
+ * one process per pair is the whole budget however many identifiers the tree
+ * happens to carry.
+ */
+function createMergeBaseCache(run) {
+  const bases = new Map();
+  return (left, right) => {
+    const key = left < right ? `${left} ${right}` : `${right} ${left}`;
+    if (!bases.has(key)) bases.set(key, run(["merge-base", left, right], true)?.trim() || null);
+    return bases.get(key);
+  };
+}
+
+/**
  * §A-MEMORY-01 opens one caching reader over the historical knowledge documents.
  *
  * The reader owns a live view of the repository and must be closed, so callers
@@ -314,6 +330,7 @@ export function createHistoryReader(root, options = {}) {
     documents,
     tree,
     snapshots: caches.snapshot,
+    mergeBase: createMergeBaseCache(cache.run),
     prime: (commits) =>
       prime(commits, {
         fetch,

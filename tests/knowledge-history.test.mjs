@@ -135,6 +135,84 @@ test("the process budget follows the shape of the graph, not its size", () => {
   assert.equal(long.stats.markdownParses, short.stats.markdownParses);
 });
 
+function businessWith(extraIds) {
+  // The fixture's own identifier keeps its exact original section: changing it
+  // here would report a semantic reuse that has nothing to do with the merge.
+  return (
+    `# Business\n\n### ${BUSINESS_ID} — Original meaning\n\nRequirement.\n` +
+    extraIds.map((id) => `\n### ${id} — Added\n\nRequirement.\n`).join("")
+  );
+}
+
+function mergeDroppingIds(count) {
+  const { root, cutoff } = fixture();
+  const ids = Array.from({ length: count }, (_, index) => `§${"B-MERGE"}-0${index + 1}`);
+  writeFileSync(join(root, "docs", "business.md"), businessWith(ids));
+  commit(root, "add ids that only one side will drop");
+  git(root, ["switch", "-qc", `aside-${count}`]);
+  writeFileSync(join(root, "docs", "business.md"), businessWith([]));
+  commit(root, "drop them on the aside branch");
+  git(root, ["switch", "-q", "master"]);
+  git(root, ["merge", "--no-ff", "-q", "-m", "merge the deletion", `aside-${count}`]);
+  return runHistory(root, cutoff);
+}
+
+test("a merge budget follows the merge, not the identifiers it carries", () => {
+  const few = mergeDroppingIds(1);
+  const many = mergeDroppingIds(8);
+  // The aside branch really deleted them and never said so, so that edge is
+  // reported once per identifier. The merge edge is not: inheritance explains
+  // it, and that is the path which has to consult the merge base.
+  assert.equal(few.errors.length, 1);
+  assert.equal(many.errors.length, 8);
+  assert.ok(
+    many.errors.every((error) => error.includes("silent deletion")),
+    many.errors.join("\n"),
+  );
+  // Identical branch shape, eight times the identifiers and eight times the
+  // findings. Asking for the merge base per identifier passes every other
+  // budget in this file and fails here.
+  assert.equal(
+    many.stats.spawns,
+    few.stats.spawns,
+    `${many.stats.spawns} spawns for 8 ids, ${few.stats.spawns} for 1`,
+  );
+});
+
+function auditedExemptions(count) {
+  const { root, cutoff } = fixture();
+  for (let step = 0; step < count; step += 1) {
+    rewriteBusiness(root, `meaning ${step}`);
+    commit(root, `unauthorized change ${step}`);
+  }
+  const boundary = git(root, ["rev-parse", "HEAD"]).trim();
+  const run = spawnSync(
+    process.execPath,
+    [
+      CLI,
+      "--repo",
+      root,
+      "--cutoff",
+      cutoff,
+      "--semantic-from",
+      boundary,
+      "--audit-exemptions",
+      "--timing",
+    ],
+    { encoding: "utf8" },
+  );
+  assert.match(run.stdout, /status=ok /u, `the audit answered ${JSON.stringify(run.stdout)}`);
+  const spawns = run.stdout.match(/ spawns=(\d+)/u);
+  assert.ok(spawns, `no spawn count in ${JSON.stringify(run.stdout)}`);
+  return Number(spawns[1]);
+}
+
+test("the audit budget follows the graph, not the findings it examines", () => {
+  // Every change here is exempt, so the audit has to look at each one and clear
+  // it. Asking Git per finding made the cheapest possible audit the slowest.
+  assert.equal(auditedExemptions(6), auditedExemptions(1));
+});
+
 function rewriteBusiness(root, meaning) {
   writeFileSync(
     join(root, "docs", "business.md"),
