@@ -199,10 +199,16 @@ reports E2E as not evaluated unless separately requested.
 
 Before any pair, prove that the Orca project/repository registration inventory
 will not change and that selected isolated worktrees belong to the original
-project. Use existing exact isolated worktrees or an attributed Orca Git
-`new-child`; never use shared current, raw `git worktree add`, `orca repo add`
-or `new-top-level` as fallback. Placement/inventory failure emits one typed
-`REVIEW-START/1 unsupported` and creates no pair artifacts.
+project. Placement is a ladder whose default is the first rung: existing exact
+isolated worktrees or an attributed Orca Git `new-child`; then
+`shared_checkout`, both reviewers in the exact existing workspace, where the
+shared working checkout is byte-for-byte unchanged afterwards, repository
+changes are enumerated and undone one by one, `git worktree prune` is forbidden
+and the candidate is read by SHA; then `placement_unsupported`, and only when
+not even an exact workspace exists. Never use shared current, raw
+`git worktree add`, `orca repo add` or `new-top-level` as fallback.
+Placement/inventory failure emits one typed `REVIEW-START/1 unsupported` and
+creates no pair artifacts.
 
 ## 6. QC and E2E
 

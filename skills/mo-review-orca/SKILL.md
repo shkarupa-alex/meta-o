@@ -28,10 +28,69 @@ Those two selections form the vendor-diverse pair; neither may be substituted.
 
 Before pair artifacts, read `ProjectRegistrationSet/1` from project/repository
 inventory and `OwnedResourceSet/1` from worktree, terminal and worker surfaces.
-Use two proven clean isolated worktrees of the current project or attributed
-Orca `new-child` worktrees of a Git project. Shared `current`, raw
-`git worktree add`, `orca repo add`, `new-top-level` and unproven remote
-placement are forbidden.
+Placement is a ladder, and the first rung is the default rather than one
+option among equals:
+
+1. `isolated` — two proven clean isolated worktrees of the current project, or
+   attributed Orca `new-child` worktrees of a Git project at the exact SHA.
+2. `shared_checkout` — both reviewers start in the exact existing workspace
+   (`--worktree id:<repo>::<path>`); creation flags are rejected there.
+3. `REVIEW-START … reason=placement_unsupported` — only when not even an exact
+   existing workspace is there.
+
+Raw `git worktree add`, `orca repo add`, `new-top-level` and unproven remote
+placement stay forbidden on every rung. `orca worktree create` on a folder
+project can answer `ok:true` with the main checkout's own path and an empty
+`head`; placement is accepted from realpath, `isMainWorktree`, `head` and
+`rev-parse HEAD`, never from the return code.
+
+In `shared_checkout` the shared working checkout does not change: HEAD, the
+index, and tracked and untracked files are byte-for-byte the same after the
+pair. `checkout`, `switch`, `stash`, `reset`, `clean`, `commit`, `rebase`, file
+edits, formatters and fixers, environment installation and scratch files are all
+forbidden there. Changes to the shared **repository** are enumerated and undone:
+`git cat-file -e <sha>^{commit}` first, `git fetch --no-write-fetch-head
+--no-tags <remote-url> <exact ref or sha>` only when the object is absent
+locally, a slot-owned ref `refs/meta-o/review/<slot>/<sha>` deleted with
+`git update-ref -d`, and `git worktree add --detach <slot path outside the
+working copy> <sha>` removed with exactly `git worktree remove <own path>`.
+Nothing else: no `gc`, no `repack`, no `config`, no deleting a ref that is not
+the slot's own.
+
+`git worktree prune` is forbidden. It is a repository-level operation: it drops
+the administrative record of every worktree whose path is currently
+unreachable, including other people's and temporarily unmounted ones. A
+reviewer owns one record and removes that one. When `worktree remove` fails the
+record stays, the fact goes into the report, and the owner gets
+`needs_attention` with the exact command.
+
+How the candidate is read is the reviewer's choice, and the way that writes
+nothing is preferred: `git show <sha>:<path>`, `git diff <base>..<sha>`,
+`git grep … <sha>`. `Grounding` lists the SHA-bound commands actually used, and
+its own checkout path with `rev-parse HEAD` when it made one. A conclusion
+drawn from working-copy files with no SHA binding makes the verdict `UNKNOWN`.
+The shared checkout may be dirty and may sit on another commit; that is not an
+obstacle, because the mode means "the starting directory is shared, the
+candidate is read by SHA", and the tree state at start is recorded as an
+observation.
+
+The caller snapshots the baseline before and after the pair:
+
+```text
+git rev-parse HEAD
+git status --porcelain=v1 -z --untracked-files=all --ignored
+git worktree list --porcelain -z
+git for-each-ref --format='%(refname) %(objectname)' refs/meta-o/
+```
+
+A change attributable to a reviewer slot that is still there makes the pair
+`UNKNOWN`; an unremoved linked worktree additionally returns `needs_attention`
+with the cleanup command. A worktree record that belonged to nobody's slot and
+disappeared between snapshots means somebody ran `prune`, and that goes into
+`Grounding` and into the report. A change that touches neither slot nor
+candidate is somebody working in parallel: it is recorded as an observation and
+never undone. The public projection carries `Placement: isolated|shared_checkout`
+and no new `REVIEW-START` code.
 
 For each selected worktree, run the resolved system `realpath -- <path>`
 read-only, require exit zero and one absolute output path, and bind the recorded
