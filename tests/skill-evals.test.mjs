@@ -391,6 +391,18 @@ test("a resolved catalogue alias is proof, and only on the route that has aliase
   unresolved.execution.effective.model = "sonnet";
   unresolved.execution.aliasResolution = null;
   assert.throws(() => validateEvidence(ROOT, unresolved, HEAD), /alias_resolution_changed/u);
+
+  // Presence is the contract, not only the value. Evidence written before §4.7
+  // omits the property outright, and reading it with `??` would accept that as
+  // the very "nothing resolved" a compliant run records on purpose.
+  for (const matrixProfile of ["required-claude", "required-codex"]) {
+    const omitted = finalizedEnvelope("find-reuse", { matrixProfile });
+    delete omitted.execution.aliasResolution;
+    assert.throws(
+      () => validateEvidence(ROOT, omitted, HEAD),
+      /execution\.aliasResolution is required/u,
+    );
+  }
 });
 
 test("evidence fails closed on identity drift, missing coverage and sensitive fields", () => {
@@ -610,6 +622,7 @@ test("desired profile can materialize as evidenced NOT_AVAILABLE", () => {
     exitCode: 127,
     effective: null,
     availability: { status: "not_available", reason: "command_unavailable" },
+    aliasResolution: null,
     identityEvidence: "native executable lookup reported command unavailable",
     evaluationDigest: "",
   };
@@ -633,7 +646,14 @@ test("desired profile can materialize as evidenced NOT_AVAILABLE", () => {
     () => validateEvidence(ROOT, evidence, HEAD),
     /must not invent an alias resolution/u,
   );
+  // A coordinate where nothing ran still has to say so: an absent field is not
+  // the same evidence as a recorded `null`.
   delete evidence.execution.aliasResolution;
+  assert.throws(
+    () => validateEvidence(ROOT, evidence, HEAD),
+    /execution\.aliasResolution is required/u,
+  );
+  evidence.execution.aliasResolution = null;
   evidence.execution.effective = { ...evidence.requested };
   assert.throws(
     () => validateEvidence(ROOT, evidence, HEAD),
@@ -668,6 +688,7 @@ test("required profile unavailability stays blocking without invented runtime id
     exitCode: 127,
     effective: null,
     availability: { status: "not_available", reason: "approved_profile_unavailable" },
+    aliasResolution: null,
     identityEvidence: "native provider rejected the approved required model",
     evaluationDigest: "",
   };

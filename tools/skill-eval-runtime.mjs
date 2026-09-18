@@ -36,6 +36,22 @@ function sameCoordinate(left, right) {
 }
 
 /**
+ * §A-EVAL-01 reads the alias resolution every v3 execution has to record.
+ *
+ * `??` cannot tell an envelope that recorded "nothing resolved" from one whose
+ * schema predates the field, so both would prove the same thing. §4.7 makes the
+ * field mandatory exactly so a consumer knows the question was asked, and
+ * presence is the half of that a checker can still verify after the fact.
+ */
+function recordedAliasResolution(envelope) {
+  const execution = envelope.execution;
+  if (!execution || !Object.hasOwn(execution, "aliasResolution")) {
+    throw new Error(`${envelope.skill}: execution.aliasResolution is required`);
+  }
+  return execution.aliasResolution ?? null;
+}
+
+/**
  * §A-EVAL-01 accepts a resolved catalogue alias without loosening identity.
  *
  * The owner records the Claude coordinate as the alias the catalogue offers and
@@ -46,7 +62,7 @@ function sameCoordinate(left, right) {
  * a resolution of its own.
  */
 function validateAliasResolution(envelope, requested, effective) {
-  const resolution = envelope.execution?.aliasResolution ?? null;
+  const resolution = recordedAliasResolution(envelope);
   const label = `${envelope.skill}: execution.aliasResolution`;
   if (resolution !== null && !ALIAS_RESOLVING_ROUTES.has(effective.route)) {
     throw new Error(
@@ -257,7 +273,7 @@ export function validateActorIdentity(envelope, criticalProfile, unavailable) {
   if (unavailable) {
     // An unavailable coordinate observed no model at all, so it can neither
     // claim an effective identity nor explain how an alias resolved.
-    if ((envelope.execution?.aliasResolution ?? null) !== null) {
+    if (recordedAliasResolution(envelope) !== null) {
       throw new Error(`${envelope.skill}: unavailable profile must not invent an alias resolution`);
     }
   } else {
