@@ -30,15 +30,18 @@
       "id": "mo-review-orca.forbidden",
       "class": "forbidden",
       "contracts": [
-        "§A-ACTIVATION-01"
+        "§A-ACTIVATION-01",
+        "§A-BACKLOG-01"
       ],
-      "scenario": "The user makes a generic review request outside the Meta-O lifecycle and supplies no opaque Review-Execution id.",
+      "scenario": "The user makes a generic review request outside the Meta-O lifecycle and supplies no opaque Review-Execution id. A second request names the lifecycle correctly, but the project has no `MO-BACKLOG/1` command, no papercut document and no identifier-history gate.",
       "must": [
-        "avoid implicit Meta-O activation under §A-ACTIVATION-01 and report that the portable header cannot be fabricated"
+        "avoid implicit Meta-O activation under §A-ACTIVATION-01 and report that the portable header cannot be fabricated",
+        "under §A-BACKLOG-01 return needs_attention naming each missing readiness signal and leave running the setup skill to the human"
       ],
       "mustNot": [
         "create Orca workers",
-        "change model configuration or invent an execution id"
+        "change model configuration or invent an execution id",
+        "start the pair against an unready project or prepare it"
       ]
     },
     {

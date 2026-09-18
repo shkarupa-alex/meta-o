@@ -123,12 +123,26 @@ test("each lifecycle skill answers a missing checker with the gap, not with setu
   // The three that can meet an unprepared project each say so in their own
   // words: a rule stated only in the shared methodology is a rule the skill
   // that skipped reading it does not have.
+  // Each named consumer is checked in the handwritten source and in the tree a
+  // project actually installs, because only one of those two is what runs.
   for (const skill of ["mo-orchestrate-orca", "mo-review-orca", "mo-e2e"]) {
-    const body = flat(read(shipped(skill, "SKILL.md")));
-    assert.match(body, /`MO-BACKLOG\/1`/u, `${skill}: never names the checker`);
-    assert.match(body, /identifier-history gate/u, `${skill}: never names the history gate`);
-    assert.match(body, /needs_attention/u, `${skill}: no typed answer for the gap`);
-    assert.match(body, /human/u, `${skill}: does not leave setup to the human`);
+    for (const path of [
+      join(ROOT, "src", "skills", skill, "SKILL.md"),
+      shipped(skill, "SKILL.md"),
+    ]) {
+      const body = flat(read(path));
+      const where = `${skill} (${path.includes("/src/") ? "source" : "generated"})`;
+      assert.match(body, /`MO-BACKLOG\/1`/u, `${where}: never names the checker`);
+      assert.match(body, /papercut document/u, `${where}: never names the papercut document`);
+      assert.match(body, /identifier-history gate/u, `${where}: never names the history gate`);
+      assert.match(body, /needs_attention/u, `${where}: no typed answer for the gap`);
+      // Naming the gap is half of it; the other half is whose step the repair is.
+      assert.match(
+        body,
+        /(?:setup skill[^.]*human|human[^.]*setup skill)/u,
+        `${where}: does not leave the setup skill to the human`,
+      );
+    }
   }
   const protocol = flat(read(join(ROOT, "shared", "references", "review-protocol.md")));
   assert.match(protocol, /no backlog-closure checker at all/u);
@@ -144,4 +158,20 @@ test("each lifecycle skill answers a missing checker with the gap, not with setu
     "the corpus does not forbid activating setup",
   );
   assert.ok(forbidden.contracts.includes("§A-BACKLOG-01"));
+  // The two entry skills a project can call without the orchestrator state the
+  // same expectation in their own corpora, so no consumer is covered by prose
+  // alone.
+  for (const [skill, klass] of [
+    ["mo-review-orca", "forbidden"],
+    ["mo-e2e", "degraded"],
+  ]) {
+    const corpus = JSON.parse(read(join(ROOT, "skills", skill, "evals", "cases.json")));
+    const entry = corpus.cases.find((item) => item.class === klass);
+    assert.ok(entry.contracts.includes("§A-BACKLOG-01"), `${skill}: gap has no contract`);
+    assert.match(entry.scenario, /`MO-BACKLOG\/1`/u, `${skill}: gap is not modelled`);
+    assert.ok(
+      entry.must.some((rule) => /needs_attention/u.test(rule) && /human/u.test(rule)),
+      `${skill}: the corpus does not leave setup to the human`,
+    );
+  }
 });

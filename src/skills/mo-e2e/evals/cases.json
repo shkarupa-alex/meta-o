@@ -43,16 +43,19 @@
       "id": "mo-e2e.degraded",
       "class": "degraded",
       "contracts": [
-        "§A-WAIT-01"
+        "§A-WAIT-01",
+        "§A-BACKLOG-01"
       ],
-      "scenario": "The candidate is not a frozen full SHA or the required environment is absent.",
+      "scenario": "The candidate is not a frozen full SHA or the required environment is absent. In another run the project itself lacks its `MO-BACKLOG/1` command, papercut document and identifier-history gate.",
       "must": [
         "return blocked or not_run with the exact reason under §A-WAIT-01",
-        "preserve the candidate"
+        "preserve the candidate",
+        "under §A-BACKLOG-01 name each missing readiness signal, return needs_attention and leave the setup skill to the human"
       ],
       "mustNot": [
         "guess a SHA",
-        "upgrade model or effort"
+        "upgrade model or effort",
+        "activate the setup skill or write the missing checker, document or gate"
       ]
     }
   ]
