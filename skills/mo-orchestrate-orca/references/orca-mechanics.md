@@ -208,6 +208,22 @@ or replacement. `worker_done` from a bare shell or expired Dispatch cannot
 settle work. A direct user message contaminates the prior isolated role;
 preserve the decision and create an exact replacement when isolation is needed.
 
+## Session warmth
+
+`orca terminal list --json` carries `lastOutputAt`, epoch milliseconds of the
+last output. Idle is `now - lastOutputAt`, and it answers the warmth question
+only for a terminal publicly proven to be at `agent_prompt`: after its
+`worker_done`, or through the screen classifier. A working agent's spinner
+updates the field, so it marks the last output rather than the end of a turn,
+and a busy terminal looks idle for zero seconds no matter how long the turn has
+run.
+
+The prompt cache lives 60 minutes for both vendors, and the working idle
+threshold is 50 minutes. Under the threshold, bind the next Dispatch to the same
+hot session; over it, prefer a fresh one. Where the installed version returns no
+such field, behave exactly as before: an absent observation is not a stale
+session.
+
 ## Reviews and cleanup
 
 Create both review tasks before starting either worker, then start both without

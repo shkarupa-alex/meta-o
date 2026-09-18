@@ -86,6 +86,21 @@ the orchestrator by default; vendor diversity improves the chance that the
 orchestrator can help when an executor misses a premise. Reviewers use different
 vendors, and at least one reviewer vendor differs from the executor.
 
+The session in which the user invoked the orchestration skill is the
+orchestrator. An unset `orchestrator` role blocks nothing and is not a reason to
+ask the user to choose a model for the session that is already running: the
+model answering is the model that was chosen when the session was opened.
+`--force` and substituting another model generation stay forbidden.
+
+Sessions are kept warm on purpose. A provider's prompt cache lives 60 minutes
+for both vendors, and the working idle threshold is 50 minutes, leaving a margin
+before expiry. One number serves both, because remembering which vendor stands
+behind which terminal buys less than the mistake it invites, and erring toward a
+fresh session is cheaper than erring toward a stale cache. While a role's
+terminal has been idle less than that threshold, keep it hot — the executor and
+the remediation reviewers — and otherwise prefer a fresh session. This is
+reasoning about resources already visible, not a state store.
+
 An approved selection names an exact provider model id. A floating family alias
 such as `opus` or `sonnet` is not enough: it resolves to whatever the provider
 currently ships, which may be a different generation or a far more expensive

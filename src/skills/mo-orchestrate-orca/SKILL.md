@@ -18,6 +18,12 @@ Read [Feature lifecycle](references/methodology.md),
 completely. Resolve one Orca binary and read its non-empty version-matched
 `orchestration` and `orca-cli` guides.
 
+The session the user asked to orchestrate is the orchestrator. An unset
+`orchestrator` role does not block the start and is not a reason to ask which
+model this session should use; `--force` and another model generation stay
+forbidden. Keep a role's terminal hot while its proven idle stays under the
+methodology's threshold, and prefer a fresh session past it.
+
 Read role selections with bundled `scripts/mo-models.mjs --show --project
 <root>`; require exact user-approved values and never select a model, effort,
 placement or posture fallback. Prove provider-native auth, account freshness and
