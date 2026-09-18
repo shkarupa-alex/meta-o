@@ -158,6 +158,47 @@ test("the documented command consumes a real terminal-read envelope", () => {
   }
 });
 
+test("a draft the frame never shows still stops delivery", () => {
+  // Orca states that `draft` is composer text excluded from the rendered tail.
+  // A frame can therefore look perfectly empty while an unsent line waits, and
+  // delivered bytes would join it.
+  const prompts = ["claude-prompt.screen", "codex-prompt.screen", "opencode-prompt.screen"];
+  for (const name of prompts) {
+    const text = frame(name);
+    for (const draft of [undefined, ""]) {
+      assert.equal(decideScreen(text, { expectPath: "/tmp/x", draft }).action, "inject", name);
+    }
+    for (const draft of ["rm -rf /tmp/project", "   ", "\n unsent line "]) {
+      const refused = decideScreen(text, { expectPath: "/tmp/x", draft });
+      const empty = draft.trim() === "";
+      assert.equal(
+        refused.action,
+        empty ? "inject" : "refuse",
+        `${name}: ${JSON.stringify(draft)}`,
+      );
+      if (!empty) assert.equal(refused.reason, "composer_draft_present");
+    }
+    // Neither an exact harness and path nor a pinned fixture version overrides
+    // it: the draft is the fact, and the rest is agreement about the frame.
+    const pinned = decideScreen(text, {
+      harness: classifyScreen(text).harness,
+      expectPath: "/tmp/x",
+      fixturesVersion: classifyScreen(text).version,
+      draft: "unsent",
+    });
+    assert.equal(pinned.action, "refuse", name);
+  }
+  const envelope = readEnvelope(
+    JSON.stringify({
+      ok: true,
+      result: {
+        terminal: { source: "screen", tail: frame("claude-prompt.screen").split("\n"), draft: "x" },
+      },
+    }),
+  );
+  assert.equal(envelope.draft, "x");
+});
+
 test("the trust answer is bound to the path the caller named", () => {
   const asked = (name, expectPath, extra = {}) =>
     decideScreen(frame(name), { harness: "claude", expectPath, ...extra });
@@ -356,4 +397,19 @@ test("the shipped CLI answers the exact contract of §4.5", () => {
   const miscalled = run(["--fixtures-version", "x"], envelope);
   assert.equal(miscalled.status, 2);
   assert.match(miscalled.stderr, /--harness is required/u);
+
+  // The whole point of decoding the envelope is that the draft travels in it.
+  const withDraft = JSON.stringify({
+    ok: true,
+    result: {
+      terminal: {
+        source: "screen",
+        tail: readFileSync(join(SURFACES, "claude-prompt.screen"), "utf8").split("\n"),
+        draft: "rm -rf /tmp/project",
+      },
+    },
+  });
+  const drafted = run(["--harness", "claude", "--expect-path", "/tmp/x"], withDraft);
+  assert.equal(drafted.status, 0);
+  assert.match(drafted.stdout, /state=agent_prompt .*action=refuse/u);
 });

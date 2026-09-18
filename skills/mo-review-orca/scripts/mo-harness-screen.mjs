@@ -200,6 +200,11 @@ export function trustStep(screen, ownership) {
  * an envelope that is not `source: "screen"` is unreadable rather than
  * classified — reading it anyway would compare a known dialog against text no
  * human ever saw.
+ *
+ * `draft` travels beside the frame and is deliberately excluded from it: it is
+ * composer text the UI holds and the rendering never shows. It is kept here
+ * because a frame that looks empty while a draft waits is exactly the case
+ * where delivered bytes would join somebody's unsent line.
  */
 export function readEnvelope(text) {
   let document;
@@ -215,7 +220,7 @@ export function readEnvelope(text) {
   const { tail } = terminal;
   const frame = Array.isArray(tail) ? tail.join("\n") : tail;
   if (typeof frame !== "string" || frame.trim() === "") return { error: "screen_empty" };
-  return { frame, handle: terminal.handle };
+  return { frame, handle: terminal.handle, draft: terminal.draft };
 }
 
 /**
@@ -247,9 +252,14 @@ function selectionOf(verdict) {
  * screen itself can prove: which harness repainted it, whether the composer is
  * free, and whether the dialog names the expected path. Everything else refuses.
  */
-export function decideScreen(text, { harness, expectPath, fixturesVersion } = {}) {
+export function decideScreen(text, { harness, expectPath, fixturesVersion, draft } = {}) {
   const verdict = classifyScreen(text);
   const record = { state: verdict.state, screen_version: verdict.version, action: "refuse" };
+  // A waiting draft is invisible in the frame by construction, so no amount of
+  // agreement about the frame can license delivery while one exists.
+  if (typeof draft === "string" && draft.trim() !== "") {
+    return { ...record, reason: "composer_draft_present" };
+  }
   if (fixturesVersion !== undefined && verdict.version !== fixturesVersion) {
     return { ...record, state: "unknown", reason: "screen_version_unpinned" };
   }
@@ -322,7 +332,8 @@ if (process.argv[1] !== undefined && import.meta.url === `file://${process.argv[
       process.stderr.write(`mo-harness-screen: ${envelope.error}\n`);
       process.exitCode = 2;
     } else {
-      process.stdout.write(`${screenLine(decideScreen(envelope.frame, options))}\n`);
+      const verdict = decideScreen(envelope.frame, { ...options, draft: envelope.draft });
+      process.stdout.write(`${screenLine(verdict)}\n`);
       process.exitCode = 0;
     }
   }
