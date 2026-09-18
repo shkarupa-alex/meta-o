@@ -115,7 +115,22 @@ Read `ProjectRegistrationSet/1` and `OwnedResourceSet/1`. A folder/no-project
 workspace without an existing same-project isolated route is a setup gap. Never
 register a temporary path as a review workaround. Any project/repository
 registration or personal trust/posture change requires separate human
-confirmation.
+confirmation; the project root the user named at this call, and this run's own
+resources, are that confirmation already.
+
+Probe the named project root live and report one line:
+
+```text
+Harness-Trust/1 harness=claude path=<json> state=<trusted|accepted|needs_human|unknown> screen_version=<id>
+```
+
+`accepted` is reported only when all three ownership conditions held: the
+terminal was created by this run and recorded in `OwnedResourceSet/1`, the
+realpath of the path in the dialog equals the realpath of that terminal's
+worktree, and that worktree is a run resource or the root the user named.
+Confirming the dialog means answering for whatever is in that folder, so a
+missing condition is `needs_human` with the recipe — open the tab `<title>` and
+choose *Yes, I trust this folder* — and never a retry.
 
 Inspect active hosting/CI settings read-only. Parse GitHub Actions or GitLab CI
 only with `js-yaml`, following literal tracked local includes/reusable

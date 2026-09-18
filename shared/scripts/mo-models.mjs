@@ -863,12 +863,32 @@ export function findUpgrade(current, availableModels) {
 // Commands
 // ---------------------------------------------------------------------------
 
+/**
+ * How one stored selection is spelled on a launch command line.
+ *
+ * `route/model/effort` is one string for a human and three flags for a harness.
+ * Every caller that split it itself eventually passed the whole literal to
+ * `--model`, which launches nothing and reads like an unavailable model, so the
+ * split is published here instead of being re-derived at each call site.
+ */
+function launchProjection(roles) {
+  const launch = {};
+  for (const [role, value] of Object.entries(roles)) {
+    if (value === undefined) continue;
+    const { route, model, effort } = parseSelection(value);
+    launch[role] = { agent: route, model, effort };
+  }
+  return launch;
+}
+
 /** One line with every role — the default startup question, not a report. */
 function commandShow(settings, key, asJson) {
   const roles = effectiveRoles(settings, key);
   validateEffectiveRoles(roles);
   if (asJson) {
-    process.stdout.write(`${JSON.stringify({ roles }, null, 2)}\n`);
+    process.stdout.write(
+      `${JSON.stringify({ roles, launch: launchProjection(roles) }, null, 2)}\n`,
+    );
     return;
   }
   const parts = ROLES.map((role) => `${role}=${roles[role] ?? "unset"}`);

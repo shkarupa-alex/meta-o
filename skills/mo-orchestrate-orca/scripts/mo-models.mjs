@@ -20284,12 +20284,23 @@ function findUpgrade(current, availableModels) {
   }
   return best;
 }
+function launchProjection(roles) {
+  const launch = {};
+  for (const [role, value] of Object.entries(roles)) {
+    if (value === void 0) continue;
+    const { route, model, effort } = parseSelection(value);
+    launch[role] = { agent: route, model, effort };
+  }
+  return launch;
+}
 function commandShow(settings, key, asJson) {
   const roles = effectiveRoles(settings, key);
   validateEffectiveRoles(roles);
   if (asJson) {
-    process.stdout.write(`${JSON.stringify({ roles }, null, 2)}
-`);
+    process.stdout.write(
+      `${JSON.stringify({ roles, launch: launchProjection(roles) }, null, 2)}
+`
+    );
     return;
   }
   const parts = ROLES.map((role) => `${role}=${roles[role] ?? "unset"}`);

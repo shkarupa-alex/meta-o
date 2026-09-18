@@ -1061,3 +1061,31 @@ test("the helper never reads stdin", () => {
   assert.equal(result.status, 0);
   assert.match(result.stdout, /executor=unset/);
 });
+
+test("a selection is shown as one string and launched as three flags", () => {
+  const home = sandbox();
+  assert.equal(run(home, ["--set", "executor=codex/gpt-5.6-luna/low", "--force"]).status, 0);
+  assert.equal(run(home, ["--set", "reviewerA=claude/claude-opus-5/high", "--force"]).status, 0);
+  const shown = JSON.parse(run(home, ["--show", "--json"]).stdout);
+  // The string stays exactly what it was: callers that read `roles` keep
+  // reading the same thing, and the split is published beside it.
+  assert.equal(shown.roles.executor, "codex/gpt-5.6-luna/low");
+  assert.deepEqual(shown.launch.executor, {
+    agent: "codex",
+    model: "gpt-5.6-luna",
+    effort: "low",
+  });
+  assert.deepEqual(shown.launch.reviewerA, {
+    agent: "claude",
+    model: "claude-opus-5",
+    effort: "high",
+  });
+  // A composite literal in `--model` launches nothing and then reads like an
+  // unavailable model, so no published model field may still carry its route.
+  for (const [role, launch] of Object.entries(shown.launch)) {
+    assert.doesNotMatch(launch.model, /\//u, `${role}: the route is still inside --model`);
+    assert.equal(shown.roles[role], `${launch.agent}/${launch.model}/${launch.effort}`);
+  }
+  // An unset role is absent rather than launchable with holes.
+  assert.equal(Object.hasOwn(shown.launch, "e2eTester"), false);
+});

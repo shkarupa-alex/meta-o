@@ -139,17 +139,27 @@ scripts/mo-posture.sh --shell <zsh|bash|all> -- codex claude opencode
 
 Missing, divergent or unreadable posture is not support. Check workspace trust,
 hooks and wrappers without printing secrets. Personal configuration changes
-require explicit confirmation.
+require explicit confirmation, with one narrow exception: the project root the
+user named when calling the skill, and the run's own resources, are already that
+confirmation. Any other path is not, however similar it looks.
 
 Backend-wide health does not prove harness readiness. Use Orca's documented
 launch and observation surfaces to verify every selected harness. Before task
-bytes, distinguish a normal agent prompt from Claude trust UI and a shell
-prompt; an ambiguous public surface makes that route unsupported. Verify one
-owner of unsandboxed posture so a fallback never duplicates wrapper flags.
-`terminal create --title` and `terminal rename` set the tab title: prove a
-stable title under `visualLayouts[].root.tabs[].title` from
-`terminal list --include-visual-layouts --json`, not from `terminals[].title`,
-which a running harness repaints.
+bytes, read the rendered screen — `terminal read --screen`, not accumulated
+output — and classify it with `scripts/mo-harness-screen.mjs`: only
+`state=agent_prompt action=deliver` receives bytes. A trust dialog, a shell
+prompt, a composer holding a draft, an unrecognized frame and a frame two
+recorded screens both match are each a refusal, not a retry.
+
+A route may be selected as `route/model/effort`, but it is launched as three
+flags: `--agent <route> --model <model> --effort <effort>`. The whole literal in
+`--model` launches nothing and then reads like an unavailable model.
+`mo-models.mjs --show --json` publishes that split under `launch` so no caller
+has to re-derive it. Verify one owner of unsandboxed posture so a fallback never
+duplicates wrapper flags. `terminal create --title` and `terminal rename` set
+the tab title: prove a stable title under `visualLayouts[].root.tabs[].title`
+from `terminal list --include-visual-layouts --json`, not from
+`terminals[].title`, which a running harness repaints.
 
 Inspect `ProjectRegistrationSet/1` and `OwnedResourceSet/1`. A folder/no-project
 context without existing same-project isolated worktrees is a typed placement

@@ -156,3 +156,53 @@ test("the reported line names the version that recognized the frame", () => {
   const versions = SCREENS.map((screen) => screen.version);
   assert.equal(new Set(versions).size, versions.length);
 });
+
+test("every document that admits the trust dialog states all three conditions", () => {
+  // The procedure is reachable from three places, and a document that names
+  // two conditions reads like a complete rule. Each is checked by what it must
+  // say in its own language, not by one shared phrase.
+  const decision = readFileSync(
+    join(ROOT, "docs", "architecture", "trust-safe-delivery.md"),
+    "utf8",
+  );
+  for (const condition of [
+    /терминал создан этим запуском и\s*записан в `OwnedResourceSet\/1`/u,
+    /realpath пути из диалога совпадает с realpath\s*worktree/u,
+    /ресурс запуска либо\s*корень проекта, явно названный пользователем/u,
+  ]) {
+    assert.match(decision, condition);
+  }
+  assert.match(decision, /один и тот же исход без повтора/u);
+  assert.match(decision, /Повтор здесь опаснее отказа/u);
+
+  const skill = readFileSync(join(ROOT, "src", "skills", "mo-setup", "SKILL.md"), "utf8");
+  assert.match(
+    skill,
+    /Harness-Trust\/1 harness=claude path=<json> state=<trusted\|accepted\|needs_human\|unknown>/u,
+  );
+  assert.match(skill, /created by this run and recorded in `OwnedResourceSet\/1`/u);
+  assert.match(
+    skill,
+    /realpath of the path in the dialog equals the realpath of that terminal's\s*worktree/u,
+  );
+  assert.match(skill, /run resource or the root the user named/u);
+  assert.match(skill, /`needs_human` with the recipe/u);
+  assert.match(skill, /never a retry/u);
+
+  const setup = readFileSync(join(ROOT, "shared", "references", "project-setup.md"), "utf8");
+  assert.match(setup, /`terminal read --screen`, not accumulated\s*output/u);
+  assert.match(setup, /only\s*`state=agent_prompt action=deliver` receives bytes/u);
+  // The narrowed confirmation has to keep its boundary in the same breath.
+  assert.match(
+    setup,
+    /the project root the\s*user named when calling the skill, and the run's own resources, are already that\s*confirmation/u,
+  );
+  assert.match(setup, /Any other path is not, however similar it looks/u);
+});
+
+test("the launch split is documented where a caller would otherwise re-derive it", () => {
+  const setup = readFileSync(join(ROOT, "shared", "references", "project-setup.md"), "utf8");
+  assert.match(setup, /--agent <route> --model <model> --effort <effort>/u);
+  assert.match(setup, /The whole literal in\s*`--model` launches nothing/u);
+  assert.match(setup, /`mo-models\.mjs --show --json` publishes that split under `launch`/u);
+});
