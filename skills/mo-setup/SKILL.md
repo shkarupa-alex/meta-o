@@ -38,7 +38,11 @@ declared stage from a level-two section whose heading contains
 `Knowledge id history`, holding exactly one fenced one-line command, exactly one
 line naming the authoritative QC command, and exactly one `history_cutoff_sha`
 record. Parse it with a Markdown AST. Any other count is `history=unknown` with
-`cutoff=none`.
+`cutoff=none`. The same contract must name where identifiers live: the business
+document and the architecture directory the stage reads. Unnamed, ambiguous or
+contradictory locations are `history=unknown cutoff=none` and no fixture is
+written at all — a fixture built on a guessed location certifies documents
+nobody checks, or edits a clone at random.
 
 Prove the stage by its own behavior, never by the project's full QC, and only in
 a disposable clone: `git clone --no-hardlinks --no-local <path> <tmp>` under a
@@ -49,8 +53,9 @@ must be a substring of the declared QC command, or it is `gate_missing`: a stage
 outside the authoritative check is a stage nobody runs. A red baseline run in the
 clean clone is `gate_failing` and stops the probe.
 
-Then two fixtures, in the clone only. Delete one identifier definition and commit
-without a trailer: the stage must exit non-zero and print a typed marker, either
+Then two fixtures, in the clone only, touching only the declared locations and
+only definitions the AST actually found there. Delete one identifier definition
+and commit without a trailer: the stage must exit non-zero and print a typed marker, either
 `MO-KNOWLEDGE-HISTORY/1 status=violations` or the project's documented equivalent;
 a zero exit or no marker is `gate_missing`. Reset the clone with `git reset --hard`
 and `git clean -xdff`, then change a literal with a correct trailer and a matching

@@ -59,6 +59,23 @@ test("the probe is declared, clone-only and budgeted, never guessed", () => {
   assert.match(prose, /machine-local and never reported/u);
 });
 
+test("identifier locations are declared, never inherited from this project", () => {
+  // meta-o's own layout is a convention, not a standard: a probe that assumes
+  // it either certifies documents the target's gate never reads, or commits a
+  // deletion into whichever file happened to match the shape.
+  assert.match(prose, /The same contract must name where identifiers live/u);
+  assert.match(prose, /Unnamed, ambiguous or contradictory locations are `history=unknown/u);
+  assert.match(prose, /no fixture is written at all/u);
+  assert.match(prose, /touching only the declared locations/u);
+  assert.match(prose, /only definitions the AST actually found there/u);
+  assert.match(contract, /Locations are read, never assumed/u);
+  assert.match(contract, /not a\s+default anyone else agreed to/u);
+  // The rule has to reach the fixture step, not only the reading step: the
+  // damage a guessed location does is a commit, and that is not reversible in
+  // someone else's repository.
+  assert.match(contract, /both touch only the declared locations/u);
+});
+
 test("an exhausted budget is unknown, never a missing gate", () => {
   // Conflating "took too long" with "has no gate" would report a project as
   // ungated on a slow machine, which is a false accusation, not a finding.
