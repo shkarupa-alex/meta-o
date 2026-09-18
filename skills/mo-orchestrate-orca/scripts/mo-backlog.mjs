@@ -7015,6 +7015,45 @@ function isCanonicalPreamble(before, schema) {
     (node2, index2) => node2?.type === "paragraph" && normalizedText(node2) === schema.intro[index2]
   );
 }
+function documentViolations(children, schema) {
+  const violations = [];
+  const h1 = children.filter((node2) => node2.type === "heading" && node2.depth === 1);
+  if (h1.length !== 1) violations.push(`expected one level-one heading, found ${h1.length}`);
+  else if (normalizedText(h1[0]) !== schema.title) {
+    violations.push(`level-one heading is ${asciiJson(normalizedText(h1[0]))}`);
+  }
+  const open = children.filter(
+    (node2) => node2.type === "heading" && node2.depth === 2 && normalizedText(node2) === schema.openHeading
+  );
+  if (open.length !== 1) {
+    violations.push(`expected one ${asciiJson(schema.openHeading)} section, found ${open.length}`);
+    return violations;
+  }
+  const before = children.slice(0, children.indexOf(open[0]));
+  if (before.length !== schema.intro.length + 1) {
+    violations.push(
+      `expected ${schema.intro.length + 1} nodes before the open section, found ${before.length}`
+    );
+  } else if (!isCanonicalPreamble(before, schema)) {
+    violations.push("the preamble does not match the declared title and introduction");
+  }
+  return violations;
+}
+function backlogSchemaViolations(source, schema = META_O_SCHEMA) {
+  let tree;
+  try {
+    tree = fromMarkdown(source);
+  } catch (error) {
+    return [`document is not readable Markdown: ${error.message}`];
+  }
+  const violations = documentViolations(tree.children, schema);
+  for (const entry of backlogEntries(source, schema)) {
+    for (const field of entry.missingFields) {
+      violations.push(`entry ${asciiJson(entry.title)} is missing ${asciiJson(field)}`);
+    }
+  }
+  return violations;
+}
 function inspectBacklog(source, schema = META_O_SCHEMA) {
   let tree;
   try {
@@ -7023,13 +7062,11 @@ function inspectBacklog(source, schema = META_O_SCHEMA) {
     return { kind: "unknown", reason: "schema_invalid" };
   }
   const children = tree.children;
-  const h1 = children.filter((node2) => node2.type === "heading" && node2.depth === 1);
   const open = children.filter(
     (node2) => node2.type === "heading" && node2.depth === 2 && normalizedText(node2) === schema.openHeading
   );
   const openIndex = children.indexOf(open[0]);
-  const before = children.slice(0, openIndex);
-  if (h1.length !== 1 || open.length !== 1 || openIndex < 0 || !isCanonicalPreamble(before, schema)) {
+  if (documentViolations(children, schema).length > 0) {
     return { kind: "unknown", reason: "schema_invalid" };
   }
   const content3 = children.slice(openIndex + 1);
@@ -7231,6 +7268,7 @@ export {
   META_O_SCHEMA,
   asciiJson,
   backlogEntries,
+  backlogSchemaViolations,
   evaluate,
   inspectBacklog
 };

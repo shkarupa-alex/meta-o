@@ -11,7 +11,13 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, test } from "node:test";
 
-import { asciiJson, evaluate, inspectBacklog } from "../shared/scripts/mo-backlog.mjs";
+import {
+  asciiJson,
+  backlogSchemaViolations,
+  META_O_SCHEMA as META_O_SCHEMA_DEFAULT,
+  evaluate,
+  inspectBacklog,
+} from "../shared/scripts/mo-backlog.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const CLI = resolve(ROOT, "shared", "scripts", "mo-backlog.mjs");
@@ -273,4 +279,54 @@ test("the frozen line keeps its field order, names and streams", () => {
   );
   assert.equal(remote.status, 2);
   assert.match(remote.stderr, /^MO-BACKLOG-UNKNOWN version=1 reason=remote_head_unreadable /u);
+});
+
+test("the named schema validator answers for this notebook and a foreign one", () => {
+  const FOREIGN = {
+    path: "notes/backlog.md",
+    title: "Backlog",
+    openHeading: "Open",
+    intro: ["Temporary notebook of the active feature branch only."],
+    entryFields: ["Reason.", "Impact.", "Next step."],
+  };
+  const foreignEmpty =
+    "# Backlog\n\nTemporary notebook of the active feature branch only.\n\n## Open\n";
+
+  // Both canonical documents are silent: a validator that reports on a correct
+  // notebook is one nobody will read when it reports on a broken one.
+  assert.deepEqual(backlogSchemaViolations(EMPTY), []);
+  assert.deepEqual(backlogSchemaViolations(foreignEmpty, FOREIGN), []);
+
+  // Each document rule names itself rather than collapsing into one verdict.
+  assert.deepEqual(backlogSchemaViolations("# Wrong\n\n## Открыто\n"), [
+    'level-one heading is "Wrong"',
+    "expected 3 nodes before the open section, found 1",
+  ]);
+  assert.deepEqual(backlogSchemaViolations(`${EMPTY}\n## Открыто\n`), [
+    'expected one "\\u041e\\u0442\\u043a\\u0440\\u044b\\u0442\\u043e" section, found 2',
+  ]);
+
+  // A missing entry field is a defect of that entry, and never turns the open
+  // section into an unreadable document: closure must still answer.
+  const incomplete = `${EMPTY}\n### Deferred\n\n**Причина.** R\n`;
+  assert.deepEqual(backlogSchemaViolations(incomplete), [
+    'entry "Deferred" is missing "\\u041f\\u0440\\u0430\\u043a\\u0442\\u0438\\u0447\\u0435\\u0441\\u043a\\u043e\\u0435 \\u0432\\u043b\\u0438\\u044f\\u043d\\u0438\\u0435."',
+    'entry "Deferred" is missing "\\u0421\\u043b\\u0435\\u0434\\u0443\\u044e\\u0449\\u0438\\u0439 \\u0448\\u0430\\u0433."',
+  ]);
+  assert.equal(inspectBacklog(incomplete).kind, "not_empty");
+
+  // The closure verdict and the validator share one definition of the schema:
+  // every document the validator faults is unknown, and no other document is.
+  for (const [document, schema] of [
+    [EMPTY, META_O_SCHEMA_DEFAULT],
+    [foreignEmpty, FOREIGN],
+    ["# Wrong\n\n## Открыто\n", META_O_SCHEMA_DEFAULT],
+    [`${EMPTY}\n## Открыто\n`, META_O_SCHEMA_DEFAULT],
+    [incomplete, META_O_SCHEMA_DEFAULT],
+  ]) {
+    const faulted = backlogSchemaViolations(document, schema).some(
+      (violation) => !violation.startsWith("entry "),
+    );
+    assert.equal(inspectBacklog(document, schema).reason === "schema_invalid", faulted);
+  }
 });

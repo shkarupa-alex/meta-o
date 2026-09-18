@@ -104,6 +104,61 @@ function isCanonicalPreamble(before, schema) {
 }
 
 /**
+ * The document half of the schema, named one violation at a time.
+ *
+ * Both the closure verdict and the human-facing report need this answer, and
+ * two copies of it would drift the moment one of them gained a rule.
+ */
+function documentViolations(children, schema) {
+  const violations = [];
+  const h1 = children.filter((node) => node.type === "heading" && node.depth === 1);
+  if (h1.length !== 1) violations.push(`expected one level-one heading, found ${h1.length}`);
+  else if (normalizedText(h1[0]) !== schema.title) {
+    violations.push(`level-one heading is ${asciiJson(normalizedText(h1[0]))}`);
+  }
+  const open = children.filter(
+    (node) =>
+      node.type === "heading" && node.depth === 2 && normalizedText(node) === schema.openHeading,
+  );
+  if (open.length !== 1) {
+    violations.push(`expected one ${asciiJson(schema.openHeading)} section, found ${open.length}`);
+    return violations;
+  }
+  const before = children.slice(0, children.indexOf(open[0]));
+  if (before.length !== schema.intro.length + 1) {
+    violations.push(
+      `expected ${schema.intro.length + 1} nodes before the open section, found ${before.length}`,
+    );
+  } else if (!isCanonicalPreamble(before, schema)) {
+    violations.push("the preamble does not match the declared title and introduction");
+  }
+  return violations;
+}
+
+/**
+ * §A-BACKLOG-01 reports every way a notebook departs from its declared schema.
+ *
+ * The closure line answers empty or not; a project repairing its notebook needs
+ * to know which rule it broke, and an entry missing a field is a real defect
+ * that must not make the notebook look closable.
+ */
+export function backlogSchemaViolations(source, schema = META_O_SCHEMA) {
+  let tree;
+  try {
+    tree = fromMarkdown(source);
+  } catch (error) {
+    return [`document is not readable Markdown: ${error.message}`];
+  }
+  const violations = documentViolations(tree.children, schema);
+  for (const entry of backlogEntries(source, schema)) {
+    for (const field of entry.missingFields) {
+      violations.push(`entry ${asciiJson(entry.title)} is missing ${asciiJson(field)}`);
+    }
+  }
+  return violations;
+}
+
+/**
  * §A-BACKLOG-01 owns the one backlog schema used by both closure and tests.
  * Nodes after `Открыто` are deliberately NOT-EMPTY, even when they are not H3.
  */
@@ -115,19 +170,15 @@ export function inspectBacklog(source, schema = META_O_SCHEMA) {
     return { kind: "unknown", reason: "schema_invalid" };
   }
   const children = tree.children;
-  const h1 = children.filter((node) => node.type === "heading" && node.depth === 1);
   const open = children.filter(
     (node) =>
       node.type === "heading" && node.depth === 2 && normalizedText(node) === schema.openHeading,
   );
   const openIndex = children.indexOf(open[0]);
-  const before = children.slice(0, openIndex);
-  if (
-    h1.length !== 1 ||
-    open.length !== 1 ||
-    openIndex < 0 ||
-    !isCanonicalPreamble(before, schema)
-  ) {
+  // An entry missing a declared field is a defect of that entry, not a reason
+  // to call the whole notebook unreadable: the closure still has to say whether
+  // the open section is empty.
+  if (documentViolations(children, schema).length > 0) {
     return { kind: "unknown", reason: "schema_invalid" };
   }
   const content = children.slice(openIndex + 1);
