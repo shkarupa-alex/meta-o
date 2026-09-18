@@ -1,0 +1,42 @@
+{
+  "captured": "2026-09-18",
+  "note": "Each frame was rendered from a live harness on this machine, not written from memory. `script -qec` gives the PTY a controlling terminal, the raw stream is replayed through a cursor model, and the capture harness's own termination line is cut before the frame is stored.",
+  "frames": [
+    {
+      "file": "claude-trust-no.screen",
+      "harness": "claude",
+      "how": "claude started in an untrusted empty directory; first frame, nothing sent",
+      "trimmed": "none"
+    },
+    {
+      "file": "claude-trust-yes.screen",
+      "harness": "claude",
+      "how": "the same dialog in a directory whose name holds a space and a tilde, after one Down keystroke and before any Enter",
+      "trimmed": "none"
+    },
+    {
+      "file": "claude-prompt.screen",
+      "harness": "claude",
+      "how": "orca terminal read --screen on the idle reviewer terminal of this run",
+      "trimmed": "kept the last nine rows; the scrollback above them is review prose, not the prompt"
+    },
+    {
+      "file": "codex-prompt.screen",
+      "harness": "codex",
+      "how": "orca terminal read --screen on the idle reviewer terminal of this run",
+      "trimmed": "kept the last three rows: the scrollback above them holds a dispatch capability token, which is a credential and never enters the repository"
+    },
+    {
+      "file": "opencode-prompt.screen",
+      "harness": "opencode",
+      "how": "opencode started in an empty directory; first frame, nothing sent",
+      "trimmed": "none"
+    },
+    {
+      "file": "shell-prompt.screen",
+      "harness": "shell",
+      "how": "bash --norc -i with an explicit PS1, one command run and answered",
+      "trimmed": "none"
+    }
+  ]
+}
