@@ -16,6 +16,8 @@ import { fileURLToPath } from "node:url";
 
 import MarkdownIt from "markdown-it";
 
+import { deliberateFixture } from "../tools/mo-vocabulary.mjs";
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const markdown = new MarkdownIt();
 // Loose enough to catch a malformed anchor, so a typo fails instead of hiding.
@@ -190,7 +192,12 @@ test("every anchor reference in the project resolves to a defined id", () => {
     ...modules(),
   ];
   for (const path of sources) {
-    for (const id of references(readFileSync(path, "utf8"), path)) {
+    // A file whose subject is undefined vocabulary carries that vocabulary as
+    // data. It says so with the same marker `make mo-vocabulary` reads, so one
+    // declaration answers both gates instead of two mechanisms disagreeing.
+    const text = readFileSync(path, "utf8");
+    if (deliberateFixture(text)) continue;
+    for (const id of references(text, path)) {
       assert.ok(defined.has(id), `${path}: dangling reference ${id}`);
     }
   }
@@ -208,10 +215,13 @@ test("every first-party module names a decision and never the business layer", (
     assert.ok(found.includes(owner), `module discovery lost ${owner}`);
   }
   for (const path of found) {
+    // The purpose header is the module's own voice and is never fixture data,
+    // so it answers for its decision even in a file marked as examples.
     const cited = references(header(path), path).filter((id) => id.startsWith("§A-"));
     assert.ok(cited.length > 0, `${path}: purpose names no architecture decision`);
     for (const id of cited) assert.ok(defined.has(id), `${path}: cites unknown ${id}`);
-    const business = references(readFileSync(path, "utf8"), path).filter((id) =>
+    const body = readFileSync(path, "utf8");
+    const business = (deliberateFixture(body) ? [] : references(body, path)).filter((id) =>
       id.startsWith("§B-"),
     );
     assert.deepEqual(business, [], `${path}: code cites the business layer directly`);

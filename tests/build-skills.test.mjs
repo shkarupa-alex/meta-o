@@ -438,6 +438,7 @@ test("source anchors are stripped positionally and malformed placements fail clo
     /outside a standalone HTML marker/,
   );
   assert.throws(
+    // mo-vocabulary-ok: a deliberately malformed identifier is the fixture here.
     () => stripSourceAnchors("<!-- mo:source-anchor §A-memory-01 -->\n"),
     /malformed source anchor/,
   );

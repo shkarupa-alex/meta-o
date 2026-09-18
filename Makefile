@@ -17,7 +17,7 @@
 # `date +%N` is not portable to macOS, so the clock is Node, which this project
 # already requires. Nothing is written to disk: a timing file would be a
 # baseline with no external consumer.
-MO_QC_STAGES = mo-lint contract skills-check mo-eval-cases mo-knowledge-history mo-test mo-smoke
+MO_QC_STAGES = mo-lint contract skills-check mo-eval-cases mo-vocabulary mo-knowledge-history mo-test mo-smoke
 
 # The authoritative aggregate was always sequential; saying so keeps a `-j` on
 # the command line from interleaving stages and scrambling both the timings and
@@ -85,6 +85,13 @@ skills:
 mo-knowledge-history:
 	node shared/scripts/mo-knowledge-history.mjs --repo . \
 		--pins-from docs/architecture/knowledge-identifiers.md --audit-exemptions
+
+# An identifier nobody defined reads like a citation, so a reviewer reasons from
+# a section that is not there. Errors block; a guess about somebody's coinage is
+# a warning, because a checker that blocks on a guess gets switched off.
+# `docs/references/` is an archive of source material, not active requirements.
+mo-vocabulary:
+	node tools/mo-vocabulary.mjs --root . --exclude docs/references
 
 mo-test:
 	@command -v zsh >/dev/null 2>&1 || { echo "mo-test blocked: zsh is required for the cross-shell contract" >&2; exit 1; }
