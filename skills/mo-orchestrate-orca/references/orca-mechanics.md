@@ -162,6 +162,16 @@ is used — `orca terminal read --terminal current --screen --json`. A readable
 frame proves the coordinator is inside; `terminal_handle_stale`, an unknown
 handle or any other refusal means outside, whatever the path said.
 
+Outside, the Run still comes back with a `coordinator_handle`, and it may name a
+terminal belonging to somebody else's session: Orca fills the field from its own
+view of the app, not from the caller. The coordinator neither trusts nor closes
+that handle; it waits by run id and owns only the resources it created.
+
+A worker bound to a terminal the caller created is a caller-owned resource too.
+`worker-release` then answers `state=retained processAction=none`, because Orca
+released a Dispatch it never owned a process for, and the exact handle is closed
+by whoever opened it.
+
 Outside, a relative selector names nothing: a worktree selector is
 `id:<repo>::<path>` or `path:<path>`, written out in full. The Run is created
 without `--from`, the wait is `orca orchestration check --run <id> --wait`

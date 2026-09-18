@@ -105,6 +105,11 @@ test("the outside route is named by its sign and by the commands it changes", ()
     "orca terminal read --terminal current --screen --json",
     "`terminal_handle_stale`",
     "means outside, whatever the path said",
+    // Observed live: the Run came back bound to an unrelated session's tab, and
+    // releasing a worker bound to a caller-made terminal freed no process.
+    "may name",
+    "neither trusts nor closes that handle",
+    "`state=retained processAction=none`",
   ]) {
     assert.ok(mechanics.includes(phrase), `mechanics never confirms the sign: ${phrase}`);
   }
