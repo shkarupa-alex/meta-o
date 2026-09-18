@@ -9,16 +9,18 @@ import { spawnSync } from "node:child_process";
 import {
   cpSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
   statSync,
   symlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { fromMarkdown } from "mdast-util-from-markdown";
@@ -29,10 +31,12 @@ import {
   LICENSE_ALLOWLIST,
   LICENSE_EXCEPTIONS,
   SHARED_PLAN,
+  bundleShared,
   licenseSlug,
   frontmatter,
   stripSourceAnchors,
   walk,
+  writeLicenses,
 } from "../tools/build-skills.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -48,6 +52,9 @@ const EXPECTED = [
   "senior-jsts",
   "senior-python",
 ];
+
+const scratch = [];
+after(() => scratch.forEach((path) => rmSync(path, { recursive: true, force: true })));
 
 function directories(path) {
   return readdirSync(path, { withFileTypes: true })
@@ -119,9 +126,94 @@ test("every bundle ships exactly the notices of the roots it pulled", () => {
   assert.equal(existsSync(join(ROOT, "shared", "licenses")), false);
 });
 
-test("a root the closure does not name, or may not redistribute, breaks generation", () => {
-  // The closure is what makes the licence set provable rather than believed, so
-  // it has to fail on both halves: an unexpected root and unacceptable terms.
+/** §A-DISTRIBUTION-03 builds a package tree whose licence field the test owns. */
+function licenceFixture(declared, name = "fixture-root") {
+  const root = mkdtempSync(join(tmpdir(), "meta-o-license-"));
+  scratch.push(root);
+  const packageRoot = join(root, "node_modules", ...name.split("/"));
+  mkdirSync(packageRoot, { recursive: true });
+  const manifest = { name, version: "1.0.0" };
+  if (declared !== undefined) manifest.license = declared;
+  writeFileSync(join(packageRoot, "package.json"), JSON.stringify(manifest));
+  writeFileSync(join(packageRoot, "LICENSE"), "fixture notice\n");
+  writeFileSync(join(packageRoot, "index.js"), "module.exports = 1;\n");
+  return root;
+}
+
+test("unstated or unacceptable licence terms stop the build, not just the reading", () => {
+  // The previous version of this test re-read the same constants the build
+  // reads and never drove a rejection, so a guard that fails open passed it.
+  // These cases call the generator and require it to throw.
+  const sdk = "@anthropic-ai/claude-agent-sdk";
+  const cases = [
+    // No `license` key at all: both `declared` and an absent exception are
+    // `undefined`, which a direct comparison had accepted.
+    [undefined, "fixture-root", /with no license field/u],
+    [null, "fixture-root", /with no license field/u],
+    [{ type: "MIT" }, "fixture-root", /with no license field/u],
+    ["GPL-3.0-only", "fixture-root", /licensed GPL-3\.0-only/u],
+    // An exception belongs to one named root, never to a string anyone may
+    // declare, and it is bound to the exact wording upstream published.
+    [LICENSE_EXCEPTIONS[sdk], "fixture-root", /licensed SEE LICENSE IN README\.md/u],
+    [`${LICENSE_EXCEPTIONS[sdk]} `, sdk, /licensed SEE LICENSE IN README\.md/u],
+  ];
+  for (const [declared, name, message] of cases) {
+    const fixture = licenceFixture(declared, name);
+    assert.throws(
+      () => writeLicenses(join(fixture, "out"), [name], "fixture", join(fixture, "node_modules")),
+      message,
+      `${name} declaring ${JSON.stringify(declared)} was accepted`,
+    );
+    assert.equal(existsSync(join(fixture, "out", "licenses")), false);
+  }
+  for (const [declared, name] of [
+    ["MIT", "fixture-root"],
+    [LICENSE_EXCEPTIONS[sdk], sdk],
+  ]) {
+    const fixture = licenceFixture(declared, name);
+    writeLicenses(join(fixture, "out"), [name], "fixture", join(fixture, "node_modules"));
+    const notice = join(fixture, "out", "licenses", `${licenseSlug(name)}-LICENSE.txt`);
+    assert.equal(readFileSync(notice, "utf8"), "fixture notice\n");
+  }
+});
+
+test("a bundle that pulls a root its closure does not name fails generation", () => {
+  // The closure is the machine-checked half of the redistribution boundary: it
+  // is only worth anything if an undeclared root actually stops the build.
+  const fixture = licenceFixture("MIT");
+  const entry = join(fixture, "entry.mjs");
+  writeFileSync(entry, 'import value from "fixture-root";\nexport default value;\n');
+  assert.throws(
+    () =>
+      bundleShared(
+        entry,
+        join(fixture, "out.mjs"),
+        { roots: [], baselineBytes: 1_000_000 },
+        "fixture",
+      ),
+    /packages fixture-root; its closure names none/u,
+  );
+  bundleShared(
+    entry,
+    join(fixture, "out.mjs"),
+    { roots: ["fixture-root"], baselineBytes: 1_000_000 },
+    "fixture",
+  );
+  // A measured baseline is a budget, not decoration: an unexpectedly large
+  // bundle is how a silent dependency change announces itself.
+  assert.throws(
+    () =>
+      bundleShared(
+        entry,
+        join(fixture, "out.mjs"),
+        { roots: ["fixture-root"], baselineBytes: 1 },
+        "fixture",
+      ),
+    /measured ceiling is 2/u,
+  );
+});
+
+test("every declared closure keeps its measured baseline and reaches a skill", () => {
   for (const [destination, closure] of Object.entries(BUNDLES)) {
     assert.ok(closure.roots.length > 0, `${destination} declares no roots`);
     assert.ok(Number.isInteger(closure.baselineBytes), `${destination} has no measured baseline`);

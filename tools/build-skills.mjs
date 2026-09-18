@@ -253,13 +253,13 @@ export function packageRoot(input) {
 }
 
 /**
- * Produce one self-contained helper and prove its closure.
+ * §A-DISTRIBUTION-03 produces one self-contained helper and proves its closure.
  *
  * Without the bundle, catalogue discovery and Markdown reading would depend on
  * whichever `node_modules` happened to surround an install. Returning the roots
  * lets the caller ship exactly the notices this bundle actually pulled.
  */
-function bundleShared(source, destination, closure, label) {
+export function bundleShared(source, destination, closure, label) {
   mkdirSync(dirname(destination), { recursive: true });
   const result = buildSync({
     entryPoints: [source],
@@ -301,20 +301,28 @@ function bundleShared(source, destination, closure, label) {
 }
 
 /**
- * Copy each bundled root's notice next to the bundle that pulled it.
+ * §A-DISTRIBUTION-03 copies each bundled root's notice next to its bundle.
  *
  * The notices are build output, not a committed directory: a stored copy is one
  * more thing that can silently stop matching the package it claims to describe.
  */
-function writeLicenses(skillRoot, roots, label) {
+export function writeLicenses(skillRoot, roots, label, packagesRoot = join(ROOT, "node_modules")) {
   for (const root of roots) {
-    const packageRootPath = join(ROOT, "node_modules", ...root.split("/"));
+    const packageRootPath = join(packagesRoot, ...root.split("/"));
     const declared = JSON.parse(
       readFileSync(join(packageRootPath, "package.json"), "utf8"),
     ).license;
-    if (!LICENSE_ALLOWLIST.has(declared) && LICENSE_EXCEPTIONS[root] !== declared) {
+    // An absent field reads as `undefined`, and so does a missing exception, so
+    // comparing the two directly let a package that declares nothing at all
+    // satisfy an exception recorded for some other root. Unstated terms are the
+    // case with the least evidence behind them, so they fail first and loudest.
+    const permitted =
+      typeof declared === "string" &&
+      (LICENSE_ALLOWLIST.has(declared) ||
+        (Object.hasOwn(LICENSE_EXCEPTIONS, root) && LICENSE_EXCEPTIONS[root] === declared));
+    if (!permitted) {
       throw new Error(
-        `${label} bundles ${root}, licensed ${declared ?? "with no license field"}; only ` +
+        `${label} bundles ${root}, licensed ${typeof declared === "string" ? declared : "with no license field"}; only ` +
           `${[...LICENSE_ALLOWLIST].join(", ")} may be redistributed`,
       );
     }
