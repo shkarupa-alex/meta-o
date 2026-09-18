@@ -29,7 +29,7 @@ import {
   historyPins,
   stableValue,
 } from "./knowledge-documents.mjs";
-import { createHistoryReader, git, unreadable } from "./knowledge-history-reader.mjs";
+import { createHistoryReader, unreadable } from "./knowledge-history-reader.mjs";
 
 export { authorizationRecords, definitions } from "./knowledge-documents.mjs";
 export { createHistoryReader, git } from "./knowledge-history-reader.mjs";
@@ -532,12 +532,12 @@ function resolvePins(given) {
 /**
  * A declared exemption has to be the whole exemption. Two more passes prove it:
  * every edge from the boundary onwards survives semantic enforcement on its own,
- * and nothing after the boundary quietly rides on the exemption.
+ * and nothing between the cutoff and the boundary is unreadable once the
+ * exemption stops hiding it.
  */
 function exemptionOverreach(root, values, reported) {
   const unexempted = { ...values.pins, ...values.documents, semanticFrom: null };
-  const boundary = values.pins.semanticFrom;
-  const first = runHistory(root, boundary, unexempted);
+  const first = runHistory(root, values.pins.semanticFrom, unexempted);
   const second = runHistory(root, values.cutoff, unexempted);
   // A pass that could not read the history has not audited anything, so it
   // answers `unavailable` rather than dressing the reason up as overreach.
@@ -546,38 +546,21 @@ function exemptionOverreach(root, values, reported) {
       (first.unavailable ? first : second).errors[0].replace(/^history_unavailable: /u, ""),
     );
   }
-  const overreach = first.errors;
-  const already = new Set(reported);
-  // One `rev-list --ancestry-path` answers for every reported edge at once what
-  // a `merge-base --is-ancestor` per error asked one process at a time, which
-  // tied the process count to how many findings the audit happened to produce.
-  // Every process this audit starts goes through one counter, so the budget it
-  // advertises is the work it really did. A fixed number here would have hidden
-  // exactly the per-finding growth the count exists to expose.
-  const counted = { spawns: 0 };
-  const run = (args, allowMissing) => {
-    counted.spawns += 1;
-    return git(root, args, allowMissing);
-  };
-  const listed = run(["rev-list", "--ancestry-path", `${boundary}..HEAD`], true) ?? "";
-  const enforced = new Set(listed.trim().split("\n").filter(Boolean));
-  enforced.add(run(["rev-parse", "--verify", `${boundary}^{commit}`]).trim());
-  for (const error of second.errors) {
-    const [parent, edge] = error.split("..");
-    // Only an edge error can be attributed to a boundary. Every other class is
-    // independent of the exemption and so is already in the primary pass; if a
-    // new one ever is not, reporting it beats dropping it on the floor.
-    if (edge === undefined) {
-      if (!already.has(error)) overreach.push(error);
-      continue;
-    }
-    if (enforced.has(parent)) overreach.push(error);
-  }
+  // An edge the second pass could attribute to the boundary has its child
+  // inside `boundary..HEAD` by construction, so the first pass already found
+  // it. Re-deriving those edges printed every one of them twice and paid a
+  // `rev-list` over the whole range to produce the copy; only the classes that
+  // carry no edge are actually new here.
+  const seen = new Set([...reported, ...first.errors]);
+  const overreach = [
+    ...first.errors,
+    ...second.errors.filter((error) => error.split("..")[1] === undefined && !seen.has(error)),
+  ];
   return {
     errors: overreach.map((error) => `exemption_overreach: ${error}`),
-    // Both traversals and this pass are work the gate really did. Leaving them
-    // out of the reported budget let the audit grow unmeasured.
-    spawns: first.stats.spawns + second.stats.spawns + counted.spawns,
+    // Both traversals are work the gate really did. Leaving them out of the
+    // reported budget let the audit grow unmeasured.
+    spawns: first.stats.spawns + second.stats.spawns,
   };
 }
 

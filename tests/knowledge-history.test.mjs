@@ -510,8 +510,46 @@ test("an audited exemption reports the edges it would have to cover", () => {
   );
   assert.equal(run.status, 1);
   assert.match(run.stdout, /status=violations/u);
-  assert.match(run.stderr, new RegExp(`semantic reuse ${BUSINESS_ID}`, "u"));
-  assert.match(run.stderr, /^exemption_overreach: .*semantic reuse/mu);
+  // One violation per line is the grammar every consumer parses, so an exact
+  // line count is the assertion: a `match` counted a duplicate as a pass, and
+  // a consumer counting findings would have reported twice what exists.
+  const lines = run.stderr.trimEnd().split("\n");
+  const head = git(root, ["rev-parse", "HEAD"]).trim();
+  assert.deepEqual(lines, [
+    `${cutoff}..${head}: semantic reuse ${BUSINESS_ID}`,
+    `exemption_overreach: ${cutoff}..${head}: semantic reuse ${BUSINESS_ID}`,
+  ]);
+});
+
+test("the audit finds the edge only its own traversal can reach, and once", () => {
+  // The aside branch never descended from the boundary, so the exemption keeps
+  // covering it and the primary pass stays silent. Only the pass that starts at
+  // the boundary can attribute it, which is why that pass cannot be dropped as
+  // a duplicate of the one starting at the cutoff.
+  const { root, cutoff } = fixture();
+  rewriteBusiness(root, "second");
+  commit(root, "authorized-looking change before the boundary");
+  const boundary = git(root, ["rev-parse", "HEAD"]).trim();
+  git(root, ["switch", "-qc", "aside", boundary]);
+  rewriteBusiness(root, "aside");
+  commit(root, "unauthorized change after the boundary on a side branch");
+  const aside = git(root, ["rev-parse", "HEAD"]).trim();
+  const run = spawnSync(
+    process.execPath,
+    [CLI, "--repo", root, "--cutoff", cutoff, "--semantic-from", boundary, "--audit-exemptions"],
+    { encoding: "utf8" },
+  );
+  assert.equal(run.status, 1);
+  const lines = run.stderr.trimEnd().split("\n");
+  assert.equal(
+    lines.filter((line) => line.startsWith("exemption_overreach: ")).length,
+    1,
+    `expected one audited edge, got ${JSON.stringify(lines)}`,
+  );
+  assert.ok(
+    lines.some((line) => line.includes(`${boundary}..${aside}`)),
+    run.stderr,
+  );
 });
 
 test("an exemption that covers only its own past is audited clean", () => {

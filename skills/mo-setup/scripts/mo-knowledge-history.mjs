@@ -10797,37 +10797,23 @@ function resolvePins(given) {
 }
 function exemptionOverreach(root, values, reported) {
   const unexempted = { ...values.pins, ...values.documents, semanticFrom: null };
-  const boundary = values.pins.semanticFrom;
-  const first = runHistory(root, boundary, unexempted);
+  const first = runHistory(root, values.pins.semanticFrom, unexempted);
   const second = runHistory(root, values.cutoff, unexempted);
   if (first.unavailable || second.unavailable) {
     throw unreadable(
       (first.unavailable ? first : second).errors[0].replace(/^history_unavailable: /u, "")
     );
   }
-  const overreach = first.errors;
-  const already = new Set(reported);
-  const counted = { spawns: 0 };
-  const run = (args, allowMissing) => {
-    counted.spawns += 1;
-    return git(root, args, allowMissing);
-  };
-  const listed = run(["rev-list", "--ancestry-path", `${boundary}..HEAD`], true) ?? "";
-  const enforced = new Set(listed.trim().split("\n").filter(Boolean));
-  enforced.add(run(["rev-parse", "--verify", `${boundary}^{commit}`]).trim());
-  for (const error of second.errors) {
-    const [parent, edge] = error.split("..");
-    if (edge === void 0) {
-      if (!already.has(error)) overreach.push(error);
-      continue;
-    }
-    if (enforced.has(parent)) overreach.push(error);
-  }
+  const seen = /* @__PURE__ */ new Set([...reported, ...first.errors]);
+  const overreach = [
+    ...first.errors,
+    ...second.errors.filter((error) => error.split("..")[1] === void 0 && !seen.has(error))
+  ];
   return {
     errors: overreach.map((error) => `exemption_overreach: ${error}`),
-    // Both traversals and this pass are work the gate really did. Leaving them
-    // out of the reported budget let the audit grow unmeasured.
-    spawns: first.stats.spawns + second.stats.spawns + counted.spawns
+    // Both traversals are work the gate really did. Leaving them out of the
+    // reported budget let the audit grow unmeasured.
+    spawns: first.stats.spawns + second.stats.spawns
   };
 }
 function report(values, run) {
