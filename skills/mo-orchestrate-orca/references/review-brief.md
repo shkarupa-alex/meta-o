@@ -28,6 +28,12 @@ copied verbatim; the brief says so rather than supplying a guess. No placeholder
 survives into a sent brief: a brief containing `<sha>` or `<range>` is not a
 brief, and sending one spends a reviewer on a question.
 
+Every SHA in the brief is pasted from the output of `git rev-parse <ref>` and
+proved with `git cat-file -t <sha>` before the brief is sent. An abbreviation
+expanded by hand looks exactly like a real SHA and names no tree: the reviewer
+cannot materialize the candidate, answers `UNKNOWN` with
+`Unknown-Reason: retrieval_failure`, and the whole round is spent.
+
 ## Grounding sources are reachable from the candidate
 
 Every source the brief names as grounding must be readable from the candidate

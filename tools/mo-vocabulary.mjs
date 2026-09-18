@@ -39,8 +39,8 @@ const SUPPRESS_FILE = `${SUPPRESS} file`;
  *
  * §A-MEMORY-01 owns `§A-*` and `§B-*`: their grammar is decided, so a citation
  * that does not resolve is a defect rather than an opinion. A bare `§9.1` names
- * no document at all and cannot resolve by construction. A coined `W1.2` might
- * be anything, which is exactly why it is a warning.
+ * no document at all and cannot resolve by construction. A coined work-item
+ * number might be anything, which is exactly why it is a warning.
  */
 export function classify(token, layers = DEFAULT_LAYERS) {
   // `§A-*`, `§B-<AREA>-<NN>`, `§A-[A-Z]…` in a regular expression and `"§A-"`
