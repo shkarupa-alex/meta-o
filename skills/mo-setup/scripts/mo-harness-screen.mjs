@@ -35,24 +35,27 @@ export const SCREENS = [
     harness: "claude",
     state: "agent_prompt",
     anchors: [/^\s*❯/mu, /│.*Context /u],
-    input: /^\s*❯\s?(.*)$/mu,
-    placeholder: "",
+    // `\s` spans newlines, so a composer pattern is written with `[ \t]`: the
+    // earlier form matched the prompt row and then captured the row below it.
+    input: /^[ \t]*❯[ \t]?(.*)$/mu,
   },
   {
     version: "codex-prompt-2026-09-18",
     harness: "codex",
     state: "agent_prompt",
     anchors: [/^\s*›\s/mu, /Context \d+% used/u],
-    input: /^\s*›\s?(.*)$/mu,
-    placeholder: "Ask Codex to do anything",
+    input: /^[ \t]*›[ \t]?(.*)$/mu,
+    placeholder: /^Ask Codex to do anything$/u,
   },
   {
     version: "opencode-prompt-2026-09-18",
     harness: "opencode",
     state: "agent_prompt",
     anchors: [/^\s*┃\s+Ask anything…/mu, /ctrl\+p commands/u],
-    input: /^\s*┃\s+Ask anything…(.*)$/mu,
-    placeholder: "",
+    input: /^[ \t]*┃[ \t]+Ask anything…(.*)$/mu,
+    // OpenCode prints a rotating suggestion in quotes next to its placeholder.
+    // The quotes are what tells a suggestion from something a human typed.
+    placeholder: /^"[^"]*"$/u,
   },
   {
     version: "posix-shell-prompt-2026-09-18",
@@ -113,11 +116,22 @@ function trustAction(frame) {
   return { action: "refuse", choice, reason: "choice_unrecognized" };
 }
 
-/** Whether the harness composer holds nothing but its own placeholder. */
+/**
+ * Whether the harness composer holds nothing but its own placeholder.
+ *
+ * A prefix test read every draft as empty: where the recorded placeholder is
+ * the empty string every string starts with it, and where it is not, a draft
+ * beginning with the placeholder passed too. Task bytes appended to somebody's
+ * half-typed line become part of the dispatched task, which is precisely what
+ * §A-DELIVERY-01 exists to prevent — so the composer is empty only when it is
+ * empty, or exactly the placeholder and nothing else.
+ */
 function composerEmpty(screen, frame) {
   const typed = screen.input === undefined ? undefined : screen.input.exec(frame)?.[1];
   if (typed === undefined) return false;
-  return typed.trim() === "" || typed.trim().startsWith(screen.placeholder) === true;
+  const text = typed.trim();
+  if (text === "") return true;
+  return screen.placeholder !== undefined && screen.placeholder.test(text);
 }
 
 /**
@@ -145,7 +159,7 @@ export function classifyScreen(text) {
   if (screen.state === "agent_prompt") {
     if (!composerEmpty(screen, frame))
       return { ...common, action: "refuse", reason: "composer_not_empty" };
-    return { ...common, action: "deliver" };
+    return { ...common, action: "inject" };
   }
   return { ...common, action: "refuse", reason: "shell_prompt" };
 }
@@ -178,24 +192,138 @@ export function trustStep(screen, ownership) {
   return { action: screen.action, reason: "owned" };
 }
 
-/** §A-DELIVERY-01 states one verdict as a line a caller reads without reparsing. */
-export function screenLine(verdict) {
-  return [
-    "Harness-Screen/1",
-    `state=${verdict.state}`,
-    `action=${verdict.action}`,
-    `harness=${verdict.harness}`,
-    `screen_version=${verdict.version}`,
-    `path=${JSON.stringify(verdict.path ?? "")}`,
-    `reason=${verdict.reason ?? "none"}`,
-  ].join(" ");
+/**
+ * The rendered frame inside one `orca terminal read --screen --json` answer.
+ *
+ * §A-DELIVERY-01 allows exactly one kind of evidence here: a screen Orca says
+ * it rendered. A scrollback stream loses the spaces drawn by cursor moves, so
+ * an envelope that is not `source: "screen"` is unreadable rather than
+ * classified — reading it anyway would compare a known dialog against text no
+ * human ever saw.
+ */
+export function readEnvelope(text) {
+  let document;
+  try {
+    document = JSON.parse(text);
+  } catch {
+    return { error: "envelope_unparsable" };
+  }
+  if (document?.ok !== true) return { error: "envelope_not_ok" };
+  const terminal = document?.result?.terminal;
+  if (terminal === null || typeof terminal !== "object") return { error: "envelope_no_terminal" };
+  if (terminal.source !== "screen") return { error: "not_a_rendered_screen" };
+  const { tail } = terminal;
+  const frame = Array.isArray(tail) ? tail.join("\n") : tail;
+  if (typeof frame !== "string" || frame.trim() === "") return { error: "screen_empty" };
+  return { frame, handle: terminal.handle };
+}
+
+/**
+ * Whether the dialog asks about the path the caller expects.
+ *
+ * §A-DELIVERY-01 leaves ownership with the caller: the frame may print `~`
+ * while the caller holds an absolute path, and only that difference is
+ * reconciled here. Resolving symlinks stays with the side that knows which
+ * worktree it created.
+ */
+export function pathMatch(asked, expected, home = process.env.HOME) {
+  if (typeof asked !== "string" || typeof expected !== "string") return "no";
+  const expand = (value) =>
+    value.startsWith("~/") && typeof home === "string" ? `${home}${value.slice(1)}` : value;
+  const trim = (value) => expand(value.trim()).replace(/\/+$/u, "");
+  return trim(asked) === trim(expected) ? "yes" : "no";
+}
+
+/** Which option the trust dialog has highlighted, in the words of the contract. */
+function selectionOf(verdict) {
+  if (verdict.action === "confirm_trust") return "yes";
+  return verdict.action === "accept_trust" ? "no" : "unknown";
+}
+
+/**
+ * Decide what one frame licenses for this caller, harness and path.
+ *
+ * §A-DELIVERY-01 keeps ownership with the caller, so this answers only what the
+ * screen itself can prove: which harness repainted it, whether the composer is
+ * free, and whether the dialog names the expected path. Everything else refuses.
+ */
+export function decideScreen(text, { harness, expectPath, fixturesVersion } = {}) {
+  const verdict = classifyScreen(text);
+  const record = { state: verdict.state, screen_version: verdict.version, action: "refuse" };
+  if (fixturesVersion !== undefined && verdict.version !== fixturesVersion) {
+    return { ...record, state: "unknown", reason: "screen_version_unpinned" };
+  }
+  if (verdict.state === "unknown") return { ...record, reason: verdict.reason };
+  if (harness !== undefined && verdict.harness !== harness) {
+    return { ...record, reason: "harness_mismatch" };
+  }
+  if (verdict.state === "trust_ui") return { ...record, ...trustRecord(verdict, expectPath) };
+  if (verdict.state === "busy") return { ...record, action: "wait", reason: "none" };
+  const licensed = verdict.state === "agent_prompt" && verdict.action === "inject";
+  return { ...record, action: licensed ? "inject" : "refuse", reason: verdict.reason ?? "none" };
+}
+
+/** §A-DELIVERY-01 licenses a trust answer only on the path the caller named. */
+function trustRecord(verdict, expectPath) {
+  const selection = selectionOf(verdict);
+  const path_match = pathMatch(verdict.path, expectPath);
+  const licensed = path_match === "yes" && selection !== "unknown";
+  return {
+    trust_path: verdict.path,
+    selection,
+    path_match,
+    action: licensed ? verdict.action : "refuse",
+    reason: path_match === "no" ? "path_mismatch" : (verdict.reason ?? "none"),
+  };
+}
+
+/** §A-DELIVERY-01 states one verdict as the line the caller reads without reparsing. */
+export function screenLine(record) {
+  const parts = ["MO-HARNESS-SCREEN/1", `state=${record.state}`];
+  if (record.trust_path !== undefined)
+    parts.push(`trust_path=${JSON.stringify(record.trust_path)}`);
+  if (record.selection !== undefined) parts.push(`selection=${record.selection}`);
+  if (record.path_match !== undefined) parts.push(`path_match=${record.path_match}`);
+  if (record.screen_version !== undefined) parts.push(`screen_version=${record.screen_version}`);
+  parts.push(`action=${record.action}`);
+  return parts.join(" ");
+}
+
+/** §A-DELIVERY-01 accepts only the exact call the mechanics document writes. */
+export function readOptions(argv) {
+  const options = {};
+  const names = {
+    "--harness": "harness",
+    "--expect-path": "expectPath",
+    "--fixtures-version": "fixturesVersion",
+  };
+  for (let step = 0; step < argv.length; step += 1) {
+    const key = names[argv[step]];
+    if (key === undefined) return { error: `unknown flag "${argv[step]}"` };
+    const value = argv[step + 1];
+    if (value === undefined || value.startsWith("--"))
+      return { error: `${argv[step]} needs a value` };
+    options[key] = value;
+    step += 1;
+  }
+  if (options.harness === undefined) return { error: "--harness is required" };
+  if (options.expectPath === undefined) return { error: "--expect-path is required" };
+  return options;
 }
 
 if (process.argv[1] !== undefined && import.meta.url === `file://${process.argv[1]}`) {
-  const file = process.argv[2];
-  const text =
-    file === undefined || file === "-" ? readFileSync(0, "utf8") : readFileSync(file, "utf8");
-  const verdict = classifyScreen(text);
-  process.stdout.write(`${screenLine(verdict)}\n`);
-  process.exitCode = verdict.action === "refuse" ? 3 : 0;
+  const options = readOptions(process.argv.slice(2));
+  if (options.error !== undefined) {
+    process.stderr.write(`mo-harness-screen: ${options.error}\n`);
+    process.exitCode = 2;
+  } else {
+    const envelope = readEnvelope(readFileSync(0, "utf8"));
+    if (envelope.error !== undefined) {
+      process.stderr.write(`mo-harness-screen: ${envelope.error}\n`);
+      process.exitCode = 2;
+    } else {
+      process.stdout.write(`${screenLine(decideScreen(envelope.frame, options))}\n`);
+      process.exitCode = 0;
+    }
+  }
 }

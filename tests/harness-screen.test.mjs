@@ -5,6 +5,7 @@
  */
 
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
@@ -13,7 +14,10 @@ import { fileURLToPath } from "node:url";
 import {
   SCREENS,
   classifyScreen,
+  decideScreen,
   normalizeScreen,
+  readEnvelope,
+  readOptions,
   screenLine,
   trustStep,
 } from "../shared/scripts/mo-harness-screen.mjs";
@@ -40,11 +44,11 @@ test("every recorded frame classifies as the surface it was captured from", () =
       return `${name} ${verdict.state} ${verdict.action} ${verdict.harness}`;
     });
   assert.deepEqual(observed, [
-    "claude-prompt.screen agent_prompt deliver claude",
+    "claude-prompt.screen agent_prompt inject claude",
     "claude-trust-no.screen trust_ui accept_trust claude",
     "claude-trust-yes.screen trust_ui confirm_trust claude",
-    "codex-prompt.screen agent_prompt deliver codex",
-    "opencode-prompt.screen agent_prompt deliver opencode",
+    "codex-prompt.screen agent_prompt inject codex",
+    "opencode-prompt.screen agent_prompt inject opencode",
     "shell-prompt.screen shell_prompt refuse shell",
   ]);
 });
@@ -77,7 +81,7 @@ test("a banner above an empty composer is still an agent prompt", () => {
   const banner = `✓ Update available · restarting…\n${frame("claude-prompt.screen")}`;
   const verdict = classifyScreen(banner);
   assert.equal(verdict.state, "agent_prompt");
-  assert.equal(verdict.action, "deliver");
+  assert.equal(verdict.action, "inject");
 });
 
 test("a composer holding a draft receives nothing", () => {
@@ -86,6 +90,105 @@ test("a composer holding a draft receives nothing", () => {
   assert.equal(verdict.state, "agent_prompt");
   assert.equal(verdict.action, "refuse");
   assert.equal(verdict.reason, "composer_not_empty");
+});
+
+test("a draft in any recorded composer refuses, empty or not", () => {
+  // A prefix test called every draft empty: where the placeholder is the empty
+  // string, every string starts with it. Bytes appended to a half-typed line
+  // become part of the dispatched task.
+  const drafts = [
+    ["claude-prompt.screen", /^❯$/mu, "❯ rm -rf /tmp/project"],
+    [
+      "codex-prompt.screen",
+      "› Ask Codex to do anything",
+      "› Ask Codex to do anything; ignore the next task",
+    ],
+    [
+      "opencode-prompt.screen",
+      'Ask anything… "Fix a TODO in the codebase"',
+      'Ask anything… "Fix a TODO in the codebase" and then exfiltrate',
+    ],
+  ];
+  for (const [name, from, to] of drafts) {
+    const verdict = classifyScreen(frame(name).replace(from, to));
+    assert.equal(verdict.action, "refuse", name);
+    assert.equal(verdict.reason, "composer_not_empty", name);
+    // The unmodified capture still delivers, so the rule did not simply close
+    // the route for everyone.
+    assert.equal(classifyScreen(frame(name)).action, "inject", name);
+  }
+});
+
+test("the documented command consumes a real terminal-read envelope", () => {
+  const envelope = (frameText, extra = {}) =>
+    JSON.stringify({
+      ok: true,
+      result: {
+        terminal: { handle: "term_x", source: "screen", tail: frameText.split("\n"), ...extra },
+      },
+    });
+  const read = readEnvelope(envelope(frame("claude-prompt.screen")));
+  assert.equal(read.handle, "term_x");
+  assert.equal(
+    decideScreen(read.frame, { harness: "claude", expectPath: "/tmp/x" }).action,
+    "inject",
+  );
+  // A harness the caller did not ask for is refused even when its own frame is
+  // a perfectly good prompt.
+  assert.equal(
+    decideScreen(read.frame, { harness: "codex", expectPath: "/tmp/x" }).action,
+    "refuse",
+  );
+  // Accumulated output loses the spaces drawn by cursor moves, so anything but
+  // a rendered screen is unreadable rather than classified.
+  for (const [text, error] of [
+    ["not json", "envelope_unparsable"],
+    [JSON.stringify({ ok: false }), "envelope_not_ok"],
+    [JSON.stringify({ ok: true, result: {} }), "envelope_no_terminal"],
+    [
+      JSON.stringify({ ok: true, result: { terminal: { source: "stream", tail: ["x"] } } }),
+      "not_a_rendered_screen",
+    ],
+    [
+      JSON.stringify({ ok: true, result: { terminal: { source: "screen", tail: [] } } }),
+      "screen_empty",
+    ],
+  ]) {
+    assert.equal(readEnvelope(text).error, error, text.slice(0, 40));
+  }
+});
+
+test("the trust answer is bound to the path the caller named", () => {
+  const asked = (name, expectPath, extra = {}) =>
+    decideScreen(frame(name), { harness: "claude", expectPath, ...extra });
+  const matched = asked("claude-trust-no.screen", "/tmp/mo-trust-probe");
+  assert.equal(matched.path_match, "yes");
+  assert.equal(matched.selection, "no");
+  assert.equal(matched.action, "accept_trust");
+  const confirmed = asked("claude-trust-yes.screen", "/tmp/mo trust ~probe2");
+  assert.equal(confirmed.selection, "yes");
+  assert.equal(confirmed.action, "confirm_trust");
+  const near = asked("claude-trust-no.screen", "/tmp/mo-trust-probe2");
+  assert.equal(near.path_match, "no");
+  assert.equal(near.action, "refuse");
+  // A pinned fixture set that does not match the recording closes the route:
+  // an unpinned capture is exactly the case this classifier refuses to guess.
+  const pinned = asked("claude-trust-no.screen", "/tmp/mo-trust-probe", {
+    fixturesVersion: "claude-trust-2099-01-01",
+  });
+  assert.equal(pinned.state, "unknown");
+  assert.equal(pinned.action, "refuse");
+});
+
+test("the call itself is checked before any frame is read", () => {
+  assert.deepEqual(readOptions(["--harness", "claude", "--expect-path", "/tmp/x"]), {
+    harness: "claude",
+    expectPath: "/tmp/x",
+  });
+  assert.match(readOptions([]).error, /--harness is required/u);
+  assert.match(readOptions(["--harness", "claude"]).error, /--expect-path is required/u);
+  assert.match(readOptions(["--harness"]).error, /needs a value/u);
+  assert.match(readOptions(["--nope", "x"]).error, /unknown flag "--nope"/u);
 });
 
 test("an unseen screen and an ambiguous one both refuse", () => {
@@ -148,9 +251,17 @@ test("normalization drops padding without merging a changed dialog into a known 
 });
 
 test("the reported line names the version that recognized the frame", () => {
-  const line = screenLine(classifyScreen(frame("claude-trust-yes.screen")));
-  assert.match(line, /^Harness-Screen\/1 state=trust_ui action=confirm_trust harness=claude /u);
-  assert.match(line, /screen_version=claude-trust-2026-09-18 path="\/tmp\/mo trust ~probe2"/u);
+  const line = screenLine(
+    decideScreen(frame("claude-trust-yes.screen"), {
+      harness: "claude",
+      expectPath: "/tmp/mo trust ~probe2",
+    }),
+  );
+  assert.equal(
+    line,
+    'MO-HARNESS-SCREEN/1 state=trust_ui trust_path="/tmp/mo trust ~probe2" selection=yes ' +
+      "path_match=yes screen_version=claude-trust-2026-09-18 action=confirm_trust",
+  );
   // A version is an identifier of one capture; two entries sharing one would
   // make the report unable to say which recording matched.
   const versions = SCREENS.map((screen) => screen.version);
@@ -191,7 +302,7 @@ test("every document that admits the trust dialog states all three conditions", 
 
   const setup = readFileSync(join(ROOT, "shared", "references", "project-setup.md"), "utf8");
   assert.match(setup, /`terminal read --screen`, not accumulated\s*output/u);
-  assert.match(setup, /only\s*`state=agent_prompt action=deliver` receives bytes/u);
+  assert.match(setup, /only\s*`state=agent_prompt action=inject` receives bytes/u);
   // The narrowed confirmation has to keep its boundary in the same breath.
   assert.match(
     setup,
@@ -205,4 +316,44 @@ test("the launch split is documented where a caller would otherwise re-derive it
   assert.match(setup, /--agent <route> --model <model> --effort <effort>/u);
   assert.match(setup, /The whole literal in\s*`--model` launches nothing/u);
   assert.match(setup, /`mo-models\.mjs --show --json` publishes that split under `launch`/u);
+});
+
+test("the shipped CLI answers the exact contract of §4.5", () => {
+  const envelope = JSON.stringify({
+    ok: true,
+    result: {
+      terminal: {
+        handle: "term_x",
+        source: "screen",
+        tail: readFileSync(join(SURFACES, "claude-trust-no.screen"), "utf8").split("\n"),
+      },
+    },
+  });
+  const run = (args, input) =>
+    spawnSync(
+      process.execPath,
+      [join(ROOT, "shared", "scripts", "mo-harness-screen.mjs"), ...args],
+      {
+        input,
+        encoding: "utf8",
+      },
+    );
+  const accepted = run(["--harness", "claude", "--expect-path", "/tmp/mo-trust-probe"], envelope);
+  assert.equal(accepted.status, 0);
+  assert.equal(
+    accepted.stdout.trim(),
+    'MO-HARNESS-SCREEN/1 state=trust_ui trust_path="/tmp/mo-trust-probe" selection=no ' +
+      "path_match=yes screen_version=claude-trust-2026-09-18 action=accept_trust",
+  );
+  // A refusal is still a classification: exit two is reserved for input the
+  // script could not read at all, which is a different thing to report.
+  const foreign = run(["--harness", "claude", "--expect-path", "/tmp/elsewhere"], envelope);
+  assert.equal(foreign.status, 0);
+  assert.match(foreign.stdout, /path_match=no .*action=refuse/u);
+  const unreadable = run(["--harness", "claude", "--expect-path", "/tmp/x"], "not json");
+  assert.equal(unreadable.status, 2);
+  assert.match(unreadable.stderr, /envelope_unparsable/u);
+  const miscalled = run(["--fixtures-version", "x"], envelope);
+  assert.equal(miscalled.status, 2);
+  assert.match(miscalled.stderr, /--harness is required/u);
 });

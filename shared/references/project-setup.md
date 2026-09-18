@@ -147,7 +147,7 @@ Backend-wide health does not prove harness readiness. Use Orca's documented
 launch and observation surfaces to verify every selected harness. Before task
 bytes, read the rendered screen — `terminal read --screen`, not accumulated
 output — and classify it with `scripts/mo-harness-screen.mjs`: only
-`state=agent_prompt action=deliver` receives bytes. A trust dialog, a shell
+`state=agent_prompt action=inject` receives bytes. A trust dialog, a shell
 prompt, a composer holding a draft, an unrecognized frame and a frame two
 recorded screens both match are each a refusal, not a retry.
 

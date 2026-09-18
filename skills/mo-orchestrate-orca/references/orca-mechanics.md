@@ -60,8 +60,13 @@ orca terminal create --worktree id:<repo>::<path> --title <title> --command "<ag
   # the posture flag is not repeated here: the wrapper owns it
 → record the handle in OwnedResourceSet/1 at once, as the fallback binding for no_owned_resource
 orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 120000 --json
-orca terminal read --terminal <handle> --screen --json | node scripts/mo-harness-screen.mjs
-  # trust_ui → the trust procedure; agent_prompt with action=deliver → continue;
+orca terminal read --terminal <handle> --screen --json \
+  | node scripts/mo-harness-screen.mjs --harness <claude|codex|opencode> --expect-path <abs>
+  # reads the envelope, requires source=screen, and answers one line:
+  # MO-HARNESS-SCREEN/1 state=<...> [trust_path=<json>] [selection=<yes|no|unknown>]
+  #                     [path_match=<yes|no>] [screen_version=<id>] action=<inject|accept_trust|confirm_trust|refuse|wait>
+  # exit 0 classified, 2 unreadable input or a call it cannot answer
+  # trust_ui → the trust procedure; action=inject → continue;
   # anything else → close that exact handle and return needs_attention
 ps -o args= -p <pid from orca terminal show --json>   # argv carries the requested model and effort
 orca orchestration worker-start --task <id> --worktree id:<repo>::<path> --terminal <handle> --json
