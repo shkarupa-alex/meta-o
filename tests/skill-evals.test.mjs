@@ -392,8 +392,8 @@ test("a resolved catalogue alias is proof, and only on the route that has aliase
   unresolved.execution.aliasResolution = null;
   assert.throws(() => validateEvidence(ROOT, unresolved, HEAD), /alias_resolution_changed/u);
 
-  // Presence is the contract, not only the value. Evidence written before §4.7
-  // omits the property outright, and reading it with `??` would accept that as
+  // Presence is the contract, not only the value. Evidence written before the
+  // field was mandatory omits it outright, and reading it with `??` would take that as
   // the very "nothing resolved" a compliant run records on purpose.
   for (const matrixProfile of ["required-claude", "required-codex"]) {
     const omitted = finalizedEnvelope("find-reuse", { matrixProfile });

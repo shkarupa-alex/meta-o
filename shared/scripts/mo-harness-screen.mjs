@@ -165,7 +165,9 @@ export function classifyScreen(text) {
 }
 
 /**
- * Gate the trust dialog on the three ownership conditions of §5.9.
+ * Gate the trust dialog on its three ownership conditions: the caller created
+ * the terminal, the workspace path is the expected one, and both were proved
+ * before this call.
  *
  * §A-DELIVERY-01 is about whose folder is being trusted, and the screen cannot
  * answer that: it shows a path, not who created the terminal. The caller

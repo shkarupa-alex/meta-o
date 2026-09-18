@@ -364,7 +364,7 @@ test("the launch split is documented where a caller would otherwise re-derive it
   assert.match(setup, /`mo-models\.mjs --show --json` publishes that split under `launch`/u);
 });
 
-test("the shipped CLI answers the exact contract of §4.5", () => {
+test("the shipped CLI answers its exact envelope contract", () => {
   const envelope = JSON.stringify({
     ok: true,
     result: {

@@ -39,9 +39,9 @@ function sameCoordinate(left, right) {
  * §A-EVAL-01 reads the alias resolution every v3 execution has to record.
  *
  * `??` cannot tell an envelope that recorded "nothing resolved" from one whose
- * schema predates the field, so both would prove the same thing. §4.7 makes the
- * field mandatory exactly so a consumer knows the question was asked, and
- * presence is the half of that a checker can still verify after the fact.
+ * schema predates the field, so both would prove the same thing. The field is
+ * mandatory exactly so a consumer knows the question was asked, and presence is
+ * the half of that a checker can still verify after the fact.
  */
 function recordedAliasResolution(envelope) {
   const execution = envelope.execution;

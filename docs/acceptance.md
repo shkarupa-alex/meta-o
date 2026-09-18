@@ -76,6 +76,49 @@
 | BKL-17   | duplicate   | BKL-10; ревьюер остаётся активным до продолжения                                                                          |
 | BKL-18   | implemented | регрессионные тесты и долговечные идентификаторы архитектуры                                                              |
 
+## Разбор исходных записей #1–#17
+
+Это часть существующей карты приёмки, а не второй реестр. Она сохраняет только
+долговечный исход и доказательство после удаления живой спецификации; исходные
+байты остаются в замороженном Git-объекте ниже.
+
+| Источник | Исход       | Долговечное доказательство                                                                                                                                                           |
+| -------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| #1       | implemented | Стадия истории идентификаторов объявлена в `AGENTS.md`/`CLAUDE.md`, проверена `tests/setup-knowledge-history.test.mjs`, а правила пробы живут в `shared/references/project-setup.md` |
+| #2       | implemented | `MO-QC-TIMING/1` печатается каждой стадией `make mo-qc`; отдельный профилировщик не создавался                                                                                       |
+| #3       | implemented | Раздел «Coordinator outside an Orca terminal» в `shared/references/orca-mechanics.md` и `tests/outside-orca.test.mjs`; живое доказательство — сценарий B43                           |
+| #4       | implemented | `ISS-16` в `shared/references/issue-routing.md`, два режима в `shared/references/methodology-feedback.md`, `tests/methodology-feedback.test.mjs`                                     |
+| #5       | implemented | Готовность агента доказывается до байтов задачи: `shared/scripts/mo-harness-screen.mjs` и `tests/harness-screen.test.mjs`                                                            |
+| #6       | implemented | `shared/scripts/mo-review-report.mjs` разбирает отчёт по AST и публикует пару атомарно; `tests/review-report.test.mjs`, `tests/review-handoff.test.mjs`                              |
+| #7       | implemented | Руководства бэкенда читаются из одного экземпляра Orca; `tests/recorded-surfaces.test.mjs`                                                                                           |
+| #8       | implemented | Полный SHA доказывается `git rev-parse` и `git cat-file -t`; правило записано в `shared/references/review-brief.md` и `docs/papercut.md`                                             |
+| #9       | implemented | Диалог доверия распознаётся и подтверждается по записанным экранам; `tests/harness-screen.test.mjs` и фикстуры `tests/fixtures/recorded-surfaces/`                                   |
+| #10      | implemented | Лестница размещения `isolated` → `shared_checkout` → `placement_unsupported` в `src/skills/mo-review-orca/SKILL.md` и `tests/orca-placement.test.mjs`                                |
+| #11      | implemented | `MO-BACKLOG/1` и отчёт о покрытии CI в `src/skills/mo-setup/SKILL.md`; `tests/setup-contract.test.mjs`                                                                               |
+| #12      | implemented | Документ команд и граблей требуется настройкой и имеет шаблон `references/papercut-template.md`; `Papercut/1` в отчёте                                                               |
+| #13      | implemented | Тёплая сессия определяется по `lastOutputAt`; `tests/session-warmth.test.mjs` и фикстура `orca-liveness`                                                                             |
+| #14      | implemented | Бриф называет точный коммит, окружение и вопросы человеку; `shared/references/review-brief.md`                                                                                       |
+| #15      | implemented | Роль оркестратора не блокирует старт, алиас каталога Claude разрешается живым запуском; `tests/mo-models.test.mjs`                                                                   |
+| #16      | implemented | Промежуточные файлы координатора живут в `.orca/`; `tests/outside-orca.test.mjs`                                                                                                     |
+| #17      | implemented | Пробел готовности проекта отвечает `needs_attention` и оставляет настройку человеку; `tests/methodology-feedback.test.mjs`                                                           |
+
+### Проверяемое происхождение разбора #1–#17
+
+Живая спецификация, её чеклист и фикстура приёма удалены на этом же шаге; байты
+остаются достижимыми в замороженных Git-объектах, а `source_sha` — последний
+коммит, чьё дерево их содержит.
+
+```yaml
+issue_fixes_closure:
+  source_sha: 93dda3bccddb3c83badadde8b68d6445ed7aa295
+  spec_blob: eb1bc0e208b539998fbccab435a2bc407c6a6e20
+  checklist_blob: 58f2759232648556c06deadabd80474702b807d0
+  intake_blob: a1fe158a4546b690a9b8680c8918095dde9771a5
+```
+
+Постоянное доказательство: `git cat-file -e <blob>` для каждой записи и
+`git cat-file blob <blob>` для исходных байтов.
+
 ## Проверяемое происхождение закрытия бэклога
 
 | Источник                 | Замороженный Git-объект                    |
