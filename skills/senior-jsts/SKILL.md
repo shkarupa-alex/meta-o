@@ -18,6 +18,10 @@ direct code are valid when they protect the required contracts.
 
 ## Establish the actual task
 
+When the task is trivial or carries no JavaScript or TypeScript artifact, say plainly that this
+specialist review does not apply, and stop: a review with nothing to review
+either invents findings or blesses work it never examined.
+
 Treat the requested function, component, class, module, package, service, application,
 configuration, test suite, or subsystem as the task unit. The repository is context, not
 automatically the task. Follow the user's and host's requested scope and action posture: review

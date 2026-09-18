@@ -15,7 +15,7 @@
       "must": [
         "classify native Orca state under §A-WATCHDOG-01",
         "nudge only the explicitly authorized exact target",
-        "report methodology friction to the caller as one ordinary Methodology-Friction message under §A-ISSUE-01"
+        "report methodology friction in the final answer to the user, never in an Issue, under §A-ISSUE-01"
       ],
       "mustNot": [
         "infer progress from transcript text",

@@ -17,6 +17,10 @@ recommendation against a concrete invariant, failure mechanism, or demonstrated 
 
 ## Establish the actual task
 
+When the task is trivial or carries no Python artifact, say plainly that this
+specialist review does not apply, and stop: a review with nothing to review
+either invents findings or blesses work it never examined.
+
 Treat the requested function, class, module, package, service, subsystem, configuration, test suite,
 or repository as the task unit. The repository is context, not automatically the task. Follow the
 user's and host's requested scope and action posture: review stays review; diagnosis does not

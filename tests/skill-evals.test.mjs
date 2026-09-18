@@ -909,6 +909,10 @@ test("the CLI exposes a bounded prompt without launching a model", () => {
   // now says whose execution is being recorded before it describes any
   // unavailable shape.
   assert.match(result.stdout, /documentary judgement, not a live run/u);
+  // One mandatory actor wrote an owned identifier split across a space and
+  // rejoined it with a string method call: not JSON at all, and the whole
+  // coordinate was lost to a parse error.
+  assert.match(result.stdout, /Answer with literal JSON only/u);
   assert.match(result.stdout, /describes this evaluation turn/u);
   assert.match(result.stdout, /never report it unavailable, blocked or not run/u);
   const framing = result.stdout.indexOf("describes this evaluation turn");
