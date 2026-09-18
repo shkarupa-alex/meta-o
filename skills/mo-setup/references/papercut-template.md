@@ -1,24 +1,28 @@
-# Грабли и команды проекта
+# Commands and papercuts template
 
-Короткий документ на каждый день: чем в этом проекте что делается и что уже не
-сработало. Связывается из `AGENTS.md`, иначе его никто не найдёт вовремя.
+A short everyday document: how things are done in this project and what already
+failed. `AGENTS.md` must link it, or nobody finds it in time.
 
-## Правило записи
+Only the repeating case is written down. A frequent or routine command hung or
+failed and the cause is known → one short line: what does it, what it does, what
+did not work. A stale line is deleted by the same change that made it wrong: a
+wrong line costs more than a missing one. A one-off is not written here, and
+neither is friction of the methodology itself — that has its own channel and
+would be lost in this document.
 
-Записывают только повторяющееся. Частая или типовая команда зависла либо упала,
-и причина найдена → одна короткая строка: чем делается, что делает, что не
-сработало. Устаревшая строка удаляется в том же изменении, которое сделало её
-неверной: неверная строка дороже отсутствующей.
+Write the document in the project's human language; the skeleton below is the
+shape, not the wording.
 
-Разовый случай сюда не пишут. Трение самой методологии — тоже: для него есть
-отдельный канал, и в этом документе оно потеряется.
+```markdown
+# <заголовок документа>
 
 ## Команды
 
-| Команда | Что делает | Чего не делать |
-| ------- | ---------- | -------------- |
-| `<команда>` | `<одна строка>` | `<что уже не сработало>` |
+| Команда     | Что делает    | Чего не делать             |
+| ----------- | ------------- | -------------------------- |
+| `<команда>` | `<одна фраза>` | `<что уже не сработало>`   |
 
 ## Грабли
 
 - `<одна короткая строка: что выглядело рабочим и почему им не было>`
+```

@@ -183,7 +183,9 @@ test("mo-setup ships a papercut template and the history contract it must apply"
   const references = join(ROOT, "src", "skills", "mo-setup", "references");
   const template = readFileSync(join(references, "papercut-template.md"), "utf8");
   const history = readFileSync(join(references, "knowledge-id-history.md"), "utf8");
-  for (const phrase of ["Правило записи", "Устаревшая строка удаляется"]) {
+  // The rule and the deletion half of it are what keep the document short
+  // enough to stay read; a template without them grows into a changelog.
+  for (const phrase of ["Only the repeating case", "A stale line is deleted"]) {
     assert.ok(template.includes(phrase), phrase);
   }
   for (const phrase of [
@@ -196,7 +198,7 @@ test("mo-setup ships a papercut template and the history contract it must apply"
   }
   // The hash domain is the half that makes staleness decidable rather than
   // guessed, so the template may not leave it to the reader.
-  assert.match(history, /без этой строки/u);
+  assert.match(history, /without that line/u);
 });
 
 test("the setup contract separates current-tree checking from history checking", () => {

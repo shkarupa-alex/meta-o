@@ -32,6 +32,57 @@ not-empty, typed unknown, dirty declared path, unrelated dirt, malformed UTF-8/
 schema/mode and non-mutation. Require G0/GC/G1/G2 in the project contract.
 Ordinary QC must test the reader/schema but not assert the current branch empty.
 
+Read [Knowledge id history contract](references/knowledge-id-history.md) and
+check current-tree agreement separately from history. Never guess: take the
+declared stage from a level-two section whose heading contains
+`Knowledge id history`, holding exactly one fenced one-line command, exactly one
+line naming the authoritative QC command, and exactly one `history_cutoff_sha`
+record. Parse it with a Markdown AST. Any other count is `history=unknown` with
+`cutoff=none`.
+
+Prove the stage by its own behavior, never by the project's full QC, and only in
+a disposable clone: `git clone --no-hardlinks --no-local <path> <tmp>` under a
+disposable `TMPDIR`, no network. The candidate worktree is never opened for
+writing. Budget 600 s for the whole probe and 120 s for one stage run; exceeding
+either is `unknown` naming the exhausted budget, never `gate_missing`. The stage
+must be a substring of the declared QC command, or it is `gate_missing`: a stage
+outside the authoritative check is a stage nobody runs. A red baseline run in the
+clean clone is `gate_failing` and stops the probe.
+
+Then two fixtures, in the clone only. Delete one identifier definition and commit
+without a trailer: the stage must exit non-zero and print a typed marker, either
+`MO-KNOWLEDGE-HISTORY/1 status=violations` or the project's documented equivalent;
+a zero exit or no marker is `gate_missing`. Reset the clone with `git reset --hard`
+and `git clean -xdff`, then change a literal with a correct trailer and a matching
+`knowledge_id_change` record: the stage must pass, and a failure is `gate_failing`.
+Strictness without tolerance and tolerance without strictness each prove only half.
+Delete the clone in a `finally`; its path is machine-local and never reported.
+
+Report one record, with `qc` as JSON or `none` and no local paths:
+
+```text
+Knowledge-IDs/1 current_tree=<ok|violations|unknown> history=<gate_present|gate_missing|gate_failing|unknown> stale=<yes|no|unknown> qc=<json|none> cutoff=<sha|none>
+```
+
+Compute `stale` by hashing, not by trusting the version string: hash the bundle
+you ship by the documented rule and compare with the hash in the copy's last-line
+`MO-KNOWLEDGE-HISTORY-SOURCE` comment. Equal is `stale=no`; different is
+`stale=yes` and both `<semver>` values go in the report; a missing, duplicated or
+unparsable line is `stale=unknown`. The version explains a difference to a human
+and never decides it.
+
+Find the commands-and-papercuts document by content, not only at
+`docs/papercut.md`, and report `Papercut/1 path=<json|none> linked=<yes|no>`
+where `linked` means `AGENTS.md` actually links it. Accepted repair starts from
+[Commands and papercuts template](references/papercut-template.md).
+
+Accepted repair copies the shipped bundle to the project's
+`tools/mo-knowledge-history.mjs` with its `tools/licenses/` and its version line,
+adds a stage to the project's own QC with the project's own cutoff, and adds the
+declaration section plus the trailer grammar with verbs `remove|reuse|editorial`
+to `AGENTS.md`. Never copy this project's boundaries or commit ids: a foreign
+cutoff exempts exactly the history the target needs checked.
+
 Check `.orca/` and `spec/` independently through
 `git check-ignore -v --no-index`; accept only a match from a tracked repository
 ignore file proven by `git ls-files --error-unmatch`. Separately require
@@ -57,11 +108,14 @@ confirmation.
 Inspect active hosting/CI settings read-only. Parse GitHub Actions or GitLab CI
 only with `js-yaml`, following literal tracked local includes/reusable
 workflows. Return one `CI-Coverage/1` record with provider, repository,
-entrypoint, resolved graph, job/step, events, required policy, outcome and
-unresolved. Outcomes are `covered|config_present|no_ci_surface|unknown`;
-dynamic/remote constructs and unreadable settings cannot yield covered. Show an
-exact proposed YAML patch, but never change tracked CI or server protection
-without a separate request.
+entrypoint, resolved graph, job/step, events, required policy, outcome,
+unresolved, plus `history=<full|shallow|unknown>` and
+`backlog_job=<yes|no|unknown>`: a shallow clone turns the history stage into a
+silent skip, and closure needs a job separate from ordinary QC. Outcomes are
+`covered|config_present|no_ci_surface|unknown`; dynamic/remote constructs and
+unreadable settings cannot yield covered. Compare against the shipped examples in
+`assets/ci/` and show an exact proposed YAML patch, but never change tracked CI
+or server protection without a separate request.
 
 If tracked repair is accepted, use a separate `feature/meta-o-setup` branch
 based on current `develop`; never mix setup

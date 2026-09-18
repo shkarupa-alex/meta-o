@@ -1,55 +1,54 @@
-# Контракт исторического контроля идентификаторов
+# Knowledge id history contract
 
-Проверка текущего дерева и проверка истории — разные вещи. Дерево показывает,
-что идентификаторы согласованы сейчас; история показывает, что ни одно значение
-не было переопределено или удалено молча по дороге. Второе без первого
-недоказуемо, и наоборот.
+Checking the current tree and checking history are different things. The tree
+shows that identifiers agree now; history shows that no value was silently
+redefined or deleted along the way. Neither is provable without the other.
 
-## Как проект объявляет стадию
+## How a project declares the stage
 
-Догадки запрещены: отсутствие объявления — это `unknown`, а не «наверное, нет».
-В `AGENTS.md` проекта, или в документе, на который `AGENTS.md` ссылается как на
-контракт качества, обязателен раздел второго уровня с заголовком, содержащим
-`Knowledge id history`, и внутри него:
+Guessing is forbidden: an absent declaration is `unknown`, never "probably no".
+The project's `AGENTS.md`, or a document `AGENTS.md` names as its quality
+contract, must hold a level-two section whose heading contains
+`Knowledge id history`, and inside it:
 
-- ровно один fenced-блок с ровно одной строкой команды — это стадия истории;
-- ровно одна строка, называющая авторитетную команду QC проекта;
-- ровно одна YAML-запись с ключом `history_cutoff_sha` — нижняя граница проекта.
+- exactly one fenced block holding exactly one command line — the history stage;
+- exactly one line naming the project's authoritative QC command;
+- exactly one YAML record with key `history_cutoff_sha` — the project's floor.
 
-Раздел отсутствует, блоков или строк не ровно столько → `history=unknown`,
-`cutoff=none`. Разбор — только настоящей AST-библиотекой, никогда не регулярным
-выражением по документу.
+A missing section, or any other count of blocks or lines, is `history=unknown`
+with `cutoff=none`. Parse it with a real AST library, never with a regular
+expression over the document.
 
-## Что доказывает наличие стадии
+## What proves the stage is present
 
-Поведение объявленной стадии, а не полного QC, и только в одноразовом клоне:
-рабочее дерево кандидата не трогается. Стадия обязана быть подстрокой
-объявленной команды QC — иначе она есть, но в авторитетную проверку не входит.
+The behavior of the declared stage, never the full QC, and only in a disposable
+clone: the candidate worktree stays untouched. The stage must be a substring of
+the declared QC command, or it exists but no authoritative check runs it.
 
-Проверяют двумя фикстурами. Молчаливое удаление определения без трейлера обязано
-дать ненулевой код и типизированную строку. Авторизованный reuse — литерал
-изменён, трейлер поставлен, запись `knowledge_id_change` добавлена — обязан
-пройти. Первое без второго доказывает только строгость, второе без первого —
-только терпимость.
+Two fixtures decide it. A silent deletion of a definition without a trailer must
+exit non-zero and print a typed line. An authorized reuse — literal changed,
+trailer set, `knowledge_id_change` record added — must pass. The first without
+the second proves only strictness, the second without the first only tolerance.
 
-## Копия в проекте
+## The copy inside a project
 
-Принятый ремонт копирует бандл в `tools/mo-knowledge-history.mjs` вместе с
-`tools/licenses/` и строкой версии в самом конце файла:
+Accepted repair copies the bundle to `tools/mo-knowledge-history.mjs` together
+with its `tools/licenses/` and a version line as the very last line of the file:
 
 ```text
 // MO-KNOWLEDGE-HISTORY-SOURCE <semver> <sha256>
 ```
 
-`<semver>` — дословное значение `version` из `package.json` пакета, откуда взят
-бандл. `<sha256>` — хеш байтов файла **без этой строки**: она последняя, и хеш
-берётся от всего, что ей предшествует, поэтому копия хеширует ровно то же, что и
-поставщик, а повторная простановка строки ничего не меняет. `tools/licenses/` в
-хеш не входит.
+`<semver>` is the literal `version` of the package the bundle came from.
+`<sha256>` hashes the file's bytes **without that line**: it is last, and the
+hash covers everything preceding it, so the copy hashes exactly what the
+supplier hashes and re-stamping the line changes nothing. `tools/licenses/` is
+outside the hash.
 
-Устарелость считается сравнением: поставщик хеширует свой бандл по тому же
-правилу. Совпало → `stale=no`. Не совпало → `stale=yes`, и в отчёт идут обе
-версии. Строки нет, их больше одной или она не разбирается → `stale=unknown`.
-Версия ничего не решает — она объясняет расхождение человеку.
+Staleness is a comparison: the supplier hashes its own bundle by the same rule.
+Equal is `stale=no`. Different is `stale=yes`, and both versions go into the
+report. A missing, duplicated or unparsable line is `stale=unknown`. The version
+decides nothing — it explains a difference to a human.
 
-Границы и SHA проекта-поставщика не копируются: cutoff у каждого проекта свой.
+Supplier boundaries and commit ids are never copied: every project owns its own
+cutoff.
