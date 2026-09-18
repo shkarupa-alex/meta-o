@@ -6,13 +6,29 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { reportLine, validateReport } from "../shared/scripts/mo-review-report.mjs";
+import {
+  linkFailureReason,
+  namespace,
+  pair,
+  reportLine,
+  stage,
+  validateReport,
+} from "../shared/scripts/mo-review-report.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const HELPER = join(ROOT, "shared", "scripts", "mo-review-report.mjs");
@@ -284,4 +300,206 @@ test("the reported line states every field a caller reads", () => {
     reportLine({ status: "malformed", reason: "header_order", line: 3 }),
     "MO-REVIEW-REPORT/1 status=malformed reason=header_order line=3",
   );
+});
+
+test("a namespace is unguessable, private, and names itself", () => {
+  const created = namespace();
+  spaces.push(created.dir);
+  assert.equal(statSync(created.dir).mode & 0o777, 0o700);
+  assert.equal(basename(created.dir), created.pairId);
+  assert.ok(realpathSync(created.dir).startsWith(`${realpathSync(tmpdir())}/`));
+  // Twelve hex chosen here plus the six `mkdtemp` appends: a guessable name is
+  // a pair somebody else can read or occupy.
+  const random = /^mo-review-([a-f0-9]{12})-(.{6})$/u.exec(created.pairId);
+  assert.ok(random, created.pairId);
+  assert.equal(random[1].length + random[2].length, 18);
+});
+
+test("staging publishes the validated buffer and proves it is that inode", () => {
+  const created = namespace();
+  spaces.push(created.dir);
+  const text = report();
+  const staged = stage({
+    dir: created.dir,
+    slot: "A",
+    vendor: "claude",
+    buffer: Buffer.from(text, "utf8"),
+    expected: context(),
+  });
+  assert.equal(staged.status, "staged");
+  assert.equal(staged.bytes, Buffer.byteLength(text));
+  assert.equal(staged.path, join(created.dir, "A-claude.md"));
+  assert.equal(statSync(staged.path).mode & 0o777, 0o600);
+  assert.equal(readFileSync(staged.path, "utf8"), text);
+  // The sibling is a step, not a leftover.
+  assert.deepEqual(
+    readdirSync(created.dir).filter((name) => name.startsWith(".stage-")),
+    [],
+  );
+  const verified = pair({
+    dir: created.dir,
+    pairId: created.pairId,
+    slots: [
+      { ...staged, vendor: "claude" },
+      { ...staged, slot: "B", vendor: "claude" },
+    ],
+  });
+  assert.equal(verified.status, "unknown");
+  assert.equal(verified.slot, "B", "a missing slot is not half a pair");
+});
+
+test("an occupied final path keeps its bytes", () => {
+  const created = namespace();
+  spaces.push(created.dir);
+  const final = join(created.dir, "A-claude.md");
+  writeFileSync(final, "foreign\n", { mode: 0o600 });
+  const staged = stage({
+    dir: created.dir,
+    slot: "A",
+    vendor: "claude",
+    buffer: Buffer.from(report(), "utf8"),
+    expected: context(),
+  });
+  assert.equal(staged.reason, "final_exists");
+  assert.equal(readFileSync(final, "utf8"), "foreign\n");
+  assert.deepEqual(
+    readdirSync(created.dir).filter((name) => name.startsWith(".stage-")),
+    [],
+  );
+});
+
+test("a filesystem that cannot link is not a collision", () => {
+  assert.equal(linkFailureReason("EEXIST"), "final_exists");
+  for (const code of ["EPERM", "ENOSYS", "EXDEV", "EMLINK"]) {
+    assert.equal(linkFailureReason(code), "link_unsupported", code);
+  }
+  assert.equal(linkFailureReason("EACCES"), "permission");
+});
+
+test("a report that is not a report is never published", () => {
+  const created = namespace();
+  spaces.push(created.dir);
+  const staged = stage({
+    dir: created.dir,
+    slot: "A",
+    vendor: "claude",
+    buffer: Buffer.from(report().replace(/End-Review:.+/u, ""), "utf8"),
+    expected: context(),
+  });
+  assert.equal(staged.reason, "malformed");
+  assert.equal(staged.verdict.reason, "footer_mismatch");
+  assert.deepEqual(readdirSync(created.dir), []);
+  const invalid = stage({
+    dir: created.dir,
+    slot: "A",
+    vendor: "claude",
+    buffer: Buffer.concat([Buffer.from(report(), "utf8"), Buffer.from([0xff])]),
+    expected: context(),
+  });
+  assert.equal(invalid.reason, "invalid_utf8");
+  const vendor = stage({
+    dir: created.dir,
+    slot: "A",
+    vendor: "Claude Opus",
+    buffer: Buffer.from(report(), "utf8"),
+    expected: context(),
+  });
+  assert.equal(vendor.reason, "vendor");
+  assert.deepEqual(readdirSync(created.dir), []);
+});
+
+test("a slot swapped between staging and delivery is caught by identity, not by name", () => {
+  const created = namespace();
+  spaces.push(created.dir);
+  const slots = ["A", "B"].map((slot) =>
+    stage({
+      dir: created.dir,
+      slot,
+      vendor: slot === "A" ? "claude" : "codex",
+      buffer: Buffer.from(report({ execution: `ctx_fixture` }), "utf8"),
+      expected: context(),
+    }),
+  );
+  const named = slots.map((staged, step) => ({
+    ...staged,
+    vendor: step === 0 ? "claude" : "codex",
+  }));
+  assert.equal(pair({ dir: created.dir, pairId: created.pairId, slots: named }).status, "paired");
+
+  // Same length, same inode, different bytes: only the hash can see this.
+  const path = join(created.dir, "B-codex.md");
+  const bytes = readFileSync(path);
+  bytes[bytes.length - 2] = bytes[bytes.length - 2] === 0x78 ? 0x79 : 0x78;
+  writeFileSync(path, bytes);
+  const tampered = pair({ dir: created.dir, pairId: created.pairId, slots: named });
+  assert.equal(tampered.status, "unknown");
+  assert.equal(tampered.reason, "identity_changed");
+  assert.equal(tampered.slot, "B");
+
+  // A different file at the same path is a different inode.
+  rmSync(join(created.dir, "A-claude.md"));
+  writeFileSync(join(created.dir, "A-claude.md"), report(), { mode: 0o600 });
+  const replaced = pair({ dir: created.dir, pairId: created.pairId, slots: named });
+  assert.equal(replaced.reason, "identity_changed");
+  assert.equal(replaced.slot, "A");
+});
+
+test("the pair line carries both paths and both exact sizes", () => {
+  const created = namespace();
+  spaces.push(created.dir);
+  const slots = [
+    { slot: "A", vendor: "claude" },
+    { slot: "B", vendor: "codex" },
+  ].map(({ slot, vendor }) => ({
+    ...stage({
+      dir: created.dir,
+      slot,
+      vendor,
+      buffer: Buffer.from(report(), "utf8"),
+      expected: context(),
+    }),
+    vendor,
+  }));
+  const result = pair({ dir: created.dir, pairId: created.pairId, slots });
+  assert.equal(result.status, "paired");
+  assert.equal(
+    result.line,
+    `Review-Pair: ${created.pairId} A=${JSON.stringify(join(created.dir, "A-claude.md"))} ` +
+      `A_bytes=${slots[0].bytes} B=${JSON.stringify(join(created.dir, "B-codex.md"))} ` +
+      `B_bytes=${slots[1].bytes}`,
+  );
+});
+
+test("the CLI stages from stdin byte for byte", () => {
+  const created = namespace();
+  spaces.push(created.dir);
+  const text = report();
+  const staged = spawnSync(
+    process.execPath,
+    [
+      HELPER,
+      "stage",
+      "--dir",
+      created.dir,
+      "--slot",
+      "A",
+      "--vendor",
+      "codex",
+      "--dispatch",
+      "ctx_fixture",
+      "--candidate",
+      SHA,
+      "--requested",
+      "deep",
+    ],
+    { input: Buffer.from(text, "utf8") },
+  );
+  assert.equal(staged.status, 0, staged.stderr.toString());
+  const line = staged.stdout.toString().trim();
+  assert.match(
+    line,
+    /^MO-REVIEW-STAGE\/1 slot=A path=".*A-codex\.md" bytes=\d+ dev=\d+ ino=\d+ sha256=[a-f0-9]{64}$/u,
+  );
+  assert.equal(readFileSync(join(created.dir, "A-codex.md"), "utf8"), text);
+  assert.match(line, new RegExp(`bytes=${Buffer.byteLength(text)} `, "u"));
 });

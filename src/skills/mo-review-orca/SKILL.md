@@ -158,17 +158,23 @@ be asked to fix, and exit 2 is a call error, not a bad report.
 
 ## Lossless handoff and projection
 
-After both valid reports, create one unique namespace with `umask 077` and
-platform `mktemp -d` random suffix of at least eight symbols. Prove its realpath
-is below system temp and mode `0700`. Assign slots A/B before launch and accept
-only vendor slugs matching `^[a-z0-9][a-z0-9-]{0,31}$`.
+After both valid reports, publish them with the bundled script rather than by
+hand:
 
-Write each payload exclusively to a regular `0600` sibling and fsync/close.
-Publish it atomically create-if-absent by hard-linking that complete sibling to
-the final same-directory slot, then unlink the sibling. Never use
-overwrite-capable rename. Existing regular, symlink or nonregular final paths,
-unsupported hard links, permission, publication, reread, size or end-marker
-failure are `UNKNOWN` and leave the existing final path untouched. Send the
+```text
+scripts/mo-review-report.mjs namespace
+scripts/mo-review-report.mjs stage --dir <ns> --slot <A|B> --vendor <slug> <validate flags>   < report bytes
+scripts/mo-review-report.mjs pair --dir <ns> --a-vendor … --a-bytes … --a-dev … --a-ino … --a-sha256 … --b-…
+```
+
+The namespace is mode `0700` under system temp with at least eighteen random
+characters in its name. Slots A/B are assigned before launch and vendor slugs
+match `^[a-z0-9][a-z0-9-]{0,31}$`. Each payload is validated as the exact buffer
+that gets written, goes to a regular `0600` sibling, is fsynced, and is
+published create-if-absent by hard-linking that complete sibling into the
+slot — never by an overwrite-capable rename. `final_exists`, `link_unsupported`, `permission`,
+`identity_changed`, `symlink`, `malformed` and `invalid_utf8` are each
+`UNKNOWN` and leave the existing final path untouched. Send the
 named consumer one ordinary message with `pair_id`, both exact paths and decimal
 sizes. A machine consumer acknowledges only after reading both:
 

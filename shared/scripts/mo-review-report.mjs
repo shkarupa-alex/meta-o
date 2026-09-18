@@ -8,7 +8,23 @@
  * where a false `malformed` cost a whole review round.
  */
 
-import { closeSync, constants, fstatSync, openSync, readFileSync, readSync } from "node:fs";
+import { createHash, randomBytes } from "node:crypto";
+import {
+  chmodSync,
+  closeSync,
+  constants,
+  fstatSync,
+  fsyncSync,
+  linkSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  readSync,
+  unlinkSync,
+  writeSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 
 import { fromMarkdown } from "mdast-util-from-markdown";
 
@@ -295,6 +311,152 @@ export function decodeReport(buffer) {
   return { text };
 }
 
+const VENDOR = /^[a-z0-9][a-z0-9-]{0,31}$/u;
+const LINK_UNSUPPORTED = new Set(["EPERM", "ENOSYS", "EXDEV", "EMLINK"]);
+
+/**
+ * §A-RESPONSE-03 separates "somebody is already there" from "links do not work here".
+ *
+ * A filesystem that refuses hard links cannot be produced in a test without
+ * mounting one, so the classification is a named function rather than an
+ * `if` buried in a `catch` that nothing can reach.
+ */
+export function linkFailureReason(code) {
+  if (code === "EEXIST") return "final_exists";
+  if (LINK_UNSUPPORTED.has(code)) return "link_unsupported";
+  return "permission";
+}
+
+/**
+ * Create the one-time directory a pair is published into.
+ *
+ * §A-RESPONSE-03 keeps both reports readable by exactly one consumer, so the
+ * name has to be unguessable rather than merely unique: `mkdtemp` adds six
+ * random characters to the twelve chosen here, and the mode is narrowed
+ * explicitly because a permissive umask would otherwise decide it.
+ */
+export function namespace() {
+  const previous = process.umask(0o077);
+  try {
+    const dir = mkdtempSync(join(tmpdir(), `mo-review-${randomBytes(6).toString("hex")}-`));
+    chmodSync(dir, 0o700);
+    return { dir, pairId: basename(dir) };
+  } finally {
+    process.umask(previous);
+  }
+}
+
+/** §A-RESPONSE-03 flushes the directory entry; a refusal here is diagnostic only. */
+function syncDirectory(dir) {
+  let dfd;
+  try {
+    dfd = openSync(dir, constants.O_RDONLY);
+    fsyncSync(dfd);
+  } catch {
+    // Network and virtual filesystems are entitled to refuse this, and the
+    // proof of publication is dev/ino/size/sha256, not durability.
+  } finally {
+    if (dfd !== undefined) closeSync(dfd);
+  }
+}
+
+/** §A-RESPONSE-03 publishes the written inode itself, never a path reopened by name. */
+function linkIntoPlace(fd, sibling, final, buffer) {
+  const first = fstatSync(fd);
+  if (first.size !== buffer.length || first.nlink !== 1) {
+    return { status: "unknown", reason: "identity_changed" };
+  }
+  try {
+    linkSync(sibling, final);
+  } catch (error) {
+    return { status: "unknown", reason: linkFailureReason(error.code) };
+  }
+  const second = fstatSync(fd);
+  if (second.dev !== first.dev || second.ino !== first.ino || second.nlink !== 2) {
+    return { status: "unknown", reason: "identity_changed" };
+  }
+  return { status: "staged", dev: first.dev, ino: first.ino };
+}
+
+/**
+ * Validate exactly the bytes that get published, then publish those bytes.
+ *
+ * §A-RESPONSE-03 refuses the gap between "checked a file" and "published a
+ * file": the buffer is validated, hashed and written once, and the identity of
+ * the published inode is proven against the descriptor that wrote it. A
+ * rename would overwrite whatever sat at the final path; a hard link fails
+ * closed instead, and a failure leaves the existing final path untouched.
+ */
+export function stage({ dir, slot, vendor, buffer, expected }) {
+  if (!["A", "B"].includes(slot)) return { status: "unknown", reason: "slot" };
+  if (!VENDOR.test(vendor)) return { status: "unknown", reason: "vendor" };
+  const decoded = decodeReport(buffer);
+  if (decoded.error) return { status: "unknown", reason: decoded.error };
+  const verdict = validateReport(decoded.text, expected);
+  if (verdict.status === "malformed") return { status: "unknown", reason: "malformed", verdict };
+  const sibling = join(dir, `.stage-${randomBytes(8).toString("hex")}`);
+  const final = join(dir, `${slot}-${vendor}.md`);
+  const flags = constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW;
+  const fd = openSync(sibling, flags, 0o600);
+  try {
+    writeSync(fd, buffer);
+    fsyncSync(fd);
+    const placed = linkIntoPlace(fd, sibling, final, buffer);
+    if (placed.status !== "staged") return placed;
+    return {
+      status: "staged",
+      slot,
+      path: final,
+      bytes: buffer.length,
+      dev: placed.dev,
+      ino: placed.ino,
+      sha256: createHash("sha256").update(buffer).digest("hex"),
+    };
+  } finally {
+    closeSync(fd);
+    unlinkSync(sibling);
+    syncDirectory(dir);
+  }
+}
+
+/**
+ * Prove both published slots are still the inodes that were staged.
+ *
+ * §A-RESPONSE-03 hands a consumer two paths, and a path is a name: between
+ * staging and delivery the name can point somewhere else. Device, inode, size
+ * and content hash are checked together because each alone is reusable.
+ */
+export function pair({ dir, pairId, slots }) {
+  const parts = [];
+  for (const expected of slots) {
+    const path = join(dir, `${expected.slot}-${expected.vendor}.md`);
+    let fd;
+    try {
+      fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    } catch {
+      return { status: "unknown", reason: "identity_changed", slot: expected.slot };
+    }
+    try {
+      const stat = fstatSync(fd);
+      const buffer = Buffer.alloc(stat.size);
+      readSync(fd, buffer, 0, stat.size, 0);
+      const sha256 = createHash("sha256").update(buffer).digest("hex");
+      if (
+        stat.dev !== expected.dev ||
+        stat.ino !== expected.ino ||
+        stat.size !== expected.bytes ||
+        sha256 !== expected.sha256
+      ) {
+        return { status: "unknown", reason: "identity_changed", slot: expected.slot };
+      }
+    } finally {
+      closeSync(fd);
+    }
+    parts.push(`${expected.slot}=${JSON.stringify(path)} ${expected.slot}_bytes=${expected.bytes}`);
+  }
+  return { status: "paired", line: `Review-Pair: ${pairId} ${parts.join(" ")}` };
+}
+
 function parseArguments(argv) {
   const options = {};
   for (let index = 0; index < argv.length; index += 2) {
@@ -307,13 +469,24 @@ function parseArguments(argv) {
   return options;
 }
 
-function main(argv) {
-  if (argv[0] !== "validate")
-    throw new Error("usage: mo-review-report.mjs validate --file <path> …");
-  const options = parseArguments(argv.slice(1));
-  for (const required of ["file", "dispatch", "candidate", "requested"]) {
-    if (options[required] === undefined) throw new Error(`--${required} is required`);
+function require_(options, names) {
+  for (const name of names) {
+    if (options[name] === undefined) throw new Error(`--${name} is required`);
   }
+}
+
+function expectationOf(options) {
+  require_(options, ["dispatch", "candidate", "requested"]);
+  return {
+    execution: options.dispatch,
+    candidate: options.candidate,
+    requestedMode: options.requested,
+    effectiveMode: options.effective,
+  };
+}
+
+function commandValidate(options) {
+  require_(options, ["file"]);
   const bytes = options.file === "-" ? { buffer: readFileSync(0) } : readReportBytes(options.file);
   if (bytes.error) {
     process.stdout.write(`MO-REVIEW-REPORT/1 status=malformed reason=${bytes.error} line=0\n`);
@@ -321,17 +494,85 @@ function main(argv) {
   }
   const decoded = decodeReport(bytes.buffer);
   if (decoded.error) {
-    process.stdout.write(`MO-REVIEW-REPORT/1 status=malformed reason=invalid_utf8 line=0\n`);
+    process.stdout.write("MO-REVIEW-REPORT/1 status=malformed reason=invalid_utf8 line=0\n");
     return 1;
   }
-  const result = validateReport(decoded.text, {
-    execution: options.dispatch,
-    candidate: options.candidate,
-    requestedMode: options.requested,
-    effectiveMode: options.effective,
-  });
+  const result = validateReport(decoded.text, expectationOf(options));
   process.stdout.write(`${reportLine(result)}\n`);
   return result.status === "valid" ? 0 : 1;
+}
+
+function commandStage(options) {
+  require_(options, ["dir", "slot", "vendor"]);
+  const source = options.file === undefined || options.file === "-" ? null : options.file;
+  const bytes = source === null ? { buffer: readFileSync(0) } : readReportBytes(source);
+  if (bytes.error) {
+    process.stdout.write(`MO-REVIEW-STAGE/1 status=unknown reason=${bytes.error}\n`);
+    return 1;
+  }
+  const result = stage({
+    dir: options.dir,
+    slot: options.slot,
+    vendor: options.vendor,
+    buffer: bytes.buffer,
+    expected: expectationOf(options),
+  });
+  if (result.status !== "staged") {
+    process.stdout.write(`MO-REVIEW-STAGE/1 status=unknown reason=${result.reason}\n`);
+    return 1;
+  }
+  process.stdout.write(
+    `MO-REVIEW-STAGE/1 slot=${result.slot} path=${JSON.stringify(result.path)} ` +
+      `bytes=${result.bytes} dev=${result.dev} ino=${result.ino} sha256=${result.sha256}\n`,
+  );
+  return 0;
+}
+
+function commandPair(options) {
+  require_(options, ["dir"]);
+  const slots = ["A", "B"].map((slot) => {
+    const prefix = slot.toLowerCase();
+    require_(options, [
+      `${prefix}-vendor`,
+      `${prefix}-bytes`,
+      `${prefix}-dev`,
+      `${prefix}-ino`,
+      `${prefix}-sha256`,
+    ]);
+    return {
+      slot,
+      vendor: options[`${prefix}-vendor`],
+      bytes: Number(options[`${prefix}-bytes`]),
+      dev: Number(options[`${prefix}-dev`]),
+      ino: Number(options[`${prefix}-ino`]),
+      sha256: options[`${prefix}-sha256`],
+    };
+  });
+  const result = pair({ dir: options.dir, pairId: basename(options.dir), slots });
+  if (result.status !== "paired") {
+    process.stdout.write(
+      `MO-REVIEW-PAIR/1 status=unknown reason=${result.reason} slot=${result.slot}\n`,
+    );
+    return 1;
+  }
+  process.stdout.write(`${result.line}\n`);
+  return 0;
+}
+
+function main(argv) {
+  const commands = { validate: commandValidate, stage: commandStage, pair: commandPair };
+  if (argv[0] === "namespace") {
+    const created = namespace();
+    process.stdout.write(
+      `MO-REVIEW-NS/1 dir=${JSON.stringify(created.dir)} pair_id=${created.pairId}\n`,
+    );
+    return 0;
+  }
+  const command = commands[argv[0]];
+  if (command === undefined) {
+    throw new Error("usage: mo-review-report.mjs <namespace|validate|stage|pair> …");
+  }
+  return command(parseArguments(argv.slice(1)));
 }
 
 if (process.argv[1] !== undefined && import.meta.url === `file://${process.argv[1]}`) {
