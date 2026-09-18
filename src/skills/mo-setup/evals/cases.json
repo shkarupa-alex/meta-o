@@ -17,7 +17,7 @@
         "inspect project substance and each backend companion under §A-BACKLOG-01",
         "separate proposed and authorized changes under §A-DELIVERY-01",
         "report the papercut document and the identifier-history gate as separate typed readiness lines under §A-BACKLOG-01",
-        "send confirmed friction about Meta-O itself to ISS-16 in the repository named by metadata.repository under §A-ISSUE-01"
+        "name ISS-16 and the repository from metadata.repository as the only destination for confirmed friction about Meta-O itself under §A-ISSUE-01"
       ],
       "mustNot": [
         "overwrite unrelated user changes",
