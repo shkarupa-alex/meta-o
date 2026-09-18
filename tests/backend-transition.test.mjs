@@ -121,6 +121,33 @@ test("internal Markdown links resolve and use target H1 titles as labels", () =>
   }
 });
 
+test("the commands document never licenses skipping a stage of the gate", () => {
+  // A line that tells a reader part of the authoritative check is optional
+  // turns the gate into a partial one by instruction. `mo-qc` is the only
+  // thing that speaks for the candidate, so the document may describe an
+  // environment that breaks a stage, never permission to leave it out.
+  const source = readFileSync(join(ROOT, "docs", "papercut.md"), "utf8");
+  const items = markdown
+    .parse(source, {})
+    .filter((token) => token.type === "inline")
+    .map((token) => token.content.replace(/\s+/gu, " "));
+  for (const item of items) {
+    assert.doesNotMatch(
+      item,
+      /достаточно прогнать остальные стадии|можно пропустить стад|стадию можно не/u,
+      `the commands document permits skipping a gate stage: ${item}`,
+    );
+  }
+  // The positive half: a future edit may not quietly restore the wrong
+  // condition. The stop needs a controlling terminal, and an agent's own tool
+  // shell has none, which is why the trap misses exactly the reader who runs
+  // the gate most often.
+  const posture = items.find((item) => item.includes("provider-posture"));
+  assert.ok(posture, "the posture trap is no longer recorded at all");
+  assert.match(posture, /управляющ/u);
+  assert.match(posture, /script|pty|PTY/u);
+});
+
 test("entry contracts link every essential knowledge document", () => {
   const expected = [
     "docs/business.md",
