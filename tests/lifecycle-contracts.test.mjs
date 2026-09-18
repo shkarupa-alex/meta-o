@@ -887,6 +887,25 @@ test("session, delivery, handoff and waiter invariants remain executable instruc
   assert.match(setup, /git ls-files -- \.orca\/ spec\//u);
 });
 
+test("every reviewer wave has a mode the protocol can actually issue", () => {
+  // A wave whose mode is unnamed is not a free choice, it is three impossible
+  // ones: `follow_up` needs a prior report the fresh pair has none of, `fast`
+  // is advisory, and a closure proof is required. The skill has to say `deep`.
+  for (const path of ["src/skills/mo-review-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
+    const review = source(path).replace(/\s+/gu, " ");
+    assert.match(review, /The first lifecycle pair uses `deep`/u, path);
+    assert.match(review, /remediation uses `follow_up` in the same hot sessions/u, path);
+    assert.match(review, /That final pair is `deep` as well/u, path);
+    assert.match(review, /`follow_up` needs the same reviewer's prior report/u, path);
+    assert.match(review, /advisory `fast` cannot carry a required closure proof/u, path);
+  }
+  // The protocol's own reason for each exclusion, so the skill sentence above
+  // stays a consequence of the contract rather than a second opinion.
+  const protocol = source("shared/references/review-protocol.md").replace(/\s+/gu, " ");
+  assert.match(protocol, /follow_up/u);
+  assert.match(protocol, /prior report/u);
+});
+
 test("shipped handoff and live-eval instructions match their fail-closed callers", () => {
   const review = source("src/skills/mo-review-orca/SKILL.md");
   const methodology = source("shared/references/methodology.md");

@@ -140,7 +140,9 @@ Keep remediation reviewers hot until both dispositions settle.
 `fast` is explicitly standalone/advisory, and the portable protocol may
 escalate it to `deep`. Before the one final same-SHA proof, release exact-owned
 old reviewers and create a fresh independent pair in fresh independent sessions
-with no prior reports.
+with no prior reports. That final pair is `deep` as well: `follow_up` needs the
+same reviewer's prior report, which a fresh pair does not have, and advisory
+`fast` cannot carry a required closure proof.
 
 Wait through one run-wide public waiter on both exact Dispatch handles. Use
 300000 ms arms for reviewers; a quiet timeout permits one public liveness
