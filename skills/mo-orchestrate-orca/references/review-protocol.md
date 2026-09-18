@@ -121,6 +121,14 @@ outside it is the part nobody can retrieve afterwards, and the review has to be
 bought again. Read the body back before delivering it; assume there is no second
 chance.
 
+Structure is read from the block AST: only a top-level node can carry a
+structural marker. The index is exactly the top-level paragraphs strictly
+between `Counts:` and the single top-level `Evidence report`; the contents of a
+code block, a quote or a list are never index body, and a line like
+`F-001 [P3] …` repeated inside `Findings` is valid prose.
+`mo-review-report.mjs validate` applies exactly this rule, so a report that
+reads correctly to a human is not rejected for quoting its own markers.
+
 Index keys start at `F-001`, are report-local and match finding body/severity
 one-to-one. Counts equal authored findings. `PASS` has zero counts and empty
 index/Findings, while grounding, checks, Unknowns and residual risks remain

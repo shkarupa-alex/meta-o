@@ -147,8 +147,14 @@ text never replaces `worker_done`.
 Validate the report against caller-owned expected values: exact candidate,
 native Dispatch id, requested mode and observed effective mode. A stale but
 self-consistent header/footer is `UNKNOWN`. Parse structural markers as
-top-level CommonMark prose with an AST; marker-looking bytes inside any code or
-quote container remain body evidence.
+top-level CommonMark prose with an AST; marker-looking bytes inside any code,
+quote or list container remain body evidence. The index is exactly the
+top-level paragraphs strictly between `Counts:` and the single top-level
+`Evidence report`, and a repeated `F-001 [P3] …` line inside `Findings` is
+valid prose. Run bundled `scripts/mo-review-report.mjs validate --file <path>
+--dispatch <id> --candidate <sha> --requested <mode>` rather than judging the
+shape by eye: `status=malformed reason=<code> line=<n>` is what a reviewer can
+be asked to fix, and exit 2 is a call error, not a bad report.
 
 ## Lossless handoff and projection
 

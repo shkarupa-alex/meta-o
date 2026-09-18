@@ -13,6 +13,7 @@ import { test } from "node:test";
 import yaml from "js-yaml";
 import MarkdownIt from "markdown-it";
 
+import { validateReport as validate } from "../shared/scripts/mo-review-report.mjs";
 import { stripSourceAnchors } from "../tools/build-skills.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -184,143 +185,16 @@ test("the harvested intake has one closed disposition for every BKL source", () 
   }
 });
 
-/** §A-REVIEW-04 gets only top-level prose lines from the CommonMark block AST. */
-function topLevelProseLines(report) {
-  const positions = new Set();
-  for (const token of markdown.parse(report, {})) {
-    if (token.type !== "paragraph_open" || token.level !== 0 || !token.map) continue;
-    for (let index = token.map[0]; index < token.map[1]; index += 1) positions.add(index);
-  }
-  return positions;
-}
-
-/** §A-REVIEW-04 validates anchored report sections without parsing finding prose. */
-function structuralLines(lines, labels, topLevel) {
-  const positions = new Map(labels.map((label) => [label, []]));
-  for (const index of topLevel) {
-    const line = lines[index];
-    if (positions.has(line)) positions.get(line).push(index);
-  }
-  return positions;
-}
-
-/** §A-REVIEW-04 treats quoted envelope words as body bytes, never control markers. */
+/**
+ * The production validator, read through the assertion style of this suite.
+ *
+ * The rule itself lives in `mo-review-report.mjs`, where the shipped skills can
+ * run it; a second copy here would be a second contract that drifts from the
+ * one reviewers are actually judged by.
+ */
 function validateReport(report, expected) {
-  assert.ok(expected, "external review context missing");
-  const lines = report.trimEnd().split("\n");
-  const execution = lines[0]?.match(/^Review-Execution: (\S+)$/u)?.[1];
-  const candidate = lines[1]?.match(/^Candidate: ([a-f0-9]{40})$/u)?.[1];
-  const mode = lines[2]?.match(
-    /^Mode: requested=(fast|deep|follow_up) effective=(fast|deep|follow_up)$/u,
-  );
-  const verdict = lines[4]?.match(/^Verdict: (PASS|FINDINGS|UNKNOWN)$/u)?.[1];
-  const counts = lines[5]?.match(/^Counts: P0=(\d+) P1=(\d+) P2=(\d+) P3=(\d+)$/u);
-  assert.ok(execution && candidate && mode && verdict && counts, "invalid header");
-  assert.equal(execution, expected.execution, "review execution mismatch");
-  assert.equal(candidate, expected.candidate, "candidate mismatch");
-  assert.equal(mode[1], expected.requestedMode, "requested mode mismatch");
-  assert.equal(mode[2], expected.effectiveMode, "effective mode mismatch");
-  assert.equal(lines[3], "Delegation: none");
-  assert.equal(lines.at(-1), `End-Review: ${execution}`);
-  const labels = [
-    "Evidence report",
-    "Grounding",
-    "Scope and checks",
-    "Findings",
-    "Unknown-Account",
-    "Unknowns",
-    "Residual risks",
-  ];
-  const topLevel = topLevelProseLines(report);
-  const structural = structuralLines(lines, labels, topLevel);
-  const unique = (label) => {
-    const matches = structural.get(label);
-    assert.equal(matches.length, 1, `${label}: needs one unquoted structural marker`);
-    return matches[0];
-  };
-  const evidence = unique("Evidence report");
-  const order = ["Grounding", "Scope and checks", "Findings", "Unknowns", "Residual risks"];
-  const positions = order.map(unique);
-  assert.ok(evidence > 5 && positions.every((position) => position > evidence));
-  assert.deepEqual(
-    positions,
-    [...positions].sort((a, b) => a - b),
-  );
-  const index = lines
-    .slice(6, evidence)
-    .filter((line) => line && !line.startsWith("Unknown-Reason:"));
-  const keys = index.map((line) => line.match(/^(F-\d{3}) \[(P[0-3])\] .+/u));
-  assert.ok(keys.every(Boolean));
-  assert.deepEqual(
-    keys.map((key) => key[1]),
-    keys.map((_, index) => `F-${String(index + 1).padStart(3, "0")}`),
-    "finding index keys must be unique and monotonic",
-  );
-  const total = counts.slice(1).reduce((sum, count) => sum + Number(count), 0);
-  assert.equal(total, keys.length);
-  const severityCounts = [0, 0, 0, 0];
-  for (const key of keys) severityCounts[Number(key[2].slice(1))] += 1;
-  assert.deepEqual(severityCounts, counts.slice(1).map(Number));
-  const body = (heading, next) => lines.slice(unique(heading) + 1, unique(next)).filter(Boolean);
-  assert.ok(body("Grounding", "Scope and checks").length > 0);
-  assert.ok(body("Scope and checks", "Findings").length > 0);
-  assert.ok(body("Unknowns", "Residual risks").length > 0);
-  assert.ok(lines.slice(unique("Residual risks") + 1, -1).filter(Boolean).length > 0);
-  const findingsEnd = verdict === "UNKNOWN" ? "Unknown-Account" : "Unknowns";
-  const findingBody = body("Findings", findingsEnd);
-  if (verdict === "PASS") {
-    assert.equal(keys.length, 0);
-    assert.deepEqual(findingBody, []);
-  }
-  if (verdict === "FINDINGS") {
-    assert.ok(keys.length > 0);
-    const findingStart = unique("Findings") + 1;
-    const findingEnd = unique(findingsEnd);
-    const bodyKeys = [...topLevel]
-      .filter((position) => position >= findingStart && position < findingEnd)
-      .map((position) => ({ match: lines[position].match(/^(F-\d{3})$/u), position }))
-      .filter(({ match }) => match);
-    assert.deepEqual(
-      bodyKeys.map(({ match }) => match[1]),
-      keys.map((key) => key[1]),
-      "finding bodies must correspond one-to-one with the index",
-    );
-    for (const [index, { position }] of bodyKeys.entries()) {
-      const expectedSeverity = keys[index][2];
-      const nextBody = bodyKeys[index + 1]?.position ?? findingEnd;
-      const detail = [...topLevel]
-        .filter((line) => line > position && line < nextBody && lines[line] !== "")
-        .map((line) => lines[line]);
-      assert.ok(detail.length > 0, `${keys[index][1]}: finding body is empty`);
-      assert.match(detail[0], new RegExp(`^\\[${expectedSeverity}\\](?:\\s|$)`));
-    }
-  }
-  if (verdict === "UNKNOWN") {
-    assert.equal(keys.length, 0);
-    assert.deepEqual(findingBody, []);
-    const account = unique("Unknown-Account");
-    assert.ok(account > unique("Findings") && account < unique("Unknowns"));
-    assert.ok(
-      [...topLevel].some(
-        (position) =>
-          position > account && position < unique("Unknowns") && lines[position].trim() !== "",
-      ),
-    );
-    const reasons = [...topLevel]
-      .map((position) => lines[position])
-      .filter((line) => line.startsWith("Unknown-Reason:"));
-    assert.equal(reasons.length, 1);
-    assert.match(
-      reasons[0],
-      /^Unknown-Reason: (?:unreadable|candidate_mismatch|dirty_candidate|malformed_report|retrieval_failure|handoff_failure|review_incomplete)$/u,
-    );
-  } else {
-    assert.equal(structural.get("Unknown-Account").length, 0);
-    assert.equal(
-      [...topLevel].some((position) => lines[position].startsWith("Unknown-Reason:")),
-      false,
-    );
-  }
+  const result = validate(report, expected);
+  assert.equal(result.status, "valid", `${result.reason ?? "?"} at line ${result.line ?? "?"}`);
   return true;
 }
 
@@ -351,6 +225,9 @@ test("PASS, FINDINGS and UNKNOWN fixtures preserve the canonical review envelope
     effectiveMode: mode,
   });
   const validateFixture = (report, mode = "deep") => validateReport(report, context(mode));
+  // A rejected report now says why, so the negatives below name the reason
+  // instead of matching whatever sentence an assertion happened to print.
+  const reasonOf = (report, mode = "deep") => validate(report, context(mode)).reason;
   assert.ok(validateFixture(base("PASS", "P0=0 P1=0 P2=0 P3=0", "", "")));
   assert.ok(
     validateFixture(
@@ -406,58 +283,51 @@ test("PASS, FINDINGS and UNKNOWN fixtures preserve the canonical review envelope
       ),
     ),
   );
-  assert.throws(
-    () =>
-      validateFixture(base("PASS", "P0=0 P1=0 P2=0 P3=0", "", "").replace(/End-Review:.+/u, "")),
-    /Expected values/u,
+  assert.equal(
+    reasonOf(base("PASS", "P0=0 P1=0 P2=0 P3=0", "", "").replace(/End-Review:.+/u, "")),
+    "footer_mismatch",
   );
-  assert.throws(
-    () =>
-      validateFixture(
-        base(
-          "FINDINGS",
-          "P0=0 P1=0 P2=2 P3=0",
-          "F-001 [P2] First.\nF-002 [P2] Second.\n\n",
-          "F-001\n[P2] one body only.\n",
-        ),
+  assert.equal(
+    reasonOf(
+      base(
+        "FINDINGS",
+        "P0=0 P1=0 P2=2 P3=0",
+        "F-001 [P2] First.\nF-002 [P2] Second.\n\n",
+        "F-001\n[P2] one body only.\n",
       ),
-    /one-to-one/u,
+    ),
+    "index_body_mismatch",
   );
-  assert.throws(
-    () =>
-      validateFixture(
-        base(
-          "FINDINGS",
-          "P0=0 P1=1 P2=0 P3=0",
-          "F-001 [P1] Severe.\n\n",
-          "F-001\n[P2] mismatched body severity.\n",
-        ),
+  assert.equal(
+    reasonOf(
+      base(
+        "FINDINGS",
+        "P0=0 P1=1 P2=0 P3=0",
+        "F-001 [P1] Severe.\n\n",
+        "F-001\n[P2] mismatched body severity.\n",
       ),
-    /regular expression/u,
+    ),
+    "index_body_mismatch",
   );
-  assert.throws(
-    () =>
-      validateFixture(
-        base(
-          "UNKNOWN",
-          "P0=0 P1=0 P2=0 P3=0",
-          "Unknown-Reason: anything\n\n",
-          "",
-          "Unknown-Account\ncovered scope and blocking public observation\n",
-        ),
+  assert.equal(
+    reasonOf(
+      base(
+        "UNKNOWN",
+        "P0=0 P1=0 P2=0 P3=0",
+        "Unknown-Reason: anything\n\n",
+        "",
+        "Unknown-Account\ncovered scope and blocking public observation\n",
       ),
-    /regular expression/u,
+    ),
+    "unknown_reason",
   );
-  for (const [field, replacement] of [
-    ["Candidate", `Candidate: ${"b".repeat(40)}`],
-    ["Review-Execution", "Review-Execution: ctx_stale"],
-    ["Mode", "Mode: requested=fast effective=deep"],
+  for (const [field, replacement, reason] of [
+    ["Candidate", `Candidate: ${"b".repeat(40)}`, "candidate_mismatch"],
+    ["Review-Execution", "Review-Execution: ctx_stale", "execution_mismatch"],
+    ["Mode", "Mode: requested=fast effective=deep", "mode_mismatch"],
   ]) {
     const valid = base("PASS", "P0=0 P1=0 P2=0 P3=0", "", "");
-    assert.throws(
-      () => validateFixture(valid.replace(new RegExp(`^${field}:.*`, "mu"), replacement)),
-      /mismatch/u,
-    );
+    assert.equal(reasonOf(valid.replace(new RegExp(`^${field}:.*`, "mu"), replacement)), reason);
   }
   const malformed = base("PASS", "P0=0 P1=0 P2=0 P3=0", "", "").replace(/End-Review:.+/u, "");
   const valid = base("PASS", "P0=0 P1=0 P2=0 P3=0", "", "");

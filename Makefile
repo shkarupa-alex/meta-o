@@ -53,6 +53,7 @@ mo-lint:
 	node --check tools/skill-eval-legacy.mjs
 	node --check shared/scripts/mo-backlog.mjs
 	node --check shared/scripts/mo-harness-screen.mjs
+	node --check shared/scripts/mo-review-report.mjs
 	node tools/adapter-contract.mjs --validate
 	bash -n shared/scripts/mo-posture.sh
 	bash -n shared/scripts/mo-watchdog.sh
