@@ -70,6 +70,10 @@ step; confirmed out-of-scope work belongs in a correctly routed project/upstream
 Issue. An unresolved disposition is `needs_attention`, not permission to leave
 closure non-empty. Do not manufacture an entry to fill a category.
 
+A project with no backlog-closure checker at all is a different answer: the
+absence is a readiness gap reported as `needs_attention`, and no review prepares
+the project or writes the missing checker in passing.
+
 ## Diagnostics
 
 Targeted read-only checks are always allowed; report their exact command and

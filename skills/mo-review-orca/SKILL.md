@@ -28,6 +28,11 @@ effort, placement or posture flags.
 
 Those two selections form the vendor-diverse pair; neither may be substituted.
 
+A project without a `MO-BACKLOG/1` command, a papercut document or an
+identifier-history gate is reported as `needs_attention` naming the gap.
+Preparing the project is the human's own step; this skill never does it and
+never starts the setup skill for them.
+
 ## Pre-pair placement
 
 Before pair artifacts, read `ProjectRegistrationSet/1` from project/repository

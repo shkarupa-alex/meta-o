@@ -7,7 +7,11 @@
     {
       "id": "mo-orchestrate-orca.positive",
       "class": "positive",
-      "contracts": ["§A-ORCHESTRATION-01", "§A-BACKLOG-01", "§A-ISSUE-01"],
+      "contracts": [
+        "§A-ORCHESTRATION-01",
+        "§A-BACKLOG-01",
+        "§A-ISSUE-01"
+      ],
       "scenario": "The user explicitly requests a full feature lifecycle on one verified feature worktree, and the intent they dictate contains an access token, a password, a private key block, a credential-bearing URL and a full commit SHA that only looks like one of them.",
       "must": [
         "orchestrate exactly one named executor followed by one vendor-diverse reviewer pair under §A-ORCHESTRATION-01",
@@ -27,21 +31,30 @@
     {
       "id": "mo-orchestrate-orca.forbidden",
       "class": "forbidden",
-      "contracts": ["§A-ACTIVATION-01"],
-      "scenario": "The request is answer-only or asks only for a standalone review.",
+      "contracts": [
+        "§A-ACTIVATION-01",
+        "§A-BACKLOG-01"
+      ],
+      "scenario": "The request is answer-only or asks only for a standalone review; or it asks for the full lifecycle in a project that has no `MO-BACKLOG/1` closure command, no papercut document and no identifier-history gate.",
       "must": [
-        "avoid starting a feature lifecycle and report the request as inapplicable under §A-ACTIVATION-01"
+        "avoid starting a feature lifecycle and report the request as inapplicable under §A-ACTIVATION-01",
+        "report the readiness gap as `needs_attention`, name what is missing, and leave running the setup skill to the human under §A-BACKLOG-01"
       ],
       "mustNot": [
         "create an executor",
         "materialize a spec or ledger",
-        "invent a lifecycle execution identity"
+        "invent a lifecycle execution identity",
+        "activate the setup skill or create the missing checker, document or gate itself"
       ]
     },
     {
       "id": "mo-orchestrate-orca.degraded",
       "class": "degraded",
-      "contracts": ["§A-WAIT-01", "§A-DELIVERY-01", "§A-ISSUE-01"],
+      "contracts": [
+        "§A-WAIT-01",
+        "§A-DELIVERY-01",
+        "§A-ISSUE-01"
+      ],
       "scenario": "One run presents quota, another reconnecting, another capacity, another compaction, and a fifth refuses after doing work. During Issue routing, repository candidates have the same rank (ISS-12), a duplicate search truncates at its limit (ISS-14), and installed CLI help lacks the required safe body capability (ISS-15).",
       "must": [
         "return distinct typed outcomes for quota, reconnecting, capacity, compaction and output_blocked_after_work under §A-WAIT-01",

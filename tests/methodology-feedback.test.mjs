@@ -118,3 +118,30 @@ test("no skill outside the activation graph sends anyone to run setup", () => {
   assert.match(methodology, /recommend that the human run the setup skill/u);
   assert.match(methodology, /no lifecycle skill prepares it on its own initiative/u);
 });
+
+test("each lifecycle skill answers a missing checker with the gap, not with setup", () => {
+  // The three that can meet an unprepared project each say so in their own
+  // words: a rule stated only in the shared methodology is a rule the skill
+  // that skipped reading it does not have.
+  for (const skill of ["mo-orchestrate-orca", "mo-review-orca", "mo-e2e"]) {
+    const body = flat(read(shipped(skill, "SKILL.md")));
+    assert.match(body, /`MO-BACKLOG\/1`/u, `${skill}: never names the checker`);
+    assert.match(body, /identifier-history gate/u, `${skill}: never names the history gate`);
+    assert.match(body, /needs_attention/u, `${skill}: no typed answer for the gap`);
+    assert.match(body, /human/u, `${skill}: does not leave setup to the human`);
+  }
+  const protocol = flat(read(join(ROOT, "shared", "references", "review-protocol.md")));
+  assert.match(protocol, /no backlog-closure checker at all/u);
+  assert.match(protocol, /no review prepares the project or writes the missing checker/u);
+  // The corpus states the same refusal as an executable expectation.
+  const cases = JSON.parse(
+    read(join(ROOT, "skills", "mo-orchestrate-orca", "evals", "cases.json")),
+  );
+  const forbidden = cases.cases.find((entry) => entry.class === "forbidden");
+  assert.match(forbidden.scenario, /no `MO-BACKLOG\/1` closure command/u);
+  assert.ok(
+    forbidden.mustNot.some((rule) => /activate the setup skill/u.test(rule)),
+    "the corpus does not forbid activating setup",
+  );
+  assert.ok(forbidden.contracts.includes("§A-BACKLOG-01"));
+});

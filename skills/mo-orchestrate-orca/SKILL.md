@@ -52,6 +52,11 @@ Temporary specifications, brief drafts and intermediate coordinator files live
 in the project's `.orca/`; where `.orca/` is not ignored, write no temporary
 file into a tracked path and return `needs_attention`.
 
+A project that cannot answer the readiness questions is not ready, and this
+skill does not prepare it: a missing `MO-BACKLOG/1` command, papercut document
+or identifier-history gate is reported as `needs_attention` with what is
+missing, and running the setup skill stays the human's own step.
+
 Run G0 through the project's `MO-BACKLOG/1` command after intake migration and
 before substantive work. The one hot executor owns all product/spec edits,
 regression tests, invariant comments and coherent commits. The orchestrator

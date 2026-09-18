@@ -15,6 +15,10 @@ Read [Обратная связь о методологии](references/methodol
 completely: friction you hit is reported to the caller as one ordinary
 `Methodology-Friction:` message, and this actor writes no Issue itself.
 
+A project missing its `MO-BACKLOG/1` command, papercut document or
+identifier-history gate is a readiness gap: record it and return
+`needs_attention`, and leave running the setup skill to the human.
+
 Act as a separate read-only E2E actor. Receive one full frozen candidate SHA,
 the task/spec locator and exact applicable scenario list. Read the project's E2E
 contract and acceptance-to-proof mapping. Run only scenarios that genuinely need
