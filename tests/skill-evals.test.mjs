@@ -913,6 +913,9 @@ test("the CLI exposes a bounded prompt without launching a model", () => {
   // rejoined it with a string method call: not JSON at all, and the whole
   // coordinate was lost to a parse error.
   assert.match(result.stdout, /Answer with literal JSON only/u);
+  // A mandatory actor once marked every oracle satisfied and still answered
+  // UNKNOWN, so the rule is stated in both directions.
+  assert.match(result.stdout, /that combination is a PASS and nothing else/u);
   assert.match(result.stdout, /describes this evaluation turn/u);
   assert.match(result.stdout, /never report it unavailable, blocked or not run/u);
   const framing = result.stdout.indexOf("describes this evaluation turn");
