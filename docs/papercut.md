@@ -85,6 +85,27 @@
   котором пробелы, нарисованные перемещением курсора, отсутствуют, и
   `Yes, I trust this folder` приезжает как `Yes,Itrustthisfolder`.
 
+- Обёртка `~/bin/opencode` подставляет `--auto` перед аргументами вызывающей
+  стороны, и тогда `opencode models` попадает в подкоманду по умолчанию
+  (`[project]`) с ошибкой «Failed to change directory to …/models». Каталог
+  моделей читается только напрямую: `~/.opencode/bin/opencode models`. Из-за
+  этого `mo-models --catalog --route opencode` показывает пустой список, хотя
+  провайдер отвечает.
+- Дочерний `claude -p` наследует режим разрешений родительской сессии: флаг
+  `--permission-mode` в отчёте `init` не появляется, и координата эвала обязана
+  называть наблюдённый режим, а не запрошенный.
+- Матрица эвалов гоняется без Orca, прямо через CLI:
+  `codex exec --json -m <model> -c model_reasoning_effort=<e> -s read-only -C <clone> -o <file> -`
+  и
+  `claude -p --model <alias> --effort <e> --output-format stream-json --verbose`.
+  Фактическую модель берут из `turn_context` в
+  `~/.codex/sessions/.../rollout-*.jsonl` и из события `init` у Claude; сам
+  ответ модели на эти поля не годится.
+- `orca orchestration worker-start --terminal <handle>` на терминале, который
+  создал вызывающий, оставляет ресурс за вызывающим: `worker-release` отвечает
+  `state=retained processAction=none`, и терминал закрывают своим
+  `orca terminal close`.
+
 ## Поставка
 
 - `shared/scripts/mo-posture.sh` и `mo-watchdog.sh` копируются в скилы
