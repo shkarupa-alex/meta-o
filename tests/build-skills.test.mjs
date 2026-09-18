@@ -25,7 +25,11 @@ import { fromMarkdown } from "mdast-util-from-markdown";
 
 import {
   ALLOWED_FRONTMATTER,
+  BUNDLES,
+  LICENSE_ALLOWLIST,
+  LICENSE_EXCEPTIONS,
   SHARED_PLAN,
+  licenseSlug,
   frontmatter,
   stripSourceAnchors,
   walk,
@@ -85,10 +89,59 @@ test("every declared shared file is copied byte-for-byte and never shadowed", ()
         `${skill} shadows ${source}`,
       );
       const built = readFileSync(join(OUTPUT, skill, destination));
-      if (source !== "scripts/mo-models.mjs") {
+      // A bundled destination is build output, not a copy, so only the copied
+      // ones can be compared byte for byte against their source.
+      if (!(destination in BUNDLES)) {
         const authored = readFileSync(join(ROOT, "shared", source), "utf8");
         assert.equal(built.toString("utf8"), stripSourceAnchors(authored, source));
       }
+    }
+  }
+});
+
+test("every bundle ships exactly the notices of the roots it pulled", () => {
+  for (const [skill, entries] of Object.entries(SHARED_PLAN)) {
+    const expected = new Set();
+    for (const [, destination] of entries) {
+      for (const root of BUNDLES[destination]?.roots ?? []) {
+        expected.add(`${licenseSlug(root)}-LICENSE.txt`);
+      }
+    }
+    const directory = join(OUTPUT, skill, "licenses");
+    const shipped = new Set(existsSync(directory) ? readdirSync(directory) : []);
+    assert.deepEqual([...shipped].sort(), [...expected].sort(), `${skill} licence notices`);
+    for (const notice of shipped) {
+      assert.ok(readFileSync(join(directory, notice), "utf8").trim().length > 0, notice);
+    }
+  }
+  // Notices are generated from the installed packages, so nothing in the source
+  // tree may claim to be one: a stored copy is what silently stops matching.
+  assert.equal(existsSync(join(ROOT, "shared", "licenses")), false);
+});
+
+test("a root the closure does not name, or may not redistribute, breaks generation", () => {
+  // The closure is what makes the licence set provable rather than believed, so
+  // it has to fail on both halves: an unexpected root and unacceptable terms.
+  for (const [destination, closure] of Object.entries(BUNDLES)) {
+    assert.ok(closure.roots.length > 0, `${destination} declares no roots`);
+    assert.ok(Number.isInteger(closure.baselineBytes), `${destination} has no measured baseline`);
+    const carrier = Object.entries(SHARED_PLAN).find(([, entries]) =>
+      entries.some(([, target]) => target === destination),
+    );
+    assert.ok(carrier, `${destination} reaches no skill`);
+    const built = readFileSync(join(OUTPUT, carrier[0], destination)).byteLength;
+    assert.ok(
+      built <= Math.ceil(closure.baselineBytes * 1.25),
+      `${destination} is ${built} bytes against a ${closure.baselineBytes} baseline`,
+    );
+    for (const root of closure.roots) {
+      const declared = JSON.parse(
+        readFileSync(join(ROOT, "node_modules", ...root.split("/"), "package.json"), "utf8"),
+      ).license;
+      assert.ok(
+        LICENSE_ALLOWLIST.has(declared) || LICENSE_EXCEPTIONS[root] === declared,
+        `${root} is licensed ${declared}`,
+      );
     }
   }
 });

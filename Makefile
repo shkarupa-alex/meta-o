@@ -108,6 +108,10 @@ mo-smoke:
 			cp skills/$$backend/scripts/mo-models.mjs $$smoke_dir/$$backend.mjs; \
 			(cd $$smoke_dir && HOME=$$smoke_dir node ./$$backend.mjs --help > /dev/null); \
 			(cd $$smoke_dir && HOME=$$smoke_dir node ./$$backend.mjs --show > /dev/null); \
+		done; \
+		for bundle in $$(git ls-files 'skills/*/scripts/mo-knowledge-history.mjs'); do \
+			cp $$bundle $$smoke_dir/bundle-history.mjs; \
+			(cd $$smoke_dir && HOME=$$smoke_dir node ./bundle-history.mjs --help > /dev/null); \
 		done
 	@echo "mo-smoke ok"
 

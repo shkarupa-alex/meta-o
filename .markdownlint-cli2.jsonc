@@ -14,7 +14,6 @@
     ".orca/**",
     "docs/references/**",
     "docs/research/**",
-    "shared/licenses/**",
   ],
   "config": {
     "default": true,
