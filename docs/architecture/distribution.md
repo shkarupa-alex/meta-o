@@ -51,16 +51,29 @@ _Управляющий слой обязан оправдывать своё с
 ## §A-DISTRIBUTION-02 — Самодостаточный помощник моделей
 
 ```yaml
-knowledge_id_change:
-  action: reuse
-  id: §A-DISTRIBUTION-02
-  reason:
-    Catalogue discovery и bundled runtime теперь явно разделяют exact supported
-    model identity и provider availability.
-  new_boundary:
-    Self-contained helper принимает только точный provider-supported profile и
-    возвращает typed unavailable без выдуманного effective identity.
-  references_updated: true
+knowledge_id_changes:
+  - action: reuse
+    id: §A-DISTRIBUTION-02
+    reason:
+      Catalogue discovery и bundled runtime теперь явно разделяют exact
+      supported model identity и provider availability.
+    new_boundary:
+      Self-contained helper принимает только точный provider-supported profile и
+      возвращает typed unavailable без выдуманного effective identity.
+    references_updated: true
+  - action: reuse
+    id: §A-DISTRIBUTION-02
+    reason: >-
+      Решение описывало самодостаточность одного собранного помощника — модели.
+      Фича добавляет ещё три собираемых помощника с тем же замыканием, и без
+      обобщения каждый следующий выглядел бы исключением из решения, а не его
+      применением.
+    new_boundary: >-
+      Самодостаточен каждый собираемый помощник, а не один помощник моделей: у
+      каждого свой измеренный базовый размер, тот же предел +25%, тот же запрет
+      неразрешённого импорта и то же требование побайтового совпадения во всех
+      скилах-потребителях.
+    references_updated: true
 ```
 
 Обнаружение каталога Claude использует поверхность Agent SDK
@@ -111,6 +124,12 @@ knowledge_id_change:
 Внешние файлы `brain-council`, упомянутые спецификацией, — только проектные
 материалы. Исходники, сборка, тесты, сгенерированные скилы и среда выполнения
 обязаны работать без `/Users/alex/bitrix/skills`.
+
+Самодостаточность — свойство не одного помощника, а каждого собираемого. Набор
+таких помощников объявлен сборкой явно; у каждого собственный измеренный базовый
+размер и тот же предел +25%, тот же запрет неразрешённого импорта и то же
+требование побайтового совпадения во всех скилах-потребителях. Измеренный размер
+помощника моделей остаётся его собственной записью, а не общим числом.
 
 Сборка пакета и запрос каталога у SDK — это §B-PORTABILITY-07: список моделей
 берут у провайдера, а помощник обязан работать на чужой машине. Если
