@@ -834,7 +834,7 @@ const OBLIGATIONS = [
     {
       mech: [
         /orca terminal wait --terminal <handle> --for tui-idle/,
-        /wait for `tui-idle`, and inject the task into that terminal/,
+        /agent_prompt with action=deliver → continue/,
       ],
     },
   ],

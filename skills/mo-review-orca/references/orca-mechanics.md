@@ -39,14 +39,54 @@ change. A folder project without existing attributable isolated worktrees is an
 unsupported placement, never permission for raw Git worktrees or
 `orca repo add`.
 
-Bind a lightweight Run and create all independent tasks first. Prefer the
-composed worker start when it launches and recognizes the requested harness:
+Bind a lightweight Run and create all independent tasks first:
 
 ```text
 orca orchestration run-create --objective <objective> --json
 orca orchestration task-create --spec <task> --json
-orca orchestration worker-start --task <id> --worktree current --agent <codex|claude|opencode> --model <model> --effort <effort> --json
 ```
+
+Terminal-first is the default route for every agent environment. A composed
+start hands Orca both the harness launch and the task bytes in one call, and
+nothing in the version-matched surface promises those bytes wait for the agent
+to be ready; where they do not, the task is typed into whatever holds the
+keyboard. Use a composed start only when `worker-start --help` or the
+version-matched `orchestration` guide says in so many words that task input
+waits for agent readiness. No such sentence is there today.
+
+```text
+orca terminal create --worktree id:<repo>::<path> --title <title> --command "<agent argv>" --json
+  # claude: claude --model <id> --effort <e>     codex: codex -m <id> -c model_reasoning_effort=<e>
+  # the posture flag is not repeated here: the wrapper owns it
+→ record the handle in OwnedResourceSet/1 at once, as the fallback binding for no_owned_resource
+orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 120000 --json
+orca terminal read --terminal <handle> --screen --json | node scripts/mo-harness-screen.mjs
+  # trust_ui → the trust procedure; agent_prompt with action=deliver → continue;
+  # anything else → close that exact handle and return needs_attention
+ps -o args= -p <pid from orca terminal show --json>   # argv carries the requested model and effort
+orca orchestration worker-start --task <id> --worktree id:<repo>::<path> --terminal <handle> --json
+```
+
+The handle is written to the owned-resource set before the wait, not after it: a
+terminal that exists but is recorded nowhere is the one nothing can close.
+`--model` and `--effort` are never passed together with `--terminal`; the argv
+already carries them, and a second source of the same fact is a second answer to
+"what ran?".
+
+Recovery from `outcome_unknown` or `turn_start_unobserved` runs in one
+direction: `worker-stop --dispatch <old>`, prove a settled stop or `blocked`
+from the receipt and `worker-show`, create a terminal by the recipe above, then
+`worker-start --task <id> --retry-of <old> --worktree id:<repo>::<path> --terminal <handle>`.
+When `worker-stop` itself answers `unknown_effect`, both a second stop and a
+replacement Dispatch are forbidden: either can leave two executors working the
+same task, and two executors of one task is worse than none.
+
+Sending `worker_done` completes the Dispatch, but the agent session behind it
+stays hot. A new Dispatch binds to that same session with
+`worker-start --task <id> --terminal <handle> --worktree id:<repo>::<path>`;
+omitting `--worktree` answers `terminal_worktree_mismatch`. This is what makes a
+follow-up review in the same session — with its own prior reasoning still
+present — reachable at all.
 
 Use the exact returned run, task, dispatch and terminal identities. Stable
 titles are `<feature>:orchestrator`, `<feature>:executor`,
@@ -65,23 +105,35 @@ received the task. An untouched harness prompt, a shell prompt, or task text
 executed by the shell is a failed composed start, even while Orca still labels
 the worker ready. Stop only that exact dispatch.
 
-Composed start is safe only when its public contract holds task bytes until a
-normal agent prompt is proven. Otherwise the version-matched upstream skill
-documents one terminal-first fallback: create the exact harness terminal, wait
-for `tui-idle`, and inject the task into that terminal:
-
-```text
-orca terminal create --worktree active --title <title> --command <harness-command> --json
-orca terminal wait --terminal <handle> --for tui-idle --timeout-ms <ms> --json
-orca orchestration dispatch --task <task-id> --to <handle> --inject --json
-```
-
 Verify effective model, effort, process identity, absence of Claude trust UI or
 shell prompt and unsandboxed posture before injection. Respect launch wrappers:
 do not duplicate a posture flag that the resolved wrapper already supplies. If
 this documented fallback also fails, report the backend unsupported rather than
 trying unrelated harnesses until one accepts the task. Start all independent
 workers successfully before waiting for either result.
+
+## Reading the version-matched references
+
+The compact guide names action gates that live in its bundled references, and
+those references are read from the same absolute binary, never installed:
+
+```text
+orca skills get orchestration --references --json | jq -er '.references[]'
+orca skills get orchestration --reference <name> --json | jq -er '.markdown | select(type=="string" and length>0)'
+```
+
+`--json` is not optional here. Without it the output is bare Markdown, `jq`
+exits 5 on the first line it cannot parse, and the reason is on stderr.
+`2>/dev/null` is forbidden for exactly that: an empty `markdown` or a non-zero
+exit is `unknown`, and a discarded stderr turns a readable failure into a silent
+empty guide. A reference name may be given bare (`recovery-and-cleanup`) or as
+the guide spells it (`references/recovery-and-cleanup.md`); both resolve to the
+bare name.
+
+`mo-review-orca` and `mo-orchestrate-orca` require four of them before they act:
+`coordinator-loop`, `placement-and-remote`, `recovery-and-cleanup` and
+`worker-contract`. A missing name in the list, an empty body or a non-zero exit
+for any of the four is `unknown`, not a smaller set of rules to work from.
 
 ## State, completion and questions
 

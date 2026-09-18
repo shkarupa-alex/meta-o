@@ -28,8 +28,17 @@ function recording(name, source = null) {
   for (const observation of document.observations) {
     assert.equal(observation.invokedBinary, document.binaryIdentity);
     assert.match(observation.command, new RegExp(`^${document.binary} `, "u"));
-    assert.equal(observation.exitStatus, 0);
-    assert.match(observation.provenance, /^stdout(?: |$)/u);
+    // A recorded failure is evidence too: the reason `--json` is not optional
+    // is an exit status and a line on stderr. What may not drift is the pair —
+    // a non-zero status is recorded from stderr, a zero one from stdout, and a
+    // failure filed as stdout would read as ordinary output.
+    assert.equal(typeof observation.exitStatus, "number");
+    assert.match(observation.provenance, /^(?:stdout|stderr)(?: |$)/u);
+    assert.equal(
+      observation.exitStatus === 0,
+      observation.provenance.startsWith("stdout"),
+      `${observation.command}: exit status and recorded stream disagree`,
+    );
     assert.equal(typeof observation.output, "string");
     assert.ok(observation.output.length > 0 && Buffer.byteLength(observation.output) <= 4096);
     assert.equal(commands.has(observation.command), false);
@@ -186,4 +195,42 @@ test("recording metadata and field provenance fail closed under mutation", () =>
     mutate(changed);
     assert.throws(() => recording("mutated.fixture", JSON.stringify(changed)));
   }
+});
+
+test("recorded reference retrieval keeps every guarded reference and its failure", () => {
+  const help = recording("orca-references.fixture");
+  const list = JSON.parse(
+    help.output("orca skills get orchestration --references --json | jq -c '{name,references}'"),
+  );
+  assert.equal(list.name, "orchestration");
+  for (const reference of [
+    "coordinator-loop",
+    "placement-and-remote",
+    "recovery-and-cleanup",
+    "worker-contract",
+  ]) {
+    assert.ok(list.references.includes(reference), `${reference}: not offered by the guide`);
+    const observation = help.observations.find(({ command }) =>
+      command.startsWith(`orca skills get orchestration --reference ${reference} --json`),
+    );
+    assert.ok(observation, `${reference}: retrieval not recorded`);
+    const body = JSON.parse(observation.output);
+    assert.equal(body.reference, reference);
+    // An empty body is the failure the recipe is written against; a recording
+    // of one would make the guard agree with a silent empty guide.
+    assert.ok(body.markdown_bytes > 500, `${reference}: recorded body is too small to be a guide`);
+  }
+  const bare = help.observations.find(
+    ({ command }) =>
+      command === "orca skills get orchestration --references | jq -er '.references[]'",
+  );
+  assert.ok(bare, "the reason --json is mandatory is not recorded");
+  assert.equal(bare.exitStatus, 5);
+  assert.match(bare.output, /parse error/u);
+  assert.equal(
+    help.output(
+      "orca skills get orchestration --reference references/worker-contract.md --json | jq -er '.reference'",
+    ),
+    "worker-contract",
+  );
 });
