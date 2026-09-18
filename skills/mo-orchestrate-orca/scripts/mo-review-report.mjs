@@ -7287,6 +7287,24 @@ function parseArguments(argv) {
   }
   return options;
 }
+function publicSummary({ candidate, verdict, counts }) {
+  const summed = [0, 1, 2, 3].map(
+    (severity) => counts.reduce((total, slot) => total + slot[severity], 0)
+  );
+  const parts = summed.map((total, severity) => `P${severity}=${total}`).join(" ");
+  return `Review-Pair-Verdict/1 candidate=${candidate} verdict=${verdict} ${parts}`;
+}
+function businessQuestion({ slot, vendor, indexLine, path, question, hypothesis }) {
+  const key = /^(F-\d{3})\b/u.exec(indexLine)?.[1];
+  if (key === void 0) return { status: "unknown", reason: "index_line" };
+  return {
+    status: "asked",
+    text: `${slot}:${key} (${vendor}) ${indexLine}
+Full report: ${path}
+Question: ${question}
+Recommended: ${hypothesis}`
+  };
+}
 function require_(options, names) {
   for (const name of names) {
     if (options[name] === void 0) throw new Error(`--${name} is required`);
@@ -7404,10 +7422,12 @@ if (process.argv[1] !== void 0 && import.meta.url === `file://${process.argv[1]}
   }
 }
 export {
+  businessQuestion,
   decodeReport,
   linkFailureReason,
   namespace,
   pair,
+  publicSummary,
   readReportBytes,
   reportLine,
   stage,

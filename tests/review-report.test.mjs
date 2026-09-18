@@ -22,9 +22,11 @@ import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  businessQuestion,
   linkFailureReason,
   namespace,
   pair,
+  publicSummary,
   reportLine,
   stage,
   validateReport,
@@ -502,4 +504,80 @@ test("the CLI stages from stdin byte for byte", () => {
   );
   assert.equal(readFileSync(join(created.dir, "A-codex.md"), "utf8"), text);
   assert.match(line, new RegExp(`bytes=${Buffer.byteLength(text)} `, "u"));
+});
+
+test("the brief template carries every field and no placeholder", () => {
+  const brief = readFileSync(join(ROOT, "shared", "references", "review-brief.md"), "utf8");
+  for (const field of [
+    "Target",
+    "Intent",
+    "Scope",
+    "Mode",
+    "Placement",
+    "Environment",
+    "Constraints",
+    "Ownership",
+    "Acceptance",
+    "Report",
+    "Methodology-Friction",
+    "Cleanup",
+  ]) {
+    assert.match(brief, new RegExp(`\`${field}\``, "u"), `${field} is not in the template`);
+  }
+  assert.match(brief, /copied verbatim/u);
+  assert.match(brief, /a brief containing `<sha>` or `<range>` is not a\s*brief/u);
+});
+
+test("a brief may only cite what the candidate can reach", () => {
+  // The cost is one reviewer turn when it asks, and an invented section when
+  // it does not. Both documents that instruct a caller have to say so.
+  const brief = readFileSync(join(ROOT, "shared", "references", "review-brief.md"), "utf8");
+  const skill = readFileSync(join(ROOT, "src", "skills", "mo-review-orca", "SKILL.md"), "utf8");
+  for (const document of [brief, skill]) {
+    assert.match(document, /`\.orca\/`/u);
+    assert.match(document, /`docs\/specifications\/`/u);
+    assert.match(document, /invented section/u);
+  }
+});
+
+test("a public summary carries counts and never a finding", () => {
+  const line = publicSummary({
+    candidate: SHA,
+    verdict: "FINDINGS",
+    counts: [
+      [0, 1, 2, 0],
+      [0, 0, 2, 1],
+    ],
+  });
+  assert.equal(line, `Review-Pair-Verdict/1 candidate=${SHA} verdict=FINDINGS P0=0 P1=1 P2=4 P3=1`);
+  // Two reviewers finding the same thing stay two findings: summing is the
+  // whole operation, and deduplicating would be a judgement made here.
+  assert.doesNotMatch(line, /F-\d{3}/u);
+});
+
+test("the one permitted business question names its slot, its key and where to read the rest", () => {
+  const asked = businessQuestion({
+    slot: "A",
+    vendor: "claude",
+    indexLine: "F-002 [P2] The retention window contradicts the stated guarantee.",
+    path: "/tmp/mo-review-x/A-claude.md",
+    question: "Which of the two is the product promise?",
+    hypothesis: "the stated guarantee, and the window is the defect",
+  });
+  assert.equal(asked.status, "asked");
+  assert.match(asked.text, /^A:F-002 \(claude\) F-002 \[P2\] /u);
+  assert.match(asked.text, /Full report: \/tmp\/mo-review-x\/A-claude\.md$/mu);
+  // A line that is not an index line cannot be projected: there is nothing to
+  // key it by, and paraphrasing it here is exactly what is forbidden.
+  assert.equal(
+    businessQuestion({
+      slot: "A",
+      vendor: "claude",
+      indexLine: "the reviewer thinks retention is wrong",
+      path: "/tmp/x",
+      question: "?",
+      hypothesis: "?",
+    }).reason,
+    "index_line",
+  );
 });

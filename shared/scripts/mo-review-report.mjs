@@ -469,6 +469,44 @@ function parseArguments(argv) {
   return options;
 }
 
+/**
+ * The only shape a pair may take on a public surface.
+ *
+ * §A-REVIEW-04 lets a caller publish that a review happened, not what it
+ * found: an index line on a public surface is the finding, and once it is out
+ * there the reviewer's boundary has already been crossed. Counts are summed
+ * component-wise and duplicates are counted twice, because deduplicating is a
+ * judgement the caller is not the one to make.
+ */
+export function publicSummary({ candidate, verdict, counts }) {
+  const summed = [0, 1, 2, 3].map((severity) =>
+    counts.reduce((total, slot) => total + slot[severity], 0),
+  );
+  const parts = summed.map((total, severity) => `P${severity}=${total}`).join(" ");
+  return `Review-Pair-Verdict/1 candidate=${candidate} verdict=${verdict} ${parts}`;
+}
+
+/**
+ * The one question a human requester who asked for one may receive.
+ *
+ * §A-REVIEW-04 keeps the finding with the reviewer: the requester gets the
+ * index line as written, where to read the rest, and a question they can
+ * actually answer. Paraphrasing the body here is how a product decision ends
+ * up made against a summary nobody reviewed.
+ */
+export function businessQuestion({ slot, vendor, indexLine, path, question, hypothesis }) {
+  const key = /^(F-\d{3})\b/u.exec(indexLine)?.[1];
+  if (key === undefined) return { status: "unknown", reason: "index_line" };
+  return {
+    status: "asked",
+    text:
+      `${slot}:${key} (${vendor}) ${indexLine}\n` +
+      `Full report: ${path}\n` +
+      `Question: ${question}\n` +
+      `Recommended: ${hypothesis}`,
+  };
+}
+
 function require_(options, names) {
   for (const name of names) {
     if (options[name] === undefined) throw new Error(`--${name} is required`);

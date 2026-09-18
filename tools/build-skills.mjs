@@ -171,7 +171,7 @@ export const BUNDLES = {
     roots: [...MARKDOWN_ROOTS, "js-yaml"],
   },
   "scripts/mo-review-report.mjs": {
-    baselineBytes: 193_582,
+    baselineBytes: 200_550,
     roots: MARKDOWN_ROOTS,
   },
 };
@@ -229,6 +229,7 @@ export const SHARED_PLAN = {
     ["references/methodology.md", "references/methodology.md"],
     ["references/backend-contract.md", "references/backend-contract.md"],
     ["references/review-protocol.md", "references/review-protocol.md"],
+    ["references/review-brief.md", "references/review-brief.md"],
     ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
     ["references/orca-mechanics.md", "references/orca-mechanics.md"],
     ["references/issue-routing.md", "references/issue-routing.md"],
@@ -241,6 +242,7 @@ export const SHARED_PLAN = {
   "mo-review-orca": [
     ["references/backend-contract.md", "references/backend-contract.md"],
     ["references/review-protocol.md", "references/review-protocol.md"],
+    ["references/review-brief.md", "references/review-brief.md"],
     ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
     ["references/orca-mechanics.md", "references/orca-mechanics.md"],
     ["scripts/mo-models.mjs", "scripts/mo-models.mjs"],

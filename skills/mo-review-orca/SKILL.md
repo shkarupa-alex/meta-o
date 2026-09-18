@@ -10,6 +10,7 @@ This skill starts only when the user names `mo-review-orca` or the active
 orchestration skill calls it. A generic code-review request is not activation.
 
 Read [Portable review protocol](references/review-protocol.md),
+[Review brief](references/review-brief.md),
 [Backend contract](references/backend-contract.md),
 [Orca native mechanics](references/orca-mechanics.md), and
 [Purpose and architecture contract](references/purpose-and-architecture.md)
@@ -87,6 +88,14 @@ the resource projection. If that binding is absent, close nothing and return
 an authenticated duplicate search establishes its canonical upstream Issue.
 
 Wait for both full reports before disposition or handoff.
+
+The brief carries all twelve fields of [Review brief](references/review-brief.md)
+and no placeholder. Every grounding source it names must be readable from the
+candidate itself: a path under `.orca/` is in no checkout the reviewer can
+obtain, and the accepted specification is tracked under `docs/specifications/`.
+A reviewer that cannot reach a cited source either spends a turn asking or
+reasons from an invented section, and a verdict grounded in an invented section
+cannot be told apart from a real one.
 
 ## Authoritative response
 
