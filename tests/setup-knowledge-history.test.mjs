@@ -33,6 +33,35 @@ function stale(path) {
   const body = copy.slice(0, copy.length - `${stamps[0]}\n`.length);
   return createHash("sha256").update(body).digest("hex") === parsed[2] ? "no" : "yes";
 }
+/**
+ * Read a runner definition the way the declaration form reads it: the stage is
+ * a member of the stage list the quality command actually walks.
+ *
+ * A file-wide search cannot say this. In this very repository the stage name
+ * also stands in `.PHONY`, in its own target and in two smoke lines, so it
+ * survives removal from the authoritative command — which is exactly the
+ * `gate_missing` state the contract exists to catch.
+ */
+function runnerCarries(makefile, command, stage) {
+  const lines = makefile.split("\n");
+  const start = lines.findIndex((line) => line.startsWith(`${command}:`));
+  if (start === -1) return "command_absent";
+  const recipe = [];
+  for (const line of lines.slice(start + 1)) {
+    if (line.startsWith("\t")) recipe.push(line);
+    else if (line.trim() !== "") break;
+  }
+  const assignments = new Map();
+  for (const line of lines) {
+    const parsed = /^([A-Za-z0-9_]+)\s*=\s*(.*)$/u.exec(line);
+    if (parsed) assignments.set(parsed[1], parsed[2].trim().split(/\s+/u));
+  }
+  const walked = [...recipe.join(" ").matchAll(/\$\(([A-Za-z0-9_]+)\)/gu)]
+    .map((match) => assignments.get(match[1]))
+    .filter((members) => members !== undefined);
+  if (walked.length === 0) return "recipe_ignores_stage_list";
+  return walked.some((members) => members.includes(stage)) ? "yes" : "stage_not_in_stage_list";
+}
 const skill = readFileSync(join(ROOT, "src", "skills", "mo-setup", "SKILL.md"), "utf8");
 const prose = skill.replace(/\s+/gu, " ");
 const contract = readFileSync(
@@ -248,13 +277,37 @@ test("this project's own contract satisfies the declaration form it ships", () =
     .filter((line) => line.includes("make mo-qc"));
   assert.equal(quality.length, 1, "not exactly one line names the quality command");
   assert.ok(quality[0].includes(stage[0].value), "the quality line does not name the stage");
-  assert.ok(
-    readFileSync(join(ROOT, "Makefile"), "utf8").includes("mo-knowledge-history"),
-    "the runner definition does not contain the stage",
+  // The declared block is a command line; the runner knows the stage by its
+  // target name, so the name is read out of that line instead of assumed.
+  const target = /^make\s+(\S+)$/u.exec(stage[0].value.trim());
+  assert.ok(target, "the stage block is not one make invocation");
+  assert.equal(
+    runnerCarries(readFileSync(join(ROOT, "Makefile"), "utf8"), "mo-qc", target[1]),
+    "yes",
+    "the runner definition does not carry the stage",
   );
   // A link says where by its target; prose says it in words. Both are readable
   // by an AST, and the rule asks for the place, not for the spelling.
   const targets = [text, ...links(body).map((node) => node.url)].join(" ");
   assert.match(targets, /docs\/business.md/u);
   assert.match(targets, /docs\/architecture\//u);
+});
+
+test("the membership check fails on a runner that only mentions the stage", () => {
+  // The check above is only worth its line if it can say no. These two texts
+  // are the states a substring search cannot tell from a healthy Makefile: the
+  // stage dropped out of the list, and the list no longer walked at all.
+  const makefile = readFileSync(join(ROOT, "Makefile"), "utf8");
+  assert.equal(runnerCarries(makefile, "mo-qc", "mo-knowledge-history"), "yes");
+  const dropped = makefile.replace(/^MO_QC_STAGES = .*$/mu, (line) =>
+    line.replace(" mo-knowledge-history", ""),
+  );
+  assert.match(dropped, /^\.PHONY:.*mo-knowledge-history/mu, "the decoy mentions are gone");
+  assert.match(dropped, /^mo-knowledge-history:$/mu, "the stage target is gone");
+  assert.equal(runnerCarries(dropped, "mo-qc", "mo-knowledge-history"), "stage_not_in_stage_list");
+  const unwalked = makefile.replace("$(MO_QC_STAGES)", "mo-lint mo-test");
+  assert.equal(
+    runnerCarries(unwalked, "mo-qc", "mo-knowledge-history"),
+    "recipe_ignores_stage_list",
+  );
 });
