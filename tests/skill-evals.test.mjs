@@ -916,6 +916,9 @@ test("the CLI exposes a bounded prompt without launching a model", () => {
   // A mandatory actor once marked every oracle satisfied and still answered
   // UNKNOWN, so the rule is stated in both directions.
   assert.match(result.stdout, /that combination is a PASS and nothing else/u);
+  // Quoting a documented selector shape cost a coordinate: the placeholder
+  // check cannot distinguish it from a field the actor never filled.
+  assert.match(result.stdout, /without angle brackets/u);
   assert.match(result.stdout, /describes this evaluation turn/u);
   assert.match(result.stdout, /never report it unavailable, blocked or not run/u);
   const framing = result.stdout.indexOf("describes this evaluation turn");
