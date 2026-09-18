@@ -135,14 +135,22 @@ function readSections(lines, prose) {
   return { evidence, at: new Map(ORDER.map((label, step) => [label, positions[step]])), found };
 }
 
-/** §A-REVIEW-04 keys the index monotonically so a body can answer it one to one. */
-function readIndex(lines, from, to, counts) {
-  const entries = lines
-    .slice(from, to)
-    .filter((line) => line && !line.startsWith("Unknown-Reason:"))
-    .map((line) => line.match(/^(F-\d{3}) \[(P[0-3])\] .+/u));
+/**
+ * §A-REVIEW-04 keys the index monotonically so a body can answer it one to one.
+ *
+ * Only top-level prose is an index entry. A reviewer who quotes a command, a
+ * previous finding or a list of checks between the counts and the evidence is
+ * still writing the same report, and reading those lines as index keys threw
+ * away a valid authoritative response as malformed.
+ */
+function readIndex(lines, prose, from, to, counts) {
+  const positions = [...prose]
+    .filter((position) => position >= from && position < to)
+    .sort((left, right) => left - right)
+    .filter((position) => lines[position] && !lines[position].startsWith("Unknown-Reason:"));
+  const entries = positions.map((position) => lines[position].match(/^(F-\d{3}) \[(P[0-3])\] .+/u));
   const bad = entries.findIndex((entry) => entry === null);
-  if (bad !== -1) return fail("index_key_order", from + bad);
+  if (bad !== -1) return fail("index_key_order", positions[bad]);
   for (const [step, entry] of entries.entries()) {
     if (entry[1] !== `F-${String(step + 1).padStart(3, "0")}`) return fail("index_key_order", from);
   }
@@ -223,7 +231,7 @@ export function validateReport(text, expected) {
   const prose = topLevelProse(text);
   const sections = readSections(lines, prose);
   if (sections.status === "malformed") return sections;
-  const index = readIndex(lines, 6, sections.evidence, header.counts);
+  const index = readIndex(lines, prose, 6, sections.evidence, header.counts);
   if (index.status === "malformed") return index;
   const at = sections.at;
   if (bodyOf(lines, at.get("Grounding"), at.get("Scope and checks")).length === 0) {

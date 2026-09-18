@@ -7041,10 +7041,11 @@ function readSections(lines, prose) {
   }
   return { evidence, at: new Map(ORDER.map((label, step) => [label, positions[step]])), found };
 }
-function readIndex(lines, from, to, counts) {
-  const entries = lines.slice(from, to).filter((line) => line && !line.startsWith("Unknown-Reason:")).map((line) => line.match(/^(F-\d{3}) \[(P[0-3])\] .+/u));
+function readIndex(lines, prose, from, to, counts) {
+  const positions = [...prose].filter((position2) => position2 >= from && position2 < to).sort((left, right) => left - right).filter((position2) => lines[position2] && !lines[position2].startsWith("Unknown-Reason:"));
+  const entries = positions.map((position2) => lines[position2].match(/^(F-\d{3}) \[(P[0-3])\] .+/u));
   const bad = entries.findIndex((entry) => entry === null);
-  if (bad !== -1) return fail("index_key_order", from + bad);
+  if (bad !== -1) return fail("index_key_order", positions[bad]);
   for (const [step, entry] of entries.entries()) {
     if (entry[1] !== `F-${String(step + 1).padStart(3, "0")}`) return fail("index_key_order", from);
   }
@@ -7103,7 +7104,7 @@ function validateReport(text3, expected) {
   const prose = topLevelProse(text3);
   const sections = readSections(lines, prose);
   if (sections.status === "malformed") return sections;
-  const index2 = readIndex(lines, 6, sections.evidence, header.counts);
+  const index2 = readIndex(lines, prose, 6, sections.evidence, header.counts);
   if (index2.status === "malformed") return index2;
   const at = sections.at;
   if (bodyOf(lines, at.get("Grounding"), at.get("Scope and checks")).length === 0) {

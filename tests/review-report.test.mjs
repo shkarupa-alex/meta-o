@@ -133,6 +133,31 @@ test("a marker inside a container stays body evidence", () => {
   }
 });
 
+test("a container before the evidence is diagnostic text, not an index entry", () => {
+  // The span between the counts and `Evidence report` is where a reviewer
+  // sometimes leaves the command it ran. Reading those lines as index keys
+  // threw a valid authoritative response away as malformed.
+  for (const container of [
+    "> diagnostic note\n\n",
+    "- diagnostic note\n\n",
+    "```text\nF-999 [P0] not a finding\n```\n\n",
+    "    F-999 [P0] indented, so not a finding\n\n",
+  ]) {
+    const text = report({ index: container });
+    assert.equal(validateReport(text, context()).status, "valid", container);
+  }
+  // A genuine top-level line in that span is still structure: the index keeps
+  // its order rule, and a body still has to answer every key.
+  assert.equal(reasonOf(report({ index: "F-002 [P2] out of order.\n\n" })), "index_key_order");
+  const paired = report({
+    verdict: "FINDINGS",
+    counts: "P0=0 P1=0 P2=1 P3=0",
+    index: "> quoted note\n\nF-001 [P2] a real finding.\n\n",
+    findings: "F-001\n[P2] confirmed.\nProof and direction.\n",
+  });
+  assert.equal(validateReport(paired, context()).status, "valid");
+});
+
 test("a report that answers a different call is rejected before its body", () => {
   assert.equal(reasonOf(report({ execution: "ctx_stale" })), "execution_mismatch");
   assert.equal(reasonOf(report({ candidate: "b".repeat(40) })), "candidate_mismatch");
