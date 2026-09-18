@@ -5,6 +5,7 @@
  */
 
 import assert from "node:assert/strict";
+import yaml from "js-yaml";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -131,4 +132,69 @@ test("entry files name every backlog closure gate and the remote head check", ()
     assert.match(prose, /G2[^.]*слиянием/);
     assert.match(prose, /На G1 и G2 удалённый исходный HEAD обязан совпасть/);
   }
+});
+
+test("the shipped CI examples keep full history and a separate closure job", () => {
+  const assets = join(ROOT, "src", "skills", "mo-setup", "assets", "ci");
+  const github = yaml.load(readFileSync(join(assets, "github-actions.yml"), "utf8"));
+  const gitlab = yaml.load(readFileSync(join(assets, "gitlab-ci.yml"), "utf8"));
+
+  // `on` is the YAML 1.1 boolean `true` once parsed, which is exactly the kind
+  // of detail a hand-written example gets wrong and a parser catches.
+  const triggers = Object.keys(github.on ?? github[true] ?? {});
+  assert.deepEqual(triggers.sort(), ["merge_group", "pull_request"]);
+
+  // A shallow clone turns the history stage into a silent skip rather than a
+  // check, so the depth is the point of shipping an example at all.
+  const checkouts = Object.values(github.jobs).flatMap((job) =>
+    job.steps.filter((step) => String(step.uses ?? "").startsWith("actions/checkout")),
+  );
+  assert.ok(checkouts.length > 0);
+  for (const step of checkouts) assert.equal(step.with["fetch-depth"], 0);
+  assert.equal(gitlab.variables.GIT_DEPTH, "0");
+
+  // Closure is a separate job in both: the notebook must be empty at closure and
+  // is deliberately not empty mid-feature, so one red result cannot mean both.
+  const backlogJobs = Object.entries(github.jobs).filter(([, job]) =>
+    job.steps.some((step) => String(step.run ?? "").includes("mo-backlog")),
+  );
+  assert.equal(backlogJobs.length, 1);
+  assert.notEqual(backlogJobs[0][0], "qc");
+  const gitlabJobs = Object.entries(gitlab).filter(
+    ([, job]) =>
+      Array.isArray(job?.script) && job.script.some((line) => line.includes("mo-backlog")),
+  );
+  assert.equal(gitlabJobs.length, 1);
+  assert.notEqual(gitlabJobs[0][0], "qc");
+
+  for (const job of [gitlab.qc, gitlabJobs[0][1]]) {
+    const conditions = job.rules.map((rule) => rule.if).join(" ");
+    assert.match(conditions, /merge_request_event/u);
+    assert.match(conditions, /merge_train/u);
+  }
+
+  // The command stays a placeholder: these are proposals to the owner, not a
+  // licence to write someone else's pipeline for them.
+  assert.match(String(github.jobs.qc.steps.at(-1).run), /<qc-command>/u);
+  assert.ok(gitlab.qc.script.some((line) => line.includes("<qc-command>")));
+});
+
+test("mo-setup ships a papercut template and the history contract it must apply", () => {
+  const references = join(ROOT, "src", "skills", "mo-setup", "references");
+  const template = readFileSync(join(references, "papercut-template.md"), "utf8");
+  const history = readFileSync(join(references, "knowledge-id-history.md"), "utf8");
+  for (const phrase of ["Правило записи", "Устаревшая строка удаляется"]) {
+    assert.ok(template.includes(phrase), phrase);
+  }
+  for (const phrase of [
+    "Knowledge id history",
+    "history_cutoff_sha",
+    "MO-KNOWLEDGE-HISTORY-SOURCE",
+    "stale=unknown",
+  ]) {
+    assert.ok(history.includes(phrase), phrase);
+  }
+  // The hash domain is the half that makes staleness decidable rather than
+  // guessed, so the template may not leave it to the reader.
+  assert.match(history, /без этой строки/u);
 });
