@@ -30,6 +30,19 @@ Run/task/Dispatch/terminal identities in reasoning, not a state store. Before
 actors, record project registrations/resources; every actor must remain in the
 same Orca project and cleanup may touch only exact-owned delta.
 
+This lifecycle also runs from an ordinary shell. The sign is `orca status
+--json` succeeding while the realpath of the current directory matches no `path`
+in `orca worktree list --json`. Then a worktree selector is `id:<repo>::<path>`
+or `path:<path>` and never `current` or `active`, the Run is created without
+`--from`, waiting is `check --run <id> --wait`, and no coordinator title is set.
+If no watchdog sees this session, say once that the limit is accepted — work
+stops at the limit until a human returns — and continue. Probe the watchdog
+helper, `jq` and `flock` only when the user asks for the watchdog; their absence
+is then an ordinary typed gap, and starting the watchdog stays a human boundary.
+Temporary specifications, brief drafts and intermediate coordinator files live
+in the project's `.orca/`; where `.orca/` is not ignored, write no temporary
+file into a tracked path and return `needs_attention`.
+
 Run G0 through the project's `MO-BACKLOG/1` command after intake migration and
 before substantive work. The one hot executor owns all product/spec edits,
 regression tests, invariant comments and coherent commits. The orchestrator

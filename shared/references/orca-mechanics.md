@@ -135,6 +135,38 @@ bare name.
 `worker-contract`. A missing name in the list, an empty body or a non-zero exit
 for any of the four is `unknown`, not a smaller set of rules to work from.
 
+## Coordinator inside an Orca terminal
+
+A coordinator that Orca itself started has a worktree, so `current` and `active`
+resolve to it, `run-create --from <handle>` binds the Run to that terminal, and
+the coordinator tab carries the `<feature>:orchestrator` title.
+
+## Coordinator outside an Orca terminal
+
+The same lifecycle runs from an ordinary shell. The sign is exact:
+`orca status --json` succeeds, and the realpath of the current directory equals
+no `path` in `orca worktree list --json`. Nothing about the backend is degraded
+— only the coordinator's own placement is unknown to Orca.
+
+Outside, a relative selector names nothing: a worktree selector is
+`id:<repo>::<path>` or `path:<path>`, written out in full. The Run is created
+without `--from`, the wait is `orca orchestration check --run <id> --wait`
+instead of a terminal-bound check, and no coordinator title is set, because
+there is no tab to title. Workers are unaffected: each one still gets its exact
+worktree selector and terminal handle.
+
+The watchdog is not a precondition. At start the coordinator establishes whether
+a watchdog sees it; if none does, it says once that the limit is accepted — work
+stops at the limit until a human returns — and continues. `mo-watchdog`, `jq`
+and `flock` are probed only when the user asks for the watchdog, and their
+absence is then an ordinary typed gap rather than a failed start.
+
+Temporary specifications, brief drafts and other intermediate coordinator files
+live in the project's `.orca/`. Where `.orca/` is not ignored, the coordinator
+writes no temporary file into a tracked path and returns `needs_attention`: a
+scratch file inside the candidate tree changes the very SHA the lifecycle is
+about to certify.
+
 ## State, completion and questions
 
 Wait on public messages rather than terminal polling. Use one caller-owned
