@@ -7,26 +7,55 @@
     {
       "id": "mo-setup.positive",
       "class": "positive",
-      "contracts": ["§A-BACKLOG-01", "§A-DELIVERY-01"],
+      "contracts": [
+        "§A-BACKLOG-01",
+        "§A-DELIVERY-01",
+        "§A-ISSUE-01"
+      ],
       "scenario": "The user explicitly asks to bring a project to the Meta-O contract.",
-      "must": ["inspect project substance and each backend companion under §A-BACKLOG-01", "separate proposed and authorized changes under §A-DELIVERY-01"],
-      "mustNot": ["overwrite unrelated user changes", "claim readiness from one proxy signal"]
+      "must": [
+        "inspect project substance and each backend companion under §A-BACKLOG-01",
+        "separate proposed and authorized changes under §A-DELIVERY-01",
+        "report the papercut document and the identifier-history gate as separate typed readiness lines under §A-BACKLOG-01",
+        "name ISS-16 and the repository from metadata.repository as the only destination for confirmed friction about Meta-O itself under §A-ISSUE-01"
+      ],
+      "mustNot": [
+        "overwrite unrelated user changes",
+        "claim readiness from one proxy signal",
+        "report methodology friction anywhere other than that named repository"
+      ]
     },
     {
       "id": "mo-setup.forbidden",
       "class": "forbidden",
-      "contracts": ["§A-ACTIVATION-01"],
+      "contracts": [
+        "§A-ACTIVATION-01"
+      ],
       "scenario": "The user asks a generic environment question without requesting Meta-O setup.",
-      "must": ["answer without starting setup mutation under §A-ACTIVATION-01"],
-      "mustNot": ["edit project instructions", "install companions"]
+      "must": [
+        "answer without starting setup mutation under §A-ACTIVATION-01"
+      ],
+      "mustNot": [
+        "edit project instructions",
+        "install companions"
+      ]
     },
     {
       "id": "mo-setup.degraded",
       "class": "degraded",
-      "contracts": ["§A-SESSION-01", "§A-DELIVERY-01"],
+      "contracts": [
+        "§A-SESSION-01",
+        "§A-DELIVERY-01"
+      ],
       "scenario": "Orca control, a companion, native auth or selected-harness launch is unavailable.",
-      "must": ["name each failing readiness surface independently under §A-SESSION-01", "give an actionable non-secret next step under §A-DELIVERY-01"],
-      "mustNot": ["collect credentials", "treat stale account cache as native auth failure"]
+      "must": [
+        "name each failing readiness surface independently under §A-SESSION-01",
+        "give an actionable non-secret next step under §A-DELIVERY-01"
+      ],
+      "mustNot": [
+        "collect credentials",
+        "treat stale account cache as native auth failure"
+      ]
     }
   ]
 }

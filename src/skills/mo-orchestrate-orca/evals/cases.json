@@ -7,13 +7,18 @@
     {
       "id": "mo-orchestrate-orca.positive",
       "class": "positive",
-      "contracts": ["§A-ORCHESTRATION-01", "§A-BACKLOG-01", "§A-ISSUE-01"],
-      "scenario": "The user explicitly requests a full feature lifecycle on one verified feature worktree, and the intent they dictate contains an access token, a password, a private key block, a credential-bearing URL and a full commit SHA that only looks like one of them.",
+      "contracts": [
+        "§A-ORCHESTRATION-01",
+        "§A-BACKLOG-01",
+        "§A-ISSUE-01"
+      ],
+      "scenario": "The user explicitly requests a full feature lifecycle on one verified feature worktree, and the intent they dictate contains an access token, a password, a private key block, a credential-bearing URL and a full commit SHA that only looks like one of them. The session runs from an ordinary shell whose realpath matches no Orca worktree, and no watchdog observes it.",
       "must": [
         "orchestrate exactly one named executor followed by one vendor-diverse reviewer pair under §A-ORCHESTRATION-01",
         "keep product edits owned by the executor and bind Review-Execution to one full verified SHA under §A-BACKLOG-01",
         "deliver task and report bytes without shell interpolation and wake on an early worker_done",
-        "redact each token, password, private key and credential-bearing URL as [REDACTED:<kind>] before the ledger is committed under §A-ISSUE-01, and keep the full commit SHA verbatim"
+        "redact each token, password, private key and credential-bearing URL as [REDACTED:<kind>] before the ledger is committed under §A-ISSUE-01, and keep the full commit SHA verbatim",
+        "under §A-ORCHESTRATION-01 detect the ordinary-shell start, select every worktree by an explicit path-bound selector, create the Run without --from, and continue after naming the absent watchdog once as an accepted limit"
       ],
       "mustNot": [
         "write product code as orchestrator",
@@ -21,27 +26,37 @@
         "accept a worker_done fabricated by a bare shell",
         "commit a live credential into the ledger",
         "rewrite an ordinary identifier as a redaction",
-        "guess an ambiguous classification instead of stopping with needs_attention"
+        "guess an ambiguous classification instead of stopping with needs_attention",
+        "name a worktree by current or active outside Orca, or treat the watchdog as a precondition of the start"
       ]
     },
     {
       "id": "mo-orchestrate-orca.forbidden",
       "class": "forbidden",
-      "contracts": ["§A-ACTIVATION-01"],
-      "scenario": "The request is answer-only or asks only for a standalone review.",
+      "contracts": [
+        "§A-ACTIVATION-01",
+        "§A-BACKLOG-01"
+      ],
+      "scenario": "The request is answer-only or asks only for a standalone review; or it asks for the full lifecycle in a project that has no `MO-BACKLOG/1` closure command, no papercut document and no identifier-history gate.",
       "must": [
-        "avoid starting a feature lifecycle and report the request as inapplicable under §A-ACTIVATION-01"
+        "avoid starting a feature lifecycle and report the request as inapplicable under §A-ACTIVATION-01",
+        "report the readiness gap as `needs_attention`, name what is missing, and leave running the setup skill to the human under §A-BACKLOG-01"
       ],
       "mustNot": [
         "create an executor",
         "materialize a spec or ledger",
-        "invent a lifecycle execution identity"
+        "invent a lifecycle execution identity",
+        "activate the setup skill or create the missing checker, document or gate itself"
       ]
     },
     {
       "id": "mo-orchestrate-orca.degraded",
       "class": "degraded",
-      "contracts": ["§A-WAIT-01", "§A-DELIVERY-01", "§A-ISSUE-01"],
+      "contracts": [
+        "§A-WAIT-01",
+        "§A-DELIVERY-01",
+        "§A-ISSUE-01"
+      ],
       "scenario": "One run presents quota, another reconnecting, another capacity, another compaction, and a fifth refuses after doing work. During Issue routing, repository candidates have the same rank (ISS-12), a duplicate search truncates at its limit (ISS-14), and installed CLI help lacks the required safe body capability (ISS-15).",
       "must": [
         "return distinct typed outcomes for quota, reconnecting, capacity, compaction and output_blocked_after_work under §A-WAIT-01",
@@ -49,7 +64,8 @@
         "reject a fake or wrong candidate SHA before review",
         "under §A-ISSUE-01 name ISS-12 and stop with needs_attention instead of choosing a same-rank repository",
         "name ISS-14 and narrow or explicitly enlarge the truncated search without claiming no duplicate",
-        "name ISS-15, record the missing help capability and return unsupported or needs_attention without a write"
+        "name ISS-15, record the missing help capability and return unsupported or needs_attention without a write",
+        "route confirmed friction in a Meta-O skill, reference or script to ISS-16 in the repository named by this skill's metadata.repository under §A-ISSUE-01, and return needs_attention when that field is absent"
       ],
       "mustNot": [
         "infer success from terminal existence",

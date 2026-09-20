@@ -16,6 +16,8 @@ import { fileURLToPath } from "node:url";
 
 import MarkdownIt from "markdown-it";
 
+import { deliberateFixture } from "../tools/mo-vocabulary.mjs";
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const markdown = new MarkdownIt();
 // Loose enough to catch a malformed anchor, so a typo fails instead of hiding.
@@ -190,10 +192,29 @@ test("every anchor reference in the project resolves to a defined id", () => {
     ...modules(),
   ];
   for (const path of sources) {
-    for (const id of references(readFileSync(path, "utf8"), path)) {
+    // A file whose subject is undefined vocabulary carries that vocabulary as
+    // data. It says so with the same marker `make mo-vocabulary` reads, so one
+    // declaration answers both gates instead of two mechanisms disagreeing.
+    const text = readFileSync(path, "utf8");
+    if (deliberateFixture(text, path)) continue;
+    for (const id of references(text, path)) {
       assert.ok(defined.has(id), `${path}: dangling reference ${id}`);
     }
   }
+});
+
+test("a fixture declaration is read from the file's opening block only", () => {
+  // Assembled rather than written out: a literal dangling anchor in this file
+  // would be a real citation, and this gate is right to refuse one.
+  const ghost = ["§A", "GHOST", "01"].join("-");
+  const dangling = `const cases = ["${ghost}", "${ghost}"];`;
+  const declared = `/** Fixtures: mo-vocabulary-ok file. */\n${dangling}`;
+  assert.ok(deliberateFixture(declared), "an opening declaration is not recognized");
+  assert.deepEqual(references(declared, "declared.mjs"), [ghost, ghost]);
+  // The same words below the first statement claim nothing, so this gate still
+  // reads the file and still refuses an anchor that resolves to no decision.
+  const late = `${dangling}\n// mo-vocabulary-ok file`;
+  assert.equal(deliberateFixture(late), false, "a late marker suppressed the file");
 });
 
 test("every first-party module names a decision and never the business layer", () => {
@@ -208,10 +229,13 @@ test("every first-party module names a decision and never the business layer", (
     assert.ok(found.includes(owner), `module discovery lost ${owner}`);
   }
   for (const path of found) {
+    // The purpose header is the module's own voice and is never fixture data,
+    // so it answers for its decision even in a file marked as examples.
     const cited = references(header(path), path).filter((id) => id.startsWith("§A-"));
     assert.ok(cited.length > 0, `${path}: purpose names no architecture decision`);
     for (const id of cited) assert.ok(defined.has(id), `${path}: cites unknown ${id}`);
-    const business = references(readFileSync(path, "utf8"), path).filter((id) =>
+    const body = readFileSync(path, "utf8");
+    const business = (deliberateFixture(body, path) ? [] : references(body, path)).filter((id) =>
       id.startsWith("§B-"),
     );
     assert.deepEqual(business, [], `${path}: code cites the business layer directly`);

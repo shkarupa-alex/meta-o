@@ -128,6 +128,30 @@ function reviewerInventoryReason(surface, candidate, resolveRealPath) {
   return null;
 }
 
+/**
+ * What `orca worktree create` produced, if it produced an isolated worktree.
+ *
+ * On a folder project the call can answer `ok:true` with the main checkout's
+ * own path and an empty head. That reads like a fresh isolated worktree and is
+ * not one, so acceptance is by realpath, `isMainWorktree` and `head`, never by
+ * the return code.
+ */
+function isolatedFromCreate(created) {
+  if (created === undefined || created.ok !== true) return null;
+  if (created.isMainWorktree === true || created.head === "") return null;
+  return created.path;
+}
+
+/** The exact existing workspace the second rung starts in, or nothing. */
+function acceptedWorkspace(surface, resolveRealPath) {
+  if (surface.workspace === undefined) return null;
+  try {
+    return resolveRealPath(surface.workspace);
+  } catch {
+    return null;
+  }
+}
+
 function recordedReview(
   surface,
   {
@@ -192,6 +216,27 @@ function recordedReview(
   }
 
   const children = surface.children ?? [];
+  // The ladder is walked before the inventory of isolated worktrees is judged:
+  // "no child worktrees" is the condition for the second rung, not a partial
+  // inventory of the first.
+  if (surface.project.kind === "folder" && children.length === 0) {
+    if (isolatedFromCreate(surface.worktreeCreate) !== null) {
+      throw new Error("a created worktree must enter the inventory, not the ladder");
+    }
+    const workspace = acceptedWorkspace(surface, resolveRealPath);
+    if (workspace === null) {
+      return finish({ status: "unsupported", reason: "placement_unsupported", ownedDelta: [] });
+    }
+    for (const slot of ["A", "B"]) {
+      calls.push({ operation: "orca orchestration worker-start", worktree: workspace, slot });
+    }
+    return finish({
+      status: "started",
+      placement: "shared_checkout",
+      reason: null,
+      ownedDelta: owned,
+    });
+  }
   const inventoryReason = reviewerInventoryReason(surface, candidate, resolveRealPath);
   if (inventoryReason) {
     return finish({ status: "unsupported", reason: inventoryReason, ownedDelta: [] });
@@ -201,7 +246,7 @@ function recordedReview(
       return finish({ status: "unsupported", reason: "placement_unsupported", ownedDelta: [] });
     }
     for (const child of children) addReviewerResources(child);
-    return finish({ status: "started", reason: null, ownedDelta: owned });
+    return finish({ status: "started", placement: "isolated", reason: null, ownedDelta: owned });
   }
 
   for (const child of surface.children) {
@@ -465,4 +510,188 @@ test("no_owned_resource closes only the recorded fallback terminal handle", () =
     "needs_attention",
   );
   assert.deepEqual(closed, ["review-a-terminal"]);
+});
+
+/**
+ * Compare the baseline snapshots a caller takes around a `shared_checkout` pair.
+ *
+ * The invariant is about the shared working checkout, not about the repository:
+ * a slot's own leftovers make the pair `UNKNOWN`, while somebody else working
+ * in parallel is an observation that is recorded and never undone. Confusing
+ * the two either hides a reviewer's mess or deletes a colleague's work.
+ */
+function settlePair(before, after, slots) {
+  const owns = (path) =>
+    slots.some((slot) => path === slot.path || path.startsWith(`${slot.path}/`));
+  // A porcelain record is `XY <path>`: the two status columns are not part of
+  // the path, and comparing the whole line would attribute nothing to anybody.
+  const ownsEntry = (entry) => owns(entry.slice(3));
+  const observations = [];
+  const faults = [];
+  if (before.head !== after.head) faults.push("shared_head_moved");
+  const changed = [
+    ...after.status.filter((entry) => !before.status.includes(entry)),
+    ...before.status.filter((entry) => !after.status.includes(entry)),
+  ];
+  for (const entry of changed) {
+    if (ownsEntry(entry)) faults.push(`slot_change_left: ${entry}`);
+    else observations.push(`foreign_change: ${entry}`);
+  }
+  for (const ref of after.refs) {
+    if (ref.startsWith("refs/meta-o/review/")) faults.push(`slot_ref_left: ${ref}`);
+  }
+  const leftovers = after.worktrees.filter(
+    (path) => owns(path) && !before.worktrees.includes(path),
+  );
+  for (const path of leftovers) faults.push(`slot_worktree_left: ${path}`);
+  for (const path of before.worktrees) {
+    // A record nobody's slot owns that vanished between snapshots means
+    // somebody ran `prune`; the reviewer reports it rather than restoring it.
+    if (!after.worktrees.includes(path) && !owns(path))
+      observations.push(`prune_suspected: ${path}`);
+  }
+  return {
+    verdict: faults.length === 0 ? "settled" : "UNKNOWN",
+    faults,
+    observations,
+    handover: leftovers.length > 0 ? "needs_attention" : null,
+  };
+}
+
+/** §A-SESSION-01 binds a conclusion to the candidate SHA or leaves it unknown. */
+function groundingBound(grounding, candidate) {
+  const bound = [
+    new RegExp(`git show ${candidate}:`, "u"),
+    new RegExp(`git diff \\S+\\.\\.${candidate}`, "u"),
+    new RegExp(`git grep .* ${candidate}`, "u"),
+    new RegExp(`rev-parse HEAD[\\s\\S]*${candidate}`, "u"),
+  ];
+  return bound.some((pattern) => pattern.test(grounding)) ? "bound" : "UNKNOWN";
+}
+
+const SNAPSHOT = {
+  head: "0123456789abcdef0123456789abcdef01234567",
+  status: ["?? notes.txt"],
+  worktrees: ["/recorded/shared", "/recorded/colleague"],
+  refs: [],
+};
+const SLOTS = [{ path: "/recorded/slot-a" }, { path: "/recorded/slot-b" }];
+
+test("a folder project without child worktrees starts in the exact existing workspace", () => {
+  const result = replayRecordedReview(fixture.folderSharedCheckout);
+  assert.equal(result.status, "started");
+  assert.equal(result.placement, "shared_checkout");
+  assert.ok(result.registrationUnchanged);
+  assert.deepEqual(
+    result.calls.map(({ operation }) => operation),
+    ["orca orchestration worker-start", "orca orchestration worker-start"],
+  );
+  // Both reviewers start in the same exact path, and nothing is created there.
+  assert.deepEqual(
+    new Set(result.calls.map(({ worktree }) => worktree)),
+    new Set(["/recorded/shared"]),
+  );
+});
+
+test("without even an exact workspace the ladder ends in a typed refusal", () => {
+  const result = replayRecordedReview(fixture.folderNoWorkspace);
+  assert.equal(result.status, "unsupported");
+  assert.equal(result.reason, "placement_unsupported");
+  assert.equal(
+    result.header,
+    reviewStartHeader("placement_unsupported", "project-folder", undefined),
+  );
+  assert.deepEqual(result.calls, [], "no Run and no task before placement is proven");
+});
+
+test("ok:true on the shared path is not an isolated worktree", () => {
+  assert.equal(isolatedFromCreate(fixture.folderCreateTrap.worktreeCreate), null);
+  assert.equal(
+    isolatedFromCreate({ ok: true, path: "/recorded/child", head: "abc", isMainWorktree: false }),
+    "/recorded/child",
+  );
+  // The recorded trap still resolves to the shared rung rather than to a
+  // worktree that does not exist.
+  const result = replayRecordedReview(fixture.folderCreateTrap);
+  assert.equal(result.placement, "shared_checkout");
+});
+
+test("a reviewer's own leftovers are UNKNOWN; a colleague's work is an observation", () => {
+  const clean = settlePair(SNAPSHOT, SNAPSHOT, SLOTS);
+  assert.equal(clean.verdict, "settled");
+  assert.deepEqual(clean.faults, []);
+
+  const slotFile = settlePair(
+    SNAPSHOT,
+    { ...SNAPSHOT, status: [...SNAPSHOT.status, "?? /recorded/slot-a/scratch"] },
+    SLOTS,
+  );
+  assert.equal(slotFile.verdict, "UNKNOWN");
+  assert.deepEqual(slotFile.faults, ["slot_change_left: ?? /recorded/slot-a/scratch"]);
+
+  const colleague = settlePair(
+    SNAPSHOT,
+    { ...SNAPSHOT, status: [...SNAPSHOT.status, " M src/app.js"] },
+    SLOTS,
+  );
+  assert.equal(colleague.verdict, "settled");
+  assert.deepEqual(colleague.observations, ["foreign_change:  M src/app.js"]);
+
+  assert.equal(
+    settlePair(SNAPSHOT, { ...SNAPSHOT, head: "b".repeat(40) }, SLOTS).verdict,
+    "UNKNOWN",
+  );
+});
+
+test("an unremoved slot ref or slot worktree does not settle", () => {
+  const ref = settlePair(
+    SNAPSHOT,
+    { ...SNAPSHOT, refs: ["refs/meta-o/review/A/0123456789abcdef0123456789abcdef01234567"] },
+    SLOTS,
+  );
+  assert.equal(ref.verdict, "UNKNOWN");
+  assert.match(ref.faults[0], /^slot_ref_left: refs\/meta-o\/review\/A\//u);
+  assert.equal(ref.handover, null);
+
+  const worktree = settlePair(
+    SNAPSHOT,
+    { ...SNAPSHOT, worktrees: [...SNAPSHOT.worktrees, "/recorded/slot-a"] },
+    SLOTS,
+  );
+  assert.equal(worktree.verdict, "UNKNOWN");
+  assert.equal(worktree.handover, "needs_attention");
+});
+
+test("a foreign worktree record that vanished is reported, not repaired", () => {
+  const pruned = settlePair(SNAPSHOT, { ...SNAPSHOT, worktrees: ["/recorded/shared"] }, SLOTS);
+  assert.equal(pruned.verdict, "settled");
+  assert.deepEqual(pruned.observations, ["prune_suspected: /recorded/colleague"]);
+});
+
+test("no shipped instruction ever tells a reviewer to prune", () => {
+  // `prune` drops the administrative record of every currently unreachable
+  // worktree, including a colleague's and a temporarily unmounted one.
+  for (const path of [
+    "src/skills/mo-review-orca/SKILL.md",
+    "shared/references/review-brief.md",
+    "shared/references/methodology.md",
+    "shared/references/orca-mechanics.md",
+  ]) {
+    const text = readFileSync(resolve(import.meta.dirname, "..", path), "utf8");
+    const mentions = text.split("\n").filter((line) => line.includes("worktree prune"));
+    for (const line of mentions) {
+      assert.match(line, /forbidden|запрещ/u, `${path}: prune is named without being forbidden`);
+    }
+  }
+});
+
+test("a conclusion that is not bound to the candidate is unknown", () => {
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+  assert.equal(groundingBound(`I read git show ${sha}:src/app.js`, sha), "bound");
+  assert.equal(groundingBound(`git diff base..${sha} -- tests`, sha), "bound");
+  assert.equal(
+    groundingBound(`my checkout /tmp/slot-a, rev-parse HEAD printed ${sha}`, sha),
+    "bound",
+  );
+  assert.equal(groundingBound("I read the files in the shared checkout", sha), "UNKNOWN");
 });

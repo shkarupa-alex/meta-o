@@ -15,7 +15,17 @@ Inspect substance, not file presence. A ready project has:
   it serves;
 - a branch-local feature backlog whose temporary entries have reason, practical
   impact and next step, plus a project-owned non-mutating `MO-BACKLOG/1` closure
-  command and G0/GC/G1/G2 rules in the entry contract;
+  command and G0/GC/G1/G2 rules in the entry contract. Accepted repair installs
+  the shipped checker as the project's own `tools/mo-backlog.mjs` and calls it
+  with that project's whole notebook schema — path, title, open heading and
+  every entry field — because half a schema silently checks a foreign notebook
+  against the supplier's wording;
+- a short commands-and-papercuts document, `docs/papercut.md` by default and any
+  equivalent accepted on content, linked from `AGENTS.md`, whose writing rule is
+  narrow on purpose: a frequent or routine command hung or failed and the cause
+  is known, so one short line records what it does, what it is for and what did
+  not work; a stale line is removed by the change that made it wrong; one-off
+  incidents and methodology friction belong elsewhere and would be lost here;
 - E2E scenarios and an acceptance-to-proof mapping;
 - a plain-language README explaining purpose, use, constraints, commands and
   links to the knowledge layer;
@@ -38,6 +48,49 @@ mixed artifacts; only a genuinely undecidable case belongs in backlog.
 Internal Markdown links use a label containing the target document's H1 title,
 not its path. Enforce resolution and labels with a mature Markdown AST/link
 tool, never a regex Markdown parser.
+
+## Knowledge id history
+
+Current-tree checking and history checking are different claims. The tree shows
+the identifiers agree now; the history shows no meaning was redefined and no
+identifier deleted unnoticed on the way here. Neither proves the other, so a
+ready project states both.
+
+Guessing is forbidden, which makes the absence of a declaration `unknown` rather
+than "probably none". A ready project declares the stage in `AGENTS.md`, or in
+the document `AGENTS.md` names as its quality contract, as a level-two section
+whose heading contains `Knowledge id history` and which holds:
+
+- exactly one fenced block containing exactly one command line — the history
+  stage;
+- exactly one line naming the project's authoritative quality command;
+- exactly one YAML record with the key `history_cutoff_sha`, the project's lower
+  boundary;
+- the locations identifiers live in: the business document and the architecture
+  directory the stage reads.
+
+Parse that section with a real Markdown AST, never with a regular expression
+over the document. If the section is missing, if any of those counts is not
+exactly one, or if the locations are unnamed, ambiguous or contradictory, the
+result is `history=unknown` with `cutoff=none` and no guess. Locations are read
+rather than assumed for the same reason as the rest: one project's layout is its
+own convention, and a probe that supplies the missing half either certifies
+documents the stage never reads or edits whichever file matched the shape.
+
+The stage must be part of the declared quality command: a stage that exists but
+is not part of the authoritative check is not a gate. The declaration proves it
+one of two ways — the stage command appears verbatim in that command, or the
+line naming the command also names this stage and the tracked runner definition
+it points at, a `Makefile` target list or a `package.json` script, contains it.
+Reading a tracked runner file changes nothing; running the whole quality command
+to find out is not allowed. Its presence is proven by behaviour in a disposable
+clone, never by running the project's full quality command and never by touching
+the candidate worktree.
+
+The entry contract also states the authorization grammar the stage enforces: a
+commit trailer with the verbs `remove`, `reuse` or `editorial`, and a matching
+`knowledge_id_change` record in the same commit. A boundary and its commit ids
+belong to the project that owns them and are never copied from the supplier.
 
 ## Tooling and purpose
 
@@ -91,17 +144,27 @@ scripts/mo-posture.sh --shell <zsh|bash|all> -- codex claude opencode
 
 Missing, divergent or unreadable posture is not support. Check workspace trust,
 hooks and wrappers without printing secrets. Personal configuration changes
-require explicit confirmation.
+require explicit confirmation, with one narrow exception: the project root the
+user named when calling the skill, and the run's own resources, are already that
+confirmation. Any other path is not, however similar it looks.
 
 Backend-wide health does not prove harness readiness. Use Orca's documented
 launch and observation surfaces to verify every selected harness. Before task
-bytes, distinguish a normal agent prompt from Claude trust UI and a shell
-prompt; an ambiguous public surface makes that route unsupported. Verify one
-owner of unsandboxed posture so a fallback never duplicates wrapper flags.
-`terminal create --title` and `terminal rename` set the tab title: prove a
-stable title under `visualLayouts[].root.tabs[].title` from
-`terminal list --include-visual-layouts --json`, not from `terminals[].title`,
-which a running harness repaints.
+bytes, read the rendered screen — `terminal read --screen`, not accumulated
+output — and classify it with `scripts/mo-harness-screen.mjs`: only
+`state=agent_prompt action=inject` receives bytes. A trust dialog, a shell
+prompt, a composer holding a draft, an unrecognized frame and a frame two
+recorded screens both match are each a refusal, not a retry.
+
+A route may be selected as `route/model/effort`, but it is launched as three
+flags: `--agent <route> --model <model> --effort <effort>`. The whole literal in
+`--model` launches nothing and then reads like an unavailable model.
+`mo-models.mjs --show --json` publishes that split under `launch` so no caller
+has to re-derive it. Verify one owner of unsandboxed posture so a fallback never
+duplicates wrapper flags. `terminal create --title` and `terminal rename` set
+the tab title: prove a stable title under `visualLayouts[].root.tabs[].title`
+from `terminal list --include-visual-layouts --json`, not from
+`terminals[].title`, which a running harness repaints.
 
 Inspect `ProjectRegistrationSet/1` and `OwnedResourceSet/1`. A folder/no-project
 context without existing same-project isolated worktrees is a typed placement

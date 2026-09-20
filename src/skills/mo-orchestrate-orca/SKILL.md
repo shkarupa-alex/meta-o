@@ -2,6 +2,8 @@
 name: mo-orchestrate-orca
 description: Use only when the user explicitly requests mo-orchestrate-orca; run one full feature to a verified exact SHA through Orca.
 license: MIT
+metadata:
+  repository: https://github.com/shkarupa-alex/meta-o
 ---
 
 # Orchestrate a feature through Orca
@@ -13,10 +15,17 @@ Read [Feature lifecycle](references/methodology.md),
 [Backend contract](references/backend-contract.md),
 [Portable review protocol](references/review-protocol.md),
 [Orca native mechanics](references/orca-mechanics.md), and
-[Маршрутизация подтверждённой внешней работы](references/issue-routing.md), and
+[Маршрутизация подтверждённой внешней работы](references/issue-routing.md),
+[Обратная связь о методологии](references/methodology-feedback.md), and
 [Purpose and architecture contract](references/purpose-and-architecture.md)
 completely. Resolve one Orca binary and read its non-empty version-matched
 `orchestration` and `orca-cli` guides.
+
+The session the user asked to orchestrate is the orchestrator. An unset
+`orchestrator` role does not block the start and is not a reason to ask which
+model this session should use; `--force` and another model generation stay
+forbidden. Keep a role's terminal hot while its proven idle stays under the
+methodology's threshold, and prefer a fresh session past it.
 
 Read role selections with bundled `scripts/mo-models.mjs --show --project
 <root>`; require exact user-approved values and never select a model, effort,
@@ -29,6 +38,31 @@ Use titles `<feature>:orchestrator`, `<feature>:executor`,
 Run/task/Dispatch/terminal identities in reasoning, not a state store. Before
 actors, record project registrations/resources; every actor must remain in the
 same Orca project and cleanup may touch only exact-owned delta.
+
+This lifecycle also runs from an ordinary shell. One predicate decides
+placement, the terminal's own handle: `ORCA_TERMINAL_HANDLE` present and
+`orca terminal read --terminal "$ORCA_TERMINAL_HANDLE" --screen --json`
+readable means inside, and the variable absent or that read refused means
+outside. Where the shell stands is not a second sign: a directory inside a
+registered worktree owns no terminal, and a terminal Orca created keeps its
+handle from any directory. A handle-free terminal read resolves the worktree's
+focused terminal, not the caller's, and `--terminal` accepts only a
+runtime-issued handle, never a relative word; neither decides placement. Then a
+worktree selector is `id:<repo>::<path>`
+or `path:<path>` and never `current` or `active`, the Run is created without
+`--from`, waiting is `check --run <id> --wait`, and no coordinator title is set.
+If no watchdog sees this session, say once that the limit is accepted — work
+stops at the limit until a human returns — and continue. Probe the watchdog
+helper, `jq` and `flock` only when the user asks for the watchdog; their absence
+is then an ordinary typed gap, and starting the watchdog stays a human boundary.
+Temporary specifications, brief drafts and intermediate coordinator files live
+in the project's `.orca/`; where `.orca/` is not ignored, write no temporary
+file into a tracked path and return `needs_attention`.
+
+A project that cannot answer the readiness questions is not ready, and this
+skill does not prepare it: a missing `MO-BACKLOG/1` command, papercut document
+or identifier-history gate is reported as `needs_attention` with what is
+missing, and running the setup skill stays the human's own step.
 
 Run G0 through the project's `MO-BACKLOG/1` command after intake migration and
 before substantive work. The one hot executor owns all product/spec edits,
@@ -45,6 +79,14 @@ the executor both immutable reports only through its verified
 pair paths/sizes; wait for exact `Review-Handoff-Ack` before cleanup. Keep
 remediation reviewers hot, and use a fresh final same-SHA pair. Public updates
 contain only candidate, pair verdict and summed authored P0–P3 census.
+
+Confirmed friction in a Meta-O skill, reference or script is `ISS-16`: search
+the repository named by this skill's `metadata.repository`, comment on a match
+or create one sanitized Issue, and never write it anywhere else. Without that
+field there is no addressee, so the observation goes to the human as
+`needs_attention`. A worker reports friction to you as one ordinary
+`Methodology-Friction:` message; in an eval or E2E run nothing is written
+outside at all.
 
 For a confirmed out-of-scope technical defect, apply the bundled Issue-routing
 decision table:

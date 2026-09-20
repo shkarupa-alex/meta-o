@@ -39,14 +39,61 @@ change. A folder project without existing attributable isolated worktrees is an
 unsupported placement, never permission for raw Git worktrees or
 `orca repo add`.
 
-Bind a lightweight Run and create all independent tasks first. Prefer the
-composed worker start when it launches and recognizes the requested harness:
+Bind a lightweight Run and create all independent tasks first:
 
 ```text
 orca orchestration run-create --objective <objective> --json
 orca orchestration task-create --spec <task> --json
-orca orchestration worker-start --task <id> --worktree current --agent <codex|claude|opencode> --model <model> --effort <effort> --json
 ```
+
+Terminal-first is the default route for every agent environment. A composed
+start hands Orca both the harness launch and the task bytes in one call, and
+nothing in the version-matched surface promises those bytes wait for the agent
+to be ready; where they do not, the task is typed into whatever holds the
+keyboard. Use a composed start only when `worker-start --help` or the
+version-matched `orchestration` guide says in so many words that task input
+waits for agent readiness. No such sentence is there today.
+
+```text
+orca terminal create --worktree id:<repo>::<path> --title <title> --command "<agent argv>" --json
+  # claude: claude --model <id> --effort <e>     codex: codex -m <id> -c model_reasoning_effort=<e>
+  # the posture flag is not repeated here: the wrapper owns it
+→ record the handle in OwnedResourceSet/1 at once, as the fallback binding for no_owned_resource
+orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 120000 --json
+orca terminal read --terminal <handle> --screen --json \
+  | node scripts/mo-harness-screen.mjs --harness <claude|codex|opencode> --expect-path <abs>
+  # reads the envelope, requires source=screen, refuses while `draft` holds any
+  # composer bytes the frame does not show — a space or a newline is such a byte —
+  # and answers one line:
+  # MO-HARNESS-SCREEN/1 state=<...> [trust_path=<json>] [selection=<yes|no|unknown>]
+  #                     [path_match=<yes|no>] [screen_version=<id>] action=<inject|accept_trust|confirm_trust|refuse|wait>
+  # exit 0 classified, 2 unreadable input or a call it cannot answer
+  # trust_ui → the trust procedure; action=inject → continue;
+  # anything else → close that exact handle and return needs_attention
+ps -o args= -p <pid from orca terminal show --json>   # argv carries the requested model and effort
+orca orchestration worker-start --task <id> --worktree id:<repo>::<path> --terminal <handle> --json
+```
+
+The handle is written to the owned-resource set before the wait, not after it: a
+terminal that exists but is recorded nowhere is the one nothing can close.
+`--model` and `--effort` are never passed together with `--terminal`; the argv
+already carries them, and a second source of the same fact is a second answer to
+"what ran?".
+
+Recovery from `outcome_unknown` or `turn_start_unobserved` runs in one
+direction: `worker-stop --dispatch <old>`, prove a settled stop or `blocked`
+from the receipt and `worker-show`, create a terminal by the recipe above, then
+`worker-start --task <id> --retry-of <old> --worktree id:<repo>::<path> --terminal <handle>`.
+When `worker-stop` itself answers `unknown_effect`, both a second stop and a
+replacement Dispatch are forbidden: either can leave two executors working the
+same task, and two executors of one task is worse than none.
+
+Sending `worker_done` completes the Dispatch, but the agent session behind it
+stays hot. A new Dispatch binds to that same session with
+`worker-start --task <id> --terminal <handle> --worktree id:<repo>::<path>`;
+omitting `--worktree` answers `terminal_worktree_mismatch`. This is what makes a
+follow-up review in the same session — with its own prior reasoning still
+present — reachable at all.
 
 Use the exact returned run, task, dispatch and terminal identities. Stable
 titles are `<feature>:orchestrator`, `<feature>:executor`,
@@ -65,23 +112,97 @@ received the task. An untouched harness prompt, a shell prompt, or task text
 executed by the shell is a failed composed start, even while Orca still labels
 the worker ready. Stop only that exact dispatch.
 
-Composed start is safe only when its public contract holds task bytes until a
-normal agent prompt is proven. Otherwise the version-matched upstream skill
-documents one terminal-first fallback: create the exact harness terminal, wait
-for `tui-idle`, and inject the task into that terminal:
-
-```text
-orca terminal create --worktree active --title <title> --command <harness-command> --json
-orca terminal wait --terminal <handle> --for tui-idle --timeout-ms <ms> --json
-orca orchestration dispatch --task <task-id> --to <handle> --inject --json
-```
-
 Verify effective model, effort, process identity, absence of Claude trust UI or
 shell prompt and unsandboxed posture before injection. Respect launch wrappers:
 do not duplicate a posture flag that the resolved wrapper already supplies. If
 this documented fallback also fails, report the backend unsupported rather than
 trying unrelated harnesses until one accepts the task. Start all independent
 workers successfully before waiting for either result.
+
+## Reading the version-matched references
+
+The compact guide names action gates that live in its bundled references, and
+those references are read from the same absolute binary, never installed:
+
+```text
+orca skills get orchestration --references --json | jq -er '.references[]'
+orca skills get orchestration --reference <name> --json | jq -er '.markdown | select(type=="string" and length>0)'
+```
+
+`--json` is not optional here. Without it the output is bare Markdown, `jq`
+exits 5 on the first line it cannot parse, and the reason is on stderr.
+`2>/dev/null` is forbidden for exactly that: an empty `markdown` or a non-zero
+exit is `unknown`, and a discarded stderr turns a readable failure into a silent
+empty guide. A reference name may be given bare (`recovery-and-cleanup`) or as
+the guide spells it (`references/recovery-and-cleanup.md`); both resolve to the
+bare name.
+
+`mo-review-orca` and `mo-orchestrate-orca` require four of them before they act:
+`coordinator-loop`, `placement-and-remote`, `recovery-and-cleanup` and
+`worker-contract`. A missing name in the list, an empty body or a non-zero exit
+for any of the four is `unknown`, not a smaller set of rules to work from.
+
+## Coordinator inside an Orca terminal
+
+A coordinator that Orca itself started has a worktree, so `current` and `active`
+resolve to it, `run-create --from <handle>` binds the Run to that terminal, and
+the coordinator tab carries the `<feature>:orchestrator` title.
+
+## Coordinator outside an Orca terminal
+
+The same lifecycle runs from an ordinary shell. Nothing about the backend is
+degraded — only the coordinator's own placement is unknown to Orca.
+
+One predicate decides that placement, and it is the terminal's own
+runtime-issued handle: `ORCA_TERMINAL_HANDLE` in the environment plus one
+readable `orca terminal read --terminal "$ORCA_TERMINAL_HANDLE" --screen --json`
+together mean inside. The variable absent, or that read refused, means outside,
+whatever the path said.
+
+Where the process stands is not a second sign and decides nothing in either
+direction. An ordinary shell started inside a registered worktree stands on a
+registered `path` and still owns no terminal, while a terminal Orca created
+keeps its handle when its working directory is a scratch clone or `/tmp`. A
+comparison of directories answers both of those backwards, so the question is
+never where the process stands but whether it holds a terminal.
+
+Two probes look like this one and are not. `--terminal` takes a runtime-issued
+handle and nothing else, so the relative words that select a worktree are not
+handles at all: given one, Orca answers `terminal_handle_stale` on both sides of
+the boundary. The handle-free `orca terminal read --screen --json` resolves the
+worktree's focused terminal, which is a property of the application's tab focus
+rather than of the calling process — it answers `no_active_terminal` to a
+coordinator that does hold a terminal, and where it does answer it may name a
+terminal the caller does not own. Neither form decides placement.
+
+Outside, the Run still comes back with a `coordinator_handle`, and it may name a
+terminal belonging to somebody else's session: Orca fills the field from its own
+view of the app, not from the caller. The coordinator neither trusts nor closes
+that handle; it waits by run id and owns only the resources it created.
+
+A worker bound to a terminal the caller created is a caller-owned resource too.
+`worker-release` then answers `state=retained processAction=none`, because Orca
+released a Dispatch it never owned a process for, and the exact handle is closed
+by whoever opened it.
+
+Outside, a relative selector names nothing: a worktree selector is
+`id:<repo>::<path>` or `path:<path>`, written out in full. The Run is created
+without `--from`, the wait is `orca orchestration check --run <id> --wait`
+instead of a terminal-bound check, and no coordinator title is set, because
+there is no tab to title. Workers are unaffected: each one still gets its exact
+worktree selector and terminal handle.
+
+The watchdog is not a precondition. At start the coordinator establishes whether
+a watchdog sees it; if none does, it says once that the limit is accepted — work
+stops at the limit until a human returns — and continues. `mo-watchdog`, `jq`
+and `flock` are probed only when the user asks for the watchdog, and their
+absence is then an ordinary typed gap rather than a failed start.
+
+Temporary specifications, brief drafts and other intermediate coordinator files
+live in the project's `.orca/`. Where `.orca/` is not ignored, the coordinator
+writes no temporary file into a tracked path and returns `needs_attention`: a
+scratch file inside the candidate tree changes the very SHA the lifecycle is
+about to certify.
 
 ## State, completion and questions
 
@@ -123,6 +244,22 @@ Public capability belongs to the exact Dispatch/turn/process and expires on exit
 or replacement. `worker_done` from a bare shell or expired Dispatch cannot
 settle work. A direct user message contaminates the prior isolated role;
 preserve the decision and create an exact replacement when isolation is needed.
+
+## Session warmth
+
+`orca terminal list --json` carries `lastOutputAt`, epoch milliseconds of the
+last output. Idle is `now - lastOutputAt`, and it answers the warmth question
+only for a terminal publicly proven to be at `agent_prompt`: after its
+`worker_done`, or through the screen classifier. A working agent's spinner
+updates the field, so it marks the last output rather than the end of a turn,
+and a busy terminal looks idle for zero seconds no matter how long the turn has
+run.
+
+The prompt cache lives 60 minutes for both vendors, and the working idle
+threshold is 50 minutes. Under the threshold, bind the next Dispatch to the same
+hot session; over it, prefer a fresh one. Where the installed version returns no
+such field, behave exactly as before: an absent observation is not a stale
+session.
 
 ## Reviews and cleanup
 

@@ -1,0 +1,58 @@
+{
+  "contract": "recorded-cli-help.v2",
+  "binary": "orca",
+  "binaryIdentity": "home-relative:.local/bin/orca",
+  "resolution": "one absolute path with its home prefix redacted",
+  "version": "1.4.204",
+  "observations": [
+    {
+      "invokedBinary": "home-relative:.local/bin/orca",
+      "command": "orca skills get orchestration --references --json | jq -c '{name,references}'",
+      "exitStatus": 0,
+      "provenance": "stdout mechanical JSON projection: topic name and the bundled reference names",
+      "output": "{\"name\":\"orchestration\",\"references\":[\"coordinator-loop\",\"legacy-contract-migration\",\"low-level-topology\",\"messaging-and-gates\",\"placement-and-remote\",\"recovery-and-cleanup\",\"worker-contract\"]}"
+    },
+    {
+      "invokedBinary": "home-relative:.local/bin/orca",
+      "command": "orca skills get orchestration --reference coordinator-loop --json | jq -c '{name,reference,markdown_bytes:(.markdown|utf8bytelength),markdown_prefix:(.markdown|split(\"\\n\")[0:1])}'",
+      "exitStatus": 0,
+      "provenance": "stdout mechanical JSON projection: topic name, reference name, Markdown byte length and first line",
+      "output": "{\"name\":\"orchestration\",\"reference\":\"coordinator-loop\",\"markdown_bytes\":2427,\"markdown_prefix\":[\"# Coordinator loop\"]}"
+    },
+    {
+      "invokedBinary": "home-relative:.local/bin/orca",
+      "command": "orca skills get orchestration --reference placement-and-remote --json | jq -c '{name,reference,markdown_bytes:(.markdown|utf8bytelength),markdown_prefix:(.markdown|split(\"\\n\")[0:1])}'",
+      "exitStatus": 0,
+      "provenance": "stdout mechanical JSON projection: topic name, reference name, Markdown byte length and first line",
+      "output": "{\"name\":\"orchestration\",\"reference\":\"placement-and-remote\",\"markdown_bytes\":4390,\"markdown_prefix\":[\"# Placement and remote execution\"]}"
+    },
+    {
+      "invokedBinary": "home-relative:.local/bin/orca",
+      "command": "orca skills get orchestration --reference recovery-and-cleanup --json | jq -c '{name,reference,markdown_bytes:(.markdown|utf8bytelength),markdown_prefix:(.markdown|split(\"\\n\")[0:1])}'",
+      "exitStatus": 0,
+      "provenance": "stdout mechanical JSON projection: topic name, reference name, Markdown byte length and first line",
+      "output": "{\"name\":\"orchestration\",\"reference\":\"recovery-and-cleanup\",\"markdown_bytes\":9462,\"markdown_prefix\":[\"# Recovery and cleanup\"]}"
+    },
+    {
+      "invokedBinary": "home-relative:.local/bin/orca",
+      "command": "orca skills get orchestration --reference worker-contract --json | jq -c '{name,reference,markdown_bytes:(.markdown|utf8bytelength),markdown_prefix:(.markdown|split(\"\\n\")[0:1])}'",
+      "exitStatus": 0,
+      "provenance": "stdout mechanical JSON projection: topic name, reference name, Markdown byte length and first line",
+      "output": "{\"name\":\"orchestration\",\"reference\":\"worker-contract\",\"markdown_bytes\":3388,\"markdown_prefix\":[\"# Worker contract\"]}"
+    },
+    {
+      "invokedBinary": "home-relative:.local/bin/orca",
+      "command": "orca skills get orchestration --references | jq -er '.references[]'",
+      "exitStatus": 5,
+      "provenance": "stderr of jq reading bare Markdown, recorded to hold the reason 2>/dev/null is forbidden",
+      "output": "jq: parse error: Invalid numeric literal at line 2, column 0"
+    },
+    {
+      "invokedBinary": "home-relative:.local/bin/orca",
+      "command": "orca skills get orchestration --reference references/worker-contract.md --json | jq -er '.reference'",
+      "exitStatus": 0,
+      "provenance": "stdout the guide's own spelling of a reference name resolves to the bare name",
+      "output": "worker-contract"
+    }
+  ]
+}
