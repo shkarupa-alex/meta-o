@@ -347,20 +347,39 @@ test("a knowledge path that is not a directory is absent, not corruption", () =>
   }
 });
 
+// The path has to reach Git as raw bytes, and the working tree is the wrong
+// place to put them: APFS refuses a name that is not valid UTF-8, which would
+// make this proof fail on macOS for a reason it does not test. The index takes
+// the bytes directly and builds the same object graph the checker reads, so the
+// name never has to be one the filesystem agrees to store.
+function commitBesideUndecodable(root, where, message) {
+  git(root, ["add", "-A"]);
+  const blob = spawnSync("git", ["-C", root, "hash-object", "-w", "--stdin"], {
+    input: "opaque\n",
+    encoding: "utf8",
+  });
+  assert.equal(blob.status, 0, "the fixture could not write its blob");
+  const entry = Buffer.concat([
+    Buffer.from(`100644 ${blob.stdout.trim()}\t`),
+    Buffer.from(where.length ? `${where.join("/")}/` : ""),
+    Buffer.from([0xff, 0xfe]),
+    Buffer.from("\n"),
+  ]);
+  const staged = spawnSync("git", ["-C", root, "update-index", "--add", "--index-info"], {
+    input: entry,
+  });
+  assert.equal(staged.status, 0, "the fixture could not stage an undecodable path");
+  git(root, ["commit", "-qm", message]);
+}
+
 test("a filename the checker never reads cannot mask a violation", () => {
   // Git path names are opaque bytes. A legacy-encoded filename in a directory
   // the checker walks past must not replace a real, actionable violation with a
   // generic unavailability the target project has no way to clear.
   for (const where of [[], ["docs"], ["docs", "architecture"]]) {
     const { root, cutoff } = fixture();
-    // The path has to be raw bytes: a JS string is re-encoded as UTF-8 on the
-    // way to the filesystem, which would quietly make the name decodable again.
-    writeFileSync(
-      Buffer.concat([Buffer.from(`${join(root, ...where)}/`), Buffer.from([0xff, 0xfe])]),
-      "opaque\n",
-    );
     rewriteBusiness(root, "second");
-    commit(root, "unauthorized change beside an undecodable filename");
+    commitBesideUndecodable(root, where, "unauthorized change beside an undecodable filename");
     const head = git(root, ["rev-parse", "HEAD"]).trim();
     assert.deepEqual(
       verifyHistory(root, cutoff),
