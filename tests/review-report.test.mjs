@@ -11,6 +11,7 @@ import {
   readFileSync,
   readdirSync,
   realpathSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -500,9 +501,17 @@ test("a slot swapped between staging and delivery is caught by identity, not by 
   assert.equal(tampered.reason, "identity_changed");
   assert.equal(tampered.slot, "B");
 
-  // A different file at the same path is a different inode.
-  rmSync(join(created.dir, "A-claude.md"));
-  writeFileSync(join(created.dir, "A-claude.md"), report(), { mode: 0o600 });
+  // A different file at the same path is a different inode — and proving that
+  // needs the replacement to exist before the original is unlinked. Writing it
+  // after the unlink lets the filesystem hand back the very inode it just
+  // freed, and the bytes are identical here on purpose, so on a filesystem that
+  // reuses inodes the swap became invisible and the wrong slot was reported.
+  const swapped = join(created.dir, "A-claude.md");
+  const sibling = join(created.dir, "A-claude.md.swap");
+  writeFileSync(sibling, report(), { mode: 0o600 });
+  assert.notEqual(statSync(sibling).ino, statSync(swapped).ino);
+  rmSync(swapped);
+  renameSync(sibling, swapped);
   const replaced = pair({ dir: created.dir, pairId: created.pairId, slots: named });
   assert.equal(replaced.reason, "identity_changed");
   assert.equal(replaced.slot, "A");
