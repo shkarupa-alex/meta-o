@@ -43,6 +43,31 @@ test("durable business and architecture layers preserve the low-cost policy", ()
   assert.match(architecture, new RegExp(`§${"B-EVAL-01"}`));
 });
 
+test("the private-state exception stays as narrow as the decision that owns it", () => {
+  // The prohibition and the recipe that needs it must be one statement, not
+  // two: for a whole feature the papercut told the next caller to read a
+  // provider session log while the lifecycle forbade exactly that, and both
+  // documents passed every check.
+  const life = read("shared", "references", "methodology.md");
+  const policy = read("docs", "architecture", "evaluation-model-policy.md");
+  const papercut = read("docs", "papercut.md");
+  assert.match(life, /One exception is named and owned by the project's evaluation policy/u);
+  // Its three limits, each stated where the exception is granted.
+  assert.match(life, /reads identity and nothing else/u);
+  assert.match(life, /never another\s+session's record/u);
+  assert.match(life, /a public surface supersedes it the moment\s+one exists/u);
+  // The decision carries the observation the exception rests on, including the
+  // version: an exception with no falsifiable ground never expires.
+  assert.match(policy, /codex-cli 0\.155\.0/u);
+  assert.match(policy, /turn_context/u);
+  assert.match(policy, /узкое исключение/u);
+  // The operational recipe points at the decision instead of restating it.
+  assert.match(papercut, /узкое исключение §A-EVAL-01/u);
+  assert.match(papercut, /журнале собственного запуска/u);
+  // Claude keeps its public route, so the exception covers one executor only.
+  assert.match(papercut, /Фактическую модель у Claude берут из события `init`/u);
+});
+
 test("lifecycle makes model actors named, applicable and fail closed", () => {
   const methodology = read("shared", "references", "methodology.md");
   assert.match(methodology, /named scenario/);

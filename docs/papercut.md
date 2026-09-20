@@ -98,9 +98,13 @@
   `codex exec --json -m <model> -c model_reasoning_effort=<e> -s read-only -C <clone> -o <file> -`
   и
   `claude -p --model <alias> --effort <e> --output-format stream-json --verbose`.
-  Фактическую модель берут из `turn_context` в
-  `~/.codex/sessions/.../rollout-*.jsonl` и из события `init` у Claude; сам
-  ответ модели на эти поля не годится.
+  Фактическую модель у Claude берут из события `init`. У Codex публичного
+  источника нет (см. [Возможности бэкенда](backend-capabilities.md)), поэтому
+  действует узкое исключение §A-EVAL-01: только модель и уровень рассуждений,
+  только из `turn_context` в журнале собственного запуска
+  `~/.codex/sessions/.../rollout-*.jsonl`. Чужая сессия и любое другое
+  содержимое журнала остаются под запретом. Сам ответ модели на эти поля не
+  годится.
 - `orca orchestration worker-start --terminal <handle>` на терминале, который
   создал вызывающий, оставляет ресурс за вызывающим: `worker-release` отвечает
   `state=retained processAction=none`, и терминал закрывают своим

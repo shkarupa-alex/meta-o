@@ -12,6 +12,14 @@ manifest, digest protocol or event-accounting protocol. Use only a backend's
 documented public native surface. Never read private provider transcripts,
 hooks, inferred session databases or hidden state to compensate for a missing
 capability.
+<!-- mo:source-anchor §A-EVAL-01 -->
+
+One exception is named and owned by the project's evaluation policy decision:
+when a model executor publishes no public surface for its own effective model
+and reasoning level, the caller may read that one fact out of the local run
+record of the process it started itself. It reads identity and nothing else,
+never another session's record, and a public surface supersedes it the moment
+one exists.
 
 The orchestrator manages sessions and Git identity. It does not inspect, judge
 or edit product code. Executors, reviewers and E2E agents inspect the
