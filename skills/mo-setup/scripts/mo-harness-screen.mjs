@@ -11,6 +11,17 @@
 import { readFileSync } from "node:fs";
 
 /**
+ * The composer Claude Code draws around its own prompt row.
+ *
+ * A bare `❯` is a common shell prompt, and the meter row beside it is painted
+ * by a status line the user installed rather than by the harness — so neither
+ * belongs to Claude, and a shell that printed both would be handed task bytes.
+ * The rule directly above the prompt is the harness's own chrome, and it is
+ * what separates a real composer from a line that merely looks like one.
+ */
+const CLAUDE_COMPOSER_BOX = /^─+[ \t]*\n[ \t]*❯/mu;
+
+/**
  * The recorded frames this classifier is allowed to recognize.
  *
  * Every entry was captured from a live harness, not written from memory, and
@@ -34,7 +45,7 @@ export const SCREENS = [
     version: "claude-prompt-2026-09-18",
     harness: "claude",
     state: "agent_prompt",
-    anchors: [/^\s*❯/mu, /│.*Context /u],
+    anchors: [CLAUDE_COMPOSER_BOX, /│.*Context /u],
     // `\s` spans newlines, so a composer pattern is written with `[ \t]`: the
     // earlier form matched the prompt row and then captured the row below it.
     input: /^[ \t]*❯[ \t]?(.*)$/mu,
@@ -49,7 +60,7 @@ export const SCREENS = [
     version: "claude-prompt-meter-row-2026-09-18",
     harness: "claude",
     state: "agent_prompt",
-    anchors: [/^\s*❯/mu, /^\s*Context [░▒▓█]+ \d/mu],
+    anchors: [CLAUDE_COMPOSER_BOX, /^\s*Context [░▒▓█]+ \d/mu],
     input: /^[ \t]*❯[ \t]?(.*)$/mu,
   },
   {

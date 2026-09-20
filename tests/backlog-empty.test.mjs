@@ -254,8 +254,9 @@ test("a foreign notebook needs its whole schema, never half of this project's", 
 test("the frozen line keeps its field order, names and streams", () => {
   const isolated = repositoryFixture();
   const empty = spawnSync(process.execPath, [CLI, "--repo", isolated], { encoding: "utf8" });
-  // §4.3 freezes this grammar byte for byte: an earlier revision renamed `sha=`
-  // to `head=` and dropped three fields, which broke every existing consumer.
+  // The grammar is frozen byte for byte because consumers parse it: an earlier
+  // revision renamed `sha=` to `head=` and dropped three fields, and every
+  // existing reader broke at once.
   assert.equal(empty.status, 0);
   assert.equal(empty.stderr, "");
   assert.match(

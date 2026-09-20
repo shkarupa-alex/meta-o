@@ -76,6 +76,23 @@ test("the context meter is recognized wherever the status line puts it", () => {
   assert.match(frame("claude-prompt-meter-row.screen"), /^\s*Context █[░▒▓]* \d+k\/1\.0M$/mu);
 });
 
+test("a shell that prints a context meter is still a shell", () => {
+  // Both halves of the meter-row signature are cheap to counterfeit: `❯` is a
+  // common shell prompt and the meter is painted by a status line the operator
+  // installed, not by Claude. Only the rule the harness draws above its own
+  // composer tells the two apart, and without it a shell would be handed task
+  // bytes on the strength of its prompt character.
+  const shell = "Context ░░░ 0/1.0M\n❯";
+  assert.equal(classifyScreen(shell).state, "unknown");
+  assert.equal(classifyScreen(shell).action, "refuse");
+  assert.equal(classifyScreen("│ Context ░░░ 0/1.0M\n❯").action, "refuse");
+  assert.equal(classifyScreen(frame("shell-prompt.screen")).action, "refuse");
+  // The rule alone is not a licence either: a frame needs its meter as well.
+  assert.equal(classifyScreen("────────\n❯").action, "refuse");
+  for (const name of ["claude-prompt.screen", "claude-prompt-cold.screen"])
+    assert.equal(classifyScreen(frame(name)).action, "inject", name);
+});
+
 test("each stored frame says where it came from", () => {
   const provenance = JSON.parse(readFileSync(join(SURFACES, "screen-provenance.json"), "utf8"));
   const recorded = provenance.frames.map((entry) => entry.file).sort();
