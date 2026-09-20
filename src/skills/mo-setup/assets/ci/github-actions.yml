@@ -18,7 +18,7 @@ jobs:
     steps:
       # Стадия истории идентификаторов читает граф коммитов целиком, поэтому
       # мелкий клон превращает её в тихий пропуск, а не в проверку.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - run: <qc-command>
@@ -26,7 +26,7 @@ jobs:
   backlog-closure:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       # Отдельная задача: блокнот обязан быть пуст на закрытии, но не в
