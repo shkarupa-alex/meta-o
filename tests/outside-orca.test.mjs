@@ -91,7 +91,7 @@ test("a relative worktree selector is written only where the coordinator has a w
 test("the outside route is named by its sign and by the commands it changes", () => {
   const mechanics = flat(reference("orca-mechanics.md"));
   for (const phrase of [
-    "realpath of the current directory equals no `path` in",
+    "not a second sign",
     "`id:<repo>::<path>` or `path:<path>`",
     "created without `--from`",
     "orca orchestration check --run <id> --wait",
@@ -117,6 +117,20 @@ test("the outside route is named by its sign and by the commands it changes", ()
     assert.ok(mechanics.includes(phrase), `mechanics never confirms the sign: ${phrase}`);
   }
 });
+
+/**
+ * Ways a document can turn a directory comparison back into a placement sign.
+ *
+ * Both directions are needed: a sentence may announce itself as the sign before
+ * naming the comparison, or name the comparison and then draw the verdict. One
+ * predicate decides placement, and a document that offers a second one answers
+ * a reachable state — an Orca terminal whose cwd is registered nowhere — twice.
+ */
+const pathIsNotASign = {
+  "verdict first": /(?:\bsign\b|признак)[^.]{0,120}(?:realpath|`orca worktree list --json`)/iu,
+  "comparison first":
+    /(?:realpath|`orca worktree list --json`)[^.]{0,120}(?:\bmeans\b|значит|признак)/iu,
+};
 
 test("the placement sign is the caller's own handle, never a focused terminal", () => {
   // Two earlier signs were written, shipped and frozen by this very test before
@@ -144,7 +158,19 @@ test("the placement sign is the caller's own handle, never a focused terminal", 
       /`orca terminal read --screen --json`[^.]{0,40}(?:means|значит)/u,
       `${name} uses a focused-terminal read as the placement sign`,
     );
+    for (const [where, pattern] of Object.entries(pathIsNotASign))
+      assert.doesNotMatch(text, pattern, `${name} makes a directory comparison a sign (${where})`);
   }
+
+  // The contradiction this guards against survived three revisions of the sign,
+  // because the old path sentence and the new handle sentence can both stand in
+  // one document and only disagree on a state nobody had reached. Planting that
+  // sentence back has to fail, or the two assertions above prove nothing.
+  const planted = `${documents["orca-mechanics.md"]} The sign is exact: \`orca status --json\` succeeds, and the realpath of the current directory equals no \`path\` in \`orca worktree list --json\`.`;
+  assert.ok(
+    Object.values(pathIsNotASign).some((pattern) => pattern.test(planted)),
+    "the planted path sentence was not recognized as a second sign",
+  );
 });
 
 test("the watchdog is an option the coordinator names, not a condition it waits on", () => {

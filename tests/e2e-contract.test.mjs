@@ -24,8 +24,11 @@ const acceptance = readFileSync(join(ROOT, "docs", "acceptance.md"), "utf8");
  *
  * The range was a literal in three places for a whole feature, so ten new
  * scenarios were announced to no agent and pinned by no check. The cells are
- * returned verbatim and in document order: a filter here would hide exactly
- * the rows a printed range cannot name.
+ * returned verbatim and in document order, and a cell is collected on the
+ * weakest possible evidence that it means to be one: the prefix and a digit
+ * after nothing but markup. A cell that merely looks wrong must reach the
+ * judgement below, because a filter here would hide exactly the rows a printed
+ * range cannot name — an id in backticks or emphasis is such a row.
  */
 function scenarioCells(document, prefix) {
   const cells = [];
@@ -35,7 +38,7 @@ function scenarioCells(document, prefix) {
     else if (token.type === "inline" && firstCell) {
       firstCell = false;
       const cell = token.content.trim();
-      if (new RegExp(`^${prefix}\\d`, "u").test(cell)) cells.push(cell);
+      if (new RegExp(`^[^\\p{L}\\p{N}]*${prefix}\\d`, "u").test(cell)) cells.push(cell);
     }
   }
   return cells;
@@ -137,4 +140,19 @@ test("a scenario row the announced range cannot name is refused", () => {
   // collapses into the number it repeats.
   assert.throws(() => scenarioNumbers(rows([...canonical, "B53a"]), "B"), /canonical scenario id/u);
   assert.throws(() => scenarioNumbers(rows([...canonical, "B52"]), "B"), /written twice/u);
+  // A formatted id is the same drift wearing markup: the document defines the
+  // row, the announcement cannot name it, and the cell never reaches the shape
+  // assertion unless it is collected first.
+  for (const written of ["`B53`", "**B53**", "_B53_", "[B53](#b53)"])
+    assert.throws(
+      () => scenarioNumbers(rows([...canonical, written]), "B"),
+      /canonical scenario id/u,
+      `${written} left the reader unjudged`,
+    );
+  // The widening stops at markup: an ordinary sentence that happens to mention
+  // a scenario is not a scenario row.
+  assert.deepEqual(
+    scenarioNumbers(rows([...canonical, "Повторить B7 после правки"]), "B"),
+    canonical.map((_, step) => step + 1),
+  );
 });

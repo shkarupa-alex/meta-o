@@ -150,19 +150,21 @@ the coordinator tab carries the `<feature>:orchestrator` title.
 
 ## Coordinator outside an Orca terminal
 
-The same lifecycle runs from an ordinary shell. The sign is exact:
-`orca status --json` succeeds, and the realpath of the current directory equals
-no `path` in `orca worktree list --json`. Nothing about the backend is degraded
-— only the coordinator's own placement is unknown to Orca.
+The same lifecycle runs from an ordinary shell. Nothing about the backend is
+degraded — only the coordinator's own placement is unknown to Orca.
 
-The path answers where the shell stands, not what owns it: an ordinary shell
-started inside a registered worktree matches a `path` and still has no terminal
-of its own. So the question is not where the process stands but whether it holds
-a terminal, and only the terminal's own runtime-issued handle answers that. The
-confirmation is `ORCA_TERMINAL_HANDLE` in the environment plus one readable
-`orca terminal read --terminal "$ORCA_TERMINAL_HANDLE" --screen --json`: both
+One predicate decides that placement, and it is the terminal's own
+runtime-issued handle: `ORCA_TERMINAL_HANDLE` in the environment plus one
+readable `orca terminal read --terminal "$ORCA_TERMINAL_HANDLE" --screen --json`
 together mean inside. The variable absent, or that read refused, means outside,
 whatever the path said.
+
+Where the process stands is not a second sign and decides nothing in either
+direction. An ordinary shell started inside a registered worktree stands on a
+registered `path` and still owns no terminal, while a terminal Orca created
+keeps its handle when its working directory is a scratch clone or `/tmp`. A
+comparison of directories answers both of those backwards, so the question is
+never where the process stands but whether it holds a terminal.
 
 Two probes look like this one and are not. `--terminal` takes a runtime-issued
 handle and nothing else, so the relative words that select a worktree are not
