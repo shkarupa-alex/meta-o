@@ -12,14 +12,45 @@ import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import MarkdownIt from "markdown-it";
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const e2e = readFileSync(join(ROOT, "docs", "e2e.md"), "utf8");
 const e2eProse = e2e.replaceAll(/\s+/gu, " ");
 const acceptance = readFileSync(join(ROOT, "docs", "acceptance.md"), "utf8");
 
-test("Orca gets the complete B1-B42 acceptance matrix", () => {
-  for (let index = 1; index <= 42; index += 1)
-    assert.match(e2e, new RegExp(`\\| B${index}\\s+\\|`));
+/**
+ * The scenario ids the document actually defines, read from its tables.
+ *
+ * The range was a literal in three places for a whole feature, so ten new
+ * scenarios were announced to no agent and pinned by no check. A set read from
+ * the document cannot drift from it; a number typed twice always can.
+ */
+function scenarioIds(prefix) {
+  const found = new Set();
+  let firstCell = false;
+  for (const token of new MarkdownIt().parse(e2e, {})) {
+    if (token.type === "tr_open") firstCell = true;
+    else if (token.type === "inline" && firstCell) {
+      firstCell = false;
+      const parsed = new RegExp(`^${prefix}(\\d+)$`, "u").exec(token.content.trim());
+      if (parsed) found.add(Number(parsed[1]));
+    }
+  }
+  return [...found].sort((left, right) => left - right);
+}
+
+test("Orca gets the complete acceptance matrix the document defines", () => {
+  const scenarios = scenarioIds("B");
+  assert.ok(scenarios.length >= 42, "the backend matrix shrank");
+  // Contiguity is what lets a printed range stand for the set: a gap or a
+  // suffixed id would make `B1-B<n>` a claim the document does not support.
+  assert.deepEqual(
+    scenarios,
+    scenarios.map((_, step) => step + 1),
+    "scenario ids are not contiguous from 1",
+  );
+  for (const index of scenarios) assert.match(e2e, new RegExp(`\\| B${index}\\s+\\|`));
   assert.match(e2eProse, /Выполните эту матрицу для Orca/);
   for (const harness of ["Codex", "Claude Code", "OpenCode"])
     assert.match(e2eProse, new RegExp(harness));
@@ -33,7 +64,14 @@ test("Orca gets the complete B1-B42 acceptance matrix", () => {
 });
 
 test("watchdog and documentation carry-forward scenarios are explicit", () => {
-  for (let index = 1; index <= 4; index += 1) assert.match(e2e, new RegExp(`\\| W${index}\\s+\\|`));
+  const watchdog = scenarioIds("W");
+  assert.deepEqual(
+    watchdog,
+    watchdog.map((_, step) => step + 1),
+    "watchdog ids are not contiguous from 1",
+  );
+  assert.ok(watchdog.length >= 4, "the watchdog matrix shrank");
+  for (const index of watchdog) assert.match(e2e, new RegExp(`\\| W${index}\\s+\\|`));
   assert.match(e2eProse, /одно неблокирующее точное сообщение/);
   assert.match(e2eProse, /неизменившийся дубликат блокирует доставку/);
   assert.match(e2eProse, /оба ревьюера финального SHA явно подтвердили/);
@@ -58,7 +96,9 @@ test("make mo-e2e names the current scenarios and cannot be mistaken for pass", 
   const result = spawnSync("make", ["mo-e2e"], { cwd: ROOT, encoding: "utf8" });
   assert.equal(result.status, 2);
   assert.match(result.stdout, /AGENT_REQUIRED: not executed/);
-  assert.match(result.stdout, /B1-B42/);
-  assert.match(result.stdout, /W1-W4/);
+  // The announcement is checked against the document, not against a literal:
+  // this is the exact pair that drifted apart while both sides stayed green.
+  assert.match(result.stdout, new RegExp(`B1-B${scenarioIds("B").at(-1)}\\b`, "u"));
+  assert.match(result.stdout, new RegExp(`W1-W${scenarioIds("W").at(-1)}\\b`, "u"));
   assert.doesNotMatch(result.stdout, /phase-0|Omnigent|H13|OM1/);
 });
