@@ -20,28 +20,49 @@ const e2eProse = e2e.replaceAll(/\s+/gu, " ");
 const acceptance = readFileSync(join(ROOT, "docs", "acceptance.md"), "utf8");
 
 /**
- * The scenario ids the document actually defines, read from its tables.
+ * The first-column scenario cells a document claims for one prefix.
  *
  * The range was a literal in three places for a whole feature, so ten new
- * scenarios were announced to no agent and pinned by no check. A set read from
- * the document cannot drift from it; a number typed twice always can.
+ * scenarios were announced to no agent and pinned by no check. The cells are
+ * returned verbatim and in document order: a filter here would hide exactly
+ * the rows a printed range cannot name.
  */
-function scenarioIds(prefix) {
-  const found = new Set();
+function scenarioCells(document, prefix) {
+  const cells = [];
   let firstCell = false;
-  for (const token of new MarkdownIt().parse(e2e, {})) {
+  for (const token of new MarkdownIt().parse(document, {})) {
     if (token.type === "tr_open") firstCell = true;
     else if (token.type === "inline" && firstCell) {
       firstCell = false;
-      const parsed = new RegExp(`^${prefix}(\\d+)$`, "u").exec(token.content.trim());
-      if (parsed) found.add(Number(parsed[1]));
+      const cell = token.content.trim();
+      if (new RegExp(`^${prefix}\\d`, "u").test(cell)) cells.push(cell);
     }
   }
-  return [...found].sort((left, right) => left - right);
+  return cells;
+}
+
+/**
+ * The scenario numbers `B1-B<n>` is allowed to stand for.
+ *
+ * A suffixed id such as `B53a` and a number written twice both read as a row
+ * the announcement covers, and both are invisible to a check that keeps only
+ * well-formed ids in a set. They are refused here instead, because the point
+ * of the range is that every documented row is inside it.
+ */
+function scenarioNumbers(document, prefix) {
+  const cells = scenarioCells(document, prefix);
+  for (const cell of cells)
+    assert.match(
+      cell,
+      new RegExp(`^${prefix}\\d+$`, "u"),
+      `${cell} is not a canonical scenario id`,
+    );
+  assert.equal(new Set(cells).size, cells.length, `a ${prefix} scenario id is written twice`);
+  return cells.map((cell) => Number(cell.slice(prefix.length))).sort((left, right) => left - right);
 }
 
 test("Orca gets the complete acceptance matrix the document defines", () => {
-  const scenarios = scenarioIds("B");
+  const scenarios = scenarioNumbers(e2e, "B");
   assert.ok(scenarios.length >= 42, "the backend matrix shrank");
   // Contiguity is what lets a printed range stand for the set: a gap or a
   // suffixed id would make `B1-B<n>` a claim the document does not support.
@@ -64,7 +85,7 @@ test("Orca gets the complete acceptance matrix the document defines", () => {
 });
 
 test("watchdog and documentation carry-forward scenarios are explicit", () => {
-  const watchdog = scenarioIds("W");
+  const watchdog = scenarioNumbers(e2e, "W");
   assert.deepEqual(
     watchdog,
     watchdog.map((_, step) => step + 1),
@@ -98,7 +119,22 @@ test("make mo-e2e names the current scenarios and cannot be mistaken for pass", 
   assert.match(result.stdout, /AGENT_REQUIRED: not executed/);
   // The announcement is checked against the document, not against a literal:
   // this is the exact pair that drifted apart while both sides stayed green.
-  assert.match(result.stdout, new RegExp(`B1-B${scenarioIds("B").at(-1)}\\b`, "u"));
-  assert.match(result.stdout, new RegExp(`W1-W${scenarioIds("W").at(-1)}\\b`, "u"));
+  assert.match(result.stdout, new RegExp(`B1-B${scenarioNumbers(e2e, "B").at(-1)}\\b`, "u"));
+  assert.match(result.stdout, new RegExp(`W1-W${scenarioNumbers(e2e, "W").at(-1)}\\b`, "u"));
   assert.doesNotMatch(result.stdout, /phase-0|Omnigent|H13|OM1/);
+});
+
+test("a scenario row the announced range cannot name is refused", () => {
+  const rows = (ids) =>
+    ["| Id | Что |", "| -- | --- |", ...ids.map((id) => `| ${id} | что-то |`)].join("\n");
+  const canonical = Array.from({ length: 52 }, (_, step) => `B${step + 1}`);
+  assert.deepEqual(
+    scenarioNumbers(rows(canonical), "B"),
+    canonical.map((_, step) => step + 1),
+  );
+  // Both rows below are documented scenarios that `B1-B52` does not cover, and
+  // both used to disappear silently: the first fails the shape, the second
+  // collapses into the number it repeats.
+  assert.throws(() => scenarioNumbers(rows([...canonical, "B53a"]), "B"), /canonical scenario id/u);
+  assert.throws(() => scenarioNumbers(rows([...canonical, "B52"]), "B"), /written twice/u);
 });
