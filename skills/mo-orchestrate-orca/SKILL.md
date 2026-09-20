@@ -42,9 +42,13 @@ same Orca project and cleanup may touch only exact-owned delta.
 This lifecycle also runs from an ordinary shell. The sign is `orca status
 --json` succeeding while the realpath of the current directory matches no `path`
 in `orca worktree list --json`. A path that does match proves only where the
-shell stands, so confirm it once with `orca terminal read --screen --json` and
-no `--terminal`: a refusal such as `no_active_terminal` means outside anyway.
-`--terminal` accepts only a runtime-issued handle, never a relative word. Then a
+shell stands, so confirm it once by the terminal's own handle:
+`ORCA_TERMINAL_HANDLE` present and
+`orca terminal read --terminal "$ORCA_TERMINAL_HANDLE" --screen --json`
+readable means inside, and the variable absent or that read refused means
+outside. A handle-free terminal read resolves the worktree's focused terminal,
+not the caller's, and `--terminal` accepts only a runtime-issued handle, never a
+relative word; neither decides placement. Then a
 worktree selector is `id:<repo>::<path>`
 or `path:<path>` and never `current` or `active`, the Run is created without
 `--from`, waiting is `check --run <id> --wait`, and no coordinator title is set.

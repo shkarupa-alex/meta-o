@@ -51,10 +51,13 @@ Closure deletes that specification, so the final same-SHA pair reviews a
 candidate whose tree no longer holds it. There the brief names the durable
 knowledge instead — the acceptance map, the architecture decisions, the
 methodology — and cites the specification by the frozen object id the project
-recorded when it removed the file. A blob id is reachable from the repository
-with `git cat-file blob <id>` even though no tree points at it; a path that the
-candidate does not contain is not a citation but a dead reference, and a brief
-that names one has to say so rather than let the reviewer discover it.
+recorded when it removed the file. A blob stays reachable because the tree of
+the commit before the deletion still points at it, so the brief cites that
+commit together with the object id and the reviewer resolves both with
+`git cat-file`. A shallow or partial checkout holds neither, which makes a full
+clone or worktree part of the placement; a path that the candidate does not
+contain is not a citation but a dead reference, and a brief that names one has
+to say so rather than let the reviewer discover it.
 
 ## What may be said to a human requester
 

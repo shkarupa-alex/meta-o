@@ -165,7 +165,8 @@ candidate itself: a path under `.orca/` is in no checkout the reviewer can
 obtain, and the accepted specification is tracked under `docs/specifications/`
 until closure removes it. On a post-cleanup candidate the brief grounds the pair
 in the durable knowledge and cites the removed specification by its frozen
-object id, which `git cat-file blob <id>` still reaches. A reviewer that cannot
+object id together with the commit whose tree still holds it, which a full
+clone or worktree resolves with `git cat-file` and a shallow one does not. A reviewer that cannot
 reach a cited source either spends a turn asking or reasons from an invented
 section, and a verdict grounded in an invented section cannot be told apart from
 a real one.

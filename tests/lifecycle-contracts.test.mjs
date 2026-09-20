@@ -895,18 +895,24 @@ test("the final pair is told where its grounding went after cleanup", () => {
   const brief = source("shared/references/review-brief.md").replace(/\s+/gu, " ");
   assert.match(brief, /Closure deletes that specification/u);
   assert.match(brief, /frozen object id/u);
-  assert.match(brief, /git cat-file blob <id>/u);
+  // The reason matters as much as the rule: the object survives because the
+  // pre-deletion commit's tree still holds it, which is also why a shallow
+  // checkout cannot resolve the citation.
+  assert.match(brief, /the tree of the commit before the deletion still points at it/u);
+  assert.match(brief, /shallow or partial checkout/u);
   const methodology = source("shared/references/methodology.md").replace(/\s+/gu, " ");
   assert.match(methodology, /give the frozen object ids the deletion recorded/u);
   for (const path of ["src/skills/mo-review-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
     const review = source(path).replace(/\s+/gu, " ");
     assert.match(review, /until closure removes it/u, path);
     assert.match(review, /cites the removed specification by its frozen object id/u, path);
+    assert.match(review, /together with the commit whose tree still holds it/u, path);
   }
   // The route only works if the project really records those ids on deletion.
   const acceptance = source("docs/acceptance.md");
   assert.match(acceptance, /issue_fixes_closure:/u);
   assert.match(acceptance, /spec_blob: [0-9a-f]{40}/u);
+  assert.match(acceptance, /source_sha: [0-9a-f]{40}/u);
 });
 
 test("every reviewer wave has a mode the protocol can actually issue", () => {

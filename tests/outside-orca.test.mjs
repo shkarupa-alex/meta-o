@@ -99,14 +99,13 @@ test("the outside route is named by its sign and by the commands it changes", ()
   ]) {
     assert.ok(mechanics.includes(phrase), `mechanics never says: ${phrase}`);
   }
-  // A live rehearsal shell stood inside a registered worktree and still had no
-  // terminal of its own: the path matched while the handle-free screen read
-  // answered `no_active_terminal`. The word `current` is not a selector of
-  // `--terminal`, which takes a runtime-issued handle, so it answers
-  // `terminal_handle_stale` on both sides of the boundary and proves nothing.
+  // Two probes were tried live and neither discriminated: a relative word is
+  // not a handle, and the handle-free read resolves the worktree's focused
+  // terminal, so it refuses even a coordinator that holds one. What a
+  // coordinator has and an ordinary shell does not is its own handle.
   for (const phrase of [
-    "orca terminal read --screen --json",
-    "`no_active_terminal`",
+    'orca terminal read --terminal "$ORCA_TERMINAL_HANDLE" --screen --json',
+    "`ORCA_TERMINAL_HANDLE`",
     "means outside, whatever the path said",
     "runtime-issued handle",
     // Observed live: the Run came back bound to an unrelated session's tab, and
@@ -116,6 +115,35 @@ test("the outside route is named by its sign and by the commands it changes", ()
     "`state=retained processAction=none`",
   ]) {
     assert.ok(mechanics.includes(phrase), `mechanics never confirms the sign: ${phrase}`);
+  }
+});
+
+test("the placement sign is the caller's own handle, never a focused terminal", () => {
+  // Two earlier signs were written, shipped and frozen by this very test before
+  // anyone ran them from inside a real Orca terminal; both refused on both
+  // sides. So the rule is now checked in every place that states it, and the
+  // two non-discriminating forms may not stand in for it anywhere.
+  const probe = 'orca terminal read --terminal "$ORCA_TERMINAL_HANDLE" --screen --json';
+  const documents = {
+    "orca-mechanics.md": flat(reference("orca-mechanics.md")),
+    "src SKILL.md": flat(skillText()),
+    "generated SKILL.md": flat(
+      readFileSync(join(ROOT, "skills", "mo-orchestrate-orca", "SKILL.md"), "utf8"),
+    ),
+    "backend-capabilities.md": flat(
+      readFileSync(join(ROOT, "docs", "backend-capabilities.md"), "utf8"),
+    ),
+  };
+  for (const [name, text] of Object.entries(documents)) {
+    assert.ok(text.includes(probe), `${name} does not name the handle-bound probe`);
+    assert.ok(text.includes("ORCA_TERMINAL_HANDLE"), `${name} does not name the variable`);
+    // A handle-free read may be described, never used as the sign: the giveaway
+    // is the word "means" or its Russian equivalent binding it to a verdict.
+    assert.doesNotMatch(
+      text,
+      /`orca terminal read --screen --json`[^.]{0,40}(?:means|значит)/u,
+      `${name} uses a focused-terminal read as the placement sign`,
+    );
   }
 });
 
