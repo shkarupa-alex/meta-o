@@ -2,11 +2,15 @@
 name: mo-watchdog
 description: Use only when the user explicitly requests mo-watchdog or Meta-O watchdog; observe Orca sessions and nudge only an authorized exact target.
 license: MIT
+metadata:
+  repository: https://github.com/shkarupa-alex/meta-o
 ---
 
 # Watch backend sessions
 
-Read [Watchdog behavior](references/watchdog.md) completely. Start only after the
+Read [Watchdog behavior](references/watchdog.md) and
+[Обратная связь о методологии](references/methodology-feedback.md) completely;
+friction you hit belongs in your final answer to the user, never in an Issue. Start only after the
 user explicitly names Meta-O watchdog or `mo-watchdog`; a generic monitoring
 question does not activate this skill.
 

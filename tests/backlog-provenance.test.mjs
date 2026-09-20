@@ -2,8 +2,8 @@
  * Preserve auditable proof after the temporary closure artifacts are deleted.
  *
  * The previous version of this test compared `closure_sha..HEAD`, so it failed
- * on every commit made after the closure and froze the repository. §4.5 asks
- * for the deletion delta, which is a fixed pair of commits, and forbids a
+ * on every commit made after the closure and froze the repository. The proof
+ * asked for is the deletion delta, which is a fixed pair of commits, with no
  * hard-coded node count: the map's own totals and bijection are the invariant.
  *
  * Protects §A-MEMORY-03.

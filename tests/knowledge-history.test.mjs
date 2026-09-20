@@ -5,14 +5,27 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
 import { fromMarkdown } from "mdast-util-from-markdown";
 
-import { definitions, edgeViolations, git, verifyHistory } from "../tools/knowledge-history.mjs";
+import { historyPins } from "../shared/scripts/knowledge-documents.mjs";
+import {
+  definitions,
+  edgeViolations,
+  git,
+  runHistory,
+  verifyHistory,
+} from "../shared/scripts/mo-knowledge-history.mjs";
+
+const CLI = join(process.cwd(), "shared", "scripts", "mo-knowledge-history.mjs");
+// Resolving the cutoff and each declared boundary, listing the graph, and the
+// batch rounds that answer it. Nothing here scales with the number of commits.
+const SETUP_SPAWNS = 12;
 
 const BUSINESS_ID = `§${"B-FIXTURE-01"}`;
 const ARCHITECTURE_ID = `§${"A-FIXTURE-01"}`;
@@ -84,41 +97,518 @@ test("legacy editorial normalized literals but strict editorial keeps exact byte
   assert.notEqual(fencedBefore.strictEditorial, fencedAfter.strictEditorial);
 });
 
-test("the real history is reachable and valid from program input", () => {
-  const cutoff = pinned("program_input_sha");
-  const boundary = pinned("semantic_enforcement_sha");
-  const currentRecordBoundary = pinned("current_record_enforcement_sha");
-  const strictEditorialBoundary = pinned("strict_editorial_enforcement_sha");
-  assert.deepEqual(
-    verifyHistory(process.cwd(), cutoff, boundary, currentRecordBoundary, strictEditorialBoundary),
-    [],
+function realPins() {
+  return {
+    semanticFrom: pinned("semantic_enforcement_sha"),
+    currentRecordFrom: pinned("current_record_enforcement_sha"),
+    strictEditorialFrom: pinned("strict_editorial_enforcement_sha"),
+  };
+}
+
+function linear(extra) {
+  const { root, cutoff } = fixture();
+  for (let step = 0; step < extra; step += 1) {
+    writeFileSync(join(root, "unrelated.txt"), `step ${step}\n`);
+    commit(root, `step ${step}`);
+  }
+  return runHistory(root, cutoff);
+}
+
+test("the process budget follows the shape of the graph, not its size", () => {
+  const short = linear(2);
+  const long = linear(11);
+  assert.deepEqual(short.errors, []);
+  assert.deepEqual(long.errors, []);
+  assert.equal(long.commits - short.commits, 9);
+  // This is the property the batching exists for. A per-commit `git show` loop
+  // satisfies every other budget below and still fails here.
+  assert.equal(
+    long.stats.spawns,
+    short.stats.spawns,
+    `${long.stats.spawns} spawns for ${long.commits} commits, ` +
+      `${short.stats.spawns} for ${short.commits}`,
   );
-  // The declared boundary has to be the whole exemption: every edge from it
-  // onwards must survive semantic enforcement on its own.
-  assert.deepEqual(
-    verifyHistory(process.cwd(), boundary, null, currentRecordBoundary, strictEditorialBoundary),
-    [],
+  assert.ok(short.stats.spawns <= SETUP_SPAWNS, `${short.stats.spawns} spawns to set up a run`);
+  // The knowledge documents never change across those commits, so one parse of
+  // each is the whole budget however long the history gets.
+  assert.equal(long.stats.markdownParses, long.stats.uniqueMarkdownBlobs);
+  assert.equal(long.stats.markdownParses, short.stats.markdownParses);
+});
+
+function businessWith(extraIds) {
+  // The fixture's own identifier keeps its exact original section: changing it
+  // here would report a semantic reuse that has nothing to do with the merge.
+  return (
+    `# Business\n\n### ${BUSINESS_ID} — Original meaning\n\nRequirement.\n` +
+    extraIds.map((id) => `\n### ${id} — Added\n\nRequirement.\n`).join("")
   );
-  // And the exemption may not quietly cover anything after the boundary.
-  for (const error of verifyHistory(
-    process.cwd(),
-    cutoff,
-    null,
-    currentRecordBoundary,
-    strictEditorialBoundary,
-  )) {
-    const [parent] = error.split("..");
-    assert.equal(
-      git(process.cwd(), ["merge-base", "--is-ancestor", boundary, parent], true),
-      null,
-      `exempted edge is not before the boundary: ${error}`,
+}
+
+function mergeDroppingIds(count) {
+  const { root, cutoff } = fixture();
+  const ids = Array.from({ length: count }, (_, index) => `§${"B-MERGE"}-0${index + 1}`);
+  writeFileSync(join(root, "docs", "business.md"), businessWith(ids));
+  commit(root, "add ids that only one side will drop");
+  git(root, ["switch", "-qc", `aside-${count}`]);
+  writeFileSync(join(root, "docs", "business.md"), businessWith([]));
+  commit(root, "drop them on the aside branch");
+  git(root, ["switch", "-q", "master"]);
+  git(root, ["merge", "--no-ff", "-q", "-m", "merge the deletion", `aside-${count}`]);
+  return runHistory(root, cutoff);
+}
+
+test("a merge budget follows the merge, not the identifiers it carries", () => {
+  const few = mergeDroppingIds(1);
+  const many = mergeDroppingIds(8);
+  // The aside branch really deleted them and never said so, so that edge is
+  // reported once per identifier. The merge edge is not: inheritance explains
+  // it, and that is the path which has to consult the merge base.
+  assert.equal(few.errors.length, 1);
+  assert.equal(many.errors.length, 8);
+  assert.ok(
+    many.errors.every((error) => error.includes("silent deletion")),
+    many.errors.join("\n"),
+  );
+  // Identical branch shape, eight times the identifiers and eight times the
+  // findings. Asking for the merge base per identifier passes every other
+  // budget in this file and fails here.
+  assert.equal(
+    many.stats.spawns,
+    few.stats.spawns,
+    `${many.stats.spawns} spawns for 8 ids, ${few.stats.spawns} for 1`,
+  );
+});
+
+function auditedExemptions(count) {
+  const { root, cutoff } = fixture();
+  for (let step = 0; step < count; step += 1) {
+    rewriteBusiness(root, `meaning ${step}`);
+    commit(root, `unauthorized change ${step}`);
+  }
+  const boundary = git(root, ["rev-parse", "HEAD"]).trim();
+  const run = spawnSync(
+    process.execPath,
+    [
+      CLI,
+      "--repo",
+      root,
+      "--cutoff",
+      cutoff,
+      "--semantic-from",
+      boundary,
+      "--audit-exemptions",
+      "--timing",
+    ],
+    { encoding: "utf8" },
+  );
+  assert.match(run.stdout, /status=ok /u, `the audit answered ${JSON.stringify(run.stdout)}`);
+  const spawns = run.stdout.match(/ spawns=(\d+)/u);
+  assert.ok(spawns, `no spawn count in ${JSON.stringify(run.stdout)}`);
+  return Number(spawns[1]);
+}
+
+test("the audit budget follows the graph, not the findings it examines", () => {
+  // Every change here is exempt, so the audit has to look at each one and clear
+  // it. Asking Git per finding made the cheapest possible audit the slowest.
+  assert.equal(auditedExemptions(6), auditedExemptions(1));
+});
+
+function rewriteBusiness(root, meaning) {
+  writeFileSync(
+    join(root, "docs", "business.md"),
+    `# Business\n\n### ${BUSINESS_ID} — ${meaning}\n\nRequirement ${meaning}.\n`,
+  );
+}
+
+test("a semantic boundary exempts its own ancestors and nothing else", () => {
+  const { root, cutoff } = fixture();
+  rewriteBusiness(root, "second");
+  commit(root, "unauthorized change before the boundary");
+  const boundary = git(root, ["rev-parse", "HEAD"]).trim();
+  rewriteBusiness(root, "third");
+  commit(root, "unauthorized change on the boundary's own outgoing edge");
+  const after = git(root, ["rev-parse", "HEAD"]).trim();
+  // The edge into the boundary is exempt; the edge out of it is not. Forgetting
+  // that the boundary is a descendant of itself would exempt both.
+  assert.deepEqual(verifyHistory(root, cutoff, boundary), [
+    `${boundary}..${after}: semantic reuse ${BUSINESS_ID}`,
+  ]);
+});
+
+test("a boundary exempts a merge parent that never descended from it", () => {
+  const { root, cutoff } = fixture();
+  rewriteBusiness(root, "second");
+  commit(root, "unauthorized change before the boundary");
+  const boundary = git(root, ["rev-parse", "HEAD"]).trim();
+  git(root, ["switch", "-qc", "aside", cutoff]);
+  rewriteBusiness(root, "aside");
+  commit(root, "unauthorized change on a branch that never saw the boundary");
+  git(root, ["switch", "-q", "master"]);
+  git(root, ["merge", "--no-ff", "--no-commit", "-q", "-X", "theirs", "aside"]);
+  // A third meaning, so neither parent can excuse the merge as inherited.
+  rewriteBusiness(root, "merged");
+  commit(root, "merge into a meaning neither side had");
+  const merge = git(root, ["rev-parse", "HEAD"]).trim();
+  // The aside parent is inside `boundary..HEAD` and so is reachable from HEAD,
+  // but it never descended from the boundary, so its edge stays exempt. Only
+  // ancestry decides. Reachability would enforce both edges of this merge.
+  assert.deepEqual(verifyHistory(root, cutoff, boundary), [
+    `${boundary}..${merge}: semantic reuse ${BUSINESS_ID}`,
+  ]);
+});
+
+test("an audit of an uninterpretable record still answers with one status line", () => {
+  const { root, cutoff } = fixture();
+  rewriteBusiness(root, "second");
+  // A trailer is what makes the checker open the record at all, and only the
+  // audit pass — which lifts the semantic exemption — ever gets that far here.
+  writeFileSync(
+    join(root, "docs", "architecture", "authorization.md"),
+    `# ${MISSING_ARCHITECTURE_ID} — Authorization\n\n\`\`\`yaml\nknowledge_id_change: [unclosed\n\`\`\`\n`,
+  );
+  commit(
+    root,
+    `authorize reuse\n\nKnowledge-ID-Change: reuse ${BUSINESS_ID} via ${MISSING_ARCHITECTURE_ID}`,
+  );
+  const boundary = git(root, ["rev-parse", "HEAD"]).trim();
+  const run = spawnSync(
+    process.execPath,
+    [CLI, "--repo", root, "--cutoff", cutoff, "--semantic-from", boundary, "--audit-exemptions"],
+    { encoding: "utf8" },
+  );
+  // Accepting any of the three statuses here would let a regression that turns
+  // this refusal into a silent pass keep the test green, which is the one
+  // outcome the fixture exists to forbid.
+  assert.equal(run.status, 1, `the gate's own mode exited ${run.status}`);
+  assert.match(
+    run.stdout,
+    /^MO-KNOWLEDGE-HISTORY\/1 status=unavailable /u,
+    `the gate's own mode answered with ${JSON.stringify(run.stdout)}`,
+  );
+  // A refusal a consuming project cannot act on is as expensive as a wrong
+  // answer: the commit, the document and the decision are what it repairs.
+  const stderr = run.stderr.trimEnd();
+  assert.equal(
+    stderr.split("\n").length,
+    1,
+    `one violation per line, got ${JSON.stringify(stderr)}`,
+  );
+  assert.match(stderr, /^history_unavailable: /u);
+  assert.match(stderr, /\b[0-9a-f]{40}\b/u);
+  assert.ok(
+    stderr.includes("docs/architecture/authorization.md"),
+    `the refusal names no document: ${JSON.stringify(stderr)}`,
+  );
+  assert.ok(
+    stderr.includes(MISSING_ARCHITECTURE_ID),
+    `the refusal names no decision: ${JSON.stringify(stderr)}`,
+  );
+});
+
+test("a document the rules cannot interpret still answers with one status line", () => {
+  const { root, cutoff } = fixture();
+  writeFileSync(
+    join(root, "docs", "architecture", "twin.md"),
+    `# ${ARCHITECTURE_ID} — A second section claiming one id\n\nServes ${BUSINESS_ID}.\n`,
+  );
+  commit(root, "two sections claim one identifier");
+  const run = spawnSync(process.execPath, [CLI, "--repo", root, "--cutoff", cutoff], {
+    encoding: "utf8",
+  });
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /^history_unavailable: .*duplicate /u);
+  assert.match(run.stdout, /^MO-KNOWLEDGE-HISTORY\/1 status=unavailable /u);
+});
+
+function emptyRepository() {
+  const root = mkdtempSync(join(tmpdir(), "mo-knowledge-history-"));
+  roots.push(root);
+  git(root, ["init", "-q"]);
+  git(root, ["config", "user.email", "test@example.invalid"]);
+  git(root, ["config", "user.name", "fixture"]);
+  return root;
+}
+
+test("a knowledge path that is not a directory is absent, not corruption", () => {
+  // A project may keep `docs` as a symlink or a plain file. That is the
+  // knowledge path being absent — the repository is perfectly readable, and a
+  // target project has no way to clear an unavailability it never caused.
+  for (const place of [
+    (root) => symlinkSync("site/docs", join(root, "docs")),
+    (root) => writeFileSync(join(root, "docs"), "this project keeps its docs elsewhere\n"),
+  ]) {
+    const root = emptyRepository();
+    place(root);
+    commit(root, "a tree whose docs are not a directory");
+    const cutoff = git(root, ["rev-parse", "HEAD"]).trim();
+    writeFileSync(join(root, "unrelated.txt"), "one\n");
+    commit(root, "an ordinary commit");
+    assert.deepEqual(verifyHistory(root, cutoff), []);
+  }
+});
+
+test("a filename the checker never reads cannot mask a violation", () => {
+  // Git path names are opaque bytes. A legacy-encoded filename in a directory
+  // the checker walks past must not replace a real, actionable violation with a
+  // generic unavailability the target project has no way to clear.
+  for (const where of [[], ["docs"], ["docs", "architecture"]]) {
+    const { root, cutoff } = fixture();
+    // The path has to be raw bytes: a JS string is re-encoded as UTF-8 on the
+    // way to the filesystem, which would quietly make the name decodable again.
+    writeFileSync(
+      Buffer.concat([Buffer.from(`${join(root, ...where)}/`), Buffer.from([0xff, 0xfe])]),
+      "opaque\n",
+    );
+    rewriteBusiness(root, "second");
+    commit(root, "unauthorized change beside an undecodable filename");
+    const head = git(root, ["rev-parse", "HEAD"]).trim();
+    assert.deepEqual(
+      verifyHistory(root, cutoff),
+      [`${cutoff}..${head}: semantic reuse ${BUSINESS_ID}`],
+      `an undecodable name under ${where.join("/") || "the repository root"} hid the violation`,
     );
   }
-  // We deliberately do not repeat this full-DAG audit with the strict/editorial
-  // boundary removed: that would add another complete history traversal to every
-  // test run. Focused fixtures below prove that the shared switch gates both exact
-  // editorial comparison and append-only history; the configured traversal above
-  // proves that every edge at or after the pinned boundary satisfies both rules.
+});
+
+test("a repeated or absent pin is a call error, not a boundary the run invents", () => {
+  const { root } = fixture();
+  const document = join(root, "pins.md");
+  const pins = [
+    `program_input_sha: ${"0".repeat(40)}`,
+    `semantic_enforcement_sha: ${"1".repeat(40)}`,
+    `current_record_enforcement_sha: ${"2".repeat(40)}`,
+    `strict_editorial_enforcement_sha: ${"3".repeat(40)}`,
+  ];
+  const write = (...blocks) =>
+    writeFileSync(
+      document,
+      `# Pins\n\n${blocks.map((lines) => `\`\`\`yaml\n${lines.join("\n")}\n\`\`\`\n`).join("\n")}`,
+    );
+  const call = () =>
+    spawnSync(process.execPath, [CLI, "--repo", root, "--pins-from", document], {
+      encoding: "utf8",
+    });
+  write(pins);
+  assert.notEqual(call().status, 2, "four distinct pins are a valid call");
+  write(pins.slice(1));
+  assert.equal(call().status, 2, "a missing pin is a call error");
+  // The dangerous shape is a second block further down the document, not a
+  // duplicate key inside one block — js-yaml rejects that on its own. Letting
+  // the last occurrence win would move a history boundary nobody reviewed.
+  write(pins, [`program_input_sha: ${"4".repeat(40)}`]);
+  const repeated = call();
+  assert.equal(repeated.status, 2, "a pin repeated in a second block is a call error");
+  assert.match(repeated.stderr, /names program_input_sha more than once/u);
+});
+
+test("a knowledge document below a subdirectory is not invisible", () => {
+  const nestedId = `§${"A-NESTED-01"}`;
+  const { root, cutoff } = fixture();
+  mkdirSync(join(root, "docs", "architecture", "nested"), { recursive: true });
+  writeFileSync(
+    join(root, "docs", "architecture", "nested", "deep.md"),
+    `# ${nestedId} — Nested decision\n\nServes ${BUSINESS_ID}.\n`,
+  );
+  commit(root, "add a decision in a subdirectory");
+  const added = git(root, ["rev-parse", "HEAD"]).trim();
+  assert.deepEqual(verifyHistory(root, cutoff), []);
+  git(root, ["rm", "-q", "docs/architecture/nested/deep.md"]);
+  commit(root, "drop it with no authorization");
+  const head = git(root, ["rev-parse", "HEAD"]).trim();
+  assert.deepEqual(verifyHistory(root, added), [`${added}..${head}: silent deletion ${nestedId}`]);
+});
+
+function corrupted(what) {
+  const { root, cutoff } = fixture();
+  writeFileSync(
+    join(root, "docs", "business.md"),
+    `# Business\n\n### ${BUSINESS_ID} — Rewritten meaning\n\nDifferent requirement.\n`,
+  );
+  commit(root, "unauthorized semantic change");
+  const head = git(root, ["rev-parse", "HEAD"]).trim();
+  // The violation has to be visible before the object is removed, or the test
+  // would pass against a checker that reports nothing at all.
+  assert.deepEqual(verifyHistory(root, cutoff), [
+    `${cutoff}..${head}: semantic reuse ${BUSINESS_ID}`,
+  ]);
+  const oid = git(root, ["rev-parse", `${cutoff}:${what}`]).trim();
+  rmSync(join(root, ".git", "objects", oid.slice(0, 2), oid.slice(2)));
+  return runHistory(root, cutoff);
+}
+
+test("an object the history names but Git cannot read is unavailable, never a pass", () => {
+  // `cat-file` says `missing` both for a path a tree does not carry and for an
+  // object it cannot read. Treating the second as absence hides the violation.
+  for (const what of ["docs/business.md", "docs/architecture"]) {
+    const run = corrupted(what);
+    assert.ok(run.unavailable, `${what}: expected unavailable, got ${JSON.stringify(run.errors)}`);
+    assert.equal(run.errors.length, 1);
+    assert.match(run.errors[0], /^history_unavailable: .*cannot be read$/u);
+  }
+});
+
+test("a knowledge document that is not UTF-8 is unavailable, never a pass", () => {
+  const { root, cutoff } = fixture();
+  writeFileSync(
+    join(root, "docs", "architecture", "broken.md"),
+    Buffer.from([0x23, 0x20, 0xff, 0xfe, 0x0a]),
+  );
+  commit(root, "add an undecodable document");
+  const run = runHistory(root, cutoff);
+  assert.ok(run.unavailable, `expected unavailable, got ${JSON.stringify(run.errors)}`);
+  assert.match(run.errors[0], /is not valid UTF-8$/u);
+});
+
+test("--help answers the grammar without a repository, stdin or a cutoff", () => {
+  const help = spawnSync(process.execPath, [CLI, "--help"], {
+    cwd: tmpdir(),
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  assert.equal(help.status, 0);
+  assert.equal(help.stderr, "");
+  assert.match(help.stdout, /--cutoff <sha>/u);
+  assert.match(help.stdout, /exit: 0 ok \| 1 violations or unavailable \| 2 call error/u);
+});
+
+test("pinned mode reads the four boundaries the decision itself records", () => {
+  const path = join(process.cwd(), "docs", "architecture", "knowledge-identifiers.md");
+  assert.deepEqual(historyPins(readFileSync(path, "utf8"), path), {
+    cutoff: pinned("program_input_sha"),
+    ...realPins(),
+  });
+});
+
+test("a call error is exit two and never a silent pass", () => {
+  const document = "docs/architecture/knowledge-identifiers.md";
+  for (const argv of [
+    [],
+    ["--repo", "."],
+    ["--cutoff"],
+    ["--cutoff", "HEAD", "--nope"],
+    ["--cutoff", "HEAD", "--cutoff", "HEAD"],
+    // Neither mode may borrow from the other: a half-pinned run is unreviewable.
+    ["--pins-from", document, "--cutoff", "HEAD"],
+    ["--pins-from", "docs/glossary.md"],
+    // An exemption cannot be audited when nothing was exempted.
+    ["--cutoff", "HEAD", "--audit-exemptions"],
+  ]) {
+    const run = spawnSync(process.execPath, [CLI, ...argv], { encoding: "utf8" });
+    assert.equal(run.status, 2, `${argv.join(" ")} should be a call error`);
+    assert.equal(run.stdout, "");
+  }
+});
+
+test("an audited exemption reports the edges it would have to cover", () => {
+  const { root, cutoff } = fixture();
+  rewriteBusiness(root, "second");
+  commit(root, "unauthorized semantic change");
+  const run = spawnSync(
+    process.execPath,
+    [CLI, "--repo", root, "--cutoff", cutoff, "--semantic-from", cutoff, "--audit-exemptions"],
+    { encoding: "utf8" },
+  );
+  assert.equal(run.status, 1);
+  assert.match(run.stdout, /status=violations/u);
+  // One violation per line is the grammar every consumer parses, so an exact
+  // line count is the assertion: a `match` counted a duplicate as a pass, and
+  // a consumer counting findings would have reported twice what exists.
+  const lines = run.stderr.trimEnd().split("\n");
+  const head = git(root, ["rev-parse", "HEAD"]).trim();
+  assert.deepEqual(lines, [
+    `${cutoff}..${head}: semantic reuse ${BUSINESS_ID}`,
+    `exemption_overreach: ${cutoff}..${head}: semantic reuse ${BUSINESS_ID}`,
+  ]);
+});
+
+test("the audit finds the edge only its own traversal can reach, and once", () => {
+  // The aside branch forks from the cutoff, so it never descended from the
+  // boundary and the declared exemption still covers it: the primary pass is
+  // silent about it by design. Only the pass anchored at the boundary sees it,
+  // which is why that pass cannot be folded into the one anchored at the
+  // cutoff. A fixture whose aside is a child of the boundary proves nothing —
+  // both passes reach that edge — and this test used to build exactly that.
+  const { root, cutoff } = fixture();
+  rewriteBusiness(root, "second");
+  commit(root, "unauthorized change before the boundary");
+  const boundary = git(root, ["rev-parse", "HEAD"]).trim();
+  git(root, ["switch", "-qc", "aside", cutoff]);
+  rewriteBusiness(root, "aside");
+  commit(root, "unauthorized change on a branch that never saw the boundary");
+  const aside = git(root, ["rev-parse", "HEAD"]).trim();
+  git(root, ["switch", "-q", "master"]);
+  git(root, ["merge", "--no-ff", "--no-commit", "-q", "-X", "theirs", "aside"]);
+  rewriteBusiness(root, "merged");
+  commit(root, "merge into a meaning neither side had");
+
+  const exempt = `${cutoff}..${aside}: semantic reuse ${BUSINESS_ID}`;
+  const run = (...extra) =>
+    spawnSync(
+      process.execPath,
+      [CLI, "--repo", root, "--cutoff", cutoff, "--semantic-from", boundary, ...extra],
+      { encoding: "utf8" },
+    );
+
+  // Without the audit the edge is exempt and must stay unreported, or the
+  // audited run below would be repeating a finding instead of making one.
+  const plain = run();
+  assert.equal(plain.status, 1);
+  assert.ok(!plain.stderr.includes(exempt), `the exempt edge was reported: ${plain.stderr}`);
+
+  const audited = run("--audit-exemptions");
+  assert.equal(audited.status, 1);
+  const lines = audited.stderr.trimEnd().split("\n");
+  assert.deepEqual(
+    lines.filter((line) => line.includes(exempt)),
+    [`exemption_overreach: ${exempt}`],
+  );
+});
+
+test("an exemption that covers only its own past is audited clean", () => {
+  // The boundary has to sit strictly after the cutoff, or passes one and three
+  // degenerate onto the primary range and the predicate stops mattering: an
+  // inverted `exempted` test would then still look correct.
+  const { root, cutoff } = fixture();
+  rewriteBusiness(root, "second");
+  commit(root, "unauthorized change before the boundary");
+  rewriteBusiness(root, "third");
+  commit(root, "another unauthorized change before the boundary");
+  const boundary = git(root, ["rev-parse", "HEAD"]).trim();
+  const run = spawnSync(
+    process.execPath,
+    [CLI, "--repo", root, "--cutoff", cutoff, "--semantic-from", boundary, "--audit-exemptions"],
+    { encoding: "utf8" },
+  );
+  assert.equal(run.stderr, "", "every unauthorized edge is genuinely before the boundary");
+  assert.equal(run.status, 0);
+  assert.match(run.stdout, /status=ok/u);
+});
+
+test("the status line reports the run and only measures when asked", () => {
+  const { root, cutoff } = fixture();
+  writeFileSync(join(root, "unrelated.txt"), "one\n");
+  commit(root, "an ordinary commit");
+  const argv = [CLI, "--repo", root, "--cutoff", cutoff];
+  const quiet = spawnSync(process.execPath, argv, { encoding: "utf8" });
+  assert.equal(quiet.status, 0);
+  assert.equal(quiet.stderr, "");
+  assert.equal(
+    quiet.stdout,
+    `MO-KNOWLEDGE-HISTORY/1 status=ok cutoff=${cutoff} commits=1 edges=1\n`,
+  );
+  const timed = spawnSync(process.execPath, [...argv, "--timing"], { encoding: "utf8" });
+  assert.match(timed.stdout, /^MO-KNOWLEDGE-HISTORY\/1 status=ok .* ms=\d+ spawns=\d+ blobs=2\n$/u);
+});
+
+test("an unreadable object graph is unavailable, never a pass", () => {
+  const { root, cutoff } = fixture();
+  const run = runHistory(root, cutoff, { architecture: "docs/architecture" });
+  assert.deepEqual(run.errors, []);
+  rmSync(join(root, ".git", "objects"), { recursive: true, force: true });
+  const broken = runHistory(root, cutoff);
+  assert.ok(broken.unavailable, "a repository without objects cannot pass");
+  assert.equal(broken.errors.length, 1);
+  assert.match(broken.errors[0], /^history_unavailable: /u);
 });
 
 test("a citation no tree can resolve fails closed on the commit that made it", () => {

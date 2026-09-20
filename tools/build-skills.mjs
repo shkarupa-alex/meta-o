@@ -36,6 +36,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { isBuiltin } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -46,6 +47,7 @@ import { buildSync } from "esbuild";
 import { fromMarkdown } from "mdast-util-from-markdown";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const VERSION = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version;
 const SKILLS_SRC = join(ROOT, "src", "skills");
 const SHARED_SRC = join(ROOT, "shared");
 const OUTPUT = join(ROOT, "skills");
@@ -114,17 +116,105 @@ function stripGeneratedAnchors(skillRoot, name) {
 }
 
 /**
- * The runtime package in the settings bundle and the licence that makes its
- * redistribution terms inspectable. Any new metafile package root must acquire
- * an explicit entry here or the build fails before a generated tree can exist.
+ * The roots every Markdown-reading bundle carries.
+ *
+ * Measured from a trial build, not guessed: the parser pulls its own micromark
+ * graph, and a hand-kept list drifts the first time upstream splits a package.
  */
-export const BUNDLE_LICENSE_PLAN = {
-  "@anthropic-ai/claude-agent-sdk": "licenses/claude-agent-sdk-LICENSE.md",
+const MARKDOWN_ROOTS = [
+  "character-entities",
+  "decode-named-character-reference",
+  "mdast-util-from-markdown",
+  "mdast-util-to-string",
+  "micromark",
+  "micromark-core-commonmark",
+  "micromark-factory-destination",
+  "micromark-factory-label",
+  "micromark-factory-space",
+  "micromark-factory-title",
+  "micromark-factory-whitespace",
+  "micromark-util-character",
+  "micromark-util-chunked",
+  "micromark-util-classify-character",
+  "micromark-util-combine-extensions",
+  "micromark-util-decode-numeric-character-reference",
+  "micromark-util-decode-string",
+  "micromark-util-encode",
+  "micromark-util-html-tag-name",
+  "micromark-util-normalize-identifier",
+  "micromark-util-resolve-all",
+  "micromark-util-sanitize-uri",
+  "micromark-util-subtokenize",
+  "unist-util-stringify-position",
+];
+
+/**
+ * One explicit closure per bundle: the package roots its metafile may contain
+ * and the measured size it may not outgrow.
+ *
+ * §A-DISTRIBUTION-03 keeps the licence closure here rather than in the file
+ * distribution, because roots belong to the bundle that pulls them, and one
+ * mapping stopped describing a build that produces more than one bundle. An
+ * unexpected root or a missing entry breaks generation; that is the property.
+ */
+export const BUNDLES = {
+  "scripts/mo-models.mjs": {
+    baselineBytes: 1_012_923,
+    roots: ["@anthropic-ai/claude-agent-sdk"],
+  },
+  "scripts/mo-backlog.mjs": {
+    baselineBytes: 196_079,
+    roots: MARKDOWN_ROOTS,
+  },
+  "scripts/mo-knowledge-history.mjs": {
+    baselineBytes: 321_157,
+    roots: [...MARKDOWN_ROOTS, "js-yaml"],
+  },
+  "scripts/mo-review-report.mjs": {
+    baselineBytes: 200_550,
+    roots: MARKDOWN_ROOTS,
+  },
 };
 
-/** The measured first bundle plus 25%; growth beyond it needs a fresh audit. */
-export const MODEL_BUNDLE_BASELINE_BYTES = 996_053;
-export const MODEL_BUNDLE_MAX_BYTES = Math.ceil(MODEL_BUNDLE_BASELINE_BYTES * 1.25);
+/**
+ * The bundles a copy of which has to answer "am I stale?" without this repo.
+ *
+ * mo-setup tells a target project to copy the history checker into its own
+ * `tools/`, and later has to compare that copy with what this project ships.
+ * A copy can only answer that question if it carries the supplier's version and
+ * a hash of its own bytes, because an installed skill has no package.json.
+ */
+export const STAMPED = new Set(["scripts/mo-knowledge-history.mjs"]);
+
+/** A root under other terms breaks generation exactly as an unexpected root does. */
+export const LICENSE_ALLOWLIST = new Set(["MIT"]);
+
+/**
+ * Roots whose `license` field is not an SPDX id, bound to their exact text.
+ *
+ * The model SDK points at its README instead of naming terms, so no allowlist
+ * of identifiers can clear it. Naming it once, with the exact string, keeps the
+ * closure machine-checked: if upstream changes that field, the build stops.
+ */
+export const LICENSE_EXCEPTIONS = {
+  "@anthropic-ai/claude-agent-sdk": "SEE LICENSE IN README.md",
+};
+
+/** The notice names the ecosystem actually uses, in the order worth trying. */
+const LICENSE_FILES = [
+  "LICENSE",
+  "LICENSE.md",
+  "LICENSE.txt",
+  "LICENCE",
+  "LICENCE.md",
+  "license",
+  "license.md",
+];
+
+/** §A-DISTRIBUTION-03 names one bundled root's notice inside a generated skill. */
+export function licenseSlug(root) {
+  return root.replace(/^@/u, "").replaceAll("/", "__");
+}
 
 /**
  * Which shared file lands in which skill.
@@ -139,29 +229,45 @@ export const SHARED_PLAN = {
     ["references/methodology.md", "references/methodology.md"],
     ["references/backend-contract.md", "references/backend-contract.md"],
     ["references/review-protocol.md", "references/review-protocol.md"],
+    ["references/review-brief.md", "references/review-brief.md"],
     ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
     ["references/orca-mechanics.md", "references/orca-mechanics.md"],
     ["references/issue-routing.md", "references/issue-routing.md"],
-    ["scripts/mo-models.mjs", "scripts/mo-models.mjs", { bundleLicenses: BUNDLE_LICENSE_PLAN }],
+    ["references/methodology-feedback.md", "references/methodology-feedback.md"],
+    ["scripts/mo-models.mjs", "scripts/mo-models.mjs"],
+    ["scripts/mo-backlog.mjs", "scripts/mo-backlog.mjs"],
+    ["scripts/mo-harness-screen.mjs", "scripts/mo-harness-screen.mjs"],
+    ["scripts/mo-review-report.mjs", "scripts/mo-review-report.mjs"],
     ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],
-    ["licenses/claude-agent-sdk-LICENSE.md", "licenses/claude-agent-sdk-LICENSE.md"],
   ],
   "mo-review-orca": [
     ["references/backend-contract.md", "references/backend-contract.md"],
+    ["references/issue-routing.md", "references/issue-routing.md"],
+    ["references/methodology-feedback.md", "references/methodology-feedback.md"],
     ["references/review-protocol.md", "references/review-protocol.md"],
+    ["references/review-brief.md", "references/review-brief.md"],
     ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
     ["references/orca-mechanics.md", "references/orca-mechanics.md"],
-    ["scripts/mo-models.mjs", "scripts/mo-models.mjs", { bundleLicenses: BUNDLE_LICENSE_PLAN }],
-    ["licenses/claude-agent-sdk-LICENSE.md", "licenses/claude-agent-sdk-LICENSE.md"],
+    ["scripts/mo-models.mjs", "scripts/mo-models.mjs"],
+    ["scripts/mo-backlog.mjs", "scripts/mo-backlog.mjs"],
+    ["scripts/mo-harness-screen.mjs", "scripts/mo-harness-screen.mjs"],
+    ["scripts/mo-review-report.mjs", "scripts/mo-review-report.mjs"],
   ],
   "mo-setup": [
     ["references/project-setup.md", "references/project-setup.md"],
+    ["references/issue-routing.md", "references/issue-routing.md"],
+    ["references/methodology-feedback.md", "references/methodology-feedback.md"],
+    ["scripts/mo-backlog.mjs", "scripts/mo-backlog.mjs"],
+    ["scripts/mo-harness-screen.mjs", "scripts/mo-harness-screen.mjs"],
+    ["scripts/mo-knowledge-history.mjs", "scripts/mo-knowledge-history.mjs"],
     ["references/backend-contract.md", "references/backend-contract.md"],
     ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
     ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],
   ],
+  "mo-e2e": [["references/methodology-feedback.md", "references/methodology-feedback.md"]],
   "mo-watchdog": [
     ["references/watchdog.md", "references/watchdog.md"],
+    ["references/methodology-feedback.md", "references/methodology-feedback.md"],
     ["scripts/mo-watchdog.sh", "scripts/mo-watchdog.sh"],
   ],
 };
@@ -177,13 +283,16 @@ export function packageRoot(input) {
 }
 
 /**
- * Produce the self-contained helper whose absence would make Claude catalogue
- * discovery depend on whichever node_modules happens to surround an install.
+ * §A-DISTRIBUTION-03 produces one self-contained helper and proves its closure.
+ *
+ * Without the bundle, catalogue discovery and Markdown reading would depend on
+ * whichever `node_modules` happened to surround an install. Returning the roots
+ * lets the caller ship exactly the notices this bundle actually pulled.
  */
-function bundleModels(destination) {
+export function bundleShared(source, destination, closure, label) {
   mkdirSync(dirname(destination), { recursive: true });
   const result = buildSync({
-    entryPoints: [join(SHARED_SRC, "scripts", "mo-models.mjs")],
+    entryPoints: [source],
     outfile: destination,
     bundle: true,
     platform: "node",
@@ -199,11 +308,11 @@ function bundleModels(destination) {
   const roots = [
     ...new Set(Object.keys(result.metafile.inputs).map(packageRoot).filter(Boolean)),
   ].sort();
-  const licensed = Object.keys(BUNDLE_LICENSE_PLAN).sort();
-  if (JSON.stringify(roots) !== JSON.stringify(licensed)) {
+  const declared = [...closure.roots].sort();
+  if (JSON.stringify(roots) !== JSON.stringify(declared)) {
     throw new Error(
-      `mo-models bundle packages ${roots.join(", ") || "none"}; licence plan names ` +
-        `${licensed.join(", ") || "none"}`,
+      `${label} bundle packages ${roots.join(", ") || "none"}; its closure names ` +
+        `${declared.join(", ") || "none"}`,
     );
   }
   const unresolved = Object.values(result.metafile.outputs)
@@ -211,13 +320,63 @@ function bundleModels(destination) {
     .filter((entry) => entry.external && !isBuiltin(entry.path))
     .map((entry) => entry.path);
   if (unresolved.length > 0) {
-    throw new Error(`mo-models bundle has unresolved runtime imports: ${unresolved.join(", ")}`);
+    throw new Error(`${label} bundle has unresolved runtime imports: ${unresolved.join(", ")}`);
   }
+  const ceiling = Math.ceil(closure.baselineBytes * 1.25);
   const bytes = readFileSync(destination).byteLength;
-  if (bytes > MODEL_BUNDLE_MAX_BYTES) {
-    throw new Error(
-      `mo-models bundle is ${bytes} bytes; measured ceiling is ${MODEL_BUNDLE_MAX_BYTES}`,
+  if (bytes > ceiling) {
+    throw new Error(`${label} bundle is ${bytes} bytes; measured ceiling is ${ceiling}`);
+  }
+  return roots;
+}
+
+/**
+ * §A-DISTRIBUTION-03 stamps a bundle with the version and hash of its own bytes.
+ *
+ * The hash covers everything before the line, so supplier and copy hash exactly
+ * the same bytes and re-stamping is a no-op. Without it a copied checker can
+ * only be compared by reading it, which is the comparison nobody performs.
+ */
+export function stampSource(destination, version) {
+  const body = readFileSync(destination, "utf8");
+  const digest = createHash("sha256").update(body).digest("hex");
+  writeFileSync(destination, `${body}// MO-KNOWLEDGE-HISTORY-SOURCE ${version} ${digest}\n`);
+  return digest;
+}
+
+/**
+ * §A-DISTRIBUTION-03 copies each bundled root's notice next to its bundle.
+ *
+ * The notices are build output, not a committed directory: a stored copy is one
+ * more thing that can silently stop matching the package it claims to describe.
+ */
+export function writeLicenses(skillRoot, roots, label, packagesRoot = join(ROOT, "node_modules")) {
+  for (const root of roots) {
+    const packageRootPath = join(packagesRoot, ...root.split("/"));
+    const declared = JSON.parse(
+      readFileSync(join(packageRootPath, "package.json"), "utf8"),
+    ).license;
+    // An absent field reads as `undefined`, and so does a missing exception, so
+    // comparing the two directly let a package that declares nothing at all
+    // satisfy an exception recorded for some other root. Unstated terms are the
+    // case with the least evidence behind them, so they fail first and loudest.
+    const permitted =
+      typeof declared === "string" &&
+      (LICENSE_ALLOWLIST.has(declared) ||
+        (Object.hasOwn(LICENSE_EXCEPTIONS, root) && LICENSE_EXCEPTIONS[root] === declared));
+    if (!permitted) {
+      throw new Error(
+        `${label} bundles ${root}, licensed ${typeof declared === "string" ? declared : "with no license field"}; only ` +
+          `${[...LICENSE_ALLOWLIST].join(", ")} may be redistributed`,
+      );
+    }
+    const notice = LICENSE_FILES.map((file) => join(packageRootPath, file)).find((path) =>
+      existsSync(path),
     );
+    if (!notice) throw new Error(`${label} bundles ${root}, which ships no licence notice`);
+    const to = join(skillRoot, "licenses", `${licenseSlug(root)}-LICENSE.txt`);
+    mkdirSync(dirname(to), { recursive: true });
+    cpSync(notice, to);
   }
 }
 
@@ -388,25 +547,15 @@ export function build(outputRoot) {
     }
   }
 
-  for (const consumer of ["mo-orchestrate-orca"]) {
-    const plan = SHARED_PLAN[consumer];
-    const helper = plan.find(([source]) => source === "scripts/mo-models.mjs");
-    const declared = Object.keys(helper?.[2]?.bundleLicenses ?? {}).sort();
-    const expected = Object.keys(BUNDLE_LICENSE_PLAN).sort();
-    if (JSON.stringify(declared) !== JSON.stringify(expected)) {
-      throw new Error(`${consumer} mo-models SHARED_PLAN licence mapping is incomplete`);
-    }
-    for (const [packageName, licensePath] of Object.entries(BUNDLE_LICENSE_PLAN)) {
-      if (
-        !plan.some(([source, destination]) => source === licensePath && destination === licensePath)
-      ) {
-        throw new Error(`${consumer} does not ship the ${packageName} licence ${licensePath}`);
-      }
-      const installed = join(ROOT, "node_modules", ...packageName.split("/"), "LICENSE.md");
-      const shared = join(SHARED_SRC, licensePath);
-      if (!existsSync(installed) || !readFileSync(installed).equals(readFileSync(shared))) {
-        throw new Error(`shared/${licensePath} is not the installed ${packageName} licence`);
-      }
+  // A bundle nobody distributes is a closure nobody proves, and a plan entry
+  // that names a missing source would only fail once esbuild reached it.
+  for (const destination of Object.keys(BUNDLES)) {
+    const shipped = Object.values(SHARED_PLAN).some((plan) =>
+      plan.some(([, target]) => target === destination),
+    );
+    if (!shipped) throw new Error(`BUNDLES names ${destination}, which no skill receives`);
+    if (!existsSync(join(SHARED_SRC, destination))) {
+      throw new Error(`BUNDLES names ${destination}, which does not exist in shared/`);
     }
   }
 
@@ -420,8 +569,11 @@ export function build(outputRoot) {
       if (!existsSync(from)) throw new Error(`shared/${source} does not exist`);
       const to = join(outputRoot, name, destination);
       mkdirSync(dirname(to), { recursive: true });
-      if (source === "scripts/mo-models.mjs") bundleModels(to);
-      else cpSync(from, to);
+      const closure = BUNDLES[destination];
+      if (closure) {
+        writeLicenses(join(outputRoot, name), bundleShared(from, to, closure, destination), name);
+        if (STAMPED.has(destination)) stampSource(to, VERSION);
+      } else cpSync(from, to);
     }
     stripGeneratedAnchors(join(outputRoot, name), name);
   }

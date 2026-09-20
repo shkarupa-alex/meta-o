@@ -13,6 +13,14 @@ documented public native surface. Never read private provider transcripts,
 hooks, inferred session databases or hidden state to compensate for a missing
 capability.
 
+
+One exception is named and owned by the project's evaluation policy decision:
+when a model executor publishes no public surface for its own effective model
+and reasoning level, the caller may read that one fact out of the local run
+record of the process it started itself. It reads identity and nothing else,
+never another session's record, and a public surface supersedes it the moment
+one exists.
+
 The orchestrator manages sessions and Git identity. It does not inspect, judge
 or edit product code. Executors, reviewers and E2E agents inspect the
 repository. The orchestrator may read the task/spec before activation, pass its
@@ -40,6 +48,14 @@ Before starting agents:
    project-owned `MO-BACKLOG/1` closure command. G0 must be `EMPTY` on the exact
    committed SHA before substantive implementation; `NOT-EMPTY` and `UNKNOWN`
    both block.
+
+A project that cannot answer these is not ready, and no lifecycle skill prepares
+it on its own initiative. A missing `MO-BACKLOG/1` command, a missing papercut
+document or a missing identifier-history gate is a readiness gap: report it as
+`needs_attention`, name what is missing, and recommend that the human run the
+setup skill. Setting a project up changes files a human never asked to change,
+which is why it is their call and not a step taken silently on the way to
+something else.
 
 The executor's first coherent commit materializes a temporary feature bundle:
 the accepted specification, `user-ledger.md` and a short `checklist.md` of
@@ -85,6 +101,21 @@ roles with the user. Recommend an executor from a different model vendor than
 the orchestrator by default; vendor diversity improves the chance that the
 orchestrator can help when an executor misses a premise. Reviewers use different
 vendors, and at least one reviewer vendor differs from the executor.
+
+The session in which the user invoked the orchestration skill is the
+orchestrator. An unset `orchestrator` role blocks nothing and is not a reason to
+ask the user to choose a model for the session that is already running: the
+model answering is the model that was chosen when the session was opened.
+`--force` and substituting another model generation stay forbidden.
+
+Sessions are kept warm on purpose. A provider's prompt cache lives 60 minutes
+for both vendors, and the working idle threshold is 50 minutes, leaving a margin
+before expiry. One number serves both, because remembering which vendor stands
+behind which terminal buys less than the mistake it invites, and erring toward a
+fresh session is cheaper than erring toward a stale cache. While a role's
+terminal has been idle less than that threshold, keep it hot — the executor and
+the remediation reviewers — and otherwise prefer a fresh session. This is
+reasoning about resources already visible, not a state store.
 
 An approved selection names an exact provider model id. A floating family alias
 such as `opus` or `sonnet` is not enough: it resolves to whatever the provider
@@ -145,7 +176,10 @@ No universal question classes, correlation IDs or option grammar are required.
 After the executor settles, validate the branch, clean worktree, commit object
 and full `HEAD`, then freeze that SHA. Start both reviewer sessions concurrently
 and independently. Give them the same task/spec, complete intent ledger and the
-same candidate SHA. Do not give either reviewer peer output.
+same candidate SHA. On the post-cleanup candidate of section 7 those artifacts
+are no longer in the tree: give the frozen object ids the deletion recorded, and
+the durable knowledge that replaced them. Do not give either reviewer peer
+output.
 
 Each reviewer is a native interactive Codex, Claude Code or OpenCode instance
 started inside a terminal, pane or session by the selected backend's native
@@ -199,10 +233,16 @@ reports E2E as not evaluated unless separately requested.
 
 Before any pair, prove that the Orca project/repository registration inventory
 will not change and that selected isolated worktrees belong to the original
-project. Use existing exact isolated worktrees or an attributed Orca Git
-`new-child`; never use shared current, raw `git worktree add`, `orca repo add`
-or `new-top-level` as fallback. Placement/inventory failure emits one typed
-`REVIEW-START/1 unsupported` and creates no pair artifacts.
+project. Placement is a ladder whose default is the first rung: existing exact
+isolated worktrees or an attributed Orca Git `new-child`; then
+`shared_checkout`, both reviewers in the exact existing workspace, where the
+shared working checkout is byte-for-byte unchanged afterwards, repository
+changes are enumerated and undone one by one, `git worktree prune` is forbidden
+and the candidate is read by SHA; then `placement_unsupported`, and only when
+not even an exact workspace exists. Never use shared current, raw
+`git worktree add`, `orca repo add` or `new-top-level` as fallback.
+Placement/inventory failure emits one typed `REVIEW-START/1 unsupported` and
+creates no pair artifacts.
 
 ## 6. QC and E2E
 
@@ -228,12 +268,23 @@ repeated; there is no partial pass.
 
 When a named scenario genuinely needs a model actor, deterministic proof remains
 preferred. Every applicable case uses both required selections: Claude
-`opus[1m]/low` and Codex `gpt-5.6-sol/low`; record requested and effective
-identity. Desired Codex `gpt-5.6-luna/max` and OpenCode/Qwen coordinates are
-materialized as `not_available` when absent and become blocking if run as
-`FAIL|UNKNOWN`. A missing required profile is `blocked|not_run`, and a
-deterministic scenario is `not_applicable`. Never fall back. These skill tests
-do not replace the critical local Qwen/OpenCode orchestrator lifecycle.
+`sonnet`/low, which must actually resolve to `claude-sonnet-5`, and Codex
+`gpt-5.6-luna/low`; record requested and effective identity, and record the
+alias resolution whenever the two model strings differ. Desired Codex
+`gpt-5.6-luna/max` and OpenCode/Qwen coordinates are materialized as
+`not_available` when absent and become blocking if run as `FAIL|UNKNOWN`. A
+missing required profile is `blocked|not_run`, and a deterministic scenario is
+`not_applicable`. Never fall back. These skill tests do not replace the critical
+local Qwen/OpenCode orchestrator lifecycle.
+
+Required coordinates are constant except for one named valve: a skill whose own
+cases are provably unstable raises **its own** required Codex coordinate one
+step, and only once the reason, date and instability observation are written
+into the project's evaluation policy. The orchestrator skill is never raised,
+the Claude coordinate never moves, and one skill's valve never moves the matrix.
+Until that record exists, repetition stays at one and the skill text is what
+changes, never the profile: an unrecorded raise is profile-shopping for a green
+result, and the proof is bound to the profile it ran on.
 
 Any executable or instruction change creates a new SHA and invalidates all
 gates. Return failures to the executor as ordinary messages and restart from the

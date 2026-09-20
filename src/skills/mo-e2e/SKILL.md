@@ -2,12 +2,22 @@
 name: mo-e2e
 description: Use only when the user explicitly requests mo-e2e or an active mo-orchestrate-orca calls it; verify agent-required scenarios on one frozen exact SHA.
 license: MIT
+metadata:
+  repository: https://github.com/shkarupa-alex/meta-o
 ---
 
 # Agent-required end-to-end verification
 
 Start only when the user names `mo-e2e` or the active orchestration skill calls
 it. A generic request to run tests does not activate this agent lifecycle.
+
+Read [Обратная связь о методологии](references/methodology-feedback.md)
+completely: friction you hit is reported to the caller as one ordinary
+`Methodology-Friction:` message, and this actor writes no Issue itself.
+
+A project missing its `MO-BACKLOG/1` command, papercut document or
+identifier-history gate is a readiness gap: record it and return
+`needs_attention`, and leave running the setup skill to the human.
 
 Act as a separate read-only E2E actor. Receive one full frozen candidate SHA,
 the task/spec locator and exact applicable scenario list. Read the project's E2E

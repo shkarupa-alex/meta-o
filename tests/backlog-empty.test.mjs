@@ -11,9 +11,16 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, test } from "node:test";
 
-import { asciiJson, evaluate, inspectBacklog } from "../tools/backlog-empty.mjs";
+import {
+  asciiJson,
+  backlogSchemaViolations,
+  META_O_SCHEMA as META_O_SCHEMA_DEFAULT,
+  evaluate,
+  inspectBacklog,
+} from "../shared/scripts/mo-backlog.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
+const CLI = resolve(ROOT, "shared", "scripts", "mo-backlog.mjs");
 const roots = [];
 after(() => roots.forEach((root) => rmSync(root, { recursive: true, force: true })));
 
@@ -91,10 +98,14 @@ test("the AST owner distinguishes empty, entries, and arbitrary content", () => 
 });
 
 test("malformed CLI input is an internal error rather than an ambiguous backlog path", () => {
-  const result = spawnSync(process.execPath, ["tools/backlog-empty.mjs", "--candidate", "bad"], {
-    cwd: ROOT,
-    encoding: "utf8",
-  });
+  const result = spawnSync(
+    process.execPath,
+    ["shared/scripts/mo-backlog.mjs", "--candidate", "bad"],
+    {
+      cwd: ROOT,
+      encoding: "utf8",
+    },
+  );
   assert.equal(result.status, 2);
   assert.match(result.stderr, /reason=internal_error/u);
   assert.doesNotMatch(result.stderr, /reason=path_ambiguous/u);
@@ -205,4 +216,118 @@ test("ordinary QC tests the closure target without requiring the live notebook t
   });
   assert.equal(result.status, 2);
   assert.match(result.stderr, /MO-BACKLOG-NOT-EMPTY/u);
+});
+
+test("a foreign notebook needs its whole schema, never half of this project's", () => {
+  const isolated = repositoryFixture();
+  const run = (...args) =>
+    spawnSync(process.execPath, [CLI, "--repo", isolated, ...args], { encoding: "utf8" });
+  // Any one schema flag commits the caller to declaring all of it. Half a
+  // schema would silently check a foreign notebook against Russian headings.
+  for (const partial of [
+    ["--path", "notes/backlog.md"],
+    ["--title", "Backlog"],
+    ["--open-heading", "Open"],
+    ["--entry-field", "Reason."],
+    ["--path", "notes/backlog.md", "--title", "Backlog"],
+    ["--path", "notes/backlog.md", "--title", "Backlog", "--open-heading", "Open"],
+  ]) {
+    const result = run(...partial);
+    assert.equal(result.status, 2, partial.join(" "));
+    assert.match(result.stderr, /MO-BACKLOG-UNKNOWN version=1 reason=internal_error /u);
+  }
+  // A complete foreign schema is accepted and answers about that notebook.
+  const complete = run(
+    "--path",
+    "notes/backlog.md",
+    "--title",
+    "Backlog",
+    "--open-heading",
+    "Open",
+    "--entry-field",
+    "Reason.",
+  );
+  assert.equal(complete.status, 2);
+  assert.match(complete.stderr, /reason=missing_file .*notes\/backlog\.md/u);
+});
+
+test("the frozen line keeps its field order, names and streams", () => {
+  const isolated = repositoryFixture();
+  const empty = spawnSync(process.execPath, [CLI, "--repo", isolated], { encoding: "utf8" });
+  // The grammar is frozen byte for byte because consumers parse it: an earlier
+  // revision renamed `sha=` to `head=` and dropped three fields, and every
+  // existing reader broke at once.
+  assert.equal(empty.status, 0);
+  assert.equal(empty.stderr, "");
+  assert.match(
+    empty.stdout,
+    /^MO-BACKLOG-EMPTY version=1 sha=[a-f0-9]{40} worktree=(?:clean|dirty) path="docs\/backlog\.md" entries=0 content_nodes=0\n$/u,
+  );
+  const head = spawnSync(
+    process.execPath,
+    [CLI, "--repo", isolated, "--expect-head", "0".repeat(40)],
+    {
+      encoding: "utf8",
+    },
+  );
+  assert.equal(head.status, 2);
+  assert.equal(head.stdout, "");
+  assert.match(head.stderr, /^MO-BACKLOG-UNKNOWN version=1 reason=candidate_mismatch /u);
+  const remote = spawnSync(
+    process.execPath,
+    [CLI, "--repo", isolated, "--remote-head", "0".repeat(40)],
+    { encoding: "utf8" },
+  );
+  assert.equal(remote.status, 2);
+  assert.match(remote.stderr, /^MO-BACKLOG-UNKNOWN version=1 reason=remote_head_unreadable /u);
+});
+
+test("the named schema validator answers for this notebook and a foreign one", () => {
+  const FOREIGN = {
+    path: "notes/backlog.md",
+    title: "Backlog",
+    openHeading: "Open",
+    intro: ["Temporary notebook of the active feature branch only."],
+    entryFields: ["Reason.", "Impact.", "Next step."],
+  };
+  const foreignEmpty =
+    "# Backlog\n\nTemporary notebook of the active feature branch only.\n\n## Open\n";
+
+  // Both canonical documents are silent: a validator that reports on a correct
+  // notebook is one nobody will read when it reports on a broken one.
+  assert.deepEqual(backlogSchemaViolations(EMPTY), []);
+  assert.deepEqual(backlogSchemaViolations(foreignEmpty, FOREIGN), []);
+
+  // Each document rule names itself rather than collapsing into one verdict.
+  assert.deepEqual(backlogSchemaViolations("# Wrong\n\n## Открыто\n"), [
+    'level-one heading is "Wrong"',
+    "expected 3 nodes before the open section, found 1",
+  ]);
+  assert.deepEqual(backlogSchemaViolations(`${EMPTY}\n## Открыто\n`), [
+    'expected one "\\u041e\\u0442\\u043a\\u0440\\u044b\\u0442\\u043e" section, found 2',
+  ]);
+
+  // A missing entry field is a defect of that entry, and never turns the open
+  // section into an unreadable document: closure must still answer.
+  const incomplete = `${EMPTY}\n### Deferred\n\n**Причина.** R\n`;
+  assert.deepEqual(backlogSchemaViolations(incomplete), [
+    'entry "Deferred" is missing "\\u041f\\u0440\\u0430\\u043a\\u0442\\u0438\\u0447\\u0435\\u0441\\u043a\\u043e\\u0435 \\u0432\\u043b\\u0438\\u044f\\u043d\\u0438\\u0435."',
+    'entry "Deferred" is missing "\\u0421\\u043b\\u0435\\u0434\\u0443\\u044e\\u0449\\u0438\\u0439 \\u0448\\u0430\\u0433."',
+  ]);
+  assert.equal(inspectBacklog(incomplete).kind, "not_empty");
+
+  // The closure verdict and the validator share one definition of the schema:
+  // every document the validator faults is unknown, and no other document is.
+  for (const [document, schema] of [
+    [EMPTY, META_O_SCHEMA_DEFAULT],
+    [foreignEmpty, FOREIGN],
+    ["# Wrong\n\n## Открыто\n", META_O_SCHEMA_DEFAULT],
+    [`${EMPTY}\n## Открыто\n`, META_O_SCHEMA_DEFAULT],
+    [incomplete, META_O_SCHEMA_DEFAULT],
+  ]) {
+    const faulted = backlogSchemaViolations(document, schema).some(
+      (violation) => !violation.startsWith("entry "),
+    );
+    assert.equal(inspectBacklog(document, schema).reason === "schema_invalid", faulted);
+  }
 });

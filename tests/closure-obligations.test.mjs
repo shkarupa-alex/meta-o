@@ -832,10 +832,7 @@ const OBLIGATIONS = [
     "O-RR-065",
     "an injected prompt requires a verified idle harness input first",
     {
-      mech: [
-        /orca terminal wait --terminal <handle> --for tui-idle/,
-        /wait for `tui-idle`, and inject the task into that terminal/,
-      ],
+      mech: [/orca terminal wait --terminal <handle> --for tui-idle/, /action=inject → continue/],
     },
   ],
   [

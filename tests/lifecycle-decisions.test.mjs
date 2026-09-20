@@ -47,7 +47,15 @@ function issueRows(
   );
 }
 
-const WRITE_SCENARIOS = new Set(["ISS-01", "ISS-04", "ISS-06", "ISS-07A", "ISS-07C", "ISS-10"]);
+const WRITE_SCENARIOS = new Set([
+  "ISS-01",
+  "ISS-04",
+  "ISS-06",
+  "ISS-07A",
+  "ISS-07C",
+  "ISS-10",
+  "ISS-16",
+]);
 
 const ISSUE_RULES = [
   [(facts) => facts.forbiddenData, "ISS-08"],
@@ -67,24 +75,40 @@ const ISSUE_RULES = [
   [(facts) => facts.rootCause === "external" && facts.owner === "ambiguous", "ISS-02"],
   [(facts) => facts.rootCause === "external" && facts.owner === "project_remotes_only", "ISS-03"],
   [(facts) => facts.rootCause === "project", "ISS-04"],
+  [(facts) => facts.rootCause === "methodology", "ISS-16"],
 ];
 
+/**
+ * The addressee of methodology friction is a field of the installed skill.
+ *
+ * Without `metadata.repository` there is nothing to write to, and a skill the
+ * human did not activate writes from a role nobody opened, so both facts have
+ * to be proved before the write is allowed at all.
+ */
+function methodologyBlocker(facts) {
+  if (facts.writerSkill !== true) return "methodology_writer_unproved";
+  return facts.methodologyRepository === "verified" ? null : "methodology_addressee_unproved";
+}
+
 function currentWritePermission(facts) {
-  const routeBlocker = facts.mixedWorkaround
-    ? facts.owner === "verified" &&
-      facts.upstreamRepository === "verified" &&
-      facts.projectRepository === "verified"
-      ? null
-      : "mixed_ownership_unproved"
-    : facts.rootCause === "external"
-      ? facts.owner === "verified" && facts.upstreamRepository === "verified"
-        ? null
-        : "upstream_ownership_unproved"
-      : facts.rootCause === "project"
-        ? facts.projectRepository === "verified"
+  const routeBlocker =
+    facts.rootCause === "methodology"
+      ? methodologyBlocker(facts)
+      : facts.mixedWorkaround
+        ? facts.owner === "verified" &&
+          facts.upstreamRepository === "verified" &&
+          facts.projectRepository === "verified"
           ? null
-          : "project_repository_unproved"
-        : "root_cause_unproved";
+          : "mixed_ownership_unproved"
+        : facts.rootCause === "external"
+          ? facts.owner === "verified" && facts.upstreamRepository === "verified"
+            ? null
+            : "upstream_ownership_unproved"
+          : facts.rootCause === "project"
+            ? facts.projectRepository === "verified"
+              ? null
+              : "project_repository_unproved"
+            : "root_cause_unproved";
   const blockers = [
     [routeBlocker !== null, routeBlocker],
     [facts.forbiddenData === true, "forbidden_data"],
@@ -186,6 +210,16 @@ test("ISS-01 through ISS-15 route distinct facts to canonical actions", () => {
     [{ writeEffect: "rejected" }, "ISS-13", false],
     [{ search: "incomplete" }, "ISS-14", false],
     [{ capability: "missing" }, "ISS-15", false],
+    [
+      {
+        ...WRITE_READY,
+        rootCause: "methodology",
+        writerSkill: true,
+        methodologyRepository: "verified",
+      },
+      "ISS-16",
+      true,
+    ],
   ];
   const rows = issueRows();
   for (const [facts, scenario, mayWrite] of fixtures) {
@@ -201,6 +235,16 @@ test("ISS-01 through ISS-15 route distinct facts to canonical actions", () => {
     }
   }
   assert.equal(new Set(fixtures.map(([, scenario]) => scenario)).size, rows.size);
+  // Both halves of the methodology addressee are load-bearing: a skill nobody
+  // activated, and a skill with no repository field, each stop the write on
+  // their own.
+  const friction = { ...WRITE_READY, rootCause: "methodology", writerSkill: true };
+  assert.equal(issueDecision({ ...friction, methodologyRepository: "unknown" }).mayWrite, false);
+  assert.equal(
+    issueDecision({ ...friction, writerSkill: false, methodologyRepository: "verified" })
+      .writeBlocker,
+    "methodology_writer_unproved",
+  );
 });
 
 test("the parsed canonical row owns every normative routing field and missing rows fail closed", () => {

@@ -28,6 +28,19 @@ function unavailableResult(item, executionId) {
   };
 }
 
+/** §A-EVAL-01 keeps an unobserved harness free of invented runtime metadata. */
+function unavailableHarness(name) {
+  return {
+    name,
+    version: null,
+    profileVersion: null,
+    quantization: null,
+    context: null,
+    sampling: null,
+    toolPermissions: [],
+  };
+}
+
 /** §A-EVAL-01 emits typed NOT_AVAILABLE evidence only after a failed native probe. */
 export async function buildUnavailableEvidence({
   candidate,
@@ -84,15 +97,7 @@ export async function buildUnavailableEvidence({
     tier: values.tier,
     matrixProfile: values.matrixProfile,
     requested,
-    harness: {
-      name: values.harness,
-      version: null,
-      profileVersion: null,
-      quantization: null,
-      context: null,
-      sampling: null,
-      toolPermissions: [],
-    },
+    harness: unavailableHarness(values.harness),
     execution: {
       id: executionId,
       source: requested.route,
@@ -101,6 +106,7 @@ export async function buildUnavailableEvidence({
       exitCode,
       effective: null,
       availability: { status: "not_available", reason },
+      aliasResolution: null, // No model ran, so no alias resolved: state it.
       identityEvidence: `native ${requested.route} executable probe returned ${reason}`,
       evaluationDigest: "",
     },

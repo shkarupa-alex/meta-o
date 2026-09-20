@@ -1,0 +1,16 @@
+{
+  "contract": "recorded-cli-help.v2",
+  "binary": "orca",
+  "binaryIdentity": "home-relative:.local/orca/releases/v1.4.204/resources/bin/orca-ide",
+  "resolution": "one absolute release path with its home prefix redacted",
+  "version": "1.4.204",
+  "observations": [
+    {
+      "invokedBinary": "home-relative:.local/orca/releases/v1.4.204/resources/bin/orca-ide",
+      "command": "orca terminal list --json | jq -c '{fields:(.result.terminals[0]|keys),lastOutputAt_type:(.result.terminals[0].lastOutputAt|type),lastOutputAt_digits:(.result.terminals[0].lastOutputAt|tostring|length)}'",
+      "exitStatus": 0,
+      "provenance": "stdout mechanical JSON projection: field names of one terminal record, the type of lastOutputAt and its digit count; no title, path or preview is recorded",
+      "output": "{\"fields\":[\"agentIdentity\",\"branch\",\"connected\",\"executionHostId\",\"handle\",\"incarnationId\",\"lastOutputAt\",\"leafId\",\"orphaned\",\"preview\",\"ptyId\",\"tabId\",\"title\",\"worktreeId\",\"worktreePath\",\"writable\"],\"lastOutputAt_type\":\"number\",\"lastOutputAt_digits\":13}"
+    }
+  ]
+}

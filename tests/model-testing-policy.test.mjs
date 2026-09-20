@@ -12,7 +12,7 @@ import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { testingPolicyError } from "../shared/scripts/mo-models.mjs";
+import { testingEffectiveIdentityError, testingPolicyError } from "../shared/scripts/mo-models.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (...parts) => readFileSync(join(ROOT, ...parts), "utf8");
@@ -21,16 +21,51 @@ test("durable business and architecture layers preserve the low-cost policy", ()
   const business = read("docs", "business.md");
   const architecture = read("docs", "architecture", "evaluation-model-policy.md");
   for (const source of [business, architecture]) {
-    assert.match(source, /opus\[1m\]\/low/);
-    assert.match(source, /gpt-5\.6-sol\/low/);
-    assert.match(source, /gpt-5\.6-luna\/max/);
-    assert.match(source, /Qwen\/OpenCode/);
+    // The required Claude coordinate is stored as a catalogue alias, so the
+    // durable layers have to carry both halves: what is written down and what
+    // must actually have run. One literal alone would let the other drift.
+    assert.match(source, /`sonnet`\/low/u);
+    assert.match(source, /gpt-5\.6-luna\/low/u);
+    assert.match(source, /gpt-5\.6-luna\/max/u);
+    assert.match(source, /Qwen\/OpenCode/u);
+    assert.doesNotMatch(source, /opus\[1m\]\/low/u);
+    assert.doesNotMatch(source, /gpt-5\.6-sol\/low/u);
   }
   assert.match(business, /фактической\s+идентичностью/);
   assert.match(business, /резервный путь/);
   assert.match(architecture, /фактическ(?:ую|ой)\s+идентичност/u);
   assert.match(architecture, /не применяет автоматический резервный\s+вариант/u);
+  // The exact effective id belongs to the architecture layer, not the business
+  // thesis: the thesis owns the rule, the decision owns the literal it resolves
+  // to, and only the decision may be the place a drifting alias is caught.
+  assert.match(architecture, /claude-sonnet-5/u);
+  assert.doesNotMatch(business, /claude-sonnet-5/u);
   assert.match(architecture, new RegExp(`§${"B-EVAL-01"}`));
+});
+
+test("the private-state exception stays as narrow as the decision that owns it", () => {
+  // The prohibition and the recipe that needs it must be one statement, not
+  // two: for a whole feature the papercut told the next caller to read a
+  // provider session log while the lifecycle forbade exactly that, and both
+  // documents passed every check.
+  const life = read("shared", "references", "methodology.md");
+  const policy = read("docs", "architecture", "evaluation-model-policy.md");
+  const papercut = read("docs", "papercut.md");
+  assert.match(life, /One exception is named and owned by the project's evaluation policy/u);
+  // Its three limits, each stated where the exception is granted.
+  assert.match(life, /reads identity and nothing else/u);
+  assert.match(life, /never another\s+session's record/u);
+  assert.match(life, /a public surface supersedes it the moment\s+one exists/u);
+  // The decision carries the observation the exception rests on, including the
+  // version: an exception with no falsifiable ground never expires.
+  assert.match(policy, /codex-cli 0\.155\.0/u);
+  assert.match(policy, /turn_context/u);
+  assert.match(policy, /узкое исключение/u);
+  // The operational recipe points at the decision instead of restating it.
+  assert.match(papercut, /узкое исключение §A-EVAL-01/u);
+  assert.match(papercut, /журнале собственного запуска/u);
+  // Claude keeps its public route, so the exception covers one executor only.
+  assert.match(papercut, /Фактическую модель у Claude берут из события `init`/u);
 });
 
 test("lifecycle makes model actors named, applicable and fail closed", () => {
@@ -72,30 +107,64 @@ test("desired OpenCode testing identity is Qwen only", () => {
   }
 });
 
-test("the testing profiles accept an exact model id and reject a floating alias", () => {
-  assert.equal(testingPolicyError("testClaude", "claude/opus[1m]/low"), null);
-  // A bare family name is whatever the provider ships next, so it cannot prove
-  // the approved profile even though it reads like it.
-  assert.match(testingPolicyError("testClaude", "claude/opus/low"), /opus\[1m\]/u);
-  // The generation digit must be the model's own, not the tail of a date or of
-  // an older generation's version pair.
+test("the stored coordinate and the model that actually ran are closed separately", () => {
+  // What a user may store. U7 requires the catalogue alias here, so `sonnet` is
+  // the approved value and the exact id is not: storing the id would bypass the
+  // owner's rule, and storing anything else is simply a different model.
+  assert.equal(testingPolicyError("testClaude", "claude/sonnet/low"), null);
+  assert.match(testingPolicyError("testClaude", "claude/opus/low"), /sonnet/u);
+  assert.match(testingPolicyError("testClaude", "claude/claude-sonnet-5/low"), /sonnet\/low/u);
+  assert.match(testingPolicyError("testClaude", "claude/sonnet/medium"), /sonnet\/low/u);
   assert.match(
-    testingPolicyError("testClaude", "claude/claude-opus-5-20250929/low"),
-    /opus\[1m\]\/low/u,
+    testingPolicyError("testClaude", "claude/sonnet-totally-unapproved/low"),
+    /sonnet\/low/u,
   );
-  assert.match(testingPolicyError("testClaude", "claude/opus[1m]/medium"), /opus\[1m\]\/low/u);
-  assert.match(testingPolicyError("testClaude", "claude/opus-5/low"), /opus\[1m\]\/low/u);
-  assert.match(
-    testingPolicyError("testClaude", "claude/opus[1m]-totally-unapproved/low"),
-    /opus\[1m\]\/low/u,
-  );
-  assert.match(testingPolicyError("testClaude", "claude/opus-1m/low"), /opus\[1m\]\/low/u);
-  assert.match(testingPolicyError("testCodex", "codex/gpt-5.6/low"), /gpt-5\.6-sol/u);
+  assert.match(testingPolicyError("testCodex", "codex/gpt-5.6/low"), /gpt-5\.6-luna/u);
+  assert.match(testingPolicyError("testClaude", "claude/anything/sonnet/low"), /sonnet\/low/u);
   assert.match(
     testingPolicyError("testOpenCodeDesired", "opencode/deepseek/deepseek-v3-4-flash/low"),
     /qwen3\.8-27b/u,
   );
   assert.equal(testingPolicyError("executor", "codex/gpt-5.6-sol/medium"), null);
+
+  // What must actually have run. The generation digit must be the model's own,
+  // not the tail of a release date, which is how `claude-sonnet-4-5-20250929`
+  // once passed as the approved generation.
+  assert.equal(testingEffectiveIdentityError("testClaude", "sonnet", "claude-sonnet-5"), null);
+  for (const observed of [
+    "sonnet",
+    "claude-sonnet-5-20250929",
+    "claude-sonnet-6",
+    "claude-opus-5",
+    // Only OpenCode qualifies an id with a provider. Tolerating the prefix
+    // everywhere would let the envelope name any provider it liked in front of
+    // the approved generation and still be believed.
+    "anything/claude-sonnet-5",
+  ]) {
+    assert.match(
+      testingEffectiveIdentityError("testClaude", "sonnet", observed),
+      /alias_resolution_changed/u,
+    );
+  }
+  // Both values appear in the reason, because a person has to decide whether the
+  // literal moves; the checker never migrates it.
+  const drift = testingEffectiveIdentityError("testClaude", "sonnet", "claude-sonnet-6");
+  assert.match(drift, /sonnet/u);
+  assert.match(drift, /claude-sonnet-6/u);
+  assert.match(drift, /claude-sonnet-5/u);
+
+  // An exact-id route resolves nothing, so both halves name the same literal.
+  assert.equal(testingEffectiveIdentityError("testCodex", "gpt-5.6-luna", "gpt-5.6-luna"), null);
+  assert.match(
+    testingEffectiveIdentityError("testCodex", "gpt-5.6-luna", "gpt-5.6-sol"),
+    /alias_resolution_changed/u,
+  );
+
+  // Nothing requires two roles to name different models: after U1 the required
+  // and desired Codex coordinates differ only in effort, and a rule demanding
+  // distinct models would make the approved matrix unsatisfiable.
+  assert.equal(testingPolicyError("testCodex", "codex/gpt-5.6-luna/low"), null);
+  assert.equal(testingPolicyError("testCodexDesired", "codex/gpt-5.6-luna/max"), null);
 });
 
 test("the consumed show path rejects hand-written expensive or invalid selections", () => {
@@ -116,7 +185,7 @@ test("the consumed show path rejects hand-written expensive or invalid selection
     };
     let result = run({ testClaude: "claude/opus-5/high" });
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /testClaude.*opus\[1m\]\/low/u);
+    assert.match(result.stderr, /testClaude.*sonnet\/low/u);
     result = run({ testCodex: "codex/gpt-5.6-sol/high" });
     assert.equal(result.status, 1);
     assert.match(result.stderr, /testCodex must be/u);

@@ -122,7 +122,7 @@ test("backend mechanics use only the intended public result and diagnostic surfa
   assert.match(orca, /Do not use `worker-read --source transcript`/);
   assert.match(orca, /`ready` and `input_accepted` is only a transport/);
   assert.match(orca, /terminal wait .*--for tui-idle/);
-  assert.match(orca, /dispatch --task <task-id> --to <handle> --inject/);
+  assert.match(orca, /worker-start --task <id> --worktree id:<repo>::<path> --terminal <handle>/);
   assert.match(orca, /do not duplicate a posture flag/);
   for (const source of [orca]) {
     assert.match(source, /three-to-four-screen|three-to-four-screen|three-to-four/);

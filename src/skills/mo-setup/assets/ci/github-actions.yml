@@ -1,0 +1,34 @@
+# Пример для владельца проекта, а не готовая конфигурация.
+#
+# Замените <qc-command> на авторитетную проверку проекта, а <backlog-schema> —
+# на `--path`, `--title`, `--open-heading` и все `--entry-field` блокнота этого
+# проекта: половина схемы — ошибка вызова, а не проверка чужого блокнота по
+# чужим словам. Путь `tools/mo-backlog.mjs` создаёт принятый ремонт mo-setup.
+# Две вещи здесь не косметические: полная история и отдельная задача закрытия
+# блокнота.
+name: quality
+
+on:
+  pull_request:
+  merge_group:
+
+jobs:
+  qc:
+    runs-on: ubuntu-latest
+    steps:
+      # Стадия истории идентификаторов читает граф коммитов целиком, поэтому
+      # мелкий клон превращает её в тихий пропуск, а не в проверку.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: <qc-command>
+
+  backlog-closure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Отдельная задача: блокнот обязан быть пуст на закрытии, но не в
+      # середине фичи, поэтому её результат читают отдельно от обычной проверки.
+      - run: node tools/mo-backlog.mjs <backlog-schema>

@@ -1,10 +1,23 @@
 {
   "contract": "meta-o.orca-placement-recording.v1",
   "folder": {
-    "project": { "id": "project-folder", "kind": "folder", "sourceRepoIds": [] },
-    "currentContext": { "projectId": "project-folder", "repoId": null },
+    "project": {
+      "id": "project-folder",
+      "kind": "folder",
+      "sourceRepoIds": []
+    },
+    "currentContext": {
+      "projectId": "project-folder",
+      "repoId": null
+    },
     "repositories": [],
-    "resources": [{ "id": "foreign-terminal", "kind": "terminal", "owner": "foreign" }],
+    "resources": [
+      {
+        "id": "foreign-terminal",
+        "kind": "terminal",
+        "owner": "foreign"
+      }
+    ],
     "children": [
       {
         "id": "review-a",
@@ -35,10 +48,29 @@
     ]
   },
   "git": {
-    "project": { "id": "project-git", "kind": "git", "sourceRepoIds": ["repo-meta-o"] },
-    "currentContext": { "projectId": "project-git", "repoId": "repo-meta-o" },
-    "repositories": [{ "id": "repo-meta-o", "path": "/recorded/meta-o", "kind": "git" }],
-    "resources": [{ "id": "foreign-terminal", "kind": "terminal", "owner": "foreign" }],
+    "project": {
+      "id": "project-git",
+      "kind": "git",
+      "sourceRepoIds": ["repo-meta-o"]
+    },
+    "currentContext": {
+      "projectId": "project-git",
+      "repoId": "repo-meta-o"
+    },
+    "repositories": [
+      {
+        "id": "repo-meta-o",
+        "path": "/recorded/meta-o",
+        "kind": "git"
+      }
+    ],
+    "resources": [
+      {
+        "id": "foreign-terminal",
+        "kind": "terminal",
+        "owner": "foreign"
+      }
+    ],
     "children": [
       {
         "id": "review-a",
@@ -69,19 +101,120 @@
     ]
   },
   "noContext": {
-    "project": { "id": "project-git", "kind": "git", "sourceRepoIds": ["repo-meta-o"] },
+    "project": {
+      "id": "project-git",
+      "kind": "git",
+      "sourceRepoIds": ["repo-meta-o"]
+    },
     "currentContext": null,
-    "repositories": [{ "id": "repo-meta-o", "path": "/recorded/meta-o", "kind": "git" }],
+    "repositories": [
+      {
+        "id": "repo-meta-o",
+        "path": "/recorded/meta-o",
+        "kind": "git"
+      }
+    ],
     "resources": [],
     "children": []
   },
   "remote": {
-    "project": { "id": "project-remote", "kind": "git", "sourceRepoIds": ["repo-remote"] },
-    "currentContext": { "projectId": "project-remote", "repoId": "repo-remote" },
+    "project": {
+      "id": "project-remote",
+      "kind": "git",
+      "sourceRepoIds": ["repo-remote"]
+    },
+    "currentContext": {
+      "projectId": "project-remote",
+      "repoId": "repo-remote"
+    },
     "repositories": [
-      { "id": "repo-remote", "path": "https://example.invalid/meta-o.git", "kind": "remote" }
+      {
+        "id": "repo-remote",
+        "path": "https://example.invalid/meta-o.git",
+        "kind": "remote"
+      }
     ],
     "resources": [],
     "children": []
+  },
+  "folderSharedCheckout": {
+    "project": {
+      "id": "project-folder",
+      "kind": "folder",
+      "sourceRepoIds": []
+    },
+    "currentContext": {
+      "projectId": "project-folder",
+      "repoId": null
+    },
+    "repositories": [],
+    "resources": [
+      {
+        "id": "foreign-terminal",
+        "kind": "terminal",
+        "owner": "foreign"
+      }
+    ],
+    "children": [],
+    "workspace": {
+      "id": "workspace-shared",
+      "path": "/recorded/shared",
+      "realPath": "/recorded/shared",
+      "realPathProvenance": "realpath -- /recorded/shared",
+      "kind": "folder_or_worktree"
+    }
+  },
+  "folderNoWorkspace": {
+    "project": {
+      "id": "project-folder",
+      "kind": "folder",
+      "sourceRepoIds": []
+    },
+    "currentContext": {
+      "projectId": "project-folder",
+      "repoId": null
+    },
+    "repositories": [],
+    "resources": [
+      {
+        "id": "foreign-terminal",
+        "kind": "terminal",
+        "owner": "foreign"
+      }
+    ],
+    "children": []
+  },
+  "folderCreateTrap": {
+    "project": {
+      "id": "project-folder",
+      "kind": "folder",
+      "sourceRepoIds": []
+    },
+    "currentContext": {
+      "projectId": "project-folder",
+      "repoId": null
+    },
+    "repositories": [],
+    "resources": [
+      {
+        "id": "foreign-terminal",
+        "kind": "terminal",
+        "owner": "foreign"
+      }
+    ],
+    "children": [],
+    "workspace": {
+      "id": "workspace-shared",
+      "path": "/recorded/shared",
+      "realPath": "/recorded/shared",
+      "realPathProvenance": "realpath -- /recorded/shared",
+      "kind": "folder_or_worktree"
+    },
+    "worktreeCreate": {
+      "ok": true,
+      "path": "/recorded/shared",
+      "head": "",
+      "isMainWorktree": true
+    }
   }
 }

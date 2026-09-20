@@ -7,26 +7,52 @@
     {
       "id": "mo-watchdog.positive",
       "class": "positive",
-      "contracts": ["§A-WATCHDOG-01"],
+      "contracts": [
+        "§A-WATCHDOG-01",
+        "§A-ISSUE-01"
+      ],
       "scenario": "The user explicitly requests read-only observation or authorizes one exact nudge target.",
-      "must": ["classify native Orca state under §A-WATCHDOG-01", "nudge only the explicitly authorized exact target"],
-      "mustNot": ["infer progress from transcript text", "nudge an unowned target"]
+      "must": [
+        "classify native Orca state under §A-WATCHDOG-01",
+        "nudge only the explicitly authorized exact target",
+        "report methodology friction in the final answer to the user, never in an Issue, under §A-ISSUE-01"
+      ],
+      "mustNot": [
+        "infer progress from transcript text",
+        "nudge an unowned target",
+        "write an Issue or any other external record of that friction"
+      ]
     },
     {
       "id": "mo-watchdog.forbidden",
       "class": "forbidden",
-      "contracts": ["§A-ACTIVATION-01"],
+      "contracts": [
+        "§A-ACTIVATION-01"
+      ],
       "scenario": "The user asks a generic monitoring question without explicitly requesting Meta-O watchdog use.",
-      "must": ["avoid activating the watchdog under §A-ACTIVATION-01"],
-      "mustNot": ["scan sessions", "send a prompt"]
+      "must": [
+        "avoid activating the watchdog under §A-ACTIVATION-01"
+      ],
+      "mustNot": [
+        "scan sessions",
+        "send a prompt"
+      ]
     },
     {
       "id": "mo-watchdog.degraded",
       "class": "degraded",
-      "contracts": ["§A-WATCHDOG-02"],
+      "contracts": [
+        "§A-WATCHDOG-02"
+      ],
       "scenario": "Native state is malformed, stale, changed during observation or duplicates a prior nudge.",
-      "must": ["fail closed with the typed state under §A-WATCHDOG-02", "suppress unsafe or duplicate delivery"],
-      "mustNot": ["guess a target state", "retry a changed target"]
+      "must": [
+        "fail closed with the typed state under §A-WATCHDOG-02",
+        "suppress unsafe or duplicate delivery"
+      ],
+      "mustNot": [
+        "guess a target state",
+        "retry a changed target"
+      ]
     }
   ]
 }

@@ -70,6 +70,10 @@ step; confirmed out-of-scope work belongs in a correctly routed project/upstream
 Issue. An unresolved disposition is `needs_attention`, not permission to leave
 closure non-empty. Do not manufacture an entry to fill a category.
 
+A project with no backlog-closure checker at all is a different answer: the
+absence is a readiness gap reported as `needs_attention`, and no review prepares
+the project or writes the missing checker in passing.
+
 ## Diagnostics
 
 Targeted read-only checks are always allowed; report their exact command and
@@ -113,12 +117,32 @@ The complete textual report includes:
 - Unknowns and residual risks;
 - exactly one terminal verdict: `PASS`, `FINDINGS` or `UNKNOWN`.
 
+Deliver the whole report inside the single authoritative response the caller
+named. A summary of it, a pointer to where its full text can be read, and a
+promise to send it separately are each a malformed report. On some backends
+delivering that response is exactly what ends the session, so whatever stayed
+outside it is the part nobody can retrieve afterwards, and the review has to be
+bought again. Read the body back before delivering it; assume there is no second
+chance.
+
+Structure is read from the block AST: only a top-level node can carry a
+structural marker. The index is exactly the top-level paragraphs strictly
+between `Counts:` and the single top-level `Evidence report`; the contents of a
+code block, a quote or a list are never index body, and a line like
+`F-001 [P3] …` repeated inside `Findings` is valid prose.
+`mo-review-report.mjs validate` applies exactly this rule, so a report that
+reads correctly to a human is not rejected for quoting its own markers.
+
 Index keys start at `F-001`, are report-local and match finding body/severity
 one-to-one. Counts equal authored findings. `PASS` has zero counts and empty
 index/Findings, while grounding, checks, Unknowns and residual risks remain
 explicit and non-empty. A finding also states its post-fix invariant, technical
-direction, acceptance proof and depth `local patch`, `boundary repair` or
-`affected-slice redesign`.
+direction and depth `local patch`, `boundary repair` or
+`affected-slice redesign`. Its acceptance proof is named as concrete cases —
+input and state, expected behavior, and where the check belongs — precise enough
+to write them without asking the reviewer a second question. A finding whose
+acceptance is "make it correct" sends remediation guessing, and every guess
+costs another full review round.
 
 `PASS` means no required change remains and evidence covers the complete scope.
 Dirty or mismatched checkout, unknown SHA, truncated/unreadable output or

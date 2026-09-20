@@ -13,7 +13,7 @@ import { performance } from "node:perf_hooks";
 import { test } from "node:test";
 
 import { forbiddenPublicDataReason } from "../tools/sensitive-evidence.mjs";
-import { diagnoseLegacyEvidence } from "../tools/skill-eval-runtime.mjs";
+import { diagnoseLegacyEvidence } from "../tools/skill-eval-legacy.mjs";
 import {
   diagnoseLegacyEvidenceForCandidate,
   evaluationCoordinate,
@@ -35,8 +35,8 @@ function revision(skill) {
 function envelope(skill, { tier = "required", matrixProfile = "required-codex" } = {}) {
   const document = loadCorpus(ROOT).get(skill);
   const identity = {
-    "required-claude": { route: "claude", model: "opus[1m]", effort: "low" },
-    "required-codex": { route: "codex", model: "gpt-5.6-sol", effort: "low" },
+    "required-claude": { route: "claude", model: "sonnet", effort: "low" },
+    "required-codex": { route: "codex", model: "gpt-5.6-luna", effort: "low" },
     "desired-codex": { route: "codex", model: "gpt-5.6-luna", effort: "max" },
     "desired-opencode": { route: "opencode", model: "provider/qwen3.8-27b", effort: "low" },
     "critical-orchestration": {
@@ -46,6 +46,19 @@ function envelope(skill, { tier = "required", matrixProfile = "required-codex" }
     },
   }[matrixProfile];
   assert.ok(identity, `unknown fixture matrix profile ${matrixProfile}`);
+  // The required Claude coordinate is stored as the catalogue alias and runs as
+  // an exact id, so the fixture has to carry both halves; every other route
+  // answers with exact ids and therefore resolves nothing.
+  const observed =
+    identity.route === "claude" ? { ...identity, model: "claude-sonnet-5" } : { ...identity };
+  const aliasResolution =
+    observed.model === identity.model
+      ? null
+      : {
+          requested: identity.model,
+          effective: observed.model,
+          source: `native claude run reported canonical model ${observed.model}`,
+        };
   return {
     contract: "meta-o.skill-eval-evidence.v3",
     candidate: HEAD,
@@ -76,8 +89,9 @@ function envelope(skill, { tier = "required", matrixProfile = "required-codex" }
       startedAt: "2026-09-02T10:00:00.000Z",
       completedAt: "2026-09-02T10:00:01.000Z",
       exitCode: 0,
-      effective: { ...identity },
-      identityEvidence: `native ${identity.route} result named ${identity.model}`,
+      effective: observed,
+      aliasResolution,
+      identityEvidence: `native ${identity.route} result named ${observed.model}`,
       evaluationDigest: "",
     },
     results: document.cases.map((item) => ({
@@ -318,9 +332,82 @@ test("actor-authored native identity cannot replace the caller-owned execution o
   );
 });
 
+test("a resolved catalogue alias is proof, and only on the route that has aliases", () => {
+  // The happy path: the owner stores `sonnet`, `claude-sonnet-5` actually ran,
+  // and the envelope says so. This is the evidence U7 demands, and a verbatim
+  // model comparison used to reject it.
+  const resolved = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
+  assert.deepEqual(validateEvidence(ROOT, resolved, HEAD).nonPass, []);
+
+  // Default closed: drop the record and the difference is the old mismatch again.
+  const unrecorded = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
+  unrecorded.execution.aliasResolution = null;
+  assert.throws(
+    () => validateEvidence(ROOT, unrecorded, HEAD),
+    /requested\/effective identity mismatch/u,
+  );
+
+  // The record may not assert a resolution of its own; it quotes the envelope.
+  for (const field of ["requested", "effective"]) {
+    const forged = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
+    forged.execution.aliasResolution[field] = "claude-opus-5";
+    assert.throws(() => validateEvidence(ROOT, forged, HEAD), /does not quote the envelope/u);
+  }
+
+  const unsourced = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
+  unsourced.execution.aliasResolution.source = "";
+  assert.throws(() => validateEvidence(ROOT, unsourced, HEAD), /aliasResolution\.source is empty/u);
+
+  // A drifting alias is a typed event, not general unavailability: the literal
+  // must be updated by a person, so the run stops instead of migrating itself.
+  const drifted = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
+  drifted.execution.effective.model = "claude-sonnet-6";
+  drifted.execution.aliasResolution.effective = "claude-sonnet-6";
+  drifted.execution.identityEvidence = "native claude run reported canonical model claude-sonnet-6";
+  assert.throws(() => validateEvidence(ROOT, drifted, HEAD), /alias_resolution_changed/u);
+
+  // Codex and OpenCode answer with exact ids, so a resolution claim there is a
+  // substituted model wearing a nickname.
+  const codex = finalizedEnvelope("find-reuse", { matrixProfile: "required-codex" });
+  codex.execution.aliasResolution = {
+    requested: "gpt-5.6-luna",
+    effective: "gpt-5.6-luna",
+    source: "invented resolution",
+  };
+  assert.throws(
+    () => validateEvidence(ROOT, codex, HEAD),
+    /alias_resolution_unsupported_route codex/u,
+  );
+
+  // Equal models leave nothing to resolve, so a record there is noise.
+  const pointless = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
+  pointless.execution.effective.model = "sonnet";
+  pointless.execution.aliasResolution.effective = "sonnet";
+  assert.throws(() => validateEvidence(ROOT, pointless, HEAD), /present without a resolved alias/u);
+
+  // And an unresolved alias is still not an approved identity: claiming the
+  // alias itself ran leaves the exact generation unproven.
+  const unresolved = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
+  unresolved.execution.effective.model = "sonnet";
+  unresolved.execution.aliasResolution = null;
+  assert.throws(() => validateEvidence(ROOT, unresolved, HEAD), /alias_resolution_changed/u);
+
+  // Presence is the contract, not only the value. Evidence written before the
+  // field was mandatory omits it outright, and reading it with `??` would take that as
+  // the very "nothing resolved" a compliant run records on purpose.
+  for (const matrixProfile of ["required-claude", "required-codex"]) {
+    const omitted = finalizedEnvelope("find-reuse", { matrixProfile });
+    delete omitted.execution.aliasResolution;
+    assert.throws(
+      () => validateEvidence(ROOT, omitted, HEAD),
+      /execution\.aliasResolution is required/u,
+    );
+  }
+});
+
 test("evidence fails closed on identity drift, missing coverage and sensitive fields", () => {
   const drift = finalizedEnvelope("find-reuse");
-  drift.execution.effective.model = "gpt-5.6-luna";
+  drift.execution.effective.model = "gpt-5.6-sol";
   assert.throws(
     () => validateEvidence(ROOT, drift, HEAD),
     /requested\/effective identity mismatch/,
@@ -535,6 +622,7 @@ test("desired profile can materialize as evidenced NOT_AVAILABLE", () => {
     exitCode: 127,
     effective: null,
     availability: { status: "not_available", reason: "command_unavailable" },
+    aliasResolution: null,
     identityEvidence: "native executable lookup reported command unavailable",
     evaluationDigest: "",
   };
@@ -547,6 +635,25 @@ test("desired profile can materialize as evidenced NOT_AVAILABLE", () => {
     evidence,
   );
   assert.deepEqual(validateEvidence(ROOT, evidence, HEAD).nonPass, []);
+  // A coordinate where no model ran can neither claim an identity nor explain
+  // how an alias resolved: there was nothing to resolve it for.
+  evidence.execution.aliasResolution = {
+    requested: evidence.requested.model,
+    effective: "some-other-model",
+    source: "invented",
+  };
+  assert.throws(
+    () => validateEvidence(ROOT, evidence, HEAD),
+    /must not invent an alias resolution/u,
+  );
+  // A coordinate where nothing ran still has to say so: an absent field is not
+  // the same evidence as a recorded `null`.
+  delete evidence.execution.aliasResolution;
+  assert.throws(
+    () => validateEvidence(ROOT, evidence, HEAD),
+    /execution\.aliasResolution is required/u,
+  );
+  evidence.execution.aliasResolution = null;
   evidence.execution.effective = { ...evidence.requested };
   assert.throws(
     () => validateEvidence(ROOT, evidence, HEAD),
@@ -581,6 +688,7 @@ test("required profile unavailability stays blocking without invented runtime id
     exitCode: 127,
     effective: null,
     availability: { status: "not_available", reason: "approved_profile_unavailable" },
+    aliasResolution: null,
     identityEvidence: "native provider rejected the approved required model",
     evaluationDigest: "",
   };
@@ -770,7 +878,7 @@ test("the CLI exposes a bounded prompt without launching a model", () => {
     "--route",
     "codex",
     "--model",
-    "gpt-5.6-sol",
+    "gpt-5.6-luna",
     "--effort",
     "low",
     "--harness",
@@ -796,6 +904,25 @@ test("the CLI exposes a bounded prompt without launching a model", () => {
   assert.doesNotMatch(result.stdout, /"verdict": "PASS"/u);
   assert.match(result.stdout, /native harness execution id/u);
   assert.match(result.stdout, /BLOCKED\|NOT_RUN\|NOT_AVAILABLE/u);
+  // Both mandatory actors once read "do not invoke the skill" as "no run is
+  // possible" and answered that their own harness was unavailable. The prompt
+  // now says whose execution is being recorded before it describes any
+  // unavailable shape.
+  assert.match(result.stdout, /documentary judgement, not a live run/u);
+  // One mandatory actor wrote an owned identifier split across a space and
+  // rejoined it with a string method call: not JSON at all, and the whole
+  // coordinate was lost to a parse error.
+  assert.match(result.stdout, /Answer with literal JSON only/u);
+  // A mandatory actor once marked every oracle satisfied and still answered
+  // UNKNOWN, so the rule is stated in both directions.
+  assert.match(result.stdout, /that combination is a PASS and nothing else/u);
+  // Quoting a documented selector shape cost a coordinate: the placeholder
+  // check cannot distinguish it from a field the actor never filled.
+  assert.match(result.stdout, /without angle brackets/u);
+  assert.match(result.stdout, /describes this evaluation turn/u);
+  assert.match(result.stdout, /never report it unavailable, blocked or not run/u);
+  const framing = result.stdout.indexOf("describes this evaluation turn");
+  assert.ok(framing < result.stdout.indexOf("cannot run, materialize"), "unavailable shapes lead");
   const frozen = JSON.parse(readFileSync(expectations, "utf8"));
   assert.equal(frozen.length, 1);
   assert.equal(frozen[0].coordinate, "find-reuse:required-codex:1");
