@@ -14,7 +14,7 @@ Every brief carries all twelve, in this order, each on its own line or block:
 | `Intent`               | what the change is for, in the requester's words                          |
 | `Scope`                | the commit range and the named sections; what is out of scope             |
 | `Mode`                 | `fast`, `deep` or `follow_up`, and that self-escalation is the reviewer's |
-| `Placement`            | `isolated` or `shared_checkout`, and the exact workspace                  |
+| `Placement`            | `isolated` or `shared_checkout`, the exact workspace, where its `HEAD` is |
 | `Environment`          | how a pointed test may be run, or that none may be                        |
 | `Constraints`          | what the reviewer may not do: no writes, no full gate in parallel         |
 | `Ownership`            | which resources are the reviewer's and which are not                      |
@@ -58,6 +58,21 @@ commit together with the object id and the reviewer resolves both with
 clone or worktree part of the placement; a path that the candidate does not
 contain is not a citation but a dead reference, and a brief that names one has
 to say so rather than let the reviewer discover it.
+
+## The workspace stands where the brief says it stands
+
+An isolated workspace is checked out at the candidate, clean, before the brief
+is sent. The reviewer then proves the SHA with `rev-parse HEAD` in the directory
+it works in, which is the cheapest proof there is, and every pointed check it
+runs is a check of the candidate rather than of a neighbouring commit.
+
+Parking the reviewer on another commit and telling it to read the candidate by
+SHA costs a round whenever the reviewer takes the protocol at its word: a
+workspace whose `HEAD` is not the candidate is `candidate_mismatch`, and a final
+`PASS` from it would be a verdict about a tree nobody checked out. Reading by
+SHA is the `shared_checkout` answer, where `HEAD` belongs to somebody else and
+the reviewer may not move it. The brief names which of the two it is, so the
+reviewer does not have to guess whether a mismatch is a mistake or the design.
 
 ## What may be said to a human requester
 

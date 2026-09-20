@@ -887,6 +887,23 @@ test("session, delivery, handoff and waiter invariants remain executable instruc
   assert.match(setup, /git ls-files -- \.orca\/ spec\//u);
 });
 
+test("an isolated reviewer workspace stands on the candidate", () => {
+  // Three reviewers in a row reported this as friction and the fourth spent a
+  // whole round on it: told to judge a final SHA from a workspace parked on
+  // another commit, a reviewer that takes the protocol literally answers
+  // candidate_mismatch. The rule now says where HEAD is before the brief goes.
+  const brief = source("shared/references/review-brief.md").replace(/\s+/gu, " ");
+  assert.match(brief, /checked out at the candidate, clean, before the brief is sent/u);
+  assert.match(brief, /`candidate_mismatch`/u);
+  // Reading by SHA keeps its own case, so the two are not confused again.
+  assert.match(brief, /Reading by SHA is the `shared_checkout` answer/u);
+  for (const path of ["src/skills/mo-review-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
+    const review = source(path).replace(/\s+/gu, " ");
+    assert.match(review, /the workspace stands on the candidate before the brief is sent/u, path);
+    assert.match(review, /`UNKNOWN` with `candidate_mismatch`/u, path);
+  }
+});
+
 test("the final pair is told where its grounding went after cleanup", () => {
   // Closure deletes the specification, and the fresh final pair reads the SHA
   // that no longer holds it. Without a second route the brief must cite a path

@@ -41,11 +41,20 @@ Placement is a ladder, and the first rung is the default rather than one
 option among equals:
 
 1. `isolated` — two proven clean isolated worktrees of the current project, or
-   attributed Orca `new-child` worktrees of a Git project at the exact SHA.
+   attributed Orca `new-child` worktrees of a Git project, each standing at the
+   exact SHA.
 2. `shared_checkout` — both reviewers start in the exact existing workspace
    (`--worktree id:<repo>::<path>`); creation flags are rejected there.
 3. `REVIEW-START … reason=placement_unsupported` — only when not even an exact
    existing workspace is there.
+
+On the isolated rung the workspace stands on the candidate before the brief is
+sent: `rev-parse HEAD` equals the exact SHA and the tree is clean. Asked for a
+final verdict from a workspace parked on some other commit, a reviewer answers
+`UNKNOWN` with `candidate_mismatch` and is right to; the round is then spent
+proving what one checkout would have settled. A shared checkout is the case
+where the reviewer may not move `HEAD`, so there the brief says the candidate is
+read by SHA and says why.
 
 Raw `git worktree add`, `orca repo add`, `new-top-level` and unproven remote
 placement stay forbidden on every rung. `orca worktree create` on a folder
