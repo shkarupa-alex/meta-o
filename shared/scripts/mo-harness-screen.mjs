@@ -11,15 +11,20 @@
 import { readFileSync } from "node:fs";
 
 /**
- * The composer Claude Code draws around its own prompt row.
+ * The composer Claude Code draws around its own prompt row, and what it holds.
  *
  * A bare `❯` is a common shell prompt, and the meter row beside it is painted
  * by a status line the user installed rather than by the harness — so neither
  * belongs to Claude, and a shell that printed both would be handed task bytes.
  * The rule directly above the prompt is the harness's own chrome, and it is
  * what separates a real composer from a line that merely looks like one.
+ *
+ * Chrome and content are one pattern on purpose. When the anchor proved one row
+ * and the reader answered from another, a stray prompt glyph higher in the
+ * transcript answered for the composer: the same frame refused without it and
+ * injected with it. A single match cannot disagree with itself.
  */
-const CLAUDE_COMPOSER_BOX = /^─+[ \t]*\n[ \t]*❯/mu;
+const CLAUDE_COMPOSER = /^─+[ \t]*\n[ \t]*❯[ \t]?(.*)$/mu;
 
 /**
  * The recorded frames this classifier is allowed to recognize.
@@ -45,10 +50,10 @@ export const SCREENS = [
     version: "claude-prompt-2026-09-18",
     harness: "claude",
     state: "agent_prompt",
-    anchors: [CLAUDE_COMPOSER_BOX, /│.*Context /u],
+    anchors: [CLAUDE_COMPOSER, /│.*Context /u],
     // `\s` spans newlines, so a composer pattern is written with `[ \t]`: the
     // earlier form matched the prompt row and then captured the row below it.
-    input: /^[ \t]*❯[ \t]?(.*)$/mu,
+    input: CLAUDE_COMPOSER,
   },
   {
     // The same harness version, one row wider. What moves the context meter off
@@ -60,8 +65,8 @@ export const SCREENS = [
     version: "claude-prompt-meter-row-2026-09-18",
     harness: "claude",
     state: "agent_prompt",
-    anchors: [CLAUDE_COMPOSER_BOX, /^\s*Context [░▒▓█]+ \d/mu],
-    input: /^[ \t]*❯[ \t]?(.*)$/mu,
+    anchors: [CLAUDE_COMPOSER, /^\s*Context [░▒▓█]+ \d/mu],
+    input: CLAUDE_COMPOSER,
   },
   {
     version: "codex-prompt-2026-09-18",
@@ -149,13 +154,22 @@ function trustAction(frame) {
  * half-typed line become part of the dispatched task, which is precisely what
  * §A-DELIVERY-01 exists to prevent — so the composer is empty only when it is
  * empty, or exactly the placeholder and nothing else.
+ *
+ * Every row the entry recognizes is collected rather than the first one. A
+ * rendered frame carries scrollback above the composer, and a single line of it
+ * that looks like a prompt used to be read instead of the real row — so a frame
+ * that offers two candidate rows names no composer and licenses nothing, the
+ * same refusal an undecidable frame already gets.
  */
-function composerEmpty(screen, frame) {
-  const typed = screen.input === undefined ? undefined : screen.input.exec(frame)?.[1];
-  if (typed === undefined) return false;
-  const text = typed.trim();
-  if (text === "") return true;
-  return screen.placeholder !== undefined && screen.placeholder.test(text);
+function composerState(screen, frame) {
+  if (screen.input === undefined) return { ok: false, reason: "composer_not_empty" };
+  const rows = [...frame.matchAll(new RegExp(screen.input.source, `${screen.input.flags}g`))];
+  if (rows.length !== 1)
+    return { ok: false, reason: rows.length === 0 ? "composer_not_empty" : "composer_ambiguous" };
+  const text = rows[0][1].trim();
+  if (text === "") return { ok: true };
+  if (screen.placeholder !== undefined && screen.placeholder.test(text)) return { ok: true };
+  return { ok: false, reason: "composer_not_empty" };
 }
 
 /**
@@ -181,8 +195,8 @@ export function classifyScreen(text) {
     return { ...common, ...trustAction(frame), path };
   }
   if (screen.state === "agent_prompt") {
-    if (!composerEmpty(screen, frame))
-      return { ...common, action: "refuse", reason: "composer_not_empty" };
+    const composer = composerState(screen, frame);
+    if (!composer.ok) return { ...common, action: "refuse", reason: composer.reason };
     return { ...common, action: "inject" };
   }
   return { ...common, action: "refuse", reason: "shell_prompt" };

@@ -93,6 +93,66 @@ test("a shell that prints a context meter is still a shell", () => {
     assert.equal(classifyScreen(frame(name)).action, "inject", name);
 });
 
+test("a decoy prompt row above the composer cannot answer for it", () => {
+  // The anchor proved chrome on one row while the reader answered from the
+  // first row that merely looked like a prompt, so one stray glyph in the
+  // scrollback flipped a drafted composer from refuse to inject. The recorded
+  // frames were trimmed to their last rows; a live frame carries agent prose
+  // above the composer, which is exactly where such a glyph lives.
+  const decoys = {
+    "claude-prompt-2026-09-18": ["claude-prompt.screen", /^❯$/mu, "❯ rm -rf /tmp/x", "❯"],
+    "claude-prompt-meter-row-2026-09-18": [
+      "claude-prompt-meter-row.screen",
+      /^❯$/mu,
+      "❯ rm -rf /tmp/x",
+      "❯",
+    ],
+    "codex-prompt-2026-09-18": [
+      "codex-prompt.screen",
+      "› Ask Codex to do anything",
+      "› drop tables",
+      "›",
+    ],
+    "opencode-prompt-2026-09-18": [
+      "opencode-prompt.screen",
+      'Ask anything… "Fix a TODO in the codebase"',
+      "Ask anything… payload",
+      "┃ Ask anything… decoy",
+    ],
+  };
+  // Driven off SCREENS, so a harness entry added without a decoy case fails
+  // here rather than shipping the hole again.
+  const guarded = SCREENS.filter((screen) => screen.input !== undefined).map(
+    (screen) => screen.version,
+  );
+  assert.deepEqual(guarded.sort(), Object.keys(decoys).sort());
+  for (const [version, [name, from, to, decoy]] of Object.entries(decoys)) {
+    const drafted = frame(name).replace(from, to);
+    assert.equal(classifyScreen(drafted).action, "refuse", version);
+    const decoyed = `${decoy}\n${drafted}`;
+    assert.equal(classifyScreen(decoyed).action, "refuse", version);
+    // The shipped pipeline call is covered too: it passes no `draft`, so the
+    // frame check is the only defence there.
+    assert.equal(decideScreen(decoyed, { expectPath: "/tmp/x" }).action, "refuse", version);
+    // And the repair did not simply close the route for everybody.
+    assert.equal(classifyScreen(frame(name)).action, "inject", version);
+  }
+});
+
+test("the Claude composer is found by its own chrome, not by counting rows", () => {
+  // Refusing an ambiguous frame is the fail-closed half. The other half is that
+  // the entry still recognizes its composer when scrollback happens to contain
+  // a prompt glyph: the rule the harness draws names exactly one row, so an
+  // idle session stays deliverable instead of being refused for its history.
+  for (const name of ["claude-prompt.screen", "claude-prompt-cold.screen"]) {
+    assert.equal(classifyScreen(`❯\nsome earlier output\n${frame(name)}`).action, "inject", name);
+    // The decoy must not become a way to answer for a composer that is typed
+    // in either: the real row is drafted here, and the decoy stays clean.
+    const drafted = frame(name).replace(/^❯$/mu, "❯ typed");
+    assert.equal(classifyScreen(`❯\nsome earlier output\n${drafted}`).action, "refuse", name);
+  }
+});
+
 test("each stored frame says where it came from", () => {
   const provenance = JSON.parse(readFileSync(join(SURFACES, "screen-provenance.json"), "utf8"));
   const recorded = provenance.frames.map((entry) => entry.file).sort();
