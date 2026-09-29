@@ -7,7 +7,7 @@ var __export = (target, all2) => {
 
 // shared/scripts/mo-knowledge.mjs
 import { spawnSync } from "node:child_process";
-import { readFileSync, realpathSync } from "node:fs";
+import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { posix } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs, TextDecoder as TextDecoder2 } from "node:util";
@@ -10158,8 +10158,15 @@ function listTracked(root) {
 }
 var decoder = new TextDecoder2("utf-8", { fatal: true });
 function readSource(root, path) {
+  const absolute = posix.join(root, path);
   try {
-    return { source: decoder.decode(readFileSync(posix.join(root, path))) };
+    const entry = lstatSync(absolute);
+    if (entry.isSymbolicLink()) return { error: "symlink" };
+    if (!entry.isFile()) return { error: "not_regular_file" };
+    if (realpathSync(absolute) !== posix.join(realpathSync(root), path)) {
+      return { error: "outside_repository" };
+    }
+    return { source: decoder.decode(readFileSync(absolute)) };
   } catch (error) {
     return { error: error.code ?? (error instanceof TypeError ? "invalid_utf8" : error.message) };
   }

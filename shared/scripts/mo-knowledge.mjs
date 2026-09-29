@@ -24,7 +24,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { readFileSync, realpathSync } from "node:fs";
+import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { posix } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs, TextDecoder } from "node:util";
@@ -198,9 +198,24 @@ function listTracked(root) {
 
 const decoder = new TextDecoder("utf-8", { fatal: true });
 
+/**
+ * The bytes of one tracked document, and only if they live in the repository.
+ *
+ * A tracked symlink, or a path through a symlinked directory, points at bytes
+ * the commit does not hold: they can sit outside the repository and change
+ * after the check, and a definition read from them would certify knowledge
+ * the project never versioned. Such a path is unreadable rather than followed.
+ */
 function readSource(root, path) {
+  const absolute = posix.join(root, path);
   try {
-    return { source: decoder.decode(readFileSync(posix.join(root, path))) };
+    const entry = lstatSync(absolute);
+    if (entry.isSymbolicLink()) return { error: "symlink" };
+    if (!entry.isFile()) return { error: "not_regular_file" };
+    if (realpathSync(absolute) !== posix.join(realpathSync(root), path)) {
+      return { error: "outside_repository" };
+    }
+    return { source: decoder.decode(readFileSync(absolute)) };
   } catch (error) {
     return { error: error.code ?? (error instanceof TypeError ? "invalid_utf8" : error.message) };
   }

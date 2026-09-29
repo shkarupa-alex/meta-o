@@ -232,7 +232,38 @@ test("an unreadable declared document is unknown, never ok", () => {
   const result = check(root, ["--docs", "docs/ghost.md"]);
   assert.equal(result.status, 2, result.stdout);
   assert.match(result.stdout, /^MO-KNOWLEDGE\/1 status=unknown files=4 /u);
-  assert.match(result.stdout, /\nunknown reason=unreadable detail="docs\/ghost\.md: ENOENT"\n/u);
+  assert.match(result.stdout, /\nunknown reason=unreadable detail="docs\/ghost\.md: symlink"\n/u);
+});
+
+test("a tracked symlink is never followed, wherever it points", () => {
+  const outside = mkdtempSync(join(tmpdir(), "mo-knowledge-outside-"));
+  roots.push(outside);
+  writeFileSync(join(outside, "business.md"), BASE["docs/business.md"]);
+  const targets = {
+    external: join(outside, "business.md"),
+    inside: "../README.md",
+    missing: "gone.md",
+  };
+  for (const [name, target] of Object.entries(targets)) {
+    const root = fixture(
+      { "docs/business.md": null },
+      { symlinks: { "docs/business.md": target } },
+    );
+    const result = check(root);
+    assert.equal(result.status, 2, `${name}: ${result.stdout}`);
+    assert.match(result.stdout, /^MO-KNOWLEDGE\/1 status=unknown /u, name);
+    assert.match(result.stdout, /detail="docs\/business\.md: symlink"/u, name);
+  }
+  // A tracked path whose directory was swapped for a symlink leads the same
+  // bytes out of the repository: the index still lists it, the disk does not hold it.
+  const root = fixture();
+  mkdirSync(join(outside, "architecture"));
+  writeFileSync(join(outside, "architecture", "core.md"), BASE["docs/architecture/core.md"]);
+  rmSync(join(root, "docs", "architecture"), { recursive: true, force: true });
+  symlinkSync(join(outside, "architecture"), join(root, "docs", "architecture"));
+  const through = check(root);
+  assert.equal(through.status, 2, through.stdout);
+  assert.match(through.stdout, /detail="docs\/architecture\/core\.md: outside_repository"/u);
 });
 
 test("without --repo the Git root is found from a nested cwd", () => {
