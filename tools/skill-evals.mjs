@@ -28,6 +28,7 @@ import {
 } from "./skill-eval-aggregate.mjs";
 import { buildEvaluationPrompt } from "./skill-eval-prompt.mjs";
 import {
+  evaluationCoordinate,
   expectedDigest,
   expectedExecution,
   readExpectedBindings,
@@ -95,6 +96,8 @@ export function evaluationDigest(document, envelope) {
     candidate: envelope.candidate,
     skillRevision: envelope.skillRevision,
     skill: envelope.skill,
+    // A frozen v2 envelope predates the case-level coordinate and has no case.
+    ...(envelope.caseId === undefined ? {} : { caseId: envelope.caseId }),
     policy: envelope.policy,
     repetition: envelope.repetition,
     tier: envelope.tier,
@@ -106,9 +109,19 @@ export function evaluationDigest(document, envelope) {
   return createHash("sha256").update(canonicalJson(payload)).digest("hex");
 }
 
-/** §A-EVAL-01 gives caller-frozen prompt inputs one stable lookup coordinate. */
-export function evaluationCoordinate(envelope) {
-  return `${envelope.skill}:${envelope.matrixProfile}:${envelope.repetition}`;
+/**
+ * The corpus narrowed to the one case an evidence coordinate evaluates.
+ *
+ * Prompt, digest and result validation all read this view, so a turn is shown,
+ * frozen and checked against exactly its own case, as §A-EVAL-01 fixes it.
+ */
+export function caseDocument(document, caseId) {
+  if (typeof caseId !== "string" || caseId === "") {
+    throw new Error(`${document.skill}: --case names the one case to evaluate`);
+  }
+  const item = document.cases.find(({ id }) => id === caseId);
+  if (!item) throw new Error(`${document.skill}: unknown case ${caseId}`);
+  return { ...document, cases: [item] };
 }
 
 function makePrompt(root, corpus, skill, values) {
@@ -125,7 +138,7 @@ function makePrompt(root, corpus, skill, values) {
     candidate,
     skillRevision,
     skill,
-    document,
+    document: caseDocument(document, values.case),
     values,
     digest: evaluationDigest,
   });
@@ -142,7 +155,7 @@ async function makeUnavailableEvidence(root, corpus, skill, values) {
     candidate,
     skill,
     skillRevision: git(root, ["rev-parse", `${candidate}:skills/${skill}`]),
-    document,
+    document: caseDocument(document, values.case),
     values,
     digest: evaluationDigest,
   });
@@ -293,6 +306,8 @@ function validateEnvelope(
   const document = corpus.get(envelope.skill);
   if (!document) throw new Error(`unknown evidence skill ${envelope.skill}`);
   if (envelope.policy !== document.policy) throw new Error(`${envelope.skill}: policy mismatch`);
+  assertString(envelope.caseId, `${envelope.skill}: caseId`);
+  const evaluated = caseDocument(document, envelope.caseId);
   if (!new Set(["required", "desired", "critical"]).has(envelope.tier)) {
     throw new Error(`${envelope.skill}: invalid tier`);
   }
@@ -306,12 +321,12 @@ function validateEnvelope(
   const unavailable = envelopeIsUnavailable(envelope);
   // Apply every declared author-controlled field bound before the shared
   // classifier scans the envelope (§A-EVAL-01).
-  validateResults(envelope, document, unavailable);
+  validateResults(envelope, evaluated, unavailable);
   validateActorIdentity(envelope, criticalProfile, unavailable);
   validateHarness(envelope, unavailable);
   rejectSensitiveOrMachineLocal(envelope, envelope.skill);
   const frozenDigest = expectedDigest(expectedDigests, envelope);
-  if (evaluationDigest(document, envelope) !== frozenDigest) {
+  if (evaluationDigest(evaluated, envelope) !== frozenDigest) {
     throw new Error(`${envelope.skill}: returned evaluation inputs do not match frozen digest`);
   }
   validateExecution(envelope, unavailable, frozenDigest);
@@ -332,6 +347,35 @@ export function legacyProfileDiagnostic(evidence) {
     .filter((profile) => LEGACY_REQUIRED_PROFILES.has(profile));
   if (profiles.length === 0) return null;
   return { status: "legacy", accepted: false, profiles: [...new Set(profiles)].sort() };
+}
+
+/**
+ * Admit one envelope per coordinate and one coordinate per native execution.
+ *
+ * A turn reused for a second case or profile would count one judgement as two.
+ */
+function registerCoordinate(envelope, seen) {
+  const key = evaluationCoordinate(envelope);
+  const executionId = envelope.execution?.id;
+  if (seen.has(key)) throw new Error(`duplicate evidence ${key}`);
+  const owner = [...seen.entries()].find(([, id]) => id === executionId);
+  if (owner) throw new Error(`${key}: execution ${executionId} already evidences ${owner[0]}`);
+  seen.set(key, executionId);
+}
+
+/** Fail unless every case of every skill has evidence on every matrix profile. */
+function requireEveryCase(corpus, envelopes) {
+  const covered = new Set(
+    envelopes.map(({ skill, caseId, matrixProfile }) => `${skill}:${caseId}:${matrixProfile}`),
+  );
+  const missing = EXPECTED_SKILLS.flatMap((skill) =>
+    corpus
+      .get(skill)
+      .cases.flatMap(({ id }) =>
+        EXPECTED_MATRIX.map(({ matrixProfile }) => `${skill}:${id}:${matrixProfile}`),
+      ),
+  ).filter((coordinate) => !covered.has(coordinate));
+  if (missing.length > 0) throw new Error(`missing case evidence: ${missing.join(", ")}`);
 }
 
 /** §A-EVAL-01 verifies exact identity, completeness and redaction of live eval evidence. */
@@ -360,13 +404,11 @@ export function validateEvidence(root, evidence, candidate, requireAll = false, 
     throw new Error("candidate is not current HEAD");
   const corpus = loadCorpus(root);
   const envelopes = Array.isArray(evidence) ? evidence : [evidence];
-  const seen = new Set();
+  const seen = new Map();
   const compositeIdentities = new Set();
   const nonPass = [];
   for (const envelope of envelopes) {
-    const key = `${envelope.skill}:${envelope.matrixProfile}:${envelope.repetition}`;
-    if (seen.has(key)) throw new Error(`duplicate evidence ${key}`);
-    seen.add(key);
+    registerCoordinate(envelope, seen);
     registerCompositeIdentities(envelope, compositeIdentities);
     nonPass.push(
       ...validateEnvelope(
@@ -380,15 +422,7 @@ export function validateEvidence(root, evidence, candidate, requireAll = false, 
       ),
     );
   }
-  if (requireAll) {
-    const covered = new Set(
-      envelopes.map(({ skill, matrixProfile }) => `${skill}:${matrixProfile}`),
-    );
-    const missing = EXPECTED_SKILLS.flatMap((skill) =>
-      EXPECTED_MATRIX.map(({ matrixProfile }) => `${skill}:${matrixProfile}`),
-    ).filter((coordinate) => !covered.has(coordinate));
-    if (missing.length > 0) throw new Error(`missing skill evidence: ${missing.join(", ")}`);
-  }
+  if (requireAll) requireEveryCase(corpus, envelopes);
   const aggregate = buildEvidenceAggregate(envelopes, AGGREGATE_MATRIX_ORDER);
   return { envelopes: envelopes.length, nonPass, aggregate };
 }
@@ -396,14 +430,14 @@ export function validateEvidence(root, evidence, candidate, requireAll = false, 
 function usage() {
   return `usage:
   node tools/skill-evals.mjs --check
-  node tools/skill-evals.mjs --prompt <skill> --expectations-out <json> --candidate <sha> --tier <required|desired|critical> --matrix-profile <name> --route <route> --model <id> --effort <level> --harness <name> --harness-version <version> --profile-version <version> --quantization <value> --context <value> --sampling <value> --tool-permissions <csv> [--repetition 1]
-  node tools/skill-evals.mjs --availability-probe <skill> --expectations-out <json> --candidate <sha> --tier desired --matrix-profile <name> --route <route> --model <id> --effort <level> --harness <name> [--repetition 1]
+  node tools/skill-evals.mjs --prompt <skill> --case <case-id> --expectations-out <json> --candidate <sha> --tier <required|desired|critical> --matrix-profile <name> --route <route> --model <id> --effort <level> --harness <name> --harness-version <version> --profile-version <version> --quantization <value> --context <value> --sampling <value> --tool-permissions <csv> [--repetition 1]
+  node tools/skill-evals.mjs --availability-probe <skill> --case <case-id> --expectations-out <json> --candidate <sha> --tier desired --matrix-profile <name> --route <route> --model <id> --effort <level> --harness <name> [--repetition 1]
   node tools/skill-evals.mjs --validate-evidence <json> --expectations <json> --execution-observations <json> --candidate <sha> [--require-all] [--critical-profile <route/model/effort>]\n`;
 }
 
 async function main() {
   // prettier-ignore
-  const stringOptions = ["prompt", "availability-probe", "candidate", "route", "model", "effort", "harness", "harness-version", "profile-version", "quantization", "context", "sampling", "tool-permissions", "repetition", "tier", "matrix-profile", "validate-evidence", "expectations", "expectations-out", "execution-observations", "critical-profile"];
+  const stringOptions = ["prompt", "availability-probe", "case", "candidate", "route", "model", "effort", "harness", "harness-version", "profile-version", "quantization", "context", "sampling", "tool-permissions", "repetition", "tier", "matrix-profile", "validate-evidence", "expectations", "expectations-out", "execution-observations", "critical-profile"];
   const booleanOptions = ["check", "require-all"];
   const options = Object.fromEntries(stringOptions.map((name) => [name, { type: "string" }]));
   for (const name of booleanOptions) options[name] = { type: "boolean" };
