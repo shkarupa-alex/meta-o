@@ -192,31 +192,53 @@ const CODEX_CONTEXT =
   /^[ \t]+\S[^\n]*? · Context (\d+)% used(?: · (\d+(?:\.\d+)?)([KM]) window(?= ·|$))?/mu;
 const CLAUDE_CONTEXT = /Context [░▒▓█]+ (\d+(?:\.\d+)?)([kM]?)\/(\d+(?:\.\d+)?)([kM])(?=\s|$)/mu;
 
+/** Every match of a pattern, which is compiled without the global flag. */
+function allMatches(pattern, text) {
+  return [...text.matchAll(new RegExp(pattern.source, `${pattern.flags}g`))];
+}
+
+/**
+ * The harness chrome below the composer, where the indicator is painted.
+ *
+ * Transcript rows above the composer can quote an indicator verbatim — a
+ * review of this very classifier prints its fixtures — so the first match in
+ * the frame is not the harness's. The composer is the last one on the screen:
+ * a submitted prompt stays in the scrollback above it. Codex paints its meter
+ * on the footer row the composer pattern already anchors on; Claude paints its
+ * status rows after the composer's closing rule.
+ */
+function chromeBelowComposer(frame, harness) {
+  const composer = allMatches(harness === "codex" ? CODEX_COMPOSER : CLAUDE_COMPOSER, frame).at(-1);
+  if (composer === undefined) return null;
+  if (harness === "claude") return frame.slice(composer.index + composer[0].length);
+  return frame.slice(frame.indexOf("\n", composer.index) + 1);
+}
+
 /**
  * Read the context indicator a harness paints, and nothing it does not paint.
  *
  * §A-DELIVERY-01 serves a hot-slot decision here: an older review slot stays
  * hot only on a proven small context. Codex shows a percentage and, after its
  * first turn, the window beside it; Claude's status line shows used tokens over
- * the window. A cut, partial or absent indicator is `unknown`, never a guess.
+ * the window. A cut, partial, absent or repeated indicator is `unknown`, never
+ * a guess, and only the chrome below the composer is read.
  */
 export function contextIndicator(frame, harness) {
+  if (harness !== "codex" && harness !== "claude") return { kind: "unknown" };
+  const chrome = chromeBelowComposer(frame, harness);
+  if (chrome === null) return { kind: "unknown" };
+  const found = allMatches(harness === "codex" ? CODEX_CONTEXT : CLAUDE_CONTEXT, chrome);
+  if (found.length !== 1) return { kind: "unknown" };
+  const [match] = found;
   if (harness === "codex") {
-    const match = CODEX_CONTEXT.exec(frame);
-    if (match === null) return { kind: "unknown" };
     const window = match[2] === undefined ? undefined : Number(match[2]) * UNIT[match[3]];
     return { kind: "percent", usedPercent: Number(match[1]), window };
   }
-  if (harness === "claude") {
-    const match = CLAUDE_CONTEXT.exec(frame);
-    if (match === null) return { kind: "unknown" };
-    return {
-      kind: "absolute",
-      used: Math.round(Number(match[1]) * UNIT[match[2]]),
-      window: Math.round(Number(match[3]) * UNIT[match[4]]),
-    };
-  }
-  return { kind: "unknown" };
+  return {
+    kind: "absolute",
+    used: Math.round(Number(match[1]) * UNIT[match[2]]),
+    window: Math.round(Number(match[3]) * UNIT[match[4]]),
+  };
 }
 
 /**

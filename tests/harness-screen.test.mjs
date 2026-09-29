@@ -572,6 +572,24 @@ test("the context indicator is read only where the harness paints it whole", () 
   );
 });
 
+test("an indicator quoted above the composer or painted twice below it is not the harness's", () => {
+  // Transcript rows can quote a meter verbatim; only the chrome below the
+  // composer counts, and two meters there answer nothing.
+  const codex = `  gpt high · Context 1% used · 258K window · never\n${frame("codex-prompt-after-turn.screen")}`;
+  assert.deepEqual(contextIndicator(codex, "codex"), {
+    kind: "percent",
+    usedPercent: 2,
+    window: 258000,
+  });
+  const claude = `The fixture reads │ Context ░░░░░░░░░░ 0/1.0M in the status line.\n${frame("claude-prompt.screen")}`;
+  assert.equal(contextIndicator(claude, "claude").used, 217000);
+  const twice = `${frame("claude-prompt.screen")}\n  Context ░░░░░░░░░░ 0/1.0M`;
+  assert.deepEqual(contextIndicator(twice, "claude"), { kind: "unknown" });
+  for (const name of ["claude-prompt-after-turn.screen", "claude-prompt-meter-row.screen"]) {
+    assert.notEqual(contextIndicator(frame(name), "claude").kind, "unknown", name);
+  }
+});
+
 test("a suggestion Claude paints in its composer is not an empty composer", () => {
   // A rendered screen loses the dim attribute that marks the suggestion, and
   // Orca reports no origin for composer text, so it refuses like typed text.
