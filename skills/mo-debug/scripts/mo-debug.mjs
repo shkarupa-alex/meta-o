@@ -49,20 +49,32 @@ function quoteContexts(text) {
   let stack = [];
   let at = 0;
   while (at < text.length) {
-    const token2 = quoteAt(text, at);
-    if (!token2) {
-      contexts[at] = stack;
-      at += 1;
-      continue;
-    }
-    for (let index = at; index < token2.end; index += 1) contexts[index] = stack;
-    const top = stack.at(-1);
-    if (top && closes(top, token2)) stack = stack.slice(0, -1);
-    else if (token2.kind === "'" || token2.level === levelOf(stack)) stack = [...stack, token2];
-    at = token2.end;
+    const step = contextStep(text, at, stack);
+    for (let index = at; index < step.next; index += 1) contexts[index] = stack;
+    stack = step.stack;
+    at = step.next;
   }
   contexts[text.length] = stack;
   return contexts;
+}
+var LETTER = new RegExp("\\p{L}", "u");
+function contextStep(text, at, stack) {
+  const top = stack.at(-1) ?? null;
+  const token2 = quoteAt(text, at);
+  if (!token2) {
+    const escapes = text[at] === "\\" && top?.kind !== "'" && at + 1 < text.length;
+    return { next: at + (escapes ? 2 : 1), stack };
+  }
+  return { next: token2.end, stack: stackAfter(text, token2, stack, top) };
+}
+function stackAfter(text, token2, stack, top) {
+  if (top?.kind === "'") return token2.kind === "'" ? stack.slice(0, -1) : stack;
+  if (token2.kind === "'") {
+    const prose = LETTER.test(text[token2.start - 1] ?? "") && LETTER.test(text[token2.end] ?? "");
+    return top || prose ? stack : [...stack, token2];
+  }
+  if (top && closes(top, token2)) return stack.slice(0, -1);
+  return token2.level === levelOf(stack) ? [...stack, token2] : stack;
 }
 function shellWord(text, start, stack) {
   const context = { enclosing: stack.at(-1) ?? null, level: levelOf(stack) };
@@ -76,22 +88,31 @@ function shellWord(text, start, stack) {
   }
   return { end: at, segments };
 }
+var AFTER_CLOSE = /* @__PURE__ */ new Set([...WORD_END, ",", "}", "]", ":", '"', "'", "\\"]);
 function wordStep(text, at, first, { enclosing, level }) {
   const token2 = quoteAt(text, at);
   if (!token2) {
     if (WORD_END.has(text[at])) return null;
     return { next: at + (text[at] === "\\" && at + 1 < text.length ? 2 : 1) };
   }
-  if (!first && enclosing && closes(enclosing, token2)) return null;
-  if (first || token2.kind === "'" || token2.level === level) {
-    const end = segmentEnd(text, token2);
-    const open = text.slice(token2.start, token2.end);
-    return {
-      next: end.at,
-      segment: { open, close: end.closed ? open : "", start: at, end: end.at }
-    };
+  if (token2.kind === '"' && token2.level > level) return { next: token2.end };
+  const own = token2.kind === "'" || token2.level === level;
+  const ends = !first && (own ? Boolean(enclosing) && closes(enclosing, token2) : true);
+  if (ends) {
+    const closing = closingStep(text, token2);
+    if (closing !== void 0) return closing;
   }
-  return token2.level > level ? { next: token2.end } : null;
+  const end = segmentEnd(text, token2);
+  const open = text.slice(token2.start, token2.end);
+  return { next: end.at, segment: { open, close: end.closed ? open : "", start: at, end: end.at } };
+}
+function closingStep(text, token2) {
+  const again = quoteAt(text, token2.end);
+  if (again && again.kind === token2.kind && again.level === token2.level) {
+    return { next: again.end };
+  }
+  if (token2.end >= text.length || AFTER_CLOSE.has(text[token2.end])) return null;
+  return void 0;
 }
 function segmentEnd(text, token2) {
   let at = token2.end;
@@ -145,7 +166,8 @@ function maskUser(text, start, word, glued) {
   const inside = word.segments.find((segment) => segment.start < at && at < segment.end);
   if (inside) {
     const secret = text.slice(at + 1, inside.end - inside.close.length);
-    if (secret === "" || PLACEHOLDER.test(secret)) return value;
+    const whole = inside.end === word.end;
+    if (whole && (secret === "" || PLACEHOLDER.test(secret))) return value;
     return `${text.slice(start, at + 1)}[REDACTED:user_credentials]${inside.close}`;
   }
   if (at + 1 >= word.end) return null;

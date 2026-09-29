@@ -83,7 +83,10 @@ function maskUser(text, start, word, glued) {
   const inside = word.segments.find((segment) => segment.start < at && at < segment.end);
   if (inside) {
     const secret = text.slice(at + 1, inside.end - inside.close.length);
-    if (secret === "" || PLACEHOLDER.test(secret)) return value;
+    // A typed placeholder is kept only when it is the whole password: bytes
+    // after the segment are more of the same password.
+    const whole = inside.end === word.end;
+    if (whole && (secret === "" || PLACEHOLDER.test(secret))) return value;
     return `${text.slice(start, at + 1)}[REDACTED:user_credentials]${inside.close}`;
   }
   if (at + 1 >= word.end) return null;

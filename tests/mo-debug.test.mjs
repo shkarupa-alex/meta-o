@@ -756,6 +756,32 @@ test("a short or option-form credential is redacted, in both harnesses' records"
       '{"cmd":"bash -c \\"x --token abc\\"","cwd":"docs/y"}',
       '{"cmd":"bash -c \\"x --token [REDACTED:flag]\\"","cwd":"docs/y"}',
     ],
+    // An apostrophe in prose, inside double quotes or escaped is no quote, and
+    // a typed placeholder keeps its type only when it is the whole password.
+    [
+      "echo don\\'t; x --password pre' secret'post tail",
+      "echo don\\'t; x --password [REDACTED:flag] tail",
+    ],
+    [
+      'git commit -m "don\'t" && curl -u alice:"correct horse" https://h',
+      'git commit -m "don\'t" && curl -u alice:"[REDACTED:user_credentials]" https://h',
+    ],
+    [
+      "$mo-debug it didn't work: curl -u alice:'correct horse' https://h",
+      "$mo-debug it didn't work: curl -u alice:'[REDACTED:user_credentials]' https://h",
+    ],
+    [
+      'echo "it\'s" && x --password pre"correct horse"post tail',
+      'echo "it\'s" && x --password [REDACTED:flag] tail',
+    ],
+    [
+      'curl -u "bob:ghp_AAAAAAAAAAAAAAAAAAAA"-extra https://h',
+      'curl -u "bob:[REDACTED:user_credentials]" https://h',
+    ],
+    [
+      'bash -c "x --password pre""post" && ls docs/q',
+      'bash -c "x --password [REDACTED:flag]" && ls docs/q',
+    ],
     // A quote that closes an enclosing string or a JSON string ends the word.
     ['bash -c "x --token abc" && ls docs/x', 'bash -c "x --token [REDACTED:flag]" && ls docs/x'],
     [
@@ -788,7 +814,7 @@ test("a short or option-form credential is redacted, in both harnesses' records"
     "ATATT3xFfGF0",
   ];
   const command =
-    'docker login --password s3cr3tValue && mysql -p"correct horse" db && x --password zzpre" correct horse"zzpost && pwd=PIN12 node ~/.claude/skills/mo-setup/scripts/mo-setup.mjs check';
+    'git commit -m "don\'t" && docker login --password s3cr3tValue && mysql -p"correct horse" db && x --password zzpre" correct horse"zzpost && pwd=PIN12 node ~/.claude/skills/mo-setup/scripts/mo-setup.mjs check';
   const UUID = "9f8e7d6c-5b4a-4321-8fed-cba987654323";
   const claudeRecord = {
     sessionId: UUID,
@@ -824,6 +850,57 @@ test("a short or option-form credential is redacted, in both harnesses' records"
     // The event rows exist and carry the typed marker, so the value was read and replaced.
     assert.equal(eventRows(report).length > 0, true, id);
     assert.match(report, /REDACTED:flag/u, id);
+  }
+});
+
+test("no credential byte survives any enclosing text, argument shape or following text", () => {
+  // Whether a quote ends the credential word or opens part of it depends on
+  // everything before the word, so every shape is tried after every kind of
+  // enclosing text and before every kind of following text.
+  const prefixes = [
+    "",
+    'git commit -m "don\'t" && ',
+    "echo don\\'t; ",
+    "it didn't work: ",
+    'bash -c "',
+    '{"cmd":"',
+    '{"cmd":"bash -c \\"',
+    `echo "a'b" 'c"d' && `,
+    "(",
+    "x | ",
+    "$mo-debug with ",
+  ];
+  const shapes = [
+    "--password Zq9Secret",
+    '--password pre"Zq9 Secret"post',
+    "--password pre' Zq9 Secret'post",
+    '--password pre""Zq9post',
+    'mysql -p"Zq9 Secret"x db',
+    "mysql -pZq9\\ Secret db",
+    'curl -u alice:"Zq9 Secret"',
+    "curl -u alice:' Zq9 Secret'",
+    'curl -u "alice:Zq9 Secret"-Zq9tail',
+    'PASSWORD=pre"Zq9 Secret"post',
+    'x --token "a\\"Zq9 Secret"',
+    "curl -u me@x.com:Zq9Secret",
+    "curl --user uid=a/b:Zq9Secret",
+    "curl -ubob:Zq9Secret",
+    "-Token Zq9Secret",
+    'curl -u "bob:ghp_AAAAAAAAAAAAAAAAAAAA"-Zq9x',
+    "token=Zq9",
+    "api_key: 'Zq9 Secret'",
+    '"password": "Zq9 Secret"',
+  ];
+  const suffixes = [" tail", '" && ls', '","cwd":"x"}', '\\"","cwd":"x"}', "' && ls", "", ")"];
+  for (const prefix of prefixes) {
+    for (const shape of shapes) {
+      for (const suffix of suffixes) {
+        const input = `${prefix}${shape}${suffix}`;
+        const redacted = redact(input);
+        assert.doesNotMatch(redacted, /Zq9|Secret/u, input);
+        assert.equal(redact(redacted), redacted, input);
+      }
+    }
   }
 });
 

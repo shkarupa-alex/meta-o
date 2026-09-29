@@ -78,7 +78,7 @@ export const BUNDLES = {
   // No third-party root: the bundle exists to merge the helper's own modules
   // into the one file a standalone skill can run.
   "scripts/mo-debug.mjs": {
-    baselineBytes: 38_463,
+    baselineBytes: 48_783,
     roots: [],
   },
 };
