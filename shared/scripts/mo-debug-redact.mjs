@@ -70,12 +70,37 @@ const SECRETS = [
   ],
   [
     // A key that *ends* in a credential word, then `=` or `:`. Requiring the
-    // word at the end keeps `max_output_tokens: 30000` and `token_count` out.
+    // word at the end keeps `max_output_tokens: 30000` and `token_count` out,
+    // so the value needs no minimum length: `pwd=123` is a whole PIN. A value
+    // opening an object or a list is structure, not a credential.
     new RegExp(
-      `\\b(${CREDENTIAL_KEY})(["']?\\s*[=:]\\s*["']?)(?!\\[REDACTED)([^\\s"'&,;}]{4,})`,
+      `\\b(${CREDENTIAL_KEY})(["']?\\s*[=:]\\s*["']?)(?!\\[REDACTED)(?![[{])([^\\s"'&,;}]+)`,
       "giu",
     ),
     (_, key, separator) => `${key}${separator}[REDACTED:assignment]`,
+  ],
+  [
+    // The same key as a command-line option whose value is the next argument:
+    // `--password s3cret`, `--api-key "a b"`. A next argument that is itself an
+    // option means the value was prompted for, and nothing follows to redact.
+    new RegExp(
+      `(?<=^|[\\s"'\`(])(-{1,2}${CREDENTIAL_KEY})(\\s+)(?!-)(?!\\[REDACTED)(?:(\\\\?["'])(?:(?!\\3)[^\\n])*(?:\\3|$)|[^\\s"'&;|)]+)`,
+      "gu",
+    ),
+    (_, flag, space, quote) =>
+      quote ? `${flag}${space}${quote}[REDACTED:flag]${quote}` : `${flag}${space}[REDACTED:flag]`,
+  ],
+  [
+    // A MySQL-family client takes its password glued to `-p`; a bare `-p`
+    // prompts instead. `-P` is the port and stays.
+    /(\b(?:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump)\b[^\n|;&]*?\s-p)(?!\[REDACTED)[^\s"'&;|]+/gu,
+    (_, head) => `${head}[REDACTED:flag]`,
+  ],
+  [
+    // `curl -u user:pass` and its kin carry the password after the colon of the
+    // user argument, with no URL around it for the scheme rule to catch.
+    /((?:^|\s)(?:-u|--user)(?:\s+|=)["']?[^\s:"'@]+:)(?!\[REDACTED)[^\s"'@&;|]+/gu,
+    (_, head) => `${head}[REDACTED:user_credentials]`,
   ],
 ];
 

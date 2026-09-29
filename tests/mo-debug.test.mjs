@@ -674,6 +674,67 @@ test("a quoted multi-word credential is redacted whole, in both harnesses' recor
   assert.equal(/x{8}|tail/u.test(cut), false, cut);
 });
 
+test("a short or option-form credential is redacted, in both harnesses' records", () => {
+  const cases = [
+    [
+      "pwd=x password=12 token=abc",
+      "pwd=[REDACTED:assignment] password=[REDACTED:assignment] token=[REDACTED:assignment]",
+    ],
+    [
+      "docker login -u bob --password s3cr3tValue reg.example",
+      "docker login -u bob --password [REDACTED:flag] reg.example",
+    ],
+    ["gh auth login --token 0a1b2c3d4e5f", "gh auth login --token [REDACTED:flag]"],
+    ['x --api-key "k3y Value" tail', 'x --api-key "[REDACTED:flag]" tail'],
+    ["mysql -u root -ps3cret db", "mysql -u root -p[REDACTED:flag] db"],
+    ["curl -u bob:s3cret https://host/x", "curl -u bob:[REDACTED:user_credentials] https://host/x"],
+  ];
+  for (const [input, expected] of cases) {
+    assert.equal(redact(input), expected);
+    assert.equal(redact(expected), expected, `idempotent: ${expected}`);
+  }
+  // A counter or a prompted option is not a credential and stays readable.
+  const kept =
+    "max_output_tokens=3 token_count=2 --max-tokens 5 mysql -P3306 -p db --password --stdin";
+  assert.equal(redact(kept), kept);
+
+  const { home, claude, codex } = fixtureHome();
+  const values = ["s3cr3tValue", "0a1b2c3d4e5f", "PIN12"];
+  const command =
+    "docker login --password s3cr3tValue && pwd=PIN12 node ~/.claude/skills/mo-setup/scripts/mo-setup.mjs check";
+  const UUID = "9f8e7d6c-5b4a-4321-8fed-cba987654323";
+  const claudeRecord = {
+    sessionId: UUID,
+    type: "assistant",
+    timestamp: "2026-09-01T12:00:00.000Z",
+    message: {
+      role: "assistant",
+      content: [{ type: "tool_use", id: "toolu_f", name: "Bash", input: { command } }],
+    },
+  };
+  writeFileSync(join(claude, `${UUID}.jsonl`), `${JSON.stringify(claudeRecord)}\n`);
+  const rollout = join(codex, `rollout-2026-09-01T11-00-00-${CODEX_ID}.jsonl`);
+  const codexRecord = {
+    timestamp: "2026-09-01T11:05:00.000Z",
+    type: "response_item",
+    payload: {
+      type: "message",
+      role: "user",
+      content: [{ type: "input_text", text: "$mo-debug with --token 0a1b2c3d4e5f" }],
+    },
+  };
+  writeFileSync(rollout, `${readFileSync(rollout, "utf8")}${JSON.stringify(codexRecord)}\n`);
+  for (const id of [UUID, CODEX_ID]) {
+    const { result, report } = reportOf(home, ["scan", "--session", id]);
+    assert.equal(result.status, 0, result.stderr);
+    const output = `${result.stdout}\n${report}`;
+    for (const value of values) assert.equal(output.includes(value), false, `${id}: ${value}`);
+    // The event rows exist and carry the typed marker, so the value was read and replaced.
+    assert.equal(eventRows(report).length > 0, true, id);
+    assert.match(report, /REDACTED:flag/u, id);
+  }
+});
+
 test("--out creates a private new file and refuses to overwrite an existing one", () => {
   const { home } = fixtureHome();
   const { result, out } = reportOf(home, ["scan", "--session", CLAUDE_ID]);
