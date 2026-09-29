@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-review-orca or an act
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "b78e03ee4bf566016d0c5e88f4e403b3cfae03a2"
+  source_tree: "20f86c05f81db86ed77697cf41e7f97d33481a63"
 ---
 
 # Review through Orca
@@ -199,7 +199,12 @@ report. The round report repeats the whole value next to
 `prepared_body_identity`. Before either Dispatch, read that file; when it is
 absent, unreadable from the reviewer's workspace, carries no stamp, lacks one of
 the three files, or is not the same build as this skill, no Dispatch starts and
-the result is `needs_attention/skill_unavailable`. Never paste reviewer
+the result is `needs_attention/skill_unavailable`. Same build means that its
+`protocol` and `validator` ids equal `git hash-object` of this skill's own
+`references/review-protocol.md` and `scripts/mo-review-report.mjs`: one build
+ships those two files byte for byte in both skills. The two `source_tree`
+stamps are not compared, because each hashes its own skill's inputs and they
+differ by design. Never paste reviewer
 instructions from a copy of unknown origin. The recorded value is not proved
 against Meta-O history: an installation does not know its source commit, and the
 project under review usually has no Meta-O history at all.

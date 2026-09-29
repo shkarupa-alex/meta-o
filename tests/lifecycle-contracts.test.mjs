@@ -960,6 +960,18 @@ test("an isolated reviewer workspace stands on the candidate", () => {
   }
 });
 
+test("the coordinator and the reviewer ship the same protocol and validator bytes", () => {
+  // The same-build check compares these two files, so one build must ship them
+  // byte for byte in both skills.
+  for (const file of ["references/review-protocol.md", "scripts/mo-review-report.mjs"]) {
+    assert.equal(
+      source(`skills/mo-reviewer/${file}`),
+      source(`skills/mo-review-orca/${file}`),
+      file,
+    );
+  }
+});
+
 test("a Codex trust failure is recovered inside the supported harness, never by codex exec", () => {
   // #43 is external_blocked on Orca, so this rule is what the outcome rests on
   // until then: without the check, dropping or inverting it passed every gate.
@@ -1033,6 +1045,9 @@ test("every reviewer Dispatch records the installed reviewer version", () => {
     assert.equal(review.includes(`\`${stamp}\` followed by \`${ids}\``), true, path);
     assert.match(review, /immediately before the Dispatch, take `git hash-object`/u, path);
     assert.match(review, /carries no stamp, lacks one of the three files/u, path);
+    // "Same build" is decidable from the record and this skill's own files.
+    assert.match(review, /Same build means that its `protocol` and `validator` ids equal/u, path);
+    assert.match(review, /The two `source_tree` stamps are not compared/u, path);
     assert.match(review, /repeats the whole value next to `prepared_body_identity`/u, path);
   }
   // The stamp can name all three only while the skill bundles the other two.
