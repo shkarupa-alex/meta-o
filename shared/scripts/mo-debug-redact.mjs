@@ -114,9 +114,15 @@ function redactShellWords(text) {
   let out = "";
   let copied = 0;
   for (const { kind, glued, start } of starts) {
-    if (start < copied) continue;
     const word = shellWord(text, start, contexts[start]);
     if (word.end === start) continue;
+    if (start < copied) {
+      // A credential word that starts inside one already masked is still read
+      // whole, and the earlier placeholder now stands for both: skipping it
+      // left whatever of it lay past the earlier word.
+      copied = Math.max(copied, word.end);
+      continue;
+    }
     const masked =
       kind === "user" ? maskUser(text, start, word, glued) : mask(text, start, word, kind);
     if (masked === null) continue;

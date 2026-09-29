@@ -792,6 +792,17 @@ const OPTION_FORM_CASES = [
     "the '90s login: curl -u alice:'[REDACTED:user_credentials]' https://h",
   ],
   ["bash -c 'x --token abc' && ls docs/q", "bash -c 'x --token [REDACTED:flag]' && ls docs/q"],
+  // A credential word ending a real `bash -c '…'` string ends there, and a
+  // phantom quote never shortens a later one, closed or not.
+  [
+    "bash -c 'x --token abc' && y --password 'Zq9 Secret' tail",
+    "bash -c 'x --token [REDACTED:flag]' && y --password '[REDACTED:flag]' tail",
+  ],
+  [
+    "ssh h 'deploy --token abc' && curl -u 'bob:correct horse' https://h",
+    "ssh h 'deploy --token [REDACTED:flag]' && curl -u 'bob:[REDACTED:user_credentials]' https://h",
+  ],
+  ["the '90s login: x --password pre' Zq9 Secret", "the '90s login: x --password [REDACTED:flag]"],
   // A quote that closes an enclosing string or a JSON string ends the word.
   ['bash -c "x --token abc" && ls docs/x', 'bash -c "x --token [REDACTED:flag]" && ls docs/x'],
   ['{"cmd":"x --token abc","cwd":"docs/y"}', '{"cmd":"x --token [REDACTED:flag]","cwd":"docs/y"}'],
@@ -838,7 +849,29 @@ test("a short or option-form credential is redacted, in both harnesses' records"
       content: [{ type: "tool_use", id: "toolu_f", name: "Bash", input: { command } }],
     },
   };
-  writeFileSync(join(claude, `${UUID}.jsonl`), `${JSON.stringify(claudeRecord)}\n`);
+  // An unclosed quote after a phantom one hides everything after it, so it
+  // gets a record of its own rather than blinding the checks above.
+  const unclosed = {
+    ...claudeRecord,
+    message: {
+      role: "assistant",
+      content: [
+        {
+          type: "tool_use",
+          id: "toolu_g",
+          name: "Bash",
+          input: {
+            command:
+              "echo the '90s && node ~/.claude/skills/mo-setup/scripts/mo-setup.mjs check --password zzpre' Zq9 Secret",
+          },
+        },
+      ],
+    },
+  };
+  writeFileSync(
+    join(claude, `${UUID}.jsonl`),
+    `${JSON.stringify(claudeRecord)}\n${JSON.stringify(unclosed)}\n`,
+  );
   const rollout = join(codex, `rollout-2026-09-01T11-00-00-${CODEX_ID}.jsonl`);
   const codexRecord = {
     timestamp: "2026-09-01T11:05:00.000Z",
@@ -888,7 +921,10 @@ test("no credential byte survives after these enclosing texts, in any shape or f
     "2026's note: ",
     "the '90s login: ",
     "git commit -m'fix it' && ",
-    "ssh h '",
+    "it's 'quoted' then ",
+    // A closed command string that ends in a credential of its own.
+    "bash -c 'x --token Zq9A' && ",
+    "ssh h 'deploy --token Zq9A' && ",
   ];
   const shapes = [
     "--password Zq9Secret",
@@ -910,6 +946,13 @@ test("no credential byte survives after these enclosing texts, in any shape or f
     "token=Zq9",
     "api_key: 'Zq9 Secret'",
     '"password": "Zq9 Secret"',
+    // Unclosed, so the password runs to the end of the text.
+    "--password pre' Zq9 Secret",
+    "PASSWORD=pre' Zq9 Secret",
+    "curl -u alice:' Zq9 Secret",
+    // Quoted whole, after a closed command string that ended a credential.
+    "y --password 'Zq9 Secret'",
+    "curl -u 'bob:Zq9 Secret' https://h",
   ];
   const suffixes = [" tail", '" && ls', '","cwd":"x"}', '\\"","cwd":"x"}', "' && ls", "", ")"];
   for (const prefix of prefixes) {

@@ -108,6 +108,18 @@ function contextStep(text, at, stack) {
   return { next: token.end, stack: stackAfter(text, token, stack, top) };
 }
 
+// A single quote that opens right after `sh -c`, `eval` or `ssh <host>` holds
+// a command, so it is really closed later, and a quote that closes it ends
+// the credential word inside it. Any other open single quote may be prose that
+// no shell ever read (`the '90s`), and ending a word there leaked the rest of
+// the password.
+const COMMAND_STRING =
+  /(?:(?:^|[\s;&|(])-c|(?:^|[\s;&|(])eval|(?:^|[\s;&|(])ssh(?:\s+-\S+(?:\s+[^\s-]\S*)?)*\s+[^\s-]\S*)\s+$/u;
+
+function lineBefore(text, at) {
+  return text.slice(text.lastIndexOf("\n", at - 1) + 1, at);
+}
+
 function stackAfter(text, token, stack, top) {
   if (top?.kind === "'") return token.kind === "'" ? stack.slice(0, -1) : stack;
   if (token.kind === "'") {
@@ -115,7 +127,8 @@ function stackAfter(text, token, stack, top) {
       WORD_CHARACTER.test(text[token.start - 1] ?? "") &&
       (WORD_CHARACTER.test(text[token.end] ?? "") ||
         AFTER_POSSESSIVE.test(text.slice(token.end, token.end + 1)));
-    return top || prose ? stack : [...stack, token];
+    if (top || prose) return stack;
+    return [...stack, { ...token, proven: COMMAND_STRING.test(lineBefore(text, token.start)) }];
   }
   if (top && closes(top, token)) return stack.slice(0, -1);
   return token.level === levelOf(stack) ? [...stack, token] : stack;
@@ -186,8 +199,9 @@ function wordStep(text, at, first, { enclosing, level }) {
 
 /**
  * A quote that would close the enclosing string: the word goes on when the
- * same quote opens again at once, ends when a boundary follows and no safer
- * reading exists, and is otherwise undecided, so the caller opens a segment.
+ * same quote opens again at once, ends when a boundary follows and the
+ * enclosing string is known to be real, and is otherwise undecided, so the
+ * caller opens a segment.
  */
 function closingStep(text, token, enclosing) {
   // `pre""post` inside `bash -c "…"` closes the enclosing string and opens it
@@ -197,12 +211,10 @@ function closingStep(text, token, enclosing) {
     return { next: again.end };
   }
   if (token.end < text.length && !AFTER_CLOSE.has(text[token.end])) return undefined;
-  // An enclosing single quote may be a phantom that prose opened (`'90s`), and
-  // then this quote opens part of the password instead. Where that reading
-  // closes within the text it is taken, because the longer word only hides
-  // more; where it never closes, as after `bash -c '… abc' && ls`, this quote
-  // really ends the word.
-  if (enclosing?.kind === "'" && segmentEnd(text, token).closed) return undefined;
+  // An enclosing single quote that no command opened may be a phantom, and
+  // then this quote opens part of the password, closed or not: the longer
+  // word only hides more, to the window edge at worst.
+  if (enclosing?.kind === "'" && !enclosing.proven) return undefined;
   return null;
 }
 

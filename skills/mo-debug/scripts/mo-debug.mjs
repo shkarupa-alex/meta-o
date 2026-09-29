@@ -68,11 +68,16 @@ function contextStep(text, at, stack) {
   }
   return { next: token2.end, stack: stackAfter(text, token2, stack, top) };
 }
+var COMMAND_STRING = /(?:(?:^|[\s;&|(])-c|(?:^|[\s;&|(])eval|(?:^|[\s;&|(])ssh(?:\s+-\S+(?:\s+[^\s-]\S*)?)*\s+[^\s-]\S*)\s+$/u;
+function lineBefore(text, at) {
+  return text.slice(text.lastIndexOf("\n", at - 1) + 1, at);
+}
 function stackAfter(text, token2, stack, top) {
   if (top?.kind === "'") return token2.kind === "'" ? stack.slice(0, -1) : stack;
   if (token2.kind === "'") {
     const prose = WORD_CHARACTER.test(text[token2.start - 1] ?? "") && (WORD_CHARACTER.test(text[token2.end] ?? "") || AFTER_POSSESSIVE.test(text.slice(token2.end, token2.end + 1)));
-    return top || prose ? stack : [...stack, token2];
+    if (top || prose) return stack;
+    return [...stack, { ...token2, proven: COMMAND_STRING.test(lineBefore(text, token2.start)) }];
   }
   if (top && closes(top, token2)) return stack.slice(0, -1);
   return token2.level === levelOf(stack) ? [...stack, token2] : stack;
@@ -113,7 +118,7 @@ function closingStep(text, token2, enclosing) {
     return { next: again.end };
   }
   if (token2.end < text.length && !AFTER_CLOSE.has(text[token2.end])) return void 0;
-  if (enclosing?.kind === "'" && segmentEnd(text, token2).closed) return void 0;
+  if (enclosing?.kind === "'" && !enclosing.proven) return void 0;
   return null;
 }
 function segmentEnd(text, token2) {
@@ -189,9 +194,12 @@ function redactShellWords(text) {
   let out = "";
   let copied = 0;
   for (const { kind, glued, start } of starts) {
-    if (start < copied) continue;
     const word = shellWord(text, start, contexts[start]);
     if (word.end === start) continue;
+    if (start < copied) {
+      copied = Math.max(copied, word.end);
+      continue;
+    }
     const masked = kind === "user" ? maskUser(text, start, word, glued) : mask(text, start, word, kind);
     if (masked === null) continue;
     out += text.slice(copied, start) + masked;
