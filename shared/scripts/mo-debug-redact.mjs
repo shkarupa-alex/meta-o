@@ -105,11 +105,12 @@ function shellWordRanges(text, contexts) {
   for (const trigger of WORD_TRIGGERS) {
     for (const match of text.matchAll(trigger.pattern)) {
       const start = match.index + match[0].length;
-      const read = shellWord(text, start, contexts[start]);
+      const stack = contexts()[start];
+      const read = shellWord(text, start, stack);
       if (read.end === start) continue;
       const end =
         trigger.kind === "assignment"
-          ? Math.max(read.end, dataStringEnd(text, read.end, contexts[start]))
+          ? Math.max(read.end, dataStringEnd(text, read.end, stack))
           : read.end;
       const word = end === read.end ? read : { end, segments: [] };
       const value =
@@ -191,8 +192,9 @@ const ASSIGNMENTS = [
 
 /**
  * The value range of every `ASSIGNMENTS` match, with the placeholder for it.
- * A bare value is read in the quote context of its key, and only when no
- * quote ends the separator: `password: '…'` is the quoted rule's, whole.
+ * A bare value runs to the end of a data string that encloses the value
+ * itself, and only when no quote ends the separator: `password: '…'` is the
+ * quoted rule's, whole, and in `"token": 5` the key's own string has closed.
  */
 function assignmentRanges(text, contexts) {
   const ranges = [];
@@ -202,7 +204,7 @@ function assignmentRanges(text, contexts) {
       const start = match.index + key;
       const read = match.index + match[0].length;
       const data = bare && !/["']$/u.test(match[2]);
-      const end = data ? Math.max(read, dataStringEnd(text, read, contexts[match.index])) : read;
+      const end = data ? Math.max(read, dataStringEnd(text, read, contexts()[start])) : read;
       const value = end === read ? replace(...match).slice(key) : "[REDACTED:assignment]";
       ranges.push({ start, end, value });
     }
@@ -220,7 +222,10 @@ function assignmentRanges(text, contexts) {
  * text left by an earlier one then found no key and let that value through.
  */
 function redactCredentials(text) {
-  const contexts = quoteContexts(text);
+  // The quote contexts cost a pass over the text, so only a text with a
+  // credential key or trigger pays for them.
+  let computed = null;
+  const contexts = () => (computed ??= quoteContexts(text));
   const ranges = [...shellWordRanges(text, contexts), ...assignmentRanges(text, contexts)].sort(
     (left, right) => left.start - right.start || right.end - left.end,
   );

@@ -69,18 +69,24 @@ function contextStep(text, at, stack) {
   return { next: token2.end, stack: stackAfter(text, token2, stack, top) };
 }
 var SHELL = String.raw`(?:^|[^\w.-])(?:[\w.-]*/)*(?:sh|bash|dash|zsh|ksh|mksh|ash|fish)`;
-var SHELL_OPTION = String.raw`(?:\s+(?:--[A-Za-z][\w-]*|-(?!o(?:\s|$))[A-Za-z]+|[-+]o\s+\S+))`;
+var SHELL_OPTION = String.raw`(?:[ \t]+(?:--[A-Za-z][\w-]*|-(?!o(?:[ \t]|$))[A-Za-z]+|[-+]o[ \t]+[^ \t]+))`;
 var COMMAND_STRING = new RegExp(
   [
-    String.raw`${SHELL}${SHELL_OPTION}*?\s+-[A-Za-z]*c[A-Za-z]*`,
-    String.raw`(?:^|[;&|("])\s*eval`,
-    String.raw`(?:^|[^\w.-])(?:[\w.-]*/)*ssh(?:\s+-\S+(?:\s+[^\s-]\S*)?)*\s+[^\s-]\S*`
-  ].map((form) => `(?:${form})\\s+$`).join("|"),
+    String.raw`${SHELL}${SHELL_OPTION}*?[ \t]+-[A-Za-z]*c[A-Za-z]*`,
+    String.raw`(?:^|[;&|("])[ \t]*eval`,
+    String.raw`(?:^|[^\w.-])(?:[\w.-]*/)*ssh(?:[ \t]+-[^ \t]+(?:[ \t]+[^ \t-][^ \t]*)?)*[ \t]+[^ \t-][^ \t]*`
+  ].map((form) => `(?:${form})[ \\t]+$`).join("|"),
   "u"
 );
+var JSON_SPACE = "[ \\t\\r\\n]";
 var JSON_STRING = String.raw`"(?:[^"\\\u0000-\u001f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"`;
-var JSON_SCALAR = String.raw`(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)(?=[\s,\]}]|$)`;
-var JSON_TOKEN = new RegExp(String.raw`\s*(?:(${JSON_STRING})|${JSON_SCALAR}|([{}[\]:,]))`, "uy");
+var JSON_SCALAR = String.raw`(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)(?=${JSON_SPACE}|[,\]}]|$)`;
+var JSON_TOKEN = new RegExp(
+  String.raw`${JSON_SPACE}*(?:(${JSON_STRING})|${JSON_SCALAR}|([{}[\]:,]))`,
+  "uy"
+);
+var JSON_START = new RegExp(`^${JSON_SPACE}*[{[]`, "u");
+var JSON_REST = new RegExp(`^${JSON_SPACE}*$`, "u");
 var JSON_OPEN = { "{": "firstKey", "[": "firstValue" };
 var JSON_KEY = /* @__PURE__ */ new Set(["key", "firstKey"]);
 var JSON_VALUE = /* @__PURE__ */ new Set(["value", "firstValue"]);
@@ -105,10 +111,10 @@ function jsonScalar({ stack, expect }, string) {
   return JSON_VALUE.has(expect) ? { stack, expect: "next" } : null;
 }
 function opensJsonString(prefix) {
-  if (!/^\s*[{[]/u.test(prefix)) return false;
+  if (!JSON_START.test(prefix)) return false;
   let state = { stack: [], expect: "value" };
   JSON_TOKEN.lastIndex = 0;
-  while (!/^\s*$/u.test(prefix.slice(JSON_TOKEN.lastIndex))) {
+  while (!JSON_REST.test(prefix.slice(JSON_TOKEN.lastIndex))) {
     const match = JSON_TOKEN.exec(prefix);
     if (!match) return false;
     state = jsonStep(state, match[1], match[2]);
@@ -252,9 +258,10 @@ function shellWordRanges(text, contexts) {
   for (const trigger of WORD_TRIGGERS) {
     for (const match of text.matchAll(trigger.pattern)) {
       const start = match.index + match[0].length;
-      const read = shellWord(text, start, contexts[start]);
+      const stack = contexts()[start];
+      const read = shellWord(text, start, stack);
       if (read.end === start) continue;
-      const end = trigger.kind === "assignment" ? Math.max(read.end, dataStringEnd(text, read.end, contexts[start])) : read.end;
+      const end = trigger.kind === "assignment" ? Math.max(read.end, dataStringEnd(text, read.end, stack)) : read.end;
       const word = end === read.end ? read : { end, segments: [] };
       const value = trigger.kind === "user" ? maskUser(text, start, word, trigger.glued) : mask(text, start, word, trigger.kind);
       if (value !== null) ranges.push({ start, end: word.end, value });
@@ -324,7 +331,7 @@ function assignmentRanges(text, contexts) {
       const start = match.index + key;
       const read = match.index + match[0].length;
       const data = bare && !/["']$/u.test(match[2]);
-      const end = data ? Math.max(read, dataStringEnd(text, read, contexts[match.index])) : read;
+      const end = data ? Math.max(read, dataStringEnd(text, read, contexts()[start])) : read;
       const value = end === read ? replace(...match).slice(key) : "[REDACTED:assignment]";
       ranges.push({ start, end, value });
     }
@@ -332,7 +339,8 @@ function assignmentRanges(text, contexts) {
   return ranges;
 }
 function redactCredentials(text) {
-  const contexts = quoteContexts(text);
+  let computed = null;
+  const contexts = () => computed ??= quoteContexts(text);
   const ranges = [...shellWordRanges(text, contexts), ...assignmentRanges(text, contexts)].sort(
     (left, right) => left.start - right.start || right.end - left.end
   );

@@ -850,12 +850,31 @@ const OPTION_FORM_CASES = [
     String.raw`{"n":-1.25e+3,"u":"\u0041","e":[],"o":{},"p":[[1],{"q":null}],"c":"x --token abc","d":"e"}`,
     String.raw`{"n":-1.25e+3,"u":"\u0041","e":[],"o":{},"p":[[1],{"q":null}],"c":"x --token [REDACTED:flag]","d":"e"}`,
   ],
+  // JSON whitespace is space, tab, CR and LF only, and a shell splits words at
+  // a space or a tab only; any other space proves nothing.
+  [
+    '[1,\u00a0"90s login: x --password pre" Zq9 Secret',
+    '[1,\u00a0"90s login: x --password [REDACTED:flag]',
+  ],
+  [
+    '[1,\u000b"90s login: x --password pre" Zq9 Secret',
+    '[1,\u000b"90s login: x --password [REDACTED:flag]',
+  ],
+  ['[1,\t"x --token abc","tail"]', '[1,\t"x --token [REDACTED:flag]","tail"]'],
+  ["bash\u00a0-c 'x --token abc' Zq9 Secret", "bash\u00a0-c 'x --token [REDACTED:flag]"],
   // In a string that holds data, a space is part of a `KEY=` value, so the
   // value runs to the string's closing quote; in a command string it does not.
   ["curl -d 'password=Zq9 Secret' https://h", "curl -d 'password=[REDACTED:assignment]"],
   ['{"body":"password=Zq9 Secret","n":1}', '{"body":"password=[REDACTED:assignment]","n":1}'],
   ["bash -c 'PASSWORD=x ls' && y", "bash -c 'PASSWORD=[REDACTED:assignment] ls' && y"],
-  // The same holds for a bare `key: value` there.
+  // The same holds for a bare `key: value` there, but not for one whose key
+  // is a JSON string that has already closed.
+  [
+    '{"access_token": null, "expires_in": 1}',
+    '{"access_token": [REDACTED:assignment], "expires_in": 1}',
+  ],
+  ['INFO {"token": 5, "user": "bob"}', 'INFO {"token": [REDACTED:assignment], "user": "bob"}'],
+  ['{"token": 5} tail', '{"token": [REDACTED:assignment]} tail'],
   ["curl -H 'X-Api-Key: Zq9 Secret' https://h", "curl -H 'X-Api-Key: [REDACTED:assignment]"],
   ['{"note":"password: Zq9 Secret","n":1}', '{"note":"password: [REDACTED:assignment]","n":1}'],
   // A double quote that opens no command string or JSON string may be a
@@ -933,6 +952,7 @@ test("a short or option-form credential is redacted, in both harnesses' records"
     ["toolu_j", `echo note: "90s && ${SETUP} --password zzpre" Zq9 Secret`],
     ["toolu_k", `[1+, "90s && ${SETUP} --password zzpre" Zq9 Secret`],
     ["toolu_l", `curl -H 'X-Api-Key: Zq9 Secret' https://h && ${SETUP}`],
+    ["toolu_m", `[1,\u00a0"90s && ${SETUP} --password zzpre" Zq9 Secret`],
   ].map(([id, command]) => ({
     ...claudeRecord,
     message: {

@@ -116,16 +116,18 @@ function contextStep(text, at, stack) {
 // shell ever read (`the '90s`, `a 12" screen`, `do not eval '…`,
 // `note: "…`), and ending a word there leaked the rest of the password.
 const SHELL = String.raw`(?:^|[^\w.-])(?:[\w.-]*/)*(?:sh|bash|dash|zsh|ksh|mksh|ash|fish)`;
-// Each option token has exactly one reading, `-o` only with its value, so a
-// long line of options that finally fails does not backtrack exponentially.
-const SHELL_OPTION = String.raw`(?:\s+(?:--[A-Za-z][\w-]*|-(?!o(?:\s|$))[A-Za-z]+|[-+]o\s+\S+))`;
+// The shell splits words at a space or a tab only; a U+00A0 or any other
+// space JavaScript's `\s` takes is part of a word. Each option token has
+// exactly one reading, `-o` only with its value, so a long line of options
+// that finally fails does not backtrack exponentially.
+const SHELL_OPTION = String.raw`(?:[ \t]+(?:--[A-Za-z][\w-]*|-(?!o(?:[ \t]|$))[A-Za-z]+|[-+]o[ \t]+[^ \t]+))`;
 const COMMAND_STRING = new RegExp(
   [
-    String.raw`${SHELL}${SHELL_OPTION}*?\s+-[A-Za-z]*c[A-Za-z]*`,
-    String.raw`(?:^|[;&|("])\s*eval`,
-    String.raw`(?:^|[^\w.-])(?:[\w.-]*/)*ssh(?:\s+-\S+(?:\s+[^\s-]\S*)?)*\s+[^\s-]\S*`,
+    String.raw`${SHELL}${SHELL_OPTION}*?[ \t]+-[A-Za-z]*c[A-Za-z]*`,
+    String.raw`(?:^|[;&|("])[ \t]*eval`,
+    String.raw`(?:^|[^\w.-])(?:[\w.-]*/)*ssh(?:[ \t]+-[^ \t]+(?:[ \t]+[^ \t-][^ \t]*)?)*[ \t]+[^ \t-][^ \t]*`,
   ]
-    .map((form) => `(?:${form})\\s+$`)
+    .map((form) => `(?:${form})[ \\t]+$`)
     .join("|"),
   "u",
 );
@@ -134,9 +136,17 @@ const COMMAND_STRING = new RegExp(
 // number or literal that ends where a token may end, or a structural
 // character. `1+`, `01`, `"\\x"` and the like lex as nothing, so the prefix
 // they stand in proves nothing.
+// RFC 8259 whitespace is exactly these four; JavaScript's `\s` also takes
+// U+00A0 and other spaces that no JSON document holds.
+const JSON_SPACE = "[ \\t\\r\\n]";
 const JSON_STRING = String.raw`"(?:[^"\\\u0000-\u001f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"`;
-const JSON_SCALAR = String.raw`(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)(?=[\s,\]}]|$)`;
-const JSON_TOKEN = new RegExp(String.raw`\s*(?:(${JSON_STRING})|${JSON_SCALAR}|([{}[\]:,]))`, "uy");
+const JSON_SCALAR = String.raw`(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)(?=${JSON_SPACE}|[,\]}]|$)`;
+const JSON_TOKEN = new RegExp(
+  String.raw`${JSON_SPACE}*(?:(${JSON_STRING})|${JSON_SCALAR}|([{}[\]:,]))`,
+  "uy",
+);
+const JSON_START = new RegExp(`^${JSON_SPACE}*[{[]`, "u");
+const JSON_REST = new RegExp(`^${JSON_SPACE}*$`, "u");
 
 // A container just opened may close at once; after a comma it may not, so a
 // trailing comma is no JSON.
@@ -175,10 +185,10 @@ function jsonScalar({ stack, expect }, string) {
  * and neither is a prefix that only looks like JSON.
  */
 function opensJsonString(prefix) {
-  if (!/^\s*[{[]/u.test(prefix)) return false;
+  if (!JSON_START.test(prefix)) return false;
   let state = { stack: [], expect: "value" };
   JSON_TOKEN.lastIndex = 0;
-  while (!/^\s*$/u.test(prefix.slice(JSON_TOKEN.lastIndex))) {
+  while (!JSON_REST.test(prefix.slice(JSON_TOKEN.lastIndex))) {
     const match = JSON_TOKEN.exec(prefix);
     if (!match) return false;
     state = jsonStep(state, match[1], match[2]);
