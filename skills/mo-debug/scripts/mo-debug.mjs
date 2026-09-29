@@ -13,41 +13,169 @@ import {
 import { resolve as resolve2 } from "node:path";
 import { fileURLToPath } from "node:url";
 
+// shared/scripts/mo-debug-shell.mjs
+var WORD_END = /* @__PURE__ */ new Set([" ", "	", "\n", "\r", ";", "&", "|", "<", ">", "(", ")", "`"]);
+function backslashesBefore(text, at) {
+  let count = 0;
+  while (at - count - 1 >= 0 && text[at - count - 1] === "\\") count += 1;
+  return count;
+}
+function trailingOnes(count) {
+  let ones = 0;
+  while (count & 1 << ones) ones += 1;
+  return ones;
+}
+function quoteAt(text, at) {
+  if (text[at] === "'") return { kind: "'", level: null, start: at, end: at + 1 };
+  if (text[at] === "\\") {
+    let run = 0;
+    while (text[at + run] === "\\") run += 1;
+    if (text[at + run] !== '"') return null;
+    if (backslashesBefore(text, at) > 0) return null;
+    return { kind: '"', level: trailingOnes(run), start: at, end: at + run + 1 };
+  }
+  if (text[at] === '"' && backslashesBefore(text, at) === 0) {
+    return { kind: '"', level: 0, start: at, end: at + 1 };
+  }
+  return null;
+}
+var levelOf = (stack) => {
+  const doubles = stack.filter((quote) => quote.kind === '"');
+  return doubles.length === 0 ? 0 : doubles.at(-1).level + 1;
+};
+var closes = (open, token2) => token2.kind === open.kind && (token2.kind === "'" || token2.level === open.level);
+function quoteContexts(text) {
+  const contexts = new Array(text.length + 1);
+  let stack = [];
+  let at = 0;
+  while (at < text.length) {
+    const token2 = quoteAt(text, at);
+    if (!token2) {
+      contexts[at] = stack;
+      at += 1;
+      continue;
+    }
+    for (let index = at; index < token2.end; index += 1) contexts[index] = stack;
+    const top = stack.at(-1);
+    if (top && closes(top, token2)) stack = stack.slice(0, -1);
+    else if (token2.kind === "'" || token2.level === levelOf(stack)) stack = [...stack, token2];
+    at = token2.end;
+  }
+  contexts[text.length] = stack;
+  return contexts;
+}
+function shellWord(text, start, stack) {
+  const context = { enclosing: stack.at(-1) ?? null, level: levelOf(stack) };
+  const segments = [];
+  let at = start;
+  while (at < text.length) {
+    const step = wordStep(text, at, at === start, context);
+    if (step === null) break;
+    if (step.segment) segments.push(step.segment);
+    at = step.next;
+  }
+  return { end: at, segments };
+}
+function wordStep(text, at, first, { enclosing, level }) {
+  const token2 = quoteAt(text, at);
+  if (!token2) {
+    if (WORD_END.has(text[at])) return null;
+    return { next: at + (text[at] === "\\" && at + 1 < text.length ? 2 : 1) };
+  }
+  if (!first && enclosing && closes(enclosing, token2)) return null;
+  if (first || token2.kind === "'" || token2.level === level) {
+    const end = segmentEnd(text, token2);
+    const open = text.slice(token2.start, token2.end);
+    return {
+      next: end.at,
+      segment: { open, close: end.closed ? open : "", start: at, end: end.at }
+    };
+  }
+  return token2.level > level ? { next: token2.end } : null;
+}
+function segmentEnd(text, token2) {
+  let at = token2.end;
+  while (at < text.length) {
+    const inner = quoteAt(text, at);
+    if (inner && closes(token2, inner)) return { at: inner.end, closed: true };
+    at = inner ? inner.end : at + 1;
+  }
+  return { at: text.length, closed: false };
+}
+
 // shared/scripts/mo-debug-redact.mjs
 var EXCERPT_LIMIT = 240;
 var WINDOW = 4096;
 var PATH_ROOTS = "home|Users|mnt|tmp|var|private|root|opt|srv|Volumes|media|run|workspace|workspaces|data";
 var CREDENTIAL_KEY = "[A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|private[_-]?key)";
-var quotedSegments = (guard) => [
-  String.raw`\\"${guard}(?:\\{3}"|(?!\\")[\s\S])*(?:\\"|$)`,
-  String.raw`"${guard}(?:\\[\s\S]|[^"\\])*(?:"|$)`,
-  String.raw`'${guard}[^']*(?:'|$)`
+var PLACEHOLDER = /^\[REDACTED:[a-z_]+\]$/u;
+var WORD_TRIGGERS = [
+  { kind: "assignment", pattern: new RegExp(String.raw`\b${CREDENTIAL_KEY}=(?=\S)`, "giu") },
+  {
+    kind: "flag",
+    // A next word that is itself an option means the value was prompted for.
+    pattern: new RegExp(
+      String.raw`(?<=^|[\s"'${"`"}(])-{1,2}${CREDENTIAL_KEY}\s+(?=[^\s-])`,
+      "giu"
+    )
+  },
+  {
+    kind: "flag",
+    // A bare `-p` prompts instead; `-P` is the port and stays.
+    pattern: /\b(?:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump)\b[^\n|;&]*?\s-p(?=\S)/gu
+  },
+  { kind: "user", pattern: /(?<=^|\s)(?:--?user(?:\s+|=)|-u\s+)(?=[^\s-])/gu },
+  // Glued, `-u` is ambiguous with other single-dash options such as Go's
+  // `-url=…`, so a glued name that carries `=` or `/` is not a user.
+  { kind: "user", glued: true, pattern: /(?<=^|\s)-u(?=[^\s-])/gu }
 ];
-var ESCAPED_CHARACTER = String.raw`\\{1,2}[^\n"']`;
-var BARE_RUN = String.raw`[^\s"'\\&;|)<>]+`;
-var segment = (guard) => {
-  const [jsonDouble, double, single] = quotedSegments(guard);
-  return `(?:${jsonDouble}|${ESCAPED_CHARACTER}|${double}|${single}|${BARE_RUN})`;
-};
-var SHELL_WORD = `${segment("")}${segment(String.raw`(?![\s,}\]:"]|$)`)}*`;
-var WHOLE_QUOTED = new RegExp(`^(?:${quotedSegments("").join("|")})$`, "u");
-function maskWord(word, kind) {
-  if (!WHOLE_QUOTED.test(word)) return `[REDACTED:${kind}]`;
-  const quote = word.startsWith('\\"') ? '\\"' : word[0];
-  return `${quote}[REDACTED:${kind}]${quote}`;
+function mask(text, start, word, kind) {
+  const only = word.segments.length === 1 ? word.segments[0] : null;
+  const whole = only && only.start === start && only.end === word.end && only.close;
+  const inner = whole ? text.slice(start + only.open.length, word.end - only.close.length) : text.slice(start, word.end);
+  if (PLACEHOLDER.test(inner)) return text.slice(start, word.end);
+  return whole ? `${only.open}[REDACTED:${kind}]${only.close}` : `[REDACTED:${kind}]`;
 }
-function maskUserWord(match, head, word) {
-  const colon = word.indexOf(":");
-  if (colon <= 0 || colon === word.length - 1) return match;
-  const name = word.slice(0, colon);
-  if (/[=/]/u.test(name)) return match;
-  let opener = name.startsWith('\\"') ? '\\"' : /^["']/u.test(name) ? name[0] : "";
-  if (opener && name.slice(opener.length).includes(opener)) opener = "";
-  const rest = word.slice(colon + 1);
-  const masked = opener ? "[REDACTED:user_credentials]" : maskWord(rest, "user_credentials");
-  return `${head}${name}:${masked}${opener}`;
+function maskUser(text, start, word, glued) {
+  const value = text.slice(start, word.end);
+  const colon = value.indexOf(":");
+  if (colon <= 0) return null;
+  if (glued && /[=/]/u.test(value.slice(0, colon))) return null;
+  const at = start + colon;
+  const inside = word.segments.find((segment) => segment.start < at && at < segment.end);
+  if (inside) {
+    const secret = text.slice(at + 1, inside.end - inside.close.length);
+    if (secret === "" || PLACEHOLDER.test(secret)) return value;
+    return `${text.slice(start, at + 1)}[REDACTED:user_credentials]${inside.close}`;
+  }
+  if (at + 1 >= word.end) return null;
+  const rest = { end: word.end, segments: word.segments.filter((segment) => segment.start > at) };
+  return `${text.slice(start, at + 1)}${mask(text, at + 1, rest, "user_credentials")}`;
 }
-var SECRETS = [
+function redactShellWords(text) {
+  const starts = [];
+  for (const trigger of WORD_TRIGGERS) {
+    for (const match of text.matchAll(trigger.pattern)) {
+      starts.push({ ...trigger, start: match.index + match[0].length });
+    }
+  }
+  if (starts.length === 0) return text;
+  starts.sort((left, right) => left.start - right.start);
+  const contexts = quoteContexts(text);
+  let out = "";
+  let copied = 0;
+  for (const { kind, glued, start } of starts) {
+    if (start < copied) continue;
+    const word = shellWord(text, start, contexts[start]);
+    if (word.end === start) continue;
+    const masked = kind === "user" ? maskUser(text, start, word, glued) : mask(text, start, word, kind);
+    if (masked === null) continue;
+    out += text.slice(copied, start) + masked;
+    copied = word.end;
+  }
+  return out + text.slice(copied);
+}
+var TOKEN_SHAPES = [
   [
     /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----[\s\S]*?(?:-----END (?:[A-Z0-9]+ )*PRIVATE KEY-----|$)/gu,
     () => "[REDACTED:private_key]"
@@ -63,13 +191,9 @@ var SECRETS = [
   [/\bglpat-[A-Za-z0-9_-]{16,}/gu, () => "[REDACTED:gitlab_token]"],
   [/\bxox[abpr]-[A-Za-z0-9-]{10,}/gu, () => "[REDACTED:slack_token]"],
   [/\bAKIA[0-9A-Z]{16}\b/gu, () => "[REDACTED:aws_access_key]"],
-  [/\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/giu, (_, prefix) => `${prefix}[REDACTED:bearer_token]`],
-  [
-    // A shell assignment, `PASSWORD=pre"correct horse"post`, gives its key the
-    // whole next shell word. The `key: value` and JSON forms follow below.
-    new RegExp(String.raw`\b(${CREDENTIAL_KEY})=(?![\s-])(${SHELL_WORD})`, "giu"),
-    (_, key, word) => `${key}=${maskWord(word, "assignment")}`
-  ],
+  [/\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/giu, (_, prefix) => `${prefix}[REDACTED:bearer_token]`]
+];
+var ASSIGNMENTS = [
   // A quoted value is a value up to its closing quote, spaces included: a
   // passphrase is several words, and stopping at the first space left the
   // rest in the report. An unclosed quote runs to the end of the text, which
@@ -99,34 +223,6 @@ var SECRETS = [
       "giu"
     ),
     (_, key, separator) => `${key}${separator}[REDACTED:assignment]`
-  ],
-  [
-    // The same key as a command-line option whose value is the next shell word:
-    // `--password s3cret`, `--api-key "a b"`, `-Token x`. A next word that is
-    // itself an option means the value was prompted for, and nothing follows
-    // to redact.
-    new RegExp(
-      String.raw`(?<=^|[\s"'${"`"}(])(-{1,2}${CREDENTIAL_KEY})(\s+)(?!-)(${SHELL_WORD})`,
-      "giu"
-    ),
-    (_, flag, space, word) => `${flag}${space}${maskWord(word, "flag")}`
-  ],
-  [
-    // A MySQL-family client takes its password glued to `-p`; a bare `-p`
-    // prompts instead. `-P` is the port and stays.
-    new RegExp(
-      String.raw`(\b(?:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump)\b[^\n|;&]*?\s-p)(${SHELL_WORD})`,
-      "gu"
-    ),
-    (_, head, word) => `${head}${maskWord(word, "flag")}`
-  ],
-  [
-    // `curl -u user:pass` and its kin carry the password after the colon of the
-    // user argument, with no URL around it for the scheme rule to catch. The
-    // argument may be glued (`-ubob:pass`), quoted in whole or in part, and the
-    // name may be an e-mail address.
-    new RegExp(String.raw`((?:^|\s)(?:-u\s*|--user(?:\s+|=)))(?!-)(${SHELL_WORD})`, "gu"),
-    maskUserWord
   ]
 ];
 var SEGMENT = "[^\\s\"'`<>|;\\\\/]";
@@ -148,7 +244,7 @@ var LATER_ABSOLUTE = /\s["'\\]*(?:file:\/\/)?(?:\/|[A-Za-z]:\\)/u;
 var PATH_SLUG = new RegExp(`(?<![\\w-])-(?:${PATH_ROOTS})-[^\\s/"'\`<>|;:,()]*`, "gu");
 var ACCOUNT_ROOT = /^(?:home|users)$/iu;
 function basenameOf(path, separator) {
-  const segments = path.split(separator).filter((segment2) => segment2 !== "");
+  const segments = path.split(separator).filter((segment) => segment !== "");
   if (segments.length <= 1) return "";
   if (ACCOUNT_ROOT.test(segments.at(-2))) return "";
   return segments.at(-1);
@@ -179,7 +275,9 @@ function redactUnquoted(text, pattern, separator) {
 }
 function redact(text) {
   let out = String(text);
-  for (const [pattern, replace] of SECRETS) out = out.replace(pattern, replace);
+  for (const [pattern, replace] of TOKEN_SHAPES) out = out.replace(pattern, replace);
+  out = redactShellWords(out);
+  for (const [pattern, replace] of ASSIGNMENTS) out = out.replace(pattern, replace);
   for (const pattern of QUOTED) {
     out = out.replace(pattern, (whole, quote, content) => {
       const absolute = ABSOLUTE.exec(content);

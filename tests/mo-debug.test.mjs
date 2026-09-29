@@ -571,6 +571,17 @@ test("redaction replaces every credential kind and keeps identifiers verbatim", 
     assert.equal(redacted.startsWith(kept), true, kind);
   }
   assert.equal(redact(kept), kept);
+  // A value a specific rule typed keeps its type in any key or option position.
+  for (const [kind, sample] of Object.entries(secretSamples())) {
+    const label = kind === "github_pat" ? "github_token" : kind;
+    if (["private_key", "url_credentials", "bearer_token", "assignment"].includes(label)) continue;
+    for (const input of [`EXAMPLE_TOKEN=${sample} tail`, `x --token ${sample} tail`]) {
+      const redacted = redact(input);
+      assert.equal(redacted.includes(`[REDACTED:${label}]`), true, `${kind}: ${redacted}`);
+      assert.equal(redacted.includes(secretValue(kind, sample)), false, kind);
+      assert.equal(redact(redacted), redacted, kind);
+    }
+  }
   assert.equal(
     redact("max_output_tokens: 30000 token_count=12"),
     "max_output_tokens: 30000 token_count=12",
@@ -723,6 +734,28 @@ test("a short or option-form credential is redacted, in both harnesses' records"
       "curl --user me@example.com:ATATT3xFfGF0 https://h",
       "curl --user me@example.com:[REDACTED:user_credentials] https://h",
     ],
+    // A later segment may open with a space or be empty, and a user name may
+    // carry `/`, `=` or `@`; only a glued `-u` needs a plain name.
+    ['x --password pre" correct horse"post tail', "x --password [REDACTED:flag] tail"],
+    ['x --password pre""post tail', "x --password [REDACTED:flag] tail"],
+    [
+      'curl -u alice:" correct horse" https://h',
+      'curl -u alice:"[REDACTED:user_credentials]" https://h',
+    ],
+    [
+      "curl -u tenant/user:s3cr3t https://h",
+      "curl -u tenant/user:[REDACTED:user_credentials] https://h",
+    ],
+    [
+      "curl --user uid=alice:s3cr3t https://h",
+      "curl --user uid=alice:[REDACTED:user_credentials] https://h",
+    ],
+    ["go run -user=alice:secret", "go run -user=alice:[REDACTED:user_credentials]"],
+    ["don't; x --password 'a b' tail", "don't; x --password '[REDACTED:flag]' tail"],
+    [
+      '{"cmd":"bash -c \\"x --token abc\\"","cwd":"docs/y"}',
+      '{"cmd":"bash -c \\"x --token [REDACTED:flag]\\"","cwd":"docs/y"}',
+    ],
     // A quote that closes an enclosing string or a JSON string ends the word.
     ['bash -c "x --token abc" && ls docs/x', 'bash -c "x --token [REDACTED:flag]" && ls docs/x'],
     [
@@ -755,7 +788,7 @@ test("a short or option-form credential is redacted, in both harnesses' records"
     "ATATT3xFfGF0",
   ];
   const command =
-    'docker login --password s3cr3tValue && mysql -p"correct horse" db && x --password zzpre"correct horse"zzpost && pwd=PIN12 node ~/.claude/skills/mo-setup/scripts/mo-setup.mjs check';
+    'docker login --password s3cr3tValue && mysql -p"correct horse" db && x --password zzpre" correct horse"zzpost && pwd=PIN12 node ~/.claude/skills/mo-setup/scripts/mo-setup.mjs check';
   const UUID = "9f8e7d6c-5b4a-4321-8fed-cba987654323";
   const claudeRecord = {
     sessionId: UUID,
@@ -777,7 +810,7 @@ test("a short or option-form credential is redacted, in both harnesses' records"
       content: [
         {
           type: "input_text",
-          text: '$mo-debug with --token 0a1b2c3d4e5f and curl -u "alice:correct horse" or curl -u me@example.com:ATATT3xFfGF0',
+          text: '$mo-debug with --token 0a1b2c3d4e5f and curl -u "alice:correct horse" or curl -u me@example.com:ATATT3xFfGF0 or curl -u tenant/user:Tn4ntPw',
         },
       ],
     },
