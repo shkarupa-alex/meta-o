@@ -6948,6 +6948,7 @@ function defaultOnError(left, right) {
 // shared/scripts/mo-knowledge-layer.mjs
 var SHA = /^[0-9a-f]{40}$/u;
 var MARKER = /^Knowledge-Layer: (enabled|disabled)$/u;
+var PAPERCUT_LINE = /^Knowledge-Layer-Papercut: (\S+\.md)$/u;
 var COMMAND_FILES = ["Makefile", "package.json", "AGENTS.md"];
 var DEFAULT_PAPERCUT = "docs/papercut.md";
 var HISTORY_PATHS = ["AGENTS.md", "Makefile", "package.json", DEFAULT_PAPERCUT];
@@ -6978,17 +6979,27 @@ function readAt(root, candidate, path) {
     return { error: "unreadable" };
   }
 }
+function localPath(url) {
+  if (/^(?:[a-z][a-z0-9+.-]*:|\/|\.\.\/)/iu.test(url)) return null;
+  const path = posix.normalize(url.replace(/^\.\//u, ""));
+  return path.startsWith("../") ? null : path;
+}
 function declaredPapercut(agents) {
   const found = [];
   const visit = (node2) => {
-    const local = !/^(?:[a-z][a-z0-9+.-]*:|\/|\.\.\/)/iu.test(node2.url ?? "");
-    if (node2.type === "link" && local && /(?:^|\/)[^/]*papercut[^/]*\.md$/iu.test(node2.url)) {
-      found.push(posix.normalize(node2.url.replace(/^\.\//u, "")));
-    }
+    const path = node2.type === "link" ? localPath(node2.url ?? "") : null;
+    if (path && /(?:^|\/)[^/]*papercut[^/]*\.md$/iu.test(path)) found.push(path);
     for (const child of node2.children ?? []) visit(child);
   };
   visit(fromMarkdown(agents));
-  return found;
+  const lines = agents.split(/\r?\n/u).map((line) => PAPERCUT_LINE.exec(line.trim())?.[1]).filter(Boolean);
+  if (new Set(lines).size > 1) return { reason: "conflicting_papercut" };
+  for (const line of lines) {
+    const path = localPath(line);
+    if (!path) return { reason: "conflicting_papercut" };
+    found.push(path);
+  }
+  return { paths: found };
 }
 function readSignals(root, candidate) {
   const files = {};
@@ -7001,7 +7012,9 @@ function readSignals(root, candidate) {
   const markers = agents.split(/\r?\n/u).map((line) => MARKER.exec(line.trim())?.[1]).filter(Boolean);
   if (new Set(markers).size > 1) return { reason: "conflicting_marker" };
   let papercut = files[DEFAULT_PAPERCUT] !== null;
-  for (const path of declaredPapercut(agents)) {
+  const declared = declaredPapercut(agents);
+  if (declared.reason) return { reason: declared.reason };
+  for (const path of declared.paths) {
     const read = readAt(root, candidate, path);
     if (read.error) return { reason: read.error };
     papercut ||= read.text !== null;
@@ -7046,8 +7059,8 @@ function knowledgeLayer(root, candidate) {
     return any ? { state: "needs_attention", reason: "disabled_with_signals" } : { state: "not_enabled", reason: "declared_disabled" };
   }
   if (backlog && papercut && history) return { state: "enabled", reason: "signals_present" };
-  if (marker === "enabled") return { state: "needs_attention", reason: "enabled_without_signals" };
   if (any) return { state: "needs_attention", reason: "partial_signals" };
+  if (marker === "enabled") return { state: "needs_attention", reason: "enabled_without_signals" };
   const past = everCarried(root, candidate);
   if (past.reason) return { state: "needs_attention", reason: past.reason };
   return past.carried ? { state: "needs_attention", reason: "signals_removed" } : { state: "not_enabled", reason: "never_enabled" };

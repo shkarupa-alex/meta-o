@@ -25,6 +25,9 @@ import { fromMarkdown } from "mdast-util-from-markdown";
 
 const SHA = /^[0-9a-f]{40}$/u;
 const MARKER = /^Knowledge-Layer: (enabled|disabled)$/u;
+// A papercut document under any name is declared by this line, which mo-setup
+// writes on the same human decision as the marker; a file name is only a hint.
+const PAPERCUT_LINE = /^Knowledge-Layer-Papercut: (\S+\.md)$/u;
 const COMMAND_FILES = ["Makefile", "package.json", "AGENTS.md"];
 const DEFAULT_PAPERCUT = "docs/papercut.md";
 
@@ -67,23 +70,43 @@ function readAt(root, candidate, path) {
   }
 }
 
+/** A target outside the repository, or on another host, is not a tracked file. */
+function localPath(url) {
+  if (/^(?:[a-z][a-z0-9+.-]*:|\/|\.\.\/)/iu.test(url)) return null;
+  const path = posix.normalize(url.replace(/^\.\//u, ""));
+  return path.startsWith("../") ? null : path;
+}
+
 /**
- * A papercut document `AGENTS.md` declares: a link to a tracked Markdown file
- * whose name says it is the papercut document. Read with an AST, so a mention
- * in prose or code is not a declaration.
+ * The papercut documents `AGENTS.md` declares.
+ *
+ * Two forms, because a name cannot carry every project's choice: a link to a
+ * tracked Markdown file whose name says it is the papercut document, read with
+ * an AST so a mention in prose or code is not a declaration, and the explicit
+ * `Knowledge-Layer-Papercut:` line for a document named anything else. More
+ * than one explicit line is a contradiction, not a list.
+ *
+ * @returns {{paths: string[]} | {reason: string}} declared paths or a typed failure
  */
 function declaredPapercut(agents) {
   const found = [];
   const visit = (node) => {
-    // A target outside the repository, or on another host, is not a tracked file.
-    const local = !/^(?:[a-z][a-z0-9+.-]*:|\/|\.\.\/)/iu.test(node.url ?? "");
-    if (node.type === "link" && local && /(?:^|\/)[^/]*papercut[^/]*\.md$/iu.test(node.url)) {
-      found.push(posix.normalize(node.url.replace(/^\.\//u, "")));
-    }
+    const path = node.type === "link" ? localPath(node.url ?? "") : null;
+    if (path && /(?:^|\/)[^/]*papercut[^/]*\.md$/iu.test(path)) found.push(path);
     for (const child of node.children ?? []) visit(child);
   };
   visit(fromMarkdown(agents));
-  return found;
+  const lines = agents
+    .split(/\r?\n/u)
+    .map((line) => PAPERCUT_LINE.exec(line.trim())?.[1])
+    .filter(Boolean);
+  if (new Set(lines).size > 1) return { reason: "conflicting_papercut" };
+  for (const line of lines) {
+    const path = localPath(line);
+    if (!path) return { reason: "conflicting_papercut" };
+    found.push(path);
+  }
+  return { paths: found };
 }
 
 /**
@@ -105,7 +128,9 @@ function readSignals(root, candidate) {
     .filter(Boolean);
   if (new Set(markers).size > 1) return { reason: "conflicting_marker" };
   let papercut = files[DEFAULT_PAPERCUT] !== null;
-  for (const path of declaredPapercut(agents)) {
+  const declared = declaredPapercut(agents);
+  if (declared.reason) return { reason: declared.reason };
+  for (const path of declared.paths) {
     const read = readAt(root, candidate, path);
     if (read.error) return { reason: read.error };
     papercut ||= read.text !== null;
@@ -162,8 +187,10 @@ export function knowledgeLayer(root, candidate) {
       : { state: "not_enabled", reason: "declared_disabled" };
   }
   if (backlog && papercut && history) return { state: "enabled", reason: "signals_present" };
-  if (marker === "enabled") return { state: "needs_attention", reason: "enabled_without_signals" };
+  // A marker over some of the signals is still a partial set: naming it
+  // "without signals" would tell the human that present signals are missing.
   if (any) return { state: "needs_attention", reason: "partial_signals" };
+  if (marker === "enabled") return { state: "needs_attention", reason: "enabled_without_signals" };
   // Nothing in the tree: "never" must be proven over the whole first-parent
   // path, and a history that cannot be read is not a negative proof.
   const past = everCarried(root, candidate);

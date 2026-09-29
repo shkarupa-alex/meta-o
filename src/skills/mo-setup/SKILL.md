@@ -100,7 +100,11 @@ explains a difference to a human and never decides it.
 
 Find the commands-and-papercuts document by content, not only at
 `docs/papercut.md`, and report `Papercut/1 path=<json|none> linked=<yes|no>`
-where `linked` means `AGENTS.md` actually links it. Accepted repair starts from
+where `linked` means `AGENTS.md` actually links it. The layer helper recognizes
+that document by the path `docs/papercut.md` or by `papercut` in the linked file
+name; a document named anything else is declared, on the same human answer
+that writes the marker, by the line `Knowledge-Layer-Papercut: <path>` in
+`AGENTS.md`, or the helper reports a partial set. Accepted repair starts from
 [Commands and papercuts template](references/papercut-template.md).
 
 Accepted repair copies three shipped bundles into the project, each with its

@@ -323,6 +323,16 @@ test("the setup contract requires a linked commands-and-papercuts document", () 
   assert.match(contractProse, /one-off incidents and methodology friction/u);
 });
 
+test("mo-setup declares a papercut document by the line the layer helper reads", () => {
+  // mo-setup finds the document by content, the helper only by path, name or an
+  // explicit line; both must name the same line or a ready project reads partial.
+  const helper = readFileSync(join(ROOT, "shared", "scripts", "mo-knowledge-layer.mjs"), "utf8");
+  assert.match(helper, /\^Knowledge-Layer-Papercut: /u);
+  for (const text of [setup, contract]) {
+    assert.match(text.replace(/\s+/gu, " "), /`Knowledge-Layer-Papercut: <path>`/u);
+  }
+});
+
 test("the generated agent contract commits verified increments and pushes only on request", () => {
   const contract = readFileSync(
     join(ROOT, "skills", "mo-setup", "references", "project-setup.md"),

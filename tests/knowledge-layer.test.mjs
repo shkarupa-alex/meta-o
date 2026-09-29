@@ -140,6 +140,38 @@ test("a papercut document elsewhere counts only when AGENTS.md links it", () => 
   assert.equal(answer(root, code).reason, "partial_signals");
 });
 
+test("a papercut document under any name counts when AGENTS.md declares it by line", () => {
+  const root = repository();
+  const agents = `${LAYER["AGENTS.md"]}\n[Грабли и команды проекта](docs/commands.md)\n`;
+  const files = { ...LAYER, "docs/papercut.md": null, "docs/commands.md": "# Commands\n" };
+  // A link alone names no papercut document: the file name says nothing.
+  assert.equal(
+    answer(root, commit(root, { ...files, "AGENTS.md": agents })).reason,
+    "partial_signals",
+  );
+  const declared = `${agents}\n\`\`\`text\nKnowledge-Layer: enabled\nKnowledge-Layer-Papercut: docs/commands.md\n\`\`\`\n`;
+  assert.deepEqual(answer(root, commit(root, { "AGENTS.md": declared })), {
+    state: "enabled",
+    reason: "signals_present",
+  });
+  // The marker over the two remaining signals is a partial set, not "without signals".
+  assert.deepEqual(answer(root, commit(root, { "docs/commands.md": null })), {
+    state: "needs_attention",
+    reason: "partial_signals",
+  });
+});
+
+test("two papercut lines, or one outside the repository, are a contradiction", () => {
+  const root = repository();
+  const lines = (...paths) =>
+    `${LAYER["AGENTS.md"]}\n${paths.map((path) => `Knowledge-Layer-Papercut: ${path}`).join("\n")}\n`;
+  const files = { ...LAYER, "docs/commands.md": "# Commands\n", "docs/other.md": "# Other\n" };
+  const two = commit(root, { ...files, "AGENTS.md": lines("docs/commands.md", "docs/other.md") });
+  assert.equal(answer(root, two).reason, "conflicting_papercut");
+  const outside = commit(root, { "AGENTS.md": lines("../elsewhere/papercut.md") });
+  assert.equal(answer(root, outside).reason, "conflicting_papercut");
+});
+
 test("a shallow clone cannot prove never, and a missing commit is not a project", () => {
   const origin = repository();
   commit(origin, { "README.md": "# Plain\n" });

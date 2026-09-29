@@ -60,8 +60,9 @@ glossary agreement and foreign notation stay project-local rules.
 
 The knowledge layer is a capability the project declares, and the human decides
 it. The declared closure command carries the literal `MO-BACKLOG/1`, `AGENTS.md`
-records `history_cutoff_sha:` and links the papercut document, and on the
-human's answer `AGENTS.md` holds `Knowledge-Layer: enabled` or
+records `history_cutoff_sha:` and links the papercut document — named for it, or
+declared by a `Knowledge-Layer-Papercut: <path>` line — and on the human's
+answer `AGENTS.md` holds `Knowledge-Layer: enabled` or
 `Knowledge-Layer: disabled` on its own line. A project that never had these is
 `not_enabled` and owes no closure proof at G0, GC, G1 or G2, while remote-head
 equality and CI evidence still bind an agent's MR/PR and merge; a project that
