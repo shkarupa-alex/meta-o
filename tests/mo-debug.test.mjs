@@ -443,6 +443,30 @@ test("a path with spaces, brackets or a network root is shortened whole, quoted 
   assert.equal(redact("cd /usr/local/Acme && ls docs/x"), "cd <path>/Acme && ls docs/x");
 });
 
+test("a quoted command whose last argument is a home directory never names the account", () => {
+  // The quotes were read as one path, so its last segment, the account, was kept.
+  const command =
+    '/bin/zsh -lc "/usr/bin/env ls /home/someone" | node ~/.claude/skills/mo-x/scripts/mo-review-report.mjs validate';
+  for (const scan of scanBothHarnesses(command, "9f8e7d6c-5b4a-4321-8fed-cba987654326", "h")) {
+    assertPathsShortened(scan, ["someone", "/usr"], ["zsh", "env"]);
+  }
+  assert.equal(redact('bash -c "/bin/ls /home/alice"'), 'bash -c "<path>/ls <path>"');
+  assert.equal(
+    redact('{"command":"bash -c \\"/usr/bin/du -sh /Users/alice/\\""}'),
+    '{"command":"bash -c \\"<path>/du -sh <path>\\""}',
+  );
+  assert.equal(
+    redact('"C:\\Windows\\cmd.exe /c dir C:\\Users\\alice"'),
+    '"<path>/cmd.exe /c dir <path>"',
+  );
+  // Wherever a path is joined, the segment after `home` or `Users` is withheld.
+  assert.equal(redact('"/mnt/backup/home/alice"'), '"<path>"');
+  // A shortened basename is not read again as a path, and `$&` in it is literal.
+  assert.equal(redact('"/srv/data/tmp"'), '"<path>/tmp"');
+  assert.equal(redact('cat "/srv/a$&b.txt"'), 'cat "<path>/a$&b.txt"');
+  assert.equal(redact('node "/usr/local/Acme Team/tool.mjs"'), 'node "<path>/tool.mjs"');
+});
+
 test("a shell-escaped space keeps an unquoted path whole, in both harnesses and the redactor", () => {
   // The escape ended the segment, so `Acme\ Team/tool.mjs` stayed in the report.
   const command = [

@@ -65,10 +65,10 @@ var SECRETS = [
   ]
 ];
 var SEGMENT = "[^\\s\"'`<>|;\\\\/]";
-var ESCAPED = "\\\\{1,2}[^\\n\\\\]";
+var ESCAPED = `\\\\{1,2}[^\\n\\\\"']`;
 var POSIX_SEGMENT = `(?:${ESCAPED}|${SEGMENT})`;
 var UNIX_PATH = new RegExp(
-  `(?:(?<=^|[^\\w.~/:-]|file:)//${POSIX_SEGMENT}+/|(?<=^|[^\\w.~/-]|file://)/(?:(?:${PATH_ROOTS})(?!${POSIX_SEGMENT})|${POSIX_SEGMENT}+/))(?:${POSIX_SEGMENT}|/)*`,
+  `(?<!<path>)(?:(?<=^|[^\\w.~/:-]|file:)//${POSIX_SEGMENT}+/|(?<=^|[^\\w.~/-]|file://)/(?:(?:${PATH_ROOTS})(?!${POSIX_SEGMENT})|${POSIX_SEGMENT}+/))(?:${POSIX_SEGMENT}|/)*`,
   "gu"
 );
 var WINDOWS_PATH = /(?<![\w])[A-Za-z]:\\[^\s"'`<>|;]*/gu;
@@ -79,15 +79,13 @@ var CONTINUATION = {
 };
 var QUOTED = [/\\(["'])([^\n]*?)\\\1/gu, /(?<!\\)(["'])([^\n]*?)(?<!\\)\1/gu];
 var ABSOLUTE = new RegExp(`^(file://)?(/(?!/)|//${SEGMENT}|[A-Za-z]:\\\\)`, "u");
+var LATER_ABSOLUTE = /\s["'\\]*(?:file:\/\/)?(?:\/|[A-Za-z]:\\)/u;
 var PATH_SLUG = new RegExp(`(?<![\\w-])-(?:${PATH_ROOTS})-[^\\s/"'\`<>|;:,()]*`, "gu");
-var ACCOUNT_ROOTS = /* @__PURE__ */ new Set(["home", "Users"]);
+var ACCOUNT_ROOT = /^(?:home|users)$/iu;
 function basenameOf(path, separator) {
   const segments = path.split(separator).filter((segment) => segment !== "");
   if (segments.length <= 1) return "";
-  if (separator === "/" && ACCOUNT_ROOTS.has(segments[0]) && segments.length === 2) return "";
-  if (separator === "\\" && segments.length <= 3 && /^users$/iu.test(segments[1] ?? "")) {
-    return "";
-  }
+  if (ACCOUNT_ROOT.test(segments.at(-2))) return "";
   return segments.at(-1);
 }
 function shorten(path, separator) {
@@ -120,11 +118,11 @@ function redact(text) {
   for (const pattern of QUOTED) {
     out = out.replace(pattern, (whole, quote, content) => {
       const absolute = ABSOLUTE.exec(content);
-      if (!absolute) return whole;
+      if (!absolute || LATER_ABSOLUTE.test(content)) return whole;
       const scheme = absolute[1] ?? "";
       const path = content.slice(scheme.length);
       const separator = /^[A-Za-z]:\\/u.test(path) ? "\\" : "/";
-      return whole.replace(content, `${scheme}${shorten(path, separator)}`);
+      return whole.replace(content, () => `${scheme}${shorten(path, separator)}`);
     });
   }
   out = redactUnquoted(out, UNIX_PATH, "/");

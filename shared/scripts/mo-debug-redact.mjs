@@ -87,7 +87,8 @@ const SEGMENT = "[^\\s\"'`<>|;\\\\/]";
 // A shell escape keeps the next character inside the segment, so
 // `/usr/local/Acme\ Team/tool.mjs` is one token; in a Codex tool call the
 // arguments are JSON text and the same escape is written with two backslashes.
-const ESCAPED = "\\\\{1,2}[^\\n\\\\]";
+// An escaped quote is not a name character: in JSON it closes the string.
+const ESCAPED = "\\\\{1,2}[^\\n\\\\\"']";
 const POSIX_SEGMENT = `(?:${ESCAPED}|${SEGMENT})`;
 
 // Any absolute POSIX path of two or more segments, whatever its root: a list
@@ -97,8 +98,10 @@ const POSIX_SEGMENT = `(?:${ESCAPED}|${SEGMENT})`;
 // lookbehinds keep the path part of an `https://host/…` URL and a relative
 // `docs/x` out, because a word character, a colon or another slash precedes
 // their slash; `file://` is the one scheme whose path is local and is redacted.
+// A path already shortened to `<path>/<basename>` is not read again, so a
+// basename that happens to be a root name such as `tmp` survives.
 const UNIX_PATH = new RegExp(
-  `(?:(?<=^|[^\\w.~/:-]|file:)//${POSIX_SEGMENT}+/|(?<=^|[^\\w.~/-]|file://)/(?:(?:${PATH_ROOTS})(?!${POSIX_SEGMENT})|${POSIX_SEGMENT}+/))(?:${POSIX_SEGMENT}|/)*`,
+  `(?<!<path>)(?:(?<=^|[^\\w.~/:-]|file:)//${POSIX_SEGMENT}+/|(?<=^|[^\\w.~/-]|file://)/(?:(?:${PATH_ROOTS})(?!${POSIX_SEGMENT})|${POSIX_SEGMENT}+/))(?:${POSIX_SEGMENT}|/)*`,
   "gu",
 );
 const WINDOWS_PATH = /(?<![\w])[A-Za-z]:\\[^\s"'`<>|;]*/gu;
@@ -121,23 +124,27 @@ const CONTINUATION = {
 // and all; quotes escaped for JSON, as a tool call carries them, run first.
 const QUOTED = [/\\(["'])([^\n]*?)\\\1/gu, /(?<!\\)(["'])([^\n]*?)(?<!\\)\1/gu];
 const ABSOLUTE = new RegExp(`^(file://)?(/(?!/)|//${SEGMENT}|[A-Za-z]:\\\\)`, "u");
+// A later argument that is itself an absolute path means the quotes hold a
+// command such as `bash -c "/bin/ls /home/<account>"`, not one path. Shortening
+// it whole would keep only what its last argument names, the account included,
+// so such a string is left to the unquoted passes, which see every path in it.
+const LATER_ABSOLUTE = /\s["'\\]*(?:file:\/\/)?(?:\/|[A-Za-z]:\\)/u;
 
 // Claude names a project directory after its absolute path with `/` turned
 // into `-`, so `-home-<account>-src` is the same disclosure in another shape.
 const PATH_SLUG = new RegExp(`(?<![\\w-])-(?:${PATH_ROOTS})-[^\\s/"'\`<>|;:,()]*`, "gu");
-const ACCOUNT_ROOTS = new Set(["home", "Users"]);
+const ACCOUNT_ROOT = /^(?:home|users)$/iu;
 
 /**
  * The last segment of a path, unless that segment is the account name itself:
  * `/home/<account>` keeps nothing, because its basename is the disclosure.
+ * The rule looks at the segment before the last wherever it stands, so a path
+ * that some other pass joined or extended cannot put the account back.
  */
 function basenameOf(path, separator) {
   const segments = path.split(separator).filter((segment) => segment !== "");
   if (segments.length <= 1) return "";
-  if (separator === "/" && ACCOUNT_ROOTS.has(segments[0]) && segments.length === 2) return "";
-  if (separator === "\\" && segments.length <= 3 && /^users$/iu.test(segments[1] ?? "")) {
-    return "";
-  }
+  if (ACCOUNT_ROOT.test(segments.at(-2))) return "";
   return segments.at(-1);
 }
 
@@ -181,11 +188,12 @@ export function redact(text) {
   for (const pattern of QUOTED) {
     out = out.replace(pattern, (whole, quote, content) => {
       const absolute = ABSOLUTE.exec(content);
-      if (!absolute) return whole;
+      if (!absolute || LATER_ABSOLUTE.test(content)) return whole;
       const scheme = absolute[1] ?? "";
       const path = content.slice(scheme.length);
       const separator = /^[A-Za-z]:\\/u.test(path) ? "\\" : "/";
-      return whole.replace(content, `${scheme}${shorten(path, separator)}`);
+      // A function replacement, because a `$&` or `$'` in a file name is literal.
+      return whole.replace(content, () => `${scheme}${shorten(path, separator)}`);
     });
   }
   out = redactUnquoted(out, UNIX_PATH, "/");
