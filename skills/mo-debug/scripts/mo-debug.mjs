@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 var EXCERPT_LIMIT = 240;
 var WINDOW = 4096;
 var PATH_ROOTS = "home|Users|mnt|tmp|var|private|root|opt|srv|Volumes|media|run|workspace|workspaces|data";
+var CREDENTIAL_KEY = "[A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|private[_-]?key)";
 var SECRETS = [
   [
     /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----[\s\S]*?(?:-----END (?:[A-Z0-9]+ )*PRIVATE KEY-----|$)/gu,
@@ -34,10 +35,32 @@ var SECRETS = [
   [/\bxox[abpr]-[A-Za-z0-9-]{10,}/gu, () => "[REDACTED:slack_token]"],
   [/\bAKIA[0-9A-Z]{16}\b/gu, () => "[REDACTED:aws_access_key]"],
   [/\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/giu, (_, prefix) => `${prefix}[REDACTED:bearer_token]`],
+  // A quoted value is a value up to its closing quote, spaces included: a
+  // passphrase is several words, and stopping at the first space left the
+  // rest in the report. An unclosed quote runs to the end of the text, which
+  // fails closed at a window edge. Quotes escaped for JSON, as a tool call
+  // carries them, are one more shape of the same value.
+  [
+    new RegExp(
+      `\\b(${CREDENTIAL_KEY})(\\\\?["']?\\s*[=:]\\s*)\\\\(["'])(?!\\[REDACTED)(?:(?!\\\\\\3)[\\s\\S])+(\\\\\\3|$)`,
+      "giu"
+    ),
+    (_, key, separator, quote, close) => `${key}${separator}\\${quote}[REDACTED:assignment]${close}`
+  ],
+  [
+    new RegExp(
+      `\\b(${CREDENTIAL_KEY})(["']?\\s*[=:]\\s*)(["'])(?!\\[REDACTED)(?:\\\\[\\s\\S]|(?!\\3)[^\\\\])+(\\3|$)`,
+      "giu"
+    ),
+    (_, key, separator, quote, close) => `${key}${separator}${quote}[REDACTED:assignment]${close}`
+  ],
   [
     // A key that *ends* in a credential word, then `=` or `:`. Requiring the
     // word at the end keeps `max_output_tokens: 30000` and `token_count` out.
-    /\b([A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|private[_-]?key))(["']?\s*[=:]\s*["']?)(?!\[REDACTED)([^\s"'&,;}]{4,})/giu,
+    new RegExp(
+      `\\b(${CREDENTIAL_KEY})(["']?\\s*[=:]\\s*["']?)(?!\\[REDACTED)([^\\s"'&,;}]{4,})`,
+      "giu"
+    ),
     (_, key, separator) => `${key}${separator}[REDACTED:assignment]`
   ]
 ];

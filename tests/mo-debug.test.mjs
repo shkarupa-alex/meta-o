@@ -407,6 +407,47 @@ test("secrets and absolute paths never reach stdout or the report", () => {
   assert.match(output, new RegExp(UUID, "u"));
 });
 
+test("a quoted multi-word credential is redacted whole, in both harnesses' records", () => {
+  const { home, claude, codex } = fixtureHome();
+  const secrets = `password="correct horse battery staple" api_key: 'alpha beta gamma'`;
+  const words = ["correct", "horse", "battery", "staple", "alpha", "beta", "gamma"];
+  const command = `echo ${secrets} message="kept words" | node ~/.claude/skills/mo-x/scripts/mo-review-report.mjs validate`;
+  const UUID = "9f8e7d6c-5b4a-4321-8fed-cba987654322";
+  const claudeRecord = {
+    sessionId: UUID,
+    type: "assistant",
+    timestamp: "2026-09-01T12:00:00.000Z",
+    message: {
+      role: "assistant",
+      content: [{ type: "tool_use", id: "toolu_q", name: "Bash", input: { command } }],
+    },
+  };
+  writeFileSync(join(claude, `${UUID}.jsonl`), `${JSON.stringify(claudeRecord)}\n`);
+  const rollout = join(codex, `rollout-2026-09-01T11-00-00-${CODEX_ID}.jsonl`);
+  const codexRecord = {
+    timestamp: "2026-09-01T11:05:00.000Z",
+    type: "response_item",
+    payload: {
+      type: "function_call",
+      name: "exec_command",
+      arguments: JSON.stringify({ cmd: command.replace("~/.claude", "~/.codex") }),
+      call_id: "call_q",
+    },
+  };
+  writeFileSync(rollout, `${readFileSync(rollout, "utf8")}${JSON.stringify(codexRecord)}\n`);
+  for (const id of [UUID, CODEX_ID]) {
+    const { result, report } = reportOf(home, ["scan", "--session", id]);
+    assert.equal(result.status, 0, result.stderr);
+    const output = `${result.stdout}\n${report}`;
+    for (const word of words) assert.equal(output.includes(word), false, `${id}: ${word}`);
+    // An ordinary quoted argument stays readable for diagnosis.
+    assert.match(output, /kept words/u, id);
+  }
+  // An unclosed quote at a window edge exposes nothing after it either.
+  const cut = excerpt(`token="${"x".repeat(5000)} tail words`);
+  assert.equal(/x{8}|tail/u.test(cut), false, cut);
+});
+
 test("--out creates a private new file and refuses to overwrite an existing one", () => {
   const { home } = fixtureHome();
   const { result, out } = reportOf(home, ["scan", "--session", CLAUDE_ID]);
