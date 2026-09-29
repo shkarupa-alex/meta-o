@@ -78,13 +78,18 @@ var COMMAND_STRING = new RegExp(
   ].map((form) => `(?:${form})\\s+$`).join("|"),
   "u"
 );
-var JSON_TOKEN = /\s*(?:"(?:[^"\\\n]|\\.)*"|-?\d[\d.eE+-]*|true|false|null|([{}[\]:,]))/uy;
-var JSON_OPEN = { "{": "key", "[": "value" };
-function jsonStep(state, token2, punctuation) {
+var JSON_STRING = String.raw`"(?:[^"\\\u0000-\u001f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"`;
+var JSON_SCALAR = String.raw`(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)(?=[\s,\]}]|$)`;
+var JSON_TOKEN = new RegExp(String.raw`\s*(?:(${JSON_STRING})|${JSON_SCALAR}|([{}[\]:,]))`, "uy");
+var JSON_OPEN = { "{": "firstKey", "[": "firstValue" };
+var JSON_KEY = /* @__PURE__ */ new Set(["key", "firstKey"]);
+var JSON_VALUE = /* @__PURE__ */ new Set(["value", "firstValue"]);
+function jsonStep(state, string, punctuation) {
   const { stack, expect } = state;
-  if (punctuation === void 0) return jsonScalar(state, token2);
+  if (punctuation === void 0) return jsonScalar(state, string);
   if (punctuation in JSON_OPEN) {
-    return expect === "value" ? { stack: [...stack, punctuation], expect: JSON_OPEN[punctuation] } : null;
+    if (!JSON_VALUE.has(expect)) return null;
+    return { stack: [...stack, punctuation], expect: JSON_OPEN[punctuation] };
   }
   if (punctuation === ":") return expect === "colon" ? { stack, expect: "value" } : null;
   if (punctuation === ",") {
@@ -92,12 +97,12 @@ function jsonStep(state, token2, punctuation) {
     return { stack, expect: stack.at(-1) === "{" ? "key" : "value" };
   }
   const open = punctuation === "}" ? "{" : "[";
-  return stack.at(-1) === open && expect !== "colon" ? { stack: stack.slice(0, -1), expect: "next" } : null;
+  const closable = expect === "next" || expect === JSON_OPEN[open];
+  return stack.at(-1) === open && closable ? { stack: stack.slice(0, -1), expect: "next" } : null;
 }
-function jsonScalar({ stack, expect }, token2) {
-  if (expect === "key")
-    return token2.trimStart().startsWith('"') ? { stack, expect: "colon" } : null;
-  return expect === "value" ? { stack, expect: "next" } : null;
+function jsonScalar({ stack, expect }, string) {
+  if (JSON_KEY.has(expect)) return string === void 0 ? null : { stack, expect: "colon" };
+  return JSON_VALUE.has(expect) ? { stack, expect: "next" } : null;
 }
 function opensJsonString(prefix) {
   if (!/^\s*[{[]/u.test(prefix)) return false;
@@ -106,10 +111,10 @@ function opensJsonString(prefix) {
   while (!/^\s*$/u.test(prefix.slice(JSON_TOKEN.lastIndex))) {
     const match = JSON_TOKEN.exec(prefix);
     if (!match) return false;
-    state = jsonStep(state, match[0], match[1]);
+    state = jsonStep(state, match[1], match[2]);
     if (state === null) return false;
   }
-  return state.stack.length > 0 && (state.expect === "key" || state.expect === "value");
+  return state.stack.length > 0 && (JSON_KEY.has(state.expect) || JSON_VALUE.has(state.expect));
 }
 function lineBefore(text, at) {
   return text.slice(text.lastIndexOf("\n", at - 1) + 1, at);
@@ -242,12 +247,10 @@ function maskUser(text, start, word, glued) {
   const rest = { end: word.end, segments: word.segments.filter((segment) => segment.start > at) };
   return `${text.slice(start, at + 1)}${mask(text, at + 1, rest, "user_credentials")}`;
 }
-function shellWordRanges(text) {
+function shellWordRanges(text, contexts) {
   const ranges = [];
-  let contexts = null;
   for (const trigger of WORD_TRIGGERS) {
     for (const match of text.matchAll(trigger.pattern)) {
-      contexts ??= quoteContexts(text);
       const start = match.index + match[0].length;
       const read = shellWord(text, start, contexts[start]);
       if (read.end === start) continue;
@@ -307,26 +310,30 @@ var ASSIGNMENTS = [
       `\\b(${CREDENTIAL_KEY})(["']?\\s*[=:]\\s*["']?)(?!\\[REDACTED)(?![[{])((?:[^\\s"'&,;}\\\\]|\\\\(?!["']))+)`,
       "giu"
     ),
-    (_, key, separator) => `${key}${separator}[REDACTED:assignment]`
+    (_, key, separator) => `${key}${separator}[REDACTED:assignment]`,
+    // Bare: the value stops at whitespace, which inside a data string is
+    // part of it, so there the value runs to the string's end.
+    { bare: true }
   ]
 ];
-function assignmentRanges(text) {
+function assignmentRanges(text, contexts) {
   const ranges = [];
-  for (const [pattern, replace] of ASSIGNMENTS) {
+  for (const [pattern, replace, { bare } = {}] of ASSIGNMENTS) {
     for (const match of text.matchAll(pattern)) {
       const key = match[1].length + match[2].length;
       const start = match.index + key;
-      ranges.push({
-        start,
-        end: match.index + match[0].length,
-        value: replace(...match).slice(key)
-      });
+      const read = match.index + match[0].length;
+      const data = bare && !/["']$/u.test(match[2]);
+      const end = data ? Math.max(read, dataStringEnd(text, read, contexts[match.index])) : read;
+      const value = end === read ? replace(...match).slice(key) : "[REDACTED:assignment]";
+      ranges.push({ start, end, value });
     }
   }
   return ranges;
 }
 function redactCredentials(text) {
-  const ranges = [...shellWordRanges(text), ...assignmentRanges(text)].sort(
+  const contexts = quoteContexts(text);
+  const ranges = [...shellWordRanges(text, contexts), ...assignmentRanges(text, contexts)].sort(
     (left, right) => left.start - right.start || right.end - left.end
   );
   let out = "";

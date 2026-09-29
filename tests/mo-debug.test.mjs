@@ -832,11 +832,32 @@ const OPTION_FORM_CASES = [
     '{"a": 1, "b": [true, {"c": "x --token abc"}], "d": "e"}',
     '{"a": 1, "b": [true, {"c": "x --token [REDACTED:flag]"}], "d": "e"}',
   ],
+  // A prefix that only looks like JSON proves nothing: an invalid number, a
+  // trailing comma, an illegal escape. Valid JSON of every kind still does.
+  [
+    '[1+, "90s login: x --password pre" Zq9 Secret',
+    '[1+, "90s login: x --password [REDACTED:flag]',
+  ],
+  [
+    '{"a":1,"b":[true,],"c":"90s login: x --password pre" Zq9 Secret',
+    '{"a":1,"b":[true,],"c":"90s login: x --password [REDACTED:flag]',
+  ],
+  [
+    String.raw`{"a":"\x","b":"90s login: x --password pre" Zq9 Secret`,
+    String.raw`{"a":"\x","b":"90s login: x --password [REDACTED:flag]`,
+  ],
+  [
+    String.raw`{"n":-1.25e+3,"u":"\u0041","e":[],"o":{},"p":[[1],{"q":null}],"c":"x --token abc","d":"e"}`,
+    String.raw`{"n":-1.25e+3,"u":"\u0041","e":[],"o":{},"p":[[1],{"q":null}],"c":"x --token [REDACTED:flag]","d":"e"}`,
+  ],
   // In a string that holds data, a space is part of a `KEY=` value, so the
   // value runs to the string's closing quote; in a command string it does not.
   ["curl -d 'password=Zq9 Secret' https://h", "curl -d 'password=[REDACTED:assignment]"],
   ['{"body":"password=Zq9 Secret","n":1}', '{"body":"password=[REDACTED:assignment]","n":1}'],
   ["bash -c 'PASSWORD=x ls' && y", "bash -c 'PASSWORD=[REDACTED:assignment] ls' && y"],
+  // The same holds for a bare `key: value` there.
+  ["curl -H 'X-Api-Key: Zq9 Secret' https://h", "curl -H 'X-Api-Key: [REDACTED:assignment]"],
+  ['{"note":"password: Zq9 Secret","n":1}', '{"note":"password: [REDACTED:assignment]","n":1}'],
   // A double quote that opens no command string or JSON string may be a
   // phantom too, such as an inch mark.
   ['a 12" screen x --password pre" Zq9 Secret', 'a 12" screen x --password [REDACTED:flag]'],
@@ -910,6 +931,8 @@ test("a short or option-form credential is redacted, in both harnesses' records"
     ["toolu_h", `echo do not eval '90s && ${SETUP} --password zzpre' Zq9 Secret`],
     ["toolu_i", `bash -lc '${SETUP} --token zzabc' && y api_key: 'Zq9 Secret' tail`],
     ["toolu_j", `echo note: "90s && ${SETUP} --password zzpre" Zq9 Secret`],
+    ["toolu_k", `[1+, "90s && ${SETUP} --password zzpre" Zq9 Secret`],
+    ["toolu_l", `curl -H 'X-Api-Key: Zq9 Secret' https://h && ${SETUP}`],
   ].map(([id, command]) => ({
     ...claudeRecord,
     message: {
@@ -987,6 +1010,8 @@ test("no credential byte survives after these enclosing texts, in any shape or f
     'note: "90s login: ',
     'one, "90s login: ',
     "curl -d 'a=1 ",
+    '[1+, "90s login: ',
+    '{"a":1,"b":[true,],"c":"',
   ];
   const shapes = [
     "--password Zq9Secret",

@@ -130,19 +130,27 @@ const COMMAND_STRING = new RegExp(
   "u",
 );
 
-// One JSON token: a string, a scalar, or a structural character.
-const JSON_TOKEN = /\s*(?:"(?:[^"\\\n]|\\.)*"|-?\d[\d.eE+-]*|true|false|null|([{}[\]:,]))/uy;
+// One JSON token as RFC 8259 writes it: a string with legal escapes only, a
+// number or literal that ends where a token may end, or a structural
+// character. `1+`, `01`, `"\\x"` and the like lex as nothing, so the prefix
+// they stand in proves nothing.
+const JSON_STRING = String.raw`"(?:[^"\\\u0000-\u001f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"`;
+const JSON_SCALAR = String.raw`(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)(?=[\s,\]}]|$)`;
+const JSON_TOKEN = new RegExp(String.raw`\s*(?:(${JSON_STRING})|${JSON_SCALAR}|([{}[\]:,]))`, "uy");
 
-const JSON_OPEN = { "{": "key", "[": "value" };
+// A container just opened may close at once; after a comma it may not, so a
+// trailing comma is no JSON.
+const JSON_OPEN = { "{": "firstKey", "[": "firstValue" };
+const JSON_KEY = new Set(["key", "firstKey"]);
+const JSON_VALUE = new Set(["value", "firstValue"]);
 
 /** The JSON grammar state after one token, or null where the token cannot stand there. */
-function jsonStep(state, token, punctuation) {
+function jsonStep(state, string, punctuation) {
   const { stack, expect } = state;
-  if (punctuation === undefined) return jsonScalar(state, token);
+  if (punctuation === undefined) return jsonScalar(state, string);
   if (punctuation in JSON_OPEN) {
-    return expect === "value"
-      ? { stack: [...stack, punctuation], expect: JSON_OPEN[punctuation] }
-      : null;
+    if (!JSON_VALUE.has(expect)) return null;
+    return { stack: [...stack, punctuation], expect: JSON_OPEN[punctuation] };
   }
   if (punctuation === ":") return expect === "colon" ? { stack, expect: "value" } : null;
   if (punctuation === ",") {
@@ -150,22 +158,21 @@ function jsonStep(state, token, punctuation) {
     return { stack, expect: stack.at(-1) === "{" ? "key" : "value" };
   }
   const open = punctuation === "}" ? "{" : "[";
-  return stack.at(-1) === open && expect !== "colon"
-    ? { stack: stack.slice(0, -1), expect: "next" }
-    : null;
+  const closable = expect === "next" || expect === JSON_OPEN[open];
+  return stack.at(-1) === open && closable ? { stack: stack.slice(0, -1), expect: "next" } : null;
 }
 
-/** A string or scalar: a key where a key is expected, else a value. */
-function jsonScalar({ stack, expect }, token) {
-  if (expect === "key")
-    return token.trimStart().startsWith('"') ? { stack, expect: "colon" } : null;
-  return expect === "value" ? { stack, expect: "next" } : null;
+/** A string or scalar: only a string where a key is expected, else a value. */
+function jsonScalar({ stack, expect }, string) {
+  if (JSON_KEY.has(expect)) return string === undefined ? null : { stack, expect: "colon" };
+  return JSON_VALUE.has(expect) ? { stack, expect: "next" } : null;
 }
 
 /**
  * Whether `prefix`, a line up to a double quote, is the start of a JSON
  * document at which a string may begin: a key or a value inside an object or
- * a list. Punctuation alone is no proof, because prose has colons and commas.
+ * a list. Punctuation alone is no proof, because prose has colons and commas,
+ * and neither is a prefix that only looks like JSON.
  */
 function opensJsonString(prefix) {
   if (!/^\s*[{[]/u.test(prefix)) return false;
@@ -174,10 +181,10 @@ function opensJsonString(prefix) {
   while (!/^\s*$/u.test(prefix.slice(JSON_TOKEN.lastIndex))) {
     const match = JSON_TOKEN.exec(prefix);
     if (!match) return false;
-    state = jsonStep(state, match[0], match[1]);
+    state = jsonStep(state, match[1], match[2]);
     if (state === null) return false;
   }
-  return state.stack.length > 0 && (state.expect === "key" || state.expect === "value");
+  return state.stack.length > 0 && (JSON_KEY.has(state.expect) || JSON_VALUE.has(state.expect));
 }
 
 function lineBefore(text, at) {

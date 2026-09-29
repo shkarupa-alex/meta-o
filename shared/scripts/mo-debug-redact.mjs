@@ -100,12 +100,10 @@ function maskUser(text, start, word, glued) {
  * text, so a quote that closes `bash -c "…"` or a JSON string ends the word
  * while a quote inside the password does not.
  */
-function shellWordRanges(text) {
+function shellWordRanges(text, contexts) {
   const ranges = [];
-  let contexts = null;
   for (const trigger of WORD_TRIGGERS) {
     for (const match of text.matchAll(trigger.pattern)) {
-      contexts ??= quoteContexts(text);
       const start = match.index + match[0].length;
       const read = shellWord(text, start, contexts[start]);
       if (read.end === start) continue;
@@ -185,21 +183,28 @@ const ASSIGNMENTS = [
       "giu",
     ),
     (_, key, separator) => `${key}${separator}[REDACTED:assignment]`,
+    // Bare: the value stops at whitespace, which inside a data string is
+    // part of it, so there the value runs to the string's end.
+    { bare: true },
   ],
 ];
 
-/** The value range of every `ASSIGNMENTS` match, with the placeholder for it. */
-function assignmentRanges(text) {
+/**
+ * The value range of every `ASSIGNMENTS` match, with the placeholder for it.
+ * A bare value is read in the quote context of its key, and only when no
+ * quote ends the separator: `password: '…'` is the quoted rule's, whole.
+ */
+function assignmentRanges(text, contexts) {
   const ranges = [];
-  for (const [pattern, replace] of ASSIGNMENTS) {
+  for (const [pattern, replace, { bare } = {}] of ASSIGNMENTS) {
     for (const match of text.matchAll(pattern)) {
       const key = match[1].length + match[2].length;
       const start = match.index + key;
-      ranges.push({
-        start,
-        end: match.index + match[0].length,
-        value: replace(...match).slice(key),
-      });
+      const read = match.index + match[0].length;
+      const data = bare && !/["']$/u.test(match[2]);
+      const end = data ? Math.max(read, dataStringEnd(text, read, contexts[match.index])) : read;
+      const value = end === read ? replace(...match).slice(key) : "[REDACTED:assignment]";
+      ranges.push({ start, end, value });
     }
   }
   return ranges;
@@ -215,7 +220,8 @@ function assignmentRanges(text) {
  * text left by an earlier one then found no key and let that value through.
  */
 function redactCredentials(text) {
-  const ranges = [...shellWordRanges(text), ...assignmentRanges(text)].sort(
+  const contexts = quoteContexts(text);
+  const ranges = [...shellWordRanges(text, contexts), ...assignmentRanges(text, contexts)].sort(
     (left, right) => left.start - right.start || right.end - left.end,
   );
   let out = "";
