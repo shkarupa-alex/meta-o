@@ -20,7 +20,7 @@ Every brief carries all of these, in this order, each on its own line or block:
 | `Constraints`          | what the reviewer may not do: no writes, no tests, lint, QC or subagents  |
 | `Ownership`            | which resources are the reviewer's and which are not                      |
 | `Acceptance`           | what a finding must state to be actionable                                |
-| `Reviewer-Skill`       | `mo-reviewer`, the path of its installed `SKILL.md` and its `source_tree` |
+| `Reviewer-Skill`       | `mo-reviewer`, the path of its installed `SKILL.md` and its version ids   |
 | `Report`               | the authoritative response, the grammar that replaces the generic one     |
 | `Body-File`            | the one path the reviewer creates, validates and sends, or `none`         |
 | `Methodology-Friction` | where to report a rule that got in the way rather than a defect           |
@@ -68,14 +68,22 @@ it carries the risk lenses, the no-execution rule and the validator — and neve
 from a copy of unknown origin. The reviewer does not start the coordinator's
 review skill; calling its validator is not starting a review.
 
-The field also carries that file's `metadata.source_tree`, in the form
-`Reviewer-Skill: mo-reviewer <path> source_tree=<40-hex>`. The skill bundles the
-review protocol and the validator, and the build stamps the tree of every input
-it copied, so this one value is the installed version of all three. The body has
-no version header on purpose; the Dispatch context holds it instead, which is
-what lets a report accepted today be judged again by the grammar that accepted
-it after the installation has moved on. A `SKILL.md` without a readable stamp is
-not a reviewer skill of known origin, and no Dispatch starts from it.
+The field also carries the installed version, in the form
+`Reviewer-Skill: mo-reviewer <path> source_tree=<40-hex> skill=<id> protocol=<id> validator=<id>`.
+`source_tree` is the file's build stamp: the authored inputs behind the skill,
+its protocol and its validator. It does not cover the bytes of the bundled
+third-party packages, and an edited installation keeps it unchanged, so it
+cannot name the bytes that judged a report on its own. The three ids can: each
+is `git hash-object` of the installed `SKILL.md`,
+`references/review-protocol.md` and `scripts/mo-review-report.mjs`, computed
+immediately before the Dispatch. An unmodified installation resolves each id to
+the committed generated file with `git log --find-object=<id>`, and an edited
+one yields an id that no commit holds. The body has no version header on
+purpose; the Dispatch context holds the version instead, which is what lets a
+report accepted today be judged again by the grammar that accepted it after the
+installation has moved on. A `SKILL.md` without a readable stamp, or a missing
+or unreadable file among the three, is not a reviewer skill of known origin, and
+no Dispatch starts from it.
 
 ## Grounding sources are reachable from the candidate
 

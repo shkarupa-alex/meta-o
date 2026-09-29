@@ -185,17 +185,21 @@ Create both tasks before launching either worker. The skill creates only two
 reviewers, never an executor/fixer/verifier/subagent. Use stable visible titles
 `<feature>:review:<vendor>`; title is a label and exact handles own cleanup.
 
-Every reviewer Dispatch names `mo-reviewer` under `Reviewer-Skill` together
-with the absolute path of its `SKILL.md` in the installation this skill runs
-from — the sibling directory of this skill — and that file's
-`metadata.source_tree`, as `mo-reviewer <path> source_tree=<40-hex>`. The stamp
-covers the reviewer skill, the protocol and the validator it bundles, so it is
-the version that judged the report; the round report repeats it next to
+Every reviewer Dispatch names `mo-reviewer` under `Reviewer-Skill` together with
+the absolute path of its `SKILL.md` in the installation this skill runs from —
+the sibling directory of this skill — and the installed version, as
+`mo-reviewer <path> source_tree=<40-hex>` followed by
+`skill=<id> protocol=<id> validator=<id>`. `source_tree` is that file's build
+stamp; it names authored inputs only, not the bundled third-party bytes, and
+survives a local edit. So immediately before the Dispatch, take
+`git hash-object` of the installed `SKILL.md`, `references/review-protocol.md`
+and `scripts/mo-review-report.mjs`: those three ids are the bytes that judge the
+report. The round report repeats the whole value next to
 `prepared_body_identity`. Before either Dispatch, read that file; when it is
-absent, unreadable from the reviewer's workspace, carries no stamp, or is not
-the same build as this skill, no Dispatch starts and the result is
-`needs_attention/skill_unavailable`. Never paste reviewer instructions from a
-copy of unknown origin.
+absent, unreadable from the reviewer's workspace, carries no stamp, lacks one of
+the three files, or is not the same build as this skill, no Dispatch starts and
+the result is `needs_attention/skill_unavailable`. Never paste reviewer
+instructions from a copy of unknown origin.
 
 Start each harness without task bytes. Positive version-matched observation must
 prove its process, normal agent prompt and absence of trust UI or shell prompt

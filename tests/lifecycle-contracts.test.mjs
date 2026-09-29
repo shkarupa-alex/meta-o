@@ -965,13 +965,23 @@ test("every reviewer Dispatch records the installed reviewer version", () => {
   // the only place that can say which grammar accepted a report once the
   // installation moves on.
   const brief = source("shared/references/review-brief.md").replace(/\s+/gu, " ");
-  assert.match(brief, /`Reviewer-Skill: mo-reviewer <path> source_tree=<40-hex>`/u);
+  const form = "mo-reviewer <path> source_tree=<40-hex> skill=<id> protocol=<id> validator=<id>";
+  assert.equal(brief.includes(`\`Reviewer-Skill: ${form}\``), true);
   assert.match(brief, /no Dispatch starts from it/u);
+  // The stamp names authored inputs only: bundled package bytes and a local
+  // edit leave it unchanged, so the installed bytes are named by object id.
+  assert.match(brief, /does not cover the bytes of the bundled third-party packages/u);
+  assert.match(brief, /`git log --find-object=<id>`/u);
   for (const path of ["src/skills/mo-review-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
     const review = source(path).replace(/\s+/gu, " ");
-    assert.match(review, /`mo-reviewer <path> source_tree=<40-hex>`/u, path);
-    assert.match(review, /carries no stamp/u, path);
-    assert.match(review, /repeats it next to `prepared_body_identity`/u, path);
+    const [stamp, ids] = [
+      "mo-reviewer <path> source_tree=<40-hex>",
+      "skill=<id> protocol=<id> validator=<id>",
+    ];
+    assert.equal(review.includes(`\`${stamp}\` followed by \`${ids}\``), true, path);
+    assert.match(review, /immediately before the Dispatch, take `git hash-object`/u, path);
+    assert.match(review, /carries no stamp, lacks one of the three files/u, path);
+    assert.match(review, /repeats the whole value next to `prepared_body_identity`/u, path);
   }
   // The stamp can name all three only while the skill bundles the other two.
   for (const bundled of ["references/review-protocol.md", "scripts/mo-review-report.mjs"]) {
