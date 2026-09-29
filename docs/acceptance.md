@@ -140,6 +140,57 @@ issue_fixes_closure:
 Постоянное доказательство: `git cat-file -e <blob>` для каждой записи и
 `git cat-file blob <blob>` для исходных байтов.
 
+## Разбор исходных записей #18–#43
+
+Как и разбор #1–#17, это часть карты приёмки, а не второй реестр. Исход
+`implemented` означает, что детерминированная часть приёмки стоит в дереве;
+живая часть названа сценарием из [Сквозная проверка](e2e.md), и issue
+закрывается только после её положительного прогона. `external_blocked` — отказ
+по закрытой причине до появления контракта Orca, issue остаётся открытым.
+Закрытый до снимка issue #42 здесь не разбирается.
+
+| Источник | Исход            | Долговечное доказательство                                                                                                                               |
+| -------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| #18      | implemented      | Скил `mo-debug` и `shared/scripts/mo-debug-redact.mjs`; `tests/mo-debug.test.mjs`, `tests/skill-source-tree.test.mjs`; живая часть — B64                 |
+| #19      | implemented      | Переносимое ядро `shared/scripts/mo-knowledge.mjs`; `tests/knowledge-core.test.mjs`; живая часть — B67                                                   |
+| #20      | implemented      | Две формы тела находки совпадают у описания и `mo-review-report.mjs`; `tests/review-grammar.test.mjs`, `tests/review-report.test.mjs`                    |
+| #21      | implemented      | Грамматика идентификаторов и трейлера, `definitions=<n>`; `tests/knowledge-history.test.mjs`, `tests/history-grammar-reference.test.mjs`                 |
+| #22      | отклонено        | Канарейка B70 опровергла импорт одной строкой, `CLAUDE.md` остаётся побайтовой копией; `tests/setup-contract.test.mjs`, `docs/papercut.md`; issue открыт |
+| #23      | implemented      | Корень Git от рабочего каталога, явный `--repo` старше; `tests/helper-root.test.mjs`; живая часть — B69                                                  |
+| #24      | implemented      | Шаблон `AGENTS.md` в `mo-setup` требует проверенных коммитов и push только по запросу; `tests/setup-contract.test.mjs`                                   |
+| #25      | implemented      | Самодостаточный скил `mo-reviewer`; `tests/build-skills.test.mjs`, `tests/install.test.mjs`; живая часть — B53                                           |
+| #26      | implemented      | Повреждённый Dispatch не закрывает живую сессию; `tests/review-resource.test.mjs`; живая часть — B61                                                     |
+| #27      | implemented      | Литеральный шаблон, файл тела и валидация до отправки; `tests/review-grammar.test.mjs`, `tests/review-report.test.mjs`                                   |
+| #28      | implemented      | `Knowledge-Layer` с состояниями `never_enabled`/`declared_disabled`; `tests/knowledge-layer.test.mjs`; живая часть — B68                                 |
+| #29      | external_blocked | Контракт тела `worker_done` ждёт Orca #23845 (`docs/backend-capabilities.md`); живая часть — B53                                                         |
+| #30      | implemented      | Строка `Spec:` в брифе, `shared/references/review-brief.md`; живая часть — B54                                                                           |
+| #31      | implemented      | Первый маркер тела — `Review-Execution:`, вывод валидатора в тело не попадает; `tests/review-report.test.mjs`; живая часть — B54                         |
+| #32      | implemented      | Горячая пара сохраняется после FINDINGS до согласования позиций, правило в `src/skills/mo-review-orca/SKILL.md`; живая часть — B56                       |
+| #33      | external_blocked | Простаивающие экраны классифицируются (`tests/harness-screen.test.mjs`), происхождение черновика ждёт Orca #23846; живая часть — B62                     |
+| #34      | implemented      | Формула `hot(slot)` и учёт попыток; `tests/review-resource.test.mjs`, `tests/harness-screen.test.mjs`; живая часть — B56 и B57                           |
+| #35      | implemented      | Инвентаризация собственных ресурсов ревью; `tests/review-resource.test.mjs`; живая часть — B59                                                           |
+| #36      | implemented      | Явный скил `mo-convergence`; `tests/meta-o-activation.test.mjs`; живая часть — B65                                                                       |
+| #37      | implemented      | Ревьюер не запускает QC (`src/skills/mo-reviewer/SKILL.md`), гейт CI у координатора; `tests/lifecycle-contracts.test.mjs`; живая часть — B54 и B55       |
+| #38      | implemented      | Пара видна в проекте кандидата без перехвата фокуса, правило в `src/skills/mo-review-orca/SKILL.md`; живая часть — B60                                   |
+| #39      | implemented      | Cleanroom-самопроверка исполнителя; `tests/orchestration-contract.test.mjs`; живая часть — B66                                                           |
+| #40      | implemented      | Условный ранний ремонт в отдельном дереве; `tests/review-handoff.test.mjs`; живая часть — B58                                                            |
+| #41      | implemented      | Адресное освобождение деревьев без `prune`; `tests/review-resource.test.mjs`; живая часть — B59                                                          |
+| #43      | external_blocked | Восстановление доверия Codex внутри среды ждёт Orca #23847, готовность Codex 0.158 — Orca #23766; живая часть — B63                                      |
+
+### Проверяемое происхождение разбора #18–#43
+
+Спецификация удалена на этом же шаге; её байты остаются в замороженном
+Git-объекте, а `source_sha` — последний коммит, чьё дерево её содержит.
+
+```yaml
+all_open_issues_closure:
+  source_sha: 5a3336916146d8292f9d017fbd5327e9a88e78d6
+  spec_blob: 000782c92934b6b987ec3cf9be3d86247524ec71
+```
+
+Постоянное доказательство: `git cat-file -e <blob>` и `git cat-file blob <blob>`
+для исходных байтов.
+
 ## Проверяемое происхождение закрытия бэклога
 
 | Источник                 | Замороженный Git-объект                    |
