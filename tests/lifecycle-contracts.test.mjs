@@ -972,6 +972,16 @@ test("the coordinator and the reviewer ship the same protocol and validator byte
   }
 });
 
+test("the coordinator's validate command binds the effective mode it needs", () => {
+  // Without the flag the documented call checked the requested mode only, so a
+  // closure report that declared a lower coverage was never compared.
+  for (const path of ["src/skills/mo-review-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
+    const command = /scripts\/mo-review-report\.mjs validate [^`]*/u.exec(source(path))?.[0] ?? "";
+    assert.match(command, /--requested <mode> --effective <mode>/u, path);
+    assert.match(source(path).replace(/\s+/gu, " "), /`deep` for a `deep` request/u, path);
+  }
+});
+
 test("a Codex trust failure is recovered inside the supported harness, never by codex exec", () => {
   // #43 is external_blocked on Orca, so this rule is what the outcome rests on
   // until then: without the check, dropping or inverting it passed every gate.

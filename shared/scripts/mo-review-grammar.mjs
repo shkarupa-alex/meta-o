@@ -116,6 +116,12 @@ function readHeader(lines, prose, expected) {
   if (envelope.execution !== expected.execution) return fail("execution_mismatch", 0);
   if (envelope.candidate !== expected.candidate) return fail("candidate_mismatch", 1);
   if (envelope.requested !== expected.requestedMode) return fail("mode_mismatch", 2);
+  // Self-escalation is the only change a reviewer makes to its mode, and it
+  // only rises to `deep`. A lower effective mode is coverage nobody asked for,
+  // so it fails here even when the caller names no expected effective mode.
+  if (envelope.effective !== envelope.requested && envelope.effective !== "deep") {
+    return fail("mode_mismatch", 2);
+  }
   if (expected.effectiveMode !== undefined && envelope.effective !== expected.effectiveMode) {
     return fail("mode_mismatch", 2);
   }

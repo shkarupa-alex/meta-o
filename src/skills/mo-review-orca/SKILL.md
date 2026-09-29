@@ -343,9 +343,15 @@ call:
 
 ```text
 scripts/mo-review-report.mjs validate --file <received> --dispatch <id> \
-  --candidate <sha> --requested <mode> --prepared <Body-File> \
-  --normalization <none|final-newline>
+  --candidate <sha> --requested <mode> --effective <mode> \
+  --prepared <Body-File> --normalization <none|final-newline>
 ```
+
+`--effective` is the mode this round needs: `deep` for a `deep` request,
+including every fresh and final pair, and for a `fast` or `follow_up` request
+either the requested mode or `deep` after the reviewer's own escalation. The
+validator refuses a downgrade by itself, so `requested=deep effective=fast` is
+`mode_mismatch` whatever the caller passes.
 
 `status=malformed reason=<code> line=<n>` is a malformed report and exit 2 is a
 call error. Structure and identity are two claims, reported separately: the

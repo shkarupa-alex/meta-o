@@ -213,6 +213,20 @@ test("a report that answers a different call is rejected before its body", () =>
     validateReport(escalated, { ...context("fast"), effectiveMode: undefined }).effective,
     "deep",
   );
+  // A reviewer may raise its coverage but never lower it, named or not.
+  for (const [requested, effective] of [
+    ["deep", "fast"],
+    ["deep", "follow_up"],
+    ["follow_up", "fast"],
+    ["fast", "follow_up"],
+  ]) {
+    const lowered = report().replace(
+      "Mode: requested=deep effective=deep",
+      `Mode: requested=${requested} effective=${effective}`,
+    );
+    const expected = { ...context(requested), effectiveMode: undefined };
+    assert.equal(validateReport(lowered, expected).reason, "mode_mismatch", effective);
+  }
 });
 
 test("each structural failure names itself", () => {

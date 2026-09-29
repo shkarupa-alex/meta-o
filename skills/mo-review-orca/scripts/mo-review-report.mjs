@@ -7027,6 +7027,9 @@ function readHeader(lines, prose, expected) {
   if (envelope.execution !== expected.execution) return fail("execution_mismatch", 0);
   if (envelope.candidate !== expected.candidate) return fail("candidate_mismatch", 1);
   if (envelope.requested !== expected.requestedMode) return fail("mode_mismatch", 2);
+  if (envelope.effective !== envelope.requested && envelope.effective !== "deep") {
+    return fail("mode_mismatch", 2);
+  }
   if (expected.effectiveMode !== void 0 && envelope.effective !== expected.effectiveMode) {
     return fail("mode_mismatch", 2);
   }

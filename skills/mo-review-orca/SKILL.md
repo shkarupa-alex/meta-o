@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-review-orca or an act
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "c4658993e16899248ac4894d2e3418f7a15ad1b8"
+  source_tree: "de5229438685437a0c14d00d23f6c7735cf4b76f"
 ---
 
 # Review through Orca
@@ -344,9 +344,15 @@ call:
 
 ```text
 scripts/mo-review-report.mjs validate --file <received> --dispatch <id> \
-  --candidate <sha> --requested <mode> --prepared <Body-File> \
-  --normalization <none|final-newline>
+  --candidate <sha> --requested <mode> --effective <mode> \
+  --prepared <Body-File> --normalization <none|final-newline>
 ```
+
+`--effective` is the mode this round needs: `deep` for a `deep` request,
+including every fresh and final pair, and for a `fast` or `follow_up` request
+either the requested mode or `deep` after the reviewer's own escalation. The
+validator refuses a downgrade by itself, so `requested=deep effective=fast` is
+`mode_mismatch` whatever the caller passes.
 
 `status=malformed reason=<code> line=<n>` is a malformed report and exit 2 is a
 call error. Structure and identity are two claims, reported separately: the
