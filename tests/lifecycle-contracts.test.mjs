@@ -186,6 +186,31 @@ test("the harvested intake has one closed disposition for every BKL source", () 
   }
 });
 
+test("every source issue #18-#43 has one outcome its legend defines", () => {
+  const table = markdownTables(source("docs/acceptance.md")).find(
+    ([, first]) => first?.[0] === "#18",
+  );
+  assert.ok(table, "#18-#43 disposition table missing");
+  const rows = table.slice(1);
+  // #42 was closed before the snapshot and is not a source of this feature.
+  const expected = Array.from({ length: 26 }, (_, index) => `#${index + 18}`).filter(
+    (id) => id !== "#42",
+  );
+  assert.deepEqual(
+    rows.map(([id]) => id),
+    expected,
+  );
+  // Each value carries its weight for the final outcome in the legend, so an
+  // unlisted value would leave that weight unstated.
+  const outcomes = new Set(["implemented", "external_blocked", "refuted"]);
+  for (const [id, outcome, evidence] of rows) {
+    assert.ok(outcomes.has(outcome), `${id}: outcome ${outcome} is not in the legend`);
+    if (outcome === "external_blocked") {
+      assert.match(evidence, /Orca #\d+/u, `${id}: external owner's issue missing`);
+    }
+  }
+});
+
 /**
  * The production validator, read through the assertion style of this suite.
  *
