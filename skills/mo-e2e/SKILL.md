@@ -4,6 +4,7 @@ description: Use only when the user explicitly requests mo-e2e or an active mo-o
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
+  source_tree: "54b819f31ab7614324148b7b6cc631deeb3b0557"
 ---
 
 # Agent-required end-to-end verification

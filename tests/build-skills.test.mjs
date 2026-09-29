@@ -34,6 +34,7 @@ import {
   bundleShared,
   licenseSlug,
   frontmatter,
+  stampSourceTree,
   stripSourceAnchors,
   walk,
   writeLicenses,
@@ -44,6 +45,8 @@ const SOURCES = join(ROOT, "src", "skills");
 const OUTPUT = join(ROOT, "skills");
 const EXPECTED = [
   "find-reuse",
+  "mo-convergence",
+  "mo-debug",
   "mo-e2e",
   "mo-orchestrate-orca",
   "mo-review-orca",
@@ -216,7 +219,8 @@ test("a bundle that pulls a root its closure does not name fails generation", ()
 
 test("every declared closure keeps its measured baseline and reaches a skill", () => {
   for (const [destination, closure] of Object.entries(BUNDLES)) {
-    assert.ok(closure.roots.length > 0, `${destination} declares no roots`);
+    // A bundle without third-party roots still has to name that on purpose.
+    assert.ok(Array.isArray(closure.roots), `${destination} declares no roots`);
     assert.ok(Number.isInteger(closure.baselineBytes), `${destination} has no measured baseline`);
     const carrier = Object.entries(SHARED_PLAN).find(([, entries]) =>
       entries.some(([, target]) => target === destination),
@@ -485,4 +489,36 @@ test("find-reuse is portable and the retired name is absent", () => {
   }
   assert.equal(existsSync(join(SOURCES, "mo-reuse")), false);
   assert.equal(existsSync(join(OUTPUT, "mo-reuse")), false);
+});
+
+test("every built SKILL.md carries its build inputs' tree id as a direct metadata child", () => {
+  for (const name of EXPECTED) {
+    const { data } = frontmatter(readFileSync(join(OUTPUT, name, "SKILL.md"), "utf8"));
+    assert.match(data.metadata?.source_tree ?? "", /^[0-9a-f]{40}$/u, name);
+    const source = frontmatter(readFileSync(join(SOURCES, name, "SKILL.md"), "utf8")).data;
+    assert.equal(source.metadata?.source_tree, undefined, `${name} source declares the stamp`);
+  }
+});
+
+test("the stamp is inserted without rewriting authored frontmatter bytes", () => {
+  const directory = mkdtempSync(join(tmpdir(), "mo-stamp-"));
+  scratch.push(directory);
+  const file = join(directory, "SKILL.md");
+  // An all-digit id is the case that would silently become a YAML number.
+  const tree = "1".repeat(40);
+  const authored =
+    "---\nname: x\ndescription: >-\n  folded\nmetadata:\n  repository: r\n---\n\nbody\n";
+  writeFileSync(file, authored);
+  stampSourceTree(file, tree);
+  assert.equal(
+    readFileSync(file, "utf8"),
+    authored.replace("  repository: r\n", `  repository: r\n  source_tree: "${tree}"\n`),
+  );
+  writeFileSync(file, "---\nname: x\ndescription: d\n---\nbody\n");
+  stampSourceTree(file, tree);
+  assert.equal(frontmatter(readFileSync(file, "utf8")).data.metadata.source_tree, tree);
+  writeFileSync(file, `---\nname: x\nmetadata:\n  source_tree: "${tree}"\n---\n`);
+  assert.throws(() => stampSourceTree(file, tree), /only the build writes it/u);
+  writeFileSync(file, "---\nname: x\nmetadata: [a]\n---\n");
+  assert.throws(() => stampSourceTree(file, tree), /needs a metadata mapping/u);
 });

@@ -20,6 +20,13 @@ and reasoning level, the caller may read that one fact out of the local run
 record of the process it started itself. It reads identity and nothing else,
 never another session's record, and a public surface supersedes it the moment
 one exists.
+<!-- mo:source-anchor §A-DIAGNOSTICS-01 -->
+
+The second exception belongs to the diagnostics decision and to no lifecycle
+step: the user may explicitly invoke `mo-debug` to read a bounded set of their
+own local Claude or Codex session logs. It produces only a local redacted
+report, is never evidence that a review or an orchestration step ran, and never
+reads another user's session.
 
 The orchestrator manages sessions and Git identity. It does not inspect, judge
 or edit product code. Executors, reviewers and E2E agents inspect the
@@ -144,6 +151,16 @@ architecture, papercuts or tests, not the business framing.
 The executor owns all product changes. It commits coherent independently
 verifiable increments and returns a clean full candidate SHA. The orchestrator
 must not enter the code to help or fix it.
+
+Before handoff the executor reconciles the change with the specification, its
+evidence and the causal neighbours of every edit. On a harness with a proven
+subagent capability it then obtains PASS from a cleanroom subagent that receives
+only the specification, the diff and the candidate SHA, never the executor's
+history. The executor fixes the subagent's findings, and the same hot subagent
+checks the fix. After findings from the orchestrator or external reviewers a new
+subagent performs the next self-review, because the old one has already agreed
+with the text it is now asked to doubt. A harness without that capability gives
+`self_review_unavailable`, never an invented PASS.
 
 ## 4. Questions and delegated decisions
 

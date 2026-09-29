@@ -32,6 +32,14 @@ followed.
 
 Those two selections form the vendor-diverse pair; neither may be substituted.
 
+When the caller is the executor itself and no orchestrator stands behind it,
+recommend to that caller once, before the pair starts, a cleanroom self-review:
+a fresh subagent that receives only the specification, the diff and the
+candidate SHA, fixes checked by the same hot subagent. The recommendation never
+blocks the pair. Record the caller's own statement as
+`self_review=<pass|not_done|unavailable>` in the report to the human; a caller
+that says nothing is `not_done`, and the value is the caller's claim, not proof.
+
 A project without a `MO-BACKLOG/1` command, a papercut document or an
 identifier-history gate is reported as `needs_attention` naming the gap.
 Preparing the project is the human's own step; this skill never does it and
@@ -382,7 +390,9 @@ continues on the old SHA, the pair handoff above still follows its report
 before the next candidate, and every one of its findings gets a disposition
 checked against the new candidate. With any property unproven, wait for both
 reports.
-Human-caller review reports both paths/sizes and never auto-cleans them.
+Human-caller review reports both paths/sizes and never auto-cleans them; a
+review an executor called on its own also reports its
+`self_review=<pass|not_done|unavailable>`.
 
 Publicly show exact SHA, pair verdict and component-wise sum of authored P0–P3
 counts. Duplicate findings count twice. Do not expose index/content, deduplicate,

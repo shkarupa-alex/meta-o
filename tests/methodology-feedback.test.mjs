@@ -18,7 +18,7 @@ const shipped = (skill, file) => join(ROOT, "skills", skill, file);
 const read = (path) => readFileSync(path, "utf8");
 
 const WRITERS = ["mo-orchestrate-orca", "mo-review-orca", "mo-setup"];
-const CHANNELS = ["mo-e2e", "mo-watchdog"];
+const CHANNELS = ["mo-convergence", "mo-debug", "mo-e2e", "mo-watchdog"];
 const ADVISORY = ["find-reuse", "senior-jsts", "senior-python"];
 
 test("the routing table carries methodology friction as one ordinary row", () => {
@@ -31,7 +31,7 @@ test("the routing table carries methodology friction as one ordinary row", () =>
   assert.match(table, /дефект продукта сюда не направляется/u);
 });
 
-test("the five lifecycle skills carry the feedback contract and the three writers its table", () => {
+test("the lifecycle skills carry the feedback contract and the three writers its table", () => {
   for (const skill of [...WRITERS, ...CHANNELS]) {
     assert.ok(
       existsSync(shipped(skill, "references/methodology-feedback.md")),
@@ -70,7 +70,13 @@ test("every skill that may report friction names the repository it reports to", 
   }
   for (const skill of ADVISORY) {
     const { data } = frontmatter(read(shipped(skill, "SKILL.md")));
-    assert.equal(data.metadata, undefined, `${skill}: an advisory skill has an addressee`);
+    // The build stamps `metadata.source_tree` into every skill; only the
+    // addressee is what an advisory skill must not have.
+    assert.equal(
+      data.metadata?.repository,
+      undefined,
+      `${skill}: an advisory skill has an addressee`,
+    );
   }
 });
 
@@ -93,6 +99,11 @@ test("a channel skill reports friction and writes nothing", () => {
   for (const skill of CHANNELS) {
     const body = read(shipped(skill, "SKILL.md"));
     assert.doesNotMatch(body, /gh issue (?:create|comment)/u, `${skill}: prescribes a write`);
+    assert.equal(
+      existsSync(shipped(skill, "references/issue-routing.md")),
+      false,
+      `${skill}: a channel skill ships the routing table`,
+    );
   }
 });
 

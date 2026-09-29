@@ -67,7 +67,12 @@ missing, and running the setup skill stays the human's own step.
 Run G0 through the project's `MO-BACKLOG/1` command after intake migration and
 before substantive work. The one hot executor owns all product/spec edits,
 regression tests, invariant comments and coherent commits. The orchestrator
-does not inspect or edit product code.
+does not inspect or edit product code. The executor's task asks for the
+methodology's cleanroom self-review before every handoff: PASS from a subagent
+that receives only the specification, the diff and the candidate SHA, the same
+hot subagent for its own findings, and a new one after findings from you or the
+reviewers. Accept the executor's `self_review_unavailable` as its harness's
+typed answer and never as PASS; do not run the self-review yourself.
 
 Use one run-wide blocking waiter: 600000 ms for executor-only and 300000 ms when
 reviewer/E2E is active. Demultiplex exact handles, process complete event batches,

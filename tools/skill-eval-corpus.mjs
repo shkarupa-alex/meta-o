@@ -20,6 +20,8 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CONTRACT = "meta-o.skill-eval-cases.v2";
 export const EXPECTED_SKILLS = [
   "find-reuse",
+  "mo-convergence",
+  "mo-debug",
   "mo-e2e",
   "mo-orchestrate-orca",
   "mo-review-orca",

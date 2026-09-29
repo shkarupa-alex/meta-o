@@ -57,6 +57,8 @@ mo-lint:
 	node --check shared/scripts/mo-review-report.mjs
 	node --check shared/scripts/mo-review-grammar.mjs
 	node --check shared/scripts/mo-review-resource.mjs
+	node --check shared/scripts/skill-source-tree.mjs
+	for module in shared/scripts/mo-debug*.mjs; do node --check "$$module" || exit 1; done
 	node tools/adapter-contract.mjs --validate
 	bash -n shared/scripts/mo-posture.sh
 	bash -n shared/scripts/mo-watchdog.sh
@@ -122,7 +124,7 @@ mo-smoke:
 			(cd $$smoke_dir && HOME=$$smoke_dir node ./$$backend.mjs --show > /dev/null); \
 		done; \
 		for bundle in $$(git ls-files 'skills/*/scripts/mo-backlog.mjs' \
-				'skills/*/scripts/mo-knowledge-history.mjs'); do \
+				'skills/*/scripts/mo-knowledge-history.mjs' 'skills/*/scripts/mo-debug.mjs'); do \
 			cp $$bundle $$smoke_dir/bundled-helper.mjs; \
 			(cd $$smoke_dir && HOME=$$smoke_dir node ./bundled-helper.mjs --help > /dev/null); \
 		done
@@ -134,9 +136,9 @@ mo-e2e:
 	@echo "AGENT_REQUIRED: not executed"
 	@echo
 	@echo "Docs:      docs/e2e.md, docs/backend-capabilities.md"
-	@echo "Scenarios: B1-B63 — Orca backend, lifecycle, setup and Qwen profile"
+	@echo "Scenarios: B1-B66 — Orca backend, lifecycle, setup and Qwen profile"
 	@echo "           W1-W4 — watchdog target, scan, nudge, suppression"
-	@echo "           27 embedded cases — positive/forbidden/degraded for 9 skills"
+	@echo "           33 embedded cases — positive/forbidden/degraded for 11 skills"
 	@echo "           local and authorized remote installation"
 	@echo "Run:       execute the applicable scenarios without changing the frozen candidate"
 	@echo "Evidence:  keep exact SHA and per-scenario actor/provider facts in the current run/final result"

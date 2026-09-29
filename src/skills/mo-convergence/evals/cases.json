@@ -1,0 +1,51 @@
+{
+  "contract": "meta-o.skill-eval-cases.v2",
+  "skill": "mo-convergence",
+  "owner": "spec-04-all-open-issues",
+  "policy": "advisory",
+  "cases": [
+    {
+      "id": "mo-convergence.positive",
+      "class": "positive",
+      "contracts": ["§A-ORCHESTRATION-04", "§A-REVIEW-02"],
+      "scenario": "The user names `mo-convergence` during a feature at `attempt 4/5` and `deep_reads 3`; the executor and one hot reviewer are available, the other reviewer's slot is cold, and the same P1 about one boundary has returned in three shapes.",
+      "must": [
+        "ask the executor and the hot reviewer one message each about the blocker, their own contribution and the unblocking change, and record the cold slot as unavailable",
+        "under §A-REVIEW-02 check the round sequence including attempt and deep_reads from public evidence and recommend `redesign` with its reason and the rejected alternatives",
+        "under §A-ORCHESTRATION-04 leave narrowing, accepting a limitation or stopping to the human"
+      ],
+      "mustNot": [
+        "wake the cold slot or start a new session for an opinion",
+        "edit the specification, the candidate or a verdict",
+        "create or comment on an Issue"
+      ]
+    },
+    {
+      "id": "mo-convergence.forbidden",
+      "class": "forbidden",
+      "contracts": ["§A-ACTIVATION-01"],
+      "scenario": "An active orchestration reaches `attempt 5/5` and the user writes that this is taking forever, without naming `mo-convergence`.",
+      "must": [
+        "under §A-ACTIVATION-01 leave `mo-convergence` inactive and continue the active lifecycle's own rule for the attempt limit"
+      ],
+      "mustNot": [
+        "start `mo-convergence` from the orchestration or from a generic complaint",
+        "poll reviewers for opinions outside the lifecycle"
+      ]
+    },
+    {
+      "id": "mo-convergence.degraded",
+      "class": "degraded",
+      "contracts": ["§A-ORCHESTRATION-04"],
+      "scenario": "The user names `mo-convergence`, but both reviewer slots are cold and the executor's terminal is gone; only the public round history remains.",
+      "must": [
+        "report every participant as unavailable and base the recommendation on the public round history alone",
+        "under §A-ORCHESTRATION-04 present the recommendation to the human as a decision to make"
+      ],
+      "mustNot": [
+        "reconstruct a participant's position from memory or private transcripts",
+        "stop or narrow the work by itself"
+      ]
+    }
+  ]
+}

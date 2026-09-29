@@ -130,3 +130,26 @@ test("backend mechanics use only the intended public result and diagnostic surfa
     assert.doesNotMatch(source, /private provider transcript.*use|inferred session database.*use/i);
   }
 });
+
+test("the executor proves a cleanroom self-review, and a standalone review only records it", () => {
+  const flat = (text) => text.replace(/\s+/gu, " ");
+  const method = flat(shared("methodology.md"));
+  assert.match(
+    method,
+    /only the specification, the diff and the candidate SHA, never the executor's history/u,
+  );
+  assert.match(method, /the same hot subagent checks the fix/u);
+  assert.match(method, /a new subagent performs the next self-review/u);
+  assert.match(method, /`self_review_unavailable`, never an invented PASS/u);
+  const orchestrate = flat(skill("mo-orchestrate-orca"));
+  assert.match(orchestrate, /cleanroom self-review before every handoff/u);
+  assert.match(orchestrate, /never as PASS; do not run the self-review yourself/u);
+  const review = flat(skill("mo-review-orca"));
+  // The recommendation goes to the executor that called, and never blocks.
+  assert.match(
+    review,
+    /When the caller is the executor itself and no orchestrator stands behind it/u,
+  );
+  assert.match(review, /The recommendation never blocks the pair/u);
+  assert.match(review, /`self_review=<pass\|not_done\|unavailable>`/u);
+});

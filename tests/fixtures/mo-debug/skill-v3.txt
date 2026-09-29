@@ -1,0 +1,13 @@
+---
+name: mo-x
+description: Synthetic fixture skill for mo-debug tests.
+license: MIT
+metadata:
+  source_tree: 3333333333333333333333333333333333333333
+---
+
+# Fixture skill X
+
+Version two of the body.
+
+Run `scripts/mo-review-report.mjs validate` before handing off.
