@@ -596,13 +596,15 @@ function attribute(load, history) {
   const stamped = typeof load.sourceTree === "string" && SHA.test(load.sourceTree);
   const stamp = stamped ? load.sourceTree : "none";
   const comparable = load.complete && load.candidates.length > 0;
-  if (!SKILL_NAME.test(load.name) || !stamped && !comparable) {
+  if (!SKILL_NAME.test(load.name) || !comparable) {
     return { version: "unknown", commits: "unknown", history: history ? "unused" : "none", stamp };
   }
   if (history === null) return { version: "unknown", commits: "unknown", history: "none", stamp };
   const walked = skillHistory(history, load.name);
   const state = walkState(walked);
-  const matches = stamped ? walked.entries.filter((entry) => stampOf(entry.text) === load.sourceTree) : walked.entries.filter((entry) => bodyMatches(load, entry));
+  const matches = walked.entries.filter(
+    (entry) => bodyMatches(load, entry) && (!stamped || stampOf(entry.text) === load.sourceTree)
+  );
   if (matches.length === 0) return { version: "unknown", commits: "none", history: state, stamp };
   const version = stamped ? `source_tree:${load.sourceTree}` : "body_match";
   return { version, commits: range(matches), history: state, stamp };

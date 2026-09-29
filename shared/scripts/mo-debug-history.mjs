@@ -124,12 +124,13 @@ function walkState(walked) {
 /**
  * §A-DIAGNOSTICS-01 attributes one loaded skill text to a version.
  *
- * A visible stamp is a claim, not a version: it becomes one only when a
- * committed `SKILL.md` in the walked history carries it, because a locally
- * built or edited skill carries a stamp that no commit ever held. Without a
- * stamp, only a complete text is compared, and only byte for byte with the
- * same normalization the harness applied. The observed stamp is always named
- * in `stamp`, so evidence survives when the version stays unknown.
+ * Only a complete text is attributed, and only when it equals a committed
+ * `SKILL.md` byte for byte under the normalization the harness applied. A
+ * visible stamp is a claim, not a version: it narrows the match to commits that
+ * carry the same stamp, but a partial read, or an installed file edited after
+ * the build, keeps its stamp while its bytes say otherwise. The observed stamp
+ * is always named in `stamp`, so evidence survives when the version stays
+ * unknown.
  *
  * @param {{name: string, sourceTree: string|null, complete: boolean,
  *   comparison: "file"|"claude_body", candidates: string[]}} load loaded text
@@ -140,15 +141,15 @@ export function attribute(load, history) {
   const stamped = typeof load.sourceTree === "string" && SHA.test(load.sourceTree);
   const stamp = stamped ? load.sourceTree : "none";
   const comparable = load.complete && load.candidates.length > 0;
-  if (!SKILL_NAME.test(load.name) || (!stamped && !comparable)) {
+  if (!SKILL_NAME.test(load.name) || !comparable) {
     return { version: "unknown", commits: "unknown", history: history ? "unused" : "none", stamp };
   }
   if (history === null) return { version: "unknown", commits: "unknown", history: "none", stamp };
   const walked = skillHistory(history, load.name);
   const state = walkState(walked);
-  const matches = stamped
-    ? walked.entries.filter((entry) => stampOf(entry.text) === load.sourceTree)
-    : walked.entries.filter((entry) => bodyMatches(load, entry));
+  const matches = walked.entries.filter(
+    (entry) => bodyMatches(load, entry) && (!stamped || stampOf(entry.text) === load.sourceTree),
+  );
   if (matches.length === 0) return { version: "unknown", commits: "none", history: state, stamp };
   const version = stamped ? `source_tree:${load.sourceTree}` : "body_match";
   return { version, commits: range(matches), history: state, stamp };

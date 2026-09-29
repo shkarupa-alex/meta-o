@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-debug; read a bounded
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "1f835249136a4255a687a66084e5164033522f02"
+  source_tree: "9fcdc6b286dd6f88790f9a3281774a80d92e9a94"
 ---
 
 # Diagnose your own agent sessions
@@ -55,12 +55,13 @@ what the agent did next. Put each deviation into exactly one category:
 deviation you cannot tie to a record is `unknown`.
 
 A `skill` line gives the loaded version. `version=source_tree:<id>` with a
-commit range is the build stamp found in committed history, `body_match` is a
-byte-exact match of the loaded text with a committed body, and `unknown` is
-unknown: never attribute the currently installed text, or the current commit,
-to a historical session. `stamp=<id>` is only the stamp the session showed; a
-stamp that no commit carries, or one read without `--history`, stays
-`version=unknown`, because a locally built or edited skill carries it too.
+commit range means the complete loaded file equals, byte for byte, a committed
+file carrying that build stamp; `body_match` is a byte-exact match of a loaded
+body without a stamp; `unknown` is unknown: never attribute the currently
+installed text, or the current commit, to a historical session. `stamp=<id>` is
+only the stamp the session showed; a partial read, an edited file, a stamp that
+no commit carries, or a scan without `--history` stays `version=unknown`,
+because a locally built or edited skill carries a stamp too.
 
 ## What leaves this skill
 

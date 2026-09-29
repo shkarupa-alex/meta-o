@@ -193,34 +193,51 @@ test("a visible source_tree stamp resolves to the commits that carried it", () =
   ]);
 });
 
-test("a stamp that no committed skill carries is never attributed as a version", () => {
-  // A locally built or edited skill carries a stamp that no commit ever held.
+test("a stamp is attributed only with the complete committed bytes that carry it", () => {
+  // A stamp is a claim: a local build carries one no commit held, and a partial
+  // read or an installed file edited after the build keeps an old one.
   const { repo, short } = historyRepo();
-  const load = (sourceTree) => ({
+  const committed = readFileSync(join(FIXTURES, "skill-v1.txt"), "utf8");
+  const one = "1".repeat(40);
+  const load = (sourceTree, text, complete = true) => ({
     name: "mo-x",
     sourceTree,
-    complete: false,
+    complete,
     comparison: "file",
-    candidates: [],
+    candidates: complete ? [text] : [],
   });
+  const history = () => openHistory(repo, 100);
   const claimed = "4".repeat(40);
-  assert.deepEqual(attribute(load(claimed), openHistory(repo, 100)), {
+  const local = committed.replace(one, claimed);
+  assert.deepEqual(attribute(load(claimed, local), history()), {
     version: "unknown",
     commits: "none",
     history: "complete",
     stamp: claimed,
   });
-  assert.deepEqual(attribute(load(claimed), null), {
+  assert.deepEqual(attribute(load(claimed, local), null), {
     version: "unknown",
     commits: "unknown",
     history: "none",
     stamp: claimed,
   });
-  assert.deepEqual(attribute(load("1".repeat(40)), openHistory(repo, 100)), {
-    version: `source_tree:${"1".repeat(40)}`,
+  assert.deepEqual(attribute(load(one, committed, false), history()), {
+    version: "unknown",
+    commits: "unknown",
+    history: "unused",
+    stamp: one,
+  });
+  assert.deepEqual(attribute(load(one, `${committed}An edit after the build.\n`), history()), {
+    version: "unknown",
+    commits: "none",
+    history: "complete",
+    stamp: one,
+  });
+  assert.deepEqual(attribute(load(one, committed), history()), {
+    version: `source_tree:${one}`,
     commits: `${short[0]}..${short[0]}`,
     history: "complete",
-    stamp: "1".repeat(40),
+    stamp: one,
   });
 });
 
