@@ -46,8 +46,8 @@
         "under §A-MEMORY-05 run the lifecycle for both `not_enabled` projects, dropping only the `MO-BACKLOG/1` closure proof from G0, GC, G1 and G2 while remote-head equality and G2's CI evidence still apply"
       ],
       "mustNot": [
-        "create an executor",
-        "materialize a spec or ledger",
+        "create an executor for the answer-only, standalone-review or `needs_attention` request",
+        "materialize a spec or ledger for the answer-only, standalone-review or `needs_attention` request",
         "invent a lifecycle execution identity",
         "activate the setup skill or create the missing checker, document or gate itself",
         "report a `not_enabled` project as a readiness gap or skip its QC, reviews, E2E or CI evidence"

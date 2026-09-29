@@ -42,7 +42,7 @@
         "under §A-MEMORY-05 start the pair for both `not_enabled` projects, each brief carrying the helper's literal line so the backlog-closure part of the deferral lens is `not_applicable`"
       ],
       "mustNot": [
-        "create Orca workers",
+        "create Orca workers for the generic request or the `needs_attention` project",
         "change model configuration or invent an execution id",
         "start the pair against an unready project or prepare it",
         "treat a `not_enabled` project as a readiness gap or a `needs_attention` project as ordinary"

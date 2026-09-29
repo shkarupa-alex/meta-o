@@ -225,6 +225,28 @@ test("every installable skill owns three base cases and named regressions", () =
   }
 });
 
+test("a case that starts actors on one branch forbids them only on the others", () => {
+  // Both forbidden cases also carry not_enabled projects whose review pair or
+  // lifecycle must start; an unscoped "create workers" oracle made a faithful
+  // answer fail its own case.
+  const corpus = loadCorpus(ROOT);
+  for (const [skill, starts] of [
+    ["mo-review-orca", /start the pair for both `not_enabled` projects/u],
+    ["mo-orchestrate-orca", /run the lifecycle for both `not_enabled` projects/u],
+  ]) {
+    const item = corpus.get(skill).cases.find(({ id }) => id === `${skill}.forbidden`);
+    assert.ok(
+      item.must.some((oracle) => starts.test(oracle)),
+      skill,
+    );
+    const actors = item.mustNot.filter((oracle) =>
+      /create (?:Orca workers|an executor)|materialize/u.test(oracle),
+    );
+    assert.ok(actors.length > 0, skill);
+    for (const oracle of actors) assert.match(oracle, /`needs_attention`/u, `${skill}: ${oracle}`);
+  }
+});
+
 test("complete evidence binds every case to candidate, revision and approved identity", () => {
   const evidence = matrix(FULL_MATRIX);
   const validated = validateEvidence(ROOT, evidence, HEAD, true, {
