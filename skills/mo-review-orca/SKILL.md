@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-review-orca or an act
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "dad7e400aa82b0fa2b9492024f53db17d24b8d3d"
+  source_tree: "ee195bec0325d9aa2ba04ad5126be4aa9ef2ad0f"
 ---
 
 # Review through Orca

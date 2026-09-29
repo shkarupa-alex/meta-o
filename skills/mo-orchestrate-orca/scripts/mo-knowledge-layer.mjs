@@ -6993,7 +6993,7 @@ function declaredPapercut(agents) {
   };
   visit(fromMarkdown(agents));
   const lines = agents.split(/\r?\n/u).map((line) => PAPERCUT_LINE.exec(line.trim())?.[1]).filter(Boolean);
-  if (new Set(lines).size > 1) return { reason: "conflicting_papercut" };
+  if (lines.length > 1) return { reason: "conflicting_papercut" };
   for (const line of lines) {
     const path = localPath(line);
     if (!path) return { reason: "conflicting_papercut" };

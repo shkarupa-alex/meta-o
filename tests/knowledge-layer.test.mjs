@@ -161,13 +161,18 @@ test("a papercut document under any name counts when AGENTS.md declares it by li
   });
 });
 
-test("two papercut lines, or one outside the repository, are a contradiction", () => {
+test("two papercut lines, identical or not, or one outside the repository, are a contradiction", () => {
   const root = repository();
   const lines = (...paths) =>
     `${LAYER["AGENTS.md"]}\n${paths.map((path) => `Knowledge-Layer-Papercut: ${path}`).join("\n")}\n`;
   const files = { ...LAYER, "docs/commands.md": "# Commands\n", "docs/other.md": "# Other\n" };
   const two = commit(root, { ...files, "AGENTS.md": lines("docs/commands.md", "docs/other.md") });
   assert.equal(answer(root, two).reason, "conflicting_papercut");
+  // An identical second line is a second declaration too, not the same one.
+  const twice = commit(root, { "AGENTS.md": lines("docs/commands.md", "docs/commands.md") });
+  assert.equal(answer(root, twice).reason, "conflicting_papercut");
+  const one = commit(root, { "AGENTS.md": lines("docs/commands.md") });
+  assert.deepEqual(answer(root, one), { state: "enabled", reason: "signals_present" });
   const outside = commit(root, { "AGENTS.md": lines("../elsewhere/papercut.md") });
   assert.equal(answer(root, outside).reason, "conflicting_papercut");
 });

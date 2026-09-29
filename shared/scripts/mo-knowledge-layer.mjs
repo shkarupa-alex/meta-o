@@ -100,7 +100,9 @@ function declaredPapercut(agents) {
     .split(/\r?\n/u)
     .map((line) => PAPERCUT_LINE.exec(line.trim())?.[1])
     .filter(Boolean);
-  if (new Set(lines).size > 1) return { reason: "conflicting_papercut" };
+  // Counted before any deduplication: a repeated identical line is still a
+  // second declaration, and the decision calls every second one a contradiction.
+  if (lines.length > 1) return { reason: "conflicting_papercut" };
   for (const line of lines) {
     const path = localPath(line);
     if (!path) return { reason: "conflicting_papercut" };
