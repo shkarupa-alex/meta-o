@@ -685,114 +685,124 @@ test("a quoted multi-word credential is redacted whole, in both harnesses' recor
   assert.equal(/x{8}|tail/u.test(cut), false, cut);
 });
 
+// Each input with its exact redaction; every output must also be idempotent.
+const OPTION_FORM_CASES = [
+  [
+    "pwd=x password=12 token=abc",
+    "pwd=[REDACTED:assignment] password=[REDACTED:assignment] token=[REDACTED:assignment]",
+  ],
+  [
+    "docker login -u bob --password s3cr3tValue reg.example",
+    "docker login -u bob --password [REDACTED:flag] reg.example",
+  ],
+  ["gh auth login --token 0a1b2c3d4e5f", "gh auth login --token [REDACTED:flag]"],
+  ['x --api-key "k3y Value" tail', 'x --api-key "[REDACTED:flag]" tail'],
+  ["mysql -u root -ps3cret db", "mysql -u root -p[REDACTED:flag] db"],
+  ["curl -u bob:s3cret https://host/x", "curl -u bob:[REDACTED:user_credentials] https://host/x"],
+  // A quoted, glued, escaped or differently cased argument is one argument too.
+  ['mysql -u root -p"correct horse" db', 'mysql -u root -p"[REDACTED:flag]" db'],
+  ["mariadb -p'correct horse' db", "mariadb -p'[REDACTED:flag]' db"],
+  ["mysql -pcorrect\\ horse db", "mysql -p[REDACTED:flag] db"],
+  [
+    'curl -u "alice:correct horse" https://h',
+    'curl -u "alice:[REDACTED:user_credentials]" https://h',
+  ],
+  [
+    "curl --user='alice:correct horse' https://h",
+    "curl --user='alice:[REDACTED:user_credentials]' https://h",
+  ],
+  ["curl -ubob:pa@ss https://h", "curl -ubob:[REDACTED:user_credentials] https://h"],
+  ["x --Password s3c -Token abc", "x --Password [REDACTED:flag] -Token [REDACTED:flag]"],
+  // The whole shell word goes, across adjacent bare and quoted segments.
+  ['x --password pre"correct horse"post tail', "x --password [REDACTED:flag] tail"],
+  ['mysql -p"correct horse"post db', "mysql -p[REDACTED:flag] db"],
+  ['PASSWORD=pre"correct horse"post run', "PASSWORD=[REDACTED:assignment] run"],
+  ['x --password "a\\"b c" tail', 'x --password "[REDACTED:flag]" tail'],
+  [
+    'curl -u alice:"correct horse" https://h',
+    'curl -u alice:"[REDACTED:user_credentials]" https://h',
+  ],
+  [
+    'curl -u "alice:correct horse"suffix https://h',
+    'curl -u "alice:[REDACTED:user_credentials]" https://h',
+  ],
+  [
+    "curl -u me@example.com:ATATT3xFfGF0 https://h",
+    "curl -u me@example.com:[REDACTED:user_credentials] https://h",
+  ],
+  [
+    "curl --user me@example.com:ATATT3xFfGF0 https://h",
+    "curl --user me@example.com:[REDACTED:user_credentials] https://h",
+  ],
+  // A later segment may open with a space or be empty, and a user name may
+  // carry `/`, `=` or `@`; only a glued `-u` needs a plain name.
+  ['x --password pre" correct horse"post tail', "x --password [REDACTED:flag] tail"],
+  ['x --password pre""post tail', "x --password [REDACTED:flag] tail"],
+  [
+    'curl -u alice:" correct horse" https://h',
+    'curl -u alice:"[REDACTED:user_credentials]" https://h',
+  ],
+  [
+    "curl -u tenant/user:s3cr3t https://h",
+    "curl -u tenant/user:[REDACTED:user_credentials] https://h",
+  ],
+  [
+    "curl --user uid=alice:s3cr3t https://h",
+    "curl --user uid=alice:[REDACTED:user_credentials] https://h",
+  ],
+  ["go run -user=alice:secret", "go run -user=alice:[REDACTED:user_credentials]"],
+  ["don't; x --password 'a b' tail", "don't; x --password '[REDACTED:flag]' tail"],
+  [
+    '{"cmd":"bash -c \\"x --token abc\\"","cwd":"docs/y"}',
+    '{"cmd":"bash -c \\"x --token [REDACTED:flag]\\"","cwd":"docs/y"}',
+  ],
+  // An apostrophe in prose, inside double quotes or escaped is no quote, and
+  // a typed placeholder keeps its type only when it is the whole password.
+  [
+    "echo don\\'t; x --password pre' secret'post tail",
+    "echo don\\'t; x --password [REDACTED:flag] tail",
+  ],
+  [
+    'git commit -m "don\'t" && curl -u alice:"correct horse" https://h',
+    'git commit -m "don\'t" && curl -u alice:"[REDACTED:user_credentials]" https://h',
+  ],
+  [
+    "$mo-debug it didn't work: curl -u alice:'correct horse' https://h",
+    "$mo-debug it didn't work: curl -u alice:'[REDACTED:user_credentials]' https://h",
+  ],
+  [
+    'echo "it\'s" && x --password pre"correct horse"post tail',
+    'echo "it\'s" && x --password [REDACTED:flag] tail',
+  ],
+  [
+    'curl -u "bob:ghp_AAAAAAAAAAAAAAAAAAAA"-extra https://h',
+    'curl -u "bob:[REDACTED:user_credentials]" https://h',
+  ],
+  [
+    'bash -c "x --password pre""post" && ls docs/q',
+    'bash -c "x --password [REDACTED:flag]" && ls docs/q',
+  ],
+  // A possessive is prose, and after a phantom quote the longer reading wins.
+  [
+    "users' reports: x --password pre' Zq9 Secret'post tail",
+    "users' reports: x --password [REDACTED:flag] tail",
+  ],
+  [
+    "the '90s login: curl -u alice:' Zq9 Secret' https://h",
+    "the '90s login: curl -u alice:'[REDACTED:user_credentials]' https://h",
+  ],
+  ["bash -c 'x --token abc' && ls docs/q", "bash -c 'x --token [REDACTED:flag]' && ls docs/q"],
+  // A quote that closes an enclosing string or a JSON string ends the word.
+  ['bash -c "x --token abc" && ls docs/x', 'bash -c "x --token [REDACTED:flag]" && ls docs/x'],
+  ['{"cmd":"x --token abc","cwd":"docs/y"}', '{"cmd":"x --token [REDACTED:flag]","cwd":"docs/y"}'],
+  [
+    '{"cmd":"curl -u \\"alice:correct horse\\" https://h"}',
+    '{"cmd":"curl -u \\"alice:[REDACTED:user_credentials]\\" https://h"}',
+  ],
+];
+
 test("a short or option-form credential is redacted, in both harnesses' records", () => {
-  const cases = [
-    [
-      "pwd=x password=12 token=abc",
-      "pwd=[REDACTED:assignment] password=[REDACTED:assignment] token=[REDACTED:assignment]",
-    ],
-    [
-      "docker login -u bob --password s3cr3tValue reg.example",
-      "docker login -u bob --password [REDACTED:flag] reg.example",
-    ],
-    ["gh auth login --token 0a1b2c3d4e5f", "gh auth login --token [REDACTED:flag]"],
-    ['x --api-key "k3y Value" tail', 'x --api-key "[REDACTED:flag]" tail'],
-    ["mysql -u root -ps3cret db", "mysql -u root -p[REDACTED:flag] db"],
-    ["curl -u bob:s3cret https://host/x", "curl -u bob:[REDACTED:user_credentials] https://host/x"],
-    // A quoted, glued, escaped or differently cased argument is one argument too.
-    ['mysql -u root -p"correct horse" db', 'mysql -u root -p"[REDACTED:flag]" db'],
-    ["mariadb -p'correct horse' db", "mariadb -p'[REDACTED:flag]' db"],
-    ["mysql -pcorrect\\ horse db", "mysql -p[REDACTED:flag] db"],
-    [
-      'curl -u "alice:correct horse" https://h',
-      'curl -u "alice:[REDACTED:user_credentials]" https://h',
-    ],
-    [
-      "curl --user='alice:correct horse' https://h",
-      "curl --user='alice:[REDACTED:user_credentials]' https://h",
-    ],
-    ["curl -ubob:pa@ss https://h", "curl -ubob:[REDACTED:user_credentials] https://h"],
-    ["x --Password s3c -Token abc", "x --Password [REDACTED:flag] -Token [REDACTED:flag]"],
-    // The whole shell word goes, across adjacent bare and quoted segments.
-    ['x --password pre"correct horse"post tail', "x --password [REDACTED:flag] tail"],
-    ['mysql -p"correct horse"post db', "mysql -p[REDACTED:flag] db"],
-    ['PASSWORD=pre"correct horse"post run', "PASSWORD=[REDACTED:assignment] run"],
-    ['x --password "a\\"b c" tail', 'x --password "[REDACTED:flag]" tail'],
-    [
-      'curl -u alice:"correct horse" https://h',
-      'curl -u alice:"[REDACTED:user_credentials]" https://h',
-    ],
-    [
-      'curl -u "alice:correct horse"suffix https://h',
-      'curl -u "alice:[REDACTED:user_credentials]" https://h',
-    ],
-    [
-      "curl -u me@example.com:ATATT3xFfGF0 https://h",
-      "curl -u me@example.com:[REDACTED:user_credentials] https://h",
-    ],
-    [
-      "curl --user me@example.com:ATATT3xFfGF0 https://h",
-      "curl --user me@example.com:[REDACTED:user_credentials] https://h",
-    ],
-    // A later segment may open with a space or be empty, and a user name may
-    // carry `/`, `=` or `@`; only a glued `-u` needs a plain name.
-    ['x --password pre" correct horse"post tail', "x --password [REDACTED:flag] tail"],
-    ['x --password pre""post tail', "x --password [REDACTED:flag] tail"],
-    [
-      'curl -u alice:" correct horse" https://h',
-      'curl -u alice:"[REDACTED:user_credentials]" https://h',
-    ],
-    [
-      "curl -u tenant/user:s3cr3t https://h",
-      "curl -u tenant/user:[REDACTED:user_credentials] https://h",
-    ],
-    [
-      "curl --user uid=alice:s3cr3t https://h",
-      "curl --user uid=alice:[REDACTED:user_credentials] https://h",
-    ],
-    ["go run -user=alice:secret", "go run -user=alice:[REDACTED:user_credentials]"],
-    ["don't; x --password 'a b' tail", "don't; x --password '[REDACTED:flag]' tail"],
-    [
-      '{"cmd":"bash -c \\"x --token abc\\"","cwd":"docs/y"}',
-      '{"cmd":"bash -c \\"x --token [REDACTED:flag]\\"","cwd":"docs/y"}',
-    ],
-    // An apostrophe in prose, inside double quotes or escaped is no quote, and
-    // a typed placeholder keeps its type only when it is the whole password.
-    [
-      "echo don\\'t; x --password pre' secret'post tail",
-      "echo don\\'t; x --password [REDACTED:flag] tail",
-    ],
-    [
-      'git commit -m "don\'t" && curl -u alice:"correct horse" https://h',
-      'git commit -m "don\'t" && curl -u alice:"[REDACTED:user_credentials]" https://h',
-    ],
-    [
-      "$mo-debug it didn't work: curl -u alice:'correct horse' https://h",
-      "$mo-debug it didn't work: curl -u alice:'[REDACTED:user_credentials]' https://h",
-    ],
-    [
-      'echo "it\'s" && x --password pre"correct horse"post tail',
-      'echo "it\'s" && x --password [REDACTED:flag] tail',
-    ],
-    [
-      'curl -u "bob:ghp_AAAAAAAAAAAAAAAAAAAA"-extra https://h',
-      'curl -u "bob:[REDACTED:user_credentials]" https://h',
-    ],
-    [
-      'bash -c "x --password pre""post" && ls docs/q',
-      'bash -c "x --password [REDACTED:flag]" && ls docs/q',
-    ],
-    // A quote that closes an enclosing string or a JSON string ends the word.
-    ['bash -c "x --token abc" && ls docs/x', 'bash -c "x --token [REDACTED:flag]" && ls docs/x'],
-    [
-      '{"cmd":"x --token abc","cwd":"docs/y"}',
-      '{"cmd":"x --token [REDACTED:flag]","cwd":"docs/y"}',
-    ],
-    [
-      '{"cmd":"curl -u \\"alice:correct horse\\" https://h"}',
-      '{"cmd":"curl -u \\"alice:[REDACTED:user_credentials]\\" https://h"}',
-    ],
-  ];
+  const cases = OPTION_FORM_CASES;
   for (const [input, expected] of cases) {
     assert.equal(redact(input), expected);
     assert.equal(redact(expected), expected, `idempotent: ${expected}`);
@@ -812,9 +822,12 @@ test("a short or option-form credential is redacted, in both harnesses' records"
     "zzpre",
     "zzpost",
     "ATATT3xFfGF0",
+    "Tn4ntPw",
+    "Zq9",
+    "Secret",
   ];
   const command =
-    'git commit -m "don\'t" && docker login --password s3cr3tValue && mysql -p"correct horse" db && x --password zzpre" correct horse"zzpost && pwd=PIN12 node ~/.claude/skills/mo-setup/scripts/mo-setup.mjs check';
+    'users\' reports: git commit -m "don\'t" && docker login --password s3cr3tValue && mysql -p"correct horse" db && x --password zzpre" correct horse"zzpost && curl -u tenant/user:Tn4ntPw https://h && pwd=PIN12 node ~/.claude/skills/mo-setup/scripts/mo-setup.mjs check';
   const UUID = "9f8e7d6c-5b4a-4321-8fed-cba987654323";
   const claudeRecord = {
     sessionId: UUID,
@@ -836,7 +849,8 @@ test("a short or option-form credential is redacted, in both harnesses' records"
       content: [
         {
           type: "input_text",
-          text: '$mo-debug with --token 0a1b2c3d4e5f and curl -u "alice:correct horse" or curl -u me@example.com:ATATT3xFfGF0 or curl -u tenant/user:Tn4ntPw',
+          // The event keeps 160 characters after the mention, so every shape sits inside it.
+          text: "$mo-debug users' reports: x --password zzpre' Zq9 Secret'zzpost with --token 0a1b2c3d4e5f and curl -u \"alice:correct horse\" or -u me@example.com:ATATT3xFfGF0",
         },
       ],
     },
@@ -853,7 +867,7 @@ test("a short or option-form credential is redacted, in both harnesses' records"
   }
 });
 
-test("no credential byte survives any enclosing text, argument shape or following text", () => {
+test("no credential byte survives after these enclosing texts, in any shape or following text", () => {
   // Whether a quote ends the credential word or opens part of it depends on
   // everything before the word, so every shape is tried after every kind of
   // enclosing text and before every kind of following text.
@@ -869,6 +883,12 @@ test("no credential byte survives any enclosing text, argument shape or followin
     "(",
     "x | ",
     "$mo-debug with ",
+    // Prose and glued quotes that leave a phantom quote open, or used to.
+    "users' reports: ",
+    "2026's note: ",
+    "the '90s login: ",
+    "git commit -m'fix it' && ",
+    "ssh h '",
   ];
   const shapes = [
     "--password Zq9Secret",

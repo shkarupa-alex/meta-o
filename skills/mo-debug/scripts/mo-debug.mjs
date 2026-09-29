@@ -57,7 +57,8 @@ function quoteContexts(text) {
   contexts[text.length] = stack;
   return contexts;
 }
-var LETTER = new RegExp("\\p{L}", "u");
+var WORD_CHARACTER = /[\p{L}\p{N}]/u;
+var AFTER_POSSESSIVE = /^(?:$|[\s.,;:!?)\]}])/u;
 function contextStep(text, at, stack) {
   const top = stack.at(-1) ?? null;
   const token2 = quoteAt(text, at);
@@ -70,7 +71,7 @@ function contextStep(text, at, stack) {
 function stackAfter(text, token2, stack, top) {
   if (top?.kind === "'") return token2.kind === "'" ? stack.slice(0, -1) : stack;
   if (token2.kind === "'") {
-    const prose = LETTER.test(text[token2.start - 1] ?? "") && LETTER.test(text[token2.end] ?? "");
+    const prose = WORD_CHARACTER.test(text[token2.start - 1] ?? "") && (WORD_CHARACTER.test(text[token2.end] ?? "") || AFTER_POSSESSIVE.test(text.slice(token2.end, token2.end + 1)));
     return top || prose ? stack : [...stack, token2];
   }
   if (top && closes(top, token2)) return stack.slice(0, -1);
@@ -99,20 +100,21 @@ function wordStep(text, at, first, { enclosing, level }) {
   const own = token2.kind === "'" || token2.level === level;
   const ends = !first && (own ? Boolean(enclosing) && closes(enclosing, token2) : true);
   if (ends) {
-    const closing = closingStep(text, token2);
+    const closing = closingStep(text, token2, enclosing);
     if (closing !== void 0) return closing;
   }
   const end = segmentEnd(text, token2);
   const open = text.slice(token2.start, token2.end);
   return { next: end.at, segment: { open, close: end.closed ? open : "", start: at, end: end.at } };
 }
-function closingStep(text, token2) {
+function closingStep(text, token2, enclosing) {
   const again = quoteAt(text, token2.end);
   if (again && again.kind === token2.kind && again.level === token2.level) {
     return { next: again.end };
   }
-  if (token2.end >= text.length || AFTER_CLOSE.has(text[token2.end])) return null;
-  return void 0;
+  if (token2.end < text.length && !AFTER_CLOSE.has(text[token2.end])) return void 0;
+  if (enclosing?.kind === "'" && segmentEnd(text, token2).closed) return void 0;
+  return null;
 }
 function segmentEnd(text, token2) {
   let at = token2.end;

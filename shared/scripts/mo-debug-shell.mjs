@@ -70,9 +70,10 @@ const closes = (open, token) =>
  * quotes only a single quote means anything; inside double quotes a single
  * quote is a literal byte, a double quote of the same level closes, and one
  * level deeper opens a nested string; outside quotes a backslash escapes the
- * next byte. An apostrophe between two letters outside quotes is prose
- * (`didn't`), not a quote. A phantom quote left open by prose would otherwise
- * decide where every later credential word ends.
+ * next byte. An apostrophe after a letter or digit outside quotes is prose,
+ * not a quote, when another letter or digit (`didn't`, `2026's`) or the end
+ * of a word (`users' reports`) follows it. A phantom quote left open by prose
+ * would otherwise decide where every later credential word ends.
  *
  * @param {string} text session text
  * @returns {object[][]} the open quotes before each index
@@ -91,7 +92,10 @@ export function quoteContexts(text) {
   return contexts;
 }
 
-const LETTER = /\p{L}/u;
+const WORD_CHARACTER = /[\p{L}\p{N}]/u;
+// After a possessive (`users' `, `users'.`) a prose apostrophe is followed by
+// the end of a word, never by more of it.
+const AFTER_POSSESSIVE = /^(?:$|[\s.,;:!?)\]}])/u;
 
 /** One byte or token of `quoteContexts`: where it ends and the stack after it. */
 function contextStep(text, at, stack) {
@@ -107,7 +111,10 @@ function contextStep(text, at, stack) {
 function stackAfter(text, token, stack, top) {
   if (top?.kind === "'") return token.kind === "'" ? stack.slice(0, -1) : stack;
   if (token.kind === "'") {
-    const prose = LETTER.test(text[token.start - 1] ?? "") && LETTER.test(text[token.end] ?? "");
+    const prose =
+      WORD_CHARACTER.test(text[token.start - 1] ?? "") &&
+      (WORD_CHARACTER.test(text[token.end] ?? "") ||
+        AFTER_POSSESSIVE.test(text.slice(token.end, token.end + 1)));
     return top || prose ? stack : [...stack, token];
   }
   if (top && closes(top, token)) return stack.slice(0, -1);
@@ -169,7 +176,7 @@ function wordStep(text, at, first, { enclosing, level }) {
   const own = token.kind === "'" || token.level === level;
   const ends = !first && (own ? Boolean(enclosing) && closes(enclosing, token) : true);
   if (ends) {
-    const closing = closingStep(text, token);
+    const closing = closingStep(text, token, enclosing);
     if (closing !== undefined) return closing;
   }
   const end = segmentEnd(text, token);
@@ -178,19 +185,25 @@ function wordStep(text, at, first, { enclosing, level }) {
 }
 
 /**
- * A quote that would close the enclosing string: the word ends there when a
- * boundary follows, goes on when the same quote opens again at once, and is
- * otherwise undecided, so the caller opens a segment.
+ * A quote that would close the enclosing string: the word goes on when the
+ * same quote opens again at once, ends when a boundary follows and no safer
+ * reading exists, and is otherwise undecided, so the caller opens a segment.
  */
-function closingStep(text, token) {
+function closingStep(text, token, enclosing) {
   // `pre""post` inside `bash -c "…"` closes the enclosing string and opens it
   // again at once, and the shell joins both halves into one word.
   const again = quoteAt(text, token.end);
   if (again && again.kind === token.kind && again.level === token.level) {
     return { next: again.end };
   }
-  if (token.end >= text.length || AFTER_CLOSE.has(text[token.end])) return null;
-  return undefined;
+  if (token.end < text.length && !AFTER_CLOSE.has(text[token.end])) return undefined;
+  // An enclosing single quote may be a phantom that prose opened (`'90s`), and
+  // then this quote opens part of the password instead. Where that reading
+  // closes within the text it is taken, because the longer word only hides
+  // more; where it never closes, as after `bash -c '… abc' && ls`, this quote
+  // really ends the word.
+  if (enclosing?.kind === "'" && segmentEnd(text, token).closed) return undefined;
+  return null;
 }
 
 /** Where a quoted segment opened by `token` ends: after its matching quote, or at the end. */
