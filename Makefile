@@ -101,6 +101,8 @@ mo-knowledge-history:
 # `docs/references/` is an archive of source material, not active requirements.
 # The knowledge plan the portable core checks: where ids are defined, which
 # documents are declared, and every tracked Markdown file it deliberately skips.
+# A feature's accepted specification is a declared document while it is
+# tracked; closure deletes it, and the list then expands to nothing.
 # Source skills link into references that exist only after the build, so the
 # built tree is the declared one.
 MO_KNOWLEDGE_PLAN = --business docs/business.md --architecture docs/architecture \
@@ -109,6 +111,7 @@ MO_KNOWLEDGE_PLAN = --business docs/business.md --architecture docs/architecture
 	--docs docs/backlog.md --docs docs/backend-capabilities.md --docs README.md \
 	--docs AGENTS.md --docs CLAUDE.md --docs shared/references --docs skills \
 	--first-party-root docs --first-party-root shared --first-party-root skills \
+	$(foreach path,$(shell git ls-files 'docs/specifications/*.md'),--docs $(path)) \
 	$(foreach path,$(shell git ls-files 'docs/references/*.md' 'docs/research/*.md'),--knowledge-exclude $(path))
 
 mo-vocabulary:
