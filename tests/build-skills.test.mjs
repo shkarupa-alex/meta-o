@@ -341,6 +341,44 @@ test("review and setup packages carry every contract their entry skill routes to
     assert.equal(existsSync(join(setupRoot, "scripts", name)), true, name);
 });
 
+/** Inline code values and link targets of one Markdown document, read from its AST. */
+function namedFiles(markdown) {
+  const values = [];
+  const visit = (node) => {
+    if (node.type === "inlineCode") values.push(node.value);
+    if (node.type === "link") values.push(node.url);
+    for (const child of node.children ?? []) visit(child);
+  };
+  visit(fromMarkdown(markdown));
+  return values.flatMap((value) =>
+    [...value.matchAll(/(?:^|[\s/])((?:scripts|references)\/[\w.-]+\.\w+)/gu)].map(
+      ([, path]) => path,
+    ),
+  );
+}
+
+test("every helper and reference a skill's entry names ships inside that skill", () => {
+  // A skill is installable alone, so a helper its instructions tell the agent
+  // to run has to be in its own package; a missing delivery gate is a skill
+  // that types into a composer it never proved empty.
+  for (const skill of EXPECTED) {
+    const entry = readFileSync(join(OUTPUT, skill, "SKILL.md"), "utf8");
+    for (const path of namedFiles(entry)) {
+      assert.equal(existsSync(join(OUTPUT, skill, path)), true, `${skill}: ${path}`);
+    }
+  }
+  assert.deepEqual(
+    namedFiles(readFileSync(join(OUTPUT, "mo-convergence", "SKILL.md"), "utf8")).sort(),
+    [
+      "references/methodology-feedback.md",
+      "references/methodology.md",
+      "references/orca-mechanics.md",
+      "scripts/mo-harness-screen.mjs",
+      "scripts/mo-review-resource.mjs",
+    ],
+  );
+});
+
 test("watchdog is shipped executable and source/build file sets agree", () => {
   assert.notEqual(
     statSync(join(OUTPUT, "mo-watchdog", "scripts", "mo-watchdog.sh")).mode & 0o111,

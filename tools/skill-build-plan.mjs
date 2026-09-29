@@ -90,8 +90,9 @@ export const BUNDLES = {
  * Orchestrators and standalone reviewers each carry their backend mechanics
  * plus the shared contracts they consume. Setup owns project readiness and the
  * watchdog owns only its methodology-independent observer helper. The two
- * diagnostics skills write nothing, so like the watchdog they get the feedback
- * channel and never the routing table.
+ * diagnostics skills write no Issue, so like the watchdog they get the feedback
+ * channel and never the routing table; `mo-convergence` still messages live
+ * agents, so it carries the delivery gate and the hot-slot helper.
  */
 export const SHARED_PLAN = {
   "mo-orchestrate-orca": [
@@ -149,6 +150,9 @@ export const SHARED_PLAN = {
     ["references/backend-contract.md", "references/backend-contract.md"],
     ["references/review-protocol.md", "references/review-protocol.md"],
     ["references/methodology-feedback.md", "references/methodology-feedback.md"],
+    ["references/orca-mechanics.md", "references/orca-mechanics.md"],
+    ["scripts/mo-harness-screen.mjs", "scripts/mo-harness-screen.mjs"],
+    ["scripts/mo-review-resource.mjs", "scripts/mo-review-resource.mjs"],
   ],
   "mo-debug": [
     ["references/methodology-feedback.md", "references/methodology-feedback.md"],

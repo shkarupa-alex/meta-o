@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-convergence; ask the 
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "ec2961a4de54e6c1fe12bcd3688409f651187de0"
+  source_tree: "5ee9a92cb46bced51ebf4f5e3a03cda9f19abc9e"
 ---
 
 # Diagnose work that does not converge
@@ -26,6 +26,18 @@ blocking convergence, what they themselves contributed to the delay, and what
 single change would unblock it. Do not start a new session to get an opinion,
 and do not wake a cold slot; a participant that is gone is recorded as
 unavailable, not reconstructed.
+
+
+Neither step is a judgement call. Whether a reviewer slot is hot is answered
+per slot by bundled `scripts/mo-review-resource.mjs hot` from the age since its
+last `worker_done` and the context its screen shows, as
+[Orca native mechanics](references/orca-mechanics.md) describes; a slot it does
+not answer hot is cold. Bytes reach a live agent only through its proven empty
+composer: right before each message, bundled
+`scripts/mo-harness-screen.mjs` reads that exact terminal's current screen and
+must answer `action=inject`. A draft, a suggestion, a trust dialog, a shell
+prompt or any other answer sends nothing, and that participant is recorded as
+unavailable with the classifier's line.
 
 Then check the sequence yourself from public evidence only: the candidates in
 order, each round's verdict, `attempt <n>/5` and `deep_reads <m>`, the findings
