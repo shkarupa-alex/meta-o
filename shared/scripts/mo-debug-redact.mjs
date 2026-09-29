@@ -14,7 +14,7 @@
  * Implements §A-DIAGNOSTICS-01.
  */
 
-import { quoteContexts, shellWord } from "./mo-debug-shell.mjs";
+import { dataStringEnd, quoteContexts, shellWord } from "./mo-debug-shell.mjs";
 
 export const EXCERPT_LIMIT = 240;
 
@@ -107,8 +107,13 @@ function shellWordRanges(text) {
     for (const match of text.matchAll(trigger.pattern)) {
       contexts ??= quoteContexts(text);
       const start = match.index + match[0].length;
-      const word = shellWord(text, start, contexts[start]);
-      if (word.end === start) continue;
+      const read = shellWord(text, start, contexts[start]);
+      if (read.end === start) continue;
+      const end =
+        trigger.kind === "assignment"
+          ? Math.max(read.end, dataStringEnd(text, read.end, contexts[start]))
+          : read.end;
+      const word = end === read.end ? read : { end, segments: [] };
       const value =
         trigger.kind === "user"
           ? maskUser(text, start, word, trigger.glued)

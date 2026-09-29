@@ -819,6 +819,24 @@ const OPTION_FORM_CASES = [
     "sudo bash -o pipefail -c 'x --token abc' && ls",
     "sudo bash -o pipefail -c 'x --token [REDACTED:flag]' && ls",
   ],
+  // Prose punctuation proves no JSON string; a JSON document's own quotes do.
+  [
+    'note: "90s login: x --password pre" Zq9 Secret',
+    'note: "90s login: x --password [REDACTED:flag]',
+  ],
+  [
+    'one, "90s login: x --password pre" Zq9 Secret',
+    'one, "90s login: x --password [REDACTED:flag]',
+  ],
+  [
+    '{"a": 1, "b": [true, {"c": "x --token abc"}], "d": "e"}',
+    '{"a": 1, "b": [true, {"c": "x --token [REDACTED:flag]"}], "d": "e"}',
+  ],
+  // In a string that holds data, a space is part of a `KEY=` value, so the
+  // value runs to the string's closing quote; in a command string it does not.
+  ["curl -d 'password=Zq9 Secret' https://h", "curl -d 'password=[REDACTED:assignment]"],
+  ['{"body":"password=Zq9 Secret","n":1}', '{"body":"password=[REDACTED:assignment]","n":1}'],
+  ["bash -c 'PASSWORD=x ls' && y", "bash -c 'PASSWORD=[REDACTED:assignment] ls' && y"],
   // A double quote that opens no command string or JSON string may be a
   // phantom too, such as an inch mark.
   ['a 12" screen x --password pre" Zq9 Secret', 'a 12" screen x --password [REDACTED:flag]'],
@@ -891,6 +909,7 @@ test("a short or option-form credential is redacted, in both harnesses' records"
     ["toolu_g", `echo the '90s && ${SETUP} --password zzpre' Zq9 Secret`],
     ["toolu_h", `echo do not eval '90s && ${SETUP} --password zzpre' Zq9 Secret`],
     ["toolu_i", `bash -lc '${SETUP} --token zzabc' && y api_key: 'Zq9 Secret' tail`],
+    ["toolu_j", `echo note: "90s && ${SETUP} --password zzpre" Zq9 Secret`],
   ].map(([id, command]) => ({
     ...claudeRecord,
     message: {
@@ -965,6 +984,9 @@ test("no credential byte survives after these enclosing texts, in any shape or f
     '{"cmd":["bash","-lc","',
     "the '90s x --token Zq9A' && ",
     'echo "x --token Zq9A" && ',
+    'note: "90s login: ',
+    'one, "90s login: ',
+    "curl -d 'a=1 ",
   ];
   const shapes = [
     "--password Zq9Secret",
@@ -1005,6 +1027,16 @@ test("no credential byte survives after these enclosing texts, in any shape or f
       }
     }
   }
+});
+
+test("a long run of shell options before a quote is read in linear time", () => {
+  // `-o` once had two readings, as an option and as the option that takes a
+  // value, and forty of them before a quote took seconds per quote. A test
+  // timeout cannot interrupt synchronous code, so the time is asserted.
+  const input = `bash${" -o".repeat(40)} x 'y --token abc'`;
+  const started = performance.now();
+  assert.equal(redact(input), `bash${" -o".repeat(40)} x 'y --token [REDACTED:flag]`);
+  assert.ok(performance.now() - started < 1000, "backtracking");
 });
 
 test("--out creates a private new file and refuses to overwrite an existing one", () => {

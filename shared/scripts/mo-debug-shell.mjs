@@ -110,13 +110,15 @@ function contextStep(text, at, stack) {
 
 // A quote that opens the command string of a shell's `-c` (`bash -lc '…'`,
 // `sh -euc "…"`), of `eval` at the start of a command, or of `ssh <host>`
-// holds a command, and so does a double quote that opens a JSON string after
-// `{ [ , :`. Such a quote is really closed later, and a quote that closes it
-// ends the credential word inside it. Any other open quote may be prose that no
-// shell ever read (`the '90s`, `a 12" screen`, `do not eval '…`), and ending a
-// word there leaked the rest of the password.
+// holds a command, and a double quote that a JSON document opens holds a JSON
+// string. Such a quote is really closed later, and a quote that closes it ends
+// the credential word inside it. Any other open quote may be prose that no
+// shell ever read (`the '90s`, `a 12" screen`, `do not eval '…`,
+// `note: "…`), and ending a word there leaked the rest of the password.
 const SHELL = String.raw`(?:^|[^\w.-])(?:[\w.-]*/)*(?:sh|bash|dash|zsh|ksh|mksh|ash|fish)`;
-const SHELL_OPTION = String.raw`(?:\s+(?:--?[A-Za-z][\w-]*|[-+]o\s+\S+))`;
+// Each option token has exactly one reading, `-o` only with its value, so a
+// long line of options that finally fails does not backtrack exponentially.
+const SHELL_OPTION = String.raw`(?:\s+(?:--[A-Za-z][\w-]*|-(?!o(?:\s|$))[A-Za-z]+|[-+]o\s+\S+))`;
 const COMMAND_STRING = new RegExp(
   [
     String.raw`${SHELL}${SHELL_OPTION}*?\s+-[A-Za-z]*c[A-Za-z]*`,
@@ -127,7 +129,56 @@ const COMMAND_STRING = new RegExp(
     .join("|"),
   "u",
 );
-const JSON_STRING = /[{[,:]\s*$/u;
+
+// One JSON token: a string, a scalar, or a structural character.
+const JSON_TOKEN = /\s*(?:"(?:[^"\\\n]|\\.)*"|-?\d[\d.eE+-]*|true|false|null|([{}[\]:,]))/uy;
+
+const JSON_OPEN = { "{": "key", "[": "value" };
+
+/** The JSON grammar state after one token, or null where the token cannot stand there. */
+function jsonStep(state, token, punctuation) {
+  const { stack, expect } = state;
+  if (punctuation === undefined) return jsonScalar(state, token);
+  if (punctuation in JSON_OPEN) {
+    return expect === "value"
+      ? { stack: [...stack, punctuation], expect: JSON_OPEN[punctuation] }
+      : null;
+  }
+  if (punctuation === ":") return expect === "colon" ? { stack, expect: "value" } : null;
+  if (punctuation === ",") {
+    if (expect !== "next" || stack.length === 0) return null;
+    return { stack, expect: stack.at(-1) === "{" ? "key" : "value" };
+  }
+  const open = punctuation === "}" ? "{" : "[";
+  return stack.at(-1) === open && expect !== "colon"
+    ? { stack: stack.slice(0, -1), expect: "next" }
+    : null;
+}
+
+/** A string or scalar: a key where a key is expected, else a value. */
+function jsonScalar({ stack, expect }, token) {
+  if (expect === "key")
+    return token.trimStart().startsWith('"') ? { stack, expect: "colon" } : null;
+  return expect === "value" ? { stack, expect: "next" } : null;
+}
+
+/**
+ * Whether `prefix`, a line up to a double quote, is the start of a JSON
+ * document at which a string may begin: a key or a value inside an object or
+ * a list. Punctuation alone is no proof, because prose has colons and commas.
+ */
+function opensJsonString(prefix) {
+  if (!/^\s*[{[]/u.test(prefix)) return false;
+  let state = { stack: [], expect: "value" };
+  JSON_TOKEN.lastIndex = 0;
+  while (!/^\s*$/u.test(prefix.slice(JSON_TOKEN.lastIndex))) {
+    const match = JSON_TOKEN.exec(prefix);
+    if (!match) return false;
+    state = jsonStep(state, match[0], match[1]);
+    if (state === null) return false;
+  }
+  return state.stack.length > 0 && (state.expect === "key" || state.expect === "value");
+}
 
 function lineBefore(text, at) {
   return text.slice(text.lastIndexOf("\n", at - 1) + 1, at);
@@ -141,12 +192,21 @@ function stackAfter(text, token, stack, top) {
       (WORD_CHARACTER.test(text[token.end] ?? "") ||
         AFTER_POSSESSIVE.test(text.slice(token.end, token.end + 1)));
     if (top || prose) return stack;
-    return [...stack, { ...token, proven: COMMAND_STRING.test(lineBefore(text, token.start)) }];
+    return [...stack, { ...token, proven: proofOf(text, token) }];
   }
   if (top && closes(top, token)) return stack.slice(0, -1);
   if (token.level !== levelOf(stack)) return stack;
+  return [...stack, { ...token, proven: proofOf(text, token) }];
+}
+
+/** What proves that `token` really opens a string: `command`, `json` or nothing. */
+function proofOf(text, token) {
   const before = lineBefore(text, token.start);
-  return [...stack, { ...token, proven: COMMAND_STRING.test(before) || JSON_STRING.test(before) }];
+  if (COMMAND_STRING.test(before)) return "command";
+  // Only a document's own quotes: a quote escaped inside a JSON string is
+  // proven by the command it follows or not at all.
+  if (token.kind === '"' && token.level === 0 && opensJsonString(before)) return "json";
+  return false;
 }
 
 /**
@@ -232,6 +292,39 @@ function closingStep(text, token, enclosing) {
   // word only hides more, to the window edge at worst.
   if (enclosing && !enclosing.proven) return undefined;
   return null;
+}
+
+/**
+ * §A-DIAGNOSTICS-01 finds where the string around a credential word ends,
+ * from `start` just after that word, when the string holds data rather than a
+ * command.
+ *
+ * In `curl -d 'password=correct horse'` the space is part of the value the
+ * program receives, so a `KEY=` credential there runs to the string's closing
+ * quote; the word the shell would read stopped at the space and left the rest
+ * of the password. Inside a command string, as in `bash -c 'PASSWORD=x ls'`,
+ * the space does end the value. A closing quote of a string that proves
+ * nothing may be a phantom's, and taking it away with the value would leave
+ * that string open for any later read, so there the rest of the text is
+ * hidden, as where two credential ranges overlap.
+ *
+ * @param {string} text session text
+ * @param {number} start index just after the word the shell would read
+ * @param {object[]} stack quotes open around that word
+ * @returns {number} where the value ends, or `start` where no data string
+ *   encloses it
+ */
+export function dataStringEnd(text, start, stack) {
+  const enclosing = stack.at(-1);
+  if (!enclosing || enclosing.proven === "command") return start;
+  for (let at = start; at < text.length;) {
+    const inner = quoteAt(text, at);
+    if (inner && closes(enclosing, inner)) {
+      return enclosing.proven ? inner.start : text.length;
+    }
+    at = inner ? inner.end : at + 1;
+  }
+  return text.length;
 }
 
 /** Where a quoted segment opened by `token` ends: after its matching quote, or at the end. */

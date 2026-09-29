@@ -69,7 +69,7 @@ function contextStep(text, at, stack) {
   return { next: token2.end, stack: stackAfter(text, token2, stack, top) };
 }
 var SHELL = String.raw`(?:^|[^\w.-])(?:[\w.-]*/)*(?:sh|bash|dash|zsh|ksh|mksh|ash|fish)`;
-var SHELL_OPTION = String.raw`(?:\s+(?:--?[A-Za-z][\w-]*|[-+]o\s+\S+))`;
+var SHELL_OPTION = String.raw`(?:\s+(?:--[A-Za-z][\w-]*|-(?!o(?:\s|$))[A-Za-z]+|[-+]o\s+\S+))`;
 var COMMAND_STRING = new RegExp(
   [
     String.raw`${SHELL}${SHELL_OPTION}*?\s+-[A-Za-z]*c[A-Za-z]*`,
@@ -78,7 +78,39 @@ var COMMAND_STRING = new RegExp(
   ].map((form) => `(?:${form})\\s+$`).join("|"),
   "u"
 );
-var JSON_STRING = /[{[,:]\s*$/u;
+var JSON_TOKEN = /\s*(?:"(?:[^"\\\n]|\\.)*"|-?\d[\d.eE+-]*|true|false|null|([{}[\]:,]))/uy;
+var JSON_OPEN = { "{": "key", "[": "value" };
+function jsonStep(state, token2, punctuation) {
+  const { stack, expect } = state;
+  if (punctuation === void 0) return jsonScalar(state, token2);
+  if (punctuation in JSON_OPEN) {
+    return expect === "value" ? { stack: [...stack, punctuation], expect: JSON_OPEN[punctuation] } : null;
+  }
+  if (punctuation === ":") return expect === "colon" ? { stack, expect: "value" } : null;
+  if (punctuation === ",") {
+    if (expect !== "next" || stack.length === 0) return null;
+    return { stack, expect: stack.at(-1) === "{" ? "key" : "value" };
+  }
+  const open = punctuation === "}" ? "{" : "[";
+  return stack.at(-1) === open && expect !== "colon" ? { stack: stack.slice(0, -1), expect: "next" } : null;
+}
+function jsonScalar({ stack, expect }, token2) {
+  if (expect === "key")
+    return token2.trimStart().startsWith('"') ? { stack, expect: "colon" } : null;
+  return expect === "value" ? { stack, expect: "next" } : null;
+}
+function opensJsonString(prefix) {
+  if (!/^\s*[{[]/u.test(prefix)) return false;
+  let state = { stack: [], expect: "value" };
+  JSON_TOKEN.lastIndex = 0;
+  while (!/^\s*$/u.test(prefix.slice(JSON_TOKEN.lastIndex))) {
+    const match = JSON_TOKEN.exec(prefix);
+    if (!match) return false;
+    state = jsonStep(state, match[0], match[1]);
+    if (state === null) return false;
+  }
+  return state.stack.length > 0 && (state.expect === "key" || state.expect === "value");
+}
 function lineBefore(text, at) {
   return text.slice(text.lastIndexOf("\n", at - 1) + 1, at);
 }
@@ -87,12 +119,17 @@ function stackAfter(text, token2, stack, top) {
   if (token2.kind === "'") {
     const prose = WORD_CHARACTER.test(text[token2.start - 1] ?? "") && (WORD_CHARACTER.test(text[token2.end] ?? "") || AFTER_POSSESSIVE.test(text.slice(token2.end, token2.end + 1)));
     if (top || prose) return stack;
-    return [...stack, { ...token2, proven: COMMAND_STRING.test(lineBefore(text, token2.start)) }];
+    return [...stack, { ...token2, proven: proofOf(text, token2) }];
   }
   if (top && closes(top, token2)) return stack.slice(0, -1);
   if (token2.level !== levelOf(stack)) return stack;
+  return [...stack, { ...token2, proven: proofOf(text, token2) }];
+}
+function proofOf(text, token2) {
   const before = lineBefore(text, token2.start);
-  return [...stack, { ...token2, proven: COMMAND_STRING.test(before) || JSON_STRING.test(before) }];
+  if (COMMAND_STRING.test(before)) return "command";
+  if (token2.kind === '"' && token2.level === 0 && opensJsonString(before)) return "json";
+  return false;
 }
 function shellWord(text, start, stack) {
   const context = { enclosing: stack.at(-1) ?? null, level: levelOf(stack) };
@@ -132,6 +169,18 @@ function closingStep(text, token2, enclosing) {
   if (token2.end < text.length && !AFTER_CLOSE.has(text[token2.end])) return void 0;
   if (enclosing && !enclosing.proven) return void 0;
   return null;
+}
+function dataStringEnd(text, start, stack) {
+  const enclosing = stack.at(-1);
+  if (!enclosing || enclosing.proven === "command") return start;
+  for (let at = start; at < text.length; ) {
+    const inner = quoteAt(text, at);
+    if (inner && closes(enclosing, inner)) {
+      return enclosing.proven ? inner.start : text.length;
+    }
+    at = inner ? inner.end : at + 1;
+  }
+  return text.length;
 }
 function segmentEnd(text, token2) {
   let at = token2.end;
@@ -200,8 +249,10 @@ function shellWordRanges(text) {
     for (const match of text.matchAll(trigger.pattern)) {
       contexts ??= quoteContexts(text);
       const start = match.index + match[0].length;
-      const word = shellWord(text, start, contexts[start]);
-      if (word.end === start) continue;
+      const read = shellWord(text, start, contexts[start]);
+      if (read.end === start) continue;
+      const end = trigger.kind === "assignment" ? Math.max(read.end, dataStringEnd(text, read.end, contexts[start])) : read.end;
+      const word = end === read.end ? read : { end, segments: [] };
       const value = trigger.kind === "user" ? maskUser(text, start, word, trigger.glued) : mask(text, start, word, trigger.kind);
       if (value !== null) ranges.push({ start, end: word.end, value });
     }
