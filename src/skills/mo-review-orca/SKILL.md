@@ -199,7 +199,9 @@ report. The round report repeats the whole value next to
 absent, unreadable from the reviewer's workspace, carries no stamp, lacks one of
 the three files, or is not the same build as this skill, no Dispatch starts and
 the result is `needs_attention/skill_unavailable`. Never paste reviewer
-instructions from a copy of unknown origin.
+instructions from a copy of unknown origin. The recorded value is not proved
+against Meta-O history: an installation does not know its source commit, and the
+project under review usually has no Meta-O history at all.
 
 Start each harness without task bytes. Positive version-matched observation must
 prove its process, normal agent prompt and absence of trust UI or shell prompt

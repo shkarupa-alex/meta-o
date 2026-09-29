@@ -85,6 +85,12 @@ installation has moved on. A `SKILL.md` without a readable stamp, or a missing
 or unreadable file among the three, is not a reviewer skill of known origin, and
 no Dispatch starts from it.
 
+These values are a record, not a proof of provenance, and the caller does not
+try to prove that they belong to one Meta-O commit. An installation does not
+know the commit it came from, and a project that uses the methodology holds no
+Meta-O history to search, so such a check would refuse every review there.
+Whoever later needs the source commit resolves the ids where that history is.
+
 ## Grounding sources are reachable from the candidate
 
 Every source the brief names as grounding must be readable from the candidate

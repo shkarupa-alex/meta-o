@@ -972,6 +972,9 @@ test("every reviewer Dispatch records the installed reviewer version", () => {
   // edit leave it unchanged, so the installed bytes are named by object id.
   assert.match(brief, /does not cover the bytes of the bundled third-party packages/u);
   assert.match(brief, /`git log --find-object=<id>`/u);
+  // A record, not a provenance proof: the project under review has no Meta-O
+  // history, so a proof there would refuse every review.
+  assert.match(brief, /a record, not a proof of provenance/u);
   for (const path of ["src/skills/mo-review-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
     const review = source(path).replace(/\s+/gu, " ");
     const [stamp, ids] = [

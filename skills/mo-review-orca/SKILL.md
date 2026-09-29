@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-review-orca or an act
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "db3e2cabe6dc6cafcb36d9e3600a2c6c097fc013"
+  source_tree: "c2bc0539f95f889c737fd2128cb9411426816e4c"
 ---
 
 # Review through Orca
@@ -200,7 +200,9 @@ report. The round report repeats the whole value next to
 absent, unreadable from the reviewer's workspace, carries no stamp, lacks one of
 the three files, or is not the same build as this skill, no Dispatch starts and
 the result is `needs_attention/skill_unavailable`. Never paste reviewer
-instructions from a copy of unknown origin.
+instructions from a copy of unknown origin. The recorded value is not proved
+against Meta-O history: an installation does not know its source commit, and the
+project under review usually has no Meta-O history at all.
 
 Start each harness without task bytes. Positive version-matched observation must
 prove its process, normal agent prompt and absence of trust UI or shell prompt
