@@ -18,6 +18,7 @@ import {
   diagnoseLegacyEvidenceForCandidate,
   evaluationCoordinate,
   evaluationDigest,
+  legacyProfileDiagnostic,
   validateEvidence as validateEvidenceRaw,
 } from "../tools/skill-evals.mjs";
 import { loadCorpus } from "../tools/skill-eval-corpus.mjs";
@@ -32,11 +33,12 @@ function revision(skill) {
   }).stdout.trim();
 }
 
-function envelope(skill, { tier = "required", matrixProfile = "required-codex" } = {}) {
+function envelope(skill, { tier = "required", matrixProfile = "required-codex-sol" } = {}) {
   const document = loadCorpus(ROOT).get(skill);
   const identity = {
-    "required-claude": { route: "claude", model: "sonnet", effort: "low" },
-    "required-codex": { route: "codex", model: "gpt-5.6-luna", effort: "low" },
+    "required-claude-opus": { route: "claude", model: "opus[1m]", effort: "low" },
+    "required-codex-sol": { route: "codex", model: "gpt-6-sol", effort: "low" },
+    "required-codex-luna": { route: "codex", model: "gpt-6-luna", effort: "high" },
     "desired-codex": { route: "codex", model: "gpt-5.6-luna", effort: "max" },
     "desired-opencode": { route: "opencode", model: "provider/qwen3.8-27b", effort: "low" },
     "critical-orchestration": {
@@ -50,7 +52,7 @@ function envelope(skill, { tier = "required", matrixProfile = "required-codex" }
   // an exact id, so the fixture has to carry both halves; every other route
   // answers with exact ids and therefore resolves nothing.
   const observed =
-    identity.route === "claude" ? { ...identity, model: "claude-sonnet-5" } : { ...identity };
+    identity.route === "claude" ? { ...identity, model: "claude-opus-5-5[1m]" } : { ...identity };
   const aliasResolution =
     observed.model === identity.model
       ? null
@@ -151,13 +153,22 @@ function validateEvidence(root, evidence, candidate, requireAll = false, options
   });
 }
 
-test("every installable skill owns three bounded embedded cases", () => {
+test("every installable skill owns three base cases and named regressions", () => {
   const corpus = loadCorpus(ROOT);
   assert.equal(corpus.size, 11);
   assert.equal(
     [...corpus.values()].reduce((sum, document) => sum + document.cases.length, 0),
-    33,
+    37,
   );
+  const regressions = [...corpus.values()].flatMap(({ cases }) =>
+    cases.filter((item) => item.class === "regression").map(({ id }) => id),
+  );
+  assert.deepEqual(regressions.sort(), [
+    "mo-orchestrate-orca.regression-cleanroom-after-findings",
+    "mo-review-orca.regression-hot-follow-up",
+    "mo-review-orca.regression-idle-composer",
+    "mo-setup.regression-knowledge-layer-absence",
+  ]);
   assert.equal(corpus.get("mo-orchestrate-orca").policy, "critical");
   const issueRouting = corpus
     .get("mo-orchestrate-orca")
@@ -174,24 +185,35 @@ test("every installable skill owns three bounded embedded cases", () => {
 test("complete evidence binds every skill to candidate, revision and approved identity", () => {
   const corpus = loadCorpus(ROOT);
   const evidence = [...corpus.values()].flatMap(({ skill }) =>
-    ["required-claude", "required-codex", "desired-codex", "desired-opencode"].map(
-      (matrixProfile) =>
-        finalizedEnvelope(skill, {
-          matrixProfile,
-          tier: matrixProfile.startsWith("desired-") ? "desired" : "required",
-        }),
+    [
+      "required-claude-opus",
+      "required-codex-sol",
+      "required-codex-luna",
+      "desired-codex",
+      "desired-opencode",
+    ].map((matrixProfile) =>
+      finalizedEnvelope(skill, {
+        matrixProfile,
+        tier: matrixProfile.startsWith("desired-") ? "desired" : "required",
+      }),
     ),
   );
   const validated = validateEvidence(ROOT, evidence, HEAD, true, {
     criticalProfile: "opencode/llamacpp/qwen3.8-27b/default",
   });
-  assert.equal(validated.envelopes, 44);
+  assert.equal(validated.envelopes, 55);
   assert.deepEqual(validated.nonPass, []);
-  assert.equal(validated.aggregate.length, 33);
+  assert.equal(validated.aggregate.length, 37);
   for (const group of validated.aggregate) {
     assert.deepEqual(
       group.coordinates.map(({ matrixProfile }) => matrixProfile),
-      ["required-codex", "required-claude", "desired-codex", "desired-opencode"],
+      [
+        "required-codex-sol",
+        "required-codex-luna",
+        "required-claude-opus",
+        "desired-codex",
+        "desired-opencode",
+      ],
     );
   }
 });
@@ -333,14 +355,14 @@ test("actor-authored native identity cannot replace the caller-owned execution o
 });
 
 test("a resolved catalogue alias is proof, and only on the route that has aliases", () => {
-  // The happy path: the owner stores `sonnet`, `claude-sonnet-5` actually ran,
-  // and the envelope says so. This is the evidence U7 demands, and a verbatim
-  // model comparison used to reject it.
-  const resolved = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
+  // The happy path: the owner stores `opus[1m]`, `claude-opus-5-5[1m]` actually
+  // ran, and the envelope says so. This is the evidence the owner demands, and a
+  // verbatim model comparison used to reject it.
+  const resolved = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude-opus" });
   assert.deepEqual(validateEvidence(ROOT, resolved, HEAD).nonPass, []);
 
   // Default closed: drop the record and the difference is the old mismatch again.
-  const unrecorded = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
+  const unrecorded = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude-opus" });
   unrecorded.execution.aliasResolution = null;
   assert.throws(
     () => validateEvidence(ROOT, unrecorded, HEAD),
@@ -349,29 +371,30 @@ test("a resolved catalogue alias is proof, and only on the route that has aliase
 
   // The record may not assert a resolution of its own; it quotes the envelope.
   for (const field of ["requested", "effective"]) {
-    const forged = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
-    forged.execution.aliasResolution[field] = "claude-opus-5";
+    const forged = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude-opus" });
+    forged.execution.aliasResolution[field] = "claude-sonnet-5-5";
     assert.throws(() => validateEvidence(ROOT, forged, HEAD), /does not quote the envelope/u);
   }
 
-  const unsourced = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
+  const unsourced = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude-opus" });
   unsourced.execution.aliasResolution.source = "";
   assert.throws(() => validateEvidence(ROOT, unsourced, HEAD), /aliasResolution\.source is empty/u);
 
   // A drifting alias is a typed event, not general unavailability: the literal
   // must be updated by a person, so the run stops instead of migrating itself.
-  const drifted = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
-  drifted.execution.effective.model = "claude-sonnet-6";
-  drifted.execution.aliasResolution.effective = "claude-sonnet-6";
-  drifted.execution.identityEvidence = "native claude run reported canonical model claude-sonnet-6";
+  const drifted = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude-opus" });
+  drifted.execution.effective.model = "claude-opus-5-6[1m]";
+  drifted.execution.aliasResolution.effective = "claude-opus-5-6[1m]";
+  drifted.execution.identityEvidence =
+    "native claude run reported canonical model claude-opus-5-6[1m]";
   assert.throws(() => validateEvidence(ROOT, drifted, HEAD), /alias_resolution_changed/u);
 
   // Codex and OpenCode answer with exact ids, so a resolution claim there is a
   // substituted model wearing a nickname.
-  const codex = finalizedEnvelope("find-reuse", { matrixProfile: "required-codex" });
+  const codex = finalizedEnvelope("find-reuse", { matrixProfile: "required-codex-sol" });
   codex.execution.aliasResolution = {
-    requested: "gpt-5.6-luna",
-    effective: "gpt-5.6-luna",
+    requested: "gpt-6-sol",
+    effective: "gpt-6-sol",
     source: "invented resolution",
   };
   assert.throws(
@@ -380,22 +403,22 @@ test("a resolved catalogue alias is proof, and only on the route that has aliase
   );
 
   // Equal models leave nothing to resolve, so a record there is noise.
-  const pointless = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
-  pointless.execution.effective.model = "sonnet";
-  pointless.execution.aliasResolution.effective = "sonnet";
+  const pointless = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude-opus" });
+  pointless.execution.effective.model = "opus[1m]";
+  pointless.execution.aliasResolution.effective = "opus[1m]";
   assert.throws(() => validateEvidence(ROOT, pointless, HEAD), /present without a resolved alias/u);
 
   // And an unresolved alias is still not an approved identity: claiming the
   // alias itself ran leaves the exact generation unproven.
-  const unresolved = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
-  unresolved.execution.effective.model = "sonnet";
+  const unresolved = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude-opus" });
+  unresolved.execution.effective.model = "opus[1m]";
   unresolved.execution.aliasResolution = null;
   assert.throws(() => validateEvidence(ROOT, unresolved, HEAD), /alias_resolution_changed/u);
 
   // Presence is the contract, not only the value. Evidence written before the
   // field was mandatory omits it outright, and reading it with `??` would take that as
   // the very "nothing resolved" a compliant run records on purpose.
-  for (const matrixProfile of ["required-claude", "required-codex"]) {
+  for (const matrixProfile of ["required-claude-opus", "required-codex-sol"]) {
     const omitted = finalizedEnvelope("find-reuse", { matrixProfile });
     delete omitted.execution.aliasResolution;
     assert.throws(
@@ -407,20 +430,20 @@ test("a resolved catalogue alias is proof, and only on the route that has aliase
 
 test("evidence fails closed on identity drift, missing coverage and sensitive fields", () => {
   const drift = finalizedEnvelope("find-reuse");
-  drift.execution.effective.model = "gpt-5.6-sol";
+  drift.execution.effective.model = "gpt-6-luna";
   assert.throws(
     () => validateEvidence(ROOT, drift, HEAD),
     /requested\/effective identity mismatch/,
   );
 
   const expensive = finalizedEnvelope("find-reuse");
-  expensive.requested = { route: "codex", model: "gpt-5.6-sol", effort: "high" };
+  expensive.requested = { route: "codex", model: "gpt-6-sol", effort: "high" };
   expensive.execution.effective = { ...expensive.requested };
   expensive.execution.evaluationDigest = evaluationDigest(
     loadCorpus(ROOT).get("find-reuse"),
     expensive,
   );
-  assert.throws(() => validateEvidence(ROOT, expensive, HEAD), /testCodex must be/);
+  assert.throws(() => validateEvidence(ROOT, expensive, HEAD), /testCodexSol must be/);
 
   const sensitive = finalizedEnvelope("find-reuse");
   sensitive.harness.apiToken = "must-not-survive";
@@ -472,7 +495,7 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
   );
 
   const requiredOnly = [...loadCorpus(ROOT).values()].flatMap(({ skill }) =>
-    ["required-claude", "required-codex"].map((matrixProfile) =>
+    ["required-claude-opus", "required-codex-sol", "required-codex-luna"].map((matrixProfile) =>
       finalizedEnvelope(skill, { matrixProfile }),
     ),
   );
@@ -559,7 +582,7 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
     tier: "critical",
     matrixProfile: "critical-orchestration",
   });
-  impersonatedMatrix.matrixProfile = "required-codex";
+  impersonatedMatrix.matrixProfile = "required-codex-sol";
   impersonatedMatrix.execution.evaluationDigest = evaluationDigest(
     loadCorpus(ROOT).get("mo-orchestrate-orca"),
     impersonatedMatrix,
@@ -579,6 +602,43 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
     repeated,
   );
   assert.throws(() => validateEvidence(ROOT, repeated, HEAD), /invalid repetition/u);
+});
+
+test("the two required Codex coordinates stay distinct and replaced evidence stays legacy", () => {
+  const requiredOnly = [...loadCorpus(ROOT).values()].flatMap(({ skill }) =>
+    ["required-claude-opus", "required-codex-sol", "required-codex-luna"].map((matrixProfile) =>
+      finalizedEnvelope(skill, { matrixProfile }),
+    ),
+  );
+  // Each required Codex coordinate is its own obligation: the pair shares a
+  // route, so covering one of them must not read as covering the other.
+  const withoutLuna = requiredOnly.filter(
+    ({ matrixProfile }) => matrixProfile !== "required-codex-luna",
+  );
+  assert.throws(
+    () => validateEvidence(ROOT, withoutLuna, HEAD, true),
+    /find-reuse:required-codex-luna/u,
+  );
+
+  // A run on one Codex coordinate cannot be relabelled as the other.
+  const relabelled = finalizedEnvelope("find-reuse", { matrixProfile: "required-codex-sol" });
+  relabelled.matrixProfile = "required-codex-luna";
+  relabelled.execution.evaluationDigest = evaluationDigest(
+    loadCorpus(ROOT).get("find-reuse"),
+    relabelled,
+  );
+  assert.throws(() => validateEvidence(ROOT, relabelled, HEAD), /testCodexLuna must be/u);
+
+  // v3 evidence recorded on the replaced pair is read, typed and never accepted.
+  const legacy = finalizedEnvelope("find-reuse", { matrixProfile: "required-codex-sol" });
+  legacy.matrixProfile = "required-codex";
+  assert.deepEqual(legacyProfileDiagnostic([legacy]), {
+    status: "legacy",
+    accepted: false,
+    profiles: ["required-codex"],
+  });
+  assert.throws(() => validateEvidence(ROOT, [legacy], HEAD), /^Error: legacy: diagnostic only/u);
+  assert.equal(legacyProfileDiagnostic(requiredOnly), null);
 });
 
 test("blocking verdicts fail the live gate and applicability cannot be invented", () => {
@@ -874,11 +934,11 @@ test("the CLI exposes a bounded prompt without launching a model", () => {
     "--tier",
     "required",
     "--matrix-profile",
-    "required-codex",
+    "required-codex-sol",
     "--route",
     "codex",
     "--model",
-    "gpt-5.6-luna",
+    "gpt-6-sol",
     "--effort",
     "low",
     "--harness",
@@ -925,7 +985,7 @@ test("the CLI exposes a bounded prompt without launching a model", () => {
   assert.ok(framing < result.stdout.indexOf("cannot run, materialize"), "unavailable shapes lead");
   const frozen = JSON.parse(readFileSync(expectations, "utf8"));
   assert.equal(frozen.length, 1);
-  assert.equal(frozen[0].coordinate, "find-reuse:required-codex:1");
+  assert.equal(frozen[0].coordinate, "find-reuse:required-codex-sol:1");
   assert.match(frozen[0].evaluationDigest, /^[a-f0-9]{64}$/u);
   const repeated = spawnSync(process.execPath, [...args, "--repetition", "2"], {
     cwd: ROOT,
@@ -1001,17 +1061,22 @@ test("the CLI materializes and validates a missing desired harness without a mod
   assert.match(validated.stdout, /1 envelopes, 0 non-PASS/u);
 
   const complete = [...loadCorpus(ROOT).values()].flatMap(({ skill }) =>
-    ["required-claude", "required-codex", "desired-codex", "desired-opencode"].map(
-      (matrixProfile) =>
-        skill === "find-reuse" && matrixProfile === "desired-opencode"
-          ? evidence
-          : finalizedEnvelope(skill, {
-              matrixProfile,
-              tier: matrixProfile.startsWith("desired-") ? "desired" : "required",
-            }),
+    [
+      "required-claude-opus",
+      "required-codex-sol",
+      "required-codex-luna",
+      "desired-codex",
+      "desired-opencode",
+    ].map((matrixProfile) =>
+      skill === "find-reuse" && matrixProfile === "desired-opencode"
+        ? evidence
+        : finalizedEnvelope(skill, {
+            matrixProfile,
+            tier: matrixProfile.startsWith("desired-") ? "desired" : "required",
+          }),
     ),
   );
-  assert.equal(validateEvidence(ROOT, complete, HEAD, true).envelopes, 44);
+  assert.equal(validateEvidence(ROOT, complete, HEAD, true).envelopes, 55);
   rmSync(temporary, { recursive: true, force: true });
 });
 

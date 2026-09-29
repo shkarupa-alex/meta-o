@@ -59,17 +59,22 @@ const VERDICTS = new Set([
   "NOT_APPLICABLE",
 ]);
 const REQUIRED_MATRIX = [
-  { matrixProfile: "required-claude", route: "claude", role: "testClaude" },
-  { matrixProfile: "required-codex", route: "codex", role: "testCodex" },
+  { matrixProfile: "required-claude-opus", route: "claude", role: "testClaude" },
+  { matrixProfile: "required-codex-sol", route: "codex", role: "testCodexSol" },
+  { matrixProfile: "required-codex-luna", route: "codex", role: "testCodexLuna" },
 ];
+// §A-EVAL-01: v3 evidence on the replaced required pair stays readable as a
+// diagnostic, never as proof, so an old green run cannot close the new matrix.
+const LEGACY_REQUIRED_PROFILES = new Set(["required-claude", "required-codex"]);
 const DESIRED_MATRIX = [
   { matrixProfile: "desired-codex", route: "codex", role: "testCodexDesired" },
   { matrixProfile: "desired-opencode", route: "opencode", role: "testOpenCodeDesired" },
 ];
 const EXPECTED_MATRIX = [...REQUIRED_MATRIX, ...DESIRED_MATRIX];
 const AGGREGATE_MATRIX_ORDER = [
-  "required-codex",
-  "required-claude",
+  "required-codex-sol",
+  "required-codex-luna",
+  "required-claude-opus",
   "desired-codex",
   "desired-opencode",
 ];
@@ -319,9 +324,25 @@ function validateEnvelope(
   );
 }
 
+/** §A-EVAL-01 names v3 evidence recorded on the replaced required pair, or null. */
+export function legacyProfileDiagnostic(evidence) {
+  const profiles = (Array.isArray(evidence) ? evidence : [evidence])
+    .filter((envelope) => envelope?.contract === EVIDENCE_CONTRACT)
+    .map((envelope) => envelope.matrixProfile)
+    .filter((profile) => LEGACY_REQUIRED_PROFILES.has(profile));
+  if (profiles.length === 0) return null;
+  return { status: "legacy", accepted: false, profiles: [...new Set(profiles)].sort() };
+}
+
 /** §A-EVAL-01 verifies exact identity, completeness and redaction of live eval evidence. */
 export function validateEvidence(root, evidence, candidate, requireAll = false, options = {}) {
   if (!/^[a-f0-9]{40}$/u.test(candidate ?? "")) throw new Error("candidate must be a full SHA");
+  const legacyProfiles = legacyProfileDiagnostic(evidence);
+  if (legacyProfiles) {
+    throw new Error(
+      `legacy: diagnostic only; ${legacyProfiles.profiles.join(", ")} predate the required matrix`,
+    );
+  }
   const declaredLegacy = (Array.isArray(evidence) ? evidence : [evidence]).some(
     (envelope) => envelope?.contract === "meta-o.skill-eval-evidence.v2",
   );
@@ -430,7 +451,9 @@ async function main() {
       values.expectations,
       values["execution-observations"],
     );
-    const legacy = diagnoseLegacyEvidenceForCandidate(ROOT, evidence, values.candidate);
+    const legacy =
+      diagnoseLegacyEvidenceForCandidate(ROOT, evidence, values.candidate) ??
+      legacyProfileDiagnostic(evidence);
     if (legacy) {
       process.stdout.write(`${JSON.stringify(legacy)}\n`);
       process.exitCode = 1;

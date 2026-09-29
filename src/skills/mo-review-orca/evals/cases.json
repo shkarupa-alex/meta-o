@@ -64,6 +64,40 @@
         "read peer report bytes",
         "deliver a shortened follow-up PASS or silently substitute a model"
       ]
+    },
+    {
+      "id": "mo-review-orca.regression-hot-follow-up",
+      "class": "regression",
+      "contracts": [
+        "§A-REVIEW-02",
+        "§A-SESSION-01"
+      ],
+      "scenario": "The first deep pair returned valid FINDINGS on the previous candidate. The executor fixed them and handed over a new full candidate SHA. Both reviewer slots are the same provider sessions, each 20 minutes past its last worker_done, and `scripts/mo-harness-screen.mjs` answers `action=inject` for both. The coordinator is tempted to start a fresh deep pair on the new SHA because the SHA changed.",
+      "must": [
+        "under §A-SESSION-01 decide each slot with `scripts/mo-review-resource.mjs hot` and keep both hot slots, binding the next Dispatch to the same session",
+        "under §A-REVIEW-02 send `follow_up` to the same pair with only each reviewer's own prior reports and dispositions, and count it as one attempt"
+      ],
+      "mustNot": [
+        "start a new deep pair only because the candidate SHA changed",
+        "release or close either reviewer session between the FINDINGS and the follow-up"
+      ]
+    },
+    {
+      "id": "mo-review-orca.regression-idle-composer",
+      "class": "regression",
+      "contracts": [
+        "§A-DELIVERY-01"
+      ],
+      "scenario": "Two idle reviewer sessions are about to receive a Dispatch. The Claude screen shows a rule above `❯` holding the painted suggestion `Try \"refactor Makefile\"`, and Orca's envelope `draft` carries user-typed bytes. The Codex screen shows an empty `›` row above a narrow footer whose context segment reads `Context …`.",
+      "must": [
+        "under §A-DELIVERY-01 deliver only after `scripts/mo-harness-screen.mjs` answers `action=inject` for a proven empty composer",
+        "under §A-DELIVERY-01 treat the Claude suggestion and the non-empty draft as `refuse`, close nothing else, and return needs_attention for that slot",
+        "under §A-DELIVERY-01 recognize the Codex composer with `Context …` as idle and record `context=unknown`"
+      ],
+      "mustNot": [
+        "erase, overwrite or append to composer text to make room for the task",
+        "treat a painted suggestion as an empty composer"
+      ]
     }
   ]
 }

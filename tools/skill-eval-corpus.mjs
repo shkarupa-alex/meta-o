@@ -1,7 +1,7 @@
 /**
  * Own the embedded eval corpus: the exact skill inventory, the three bounded
- * cases each skill carries, and the rule that a case's contracts appear in its
- * own oracles.
+ * base cases each skill carries, the named regression cases a skill may add, and
+ * the rule that a case's contracts appear in its own oracles.
  *
  * The inventory is a literal so that a skill added to `src/skills/` without
  * cases, or cases left behind by a removed skill, fail the corpus instead of
@@ -32,10 +32,21 @@ export const EXPECTED_SKILLS = [
   "senior-python",
 ];
 const EXPECTED_CLASSES = ["degraded", "forbidden", "positive"];
+// A regression case pins one reproduced defect with its own decisive oracle, so
+// a skill may carry several; its id names the defect, never just the class.
+const REGRESSION_ID = /^regression-[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+
+function caseIdMatchesClass(item, expectedSkill) {
+  const prefix = `${expectedSkill}.`;
+  if (item.class === "regression") {
+    return item.id.startsWith(prefix) && REGRESSION_ID.test(item.id.slice(prefix.length));
+  }
+  return item.id === `${prefix}${item.class}`;
+}
 
 function validateCase(item, expectedSkill) {
   assertString(item.id, `${expectedSkill}: case id`);
-  if (item.id !== `${expectedSkill}.${item.class}`) {
+  if (!caseIdMatchesClass(item, expectedSkill)) {
     throw new Error(`${expectedSkill}: case ${item.id} does not match its class`);
   }
   assertString(item.scenario, `${item.id}: scenario`);
@@ -62,13 +73,16 @@ function validateCase(item, expectedSkill) {
 }
 
 function validateCaseSet(document, expectedSkill) {
-  if (!Array.isArray(document.cases) || document.cases.length !== 3) {
-    throw new Error(`${expectedSkill}: exactly three bounded cases are required`);
+  if (!Array.isArray(document.cases)) {
+    throw new Error(`${expectedSkill}: exactly three bounded base cases are required`);
   }
   document.cases.forEach((item) => validateCase(item, expectedSkill));
   const ids = document.cases.map(({ id }) => id);
   if (new Set(ids).size !== ids.length) throw new Error(`${expectedSkill}: duplicate case id`);
-  const classes = document.cases.map(({ class: value }) => value).sort();
+  const classes = document.cases
+    .map(({ class: value }) => value)
+    .filter((value) => value !== "regression")
+    .sort();
   if (JSON.stringify(classes) !== JSON.stringify(EXPECTED_CLASSES)) {
     throw new Error(`${expectedSkill}: needs positive, forbidden and degraded cases`);
   }

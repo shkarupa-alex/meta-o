@@ -28,18 +28,28 @@ const TESTING_PROFILES = {
   testClaude: {
     route: "claude",
     effort: "low",
-    id: /^sonnet$/u,
-    effectiveId: /^claude-sonnet-5$/u,
-    effectiveRequirement: "claude-sonnet-5",
-    requirement: "testClaude must be claude/sonnet/low resolving to claude-sonnet-5",
+    id: /^opus\[1m\]$/u,
+    effectiveId: /^claude-opus-5-5\[1m\]$/u,
+    effectiveRequirement: "claude-opus-5-5[1m]",
+    requirement: "testClaude must be claude/opus[1m]/low resolving to claude-opus-5-5[1m]",
   },
-  testCodex: {
+  // Two Codex coordinates share one route, so a role can no longer be found
+  // from the route alone; the matrix profile names the role instead.
+  testCodexSol: {
     route: "codex",
     effort: "low",
-    id: /^gpt-5\.6-luna$/u,
-    effectiveId: /^gpt-5\.6-luna$/u,
-    effectiveRequirement: "gpt-5.6-luna",
-    requirement: "testCodex must be codex/gpt-5.6-luna/low",
+    id: /^gpt-6-sol$/u,
+    effectiveId: /^gpt-6-sol$/u,
+    effectiveRequirement: "gpt-6-sol",
+    requirement: "testCodexSol must be codex/gpt-6-sol/low",
+  },
+  testCodexLuna: {
+    route: "codex",
+    effort: "high",
+    id: /^gpt-6-luna$/u,
+    effectiveId: /^gpt-6-luna$/u,
+    effectiveRequirement: "gpt-6-luna",
+    requirement: "testCodexLuna must be codex/gpt-6-luna/high",
   },
   testCodexDesired: {
     route: "codex",

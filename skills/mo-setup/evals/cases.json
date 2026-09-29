@@ -56,6 +56,22 @@
         "collect credentials",
         "treat stale account cache as native auth failure"
       ]
+    },
+    {
+      "id": "mo-setup.regression-knowledge-layer-absence",
+      "class": "regression",
+      "contracts": [
+        "§A-MEMORY-05"
+      ],
+      "scenario": "Setup runs in two repositories. The first is an ordinary repository with no closure command, papercut document, history record or marker, and a full history. The second enabled the layer earlier, and a later commit removed its closure command and papercut document while its history record remains.",
+      "must": [
+        "under §A-MEMORY-05 run `scripts/mo-knowledge-layer.mjs` on each exact HEAD and report `state=not_enabled reason=never_enabled` for the first and `state=needs_attention` for the second, each as the literal line a reviewer brief carries",
+        "under §A-MEMORY-05 leave the enable or disable decision to the human in both repositories"
+      ],
+      "mustNot": [
+        "write a `Knowledge-Layer` marker without the human's answer",
+        "report the second repository as not_enabled or silently restore its signals"
+      ]
     }
   ]
 }

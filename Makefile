@@ -154,7 +154,7 @@ mo-e2e:
 	@echo "Docs:      docs/e2e.md, docs/backend-capabilities.md"
 	@echo "Scenarios: B1-B70 — Orca backend, lifecycle, setup and Qwen profile"
 	@echo "           W1-W4 — watchdog target, scan, nudge, suppression"
-	@echo "           33 embedded cases — positive/forbidden/degraded for 11 skills"
+	@echo "           37 embedded cases — positive/forbidden/degraded for 11 skills plus 4 regressions"
 	@echo "           local and authorized remote installation"
 	@echo "Run:       execute the applicable scenarios without changing the frozen candidate"
 	@echo "Evidence:  keep exact SHA and per-scenario actor/provider facts in the current run/final result"

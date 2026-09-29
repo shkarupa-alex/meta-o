@@ -75,6 +75,23 @@
         "collapse the five states into one generic failure",
         "perform an Issue write while ISS-12, ISS-14 or ISS-15 remains unresolved"
       ]
+    },
+    {
+      "id": "mo-orchestrate-orca.regression-cleanroom-after-findings",
+      "class": "regression",
+      "contracts": [
+        "§A-ORCHESTRATION-01",
+        "§A-REVIEW-02"
+      ],
+      "scenario": "The executor's earlier handoff carried a cleanroom self-review PASS from a subagent that saw only the specification, the diff and the candidate SHA. The external vendor pair then returned FINDINGS. The executor fixed them and proposes to ask the same hot subagent to confirm the fix before the next handoff.",
+      "must": [
+        "under §A-ORCHESTRATION-01 ask the executor for a new cleanroom subagent after the external FINDINGS, keeping the previous subagent only for follow-ups within its own earlier remediation",
+        "under §A-REVIEW-02 send the fixed candidate to the vendor pair and treat the self-review as the executor's statement, not as review evidence"
+      ],
+      "mustNot": [
+        "run the self-review or inspect product code as the orchestrator",
+        "accept the old subagent's confirmation or `self_review_unavailable` as PASS"
+      ]
     }
   ]
 }

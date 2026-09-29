@@ -24,13 +24,15 @@ test("durable business and architecture layers preserve the low-cost policy", ()
     // The required Claude coordinate is stored as a catalogue alias, so the
     // durable layers have to carry both halves: what is written down and what
     // must actually have run. One literal alone would let the other drift.
-    assert.match(source, /`sonnet`\/low/u);
-    assert.match(source, /gpt-5\.6-luna\/low/u);
+    assert.match(source, /claude\/opus\[1m\]\/low/u);
+    assert.match(source, /codex\/gpt-6-sol\/low/u);
+    assert.match(source, /codex\/gpt-6-luna\/high/u);
     assert.match(source, /gpt-5\.6-luna\/max/u);
     assert.match(source, /Qwen\/OpenCode/u);
-    assert.doesNotMatch(source, /opus\[1m\]\/low/u);
-    assert.doesNotMatch(source, /gpt-5\.6-sol\/low/u);
   }
+  // The replaced pair survives only in the decision's append-only records; the
+  // thesis names the current matrix and nothing else.
+  assert.doesNotMatch(business, /`sonnet`\/low|gpt-5\.6-luna\/low/u);
   assert.match(business, /фактической\s+идентичностью/);
   assert.match(business, /резервный путь/);
   assert.match(architecture, /фактическ(?:ую|ой)\s+идентичност/u);
@@ -38,8 +40,8 @@ test("durable business and architecture layers preserve the low-cost policy", ()
   // The exact effective id belongs to the architecture layer, not the business
   // thesis: the thesis owns the rule, the decision owns the literal it resolves
   // to, and only the decision may be the place a drifting alias is caught.
-  assert.match(architecture, /claude-sonnet-5/u);
-  assert.doesNotMatch(business, /claude-sonnet-5/u);
+  assert.match(architecture, /claude-opus-5-5\[1m\]/u);
+  assert.doesNotMatch(business, /claude-opus-5-5/u);
   assert.match(architecture, new RegExp(`§${"B-EVAL-01"}`));
 });
 
@@ -59,6 +61,10 @@ test("the private-state exception stays as narrow as the decision that owns it",
   // The decision carries the observation the exception rests on, including the
   // version: an exception with no falsifiable ground never expires.
   assert.match(policy, /codex-cli 0\.155\.0/u);
+  assert.match(policy, /codex-cli 0\.158\.0/u);
+  // Only the thread id of one's own run selects the file: the newest file in
+  // the directory can belong to another session.
+  assert.match(policy, /идентификатору\s+треда/u);
   assert.match(policy, /turn_context/u);
   assert.match(policy, /узкое исключение/u);
   // The operational recipe points at the decision instead of restating it.
@@ -108,62 +114,71 @@ test("desired OpenCode testing identity is Qwen only", () => {
 });
 
 test("the stored coordinate and the model that actually ran are closed separately", () => {
-  // What a user may store. U7 requires the catalogue alias here, so `sonnet` is
-  // the approved value and the exact id is not: storing the id would bypass the
-  // owner's rule, and storing anything else is simply a different model.
-  assert.equal(testingPolicyError("testClaude", "claude/sonnet/low"), null);
-  assert.match(testingPolicyError("testClaude", "claude/opus/low"), /sonnet/u);
-  assert.match(testingPolicyError("testClaude", "claude/claude-sonnet-5/low"), /sonnet\/low/u);
-  assert.match(testingPolicyError("testClaude", "claude/sonnet/medium"), /sonnet\/low/u);
+  // What a user may store. The owner requires the catalogue alias here, so
+  // `opus[1m]` is the approved value and the exact id is not: storing the id
+  // would bypass the owner's rule, and storing anything else is simply a
+  // different model.
+  assert.equal(testingPolicyError("testClaude", "claude/opus[1m]/low"), null);
+  assert.match(testingPolicyError("testClaude", "claude/opus/low"), /opus\[1m\]\/low/u);
+  assert.match(testingPolicyError("testClaude", "claude/sonnet/low"), /opus\[1m\]\/low/u);
   assert.match(
-    testingPolicyError("testClaude", "claude/sonnet-totally-unapproved/low"),
-    /sonnet\/low/u,
+    testingPolicyError("testClaude", "claude/claude-opus-5-5[1m]/low"),
+    /opus\[1m\]\/low/u,
   );
-  assert.match(testingPolicyError("testCodex", "codex/gpt-5.6/low"), /gpt-5\.6-luna/u);
-  assert.match(testingPolicyError("testClaude", "claude/anything/sonnet/low"), /sonnet\/low/u);
+  assert.match(testingPolicyError("testClaude", "claude/opus[1m]/high"), /opus\[1m\]\/low/u);
+  assert.match(testingPolicyError("testClaude", "claude/anything/opus[1m]/low"), /opus\[1m\]/u);
+  assert.match(testingPolicyError("testCodexSol", "codex/gpt-6-sol/high"), /gpt-6-sol\/low/u);
+  assert.match(testingPolicyError("testCodexSol", "codex/gpt-6-luna/low"), /gpt-6-sol\/low/u);
+  assert.match(testingPolicyError("testCodexLuna", "codex/gpt-6-luna/low"), /gpt-6-luna\/high/u);
+  assert.match(testingPolicyError("testCodexLuna", "codex/gpt-6/high"), /gpt-6-luna\/high/u);
   assert.match(
     testingPolicyError("testOpenCodeDesired", "opencode/deepseek/deepseek-v3-4-flash/low"),
     /qwen3\.8-27b/u,
   );
   assert.equal(testingPolicyError("executor", "codex/gpt-5.6-sol/medium"), null);
 
-  // What must actually have run. The generation digit must be the model's own,
-  // not the tail of a release date, which is how `claude-sonnet-4-5-20250929`
-  // once passed as the approved generation.
-  assert.equal(testingEffectiveIdentityError("testClaude", "sonnet", "claude-sonnet-5"), null);
+  // What must actually have run. The id is closed whole, so a release-date tail
+  // or a context suffix dropped by the harness is a different model, not the
+  // approved one.
+  assert.equal(
+    testingEffectiveIdentityError("testClaude", "opus[1m]", "claude-opus-5-5[1m]"),
+    null,
+  );
   for (const observed of [
-    "sonnet",
-    "claude-sonnet-5-20250929",
-    "claude-sonnet-6",
-    "claude-opus-5",
+    "opus[1m]",
+    "claude-opus-5-5",
+    "claude-opus-5-5-20260901[1m]",
+    "claude-opus-5-6[1m]",
+    "claude-sonnet-5-5",
     // Only OpenCode qualifies an id with a provider. Tolerating the prefix
     // everywhere would let the envelope name any provider it liked in front of
     // the approved generation and still be believed.
-    "anything/claude-sonnet-5",
+    "anything/claude-opus-5-5[1m]",
   ]) {
     assert.match(
-      testingEffectiveIdentityError("testClaude", "sonnet", observed),
+      testingEffectiveIdentityError("testClaude", "opus[1m]", observed),
       /alias_resolution_changed/u,
     );
   }
   // Both values appear in the reason, because a person has to decide whether the
   // literal moves; the checker never migrates it.
-  const drift = testingEffectiveIdentityError("testClaude", "sonnet", "claude-sonnet-6");
-  assert.match(drift, /sonnet/u);
-  assert.match(drift, /claude-sonnet-6/u);
-  assert.match(drift, /claude-sonnet-5/u);
+  const drift = testingEffectiveIdentityError("testClaude", "opus[1m]", "claude-opus-5-6[1m]");
+  assert.match(drift, /opus\[1m\]/u);
+  assert.match(drift, /claude-opus-5-6\[1m\]/u);
+  assert.match(drift, /claude-opus-5-5\[1m\]/u);
 
   // An exact-id route resolves nothing, so both halves name the same literal.
-  assert.equal(testingEffectiveIdentityError("testCodex", "gpt-5.6-luna", "gpt-5.6-luna"), null);
+  assert.equal(testingEffectiveIdentityError("testCodexSol", "gpt-6-sol", "gpt-6-sol"), null);
+  assert.equal(testingEffectiveIdentityError("testCodexLuna", "gpt-6-luna", "gpt-6-luna"), null);
   assert.match(
-    testingEffectiveIdentityError("testCodex", "gpt-5.6-luna", "gpt-5.6-sol"),
+    testingEffectiveIdentityError("testCodexSol", "gpt-6-sol", "gpt-6-luna"),
     /alias_resolution_changed/u,
   );
 
-  // Nothing requires two roles to name different models: after U1 the required
-  // and desired Codex coordinates differ only in effort, and a rule demanding
-  // distinct models would make the approved matrix unsatisfiable.
-  assert.equal(testingPolicyError("testCodex", "codex/gpt-5.6-luna/low"), null);
+  // Two roles may share a route and differ in model and effort; the desired
+  // coordinate stays its own role and literal.
+  assert.equal(testingPolicyError("testCodexSol", "codex/gpt-6-sol/low"), null);
+  assert.equal(testingPolicyError("testCodexLuna", "codex/gpt-6-luna/high"), null);
   assert.equal(testingPolicyError("testCodexDesired", "codex/gpt-5.6-luna/max"), null);
 });
 
@@ -185,10 +200,17 @@ test("the consumed show path rejects hand-written expensive or invalid selection
     };
     let result = run({ testClaude: "claude/opus-5/high" });
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /testClaude.*sonnet\/low/u);
-    result = run({ testCodex: "codex/gpt-5.6-sol/high" });
+    assert.match(result.stderr, /testClaude.*opus\[1m\]\/low/u);
+    result = run({ testCodexSol: "codex/gpt-6-sol/high" });
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /testCodex must be/u);
+    assert.match(result.stderr, /testCodexSol must be/u);
+    result = run({ testCodexLuna: "codex/gpt-6-sol/high" });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /testCodexLuna must be/u);
+    // The replaced single Codex role is named, not silently dropped, so a
+    // stored `testCodex` tells its owner which two roles took its place.
+    result = run({ testCodex: "codex/gpt-5.6-luna/low" });
+    assert.match(result.stderr, /testCodex .*testCodexSol and testCodexLuna/u);
     result = run({ reviewerA: "bogusroute/model/high" });
     assert.equal(result.status, 1);
     assert.match(result.stderr, /unknown route/u);
