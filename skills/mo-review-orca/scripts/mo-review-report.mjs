@@ -18,11 +18,13 @@ import {
   openSync,
   readFileSync,
   readSync,
+  realpathSync,
   unlinkSync,
   writeSync
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // node_modules/mdast-util-to-string/lib/index.js
 var emptyOptions = {};
@@ -7700,7 +7702,14 @@ function main(argv) {
   }
   return command(parseArguments(argv.slice(1)));
 }
-if (process.argv[1] !== void 0 && import.meta.url === `file://${process.argv[1]}`) {
+function invokedDirectly() {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+if (invokedDirectly()) {
   try {
     process.exitCode = main(process.argv.slice(2));
   } catch (error) {

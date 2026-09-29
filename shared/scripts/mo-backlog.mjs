@@ -9,6 +9,7 @@
 
 import { spawnSync } from "node:child_process";
 import { TextDecoder } from "node:util";
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, posix, resolve } from "node:path";
 
@@ -437,4 +438,19 @@ function main() {
   if (result.status !== "PASS") process.exitCode = result.status === "NOT_EMPTY" ? 1 : 2;
 }
 
-if (resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) main();
+/**
+ * Whether this file is the program Node was asked to run. Both sides go through
+ * realpath: Node resolves the main module through symlinks and percent-encodes
+ * its URL, while argv keeps the path as typed, so a textual comparison fails
+ * silently for a symlinked install or a directory with a space in its name,
+ * and a helper that answers by exit status would read as a yes.
+ */
+function invokedDirectly() {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (invokedDirectly()) main();

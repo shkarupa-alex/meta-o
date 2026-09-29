@@ -8,6 +8,7 @@ var __export = (target, all2) => {
 // shared/scripts/mo-backlog.mjs
 import { spawnSync } from "node:child_process";
 import { TextDecoder as TextDecoder2 } from "node:util";
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, posix, resolve } from "node:path";
 
@@ -7267,7 +7268,14 @@ function main() {
 `);
   if (result.status !== "PASS") process.exitCode = result.status === "NOT_EMPTY" ? 1 : 2;
 }
-if (resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) main();
+function invokedDirectly() {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+if (invokedDirectly()) main();
 export {
   META_O_SCHEMA,
   asciiJson,

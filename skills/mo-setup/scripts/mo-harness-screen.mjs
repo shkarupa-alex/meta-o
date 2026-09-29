@@ -8,7 +8,8 @@
  * refuses, because a guess here delivers work into a shell or a trust dialog.
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 /**
  * The composer Claude Code draws around its own prompt row, and what it holds.
@@ -426,7 +427,22 @@ export function readOptions(argv) {
   return options;
 }
 
-if (process.argv[1] !== undefined && import.meta.url === `file://${process.argv[1]}`) {
+/**
+ * Whether this file is the program Node was asked to run. Both sides go through
+ * realpath: Node resolves the main module through symlinks and percent-encodes
+ * its URL, while argv keeps the path as typed, so a textual comparison fails
+ * silently for a symlinked install or a directory with a space in its name,
+ * and a helper that answers by exit status would read as a yes.
+ */
+function invokedDirectly() {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (invokedDirectly()) {
   const options = readOptions(process.argv.slice(2));
   if (options.error !== undefined) {
     process.stderr.write(`mo-harness-screen: ${options.error}\n`);
