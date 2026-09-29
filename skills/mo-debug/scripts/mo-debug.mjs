@@ -18,8 +18,35 @@ var EXCERPT_LIMIT = 240;
 var WINDOW = 4096;
 var PATH_ROOTS = "home|Users|mnt|tmp|var|private|root|opt|srv|Volumes|media|run|workspace|workspaces|data";
 var CREDENTIAL_KEY = "[A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|private[_-]?key)";
-var BARE = `(?:\\\\{1,2}[^\\n\\\\"']|[^\\s"'&;|)\\\\])+`;
-var argument = (group) => `(?:(\\\\?["'])(?:(?!\\${group})[^\\n])*(?:\\${group}|$)|${BARE})`;
+var quotedSegments = (guard) => [
+  String.raw`\\"${guard}(?:\\{3}"|(?!\\")[\s\S])*(?:\\"|$)`,
+  String.raw`"${guard}(?:\\[\s\S]|[^"\\])*(?:"|$)`,
+  String.raw`'${guard}[^']*(?:'|$)`
+];
+var ESCAPED_CHARACTER = String.raw`\\{1,2}[^\n"']`;
+var BARE_RUN = String.raw`[^\s"'\\&;|)<>]+`;
+var segment = (guard) => {
+  const [jsonDouble, double, single] = quotedSegments(guard);
+  return `(?:${jsonDouble}|${ESCAPED_CHARACTER}|${double}|${single}|${BARE_RUN})`;
+};
+var SHELL_WORD = `${segment("")}${segment(String.raw`(?![\s,}\]:"]|$)`)}*`;
+var WHOLE_QUOTED = new RegExp(`^(?:${quotedSegments("").join("|")})$`, "u");
+function maskWord(word, kind) {
+  if (!WHOLE_QUOTED.test(word)) return `[REDACTED:${kind}]`;
+  const quote = word.startsWith('\\"') ? '\\"' : word[0];
+  return `${quote}[REDACTED:${kind}]${quote}`;
+}
+function maskUserWord(match, head, word) {
+  const colon = word.indexOf(":");
+  if (colon <= 0 || colon === word.length - 1) return match;
+  const name = word.slice(0, colon);
+  if (/[=/]/u.test(name)) return match;
+  let opener = name.startsWith('\\"') ? '\\"' : /^["']/u.test(name) ? name[0] : "";
+  if (opener && name.slice(opener.length).includes(opener)) opener = "";
+  const rest = word.slice(colon + 1);
+  const masked = opener ? "[REDACTED:user_credentials]" : maskWord(rest, "user_credentials");
+  return `${head}${name}:${masked}${opener}`;
+}
 var SECRETS = [
   [
     /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----[\s\S]*?(?:-----END (?:[A-Z0-9]+ )*PRIVATE KEY-----|$)/gu,
@@ -37,6 +64,12 @@ var SECRETS = [
   [/\bxox[abpr]-[A-Za-z0-9-]{10,}/gu, () => "[REDACTED:slack_token]"],
   [/\bAKIA[0-9A-Z]{16}\b/gu, () => "[REDACTED:aws_access_key]"],
   [/\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/giu, (_, prefix) => `${prefix}[REDACTED:bearer_token]`],
+  [
+    // A shell assignment, `PASSWORD=pre"correct horse"post`, gives its key the
+    // whole next shell word. The `key: value` and JSON forms follow below.
+    new RegExp(String.raw`\b(${CREDENTIAL_KEY})=(?![\s-])(${SHELL_WORD})`, "giu"),
+    (_, key, word) => `${key}=${maskWord(word, "assignment")}`
+  ],
   // A quoted value is a value up to its closing quote, spaces included: a
   // passphrase is several words, and stopping at the first space left the
   // rest in the report. An unclosed quote runs to the end of the text, which
@@ -68,35 +101,32 @@ var SECRETS = [
     (_, key, separator) => `${key}${separator}[REDACTED:assignment]`
   ],
   [
-    // The same key as a command-line option whose value is the next argument:
-    // `--password s3cret`, `--api-key "a b"`, `-Token x`. A next argument that
-    // is itself an option means the value was prompted for, and nothing
-    // follows to redact.
+    // The same key as a command-line option whose value is the next shell word:
+    // `--password s3cret`, `--api-key "a b"`, `-Token x`. A next word that is
+    // itself an option means the value was prompted for, and nothing follows
+    // to redact.
     new RegExp(
-      `(?<=^|[\\s"'\`(])(-{1,2}${CREDENTIAL_KEY})(\\s+)(?!-)(?!\\[REDACTED)${argument(3)}`,
+      String.raw`(?<=^|[\s"'${"`"}(])(-{1,2}${CREDENTIAL_KEY})(\s+)(?!-)(${SHELL_WORD})`,
       "giu"
     ),
-    (_, flag, space, quote) => quote ? `${flag}${space}${quote}[REDACTED:flag]${quote}` : `${flag}${space}[REDACTED:flag]`
+    (_, flag, space, word) => `${flag}${space}${maskWord(word, "flag")}`
   ],
   [
-    // A MySQL-family client takes its password glued to `-p`, bare or quoted;
-    // a bare `-p` prompts instead. `-P` is the port and stays.
+    // A MySQL-family client takes its password glued to `-p`; a bare `-p`
+    // prompts instead. `-P` is the port and stays.
     new RegExp(
-      `(\\b(?:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump)\\b[^\\n|;&]*?\\s-p)(?!\\[REDACTED)${argument(2)}`,
+      String.raw`(\b(?:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump)\b[^\n|;&]*?\s-p)(${SHELL_WORD})`,
       "gu"
     ),
-    (_, head, quote) => quote ? `${head}${quote}[REDACTED:flag]${quote}` : `${head}[REDACTED:flag]`
+    (_, head, word) => `${head}${maskWord(word, "flag")}`
   ],
   [
     // `curl -u user:pass` and its kin carry the password after the colon of the
     // user argument, with no URL around it for the scheme rule to catch. The
-    // argument may be glued (`-ubob:pass`) or quoted, and the password may hold
-    // `@` or spaces; only the name before the first colon stays.
-    new RegExp(
-      `((?:^|\\s)(?:-u\\s*|--user(?:\\s+|=)))(?:(\\\\?["'])([^\\s:"'\\\\]+):(?!\\[REDACTED)(?:(?!\\2)[^\\n])*(?:\\2|$)|([^\\s:"'@\\\\]+):(?!\\[REDACTED)${BARE})`,
-      "gu"
-    ),
-    (_, head, quote, quotedUser, bareUser) => quote ? `${head}${quote}${quotedUser}:[REDACTED:user_credentials]${quote}` : `${head}${bareUser}:[REDACTED:user_credentials]`
+    // argument may be glued (`-ubob:pass`), quoted in whole or in part, and the
+    // name may be an e-mail address.
+    new RegExp(String.raw`((?:^|\s)(?:-u\s*|--user(?:\s+|=)))(?!-)(${SHELL_WORD})`, "gu"),
+    maskUserWord
   ]
 ];
 var SEGMENT = "[^\\s\"'`<>|;\\\\/]";
@@ -118,7 +148,7 @@ var LATER_ABSOLUTE = /\s["'\\]*(?:file:\/\/)?(?:\/|[A-Za-z]:\\)/u;
 var PATH_SLUG = new RegExp(`(?<![\\w-])-(?:${PATH_ROOTS})-[^\\s/"'\`<>|;:,()]*`, "gu");
 var ACCOUNT_ROOT = /^(?:home|users)$/iu;
 function basenameOf(path, separator) {
-  const segments = path.split(separator).filter((segment) => segment !== "");
+  const segments = path.split(separator).filter((segment2) => segment2 !== "");
   if (segments.length <= 1) return "";
   if (ACCOUNT_ROOT.test(segments.at(-2))) return "";
   return segments.at(-1);

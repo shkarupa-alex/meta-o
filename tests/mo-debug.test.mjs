@@ -702,6 +702,37 @@ test("a short or option-form credential is redacted, in both harnesses' records"
     ],
     ["curl -ubob:pa@ss https://h", "curl -ubob:[REDACTED:user_credentials] https://h"],
     ["x --Password s3c -Token abc", "x --Password [REDACTED:flag] -Token [REDACTED:flag]"],
+    // The whole shell word goes, across adjacent bare and quoted segments.
+    ['x --password pre"correct horse"post tail', "x --password [REDACTED:flag] tail"],
+    ['mysql -p"correct horse"post db', "mysql -p[REDACTED:flag] db"],
+    ['PASSWORD=pre"correct horse"post run', "PASSWORD=[REDACTED:assignment] run"],
+    ['x --password "a\\"b c" tail', 'x --password "[REDACTED:flag]" tail'],
+    [
+      'curl -u alice:"correct horse" https://h',
+      'curl -u alice:"[REDACTED:user_credentials]" https://h',
+    ],
+    [
+      'curl -u "alice:correct horse"suffix https://h',
+      'curl -u "alice:[REDACTED:user_credentials]" https://h',
+    ],
+    [
+      "curl -u me@example.com:ATATT3xFfGF0 https://h",
+      "curl -u me@example.com:[REDACTED:user_credentials] https://h",
+    ],
+    [
+      "curl --user me@example.com:ATATT3xFfGF0 https://h",
+      "curl --user me@example.com:[REDACTED:user_credentials] https://h",
+    ],
+    // A quote that closes an enclosing string or a JSON string ends the word.
+    ['bash -c "x --token abc" && ls docs/x', 'bash -c "x --token [REDACTED:flag]" && ls docs/x'],
+    [
+      '{"cmd":"x --token abc","cwd":"docs/y"}',
+      '{"cmd":"x --token [REDACTED:flag]","cwd":"docs/y"}',
+    ],
+    [
+      '{"cmd":"curl -u \\"alice:correct horse\\" https://h"}',
+      '{"cmd":"curl -u \\"alice:[REDACTED:user_credentials]\\" https://h"}',
+    ],
   ];
   for (const [input, expected] of cases) {
     assert.equal(redact(input), expected);
@@ -709,13 +740,22 @@ test("a short or option-form credential is redacted, in both harnesses' records"
   }
   // A counter or a prompted option is not a credential and stays readable.
   const kept =
-    "max_output_tokens=3 token_count=2 --max-tokens 5 mysql -P3306 -p db --password --stdin";
+    "max_output_tokens=3 token_count=2 --max-tokens 5 mysql -P3306 -p db --password --stdin git push -u origin main go run -url=https://host/x";
   assert.equal(redact(kept), kept);
 
   const { home, claude, codex } = fixtureHome();
-  const values = ["s3cr3tValue", "0a1b2c3d4e5f", "PIN12", "correct", "horse"];
+  const values = [
+    "s3cr3tValue",
+    "0a1b2c3d4e5f",
+    "PIN12",
+    "correct",
+    "horse",
+    "zzpre",
+    "zzpost",
+    "ATATT3xFfGF0",
+  ];
   const command =
-    'docker login --password s3cr3tValue && mysql -p"correct horse" db && pwd=PIN12 node ~/.claude/skills/mo-setup/scripts/mo-setup.mjs check';
+    'docker login --password s3cr3tValue && mysql -p"correct horse" db && x --password zzpre"correct horse"zzpost && pwd=PIN12 node ~/.claude/skills/mo-setup/scripts/mo-setup.mjs check';
   const UUID = "9f8e7d6c-5b4a-4321-8fed-cba987654323";
   const claudeRecord = {
     sessionId: UUID,
@@ -737,7 +777,7 @@ test("a short or option-form credential is redacted, in both harnesses' records"
       content: [
         {
           type: "input_text",
-          text: '$mo-debug with --token 0a1b2c3d4e5f and curl -u "alice:correct horse"',
+          text: '$mo-debug with --token 0a1b2c3d4e5f and curl -u "alice:correct horse" or curl -u me@example.com:ATATT3xFfGF0',
         },
       ],
     },

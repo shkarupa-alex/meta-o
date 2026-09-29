@@ -27,12 +27,62 @@ const PATH_ROOTS =
 const CREDENTIAL_KEY =
   "[A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|private[_-]?key)";
 
-// One shell argument after an option: quoted up to its own closing quote, a
-// quote escaped for JSON being one more shape of it, or bare up to an unescaped
-// space or a separator, a backslash keeping the next character inside, as in
-// `correct\ horse`. `group` is the number the opening quote is captured as.
-const BARE = `(?:\\\\{1,2}[^\\n\\\\"']|[^\\s"'&;|)\\\\])+`;
-const argument = (group) => `(?:(\\\\?["'])(?:(?!\\${group})[^\\n])*(?:\\${group}|$)|${BARE})`;
+// One shell word: the adjacent bare, escaped, single- and double-quoted
+// segments the shell joins into one argument when no unquoted space separates
+// them, as in `pre"correct horse"post` or `correct\ horse`. Matching one
+// segment instead of the word left the rest of a password in the report. A
+// double-quoted segment skips its escaped characters before looking for its
+// closing quote, and a double quote escaped for JSON, as a tool call carries
+// it, opens one more shape of the same segment. An unclosed quote runs to the
+// end of the text, which fails closed at a window edge.
+//
+// Only the first segment may open with a quote followed by a space. Later in
+// the word such a quote, or one at the end of the text, closes an enclosing
+// string, as in `bash -c "x --token abc" && ls`; and in JSON text the quote
+// that closes a string is followed by `,`, `}`, `]` or `:`. Taking either as
+// an opening quote carried the placeholder over the rest of the command.
+const quotedSegments = (guard) => [
+  String.raw`\\"${guard}(?:\\{3}"|(?!\\")[\s\S])*(?:\\"|$)`,
+  String.raw`"${guard}(?:\\[\s\S]|[^"\\])*(?:"|$)`,
+  String.raw`'${guard}[^']*(?:'|$)`,
+];
+const ESCAPED_CHARACTER = String.raw`\\{1,2}[^\n"']`;
+const BARE_RUN = String.raw`[^\s"'\\&;|)<>]+`;
+const segment = (guard) => {
+  const [jsonDouble, double, single] = quotedSegments(guard);
+  return `(?:${jsonDouble}|${ESCAPED_CHARACTER}|${double}|${single}|${BARE_RUN})`;
+};
+const SHELL_WORD = `${segment("")}${segment(String.raw`(?![\s,}\]:"]|$)`)}*`;
+const WHOLE_QUOTED = new RegExp(`^(?:${quotedSegments("").join("|")})$`, "u");
+
+/**
+ * The typed placeholder for a whole shell word. A word that is one quoted
+ * segment keeps its quotes, so the command still reads as the user typed it;
+ * any other word becomes the bare placeholder.
+ */
+function maskWord(word, kind) {
+  if (!WHOLE_QUOTED.test(word)) return `[REDACTED:${kind}]`;
+  const quote = word.startsWith('\\"') ? '\\"' : word[0];
+  return `${quote}[REDACTED:${kind}]${quote}`;
+}
+
+/**
+ * `name:secret` in one shell word keeps the name and masks everything after
+ * the first colon. A quote the name opened is closed again, so
+ * `"alice:correct horse"suffix` reads `"alice:[REDACTED:…]"`. A word without
+ * such a colon, or whose "name" carries `=` or `/`, is not a user argument.
+ */
+function maskUserWord(match, head, word) {
+  const colon = word.indexOf(":");
+  if (colon <= 0 || colon === word.length - 1) return match;
+  const name = word.slice(0, colon);
+  if (/[=/]/u.test(name)) return match;
+  let opener = name.startsWith('\\"') ? '\\"' : /^["']/u.test(name) ? name[0] : "";
+  if (opener && name.slice(opener.length).includes(opener)) opener = "";
+  const rest = word.slice(colon + 1);
+  const masked = opener ? "[REDACTED:user_credentials]" : maskWord(rest, "user_credentials");
+  return `${head}${name}:${masked}${opener}`;
+}
 
 /**
  * Ordered credential shapes. The more specific shapes run first so that, for
@@ -55,6 +105,12 @@ const SECRETS = [
   [/\bxox[abpr]-[A-Za-z0-9-]{10,}/gu, () => "[REDACTED:slack_token]"],
   [/\bAKIA[0-9A-Z]{16}\b/gu, () => "[REDACTED:aws_access_key]"],
   [/\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/giu, (_, prefix) => `${prefix}[REDACTED:bearer_token]`],
+  [
+    // A shell assignment, `PASSWORD=pre"correct horse"post`, gives its key the
+    // whole next shell word. The `key: value` and JSON forms follow below.
+    new RegExp(String.raw`\b(${CREDENTIAL_KEY})=(?![\s-])(${SHELL_WORD})`, "giu"),
+    (_, key, word) => `${key}=${maskWord(word, "assignment")}`,
+  ],
   // A quoted value is a value up to its closing quote, spaces included: a
   // passphrase is several words, and stopping at the first space left the
   // rest in the report. An unclosed quote runs to the end of the text, which
@@ -87,40 +143,32 @@ const SECRETS = [
     (_, key, separator) => `${key}${separator}[REDACTED:assignment]`,
   ],
   [
-    // The same key as a command-line option whose value is the next argument:
-    // `--password s3cret`, `--api-key "a b"`, `-Token x`. A next argument that
-    // is itself an option means the value was prompted for, and nothing
-    // follows to redact.
+    // The same key as a command-line option whose value is the next shell word:
+    // `--password s3cret`, `--api-key "a b"`, `-Token x`. A next word that is
+    // itself an option means the value was prompted for, and nothing follows
+    // to redact.
     new RegExp(
-      `(?<=^|[\\s"'\`(])(-{1,2}${CREDENTIAL_KEY})(\\s+)(?!-)(?!\\[REDACTED)${argument(3)}`,
+      String.raw`(?<=^|[\s"'${"`"}(])(-{1,2}${CREDENTIAL_KEY})(\s+)(?!-)(${SHELL_WORD})`,
       "giu",
     ),
-    (_, flag, space, quote) =>
-      quote ? `${flag}${space}${quote}[REDACTED:flag]${quote}` : `${flag}${space}[REDACTED:flag]`,
+    (_, flag, space, word) => `${flag}${space}${maskWord(word, "flag")}`,
   ],
   [
-    // A MySQL-family client takes its password glued to `-p`, bare or quoted;
-    // a bare `-p` prompts instead. `-P` is the port and stays.
+    // A MySQL-family client takes its password glued to `-p`; a bare `-p`
+    // prompts instead. `-P` is the port and stays.
     new RegExp(
-      `(\\b(?:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump)\\b[^\\n|;&]*?\\s-p)(?!\\[REDACTED)${argument(2)}`,
+      String.raw`(\b(?:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump)\b[^\n|;&]*?\s-p)(${SHELL_WORD})`,
       "gu",
     ),
-    (_, head, quote) =>
-      quote ? `${head}${quote}[REDACTED:flag]${quote}` : `${head}[REDACTED:flag]`,
+    (_, head, word) => `${head}${maskWord(word, "flag")}`,
   ],
   [
     // `curl -u user:pass` and its kin carry the password after the colon of the
     // user argument, with no URL around it for the scheme rule to catch. The
-    // argument may be glued (`-ubob:pass`) or quoted, and the password may hold
-    // `@` or spaces; only the name before the first colon stays.
-    new RegExp(
-      `((?:^|\\s)(?:-u\\s*|--user(?:\\s+|=)))(?:(\\\\?["'])([^\\s:"'\\\\]+):(?!\\[REDACTED)(?:(?!\\2)[^\\n])*(?:\\2|$)|([^\\s:"'@\\\\]+):(?!\\[REDACTED)${BARE})`,
-      "gu",
-    ),
-    (_, head, quote, quotedUser, bareUser) =>
-      quote
-        ? `${head}${quote}${quotedUser}:[REDACTED:user_credentials]${quote}`
-        : `${head}${bareUser}:[REDACTED:user_credentials]`,
+    // argument may be glued (`-ubob:pass`), quoted in whole or in part, and the
+    // name may be an e-mail address.
+    new RegExp(String.raw`((?:^|\s)(?:-u\s*|--user(?:\s+|=)))(?!-)(${SHELL_WORD})`, "gu"),
+    maskUserWord,
   ],
 ];
 
