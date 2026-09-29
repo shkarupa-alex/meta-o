@@ -114,6 +114,38 @@ candidate is somebody working in parallel: it is recorded as an observation and
 never undone. The public projection carries `Placement: isolated|shared_checkout`
 and no new `REVIEW-START` code.
 
+Before a new pair, inventory the review worktrees this project owns and let
+bundled `scripts/mo-review-resource.mjs release` decide each one from facts read
+through Orca: the `worktree show` id and comment, the Git common directory
+against the source project's, the project's Orca registration, the terminal and
+provider session bindings proven through `terminal show/list` and
+`worker show/status`, whether a live session or the coordinator's or
+executor's checkout uses it, a clean tree, and whether another live resource
+depends on it. It answers one line:
+
+```text
+MO-REVIEW-RESOURCE/1 action=<release|reuse|keep|check_hot> reason=<code> worktree="<id>"
+```
+
+`release` goes through Orca by exact id: the proven dependent terminals first,
+then the worktree; force is forbidden, and so is `git worktree prune`. `reuse` is a clean
+own tree already at the exact candidate. `check_hot` is a marked live session:
+test it as a slot and otherwise leave it. `keep` with `dirty` is named in the
+report, with `ownership_unknown` returns `needs_attention/ownership_unknown`,
+and with `foreign` or `marker_mismatch` blocks nothing. A name or a short SHA
+never stands in for a marker.
+
+Each slot's worktree is marked right after `orca worktree create` or `show`
+returns its exact id, with one `worktree set --comment` holding the two lines
+`mo-review-resource.mjs comment` prints: the
+`MO-REVIEW-RESOURCE/1 pair=… slot=… candidate=… project=… worktree=…` marker a
+restarted coordinator matches, and `<feature> review slot A|B @ <short sha>`
+for a human. `--workspace-status in-review` stays the human-readable status.
+After start, tell the human in one line the candidate's Orca project, both
+worktree names and both tab titles, and say so separately when the candidate's
+project is not the coordinator's own. Never pass `--activate`, and never move
+focus without need.
+
 For each selected worktree, run the resolved system `realpath -- <path>`
 read-only, require exit zero and one absolute output path, and bind the recorded
 command and output to that observation. Two lexical paths whose observed
@@ -155,15 +187,44 @@ before one Dispatch injection. A composed start is allowed only when public
 Orca evidence proves it holds bytes until that readiness. The Orca wrapper owns
 unsandboxed posture; never duplicate its flags.
 
-The first lifecycle pair uses `deep`; remediation uses `follow_up` in the
-same hot sessions with only that reviewer's prior report and dispositions.
-Keep remediation reviewers hot until both dispositions settle.
+The first lifecycle pair uses `deep`. A Dispatch, the provider session, its PTY
+and its worktree are four resources, and `worker_done` spends only the Dispatch:
+after FINDINGS neither reviewer is released or closed until both dispositions
+settle, and remediation goes to the same pair as `follow_up` with only that
+reviewer's own prior reports and dispositions. Before each such Dispatch decide
+every slot separately with `scripts/mo-review-resource.mjs hot`:
+
+```text
+hot(slot) = alive_and_ready(slot) AND (age < 1h OR context_proven_small(slot))
+```
+
+`age` runs from the slot's last `worker_done` by Dispatch events;
+`alive_and_ready` is the same provider session proven alive, ready and with an
+empty composer. Pass `--context-tokens` only for a fully parsed absolute count,
+and `--context-percent` only together with `--context-window` from that same
+public surface or the approved model catalogue; anything else is
+`context=unknown`, and age alone decides. A slot that is not hot is replaced by
+a new session of the same model in that slot with `follow_up`, its own reports
+and dispositions — not a new deep pair and not the final pair — while a hot
+slot beside it stays.
+
+A new independent deep pair while this pair has no PASS needs a recorded reason
+that `scripts/mo-review-resource.mjs deep --phase remediation --reason <r>`
+accepts: `state_transfer_impossible`, `hypothesis_stuck`,
+`requirements_conflict` or `owner_request`. Each round's report names
+`attempt <n>/5` and `deep_reads <m>`: a hot `follow_up`, a slot replacement, a
+deep pair and the final fresh pair with its `follow_up` each spend one attempt
+of the substantive slice, a new SHA does not reset the count, and fresh pairs
+are the costly full rereads.
+
 `fast` is explicitly standalone/advisory, and the portable protocol may
-escalate it to `deep`. Before the one final same-SHA proof, release exact-owned
-old reviewers and create a fresh independent pair in fresh independent sessions
-with no prior reports. That final pair is `deep` as well: `follow_up` needs the
-same reviewer's prior report, which a fresh pair does not have, and advisory
-`fast` cannot carry a required closure proof.
+escalate it to `deep`. Only after this pair returned two PASS reports on one
+SHA, release its exact-owned resources and create a fresh independent pair on
+that same SHA in fresh independent sessions with no prior reports. That final
+pair is `deep` as well: `follow_up` needs the same reviewer's prior report,
+which a fresh pair does not have, and advisory `fast` cannot carry a required
+closure proof. Findings of the fresh pair are remediated in that pair, which
+becomes the hot pair; no further fresh pair starts until it passes.
 
 Wait through one run-wide public waiter on both exact Dispatch handles. Use
 300000 ms arms for reviewers; a quiet timeout permits one public liveness
@@ -180,8 +241,8 @@ an authenticated duplicate search establishes its canonical upstream Issue.
 
 Wait for both full reports before disposition or handoff.
 
-The brief carries all twelve fields of [Review brief](references/review-brief.md)
-and no placeholder. Every grounding source it names must be readable from the
+The brief carries every field of [Review brief](references/review-brief.md) and
+no placeholder. Every grounding source it names must be readable from the
 candidate itself: a path under `.orca/` is in no checkout the reviewer can
 obtain, and the accepted specification is tracked under `docs/specifications/`
 until closure removes it. On a post-cleanup candidate the brief grounds the pair
@@ -262,7 +323,11 @@ either claim, and the body file is deleted when the slot is released.
 `worker_done` ends a Dispatch, so a structurally wrong body is `UNKNOWN` with
 `malformed_report` for that Dispatch and is never corrected in its name. A
 further Dispatch on the same candidate is a new review with its own id and full
-validation, never a correction.
+validation, never a correction. The session outlived the Dispatch: when the
+same provider session is proven alive and ready, send that one new Dispatch to
+it in the same round, without closing its terminal and without spending an
+attempt; a second malformed body from that slot in the round makes the round
+`UNKNOWN`. A terminal is closed only for a named phase or owner reason.
 
 ## Lossless handoff and projection
 
@@ -291,7 +356,23 @@ Review-Handoff-Ack: <pair_id> A=<decimal-bytes> B=<decimal-bytes>
 ```
 
 One absent/mismatched acknowledgement permits one re-delivery of the same paths;
-the next failure makes the pair `UNKNOWN` and preserves the namespace.
+the next failure makes the pair `UNKNOWN` and preserves the namespace. Check an
+acknowledgement with `scripts/mo-review-report.mjs ack --kind Handoff --line
+<text> --pair-id <id> --a-bytes <n> --b-bytes <n>` rather than by eye.
+
+Early repair is the one exception to waiting for both reports, and only when
+the owner approved it and every property is proven: the executor works in its
+own worktree; each reviewer has its own tree detached at the old full SHA; the
+brief forbids reading the executor's mutable refs; HEAD and a clean tree are
+rechecked right before `worker_done`. Then stage the first complete valid
+FINDINGS body in its slot and hand it over unchanged with
+`scripts/mo-review-report.mjs preview --dir <ns> --slot <A|B> --<a|b>-…`; the
+executor replies `Review-Preview-Ack: <pair_id> <slot>=<bytes>`, checked with
+`ack --kind Preview`. A preview is not a pair verdict: the other reviewer
+continues on the old SHA, the pair handoff above still follows its report
+before the next candidate, and every one of its findings gets a disposition
+checked against the new candidate. With any property unproven, wait for both
+reports.
 Human-caller review reports both paths/sizes and never auto-cleans them.
 
 Publicly show exact SHA, pair verdict and component-wise sum of authored P0–P3
@@ -301,7 +382,7 @@ without a P3-only round. One substantive slice permits no more than
 five paired review/fix attempts and still requires two fresh independent `PASS` reports on
 one final SHA.
 
-Never use `/goal`, edit/commit, run concurrent full QC, close foreign tabs or
+Never use `/goal`, edit/commit, run QC as a reviewer, close foreign tabs or
 retry `unknown_effect`. Report E2E as not evaluated unless separately requested.
 
 ## Meta-O calls

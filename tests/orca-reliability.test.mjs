@@ -52,7 +52,7 @@ test("context and ownership recovery remain bounded", () => {
   assert.match(mechanics, /32768-token context/);
   assert.match(mechanics, /cap it at 8000 tokens/);
   assert.match(mechanics, /raw 21k\/41k dump/);
-  assert.match(mechanics, /Never close unnamed human tabs/);
+  assert.match(mechanics, /Never close\s+unnamed human tabs/);
   assert.match(mechanics, /bare shell or expired Dispatch cannot\s+settle work/);
 });
 

@@ -1,0 +1,195 @@
+/**
+ * Hold the review pair's resource rules: which slot is still hot, which
+ * worktree is provably this coordinator's to release, and when a fresh deep
+ * pair may start at all.
+ *
+ * Protects §A-SESSION-01 and §A-REVIEW-02.
+ */
+
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { test } from "node:test";
+import { fileURLToPath } from "node:url";
+
+import {
+  HOT_AGE_MS,
+  deepPairDecision,
+  parseResourceMarker,
+  releaseDecision,
+  resourceComment,
+  slotHot,
+} from "../shared/scripts/mo-review-resource.mjs";
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const HELPER = join(ROOT, "shared", "scripts", "mo-review-resource.mjs");
+const SHA = "c".repeat(40);
+const ready = { alive: true, ready: true, composerEmpty: true };
+const minute = 60_000;
+
+test("hot(slot) is one formula: ready, and young or proven small", () => {
+  const cases = [
+    // A young slot is hot whatever its context says, including nothing.
+    [{ ageMs: 10 * minute, context: { kind: "absolute", used: 900_000 } }, true, "age"],
+    [{ ageMs: 59 * minute, context: { kind: "unknown" } }, true, "age"],
+    // An old slot is hot only on a proven small context.
+    [{ ageMs: HOT_AGE_MS, context: { kind: "absolute", used: 100_000 } }, true, "context"],
+    [{ ageMs: 2 * HOT_AGE_MS, context: { kind: "absolute", used: 100_001 } }, false, "cold"],
+    [
+      { ageMs: 2 * HOT_AGE_MS, context: { kind: "percent", usedPercent: 30, window: 272_000 } },
+      true,
+      "context",
+    ],
+    // A percentage without a proven window, or a truncated indicator, is unknown.
+    [{ ageMs: 2 * HOT_AGE_MS, context: { kind: "percent", usedPercent: 3 } }, false, "cold"],
+    [{ ageMs: 2 * HOT_AGE_MS, context: { kind: "absolute", used: Number.NaN } }, false, "cold"],
+    // An unknown age is not young.
+    [{ ageMs: undefined, context: { kind: "unknown" } }, false, "cold"],
+  ];
+  for (const [input, hot, reason] of cases) {
+    const result = slotHot({ ...ready, ...input });
+    assert.equal(result.hot, hot, JSON.stringify(input));
+    assert.equal(result.reason, reason, JSON.stringify(input));
+  }
+  // Readiness is a precondition, not a tiebreaker.
+  for (const missing of ["alive", "ready", "composerEmpty"]) {
+    const result = slotHot({ ...ready, [missing]: undefined, ageMs: minute });
+    assert.deepEqual([result.hot, result.reason], [false, "not_ready"], missing);
+  }
+});
+
+test("a new deep pair mid-remediation needs one recorded closed reason", () => {
+  assert.equal(deepPairDecision({ phase: "first" }).allowed, true);
+  assert.equal(deepPairDecision({ phase: "final" }).allowed, true);
+  for (const reason of [undefined, "none", "fresh_eyes", "both_slots_unavailable"]) {
+    assert.deepEqual(deepPairDecision({ phase: "remediation", reason }), {
+      allowed: false,
+      reason: "no_recorded_reason",
+    });
+  }
+  for (const reason of [
+    "state_transfer_impossible",
+    "hypothesis_stuck",
+    "requirements_conflict",
+    "owner_request",
+  ]) {
+    assert.equal(deepPairDecision({ phase: "remediation", reason }).allowed, true, reason);
+  }
+});
+
+const comment = resourceComment({
+  pair: "mo-review-0a1b2c-XyZ123",
+  slot: "A",
+  candidate: SHA,
+  project: "proj-1",
+  worktree: "wt-7",
+  feature: "all-open-issues",
+}).text;
+
+const owned = {
+  comment,
+  worktreeId: "wt-7",
+  project: "proj-1",
+  sameGitDir: true,
+  projectRegistered: true,
+  bindingsProven: true,
+  liveSession: false,
+  coordinatorCheckout: false,
+  clean: true,
+  dependency: false,
+  head: SHA,
+  nextCandidate: "d".repeat(40),
+};
+
+test("the marker is the first comment line and the second line is for a human", () => {
+  const [marker, human] = comment.split("\n");
+  assert.equal(
+    marker,
+    `MO-REVIEW-RESOURCE/1 pair=mo-review-0a1b2c-XyZ123 slot=A candidate=${SHA} project=proj-1 worktree=wt-7`,
+  );
+  assert.equal(human, `all-open-issues review slot A @ ${SHA.slice(0, 12)}`);
+  assert.equal(parseResourceMarker(comment).worktree, "wt-7");
+  assert.equal(parseResourceMarker(`note\n${marker}`), null);
+  assert.equal(parseResourceMarker(marker.replace(SHA, SHA.slice(0, 12))), null);
+});
+
+test("only a proven owned orphan is released, and everything uncertain stays", () => {
+  assert.deepEqual(releaseDecision(owned), { action: "release", reason: "owned_orphan" });
+  assert.deepEqual(releaseDecision({ ...owned, nextCandidate: SHA }), {
+    action: "reuse",
+    reason: "exact_placement",
+  });
+  // The regression: a marker copied onto another worktree is not ownership.
+  assert.deepEqual(releaseDecision({ ...owned, worktreeId: "wt-8" }), {
+    action: "keep",
+    reason: "marker_mismatch",
+  });
+  assert.equal(releaseDecision({ ...owned, comment: "somebody's notes" }).reason, "foreign");
+  assert.equal(releaseDecision({ ...owned, sameGitDir: false }).reason, "foreign");
+  assert.equal(releaseDecision({ ...owned, project: "proj-2" }).reason, "foreign");
+  assert.equal(releaseDecision({ ...owned, clean: false }).reason, "dirty");
+  assert.equal(releaseDecision({ ...owned, dependency: true }).reason, "in_use");
+  assert.equal(releaseDecision({ ...owned, coordinatorCheckout: true }).reason, "in_use");
+  assert.deepEqual(releaseDecision({ ...owned, liveSession: true }), {
+    action: "check_hot",
+    reason: "live_session",
+  });
+  for (const fact of ["sameGitDir", "bindingsProven", "liveSession", "clean", "dependency"]) {
+    assert.deepEqual(
+      releaseDecision({ ...owned, [fact]: undefined }),
+      { action: "keep", reason: "ownership_unknown" },
+      fact,
+    );
+  }
+  assert.equal(releaseDecision({ ...owned, bindingsProven: false }).reason, "ownership_unknown");
+});
+
+test("the CLI prints one typed line per question", () => {
+  const run = (args, input) =>
+    spawnSync(process.execPath, [HELPER, ...args], { input, encoding: "utf8" });
+  const hot = run(["hot", "--alive", "yes", "--ready", "yes", "--composer", "empty"]);
+  assert.equal(hot.status, 1);
+  assert.equal(hot.stdout, "MO-REVIEW-SLOT/1 hot=no context=unknown reason=cold\n");
+  const young = run([
+    "hot",
+    "--alive",
+    "yes",
+    "--ready",
+    "yes",
+    "--composer",
+    "empty",
+    "--age-ms",
+    "60000",
+  ]);
+  assert.equal(young.status, 0);
+  const released = run(["release"], JSON.stringify({ ...owned, worktreeId: "wt-8" }));
+  assert.equal(
+    released.stdout,
+    'MO-REVIEW-RESOURCE/1 action=keep reason=marker_mismatch worktree="wt-8"\n',
+  );
+  const deep = run(["deep", "--phase", "remediation", "--reason", "none"]);
+  assert.equal(deep.status, 1);
+  assert.equal(deep.stdout, "MO-REVIEW-DEEP/1 allowed=no reason=no_recorded_reason\n");
+});
+
+test("the coordinator is told to use these answers, not to reason past them", () => {
+  const flat = (path) => readFileSync(join(ROOT, path), "utf8").replace(/\s+/gu, " ");
+  const skill = flat("src/skills/mo-review-orca/SKILL.md");
+  const method = flat("shared/references/methodology.md");
+  for (const text of [skill, method]) {
+    assert.match(
+      text,
+      /hot\(slot\) = alive_and_ready\(slot\) AND \(age < 1h OR context_proven_small\(slot\)\)/u,
+    );
+    assert.match(text, /state_transfer_impossible/u);
+    assert.match(text, /`attempt <n>\/5` and `deep_reads <m>`/u);
+  }
+  assert.match(skill, /scripts\/mo-review-resource\.mjs release/u);
+  assert.match(skill, /Never pass `--activate`/u);
+  assert.match(skill, /Only after this pair returned two PASS reports on one SHA/u);
+  assert.match(skill, /Review-Preview-Ack: <pair_id> <slot>=<bytes>/u);
+  // The old rule closed a hot pair before the final proof regardless of result.
+  assert.doesNotMatch(skill, /Before the one final same-SHA proof, release exact-owned/u);
+  assert.doesNotMatch(skill, /git worktree prune` is (?:allowed|used)/u);
+});

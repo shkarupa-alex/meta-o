@@ -94,7 +94,7 @@ test("lifecycle and Orca review own pair settlement outside the portable core", 
   assert.match(methodology, /same-SHA passes/);
   assert.match(review, /vendor-diverse pair/);
   assert.match(review, /Wait for both full reports/);
-  assert.match(review, /Keep remediation reviewers hot/);
+  assert.match(review, /after FINDINGS neither reviewer is released or closed/);
   assert.match(review, /fresh independent sessions/);
   assert.match(review, /five\s+paired review\/fix attempts/);
 });

@@ -238,6 +238,7 @@ export const SHARED_PLAN = {
     ["scripts/mo-backlog.mjs", "scripts/mo-backlog.mjs"],
     ["scripts/mo-harness-screen.mjs", "scripts/mo-harness-screen.mjs"],
     ["scripts/mo-review-report.mjs", "scripts/mo-review-report.mjs"],
+    ["scripts/mo-review-resource.mjs", "scripts/mo-review-resource.mjs"],
     ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],
   ],
   "mo-review-orca": [
@@ -252,6 +253,7 @@ export const SHARED_PLAN = {
     ["scripts/mo-backlog.mjs", "scripts/mo-backlog.mjs"],
     ["scripts/mo-harness-screen.mjs", "scripts/mo-harness-screen.mjs"],
     ["scripts/mo-review-report.mjs", "scripts/mo-review-report.mjs"],
+    ["scripts/mo-review-resource.mjs", "scripts/mo-review-resource.mjs"],
   ],
   "mo-reviewer": [
     ["references/review-protocol.md", "references/review-protocol.md"],

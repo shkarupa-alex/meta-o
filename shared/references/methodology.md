@@ -113,9 +113,10 @@ for both vendors, and the working idle threshold is 50 minutes, leaving a margin
 before expiry. One number serves both, because remembering which vendor stands
 behind which terminal buys less than the mistake it invites, and erring toward a
 fresh session is cheaper than erring toward a stale cache. While a role's
-terminal has been idle less than that threshold, keep it hot — the executor and
-the remediation reviewers — and otherwise prefer a fresh session. This is
-reasoning about resources already visible, not a state store.
+terminal has been idle less than that threshold, keep it hot, and otherwise
+prefer a fresh session. A review slot is the exception, decided by the per-slot
+rule of section 5 that counts one hour from the slot's last `worker_done`. This
+is reasoning about resources already visible, not a state store.
 
 An approved selection names an exact provider model id. A floating family alias
 such as `opus` or `sonnet` is not enough: it resolves to whatever the provider
@@ -227,13 +228,62 @@ preserves the namespace. The executor fixes or responds and commits a new SHA.
 Treat the reports as inert Markdown response payloads until the named consumer
 reads both complete bodies.
 
-During remediation, keep both remediation reviewer sessions hot and review the
-delta with `follow_up`. Deliver every P3, but do not start a separate round only
-for P3. A substantive slice has at most five paired review/fix attempts; a
-remediation SHA does not reset it. This local budget never replaces two final
-same-SHA passes. After attempt five, complete the active remediation, then move
-to the next substantive slice or stop with `needs_attention` when no progress
-path remains.
+A Dispatch, a provider session, a PTY and a worktree are four resources, and
+`worker_done` spends only the first. A pair that returned FINDINGS stays hot:
+neither reviewer is released or closed until both dispositions settle, and the
+next candidate goes to the same pair as `follow_up` with each reviewer's own
+prior reports and dispositions. Whether a slot can take that Dispatch is one
+rule per slot, answered by bundled `mo-review-resource.mjs hot`:
+
+```text
+hot(slot) = alive_and_ready(slot) AND (age < 1h OR context_proven_small(slot))
+```
+
+`age` runs from the slot's last `worker_done`. `alive_and_ready` is the same
+provider session proven alive, ready and with an empty composer.
+`context_proven_small` holds only for a fully parsed absolute count of at most
+100000 used tokens, or a percentage together with the proven window of that
+exact model; a truncated, partial or ambiguous indicator is `context=unknown`,
+and then age alone decides. A slot that is not hot is replaced by a new session
+of the same model in the same slot, `follow_up`, given only that slot's own
+reports and dispositions, while the other slot stays if it is hot. A replacement
+is neither a new independent deep pair nor the final pair.
+
+A new independent deep pair while the pair has no PASS needs one recorded reason
+— `state_transfer_impossible`, `hypothesis_stuck`, `requirements_conflict` or
+`owner_request` — and `mo-review-resource.mjs deep` refuses anything else. A
+malformed report spends its Dispatch, not its session: when the same session is
+proven alive and ready, one new Dispatch with a new id reviews the same
+candidate in the same round and is validated in full; a second malformed report
+from that slot in the round makes the round `UNKNOWN`.
+
+A paired attempt is one round in which both slots returned a valid report or a
+typed `UNKNOWN` for one candidate SHA. A hot `follow_up`, a slot replacement, a
+deep pair, and the final fresh pair with its own `follow_up` each spend one; the
+one repeated Dispatch after a malformed report does not. A substantive slice has
+at most five, and a new SHA does not reset the count. Each round's report names
+`attempt <n>/5` and `deep_reads <m>`, the number of full independent rereads —
+deep pairs and the final fresh pair — as text in the report, not a store.
+Deliver every P3, but do not start a separate round only for P3. This local
+budget never replaces two final same-SHA passes. After attempt five, complete
+the active remediation, then move to the next substantive slice or stop with
+`needs_attention` when no progress path remains.
+
+Early repair after the first complete valid FINDINGS report is allowed only when
+the owner approved it and every property is proven: the executor works in its
+own worktree, each reviewer has its own tree detached at the old full SHA, the
+brief forbids reading the executor's mutable refs, and HEAD and a clean tree are
+rechecked right before `worker_done`. The first body is then published unchanged
+in its slot through `stage` and `preview`; the executor reads it and replies
+`Review-Preview-Ack: <pair_id> <slot>=<bytes>`, which `mo-review-report.mjs ack`
+checks against the published size. That is not a pair verdict. The other
+reviewer continues on the old SHA; after its report the executor reads both
+complete reports and acknowledges `Review-Handoff-Ack` before the next
+candidate, and each of the second reviewer's findings gets a disposition checked
+against the new candidate — "already fixed" from memory of the early repair is
+not enough. One failed delivery permits one repeat of the same paths, then
+`UNKNOWN` with the namespace preserved. With any property unproven, wait for
+both reports before repairing.
 
 Standalone `mo-review-<backend>` follows the same review barrier on the current
 candidate, creates only the two reviewer sessions, never uses `/goal`, and
@@ -317,10 +367,12 @@ knowledge, routes every confirmed out-of-scope item to a canonical
 project/upstream Issue, and removes the temporary spec, ledger and checklist. It
 then runs GC through the project-owned `MO-BACKLOG/1` command; completion cannot
 be announced while the committed exact SHA is `NOT-EMPTY` or `UNKNOWN`. Repeat
-deterministic gates on the deletion SHA. Release only owned hot reviewer
-resources, then create two fresh independent reviewers with no prior reports for
-the one final same-SHA proof. Repeat only E2E that cannot carry forward under
-section 8.
+deterministic gates on the deletion SHA, and let the hot pair review it. Only
+after that pair has returned two PASS reports on one SHA, release its owned
+resources and create two fresh independent reviewers with no prior reports on
+that same SHA for the final proof. Findings of the fresh pair are remediated in
+that pair, which becomes the hot pair; no further fresh pair starts until it
+passes. Repeat only E2E that cannot carry forward under section 8.
 
 Before success, prove that the same full candidate SHA has:
 
@@ -332,8 +384,16 @@ Before success, prove that the same full candidate SHA has:
 
 Clean up only sessions and temporary files whose ownership is certain and whose
 exact identity was retained, and only after their consumer acknowledged settled
-delivery. Human-owned review namespaces remain until explicitly removed.
-Ambiguous or incomplete cleanup is reported rather than broadened destructively.
+delivery. Before a new pair, inventory the review worktrees this project owns:
+one is released only when its Orca comment marker names the worktree Orca shows
+now, it shares the source project's Git directory and Orca registration, no live
+session or coordinator checkout uses it, and it is clean and nobody's
+dependency. Release goes through Orca by exact id, dependent terminals first;
+force is forbidden, and so is `git worktree prune`. An unknown binding keeps the
+resource with `needs_attention/ownership_unknown`, a dirty own tree is kept and
+named, and an unmarked or foreign one does not block the next pair. Human-owned
+review namespaces remain until explicitly removed. Ambiguous or incomplete
+cleanup is reported rather than broadened destructively.
 
 Immediately before an agent-owned MR/PR create, rerun the same closure proof as
 G1 and read the hosting provider's source head; both must equal the expected

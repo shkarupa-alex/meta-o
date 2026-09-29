@@ -970,7 +970,7 @@ test("every reviewer wave has a mode the protocol can actually issue", () => {
   for (const path of ["src/skills/mo-review-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
     const review = source(path).replace(/\s+/gu, " ");
     assert.match(review, /The first lifecycle pair uses `deep`/u, path);
-    assert.match(review, /remediation uses `follow_up` in the same hot sessions/u, path);
+    assert.match(review, /remediation goes to the same pair as `follow_up`/u, path);
     assert.match(review, /That final pair is `deep` as well/u, path);
     assert.match(review, /`follow_up` needs the same reviewer's prior report/u, path);
     assert.match(review, /advisory `fast` cannot carry a required closure proof/u, path);

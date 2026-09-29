@@ -263,6 +263,54 @@ export function stage({ dir, slot, vendor, buffer, expected }) {
  * and content hash are checked together because each alone is reusable.
  */
 export function pair({ dir, pairId, slots }) {
+  const parts = verifySlots(dir, slots);
+  if (!Array.isArray(parts)) return parts;
+  return { status: "paired", line: `Review-Pair: ${pairId} ${parts.join(" ")}` };
+}
+
+/**
+ * Hand over one slot early, unchanged, as a preview rather than a verdict.
+ *
+ * §A-RESPONSE-03 names the executor as a second consumer when the owner
+ * approved an early repair: it reads the first complete report while the other
+ * reviewer still works on the old SHA. The slot is checked exactly as a pair
+ * slot is, and the pair handoff still follows once the second report arrives.
+ */
+export function preview({ dir, pairId, slot }) {
+  const parts = verifySlots(dir, [slot]);
+  if (!Array.isArray(parts)) return parts;
+  return { status: "previewed", line: `Review-Preview: ${pairId} ${parts[0]}` };
+}
+
+const ACK = /^Review-(Preview|Handoff)-Ack: (\S+)((?: [AB]=\d+)+)$/u;
+
+/**
+ * §A-RESPONSE-03 accepts an acknowledgement only for this pair, these slots and
+ * the published sizes; anything else is an absent acknowledgement.
+ */
+export function checkAck(line, { kind, pairId, bytes }) {
+  const match = ACK.exec(String(line).trim());
+  if (match === null || match[1] !== kind || match[2] !== pairId) {
+    return { status: "mismatched", reason: "form" };
+  }
+  const acknowledged = Object.fromEntries(
+    match[3]
+      .trim()
+      .split(" ")
+      .map((part) => part.split("=")),
+  );
+  const slots = Object.keys(bytes).sort();
+  if (JSON.stringify(Object.keys(acknowledged).sort()) !== JSON.stringify(slots)) {
+    return { status: "mismatched", reason: "slots" };
+  }
+  for (const slot of slots) {
+    if (Number(acknowledged[slot]) !== bytes[slot])
+      return { status: "mismatched", reason: "bytes" };
+  }
+  return { status: "matched" };
+}
+
+function verifySlots(dir, slots) {
   const parts = [];
   for (const expected of slots) {
     const path = join(dir, `${expected.slot}-${expected.vendor}.md`);
@@ -290,7 +338,7 @@ export function pair({ dir, pairId, slots }) {
     }
     parts.push(`${expected.slot}=${JSON.stringify(path)} ${expected.slot}_bytes=${expected.bytes}`);
   }
-  return { status: "paired", line: `Review-Pair: ${pairId} ${parts.join(" ")}` };
+  return parts;
 }
 
 function parseArguments(argv) {
@@ -448,26 +496,64 @@ function commandStage(options) {
   return 0;
 }
 
+function slotOption(options, slot) {
+  const prefix = slot.toLowerCase();
+  require_(options, [
+    `${prefix}-vendor`,
+    `${prefix}-bytes`,
+    `${prefix}-dev`,
+    `${prefix}-ino`,
+    `${prefix}-sha256`,
+  ]);
+  return {
+    slot,
+    vendor: options[`${prefix}-vendor`],
+    bytes: Number(options[`${prefix}-bytes`]),
+    dev: Number(options[`${prefix}-dev`]),
+    ino: Number(options[`${prefix}-ino`]),
+    sha256: options[`${prefix}-sha256`],
+  };
+}
+
+function commandPreview(options) {
+  require_(options, ["dir", "slot"]);
+  if (!["A", "B"].includes(options.slot)) throw new Error("--slot must be A or B");
+  const result = preview({
+    dir: options.dir,
+    pairId: basename(options.dir),
+    slot: slotOption(options, options.slot),
+  });
+  if (result.status !== "previewed") {
+    process.stdout.write(
+      `MO-REVIEW-PAIR/1 status=unknown reason=${result.reason} slot=${result.slot}\n`,
+    );
+    return 1;
+  }
+  process.stdout.write(`${result.line}\n`);
+  return 0;
+}
+
+function commandAck(options) {
+  require_(options, ["line", "kind", "pair-id"]);
+  const bytes = {};
+  for (const slot of ["A", "B"]) {
+    const value = options[`${slot.toLowerCase()}-bytes`];
+    if (value !== undefined) bytes[slot] = Number(value);
+  }
+  const result = checkAck(options.line, {
+    kind: options.kind,
+    pairId: options["pair-id"],
+    bytes,
+  });
+  process.stdout.write(
+    `MO-REVIEW-ACK/1 status=${result.status}${result.reason ? ` reason=${result.reason}` : ""}\n`,
+  );
+  return result.status === "matched" ? 0 : 1;
+}
+
 function commandPair(options) {
   require_(options, ["dir"]);
-  const slots = ["A", "B"].map((slot) => {
-    const prefix = slot.toLowerCase();
-    require_(options, [
-      `${prefix}-vendor`,
-      `${prefix}-bytes`,
-      `${prefix}-dev`,
-      `${prefix}-ino`,
-      `${prefix}-sha256`,
-    ]);
-    return {
-      slot,
-      vendor: options[`${prefix}-vendor`],
-      bytes: Number(options[`${prefix}-bytes`]),
-      dev: Number(options[`${prefix}-dev`]),
-      ino: Number(options[`${prefix}-ino`]),
-      sha256: options[`${prefix}-sha256`],
-    };
-  });
+  const slots = ["A", "B"].map((slot) => slotOption(options, slot));
   const result = pair({ dir: options.dir, pairId: basename(options.dir), slots });
   if (result.status !== "paired") {
     process.stdout.write(
@@ -486,6 +572,8 @@ function main(argv) {
     validate: commandValidate,
     stage: commandStage,
     pair: commandPair,
+    preview: commandPreview,
+    ack: commandAck,
   };
   if (argv[0] === "namespace") {
     const created = namespace();
@@ -497,7 +585,7 @@ function main(argv) {
   const command = commands[argv[0]];
   if (command === undefined) {
     throw new Error(
-      "usage: mo-review-report.mjs <namespace|template|prepare|validate|stage|pair> …",
+      "usage: mo-review-report.mjs <namespace|template|prepare|validate|stage|pair|preview|ack> …",
     );
   }
   return command(parseArguments(argv.slice(1)));

@@ -261,6 +261,10 @@ hot session; over it, prefer a fresh one. Where the installed version returns no
 such field, behave exactly as before: an absent observation is not a stale
 session.
 
+A review slot is decided differently, by `mo-review-resource.mjs hot`: its age
+runs from the slot's last `worker_done`, not from `lastOutputAt`, and the owner
+set that bound at one hour; a proven small context keeps an older slot hot.
+
 ## Reviews and cleanup
 
 Create both review tasks before starting either worker, then start both without
@@ -282,8 +286,11 @@ delivered. A failed or uncertain worker follows the exact recovery action in its
 public receipt.
 
 Keep the executor and remediation reviewers in their exact owned terminals.
-Release old reviewers only before the fresh final pair. Stable titles are
-defined once in the Run section and reused here. Cleanup follows complete pair
-delivery and consumer acknowledgement. A partial start rechecks both inventories
-and hands ambiguous handles to the human. Never close unnamed human tabs,
-neighboring Run resources or another project container.
+Release old reviewers only once they returned two PASS reports on one SHA,
+before the fresh final pair on that SHA. A review worktree carries its
+`MO-REVIEW-RESOURCE/1` marker in its Orca comment, and a restarted coordinator
+releases only what `mo-review-resource.mjs release` proves is its own orphan.
+Stable titles are defined once in the Run section and reused here. Cleanup
+follows complete pair delivery and consumer acknowledgement. A partial start
+rechecks both inventories and hands ambiguous handles to the human. Never close
+unnamed human tabs, neighboring Run resources or another project container.

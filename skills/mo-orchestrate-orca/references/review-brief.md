@@ -92,8 +92,15 @@ to say so rather than let the reviewer discover it.
 
 An isolated workspace is checked out at the candidate, clean, before the brief
 is sent. The reviewer then proves the SHA with `rev-parse HEAD` in the directory
-it works in, which is the cheapest proof there is, and every pointed check it
-runs is a check of the candidate rather than of a neighbouring commit.
+it works in, which is the cheapest proof there is, and everything it reads is
+the candidate rather than a neighbouring commit.
+
+When the owner approved an early repair, the executor keeps working while the
+second reviewer is still reading. The brief then says so: the reviewer's own
+tree is detached at the old full SHA, it never reads the executor's branch,
+worktree or any other ref that moves, and it rechecks `rev-parse HEAD` and a
+clean tree right before `worker_done`. A reviewer that followed a moving ref
+would review a candidate nobody froze.
 
 Parking the reviewer on another commit and telling it to read the candidate by
 SHA costs a round whenever the reviewer takes the protocol at its word: a

@@ -56,6 +56,7 @@ mo-lint:
 	node --check shared/scripts/mo-harness-screen.mjs
 	node --check shared/scripts/mo-review-report.mjs
 	node --check shared/scripts/mo-review-grammar.mjs
+	node --check shared/scripts/mo-review-resource.mjs
 	node tools/adapter-contract.mjs --validate
 	bash -n shared/scripts/mo-posture.sh
 	bash -n shared/scripts/mo-watchdog.sh
@@ -133,7 +134,7 @@ mo-e2e:
 	@echo "AGENT_REQUIRED: not executed"
 	@echo
 	@echo "Docs:      docs/e2e.md, docs/backend-capabilities.md"
-	@echo "Scenarios: B1-B55 — Orca backend, lifecycle, setup and Qwen profile"
+	@echo "Scenarios: B1-B61 — Orca backend, lifecycle, setup and Qwen profile"
 	@echo "           W1-W4 — watchdog target, scan, nudge, suppression"
 	@echo "           27 embedded cases — positive/forbidden/degraded for 9 skills"
 	@echo "           local and authorized remote installation"

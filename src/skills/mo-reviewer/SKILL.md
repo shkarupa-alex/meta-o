@@ -54,7 +54,11 @@ on the exact candidate and CI runs it before an agent merges; a reviewer who
 runs the suite as well spends minutes that let every participant's cache expire
 and proves nothing new. When a finding needs an executed check to be decided,
 write that check as its regression case or record the gap under Unknowns.
-Write nothing in the checkout.
+Write nothing in the checkout. When the brief says the executor repairs early,
+never read its branch, worktree or any moving ref. In `follow_up` mode you
+receive only your own prior reports and the dispositions of their findings;
+check each fix and its causal neighbours and never ask for the other reviewer's
+report.
 
 Each finding survives an attempt to falsify it and is caused or worsened by the
 candidate. It states its evidence state, causal path, impact, location, proof,
@@ -96,6 +100,9 @@ again — nothing was written. `status=refused reason=exists` means the path is
 not yours: stop and ask. Then send exactly that file as the body, for example
 `--body "$(cat <Body-File>)"`. With `Body-File: none`, pipe the exact bytes you
 are about to send into `validate --file - …` with the same flags.
+
+Right before sending, prove the checkout again: `rev-parse HEAD` still equals
+`Target` and the tree is still clean.
 
 ## Friction and cleanup
 
