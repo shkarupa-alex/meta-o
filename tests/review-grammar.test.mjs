@@ -171,6 +171,8 @@ test("both finding bodies are accepted and nothing else is", () => {
     "F-001 [P2]\n",
     "F-001\n[P2]\n",
     "F-001\n\n[P2]   \n",
+    // An unannounced key stays a stray body whatever follows its severity.
+    "F-001 [P2] the announced body.\nF-002 [P1]\nevidence for a finding the index hides.\n",
   ]) {
     assert.equal(reasonOf(findingsReport({ body })), "index_body_mismatch", body);
   }

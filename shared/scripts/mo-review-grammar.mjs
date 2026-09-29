@@ -217,11 +217,16 @@ function readIndex(paragraphs, from, to, counts) {
  */
 function bodyOpening(line, expected, opened) {
   const bare = /^(F-\d{3})$/u.exec(line);
-  const inline = /^(F-\d{3}) \[(P[0-3])\] +\S/u.exec(line);
+  // The shape is recognized with or without text after the severity, so an
+  // unannounced key stays a stray body even when nothing follows its severity.
+  const inline = /^(F-\d{3}) \[(P[0-3])\](?:\s|$)/u.exec(line);
   if (bare === null && inline === null) return { kind: "prose" };
   const key = (bare ?? inline)[1];
   if (expected !== undefined && key === expected.key) {
-    return bare ? { kind: "bare" } : { kind: "inline", severity: inline[2] };
+    if (bare) return { kind: "bare" };
+    return /^F-\d{3} \[P[0-3]\] +\S/u.test(line)
+      ? { kind: "inline", severity: inline[2] }
+      : { kind: "stray" };
   }
   if (inline !== null && opened.has(key)) return { kind: "prose" };
   return { kind: "stray" };
