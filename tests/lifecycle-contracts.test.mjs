@@ -6,7 +6,7 @@
  */
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 
@@ -958,6 +958,26 @@ test("an isolated reviewer workspace stands on the candidate", () => {
     assert.match(review, /the workspace stands on the candidate before the brief is sent/u, path);
     assert.match(review, /`UNKNOWN` with `candidate_mismatch`/u, path);
   }
+});
+
+test("every reviewer Dispatch records the installed reviewer version", () => {
+  // The body carries no version header by design, so the Dispatch context is
+  // the only place that can say which grammar accepted a report once the
+  // installation moves on.
+  const brief = source("shared/references/review-brief.md").replace(/\s+/gu, " ");
+  assert.match(brief, /`Reviewer-Skill: mo-reviewer <path> source_tree=<40-hex>`/u);
+  assert.match(brief, /no Dispatch starts from it/u);
+  for (const path of ["src/skills/mo-review-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
+    const review = source(path).replace(/\s+/gu, " ");
+    assert.match(review, /`mo-reviewer <path> source_tree=<40-hex>`/u, path);
+    assert.match(review, /carries no stamp/u, path);
+    assert.match(review, /repeats it next to `prepared_body_identity`/u, path);
+  }
+  // The stamp can name all three only while the skill bundles the other two.
+  for (const bundled of ["references/review-protocol.md", "scripts/mo-review-report.mjs"]) {
+    assert.equal(existsSync(join(ROOT, "skills", "mo-reviewer", bundled)), true, bundled);
+  }
+  assert.match(source("skills/mo-reviewer/SKILL.md"), /^ {2}source_tree: "[0-9a-f]{40}"$/mu);
 });
 
 test("the final pair is told where its grounding went after cleanup", () => {

@@ -8,24 +8,24 @@ about — costing a turn — or invents, which costs the whole review.
 
 Every brief carries all of these, in this order, each on its own line or block:
 
-| Field                  | What it settles                                                             |
-| ---------------------- | --------------------------------------------------------------------------- |
-| `Target`               | the exact 40-hex candidate SHA, never a branch or a moving ref              |
-| `Intent`               | what the change is for, in the requester's words                            |
-| `Spec`                 | `Spec: <path\|object>` the work followed, or `Spec: none`                   |
-| `Scope`                | the commit range and the named sections; what is out of scope               |
-| `Mode`                 | `fast`, `deep` or `follow_up`, and that self-escalation is the reviewer's   |
-| `Placement`            | `isolated` or `shared_checkout`, the exact workspace, where its `HEAD` is   |
-| `Environment`          | that no test, linter or QC is run: reading is by SHA, nothing is executed   |
-| `Constraints`          | what the reviewer may not do: no writes, no tests, lint, QC or subagents    |
-| `Ownership`            | which resources are the reviewer's and which are not                        |
-| `Acceptance`           | what a finding must state to be actionable                                  |
-| `Reviewer-Skill`       | `mo-reviewer`, with the path of its `SKILL.md` in the caller's installation |
-| `Report`               | the authoritative response, the grammar that replaces the generic one       |
-| `Body-File`            | the one path the reviewer creates, validates and sends, or `none`           |
-| `Methodology-Friction` | where to report a rule that got in the way rather than a defect             |
-| `Cleanup`              | what to remove, and what to report when removal fails                       |
-| `Knowledge-Layer`      | the helper's literal `state=… reason=…` line on the same SHA                |
+| Field                  | What it settles                                                           |
+| ---------------------- | ------------------------------------------------------------------------- |
+| `Target`               | the exact 40-hex candidate SHA, never a branch or a moving ref            |
+| `Intent`               | what the change is for, in the requester's words                          |
+| `Spec`                 | `Spec: <path\|object>` the work followed, or `Spec: none`                 |
+| `Scope`                | the commit range and the named sections; what is out of scope             |
+| `Mode`                 | `fast`, `deep` or `follow_up`, and that self-escalation is the reviewer's |
+| `Placement`            | `isolated` or `shared_checkout`, the exact workspace, where its `HEAD` is |
+| `Environment`          | that no test, linter or QC is run: reading is by SHA, nothing is executed |
+| `Constraints`          | what the reviewer may not do: no writes, no tests, lint, QC or subagents  |
+| `Ownership`            | which resources are the reviewer's and which are not                      |
+| `Acceptance`           | what a finding must state to be actionable                                |
+| `Reviewer-Skill`       | `mo-reviewer`, the path of its installed `SKILL.md` and its `source_tree` |
+| `Report`               | the authoritative response, the grammar that replaces the generic one     |
+| `Body-File`            | the one path the reviewer creates, validates and sends, or `none`         |
+| `Methodology-Friction` | where to report a rule that got in the way rather than a defect           |
+| `Cleanup`              | what to remove, and what to report when removal fails                     |
+| `Knowledge-Layer`      | the helper's literal `state=… reason=…` line on the same SHA              |
 
 `Review-Execution` in the report is the Dispatch id from Orca's own preamble,
 copied verbatim; the brief says so rather than supplying a guess. No placeholder
@@ -67,6 +67,15 @@ the same installation this caller runs from. The reviewer reads it from there �
 it carries the risk lenses, the no-execution rule and the validator — and never
 from a copy of unknown origin. The reviewer does not start the coordinator's
 review skill; calling its validator is not starting a review.
+
+The field also carries that file's `metadata.source_tree`, in the form
+`Reviewer-Skill: mo-reviewer <path> source_tree=<40-hex>`. The skill bundles the
+review protocol and the validator, and the build stamps the tree of every input
+it copied, so this one value is the installed version of all three. The body has
+no version header on purpose; the Dispatch context holds it instead, which is
+what lets a report accepted today be judged again by the grammar that accepted
+it after the installation has moved on. A `SKILL.md` without a readable stamp is
+not a reviewer skill of known origin, and no Dispatch starts from it.
 
 ## Grounding sources are reachable from the candidate
 

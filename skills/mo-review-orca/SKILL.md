@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-review-orca or an act
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "ee195bec0325d9aa2ba04ad5126be4aa9ef2ad0f"
+  source_tree: "5eaffa97213626d5cc0bb12f7cf896bc6c6d48ab"
 ---
 
 # Review through Orca
@@ -188,9 +188,13 @@ reviewers, never an executor/fixer/verifier/subagent. Use stable visible titles
 
 Every reviewer Dispatch names `mo-reviewer` under `Reviewer-Skill` together
 with the absolute path of its `SKILL.md` in the installation this skill runs
-from — the sibling directory of this skill. Before either Dispatch, read that
-file; when it is absent, unreadable from the reviewer's workspace, or not the
-same build as this skill, no Dispatch starts and the result is
+from — the sibling directory of this skill — and that file's
+`metadata.source_tree`, as `mo-reviewer <path> source_tree=<40-hex>`. The stamp
+covers the reviewer skill, the protocol and the validator it bundles, so it is
+the version that judged the report; the round report repeats it next to
+`prepared_body_identity`. Before either Dispatch, read that file; when it is
+absent, unreadable from the reviewer's workspace, carries no stamp, or is not
+the same build as this skill, no Dispatch starts and the result is
 `needs_attention/skill_unavailable`. Never paste reviewer instructions from a
 copy of unknown origin.
 
