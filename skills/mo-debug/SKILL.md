@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-debug; read a bounded
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "6c271c1350f155e4fbd9c6516c78d0ca5a643abc"
+  source_tree: "ea2dcaefdbd46cf1d7f82f75091c5814b396e613"
 ---
 
 # Diagnose your own agent sessions
@@ -58,7 +58,9 @@ A `skill` line gives the loaded version. `version=source_tree:<id>` with a
 commit range is the build stamp found in committed history, `body_match` is a
 byte-exact match of the loaded text with a committed body, and `unknown` is
 unknown: never attribute the currently installed text, or the current commit,
-to a historical session.
+to a historical session. `stamp=<id>` is only the stamp the session showed; a
+stamp that no commit carries, or one read without `--history`, stays
+`version=unknown`, because a locally built or edited skill carries it too.
 
 ## What leaves this skill
 

@@ -57,7 +57,9 @@ A `skill` line gives the loaded version. `version=source_tree:<id>` with a
 commit range is the build stamp found in committed history, `body_match` is a
 byte-exact match of the loaded text with a committed body, and `unknown` is
 unknown: never attribute the currently installed text, or the current commit,
-to a historical session.
+to a historical session. `stamp=<id>` is only the stamp the session showed; a
+stamp that no commit carries, or one read without `--history`, stays
+`version=unknown`, because a locally built or edited skill carries it too.
 
 ## What leaves this skill
 

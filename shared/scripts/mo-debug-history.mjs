@@ -124,34 +124,32 @@ function walkState(walked) {
 /**
  * §A-DIAGNOSTICS-01 attributes one loaded skill text to a version.
  *
- * A visible stamp wins; without one, only a complete text is compared, and
- * only byte for byte with the same normalization the harness applied. With no
- * history the answer names the stamp but never guesses commits.
+ * A visible stamp is a claim, not a version: it becomes one only when a
+ * committed `SKILL.md` in the walked history carries it, because a locally
+ * built or edited skill carries a stamp that no commit ever held. Without a
+ * stamp, only a complete text is compared, and only byte for byte with the
+ * same normalization the harness applied. The observed stamp is always named
+ * in `stamp`, so evidence survives when the version stays unknown.
  *
  * @param {{name: string, sourceTree: string|null, complete: boolean,
  *   comparison: "file"|"claude_body", candidates: string[]}} load loaded text
  * @param {object|null} history value from `openHistory`, or null
- * @returns {{version: string, commits: string, history: string}} typed fields
+ * @returns {{version: string, commits: string, history: string, stamp: string}} typed fields
  */
 export function attribute(load, history) {
   const stamped = typeof load.sourceTree === "string" && SHA.test(load.sourceTree);
+  const stamp = stamped ? load.sourceTree : "none";
   const comparable = load.complete && load.candidates.length > 0;
   if (!SKILL_NAME.test(load.name) || (!stamped && !comparable)) {
-    return { version: "unknown", commits: "unknown", history: history ? "unused" : "none" };
+    return { version: "unknown", commits: "unknown", history: history ? "unused" : "none", stamp };
   }
-  if (history === null) {
-    return stamped
-      ? { version: `source_tree:${load.sourceTree}`, commits: "unknown", history: "none" }
-      : { version: "unknown", commits: "unknown", history: "none" };
-  }
+  if (history === null) return { version: "unknown", commits: "unknown", history: "none", stamp };
   const walked = skillHistory(history, load.name);
   const state = walkState(walked);
-  if (stamped) {
-    const matches = walked.entries.filter((entry) => stampOf(entry.text) === load.sourceTree);
-    return { version: `source_tree:${load.sourceTree}`, commits: range(matches), history: state };
-  }
-  const matches = walked.entries.filter((entry) => bodyMatches(load, entry));
-  return matches.length > 0
-    ? { version: "body_match", commits: range(matches), history: state }
-    : { version: "unknown", commits: "none", history: state };
+  const matches = stamped
+    ? walked.entries.filter((entry) => stampOf(entry.text) === load.sourceTree)
+    : walked.entries.filter((entry) => bodyMatches(load, entry));
+  if (matches.length === 0) return { version: "unknown", commits: "none", history: state, stamp };
+  const version = stamped ? `source_tree:${load.sourceTree}` : "body_match";
+  return { version, commits: range(matches), history: state, stamp };
 }

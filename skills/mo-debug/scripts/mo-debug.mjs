@@ -594,21 +594,18 @@ function walkState(walked) {
 }
 function attribute(load, history) {
   const stamped = typeof load.sourceTree === "string" && SHA.test(load.sourceTree);
+  const stamp = stamped ? load.sourceTree : "none";
   const comparable = load.complete && load.candidates.length > 0;
   if (!SKILL_NAME.test(load.name) || !stamped && !comparable) {
-    return { version: "unknown", commits: "unknown", history: history ? "unused" : "none" };
+    return { version: "unknown", commits: "unknown", history: history ? "unused" : "none", stamp };
   }
-  if (history === null) {
-    return stamped ? { version: `source_tree:${load.sourceTree}`, commits: "unknown", history: "none" } : { version: "unknown", commits: "unknown", history: "none" };
-  }
+  if (history === null) return { version: "unknown", commits: "unknown", history: "none", stamp };
   const walked = skillHistory(history, load.name);
   const state = walkState(walked);
-  if (stamped) {
-    const matches2 = walked.entries.filter((entry) => stampOf(entry.text) === load.sourceTree);
-    return { version: `source_tree:${load.sourceTree}`, commits: range(matches2), history: state };
-  }
-  const matches = walked.entries.filter((entry) => bodyMatches(load, entry));
-  return matches.length > 0 ? { version: "body_match", commits: range(matches), history: state } : { version: "unknown", commits: "none", history: state };
+  const matches = stamped ? walked.entries.filter((entry) => stampOf(entry.text) === load.sourceTree) : walked.entries.filter((entry) => bodyMatches(load, entry));
+  if (matches.length === 0) return { version: "unknown", commits: "none", history: state, stamp };
+  const version = stamped ? `source_tree:${load.sourceTree}` : "body_match";
+  return { version, commits: range(matches), history: state, stamp };
 }
 
 // shared/scripts/mo-debug-report.mjs
@@ -983,7 +980,7 @@ function attributions(sessions, history) {
   for (const session of sessions) {
     for (const load of session.loads) {
       const result = attribute(load, history);
-      const key = [session.id, load.name, result.version, result.commits].join("\0");
+      const key = [session.id, load.name, result.version, result.commits, result.stamp].join("\0");
       if (!seen.has(key)) seen.set(key, { session: session.id, name: load.name, ...result });
     }
   }
@@ -1011,7 +1008,7 @@ function scan(options, history = null) {
       (session) => `session id=${token(session.id)} harness=${session.harness} outcome=${session.outcome} records=${session.records} unparsed=${session.unparsed} untimed=${session.untimed} skipped_since=${session.skipped}`
     ),
     ...attributed.map(
-      (item) => `skill name=${item.name} session=${token(item.session)} version=${item.version} commits=${item.commits} history=${item.history}`
+      (item) => `skill name=${item.name} session=${token(item.session)} version=${item.version} commits=${item.commits} history=${item.history} stamp=${item.stamp}`
     )
   ];
   return { status, sessions, events, attributions: attributed, lines };

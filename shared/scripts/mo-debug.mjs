@@ -215,7 +215,7 @@ function attributions(sessions, history) {
   for (const session of sessions) {
     for (const load of session.loads) {
       const result = attribute(load, history);
-      const key = [session.id, load.name, result.version, result.commits].join("\0");
+      const key = [session.id, load.name, result.version, result.commits, result.stamp].join("\0");
       if (!seen.has(key)) seen.set(key, { session: session.id, name: load.name, ...result });
     }
   }
@@ -261,7 +261,7 @@ export function scan(options, history = null) {
     ...attributed.map(
       (item) =>
         `skill name=${item.name} session=${token(item.session)} version=${item.version} ` +
-        `commits=${item.commits} history=${item.history}`,
+        `commits=${item.commits} history=${item.history} stamp=${item.stamp}`,
     ),
   ];
   return { status, sessions, events, attributions: attributed, lines };

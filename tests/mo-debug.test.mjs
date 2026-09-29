@@ -23,6 +23,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, test } from "node:test";
 
+import { attribute, openHistory } from "../shared/scripts/mo-debug-history.mjs";
 import { EXCERPT_LIMIT, excerpt, redact } from "../shared/scripts/mo-debug-redact.mjs";
 import {
   claudeBody,
@@ -165,10 +166,10 @@ test("Codex extraction covers attached skills, whole-file reads and both command
   ]);
   assert.match(report, /MO-BACKLOG-EMPTY version=1 sha=0123456789abcdef0123456789abcdef01234567/u);
   assert.match(report, /MO-HARNESS-SCREEN\/1 status=unknown harness=none exit=1/u);
-  // Without history a visible stamp is named, but no commit is guessed.
+  // Without history a visible stamp is only a claim: it is named, not attributed.
   assert.match(
     result.stdout,
-    /^skill name=mo-x session=\S+ version=source_tree:2{40} commits=unknown history=none$/mu,
+    /^skill name=mo-x session=\S+ version=unknown commits=unknown history=none stamp=2{40}$/mu,
   );
 });
 
@@ -179,12 +180,43 @@ test("a visible source_tree stamp resolves to the commits that carried it", () =
   assert.equal(result.status, 0, result.stderr);
   const skills = result.stdout.split("\n").filter((line) => line.startsWith("skill "));
   assert.deepEqual(skills, [
-    `skill name=mo-x session=${CODEX_ID} version=source_tree:${"2".repeat(40)} commits=${short[1]}..${short[1]} history=complete`,
+    `skill name=mo-x session=${CODEX_ID} version=source_tree:${"2".repeat(40)} commits=${short[1]}..${short[1]} history=complete stamp=${"2".repeat(40)}`,
     // `sed -n '1,3p'` printed exactly three lines: the file may be longer, and
     // the frontmatter never closed, so nothing about the version is known.
-    `skill name=mo-x session=${CODEX_ID} version=unknown commits=unknown history=unused`,
-    `skill name=mo-x session=${CODEX_ID} version=source_tree:${"1".repeat(40)} commits=${short[0]}..${short[0]} history=complete`,
+    `skill name=mo-x session=${CODEX_ID} version=unknown commits=unknown history=unused stamp=none`,
+    `skill name=mo-x session=${CODEX_ID} version=source_tree:${"1".repeat(40)} commits=${short[0]}..${short[0]} history=complete stamp=${"1".repeat(40)}`,
   ]);
+});
+
+test("a stamp that no committed skill carries is never attributed as a version", () => {
+  // A locally built or edited skill carries a stamp that no commit ever held.
+  const { repo, short } = historyRepo();
+  const load = (sourceTree) => ({
+    name: "mo-x",
+    sourceTree,
+    complete: false,
+    comparison: "file",
+    candidates: [],
+  });
+  const claimed = "4".repeat(40);
+  assert.deepEqual(attribute(load(claimed), openHistory(repo, 100)), {
+    version: "unknown",
+    commits: "none",
+    history: "complete",
+    stamp: claimed,
+  });
+  assert.deepEqual(attribute(load(claimed), null), {
+    version: "unknown",
+    commits: "unknown",
+    history: "none",
+    stamp: claimed,
+  });
+  assert.deepEqual(attribute(load("1".repeat(40)), openHistory(repo, 100)), {
+    version: `source_tree:${"1".repeat(40)}`,
+    commits: `${short[0]}..${short[0]}`,
+    history: "complete",
+    stamp: "1".repeat(40),
+  });
 });
 
 test("a Claude body without a stamp is matched byte for byte against committed bodies", () => {
@@ -194,9 +226,9 @@ test("a Claude body without a stamp is matched byte for byte against committed b
   assert.equal(result.status, 0, result.stderr);
   const skills = result.stdout.split("\n").filter((line) => line.startsWith("skill "));
   assert.deepEqual(skills, [
-    `skill name=mo-x session=${CLAUDE_ID} version=body_match commits=${short[0]}..${short[0]} history=complete`,
-    `skill name=mo-x session=${CLAUDE_ID} version=body_match commits=${short[1]}..${short[2]} history=complete`,
-    `skill name=mo-x session=${CLAUDE_ID} version=unknown commits=none history=complete`,
+    `skill name=mo-x session=${CLAUDE_ID} version=body_match commits=${short[0]}..${short[0]} history=complete stamp=none`,
+    `skill name=mo-x session=${CLAUDE_ID} version=body_match commits=${short[1]}..${short[2]} history=complete stamp=none`,
+    `skill name=mo-x session=${CLAUDE_ID} version=unknown commits=none history=complete stamp=none`,
   ]);
   const bounded = run(home, [
     "scan",
@@ -209,7 +241,7 @@ test("a Claude body without a stamp is matched byte for byte against committed b
   ]);
   assert.equal(bounded.status, 0, bounded.stderr);
   assert.match(bounded.stdout, /^MO-DEBUG\/1 status=partial /u);
-  assert.match(bounded.stdout, /version=body_match commits=\S+ history=partial$/mu);
+  assert.match(bounded.stdout, /version=body_match commits=\S+ history=partial stamp=none$/mu);
 });
 
 test("the Claude normalization and the stamp parser follow the recorded shapes", () => {
