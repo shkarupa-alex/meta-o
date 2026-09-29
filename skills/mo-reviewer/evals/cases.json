@@ -11,7 +11,7 @@
         "§A-REVIEW-04",
         "§A-ACTIVATION-01"
       ],
-      "scenario": "A reviewer brief names `mo-reviewer` under Reviewer-Skill, carries a full SHA, `Spec: docs/specifications/feature.md`, deep mode, an isolated checkout at that SHA and `Body-File: <dir>/ctx_fixture.md`. The change has one proven P2 defect: a requirement of the specification is not implemented.",
+      "scenario": "A reviewer brief names `mo-reviewer` under Reviewer-Skill, carries a full SHA, `Spec: docs/specifications/feature.md`, deep mode, an isolated checkout at that SHA and `Body-File: <dir>/slot-a-r1-d1.md`; Orca's preamble names the Dispatch `ctx_fixture`. The change has one proven P2 defect: a requirement of the specification is not implemented.",
       "must": [
         "under §A-ACTIVATION-01 act as one terminal reviewer without starting the coordinator review skill or any other worker",
         "under §A-REVIEW-04 start the body with the bare `Review-Execution: ctx_fixture` line, prove HEAD and a clean tree in Grounding and report the missing requirement as F-001 [P2] with causal path, impact, invariant, direction and regression case",

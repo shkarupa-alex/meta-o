@@ -247,6 +247,17 @@ test("a case that starts actors on one branch forbids them only on the others", 
   }
 });
 
+test("an eval brief names its Body-File the way a caller can before sending", () => {
+  // The Dispatch id reaches only the reviewer, so a case that read it from the
+  // file name tested a brief shape the coordinator may no longer send.
+  const scenarios = [...loadCorpus(ROOT).values()].flatMap(({ cases }) => cases);
+  const named = scenarios.flatMap(({ id, scenario }) =>
+    [...scenario.matchAll(/Body-File: <dir>\/([^`\s]+)/gu)].map((match) => [id, match[1]]),
+  );
+  assert.ok(named.length > 0);
+  for (const [id, name] of named) assert.match(name, /^slot-[ab]-r\d+-d\d+\.md$/u, id);
+});
+
 test("complete evidence binds every case to candidate, revision and approved identity", () => {
   const evidence = matrix(FULL_MATRIX);
   const validated = validateEvidence(ROOT, evidence, HEAD, true, {
