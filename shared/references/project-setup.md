@@ -36,6 +36,10 @@ Inspect substance, not file presence. A ready project has:
   outcome is clarified with the user rather than silently corrected, while the
   confirmed intent remains verbatim.
 
+`CLAUDE.md` stays a byte copy of `AGENTS.md`, never a one-line `@AGENTS.md`
+import: a Claude Code session started in a nested directory does not expand that
+import and works without the project contract.
+
 Human-facing project knowledge uses the user's language, inferred from the
 business framing unless the user chooses another. Code, identifiers, commands,
 protocol literals and upstream names remain in English. For a Russian-speaking

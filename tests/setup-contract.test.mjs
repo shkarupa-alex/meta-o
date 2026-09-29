@@ -333,3 +333,20 @@ test("the generated agent contract commits verified increments and pushes only o
     /commit every coherent, verified increment, and push only when the user asks/u,
   );
 });
+
+test("the generated Claude contract is a byte copy, not an import", () => {
+  const contract = readFileSync(
+    join(ROOT, "skills", "mo-setup", "references", "project-setup.md"),
+    "utf8",
+  ).replace(/\s+/gu, " ");
+  // A live canary saw Claude Code skip a one-line import from a nested working
+  // directory, so an import would leave such sessions without the contract.
+  assert.match(
+    contract,
+    /`CLAUDE\.md` stays a byte copy of `AGENTS\.md`, never a one-line `@AGENTS\.md` import/u,
+  );
+  assert.equal(
+    readFileSync(join(ROOT, "CLAUDE.md"), "utf8"),
+    readFileSync(join(ROOT, "AGENTS.md"), "utf8"),
+  );
+});

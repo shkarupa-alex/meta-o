@@ -75,7 +75,8 @@ format:
 	npx --no-install prettier --write .
 
 # AGENTS.md and CLAUDE.md must not drift: each provider reads its own file, so a
-# divergence means two providers silently working to different contracts.
+# divergence means two providers silently working to different contracts. A copy,
+# not an `@AGENTS.md` import: Claude does not expand that import from a nested cwd.
 contract:
 	@cmp AGENTS.md CLAUDE.md && echo "project instructions identical"
 
@@ -151,7 +152,7 @@ mo-e2e:
 	@echo "AGENT_REQUIRED: not executed"
 	@echo
 	@echo "Docs:      docs/e2e.md, docs/backend-capabilities.md"
-	@echo "Scenarios: B1-B69 — Orca backend, lifecycle, setup and Qwen profile"
+	@echo "Scenarios: B1-B70 — Orca backend, lifecycle, setup and Qwen profile"
 	@echo "           W1-W4 — watchdog target, scan, nudge, suppression"
 	@echo "           33 embedded cases — positive/forbidden/degraded for 11 skills"
 	@echo "           local and authorized remote installation"
