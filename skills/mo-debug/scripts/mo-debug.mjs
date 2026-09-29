@@ -64,8 +64,9 @@ var SECRETS = [
     (_, key, separator) => `${key}${separator}[REDACTED:assignment]`
   ]
 ];
+var SEGMENT = "[^\\s\"'`<>|;:,()\\[\\]{}/]";
 var UNIX_PATH = new RegExp(
-  `(?<=^|[^\\w.~/-]|file://)/(?:${PATH_ROOTS})(?:/[^\\s"'\`<>|;:,()\\[\\]{}]*)?`,
+  `(?<=^|[^\\w.~/-]|file://)/(?:(?:${PATH_ROOTS})(?!${SEGMENT})|${SEGMENT}+/)(?:${SEGMENT}|/)*`,
   "gu"
 );
 var WINDOWS_PATH = /(?<![\w])[A-Za-z]:\\[^\s"'`<>|;,()[\]{}]*/gu;

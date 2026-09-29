@@ -335,6 +335,75 @@ function secretValue(kind, sample) {
   return sample;
 }
 
+test("an absolute path under any root keeps only its basename, in both harnesses' records", () => {
+  const { home, claude, codex } = fixtureHome();
+  // Roots outside any fixed list, and directory names that identify the org.
+  const paths =
+    "cat /etc/acmeorg/private.conf /usr/local/teamname/tool.mjs /nix/store/hashdir/pkgname file:///etc/acmeorg/url.conf";
+  const directories = [
+    "acmeorg",
+    "teamname",
+    "hashdir",
+    "/etc",
+    "/usr",
+    "/nix",
+    "local/",
+    "store/",
+  ];
+  const kept = `https://host.example/docs/x docs/x ${SHA} claude-opus-5-5 provider/qwen3.8-27b`;
+  const command = `${paths} ${kept} | node ~/.claude/skills/mo-x/scripts/mo-review-report.mjs validate`;
+  const UUID = "9f8e7d6c-5b4a-4321-8fed-cba987654323";
+  const claudeRecord = {
+    sessionId: UUID,
+    type: "assistant",
+    timestamp: "2026-09-01T12:00:00.000Z",
+    message: {
+      role: "assistant",
+      content: [{ type: "tool_use", id: "toolu_p", name: "Bash", input: { command } }],
+    },
+  };
+  writeFileSync(join(claude, `${UUID}.jsonl`), `${JSON.stringify(claudeRecord)}\n`);
+  const rollout = join(codex, `rollout-2026-09-01T11-00-00-${CODEX_ID}.jsonl`);
+  const codexRecord = {
+    timestamp: "2026-09-01T11:06:00.000Z",
+    type: "response_item",
+    payload: {
+      type: "function_call",
+      name: "exec_command",
+      arguments: JSON.stringify({ cmd: command.replace("~/.claude", "~/.codex") }),
+      call_id: "call_p",
+    },
+  };
+  writeFileSync(rollout, `${readFileSync(rollout, "utf8")}${JSON.stringify(codexRecord)}\n`);
+  for (const id of [UUID, CODEX_ID]) {
+    const { result, report } = reportOf(home, ["scan", "--session", id]);
+    assert.equal(result.status, 0, result.stderr);
+    const output = `${result.stdout}\n${report}`;
+    for (const directory of directories) {
+      assert.equal(output.includes(directory), false, `${id}: ${directory}`);
+    }
+    for (const base of ["private.conf", "tool.mjs", "pkgname", "url.conf"]) {
+      assert.match(
+        output,
+        new RegExp(`<path\\\\?>/${base.replace(".", "\\.")}`, "u"),
+        `${id}: ${base}`,
+      );
+    }
+    // URLs, repository paths and identifiers are evidence, not locations.
+    const row = eventRows(report).find((line) => line.includes("private.conf"));
+    for (const word of [
+      "https://host.example/docs/x",
+      " docs/x",
+      SHA,
+      "claude-opus-5-5",
+      "provider/qwen3.8-27b",
+    ]) {
+      assert.equal(row.includes(word), true, `${id}: ${word} in ${row}`);
+    }
+  }
+  assert.equal(redact("/help and /effort high"), "/help and /effort high");
+});
+
 test("redaction replaces every credential kind and keeps identifiers verbatim", () => {
   const kept = `commit ${SHA} session ${CLAUDE_ID} model claude-opus-5-5 package @eslint/js`;
   for (const [kind, sample] of Object.entries(secretSamples())) {

@@ -79,8 +79,19 @@ const SECRETS = [
   ],
 ];
 
+// Characters a path segment may hold in session text; `/` is excluded here so
+// the pattern below can count segments.
+const SEGMENT = "[^\\s\"'`<>|;:,()\\[\\]{}/]";
+
+// Any absolute POSIX path of two or more segments, whatever its root: a list
+// of roots left `/etc/<org>/…`, `/usr/local/<team>/…` and `/nix/store/…`
+// verbatim. One segment is a path only under a known root, so a slash command
+// such as `/help` stays text. The lookbehind keeps the path part of an
+// `https://host/…` URL and a relative `docs/x` out, because a word character
+// or another slash precedes their slash; `file://` is the one scheme whose
+// path is local and is redacted.
 const UNIX_PATH = new RegExp(
-  `(?<=^|[^\\w.~/-]|file://)/(?:${PATH_ROOTS})(?:/[^\\s"'\`<>|;:,()\\[\\]{}]*)?`,
+  `(?<=^|[^\\w.~/-]|file://)/(?:(?:${PATH_ROOTS})(?!${SEGMENT})|${SEGMENT}+/)(?:${SEGMENT}|/)*`,
   "gu",
 );
 const WINDOWS_PATH = /(?<![\w])[A-Za-z]:\\[^\s"'`<>|;,()[\]{}]*/gu;
