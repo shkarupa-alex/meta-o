@@ -7087,7 +7087,7 @@ function readIndex(paragraphs, from, to, counts) {
 }
 function bodyOpening(line, expected, opened) {
   const bare = /^(F-\d{3})$/u.exec(line);
-  const inline = /^(F-\d{3}) \[(P[0-3])\](?: |$)/u.exec(line);
+  const inline = /^(F-\d{3}) \[(P[0-3])\] +\S/u.exec(line);
   if (bare === null && inline === null) return { kind: "prose" };
   const key = (bare ?? inline)[1];
   if (expected !== void 0 && key === expected.key) {
@@ -7107,7 +7107,7 @@ function readFindingBodies(lines, prose, span, keys) {
     let severity = opening.severity;
     if (opening.kind === "bare") {
       const detail = rows.slice(step + 1).find((row) => lines[row].trim() !== "");
-      severity = /^\[(P[0-3])\](?:\s|$)/u.exec(lines[detail] ?? "")?.[1];
+      severity = /^\[(P[0-3])\]\s+\S/u.exec(lines[detail] ?? "")?.[1];
     }
     if (severity !== expected.severity) return fail("index_body_mismatch", position2);
     opened.add(expected.key);

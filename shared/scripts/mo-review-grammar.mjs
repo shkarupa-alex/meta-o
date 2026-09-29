@@ -211,11 +211,13 @@ function readIndex(paragraphs, from, to, counts) {
  * the next non-empty line opening with its bracketed severity, or one line that
  * carries key and severity together. A key already opened and restated while
  * explaining the finding is prose; a bare key line nobody expected, or a key
- * the index never announced, is a body without an entry.
+ * the index never announced, is a body without an entry. A severity with nothing
+ * after it opens no body: a truncated report would otherwise settle a finding
+ * that carries none of its evidence.
  */
 function bodyOpening(line, expected, opened) {
   const bare = /^(F-\d{3})$/u.exec(line);
-  const inline = /^(F-\d{3}) \[(P[0-3])\](?: |$)/u.exec(line);
+  const inline = /^(F-\d{3}) \[(P[0-3])\] +\S/u.exec(line);
   if (bare === null && inline === null) return { kind: "prose" };
   const key = (bare ?? inline)[1];
   if (expected !== undefined && key === expected.key) {
@@ -239,7 +241,7 @@ function readFindingBodies(lines, prose, span, keys) {
     let severity = opening.severity;
     if (opening.kind === "bare") {
       const detail = rows.slice(step + 1).find((row) => lines[row].trim() !== "");
-      severity = /^\[(P[0-3])\](?:\s|$)/u.exec(lines[detail] ?? "")?.[1];
+      severity = /^\[(P[0-3])\]\s+\S/u.exec(lines[detail] ?? "")?.[1];
     }
     if (severity !== expected.severity) return fail("index_body_mismatch", position);
     opened.add(expected.key);

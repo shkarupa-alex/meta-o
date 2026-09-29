@@ -167,6 +167,10 @@ test("both finding bodies are accepted and nothing else is", () => {
     "F-001\n[P1] severity differs from the index.\n",
     "F-001\n[P2] one body.\nF-001\n[P2] a second body for the same key.\n",
     "F-002 [P2] a key the index never announced.\n",
+    // A severity alone carries no evidence, so it opens no body.
+    "F-001 [P2]\n",
+    "F-001\n[P2]\n",
+    "F-001\n\n[P2]   \n",
   ]) {
     assert.equal(reasonOf(findingsReport({ body })), "index_body_mismatch", body);
   }
