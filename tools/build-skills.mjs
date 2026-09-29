@@ -242,10 +242,12 @@ export function stampSource(destination, version) {
  * The value is the Git tree id of the files this skill is built from, not a
  * commit SHA: the built tree is committed together with its sources, so a
  * commit cannot name itself, while a tree id is reproduced by `--check` from
- * the same inputs. Its one consumer is `mo-debug`, which matches the stamp a
- * session loaded against committed history. The line is inserted rather than
- * the frontmatter re-serialized, so every authored byte stays as written, and
- * the result is re-read with the same parser the gate uses.
+ * the same inputs. It has two consumers: `mo-debug`, which narrows a loaded
+ * text to committed files carrying the same stamp, and the `Reviewer-Skill`
+ * field of every reviewer Dispatch, where it stands next to the object ids of
+ * the installed files; a format change must serve both. The line is inserted
+ * rather than the frontmatter re-serialized, so every authored byte stays as
+ * written, and the result is re-read with the same parser the gate uses.
  */
 export function stampSourceTree(skillFile, tree) {
   const text = readFileSync(skillFile, "utf8");
