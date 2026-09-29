@@ -27,6 +27,17 @@ import { readFileSync } from "node:fs";
 const CLAUDE_COMPOSER = /^─+[ \t]*\n[ \t]*❯[ \t]?(.*)$/mu;
 
 /**
+ * The Codex composer: the `›` row directly above Codex's own footer.
+ *
+ * After a turn the submitted prompt stays in the scrollback as a `›` row of its
+ * own, so the glyph alone names two rows and the frame read as ambiguous. The
+ * footer is the chrome that picks the real one. It is matched up to its context
+ * segment only, in both forms a live pane shows: `Context 2% used` and, once
+ * the row is too wide for the pane, `Context …`.
+ */
+const CODEX_COMPOSER = /^[ \t]*›[ \t]?(.*)\n[ \t]+\S[^\n]*? · Context (?:\d+% used|…)/mu;
+
+/**
  * The recorded frames this classifier is allowed to recognize.
  *
  * Every entry was captured from a live harness, not written from memory, and
@@ -69,11 +80,14 @@ export const SCREENS = [
     input: CLAUDE_COMPOSER,
   },
   {
-    version: "codex-prompt-2026-09-18",
+    // Anchored on the composer and the footer together since the 2026-09-29
+    // captures: the 2026-09-18 frame still matches, and so do the after-turn
+    // frame with its submitted prompt above and the footer cut at `Context …`.
+    version: "codex-prompt-2026-09-29",
     harness: "codex",
     state: "agent_prompt",
-    anchors: [/^\s*›\s/mu, /Context \d+% used/u],
-    input: /^[ \t]*›[ \t]?(.*)$/mu,
+    anchors: [CODEX_COMPOSER],
+    input: CODEX_COMPOSER,
     placeholder: /^Ask Codex to do anything$/u,
   },
   {
@@ -172,6 +186,38 @@ function composerState(screen, frame) {
   return { ok: false, reason: "composer_not_empty" };
 }
 
+const UNIT = { "": 1, k: 1_000, K: 1_000, M: 1_000_000 };
+const CODEX_CONTEXT =
+  /^[ \t]+\S[^\n]*? · Context (\d+)% used(?: · (\d+(?:\.\d+)?)([KM]) window(?= ·|$))?/mu;
+const CLAUDE_CONTEXT = /Context [░▒▓█]+ (\d+(?:\.\d+)?)([kM]?)\/(\d+(?:\.\d+)?)([kM])(?=\s|$)/mu;
+
+/**
+ * Read the context indicator a harness paints, and nothing it does not paint.
+ *
+ * §A-DELIVERY-01 serves a hot-slot decision here: an older review slot stays
+ * hot only on a proven small context. Codex shows a percentage and, after its
+ * first turn, the window beside it; Claude's status line shows used tokens over
+ * the window. A cut, partial or absent indicator is `unknown`, never a guess.
+ */
+export function contextIndicator(frame, harness) {
+  if (harness === "codex") {
+    const match = CODEX_CONTEXT.exec(frame);
+    if (match === null) return { kind: "unknown" };
+    const window = match[2] === undefined ? undefined : Number(match[2]) * UNIT[match[3]];
+    return { kind: "percent", usedPercent: Number(match[1]), window };
+  }
+  if (harness === "claude") {
+    const match = CLAUDE_CONTEXT.exec(frame);
+    if (match === null) return { kind: "unknown" };
+    return {
+      kind: "absolute",
+      used: Math.round(Number(match[1]) * UNIT[match[2]]),
+      window: Math.round(Number(match[3]) * UNIT[match[4]]),
+    };
+  }
+  return { kind: "unknown" };
+}
+
 /**
  * Decide what one rendered frame is and what it licenses.
  *
@@ -195,9 +241,10 @@ export function classifyScreen(text) {
     return { ...common, ...trustAction(frame), path };
   }
   if (screen.state === "agent_prompt") {
+    const context = contextIndicator(frame, screen.harness);
     const composer = composerState(screen, frame);
-    if (!composer.ok) return { ...common, action: "refuse", reason: composer.reason };
-    return { ...common, action: "inject" };
+    if (!composer.ok) return { ...common, context, action: "refuse", reason: composer.reason };
+    return { ...common, context, action: "inject" };
   }
   return { ...common, action: "refuse", reason: "shell_prompt" };
 }
@@ -314,7 +361,12 @@ export function decideScreen(text, { harness, expectPath, fixturesVersion, draft
   if (verdict.state === "trust_ui") return { ...record, ...trustRecord(verdict, expectPath) };
   if (verdict.state === "busy") return { ...record, action: "wait", reason: "none" };
   const licensed = verdict.state === "agent_prompt" && verdict.action === "inject";
-  return { ...record, action: licensed ? "inject" : "refuse", reason: verdict.reason ?? "none" };
+  return {
+    ...record,
+    ...(verdict.context === undefined ? {} : { context: verdict.context }),
+    action: licensed ? "inject" : "refuse",
+    reason: verdict.reason ?? "none",
+  };
 }
 
 /** §A-DELIVERY-01 licenses a trust answer only on the path the caller named. */
@@ -331,6 +383,14 @@ function trustRecord(verdict, expectPath) {
   };
 }
 
+/** §A-DELIVERY-01 prints the indicator in the form the hot-slot helper takes. */
+function contextFields(context) {
+  const window = `context_window=${context.window ?? "unknown"}`;
+  if (context.kind === "absolute") return [`context=tokens:${context.used}`, window];
+  if (context.kind === "percent") return [`context=percent:${context.usedPercent}`, window];
+  return ["context=unknown", "context_window=unknown"];
+}
+
 /** §A-DELIVERY-01 states one verdict as the line the caller reads without reparsing. */
 export function screenLine(record) {
   const parts = ["MO-HARNESS-SCREEN/1", `state=${record.state}`];
@@ -339,6 +399,7 @@ export function screenLine(record) {
   if (record.selection !== undefined) parts.push(`selection=${record.selection}`);
   if (record.path_match !== undefined) parts.push(`path_match=${record.path_match}`);
   if (record.screen_version !== undefined) parts.push(`screen_version=${record.screen_version}`);
+  if (record.context !== undefined) parts.push(...contextFields(record.context));
   parts.push(`action=${record.action}`);
   return parts.join(" ");
 }

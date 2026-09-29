@@ -66,7 +66,9 @@ orca terminal read --terminal <handle> --screen --json \
   # composer bytes the frame does not show — a space or a newline is such a byte —
   # and answers one line:
   # MO-HARNESS-SCREEN/1 state=<...> [trust_path=<json>] [selection=<yes|no|unknown>]
-  #                     [path_match=<yes|no>] [screen_version=<id>] action=<inject|accept_trust|confirm_trust|refuse|wait>
+  #                     [path_match=<yes|no>] [screen_version=<id>]
+  #                     [context=<tokens:<n>|percent:<n>|unknown> context_window=<n|unknown>]
+  #                     action=<inject|accept_trust|confirm_trust|refuse|wait>
   # exit 0 classified, 2 unreadable input or a call it cannot answer
   # trust_ui → the trust procedure; action=inject → continue;
   # anything else → close that exact handle and return needs_attention
@@ -88,12 +90,35 @@ When `worker-stop` itself answers `unknown_effect`, both a second stop and a
 replacement Dispatch are forbidden: either can leave two executors working the
 same task, and two executors of one task is worse than none.
 
+The screen classifier knows each harness's composer by its own chrome: Claude's
+rule above `❯`, and Codex's `›` row directly above its footer, whose context
+segment reads `Context <n>% used` or, in a narrow pane, `Context …`. An agent
+prompt line carries the context indicator the harness painted, for the hot-slot
+rule: Claude's status line gives used tokens over the window, Codex a percentage
+and, after its first turn, the window beside it; anything cut or absent is
+`context=unknown`. A suggestion the harness paints in its composer — Claude's
+`Try "…"` on a fresh session, or one that only the envelope's `draft` carries —
+is not an empty composer: a rendered screen loses the attribute that marks it
+and Orca reports no origin for composer text, so it refuses like typed text and
+is never erased to make room.
+
 Sending `worker_done` completes the Dispatch, but the agent session behind it
 stays hot. A new Dispatch binds to that same session with
 `worker-start --task <id> --terminal <handle> --worktree id:<repo>::<path>`;
 omitting `--worktree` answers `terminal_worktree_mismatch`. This is what makes a
 follow-up review in the same session — with its own prior reasoning still
-present — reachable at all.
+present — reachable at all. Reattach only where public surfaces prove the same
+provider session id, the same supervised harness and a mailbox that still
+delivers `worker_done`; `--continue` and a live terminal prove none of these.
+
+A Codex start that fails with `agent-trust-workspace` is recovered inside the
+supported harness: release the failed Dispatch by its exact id, prove the
+worktree's trust through the trust procedure, then start the normal supervised
+Codex harness again, terminal-first by the recipe above where that yields the
+interactive harness and its `worker_done` mailbox.
+`orca terminal create --command "codex exec …"` is never a reviewer: it has
+neither the harness input nor the mailbox, and its output would have to be
+carried by hand.
 
 Use the exact returned run, task, dispatch and terminal identities. Stable
 titles are `<feature>:orchestrator`, `<feature>:executor`,

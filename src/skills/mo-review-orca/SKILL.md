@@ -206,7 +206,16 @@ public surface or the approved model catalogue; anything else is
 `context=unknown`, and age alone decides. A slot that is not hot is replaced by
 a new session of the same model in that slot with `follow_up`, its own reports
 and dispositions — not a new deep pair and not the final pair — while a hot
-slot beside it stays.
+slot beside it stays. Readiness and an empty composer come from
+`scripts/mo-harness-screen.mjs` answering `action=inject`, and its
+`context=`/`context_window=` fields are what the context flags take. A refused
+screen on an idle session is `session_unavailable` recorded with that line,
+never by itself a reason for a new deep pair.
+
+A Codex start that fails with `agent-trust-workspace` stays inside the
+supported harness: release the failed Dispatch by its exact id, prove trust by
+the trust procedure, and start the normal supervised harness again. A terminal
+running `codex exec` is never a reviewer.
 
 A new independent deep pair while this pair has no PASS needs a recorded reason
 that `scripts/mo-review-resource.mjs deep --phase remediation --reason <r>`

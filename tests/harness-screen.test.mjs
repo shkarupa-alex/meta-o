@@ -12,6 +12,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  contextIndicator,
   SCREENS,
   classifyScreen,
   decideScreen,
@@ -44,11 +45,15 @@ test("every recorded frame classifies as the surface it was captured from", () =
       return `${name} ${verdict.state} ${verdict.action} ${verdict.harness}`;
     });
   assert.deepEqual(observed, [
+    "claude-prompt-after-turn.screen agent_prompt inject claude",
     "claude-prompt-cold.screen agent_prompt inject claude",
     "claude-prompt-meter-row.screen agent_prompt inject claude",
+    "claude-prompt-suggestion.screen agent_prompt refuse claude",
     "claude-prompt.screen agent_prompt inject claude",
     "claude-trust-no.screen trust_ui accept_trust claude",
     "claude-trust-yes.screen trust_ui confirm_trust claude",
+    "codex-prompt-after-turn.screen agent_prompt inject codex",
+    "codex-prompt-context-cut.screen agent_prompt inject codex",
     "codex-prompt.screen agent_prompt inject codex",
     "opencode-prompt.screen agent_prompt inject opencode",
     "shell-prompt.screen shell_prompt refuse shell",
@@ -107,7 +112,7 @@ test("a decoy prompt row above the composer cannot answer for it", () => {
       "❯ rm -rf /tmp/x",
       "❯",
     ],
-    "codex-prompt-2026-09-18": [
+    "codex-prompt-2026-09-29": [
       "codex-prompt.screen",
       "› Ask Codex to do anything",
       "› drop tables",
@@ -520,4 +525,62 @@ test("the shipped CLI answers its exact envelope contract", () => {
   const malformed = run(["--harness", "claude", "--expect-path", "/tmp/x"], withDraft(7));
   assert.equal(malformed.status, 2);
   assert.match(malformed.stderr, /draft_unreadable/u);
+});
+
+test("an idle Codex after a turn and with a cut footer is still its own prompt", () => {
+  // The regression: the submitted prompt stays above the composer as a second
+  // `›` row, and the footer of a narrower pane ends in `Context …`. Both frames
+  // used to refuse, which made follow_up in the same session unreachable.
+  for (const name of ["codex-prompt-after-turn.screen", "codex-prompt-context-cut.screen"]) {
+    const verdict = classifyScreen(frame(name));
+    assert.deepEqual([verdict.state, verdict.action], ["agent_prompt", "inject"], name);
+  }
+  // The scrollback row cannot stand in for the composer, typed or not.
+  const typed = frame("codex-prompt-after-turn.screen").replace(
+    "› Ask Codex to do anything",
+    "› half a sentence",
+  );
+  assert.equal(classifyScreen(typed).reason, "composer_not_empty");
+});
+
+test("the context indicator is read only where the harness paints it whole", () => {
+  assert.deepEqual(contextIndicator(frame("codex-prompt-after-turn.screen"), "codex"), {
+    kind: "percent",
+    usedPercent: 2,
+    window: 258000,
+  });
+  assert.deepEqual(contextIndicator(frame("codex-prompt-context-cut.screen"), "codex"), {
+    kind: "unknown",
+  });
+  // Before its first turn Codex shows the percentage but no window.
+  const cold = "› Ask Codex to do anything\n  GPT-6-Sol high · Context 0% used · never · /repo";
+  assert.equal(contextIndicator(cold, "codex").window, undefined);
+  const cutWindow = "› x\n  GPT-6-Sol high · Context 2% used · 258K wi…";
+  assert.equal(contextIndicator(cutWindow, "codex").window, undefined);
+  assert.deepEqual(contextIndicator(frame("claude-prompt-after-turn.screen"), "claude"), {
+    kind: "absolute",
+    used: 32000,
+    window: 1000000,
+  });
+  assert.equal(contextIndicator(frame("claude-prompt.screen"), "claude").used, 217000);
+  assert.deepEqual(contextIndicator(frame("opencode-prompt.screen"), "opencode"), {
+    kind: "unknown",
+  });
+  assert.match(
+    screenLine(decideScreen(frame("codex-prompt-context-cut.screen"), { harness: "codex" })),
+    / context=unknown context_window=unknown action=inject$/u,
+  );
+});
+
+test("a suggestion Claude paints in its composer is not an empty composer", () => {
+  // A rendered screen loses the dim attribute that marks the suggestion, and
+  // Orca reports no origin for composer text, so it refuses like typed text.
+  const verdict = decideScreen(frame("claude-prompt-suggestion.screen"), { harness: "claude" });
+  assert.deepEqual([verdict.action, verdict.reason], ["refuse", "composer_not_empty"]);
+  // The same holds for a suggestion that only the envelope's draft carries.
+  const idle = decideScreen(frame("claude-prompt-after-turn.screen"), {
+    harness: "claude",
+    draft: "run the tests",
+  });
+  assert.deepEqual([idle.action, idle.reason], ["refuse", "composer_draft_present"]);
 });
