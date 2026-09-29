@@ -84,6 +84,12 @@ const SECRETS = [
 // and commas are legal in a POSIX name and stay inside the path.
 const SEGMENT = "[^\\s\"'`<>|;\\\\/]";
 
+// A shell escape keeps the next character inside the segment, so
+// `/usr/local/Acme\ Team/tool.mjs` is one token; in a Codex tool call the
+// arguments are JSON text and the same escape is written with two backslashes.
+const ESCAPED = "\\\\{1,2}[^\\n\\\\]";
+const POSIX_SEGMENT = `(?:${ESCAPED}|${SEGMENT})`;
+
 // Any absolute POSIX path of two or more segments, whatever its root: a list
 // of roots left `/etc/<org>/…`, `/usr/local/<team>/…` and `/nix/store/…`
 // verbatim. One segment is a path only under a known root, so a slash command
@@ -92,7 +98,7 @@ const SEGMENT = "[^\\s\"'`<>|;\\\\/]";
 // `docs/x` out, because a word character, a colon or another slash precedes
 // their slash; `file://` is the one scheme whose path is local and is redacted.
 const UNIX_PATH = new RegExp(
-  `(?:(?<=^|[^\\w.~/:-]|file:)//${SEGMENT}+/|(?<=^|[^\\w.~/-]|file://)/(?:(?:${PATH_ROOTS})(?!${SEGMENT})|${SEGMENT}+/))(?:${SEGMENT}|/)*`,
+  `(?:(?<=^|[^\\w.~/:-]|file:)//${POSIX_SEGMENT}+/|(?<=^|[^\\w.~/-]|file://)/(?:(?:${PATH_ROOTS})(?!${POSIX_SEGMENT})|${POSIX_SEGMENT}+/))(?:${POSIX_SEGMENT}|/)*`,
   "gu",
 );
 const WINDOWS_PATH = /(?<![\w])[A-Za-z]:\\[^\s"'`<>|;]*/gu;

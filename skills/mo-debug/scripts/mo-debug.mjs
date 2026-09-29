@@ -65,8 +65,10 @@ var SECRETS = [
   ]
 ];
 var SEGMENT = "[^\\s\"'`<>|;\\\\/]";
+var ESCAPED = "\\\\{1,2}[^\\n\\\\]";
+var POSIX_SEGMENT = `(?:${ESCAPED}|${SEGMENT})`;
 var UNIX_PATH = new RegExp(
-  `(?:(?<=^|[^\\w.~/:-]|file:)//${SEGMENT}+/|(?<=^|[^\\w.~/-]|file://)/(?:(?:${PATH_ROOTS})(?!${SEGMENT})|${SEGMENT}+/))(?:${SEGMENT}|/)*`,
+  `(?:(?<=^|[^\\w.~/:-]|file:)//${POSIX_SEGMENT}+/|(?<=^|[^\\w.~/-]|file://)/(?:(?:${PATH_ROOTS})(?!${POSIX_SEGMENT})|${POSIX_SEGMENT}+/))(?:${POSIX_SEGMENT}|/)*`,
   "gu"
 );
 var WINDOWS_PATH = /(?<![\w])[A-Za-z]:\\[^\s"'`<>|;]*/gu;

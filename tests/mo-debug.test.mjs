@@ -443,6 +443,38 @@ test("a path with spaces, brackets or a network root is shortened whole, quoted 
   assert.equal(redact("cd /usr/local/Acme && ls docs/x"), "cd <path>/Acme && ls docs/x");
 });
 
+test("a shell-escaped space keeps an unquoted path whole, in both harnesses and the redactor", () => {
+  // The escape ended the segment, so `Acme\ Team/tool.mjs` stayed in the report.
+  const command = [
+    "node /usr/local/Acme\\ Team/tool.mjs;",
+    "code /Applications/Visual\\ Studio\\ Code.app/bin/code",
+    `https://host.example/docs/x /help docs/x ${SHA} provider/qwen3.8-27b`,
+    "| node ~/.claude/skills/mo-x/scripts/mo-review-report.mjs validate",
+  ].join(" ");
+  const directories = ["usr/local", "Acme", "Team", "Applications", "Visual", "Code.app"];
+  for (const scan of scanBothHarnesses(command, "9f8e7d6c-5b4a-4321-8fed-cba987654325", "e")) {
+    assertPathsShortened(scan, directories, ["tool.mjs", "code"]);
+    const row = eventRows(scan.report).find((line) => line.includes("tool.mjs"));
+    for (const word of [
+      "https://host.example/docs/x",
+      "/help docs/x",
+      SHA,
+      "provider/qwen3.8-27b",
+    ]) {
+      assert.equal(row.includes(word), true, `${scan.id}: ${word} in ${row}`);
+    }
+  }
+  assert.equal(
+    redact("node /usr/local/Acme\\ Team/tool.mjs docs/x"),
+    "node <path>/tool.mjs docs/x",
+  );
+  assert.equal(
+    redact("code /Applications/Visual\\ Studio\\ Code.app/bin/code"),
+    "code <path>/code",
+  );
+  assert.equal(redact("C:\\Users\\someone\\notes.txt"), "<path>/notes.txt");
+});
+
 test("redaction replaces every credential kind and keeps identifiers verbatim", () => {
   const kept = `commit ${SHA} session ${CLAUDE_ID} model claude-opus-5-5 package @eslint/js`;
   for (const [kind, sample] of Object.entries(secretSamples())) {
