@@ -992,6 +992,21 @@ test("a Codex trust failure is recovered inside the supported harness, never by 
   assert.equal(degraded.mustNot.includes("start a raw `codex exec` terminal as a reviewer"), true);
 });
 
+test("the Body-File name uses only what the caller holds before sending", () => {
+  // The Dispatch id reaches only the reviewer, so a name built from it is a
+  // placeholder that no sent brief can fill.
+  const form = "`Body-File: <dir>/slot-<a|b>-r<round>.md`";
+  for (const path of [
+    "shared/references/review-brief.md",
+    "src/skills/mo-review-orca/SKILL.md",
+    "skills/mo-review-orca/SKILL.md",
+  ]) {
+    const text = source(path).replace(/\s+/gu, " ");
+    assert.equal(text.includes(form), true, path);
+    assert.doesNotMatch(text, /Body-File: <dir>\/<dispatch-id>/u, path);
+  }
+});
+
 test("every reviewer Dispatch records the installed reviewer version", () => {
   // The body carries no version header by design, so the Dispatch context is
   // the only place that can say which grammar accepted a report once the
