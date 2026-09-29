@@ -79,22 +79,43 @@ const SECRETS = [
   ],
 ];
 
-// Characters a path segment may hold in session text; `/` is excluded here so
-// the pattern below can count segments.
-const SEGMENT = "[^\\s\"'`<>|;:,()\\[\\]{}/]";
+// Characters an unquoted path segment may hold. An unquoted space, a quote, a
+// backslash or a shell separator ends it; brackets, braces, parentheses, colons
+// and commas are legal in a POSIX name and stay inside the path.
+const SEGMENT = "[^\\s\"'`<>|;\\\\/]";
 
 // Any absolute POSIX path of two or more segments, whatever its root: a list
 // of roots left `/etc/<org>/…`, `/usr/local/<team>/…` and `/nix/store/…`
 // verbatim. One segment is a path only under a known root, so a slash command
-// such as `/help` stays text. The lookbehind keeps the path part of an
-// `https://host/…` URL and a relative `docs/x` out, because a word character
-// or another slash precedes their slash; `file://` is the one scheme whose
-// path is local and is redacted.
+// such as `/help` stays text, and `//<host>/<share>` is a network root. The
+// lookbehinds keep the path part of an `https://host/…` URL and a relative
+// `docs/x` out, because a word character, a colon or another slash precedes
+// their slash; `file://` is the one scheme whose path is local and is redacted.
 const UNIX_PATH = new RegExp(
-  `(?<=^|[^\\w.~/-]|file://)/(?:(?:${PATH_ROOTS})(?!${SEGMENT})|${SEGMENT}+/)(?:${SEGMENT}|/)*`,
+  `(?:(?<=^|[^\\w.~/:-]|file:)//${SEGMENT}+/|(?<=^|[^\\w.~/-]|file://)/(?:(?:${PATH_ROOTS})(?!${SEGMENT})|${SEGMENT}+/))(?:${SEGMENT}|/)*`,
   "gu",
 );
-const WINDOWS_PATH = /(?<![\w])[A-Za-z]:\\[^\s"'`<>|;,()[\]{}]*/gu;
+const WINDOWS_PATH = /(?<![\w])[A-Za-z]:\\[^\s"'`<>|;]*/gu;
+
+// An unquoted space is where the shell splits arguments, so an unquoted path
+// with a space in a directory name reads as a path fragment followed by words.
+// After a fragment whose last segment is a directory (no extension), up to
+// three words ending in a relative-looking token that continues the hierarchy
+// are taken as the rest of the path. That can swallow a neighbouring relative
+// path, as in `cp /etc/a docs/x`; losing it costs diagnosis a little, while
+// leaving `Private Team/…` in the report is the disclosure this module exists
+// to prevent.
+const WORD = "[^\\s\"'`<>|;&\\\\/]";
+const CONTINUATION = {
+  "/": new RegExp(`^(?: +${WORD}+){0,2} +(?![.~])[^\\s"'\`<>|;&\\\\/:]+/(?:${SEGMENT}|/)*`, "u"),
+  "\\": new RegExp(`^(?: +${WORD}+){0,2} +(?![.~])[^\\s"'\`<>|;&\\\\/:]+\\\\[^\\s"'\`<>|;]*`, "u"),
+};
+
+// A quoted string whose content starts as an absolute path is one path, spaces
+// and all; quotes escaped for JSON, as a tool call carries them, run first.
+const QUOTED = [/\\(["'])([^\n]*?)\\\1/gu, /(?<!\\)(["'])([^\n]*?)(?<!\\)\1/gu];
+const ABSOLUTE = new RegExp(`^(file://)?(/(?!/)|//${SEGMENT}|[A-Za-z]:\\\\)`, "u");
+
 // Claude names a project directory after its absolute path with `/` turned
 // into `-`, so `-home-<account>-src` is the same disclosure in another shape.
 const PATH_SLUG = new RegExp(`(?<![\\w-])-(?:${PATH_ROOTS})-[^\\s/"'\`<>|;:,()]*`, "gu");
@@ -114,6 +135,33 @@ function basenameOf(path, separator) {
   return segments.at(-1);
 }
 
+function shorten(path, separator) {
+  const base = basenameOf(path, separator);
+  return base === "" ? "<path>" : `<path>/${base}`;
+}
+
+/** Shorten every unquoted path, carrying a directory across the words that continue it. */
+function redactUnquoted(text, pattern, separator) {
+  let out = "";
+  let last = 0;
+  for (const match of text.matchAll(pattern)) {
+    if (match.index < last) continue;
+    let path = match[0];
+    let end = match.index + path.length;
+    const tail = path.split(separator).filter(Boolean).at(-1) ?? "";
+    if (!tail.includes(".") && !path.endsWith(separator)) {
+      const more = CONTINUATION[separator].exec(text.slice(end));
+      if (more) {
+        path += more[0];
+        end += more[0].length;
+      }
+    }
+    out += `${text.slice(last, match.index)}${shorten(path, separator)}`;
+    last = end;
+  }
+  return out + text.slice(last);
+}
+
 /**
  * §A-DIAGNOSTICS-01 replaces credentials with `[REDACTED:<kind>]` and absolute
  * paths with `<path>/<basename>`, leaving SHAs, UUIDs and model ids intact.
@@ -124,14 +172,18 @@ function basenameOf(path, separator) {
 export function redact(text) {
   let out = String(text);
   for (const [pattern, replace] of SECRETS) out = out.replace(pattern, replace);
-  out = out.replace(UNIX_PATH, (path) => {
-    const base = basenameOf(path, "/");
-    return base === "" ? "<path>" : `<path>/${base}`;
-  });
-  out = out.replace(WINDOWS_PATH, (path) => {
-    const base = basenameOf(path, "\\");
-    return base === "" ? "<path>" : `<path>/${base}`;
-  });
+  for (const pattern of QUOTED) {
+    out = out.replace(pattern, (whole, quote, content) => {
+      const absolute = ABSOLUTE.exec(content);
+      if (!absolute) return whole;
+      const scheme = absolute[1] ?? "";
+      const path = content.slice(scheme.length);
+      const separator = /^[A-Za-z]:\\/u.test(path) ? "\\" : "/";
+      return whole.replace(content, `${scheme}${shorten(path, separator)}`);
+    });
+  }
+  out = redactUnquoted(out, UNIX_PATH, "/");
+  out = redactUnquoted(out, WINDOWS_PATH, "\\");
   return out.replace(PATH_SLUG, "<path>");
 }
 

@@ -64,12 +64,19 @@ var SECRETS = [
     (_, key, separator) => `${key}${separator}[REDACTED:assignment]`
   ]
 ];
-var SEGMENT = "[^\\s\"'`<>|;:,()\\[\\]{}/]";
+var SEGMENT = "[^\\s\"'`<>|;\\\\/]";
 var UNIX_PATH = new RegExp(
-  `(?<=^|[^\\w.~/-]|file://)/(?:(?:${PATH_ROOTS})(?!${SEGMENT})|${SEGMENT}+/)(?:${SEGMENT}|/)*`,
+  `(?:(?<=^|[^\\w.~/:-]|file:)//${SEGMENT}+/|(?<=^|[^\\w.~/-]|file://)/(?:(?:${PATH_ROOTS})(?!${SEGMENT})|${SEGMENT}+/))(?:${SEGMENT}|/)*`,
   "gu"
 );
-var WINDOWS_PATH = /(?<![\w])[A-Za-z]:\\[^\s"'`<>|;,()[\]{}]*/gu;
+var WINDOWS_PATH = /(?<![\w])[A-Za-z]:\\[^\s"'`<>|;]*/gu;
+var WORD = "[^\\s\"'`<>|;&\\\\/]";
+var CONTINUATION = {
+  "/": new RegExp(`^(?: +${WORD}+){0,2} +(?![.~])[^\\s"'\`<>|;&\\\\/:]+/(?:${SEGMENT}|/)*`, "u"),
+  "\\": new RegExp(`^(?: +${WORD}+){0,2} +(?![.~])[^\\s"'\`<>|;&\\\\/:]+\\\\[^\\s"'\`<>|;]*`, "u")
+};
+var QUOTED = [/\\(["'])([^\n]*?)\\\1/gu, /(?<!\\)(["'])([^\n]*?)(?<!\\)\1/gu];
+var ABSOLUTE = new RegExp(`^(file://)?(/(?!/)|//${SEGMENT}|[A-Za-z]:\\\\)`, "u");
 var PATH_SLUG = new RegExp(`(?<![\\w-])-(?:${PATH_ROOTS})-[^\\s/"'\`<>|;:,()]*`, "gu");
 var ACCOUNT_ROOTS = /* @__PURE__ */ new Set(["home", "Users"]);
 function basenameOf(path, separator) {
@@ -81,17 +88,45 @@ function basenameOf(path, separator) {
   }
   return segments.at(-1);
 }
+function shorten(path, separator) {
+  const base = basenameOf(path, separator);
+  return base === "" ? "<path>" : `<path>/${base}`;
+}
+function redactUnquoted(text, pattern, separator) {
+  let out = "";
+  let last = 0;
+  for (const match of text.matchAll(pattern)) {
+    if (match.index < last) continue;
+    let path = match[0];
+    let end = match.index + path.length;
+    const tail = path.split(separator).filter(Boolean).at(-1) ?? "";
+    if (!tail.includes(".") && !path.endsWith(separator)) {
+      const more = CONTINUATION[separator].exec(text.slice(end));
+      if (more) {
+        path += more[0];
+        end += more[0].length;
+      }
+    }
+    out += `${text.slice(last, match.index)}${shorten(path, separator)}`;
+    last = end;
+  }
+  return out + text.slice(last);
+}
 function redact(text) {
   let out = String(text);
   for (const [pattern, replace] of SECRETS) out = out.replace(pattern, replace);
-  out = out.replace(UNIX_PATH, (path) => {
-    const base = basenameOf(path, "/");
-    return base === "" ? "<path>" : `<path>/${base}`;
-  });
-  out = out.replace(WINDOWS_PATH, (path) => {
-    const base = basenameOf(path, "\\");
-    return base === "" ? "<path>" : `<path>/${base}`;
-  });
+  for (const pattern of QUOTED) {
+    out = out.replace(pattern, (whole, quote, content) => {
+      const absolute = ABSOLUTE.exec(content);
+      if (!absolute) return whole;
+      const scheme = absolute[1] ?? "";
+      const path = content.slice(scheme.length);
+      const separator = /^[A-Za-z]:\\/u.test(path) ? "\\" : "/";
+      return whole.replace(content, `${scheme}${shorten(path, separator)}`);
+    });
+  }
+  out = redactUnquoted(out, UNIX_PATH, "/");
+  out = redactUnquoted(out, WINDOWS_PATH, "\\");
   return out.replace(PATH_SLUG, "<path>");
 }
 function excerpt(text) {
