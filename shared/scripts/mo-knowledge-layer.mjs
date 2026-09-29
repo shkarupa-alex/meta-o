@@ -70,10 +70,14 @@ function readAt(root, candidate, path) {
   }
 }
 
-/** A target outside the repository, or on another host, is not a tracked file. */
+/**
+ * A target outside the repository, or on another host, is not a tracked file.
+ * A query or a fragment names a place inside the file, not another file, so it
+ * is dropped before the path is judged.
+ */
 function localPath(url) {
   if (/^(?:[a-z][a-z0-9+.-]*:|\/|\.\.\/)/iu.test(url)) return null;
-  const path = posix.normalize(url.replace(/^\.\//u, ""));
+  const path = posix.normalize(url.replace(/[?#].*$/su, "").replace(/^\.\//u, ""));
   return path.startsWith("../") ? null : path;
 }
 

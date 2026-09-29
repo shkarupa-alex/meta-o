@@ -6981,7 +6981,7 @@ function readAt(root, candidate, path) {
 }
 function localPath(url) {
   if (/^(?:[a-z][a-z0-9+.-]*:|\/|\.\.\/)/iu.test(url)) return null;
-  const path = posix.normalize(url.replace(/^\.\//u, ""));
+  const path = posix.normalize(url.replace(/[?#].*$/su, "").replace(/^\.\//u, ""));
   return path.startsWith("../") ? null : path;
 }
 function declaredPapercut(agents) {

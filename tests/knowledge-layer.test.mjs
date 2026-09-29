@@ -138,6 +138,17 @@ test("a papercut document elsewhere counts only when AGENTS.md links it", () => 
     "AGENTS.md": `${LAYER["AGENTS.md"]}\n\`knowledge/team-papercuts.md\`\n`,
   });
   assert.equal(answer(root, code).reason, "partial_signals");
+  // A link to a section of the document still names the document.
+  for (const suffix of ["#commands", "?view=full#commands"]) {
+    const section = commit(root, {
+      "AGENTS.md": `${LAYER["AGENTS.md"]}\n[Papercuts](knowledge/team-papercuts.md${suffix})\n`,
+    });
+    assert.equal(answer(root, section).state, "enabled", suffix);
+  }
+  for (const target of ["https://example.com/team-papercuts.md#x", "../team-papercuts.md#x"]) {
+    const away = commit(root, { "AGENTS.md": `${LAYER["AGENTS.md"]}\n[Papercuts](${target})\n` });
+    assert.equal(answer(root, away).reason, "partial_signals", target);
+  }
 });
 
 test("a papercut document under any name counts when AGENTS.md declares it by line", () => {
