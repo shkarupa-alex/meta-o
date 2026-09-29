@@ -70,10 +70,13 @@ function claudeMatches(root, id) {
 /**
  * Codex writes `YYYY/MM/DD/rollout-<time>-<id>.jsonl`. The walk never follows
  * a symlinked directory and is bounded, so a pathological tree cannot turn an
- * id lookup into an unbounded scan.
+ * id lookup into an unbounded scan. Only the whole thread id taken from the
+ * name counts: a fragment such as `2026` or a UUID prefix would otherwise open
+ * whichever one session happened to contain it.
  */
 function codexMatches(root, id) {
-  if (!isDirectory(root)) return [];
+  if (!UUID.test(id) || !isDirectory(root)) return [];
+  const wanted = id.toLowerCase();
   const matches = [];
   const pending = [{ dir: root, depth: 0 }];
   let seen = 0;
@@ -84,7 +87,7 @@ function codexMatches(root, id) {
       const name = entry.name;
       if (entry.isDirectory() && depth < WALK_DEPTH)
         pending.push({ dir: join(dir, name), depth: depth + 1 });
-      else if (name.startsWith("rollout-") && name.endsWith(".jsonl") && name.includes(id)) {
+      else if (name.startsWith("rollout-") && CODEX_ID.exec(name)?.[1].toLowerCase() === wanted) {
         matches.push(join(dir, name));
       }
     }

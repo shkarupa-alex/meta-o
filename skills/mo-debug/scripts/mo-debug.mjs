@@ -721,7 +721,8 @@ function claudeMatches(root, id) {
   return matches;
 }
 function codexMatches(root, id) {
-  if (!isDirectory(root)) return [];
+  if (!UUID.test(id) || !isDirectory(root)) return [];
+  const wanted = id.toLowerCase();
   const matches = [];
   const pending = [{ dir: root, depth: 0 }];
   let seen = 0;
@@ -732,7 +733,7 @@ function codexMatches(root, id) {
       const name = entry.name;
       if (entry.isDirectory() && depth < WALK_DEPTH)
         pending.push({ dir: join(dir, name), depth: depth + 1 });
-      else if (name.startsWith("rollout-") && name.endsWith(".jsonl") && name.includes(id)) {
+      else if (name.startsWith("rollout-") && CODEX_ID.exec(name)?.[1].toLowerCase() === wanted) {
         matches.push(join(dir, name));
       }
     }

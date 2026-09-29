@@ -335,6 +335,14 @@ test("ids resolve inside the roots only, and not-found or ambiguous ids are type
   assert.match(missing.stdout, / outcome=session_not_found /u);
   const hostile = run(home, ["scan", "--session", "*"]);
   assert.match(hostile.stdout, / outcome=session_not_found /u);
+  // A fragment of a name or of the thread id never opens the one session holding it.
+  for (const fragment of ["2026", CODEX_ID.slice(9, 13), CODEX_ID.slice(0, -4)]) {
+    const partial = run(home, ["scan", "--session", fragment]);
+    assert.equal(partial.status, 1, fragment);
+    assert.match(partial.stdout, / outcome=session_not_found /u, fragment);
+  }
+  const exact = run(home, ["scan", "--session", CODEX_ID]);
+  assert.equal(exact.status, 0, exact.stderr);
   const later = join(codex, "..", "02");
   mkdirSync(later);
   copyFileSync(
