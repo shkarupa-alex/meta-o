@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-review-orca or an act
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "e3e888dcfa9aab93bc8bdc0891feb0661cbb44ab"
+  source_tree: "3ab0eb468e144dadd35fc165c427170009329ab7"
 ---
 
 # Review through Orca
@@ -315,9 +315,10 @@ running the suite too only spends the time in which every cache expires.
 
 Before the pair, create one run directory outside every worktree with
 `scripts/mo-review-report.mjs namespace` and give each reviewer
-`Body-File: <dir>/slot-<a|b>-r<round>.md`, a name built before the brief is sent;
-the Dispatch id reaches only the reviewer and stays in the body as
-`Review-Execution`. The reviewer writes the file once through
+`Body-File: <dir>/slot-<a|b>-r<round>-d<n>.md`, a name built before the brief is
+sent; `<n>` counts that slot's Dispatches in the round, so a repeat Dispatch never
+meets the earlier body, and the Dispatch id reaches only the reviewer and stays
+in the body as `Review-Execution`. The reviewer writes the file once through
 `prepare`, which validates the bytes first and refuses an existing file, and
 sends exactly that content. Where Orca runs the reviewer on another host, the
 brief says `Body-File: none` and the reviewer validates the same bytes on stdin.

@@ -52,18 +52,20 @@ which one loses the review. It also carries the literal template for this very
 Dispatch, printed by `mo-review-report.mjs template` with the brief's candidate
 and modes, so the service lines are copied rather than rebuilt from prose.
 
-`Body-File` names one path, `Body-File: <dir>/slot-<a|b>-r<round>.md`, in a
+`Body-File` names one path, `Body-File: <dir>/slot-<a|b>-r<round>-d<n>.md`, in a
 directory the caller created for this run outside every worktree. The name is
 built from what the caller holds before sending: the Dispatch id reaches only
 the reviewer, in Orca's preamble, so it lives inside the body as
-`Review-Execution` and never in the file name. The reviewer creates that file
-exclusively with `mo-review-report.mjs prepare`, which validates the bytes first
-and refuses an existing file, and sends exactly the file's content. The caller
-then compares what it received with the file byte for byte. Where the reviewer
-runs on another host and cannot reach the caller's directory, the field says
-`Body-File: none` and the reviewer validates the same bytes on stdin instead;
-the caller then accepts the received body on its structure alone and says that
-the prepared bytes were not compared.
+`Review-Execution` and never in the file name. `<n>` counts the Dispatches to
+that slot within the round, so the one repeat Dispatch after a malformed report
+gets a new file and the earlier body stays as the evidence of that round. The
+reviewer creates that file exclusively with `mo-review-report.mjs prepare`,
+which validates the bytes first and refuses an existing file, and sends exactly
+the file's content. The caller then compares what it received with the file byte
+for byte. Where the reviewer runs on another host and cannot reach the caller's
+directory, the field says `Body-File: none` and the reviewer validates the same
+bytes on stdin instead; the caller then accepts the received body on its
+structure alone and says that the prepared bytes were not compared.
 
 `Reviewer-Skill` names `mo-reviewer` and the absolute path of its `SKILL.md` in
 the same installation this caller runs from. The reviewer reads it from there —

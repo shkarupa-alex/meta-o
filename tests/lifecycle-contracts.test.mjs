@@ -995,7 +995,9 @@ test("a Codex trust failure is recovered inside the supported harness, never by 
 test("the Body-File name uses only what the caller holds before sending", () => {
   // The Dispatch id reaches only the reviewer, so a name built from it is a
   // placeholder that no sent brief can fill.
-  const form = "`Body-File: <dir>/slot-<a|b>-r<round>.md`";
+  // The Dispatch ordinal keeps the one repeat Dispatch of a round off the
+  // earlier body, which `prepare` would refuse as existing.
+  const form = "`Body-File: <dir>/slot-<a|b>-r<round>-d<n>.md`";
   for (const path of [
     "shared/references/review-brief.md",
     "src/skills/mo-review-orca/SKILL.md",
