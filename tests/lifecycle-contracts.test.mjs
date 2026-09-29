@@ -960,6 +960,38 @@ test("an isolated reviewer workspace stands on the candidate", () => {
   }
 });
 
+test("a Codex trust failure is recovered inside the supported harness, never by codex exec", () => {
+  // #43 is external_blocked on Orca, so this rule is what the outcome rests on
+  // until then: without the check, dropping or inverting it passed every gate.
+  for (const path of ["src/skills/mo-review-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
+    const review = source(path).replace(/\s+/gu, " ");
+    assert.match(
+      review,
+      /fails with `agent-trust-workspace` stays inside the supported harness/u,
+      path,
+    );
+    assert.match(review, /release the failed Dispatch by its exact id/u, path);
+    assert.match(review, /prove trust by the trust procedure/u, path);
+    assert.match(review, /start the normal supervised harness again/u, path);
+    assert.match(review, /A terminal running `codex exec` is never a reviewer\./u, path);
+  }
+  for (const path of [
+    "shared/references/orca-mechanics.md",
+    "skills/mo-review-orca/references/orca-mechanics.md",
+  ]) {
+    const mechanics = source(path).replace(/\s+/gu, " ");
+    assert.match(
+      mechanics,
+      /`orca terminal create --command "codex exec …"` is never a reviewer/u,
+      path,
+    );
+  }
+  const cases = JSON.parse(source("src/skills/mo-review-orca/evals/cases.json")).cases;
+  const degraded = cases.find(({ id }) => id === "mo-review-orca.degraded");
+  assert.match(degraded.scenario, /agent-trust-workspace/u);
+  assert.equal(degraded.mustNot.includes("start a raw `codex exec` terminal as a reviewer"), true);
+});
+
 test("every reviewer Dispatch records the installed reviewer version", () => {
   // The body carries no version header by design, so the Dispatch context is
   // the only place that can say which grammar accepted a report once the

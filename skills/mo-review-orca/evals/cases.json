@@ -55,16 +55,18 @@
         "§A-REVIEW-04",
         "§A-DELIVERY-01"
       ],
-      "scenario": "A follow_up request lacks the reviewer's own prior report and computable prior-SHA delta; the reachable diff also exposes a trust-boundary change requiring deep coverage.",
+      "scenario": "A follow_up request lacks the reviewer's own prior report and computable prior-SHA delta; the reachable diff also exposes a trust-boundary change requiring deep coverage. The Codex reviewer's start then fails with agent-trust-workspace.",
       "must": [
         "under §A-DELIVERY-01 return UNKNOWN for missing follow-up context and name each missing input",
         "under §A-REVIEW-04 record requested=follow_up effective=deep when the context is later supplied",
         "retain a non-empty Unknown-Account and exact end marker",
-        "under §A-DELIVERY-01 refuse task-byte injection while the terminal envelope reports a non-empty composer draft"
+        "under §A-DELIVERY-01 refuse task-byte injection while the terminal envelope reports a non-empty composer draft",
+        "under §A-DELIVERY-01 recover the Codex trust failure inside the supported harness: release the failed Dispatch by its exact id, prove trust by the trust procedure and start the supervised Codex harness again"
       ],
       "mustNot": [
         "read peer report bytes",
-        "deliver a shortened follow-up PASS or silently substitute a model"
+        "deliver a shortened follow-up PASS or silently substitute a model",
+        "start a raw `codex exec` terminal as a reviewer"
       ]
     },
     {
