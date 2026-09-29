@@ -25,11 +25,16 @@ Every brief carries all of these, in this order, each on its own line or block:
 | `Body-File`            | the one path the reviewer creates, validates and sends, or `none`           |
 | `Methodology-Friction` | where to report a rule that got in the way rather than a defect             |
 | `Cleanup`              | what to remove, and what to report when removal fails                       |
+| `Knowledge-Layer`      | the helper's literal `state=… reason=…` line on the same SHA                |
 
 `Review-Execution` in the report is the Dispatch id from Orca's own preamble,
 copied verbatim; the brief says so rather than supplying a guess. No placeholder
 survives into a sent brief: a brief containing `<sha>` or `<range>` is not a
 brief, and sending one spends a reviewer on a question.
+
+The `Knowledge-Layer` line is the exact output of
+`mo-knowledge-layer.mjs --candidate <sha>` on the `Target` SHA, pasted, never
+retold: a brief without it leaves the reviewer's deferral lens `unknown`.
 
 Every SHA in the brief is pasted from the output of `git rev-parse <ref>` and
 proved with `git cat-file -t <sha>` before the brief is sent. An abbreviation

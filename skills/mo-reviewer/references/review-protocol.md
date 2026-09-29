@@ -78,9 +78,18 @@ step; confirmed out-of-scope work belongs in a correctly routed project/upstream
 Issue. An unresolved disposition is `needs_attention`, not permission to leave
 closure non-empty. Do not manufacture an entry to fill a category.
 
-A project with no backlog-closure checker at all is a different answer: the
-absence is a readiness gap reported as `needs_attention`, and no review prepares
-the project or writes the missing checker in passing.
+The brief's `Knowledge-Layer: state=… reason=…` line decides how this lens
+applies. With `enabled`, the project's knowledge gates hold. With `not_enabled`,
+the project never adopted the knowledge layer or switched it off, and the
+backlog-closure part of this lens is `not_applicable`; postponed work still
+needs a routed Issue or a stated residual risk. With `needs_attention`, or with
+no such line in the brief, the lens is `unknown`: never assume an ordinary
+project.
+
+A project with no backlog-closure checker at all, while its knowledge layer is
+not `not_enabled`, is a different answer: the absence is a readiness gap
+reported as `needs_attention`, and no review prepares the project or writes the
+missing checker in passing.
 
 ## Diagnostics
 

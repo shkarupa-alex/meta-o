@@ -47,7 +47,19 @@ mixed artifacts; only a genuinely undecidable case belongs in backlog.
 
 Internal Markdown links use a label containing the target document's H1 title,
 not its path. Enforce resolution and labels with a mature Markdown AST/link
-tool, never a regex Markdown parser.
+tool, never a regex Markdown parser. The shipped `mo-knowledge.mjs check` is
+that tool for the portable core: one H1, resolving links labelled with the
+target's H1, identifiers defined once in their layer, resolvable citations and a
+business reason in every decision. Purpose comments, the acceptance map,
+glossary agreement and foreign notation stay project-local rules.
+
+The knowledge layer is a capability the project declares, and the human decides
+it. The declared closure command carries the literal `MO-BACKLOG/1`, `AGENTS.md`
+records `history_cutoff_sha:` and links the papercut document, and on the
+human's answer `AGENTS.md` holds `Knowledge-Layer: enabled` or
+`Knowledge-Layer: disabled` on its own line. A project that never had these is
+`not_enabled` and owes no G0, GC, G1 or G2 for them; a project that had them and
+lost one is a gap.
 
 ## Knowledge id history
 

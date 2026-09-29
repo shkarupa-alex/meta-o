@@ -15,9 +15,13 @@ Read [Обратная связь о методологии](references/methodol
 completely: friction you hit is reported to the caller as one ordinary
 `Methodology-Friction:` message, and this actor writes no Issue itself.
 
-A project missing its `MO-BACKLOG/1` command, papercut document or
-identifier-history gate is a readiness gap: record it and return
-`needs_attention`, and leave running the setup skill to the human.
+Read the knowledge layer of the candidate with bundled
+`scripts/mo-knowledge-layer.mjs --candidate <sha>`. `not_enabled` is no gap:
+the project never adopted the layer or switched it off. `needs_attention` — a
+missing `MO-BACKLOG/1` command, papercut document or identifier-history gate in
+a project that had or half-declared them — is a readiness gap: record the
+helper's reason and return `needs_attention`, and leave running the setup skill
+to the human.
 
 Act as a separate read-only E2E actor. Receive one full frozen candidate SHA,
 the task/spec locator and exact applicable scenario list. Read the project's E2E

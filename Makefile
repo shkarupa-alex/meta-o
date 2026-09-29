@@ -52,12 +52,15 @@ mo-lint:
 	node --check tools/skill-eval-runtime.mjs
 	node --check tools/skill-eval-legacy.mjs
 	node --check tools/skill-eval-corpus.mjs
+	node --check tools/skill-build-plan.mjs
 	node --check shared/scripts/mo-backlog.mjs
 	node --check shared/scripts/mo-harness-screen.mjs
 	node --check shared/scripts/mo-review-report.mjs
 	node --check shared/scripts/mo-review-grammar.mjs
 	node --check shared/scripts/mo-review-resource.mjs
 	node --check shared/scripts/skill-source-tree.mjs
+	node --check shared/scripts/mo-knowledge.mjs
+	node --check shared/scripts/mo-knowledge-layer.mjs
 	for module in shared/scripts/mo-debug*.mjs; do node --check "$$module" || exit 1; done
 	node tools/adapter-contract.mjs --validate
 	bash -n shared/scripts/mo-posture.sh
@@ -95,8 +98,20 @@ mo-knowledge-history:
 # a section that is not there. Errors block; a guess about somebody's coinage is
 # a warning, because a checker that blocks on a guess gets switched off.
 # `docs/references/` is an archive of source material, not active requirements.
+# The knowledge plan the portable core checks: where ids are defined, which
+# documents are declared, and every tracked Markdown file it deliberately skips.
+# Source skills link into references that exist only after the build, so the
+# built tree is the declared one.
+MO_KNOWLEDGE_PLAN = --business docs/business.md --architecture docs/architecture \
+	--docs docs/business.md --docs docs/architecture --docs docs/acceptance.md \
+	--docs docs/e2e.md --docs docs/glossary.md --docs docs/papercut.md \
+	--docs docs/backlog.md --docs docs/backend-capabilities.md --docs README.md \
+	--docs AGENTS.md --docs CLAUDE.md --docs shared/references --docs skills \
+	--first-party-root docs --first-party-root shared --first-party-root skills \
+	$(foreach path,$(shell git ls-files 'docs/references/*.md' 'docs/research/*.md'),--knowledge-exclude $(path))
+
 mo-vocabulary:
-	node tools/mo-vocabulary.mjs --root . --exclude docs/references
+	node tools/mo-vocabulary.mjs --root . --exclude docs/references $(MO_KNOWLEDGE_PLAN)
 
 mo-test:
 	@command -v zsh >/dev/null 2>&1 || { echo "mo-test blocked: zsh is required for the cross-shell contract" >&2; exit 1; }
@@ -136,7 +151,7 @@ mo-e2e:
 	@echo "AGENT_REQUIRED: not executed"
 	@echo
 	@echo "Docs:      docs/e2e.md, docs/backend-capabilities.md"
-	@echo "Scenarios: B1-B66 — Orca backend, lifecycle, setup and Qwen profile"
+	@echo "Scenarios: B1-B68 — Orca backend, lifecycle, setup and Qwen profile"
 	@echo "           W1-W4 — watchdog target, scan, nudge, suppression"
 	@echo "           33 embedded cases — positive/forbidden/degraded for 11 skills"
 	@echo "           local and authorized remote installation"

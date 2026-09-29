@@ -35,12 +35,14 @@
       "class": "forbidden",
       "contracts": [
         "§A-ACTIVATION-01",
-        "§A-BACKLOG-01"
+        "§A-BACKLOG-01",
+        "§A-MEMORY-05"
       ],
-      "scenario": "The request is answer-only or asks only for a standalone review; or it asks for the full lifecycle in a project that has no `MO-BACKLOG/1` closure command, no papercut document and no identifier-history gate.",
+      "scenario": "The request is answer-only or asks only for a standalone review; or it asks for the full lifecycle in a project whose history carried the knowledge layer, but whose candidate has no `MO-BACKLOG/1` closure command, no papercut document and no identifier-history gate, so `mo-knowledge-layer.mjs` prints `Knowledge-Layer: state=needs_attention reason=signals_removed`.",
       "must": [
         "avoid starting a feature lifecycle and report the request as inapplicable under §A-ACTIVATION-01",
-        "report the readiness gap as `needs_attention`, name what is missing, and leave running the setup skill to the human under §A-BACKLOG-01"
+        "under §A-MEMORY-05 read the knowledge layer of the exact SHA with the bundled helper instead of guessing from the tree",
+        "report the readiness gap as `needs_attention`, name the helper's reason, and leave running the setup skill to the human under §A-BACKLOG-01"
       ],
       "mustNot": [
         "create an executor",

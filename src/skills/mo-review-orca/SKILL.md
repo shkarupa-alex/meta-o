@@ -40,10 +40,14 @@ blocks the pair. Record the caller's own statement as
 `self_review=<pass|not_done|unavailable>` in the report to the human; a caller
 that says nothing is `not_done`, and the value is the caller's claim, not proof.
 
-A project without a `MO-BACKLOG/1` command, a papercut document or an
-identifier-history gate is reported as `needs_attention` naming the gap.
-Preparing the project is the human's own step; this skill never does it and
-never starts the setup skill for them.
+Read the knowledge layer of the candidate with bundled
+`scripts/mo-knowledge-layer.mjs --candidate <sha>` and put its exact output
+line into both briefs; a brief without it makes the reviewer's deferral lens
+`unknown`. `not_enabled` is an answer, not a gap. `needs_attention` — a missing
+`MO-BACKLOG/1` command, papercut document or identifier-history gate in a
+project that had or half-declared them — is reported as `needs_attention` with
+the helper's reason, and no pair starts. Preparing the project is the human's
+own step; this skill never does it and never starts the setup skill for them.
 
 ## Pre-pair placement
 

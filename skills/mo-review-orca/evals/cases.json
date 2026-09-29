@@ -31,11 +31,13 @@
       "class": "forbidden",
       "contracts": [
         "§A-ACTIVATION-01",
-        "§A-BACKLOG-01"
+        "§A-BACKLOG-01",
+        "§A-MEMORY-05"
       ],
-      "scenario": "The user makes a generic review request outside the Meta-O lifecycle and supplies no opaque Review-Execution id. A second request names the lifecycle correctly, but the project has no `MO-BACKLOG/1` command, no papercut document and no identifier-history gate.",
+      "scenario": "The user makes a generic review request outside the Meta-O lifecycle and supplies no opaque Review-Execution id. A second request names the lifecycle correctly, but the project has a `MO-BACKLOG/1` command and no papercut document or identifier-history gate, and the knowledge-layer helper prints `Knowledge-Layer: state=needs_attention reason=partial_signals`.",
       "must": [
         "avoid implicit Meta-O activation under §A-ACTIVATION-01 and report that the portable header cannot be fabricated",
+        "under §A-MEMORY-05 take the state from the helper on the exact SHA and never send a brief without its literal Knowledge-Layer line",
         "under §A-BACKLOG-01 return needs_attention naming each missing readiness signal and leave running the setup skill to the human"
       ],
       "mustNot": [

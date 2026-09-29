@@ -27,10 +27,8 @@ import { fromMarkdown } from "mdast-util-from-markdown";
 
 import {
   ALLOWED_FRONTMATTER,
-  BUNDLES,
   LICENSE_ALLOWLIST,
   LICENSE_EXCEPTIONS,
-  SHARED_PLAN,
   bundleShared,
   licenseSlug,
   frontmatter,
@@ -39,6 +37,7 @@ import {
   walk,
   writeLicenses,
 } from "../tools/build-skills.mjs";
+import { BUNDLES, SHARED_PLAN } from "../tools/skill-build-plan.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SOURCES = join(ROOT, "src", "skills");

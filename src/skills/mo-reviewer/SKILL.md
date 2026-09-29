@@ -24,10 +24,13 @@ how one reviewer turns a brief into one report nobody has to buy twice.
 
 Take every field of the brief as given: `Target`, `Intent`, `Spec`, `Scope`,
 `Mode`, `Placement`, `Environment`, `Constraints`, `Ownership`, `Acceptance`,
-`Reviewer-Skill`, `Report`, `Body-File`, `Methodology-Friction`, `Cleanup`, and
-a `Knowledge-Layer` line when the caller sent one. A missing field or a
-placeholder such as `<sha>` is a question to the caller through the backend's
-ask surface, not something to reconstruct.
+`Reviewer-Skill`, `Report`, `Body-File`, `Methodology-Friction`, `Cleanup` and
+`Knowledge-Layer`. A missing field or a placeholder such as `<sha>` is a
+question to the caller through the backend's ask surface, not something to
+reconstruct. The `Knowledge-Layer: state=… reason=…` line decides the deferral
+lens: `enabled` requires the project's knowledge gates, `not_enabled` makes
+them `not_applicable`, and `needs_attention` or a missing line makes the lens
+`unknown` — never assume an ordinary project.
 
 `Review-Execution` is the Dispatch id from the backend's own preamble, copied
 verbatim. Prove the checkout in the directory you work in: `git rev-parse HEAD`

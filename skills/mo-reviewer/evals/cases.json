@@ -7,7 +7,10 @@
     {
       "id": "mo-reviewer.positive",
       "class": "positive",
-      "contracts": ["§A-REVIEW-04", "§A-ACTIVATION-01"],
+      "contracts": [
+        "§A-REVIEW-04",
+        "§A-ACTIVATION-01"
+      ],
       "scenario": "A reviewer brief names `mo-reviewer` under Reviewer-Skill, carries a full SHA, `Spec: docs/specifications/feature.md`, deep mode, an isolated checkout at that SHA and `Body-File: <dir>/ctx_fixture.md`. The change has one proven P2 defect: a requirement of the specification is not implemented.",
       "must": [
         "under §A-ACTIVATION-01 act as one terminal reviewer without starting the coordinator review skill or any other worker",
@@ -23,7 +26,9 @@
     {
       "id": "mo-reviewer.forbidden",
       "class": "forbidden",
-      "contracts": ["§A-ACTIVATION-01"],
+      "contracts": [
+        "§A-ACTIVATION-01"
+      ],
       "scenario": "A user asks for a generic code review of their branch in a session where `mo-reviewer` is installed but not named, and no reviewer brief exists.",
       "must": [
         "under §A-ACTIVATION-01 leave the skill inactive and answer the generic request outside the Meta-O lifecycle"
@@ -36,15 +41,20 @@
     {
       "id": "mo-reviewer.degraded",
       "class": "degraded",
-      "contracts": ["§A-REVIEW-04"],
-      "scenario": "The brief names `mo-reviewer` and a candidate SHA, but the reviewer's checkout stands on another commit, and the prepared Body-File path already exists with somebody else's bytes.",
+      "contracts": [
+        "§A-REVIEW-04",
+        "§A-MEMORY-05"
+      ],
+      "scenario": "The brief names `mo-reviewer` and a candidate SHA, but the reviewer's checkout stands on another commit, and the prepared Body-File path already exists with somebody else's bytes. In a second Dispatch on the right commit the brief carries no `Knowledge-Layer:` line and the change postpones work.",
       "must": [
         "under §A-REVIEW-04 answer UNKNOWN with Unknown-Reason candidate_mismatch and a non-empty Unknown-Account instead of reviewing the checked-out commit",
-        "under §A-REVIEW-04 treat `status=refused reason=exists` from prepare as a question to the caller and leave the existing file untouched"
+        "under §A-REVIEW-04 treat `status=refused reason=exists` from prepare as a question to the caller and leave the existing file untouched",
+        "under §A-MEMORY-05 answer the deferral lens of the second Dispatch as unknown because the brief lacks the Knowledge-Layer line"
       ],
       "mustNot": [
         "overwrite or delete the existing Body-File",
-        "move HEAD, stash or reset the checkout to reach the candidate"
+        "move HEAD, stash or reset the checkout to reach the candidate",
+        "assume an ordinary project with knowledge gates when the Knowledge-Layer line is missing"
       ]
     }
   ]

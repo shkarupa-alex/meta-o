@@ -51,18 +51,25 @@ Before starting agents:
    and the backend capabilities in [Backend contract](backend-contract.md).
 5. Confirm the selected harness can run unsandboxed in this backend. Supported
    harnesses are Codex, Claude Code and OpenCode.
-6. Migrate raw human intake into the live spec/ledger, then run the
-   project-owned `MO-BACKLOG/1` closure command. G0 must be `EMPTY` on the exact
+6. Migrate raw human intake into the live spec/ledger, then read the knowledge
+   layer of that exact committed SHA with the bundled
+   `scripts/mo-knowledge-layer.mjs --candidate <sha>`. With `enabled`, run the
+   project-owned `MO-BACKLOG/1` closure command: G0 must be `EMPTY` on the exact
    committed SHA before substantive implementation; `NOT-EMPTY` and `UNKNOWN`
-   both block.
+   both block. With `not_enabled`, G0, GC, G1 and G2 do not apply to the
+   knowledge layer, while the exact SHA, QC, vendor-diverse reviews and
+   applicable E2E still do.
 
 A project that cannot answer these is not ready, and no lifecycle skill prepares
-it on its own initiative. A missing `MO-BACKLOG/1` command, a missing papercut
-document or a missing identifier-history gate is a readiness gap: report it as
-`needs_attention`, name what is missing, and recommend that the human run the
-setup skill. Setting a project up changes files a human never asked to change,
-which is why it is their call and not a step taken silently on the way to
-something else.
+it on its own initiative. `not_enabled` is an answer: the project never adopted
+the knowledge layer, or its owner switched it off on purpose. `needs_attention`
+from the helper — a missing `MO-BACKLOG/1` command, a missing papercut document
+or a missing identifier-history gate in a project whose layer is partial or
+disappeared — is a readiness gap: report it as `needs_attention`, name the
+helper's reason, and recommend that the human run the setup skill. Setting a
+project up changes files a human never asked to change, which is why it is their
+call and not a step taken silently on the way to something else.
+
 
 The executor's first coherent commit materializes a temporary feature bundle:
 the accepted specification, `user-ledger.md` and a short `checklist.md` of
@@ -383,13 +390,16 @@ After the review loop and applicable E2E, the executor harvests durable
 knowledge, routes every confirmed out-of-scope item to a canonical
 project/upstream Issue, and removes the temporary spec, ledger and checklist. It
 then runs GC through the project-owned `MO-BACKLOG/1` command; completion cannot
-be announced while the committed exact SHA is `NOT-EMPTY` or `UNKNOWN`. Repeat
-deterministic gates on the deletion SHA, and let the hot pair review it. Only
-after that pair has returned two PASS reports on one SHA, release its owned
-resources and create two fresh independent reviewers with no prior reports on
-that same SHA for the final proof. Findings of the fresh pair are remediated in
-that pair, which becomes the hot pair; no further fresh pair starts until it
-passes. Repeat only E2E that cannot carry forward under section 8.
+be announced while the committed exact SHA is `NOT-EMPTY` or `UNKNOWN`. A
+project whose knowledge layer is `not_enabled` on that SHA has no GC, G1 or G2
+for the layer; the helper is read again on the final SHA, because a change can
+enable or break the layer. Repeat deterministic gates on the deletion SHA, and
+let the hot pair review it. Only after that pair has returned two PASS reports
+on one SHA, release its owned resources and create two fresh independent
+reviewers with no prior reports on that same SHA for the final proof. Findings
+of the fresh pair are remediated in that pair, which becomes the hot pair; no
+further fresh pair starts until it passes. Repeat only E2E that cannot carry
+forward under section 8.
 
 Before success, prove that the same full candidate SHA has:
 

@@ -10002,7 +10002,8 @@ var {
 } = yaml;
 
 // shared/scripts/knowledge-documents.mjs
-var ID = /^§([AB])-[A-Z][A-Z0-9-]*-\d{2}(?=\s|$)/;
+var HEADING_ID = /^§([AB])-[A-Z][A-Z0-9-]*-\d{2}(?=\s|$)/;
+var ID = HEADING_ID;
 var CITATION = /§[AB]-[A-Z][A-Z0-9-]*-\d{2}/gu;
 function text3(node2) {
   if (typeof node2.value === "string") return node2.value;
@@ -10886,4 +10887,4 @@ export {
   runHistory,
   verifyHistory
 };
-// MO-KNOWLEDGE-HISTORY-SOURCE 0.2.0 cdceb83ceca9f2bf7ae5a727dcd705cef4c06e072d6c2b3a1f296cae548f79d2
+// MO-KNOWLEDGE-HISTORY-SOURCE 0.2.0 847605cdbd27a53110319684adfe3e4d18697568ba5ff228fb6eaa02fb2e0158

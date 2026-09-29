@@ -49,6 +49,16 @@ knowledge_id_changes:
       вычисления tree id входов; `mo-debug` поставляется одним бандлом из
       нескольких собственных модулей без сторонних корней.
     references_updated: true
+  - action: reuse
+    id: §A-DISTRIBUTION-01
+    reason: >-
+      Проверка текущего дерева знаний и решение о состоянии слоя знаний стали
+      поставляемыми помощниками, которых в списке владельцев не было.
+    new_boundary: >-
+      `mo-knowledge.mjs` владеет переносимым ядром проверки текущего дерева, а
+      `mo-knowledge-layer.mjs` — состоянием слоя знаний кандидата; оба
+      поставляются бандлами.
+    references_updated: true
 ```
 
 - `shared/references/` владеет канонической общей прозой;
@@ -57,6 +67,9 @@ knowledge_id_changes:
 - `shared/scripts/mo-knowledge-history.mjs` вместе с `knowledge-documents.mjs` и
   `knowledge-history-reader.mjs` владеет семантикой истории идентификаторов;
 - `shared/scripts/mo-backlog.mjs` владеет проверкой пустоты блокнота;
+- `shared/scripts/mo-knowledge.mjs` владеет переносимой проверкой текущего
+  дерева знаний, а `shared/scripts/mo-knowledge-layer.mjs` — состоянием слоя
+  знаний кандидата;
 - `shared/scripts/mo-review-report.mjs` владеет формой авторитетного отчёта
   ревью;
 - `shared/scripts/mo-harness-screen.mjs` владеет распознаванием экрана harness;

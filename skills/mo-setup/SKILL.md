@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-setup; inspect or bri
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "908c0c850325e69d708845ad913a6533ee67c6c0"
+  source_tree: "8cff7c0077d49def0f5bc7ba42122ee7a7788d2c"
 ---
 
 # Set up a project for Meta-O
@@ -31,14 +31,28 @@ transaction/resource-lifetime repair.
 Do not create a backend fixture document in an ordinary target project without
 a named consumer.
 
-Find the project's documented backlog path and closure command. Verify
+Read the knowledge layer first with bundled
+`scripts/mo-knowledge-layer.mjs --candidate <HEAD sha>` and report its line.
+Whether a project has the layer is the human's decision: on their answer write
+`Knowledge-Layer: enabled` or `Knowledge-Layer: disabled` as its own line in
+`AGENTS.md`, and never choose for them. `disabled` is only valid once the
+closure command, the papercut document and the history record are gone.
+
+Find the project's documented backlog path and closure command, and make the
+line that declares it carry the literal `MO-BACKLOG/1`: that literal is how the
+layer helper finds the command. Verify
 `MO-BACKLOG/1` in a disposable fixture: committed-blob identity, empty,
 not-empty, typed unknown, dirty declared path, unrelated dirt, malformed UTF-8/
 schema/mode and non-mutation. Require G0/GC/G1/G2 in the project contract.
 Ordinary QC must test the reader/schema but not assert the current branch empty.
 
 Read [Knowledge id history contract](references/knowledge-id-history.md) and
-check current-tree agreement separately from history. Never guess: take the
+check current-tree agreement separately from history. The current tree is
+checked by bundled `scripts/mo-knowledge.mjs check` with the project's own
+declaration — business document, architecture directory, every declared
+document and first-party root, exact excludes — and its
+`MO-KNOWLEDGE/1 status=…` gives `current_tree`; a project does not need its
+own checker for that portable core. Never guess: take the
 declared stage from a level-two section whose heading contains
 `Knowledge id history`, holding exactly one fenced one-line command, exactly one
 line naming the authoritative QC command, and exactly one `history_cutoff_sha`
@@ -90,8 +104,10 @@ Find the commands-and-papercuts document by content, not only at
 where `linked` means `AGENTS.md` actually links it. Accepted repair starts from
 [Commands and papercuts template](references/papercut-template.md).
 
-Accepted repair copies two shipped bundles into the project, each with its
-`tools/licenses/`, and both then belong to the project. `scripts/mo-backlog.mjs`
+Accepted repair copies three shipped bundles into the project, each with its
+`tools/licenses/`, and all three then belong to the project.
+`scripts/mo-knowledge.mjs` goes to `tools/mo-knowledge.mjs`, and a QC stage
+calls its `check` with that project's own declaration. `scripts/mo-backlog.mjs`
 goes to `tools/mo-backlog.mjs`, and the closure command that calls it must name
 that project's own `--path`, `--title`, `--open-heading` and every
 `--entry-field`: without the whole schema the checker would hold a foreign

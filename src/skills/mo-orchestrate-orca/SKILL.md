@@ -60,12 +60,16 @@ in the project's `.orca/`; where `.orca/` is not ignored, write no temporary
 file into a tracked path and return `needs_attention`.
 
 A project that cannot answer the readiness questions is not ready, and this
-skill does not prepare it: a missing `MO-BACKLOG/1` command, papercut document
-or identifier-history gate is reported as `needs_attention` with what is
-missing, and running the setup skill stays the human's own step.
+skill does not prepare it. Read the knowledge layer of every exact SHA with
+bundled `scripts/mo-knowledge-layer.mjs --candidate <sha>` and keep its one
+line. `not_enabled` means the project has no knowledge layer to close: skip G0,
+GC, G1 and G2 for it and keep every other gate. `needs_attention` — a missing
+`MO-BACKLOG/1` command, papercut document or identifier-history gate in a
+project that had or half-declared them — is reported with the helper's reason,
+and running the setup skill stays the human's own step.
 
-Run G0 through the project's `MO-BACKLOG/1` command after intake migration and
-before substantive work. The one hot executor owns all product/spec edits,
+With `enabled`, run G0 through the project's `MO-BACKLOG/1` command after
+intake migration and before substantive work. The one hot executor owns all product/spec edits,
 regression tests, invariant comments and coherent commits. The orchestrator
 does not inspect or edit product code. The executor's task asks for the
 methodology's cleanroom self-review before every handoff: PASS from a subagent
