@@ -18,9 +18,9 @@ import {
   diagnoseLegacyEvidenceForCandidate,
   evaluationCoordinate,
   evaluationDigest,
-  loadCorpus,
   validateEvidence as validateEvidenceRaw,
 } from "../tools/skill-evals.mjs";
+import { loadCorpus } from "../tools/skill-eval-corpus.mjs";
 
 const ROOT = process.cwd();
 const HEAD = spawnSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).stdout.trim();
@@ -153,10 +153,10 @@ function validateEvidence(root, evidence, candidate, requireAll = false, options
 
 test("every installable skill owns three bounded embedded cases", () => {
   const corpus = loadCorpus(ROOT);
-  assert.equal(corpus.size, 8);
+  assert.equal(corpus.size, 9);
   assert.equal(
     [...corpus.values()].reduce((sum, document) => sum + document.cases.length, 0),
-    24,
+    27,
   );
   assert.equal(corpus.get("mo-orchestrate-orca").policy, "critical");
   const issueRouting = corpus
@@ -185,9 +185,9 @@ test("complete evidence binds every skill to candidate, revision and approved id
   const validated = validateEvidence(ROOT, evidence, HEAD, true, {
     criticalProfile: "opencode/llamacpp/qwen3.8-27b/default",
   });
-  assert.equal(validated.envelopes, 32);
+  assert.equal(validated.envelopes, 36);
   assert.deepEqual(validated.nonPass, []);
-  assert.equal(validated.aggregate.length, 24);
+  assert.equal(validated.aggregate.length, 27);
   for (const group of validated.aggregate) {
     assert.deepEqual(
       group.coordinates.map(({ matrixProfile }) => matrixProfile),
@@ -1011,7 +1011,7 @@ test("the CLI materializes and validates a missing desired harness without a mod
             }),
     ),
   );
-  assert.equal(validateEvidence(ROOT, complete, HEAD, true).envelopes, 32);
+  assert.equal(validateEvidence(ROOT, complete, HEAD, true).envelopes, 36);
   rmSync(temporary, { recursive: true, force: true });
 });
 

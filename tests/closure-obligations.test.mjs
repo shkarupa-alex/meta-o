@@ -172,7 +172,7 @@ const OBLIGATIONS = [
     {
       revskill: [
         /description: Use only when the user explicitly requests mo-review-orca/,
-        /Accept only an exact 40-hex `candidate_sha`, intent source, scope, mode and two\s+user-approved vendor-diverse selections/,
+        /Accept only an exact 40-hex `candidate_sha`, intent source, scope, mode, the\s+specification line and two user-approved vendor-diverse selections/,
       ],
     },
   ],
@@ -636,11 +636,8 @@ const OBLIGATIONS = [
       life: [
         /It runs in the foreground to a terminal exit\s+status, one run at a time per candidate worktree, and never through `nohup`, `&`\s+or another detached form whose immediate `0` is not a suite result/,
       ],
-      rev: [
-        /run one full gate at\s+a time, in the foreground/,
-        /Never launch it with `nohup`, `&` or another detached form/,
-        /A detached, overlapped or unreaped run is `UNKNOWN` for this\s+reviewer/,
-      ],
+      // The reviewer is out of the gate entirely, so it has nothing to overlap.
+      rev: [/the project's QC gate are not run by a reviewer, not even a\s+pointed test/],
     },
   ],
   [
@@ -659,8 +656,7 @@ const OBLIGATIONS = [
         /A repeated\s+run is independent proof only once the previous run's descendants are gone/,
       ],
       rev: [
-        /wait for the exact process this review owns and confirm it left no\s+orphan descendant/,
-        /a host-sensitive failure under those conditions is not reported as\s+a candidate finding without clean process evidence/,
+        /QC of the exact candidate belongs to the executor or coordinator, in a clean\s+checkout of that SHA/,
       ],
       post: [
         /Скрипт владеет одной группой процессов и читает закрытое дочернее доказательство\s+с NUL-разделителями/u,
@@ -701,10 +697,10 @@ const OBLIGATIONS = [
     "two reviewers cannot run the host-sensitive full gate concurrently",
     {
       life: [
-        /the orchestrator owns the sequencing of that\s+gate between them: it serializes the runs through one shared lock or gives each\s+reviewer its own worktree/,
-        /never starts a second full gate against a\s+worktree that already has one running/,
+        /Reviewers never run tests, linters or the QC gate/,
+        /one run at a time per candidate worktree/,
       ],
-      rev: [/only after the caller grants the shared lock or a\s+worktree of your own/],
+      rev: [/A reviewer reads; it does not execute the project/],
       acc: [
         /проверка, чувствительная к хосту, выполняется последовательно, на переднем плане и не оставляет процессов/iu,
       ],
@@ -754,7 +750,8 @@ const OBLIGATIONS = [
         /any diagnostic capable of\s+rewriting tracked files runs only in an isolated disposable copy/,
       ],
       rev: [
-        /Targeted read-only checks are always allowed; report their exact command and\s+environment/,
+        /What stays allowed is read-only inspection bound to the candidate SHA/,
+        /`Scope and checks` lists the commands actually used/,
       ],
     },
   ],

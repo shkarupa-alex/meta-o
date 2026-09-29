@@ -47,6 +47,7 @@ const EXPECTED = [
   "mo-e2e",
   "mo-orchestrate-orca",
   "mo-review-orca",
+  "mo-reviewer",
   "mo-setup",
   "mo-watchdog",
   "senior-jsts",

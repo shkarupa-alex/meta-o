@@ -278,9 +278,9 @@ test("PASS, FINDINGS and UNKNOWN fixtures preserve the canonical review envelope
       base(
         "UNKNOWN",
         "P0=0 P1=0 P2=0 P3=0",
-        "Unknown-Reason: review_incomplete\n\n",
         "",
-        "Unknown-Account\ncovered scope and blocking public observation\n",
+        "",
+        "Unknown-Account\nUnknown-Reason: review_incomplete\ncovered scope and blocking public observation\n",
       ),
     ),
   );
@@ -315,9 +315,9 @@ test("PASS, FINDINGS and UNKNOWN fixtures preserve the canonical review envelope
       base(
         "UNKNOWN",
         "P0=0 P1=0 P2=0 P3=0",
-        "Unknown-Reason: anything\n\n",
         "",
-        "Unknown-Account\ncovered scope and blocking public observation\n",
+        "",
+        "Unknown-Account\nUnknown-Reason: anything\ncovered scope and blocking public observation\n",
       ),
     ),
     "unknown_reason",
@@ -502,6 +502,36 @@ function gitlabCoverage(documents, hosting) {
   return required ? "covered" : "config_present";
 }
 
+/**
+ * §A-BACKLOG-01 admits one GitHub expression: the checkout ref that pins a
+ * pull-request run to the candidate instead of its synthetic merge commit. It
+ * selects what is checked out, never whether the job runs.
+ */
+const CHECKOUT_REF = "${{ github.event.pull_request.head.sha || github.sha }}";
+
+function expressionOutsideCheckoutRef(provider, parsed) {
+  const admitted = new Set();
+  if (provider === "github") {
+    for (const job of Object.values(parsed?.jobs ?? {})) {
+      for (const step of job?.steps ?? []) {
+        if (String(step?.uses).startsWith("actions/checkout@") && step.with?.ref === CHECKOUT_REF) {
+          admitted.add(step.with);
+        }
+      }
+    }
+  }
+  const walk = (value, owner, key) => {
+    if (typeof value === "string") {
+      return value.includes("${{") && !(key === "ref" && admitted.has(owner));
+    }
+    if (value && typeof value === "object") {
+      return Object.entries(value).some(([name, child]) => walk(child, value, name));
+    }
+    return false;
+  };
+  return walk(parsed, null, null);
+}
+
 /** §A-BACKLOG-01 evaluates only the finite literal GitHub/GitLab CI subset. */
 function ciCoverage({ provider, entrypoint, files, hosting = {} }) {
   if (!entrypoint || !Object.hasOwn(files, entrypoint)) return "no_ci_surface";
@@ -511,8 +541,9 @@ function ciCoverage({ provider, entrypoint, files, hosting = {} }) {
     if (seen.has(path)) throw new Error("include cycle");
     seen.add(path);
     const text = files[path];
-    if (typeof text !== "string" || text.includes("${{")) throw new Error("unknown construct");
+    if (typeof text !== "string") throw new Error("unknown construct");
     const parsed = yaml.load(text);
+    if (expressionOutsideCheckoutRef(provider, parsed)) throw new Error("unknown construct");
     documents.push({ path, parsed });
     const includes = Array.isArray(parsed?.include)
       ? parsed.include
@@ -979,17 +1010,19 @@ test("report completeness is required before delivery, not repaired after it", (
   // second chance, so the demand has to reach the reviewer in the task bytes.
   assert.match(protocol, /Deliver the whole report inside the single authoritative response/u);
   assert.match(protocol, /promise to send it separately are each a malformed report/u);
-  assert.match(protocol, /Read the body back before delivering it/u);
+  assert.match(protocol, /Validate the exact bytes before sending them/u);
   assert.match(
     review,
     /Say so in the task\s+bytes, because `worker_done` is what completes the Dispatch/u,
   );
 
-  // Correction is bounded by observed liveness rather than assumed; the old
-  // "same hot session" wording promised a repair path Orca does not have.
-  assert.match(review, /only while public evidence still shows\s+that Dispatch active/u);
-  assert.match(review, /`UNKNOWN` with `malformed_report`/u);
-  assert.match(review, /new review with its own cost, never a correction/u);
+  // `worker_done` ends the Dispatch, so there is no repair path in its name;
+  // the old "same hot session" wording promised one Orca does not have.
+  assert.match(
+    review,
+    /`UNKNOWN` with\s+`malformed_report` for that Dispatch and is never corrected in its name/u,
+  );
+  assert.match(review, /new review with its own id and full\s+validation, never a correction/u);
   assert.doesNotMatch(review, /corrected report in that hot\s+session/u);
 
   // Acceptance that cannot be turned into a check sends remediation guessing,

@@ -6957,10 +6957,13 @@ function defaultOnError(left, right) {
   }
 }
 
-// shared/scripts/mo-review-report.mjs
+// shared/scripts/mo-review-grammar.mjs
 var MODES = /* @__PURE__ */ new Set(["fast", "deep", "follow_up"]);
+var VERDICTS = ["PASS", "FINDINGS", "UNKNOWN"];
 var ORDER = ["Grounding", "Scope and checks", "Findings", "Unknowns", "Residual risks"];
 var LABELS = [...ORDER, "Evidence report", "Unknown-Account"];
+var SHA = /^[a-f0-9]{40}$/u;
+var ENTRY = /^(F-\d{3}) \[(P[0-3])\] .+/u;
 var UNKNOWN_REASONS = /* @__PURE__ */ new Set([
   "unreadable",
   "candidate_mismatch",
@@ -6970,12 +6973,15 @@ var UNKNOWN_REASONS = /* @__PURE__ */ new Set([
   "handoff_failure",
   "review_incomplete"
 ]);
+var HEADER = [
+  /^Review-Execution: (\S+)$/u,
+  /^Candidate: ([a-f0-9]{40})$/u,
+  /^Mode: requested=(\S+) effective=(\S+)$/u,
+  /^Delegation: .*$/u,
+  /^Verdict: (\S+)$/u,
+  /^Counts: P0=(\d+) P1=(\d+) P2=(\d+) P3=(\d+)$/u
+];
 var fail = (reason, line) => ({ status: "malformed", reason, line: line + 1 });
-function topLevelProse(text3) {
-  return new Set(
-    topLevelParagraphs(text3).flatMap(({ line, rows }) => rows.map((_, step) => line + step))
-  );
-}
 function topLevelParagraphs(text3) {
   const lines = text3.split("\n");
   return fromMarkdown(text3).children.filter((node2) => node2.type === "paragraph").map((node2) => ({
@@ -6983,36 +6989,38 @@ function topLevelParagraphs(text3) {
     rows: lines.slice(node2.position.start.line - 1, node2.position.end.line)
   }));
 }
-function readEnvelope(lines) {
-  const shape = [
-    /^Review-Execution: (\S+)$/u,
-    /^Candidate: [a-f0-9]{40}$/u,
-    /^Mode: requested=(\S+) effective=(\S+)$/u,
-    null,
-    /^Verdict: (\S+)$/u,
-    /^Counts: P0=(\d+) P1=(\d+) P2=(\d+) P3=(\d+)$/u
-  ];
-  for (const [row, pattern] of shape.entries()) {
-    if (pattern !== null && !pattern.test(lines[row] ?? "")) return fail("header_order", row);
+function topLevelProse(text3) {
+  return new Set(
+    topLevelParagraphs(text3).flatMap(({ line, rows }) => rows.map((_, step) => line + step))
+  );
+}
+function readEnvelope(lines, prose) {
+  const rows = [];
+  let row = 0;
+  for (const [step, pattern] of HEADER.entries()) {
+    if (step > 0 && lines[row] === "") row += 1;
+    if (!prose.has(row) || !pattern.test(lines[row] ?? "")) return fail("header_order", row);
+    rows.push(row);
+    row += 1;
   }
-  if (lines[3] !== "Delegation: none") return fail("delegation", 3);
-  const mode = shape[2].exec(lines[2]);
-  if (!MODES.has(mode[1]) || !MODES.has(mode[2])) return fail("header_order", 2);
-  const verdict = shape[4].exec(lines[4])[1];
-  if (!["PASS", "FINDINGS", "UNKNOWN"].includes(verdict)) return fail("verdict", 4);
-  const execution = shape[0].exec(lines[0])[1];
-  const counts = shape[5].exec(lines[5]);
+  const [execution, candidate, mode, delegation, verdict, counts] = rows.map(
+    (at, step) => HEADER[step].exec(lines[at])
+  );
+  if (delegation[0] !== "Delegation: none") return fail("delegation", rows[3]);
+  if (!MODES.has(mode[1]) || !MODES.has(mode[2])) return fail("header_order", rows[2]);
+  if (!VERDICTS.includes(verdict[1])) return fail("verdict", rows[4]);
   return {
-    execution,
-    candidate: lines[1].slice("Candidate: ".length),
+    execution: execution[1],
+    candidate: candidate[1],
     requested: mode[1],
     effective: mode[2],
-    verdict,
-    counts: counts.slice(1).map(Number)
+    verdict: verdict[1],
+    counts: counts.slice(1).map(Number),
+    countsRow: rows[5]
   };
 }
-function readHeader(lines, expected) {
-  const envelope = readEnvelope(lines);
+function readHeader(lines, prose, expected) {
+  const envelope = readEnvelope(lines, prose);
   if (envelope.status === "malformed") return envelope;
   if (envelope.execution !== expected.execution) return fail("execution_mismatch", 0);
   if (envelope.candidate !== expected.candidate) return fail("candidate_mismatch", 1);
@@ -7020,12 +7028,13 @@ function readHeader(lines, expected) {
   if (expected.effectiveMode !== void 0 && envelope.effective !== expected.effectiveMode) {
     return fail("mode_mismatch", 2);
   }
-  if (lines.at(-1) !== `End-Review: ${envelope.execution}`) {
-    return fail("footer_mismatch", lines.length - 1);
+  const last = lines.length - 1;
+  if (lines[last] !== `End-Review: ${envelope.execution}` || !prose.has(last)) {
+    return fail("footer_mismatch", last);
   }
   return envelope;
 }
-function readSections(lines, prose) {
+function readSections(lines, prose, countsRow) {
   const found = new Map(LABELS.map((label) => [label, []]));
   for (const index2 of prose) {
     if (found.has(lines[index2])) found.get(lines[index2]).push(index2);
@@ -7035,7 +7044,7 @@ function readSections(lines, prose) {
   }
   const evidence = found.get("Evidence report")[0];
   const positions = ORDER.map((label) => found.get(label)[0]);
-  if (evidence <= 5 || positions.some((position2) => position2 < evidence)) {
+  if (evidence <= countsRow || positions.some((position2) => position2 < evidence)) {
     return fail("section_order", evidence);
   }
   for (let step = 1; step < positions.length; step += 1) {
@@ -7043,44 +7052,66 @@ function readSections(lines, prose) {
   }
   return { evidence, at: new Map(ORDER.map((label, step) => [label, positions[step]])), found };
 }
+function readIndexLayout(lines, prose, from, to) {
+  for (let row = from; row < to; row += 1) {
+    if (lines[row] === "") {
+      if (lines[row - 1] === "" && row - 1 >= from) return fail("index_layout", row);
+    } else if (!prose.has(row)) return fail("index_layout", row);
+  }
+  return {};
+}
 function readIndex(paragraphs, from, to, counts) {
-  const found = paragraphs.filter(
-    ({ line, rows }) => line >= from && line < to && !rows[0].startsWith("Unknown-Reason:")
-  );
+  const found = paragraphs.filter(({ line }) => line > from && line < to);
   const entries = [];
   for (const { line, rows } of found) {
     for (const [step, row] of rows.entries()) {
-      const match = row.match(/^(F-\d{3}) \[(P[0-3])\] .+/u);
+      const match = row.match(ENTRY);
       if (match) entries.push({ key: match[1], severity: match[2], line: line + step });
       else if (step === 0) return fail("index_key_order", line);
     }
   }
   for (const [step, entry] of entries.entries()) {
     if (entry.key !== `F-${String(step + 1).padStart(3, "0")}`)
-      return fail("index_key_order", from);
+      return fail("index_key_order", entry.line);
   }
   const severities = [0, 0, 0, 0];
   for (const entry of entries) severities[Number(entry.severity.slice(1))] += 1;
   const total = counts.reduce((sum, count) => sum + count, 0);
-  if (total !== entries.length) return fail("counts_mismatch", 5);
+  if (total !== entries.length) return fail("counts_mismatch", from);
   for (const [step, count] of counts.entries()) {
-    if (severities[step] !== count) return fail("counts_mismatch", 5);
+    if (severities[step] !== count) return fail("counts_mismatch", from);
   }
   return { keys: entries.map(({ key, severity }) => ({ key, severity })) };
 }
-function readFindingBodies(lines, prose, span, keys) {
-  const bodies = [...prose].filter((position2) => position2 > span.from && position2 < span.to).map((position2) => ({ match: lines[position2].match(/^(F-\d{3})$/u), position: position2 })).filter(({ match }) => match);
-  if (bodies.length !== keys.length) return fail("index_body_mismatch", span.from);
-  for (const [step, body] of bodies.entries()) {
-    if (body.match[1] !== keys[step].key) return fail("index_body_mismatch", body.position);
-    const next = bodies[step + 1]?.position ?? span.to;
-    const detail = [...prose].filter((line) => line > body.position && line < next && lines[line].trim() !== "").map((line) => lines[line]);
-    if (detail.length === 0) return fail("index_body_mismatch", body.position);
-    if (!new RegExp(`^\\[${keys[step].severity}\\](?:\\s|$)`, "u").test(detail[0])) {
-      return fail("index_body_mismatch", body.position);
-    }
+function bodyOpening(line, expected, opened) {
+  const bare = /^(F-\d{3})$/u.exec(line);
+  const inline = /^(F-\d{3}) \[(P[0-3])\](?: |$)/u.exec(line);
+  if (bare === null && inline === null) return { kind: "prose" };
+  const key = (bare ?? inline)[1];
+  if (expected !== void 0 && key === expected.key) {
+    return bare ? { kind: "bare" } : { kind: "inline", severity: inline[2] };
   }
-  return { bodies };
+  if (inline !== null && opened.has(key)) return { kind: "prose" };
+  return { kind: "stray" };
+}
+function readFindingBodies(lines, prose, span, keys) {
+  const rows = [...prose].filter((position2) => position2 > span.from && position2 < span.to).sort((left, right) => left - right);
+  const opened = /* @__PURE__ */ new Set();
+  for (const [step, position2] of rows.entries()) {
+    const expected = keys[opened.size];
+    const opening = bodyOpening(lines[position2], expected, opened);
+    if (opening.kind === "prose") continue;
+    if (opening.kind === "stray") return fail("index_body_mismatch", position2);
+    let severity = opening.severity;
+    if (opening.kind === "bare") {
+      const detail = rows.slice(step + 1).find((row) => lines[row].trim() !== "");
+      severity = /^\[(P[0-3])\](?:\s|$)/u.exec(lines[detail] ?? "")?.[1];
+    }
+    if (severity !== expected.severity) return fail("index_body_mismatch", position2);
+    opened.add(expected.key);
+  }
+  if (opened.size !== keys.length) return fail("index_body_mismatch", span.from);
+  return {};
 }
 function readUnknown(lines, prose, sections, verdict) {
   const account = sections.found.get("Unknown-Account");
@@ -7107,15 +7138,7 @@ function readUnknown(lines, prose, sections, verdict) {
 function bodyOf(lines, from, to) {
   return lines.slice(from + 1, to).filter((line) => line.trim() !== "");
 }
-function validateReport(text3, expected) {
-  const lines = text3.trimEnd().split("\n");
-  const header = readHeader(lines, expected);
-  if (header.status === "malformed") return header;
-  const prose = topLevelProse(text3);
-  const sections = readSections(lines, prose);
-  if (sections.status === "malformed") return sections;
-  const index2 = readIndex(topLevelParagraphs(text3), 6, sections.evidence, header.counts);
-  if (index2.status === "malformed") return index2;
+function readEvidence(lines, prose, sections, header, index2) {
   const at = sections.at;
   if (bodyOf(lines, at.get("Grounding"), at.get("Scope and checks")).length === 0) {
     return fail("grounding_missing", at.get("Grounding"));
@@ -7136,16 +7159,34 @@ function validateReport(text3, expected) {
     if (index2.keys.length > 0 || findingBody.length > 0) {
       return fail("pass_not_empty", at.get("Findings"));
     }
-  } else {
-    if (index2.keys.length === 0) return fail("counts_mismatch", 5);
-    const paired = readFindingBodies(
-      lines,
-      prose,
-      { from: at.get("Findings"), to: findingsEnd },
-      index2.keys
-    );
-    if (paired.status === "malformed") return paired;
+    return {};
   }
+  if (index2.keys.length === 0) return fail("counts_mismatch", header.countsRow);
+  const span = { from: at.get("Findings"), to: findingsEnd };
+  return readFindingBodies(lines, prose, span, index2.keys);
+}
+function reportLines(text3) {
+  const body = text3.endsWith("\n") ? text3.slice(0, -1) : text3;
+  return body.split("\n");
+}
+function validateReport(text3, expected) {
+  const lines = reportLines(text3);
+  const prose = topLevelProse(text3);
+  const header = readHeader(lines, prose, expected);
+  if (header.status === "malformed") return header;
+  const sections = readSections(lines, prose, header.countsRow);
+  if (sections.status === "malformed") return sections;
+  const layout = readIndexLayout(lines, prose, header.countsRow + 1, sections.evidence);
+  if (layout.status === "malformed") return layout;
+  const index2 = readIndex(
+    topLevelParagraphs(text3),
+    header.countsRow,
+    sections.evidence,
+    header.counts
+  );
+  if (index2.status === "malformed") return index2;
+  const evidence = readEvidence(lines, prose, sections, header, index2);
+  if (evidence.status === "malformed") return evidence;
   return {
     status: "valid",
     verdict: header.verdict,
@@ -7161,6 +7202,76 @@ function reportLine(result) {
   }
   return `MO-REVIEW-REPORT/1 status=malformed reason=${result.reason} line=${result.line}`;
 }
+var TEMPLATE_FINDING = [
+  "F-001",
+  "[P2] confirmed. Causal path: <what the candidate does, step by step, until it fails>.",
+  "Impact: <who or what breaks, and when>. Location: <path:line at the candidate SHA>.",
+  "Proof: <SHA-bound command or trace that shows it>. Invariant after the fix: <the property",
+  "that must hold>. Direction: <technical direction>; depth: local patch. Regression",
+  "case: <input and state>, <expected behavior>, <where the check belongs>."
+];
+function templateSections(verdict, unknownReason) {
+  const findings = verdict === "FINDINGS" ? ["", ...TEMPLATE_FINDING] : [];
+  const account = verdict === "UNKNOWN" ? [
+    "",
+    "Unknown-Account",
+    `Unknown-Reason: ${unknownReason}`,
+    "Account: <completed stages, covered scope, the blocking public observation and",
+    "the recovery evidence>."
+  ] : [];
+  return [
+    "Evidence report",
+    "",
+    "Grounding",
+    "HEAD: <output of `git rev-parse HEAD`>; `git status --porcelain`: <empty>.",
+    "Read: <intent, instructions, specification and scope>.",
+    "",
+    "Scope and checks",
+    "Read by SHA: <the read-only commands used>. No tests, lint or QC were run.",
+    "",
+    "Findings",
+    ...findings,
+    ...account,
+    "",
+    "Unknowns",
+    "Unproven: <what stayed unproven, or none>.",
+    "",
+    "Residual risks",
+    "Risks: <pre-existing or out-of-scope risks, or none>."
+  ];
+}
+function reportTemplate({ verdict, dispatch, candidate, requested, effective, reason }) {
+  if (!VERDICTS.includes(verdict)) return { error: "--verdict must be PASS, FINDINGS or UNKNOWN" };
+  if (typeof dispatch !== "string" || !/^\S+$/u.test(dispatch)) return { error: "--dispatch" };
+  if (!SHA.test(candidate ?? "")) return { error: "--candidate must be a full 40-hex SHA" };
+  if (!MODES.has(requested) || !MODES.has(effective)) {
+    return { error: "--requested and --effective must be fast, deep or follow_up" };
+  }
+  if (verdict === "UNKNOWN" !== (reason !== void 0)) {
+    return { error: "--unknown-reason is required for UNKNOWN and only for UNKNOWN" };
+  }
+  if (reason !== void 0 && !UNKNOWN_REASONS.has(reason)) {
+    return { error: `--unknown-reason must be one of ${[...UNKNOWN_REASONS].join("|")}` };
+  }
+  const p2 = verdict === "FINDINGS" ? 1 : 0;
+  const lines = [
+    `Review-Execution: ${dispatch}`,
+    `Candidate: ${candidate}`,
+    `Mode: requested=${requested} effective=${effective}`,
+    "Delegation: none",
+    `Verdict: ${verdict}`,
+    `Counts: P0=0 P1=0 P2=${p2} P3=0`,
+    "",
+    ...verdict === "FINDINGS" ? ["F-001 [P2] <One sentence naming the defect>.", ""] : [],
+    ...templateSections(verdict, reason),
+    "",
+    `End-Review: ${dispatch}`
+  ];
+  return { text: `${lines.join("\n")}
+` };
+}
+
+// shared/scripts/mo-review-report.mjs
 function readReportBytes(path) {
   let fd;
   try {
@@ -7187,6 +7298,46 @@ function decodeReport(buffer) {
   const text3 = buffer.toString("utf8");
   if (!Buffer.from(text3, "utf8").equals(buffer)) return { error: "invalid_utf8" };
   return { text: text3 };
+}
+function prepareBody({ path, buffer, expected }) {
+  const decoded = decodeReport(buffer);
+  if (decoded.error) return { status: "malformed", reason: decoded.error, line: 0 };
+  const verdict = validateReport(decoded.text, expected);
+  if (verdict.status === "malformed") return verdict;
+  let fd;
+  try {
+    fd = openSync(
+      path,
+      constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
+      384
+    );
+  } catch (error) {
+    return { status: "refused", reason: error.code === "EEXIST" ? "exists" : "unwritable" };
+  }
+  try {
+    writeSync(fd, buffer);
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+  const written = readReportBytes(path);
+  if (written.error || !written.buffer.equals(buffer)) {
+    return { status: "refused", reason: "identity_changed" };
+  }
+  return { status: "prepared", path, bytes: buffer.length, verdict };
+}
+var NORMALIZATIONS = {
+  none: (text3) => text3,
+  "final-newline": (text3) => text3.endsWith("\n") ? text3.slice(0, -1) : text3
+};
+function bodyIdentity(received, preparedPath, normalization = "none") {
+  const normalize = NORMALIZATIONS[normalization];
+  if (normalize === void 0) return { identity: "unverified", reason: "normalization" };
+  const prepared = readReportBytes(preparedPath);
+  if (prepared.error) return { identity: "unverified", reason: prepared.error };
+  const left = normalize(received.toString("utf8"));
+  const right = normalize(prepared.buffer.toString("utf8"));
+  return { identity: left === right ? "identical" : "different", reason: normalization };
 }
 var VENDOR = /^[a-z0-9][a-z0-9-]{0,31}$/u;
 var LINK_UNSUPPORTED = /* @__PURE__ */ new Set(["EPERM", "ENOSYS", "EXDEV", "EMLINK"]);
@@ -7346,7 +7497,56 @@ function commandValidate(options) {
   const result = validateReport(decoded.text, expectationOf(options));
   process.stdout.write(`${reportLine(result)}
 `);
-  return result.status === "valid" ? 0 : 1;
+  if (options.prepared === void 0) return result.status === "valid" ? 0 : 1;
+  const normalization = options.normalization ?? "none";
+  if (NORMALIZATIONS[normalization] === void 0) {
+    throw new Error("--normalization must be none or final-newline");
+  }
+  const identity = bodyIdentity(bytes.buffer, options.prepared, normalization);
+  process.stdout.write(
+    `MO-REVIEW-BODY/1 prepared_body_identity=${identity.identity} reason=${identity.reason}
+`
+  );
+  return result.status === "valid" && identity.identity !== "different" ? 0 : 1;
+}
+function commandPrepare(options) {
+  require_(options, ["file"]);
+  const result = prepareBody({
+    path: options.file,
+    buffer: readFileSync(0),
+    expected: expectationOf(options)
+  });
+  if (result.status === "prepared") {
+    process.stdout.write(`${reportLine(result.verdict)}
+`);
+    process.stdout.write(
+      `MO-REVIEW-BODY/1 status=prepared path=${JSON.stringify(result.path)} bytes=${result.bytes}
+`
+    );
+    return 0;
+  }
+  if (result.status === "refused") {
+    process.stdout.write(`MO-REVIEW-BODY/1 status=refused reason=${result.reason}
+`);
+    return 1;
+  }
+  process.stdout.write(`${reportLine(result)}
+`);
+  return 1;
+}
+function commandTemplate(options) {
+  require_(options, ["verdict", "dispatch", "candidate", "requested", "effective"]);
+  const template = reportTemplate({
+    verdict: options.verdict,
+    dispatch: options.dispatch,
+    candidate: options.candidate,
+    requested: options.requested,
+    effective: options.effective,
+    reason: options["unknown-reason"]
+  });
+  if (template.error) throw new Error(template.error);
+  process.stdout.write(template.text);
+  return 0;
 }
 function commandStage(options) {
   require_(options, ["dir", "slot", "vendor"]);
@@ -7408,7 +7608,13 @@ function commandPair(options) {
   return 0;
 }
 function main(argv) {
-  const commands = { validate: commandValidate, stage: commandStage, pair: commandPair };
+  const commands = {
+    template: commandTemplate,
+    prepare: commandPrepare,
+    validate: commandValidate,
+    stage: commandStage,
+    pair: commandPair
+  };
   if (argv[0] === "namespace") {
     const created = namespace();
     process.stdout.write(
@@ -7419,7 +7625,9 @@ function main(argv) {
   }
   const command = commands[argv[0]];
   if (command === void 0) {
-    throw new Error("usage: mo-review-report.mjs <namespace|validate|stage|pair> \u2026");
+    throw new Error(
+      "usage: mo-review-report.mjs <namespace|template|prepare|validate|stage|pair> \u2026"
+    );
   }
   return command(parseArguments(argv.slice(1)));
 }
@@ -7433,14 +7641,18 @@ if (process.argv[1] !== void 0 && import.meta.url === `file://${process.argv[1]}
   }
 }
 export {
+  NORMALIZATIONS,
+  bodyIdentity,
   businessQuestion,
   decodeReport,
   linkFailureReason,
   namespace,
   pair,
+  prepareBody,
   publicSummary,
   readReportBytes,
   reportLine,
+  reportTemplate,
   stage,
   topLevelParagraphs,
   topLevelProse,

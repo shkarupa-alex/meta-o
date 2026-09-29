@@ -70,6 +70,7 @@ test("every skill is individually installable with its complete owned files", { 
     "find-reuse",
     "mo-orchestrate-orca",
     "mo-review-orca",
+    "mo-reviewer",
     "mo-setup",
     "mo-e2e",
     "mo-watchdog",

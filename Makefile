@@ -51,9 +51,11 @@ mo-lint:
 	node --check tools/skill-evals.mjs
 	node --check tools/skill-eval-runtime.mjs
 	node --check tools/skill-eval-legacy.mjs
+	node --check tools/skill-eval-corpus.mjs
 	node --check shared/scripts/mo-backlog.mjs
 	node --check shared/scripts/mo-harness-screen.mjs
 	node --check shared/scripts/mo-review-report.mjs
+	node --check shared/scripts/mo-review-grammar.mjs
 	node tools/adapter-contract.mjs --validate
 	bash -n shared/scripts/mo-posture.sh
 	bash -n shared/scripts/mo-watchdog.sh
@@ -131,9 +133,9 @@ mo-e2e:
 	@echo "AGENT_REQUIRED: not executed"
 	@echo
 	@echo "Docs:      docs/e2e.md, docs/backend-capabilities.md"
-	@echo "Scenarios: B1-B52 — Orca backend, lifecycle, setup and Qwen profile"
+	@echo "Scenarios: B1-B55 — Orca backend, lifecycle, setup and Qwen profile"
 	@echo "           W1-W4 — watchdog target, scan, nudge, suppression"
-	@echo "           24 embedded cases — positive/forbidden/degraded for 8 skills"
+	@echo "           27 embedded cases — positive/forbidden/degraded for 9 skills"
 	@echo "           local and authorized remote installation"
 	@echo "Run:       execute the applicable scenarios without changing the frozen candidate"
 	@echo "Evidence:  keep exact SHA and per-scenario actor/provider facts in the current run/final result"

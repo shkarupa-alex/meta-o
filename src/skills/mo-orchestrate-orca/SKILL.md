@@ -98,12 +98,18 @@ pre-authorized; credentials, product disputes, subscriptions, irreversible or
 unknown effects and watchdog remain human boundaries. Never retry an unknown
 write effect.
 
-Run foreground serialized QC and call `mo-e2e` for applicable scenarios.
-After knowledge harvest and removal of the implemented spec, require GC on the
-exact candidate. Immediately before any agent-owned MR/PR create run G1 and
-verify remote source head equality. Immediately before merge run G2 and bind the
-provider write to that head/required policy; unsupported integration candidate
-proof is `needs_attention`.
+Run the project's declared QC in the foreground in a clean checkout of exactly
+the candidate, naming the command and its exit code, and call `mo-e2e` for
+applicable scenarios; reviewers never run tests, linters or QC. After knowledge
+harvest and removal of the implemented spec, require GC on the exact candidate.
+Immediately before any agent-owned MR/PR create run G1 and verify remote source
+head equality. Immediately before merge run G2: the closure proof, the remote
+head, `CI-Coverage/1 covered` and a successful run of every covering CI QC job
+whose printed checkout SHA equals the candidate, then bind the provider write to
+that head/required policy. Any other coverage outcome, a missing or failed run,
+another checkout SHA or unsupported integration candidate proof is
+`needs_attention`; a locally proven candidate is still delivered, but never
+merged by the agent without that CI evidence.
 
 Return only when one unchanged full SHA has QC, two fresh vendor-diverse PASS
 reports, applicable E2E and empty GC. Otherwise return honest

@@ -9,6 +9,14 @@ belong to its caller.
 Ground every review in the original intent, accepted specification, repository
 instructions, exact full candidate SHA, claimed scope and requested mode.
 
+When the work follows a specification, the brief names it in one line,
+`Spec: <path|object>`, a tracked path or Git object the candidate can reach, and
+the review checks the requirements against the code. Work without one carries
+`Spec: none`; its absence is then not a finding. The caller that starts the
+review — an orchestrator, or an executor that runs a standalone review of its
+own work — passes that line, because only the caller knows which specification
+the work followed.
+
 - `fast` is for bounded low-risk work. Read the complete diff, directly
   reachable callers and callees, related tests/configuration and repository
   instructions.
@@ -76,35 +84,67 @@ the project or writes the missing checker in passing.
 
 ## Diagnostics
 
-Targeted read-only checks are always allowed; report their exact command and
-environment. The project's full gate is host-sensitive, so run one full gate at
-a time, in the foreground, and only after the caller grants the shared lock or a
-worktree of your own. A remediation SHA is a new candidate and gets its own run.
+A reviewer reads; it does not execute the project. Tests, linters, formatters,
+type checkers and the project's QC gate are not run by a reviewer, not even a
+pointed test: on many projects the suite is thousands of cases or something
+heavy, a review that waits for it lets every participant's prompt cache expire,
+and the result says nothing the executor's and CI's run of the same SHA did not.
+QC of the exact candidate belongs to the executor or coordinator, in a clean
+checkout of that SHA, and to CI before an agent merges.
 
-Never launch it with `nohup`, `&` or another detached form. Before reading an
-exit status, wait for the exact process this review owns and confirm it left no
-orphan descendant. A detached, overlapped or unreaped run is `UNKNOWN` for this
-reviewer, and a host-sensitive failure under those conditions is not reported as
-a candidate finding without clean process evidence.
+What stays allowed is read-only inspection bound to the candidate SHA —
+`git show`, `git diff`, `git grep`, `git log`, reading files of the candidate
+checkout — and the report validator the brief names, run on the reviewer's own
+report. `Scope and checks` lists the commands actually used. A reviewer that
+needs an executed check to decide a finding states the check it would need as
+the finding's regression case, or records the gap in Unknowns; it does not run
+it.
 
 ## Report
 
-Return one complete textual report beginning with:
+Return one complete textual report. Its first line — the first byte of the body
+— is `Review-Execution:` followed by one space and the bare Dispatch id, nothing
+after it. The validator's own output line `MO-REVIEW-REPORT/1 …` is never part
+of a body. The six service lines come in this order, with at most one empty line
+between two of them and nothing else:
 
 ```text
 Review-Execution: <opaque dispatch id>
 Candidate: <40-hex SHA>
-Mode: requested=<mode> effective=<mode>
+Mode: requested=<fast|deep|follow_up> effective=<fast|deep|follow_up>
 Delegation: none
 Verdict: <PASS|FINDINGS|UNKNOWN>
 Counts: P0=<n> P1=<n> P2=<n> P3=<n>
 ```
 
-Then include an optional keyed finding index, `Evidence report`, and exactly one
-each of `Grounding`, `Scope and checks`, `Findings`, `Unknowns`,
-`Residual risks` in that order. `UNKNOWN` additionally includes a non-empty
-`Unknown-Account` between Findings and Unknowns and a typed `Unknown-Reason`.
-End with `End-Review: <Review-Execution>` as the last non-empty line.
+After `Counts` stand at most one empty line, then the keyed index — only
+top-level `F-001 [P2] <one sentence>` entries, at most one empty line between
+two of them — then at most one empty line and `Evidence report`. Then exactly
+one each of `Grounding`, `Scope and checks`, `Findings`, `Unknowns`,
+`Residual risks` in that order, each a top-level line with exactly that text;
+empty lines inside a section's prose are fine. `UNKNOWN` additionally includes a
+non-empty `Unknown-Account` between Findings and Unknowns holding one typed
+`Unknown-Reason: <reason>` line. The last line is `End-Review: <same id>`,
+followed by at most one line feed.
+
+`Grounding` is where the proof of the checkout goes: the HEAD printed by
+`git rev-parse HEAD`, an empty `git status --porcelain`, or for a shared
+checkout the SHA-bound reads used. It never goes into the service lines.
+
+Each finding in `Findings` takes exactly one of two bodies, both top-level:
+
+```text
+F-001
+[P2] causal path, impact, invariant, direction and regression case…
+```
+
+```text
+F-001 [P2] causal path, impact, invariant, direction and regression case…
+```
+
+A key already opened and restated later in its own body is prose. A body inside
+a list, quote or code block answers nothing, a severity differing from the index
+is malformed, and every index key has exactly one body.
 
 The complete textual report includes:
 
@@ -122,16 +162,24 @@ named. A summary of it, a pointer to where its full text can be read, and a
 promise to send it separately are each a malformed report. On some backends
 delivering that response is exactly what ends the session, so whatever stayed
 outside it is the part nobody can retrieve afterwards, and the review has to be
-bought again. Read the body back before delivering it; assume there is no second
-chance.
+bought again. A backend's generic completion format — a short summary, say —
+yields to this grammar when the brief declares it; a reviewer that sees both and
+no declaration asks before sending.
+
+Validate the exact bytes before sending them. The shipped
+`mo-review-report.mjs template` prints a complete body this grammar accepts for
+the brief's own Dispatch, candidate and modes; fill it in rather than rebuild
+it. `mo-review-report.mjs prepare --file <Body-File>` validates the bytes, then
+creates the file the brief named exclusively and writes them once; the response
+carries exactly that file's content. Without a `Body-File`,
+`mo-review-report.mjs validate --file -` checks the same bytes from stdin. A
+malformed result is fixed before sending; assume there is no second chance.
 
 Structure is read from the block AST: only a top-level node can carry a
-structural marker. The index is exactly the top-level paragraphs strictly
-between `Counts:` and the single top-level `Evidence report`; the contents of a
-code block, a quote or a list are never index body, and a line like
-`F-001 [P3] …` repeated inside `Findings` is valid prose.
-`mo-review-report.mjs validate` applies exactly this rule, so a report that
-reads correctly to a human is not rejected for quoting its own markers.
+structural marker, and the contents of a code block, a quote or a list are never
+index or finding body. `mo-review-report.mjs validate` applies exactly this
+grammar, so a report that reads correctly to a human is not rejected for quoting
+its own markers.
 
 Index keys start at `F-001`, are report-local and match finding body/severity
 one-to-one. Counts equal authored findings. `PASS` has zero counts and empty

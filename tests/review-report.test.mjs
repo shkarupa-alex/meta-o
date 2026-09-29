@@ -97,8 +97,9 @@ test("each verdict validates in its own complete shape", () => {
   const unknown = validateReport(
     report({
       verdict: "UNKNOWN",
-      index: "Unknown-Reason: review_incomplete\n\n",
-      account: "Unknown-Account\ncovered scope and blocking public observation\n",
+      account:
+        "Unknown-Account\nUnknown-Reason: review_incomplete\n" +
+        "covered scope and blocking public observation\n",
     }),
     context(),
   );
@@ -134,29 +135,31 @@ test("a marker inside a container stays body evidence", () => {
   }
 });
 
-test("a container before the evidence is diagnostic text, not an index entry", () => {
-  // The span between the counts and `Evidence report` is where a reviewer
-  // sometimes leaves the command it ran. Reading those lines as index keys
-  // threw a valid authoritative response away as malformed.
-  for (const container of [
+test("the index holds entries and nothing else", () => {
+  // Between the counts and `Evidence report` a container or loose prose is not
+  // an entry the counts can answer for. The reviewer validates the exact bytes
+  // before sending, so refusing it costs a correction, not a review.
+  for (const intruder of [
     "> diagnostic note\n\n",
     "- diagnostic note\n\n",
     "```text\nF-999 [P0] not a finding\n```\n\n",
     "    F-999 [P0] indented, so not a finding\n\n",
   ]) {
-    const text = report({ index: container });
-    assert.equal(validateReport(text, context()).status, "valid", container);
+    assert.equal(reasonOf(report({ index: intruder })), "index_layout", intruder);
   }
-  // A genuine top-level line in that span is still structure: the index keeps
-  // its order rule, and a body still has to answer every key.
+  assert.equal(
+    reasonOf(report({ index: "Unknown-Reason: review_incomplete\n\n" })),
+    "index_key_order",
+  );
   assert.equal(reasonOf(report({ index: "F-002 [P2] out of order.\n\n" })), "index_key_order");
-  const paired = report({
+  // A body quoted inside a container answers no key: only top-level lines do.
+  const quoted = report({
     verdict: "FINDINGS",
     counts: "P0=0 P1=0 P2=1 P3=0",
-    index: "> quoted note\n\nF-001 [P2] a real finding.\n\n",
-    findings: "F-001\n[P2] confirmed.\nProof and direction.\n",
+    index: "F-001 [P2] a real finding.\n\n",
+    findings: "> F-001 [P2] quoted, not a body.\n\n",
   });
-  assert.equal(validateReport(paired, context()).status, "valid");
+  assert.equal(reasonOf(quoted), "index_body_mismatch");
 });
 
 test("a wrapped summary is one entry, and two rows are two", () => {
@@ -243,8 +246,7 @@ test("each structural failure names itself", () => {
     [
       report({
         verdict: "UNKNOWN",
-        index: "Unknown-Reason: made_up\n\n",
-        account: "Unknown-Account\nstated\n",
+        account: "Unknown-Account\nUnknown-Reason: made_up\nstated\n",
       }),
       "unknown_reason",
     ],

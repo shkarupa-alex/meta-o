@@ -21,10 +21,14 @@ Read [Portable review protocol](references/review-protocol.md),
 completely. From the same resolved Orca binary also read the version-matched
 `orchestration` and `orca-cli` bundled guides; never install guide copies.
 
-Accept only an exact 40-hex `candidate_sha`, intent source, scope, mode and two
-user-approved vendor-diverse selections from bundled
+Accept only an exact 40-hex `candidate_sha`, intent source, scope, mode, the
+specification line and two user-approved vendor-diverse selections from bundled
 `scripts/mo-models.mjs --show --project <root>`. Never choose fallback model,
-effort, placement or posture flags.
+effort, placement or posture flags. The caller passes `Spec: <path|object>`
+when the work followed a specification and `Spec: none` otherwise, and both
+reviewers receive the same line; an executor running this review on its own
+work is such a caller too, because only it knows which specification it
+followed.
 
 Those two selections form the vendor-diverse pair; neither may be substituted.
 
@@ -137,6 +141,14 @@ Create both tasks before launching either worker. The skill creates only two
 reviewers, never an executor/fixer/verifier/subagent. Use stable visible titles
 `<feature>:review:<vendor>`; title is a label and exact handles own cleanup.
 
+Every reviewer Dispatch names `mo-reviewer` under `Reviewer-Skill` together
+with the absolute path of its `SKILL.md` in the installation this skill runs
+from — the sibling directory of this skill. Before either Dispatch, read that
+file; when it is absent, unreadable from the reviewer's workspace, or not the
+same build as this skill, no Dispatch starts and the result is
+`needs_attention/skill_unavailable`. Never paste reviewer instructions from a
+copy of unknown origin.
+
 Start each harness without task bytes. Positive version-matched observation must
 prove its process, normal agent prompt and absence of trust UI or shell prompt
 before one Dispatch injection. A composed start is allowed only when public
@@ -186,42 +198,34 @@ Each reviewer proves full SHA and clean status, performs non-mutating review and
 places its entire report in authoritative `worker_done`. Say so in the task
 bytes, because `worker_done` is what completes the Dispatch: a body holding a
 summary, a pointer to the terminal or a promise to send more cannot be repaired
-afterwards, and that reviewer is spent. Require this exact shape and anchored
-order:
+afterwards, and that reviewer is spent. The brief's `Report` field declares the
+report grammar of [Portable review protocol](references/review-protocol.md) as
+the task-specific body that replaces the generic completion format of Orca's
+injected preamble, and carries the literal printed for this Dispatch:
 
 ```text
-Review-Execution: <opaque dispatch id>
-Candidate: <40-hex SHA>
-Mode: requested=<fast|deep|follow_up> effective=<fast|deep|follow_up>
-Delegation: none
-Verdict: <PASS|FINDINGS|UNKNOWN>
-Counts: P0=<n> P1=<n> P2=<n> P3=<n>
-
-F-001 [P2] <one short sentence>
-
-Evidence report
-Grounding
-...
-Scope and checks
-...
-Findings
-...
-Unknown-Account
-... only for UNKNOWN
-Unknowns
-...
-Residual risks
-...
-End-Review: <opaque dispatch id>
+scripts/mo-review-report.mjs template --verdict <PASS|FINDINGS|UNKNOWN> \
+  --dispatch <id> --candidate <sha> --requested <mode> --effective <mode> \
+  [--unknown-reason <reason>]
 ```
 
-`PASS` has four zero counts, an empty index and empty `Findings`, but
-non-empty grounding/checks and explicit Unknowns/residual risks. `FINDINGS`
-has matching monotonic report-local keys in index/body and counts. `UNKNOWN`
-has zero counts, empty findings, `Unknown-Reason:` with one of
-`unreadable|candidate_mismatch|dirty_candidate|malformed_report|retrieval_failure|handoff_failure|review_incomplete`,
-and a non-empty account of completed stages, covered scope, blocking public
-observation and recovery evidence.
+The first body line is the bare `Review-Execution: <id>`; `MO-REVIEW-REPORT/1`
+is the validator's output and never part of a body. Service lines may be
+separated by one empty line, never two. A finding body is either the bare key
+line followed by a line opening `[P2] …`, or one line `F-001 [P2] …`.
+
+Reviewers read and never execute the project: the brief forbids tests, linters
+and the QC gate, and allows only SHA-bound reading and their own report
+validator. QC of the candidate is the executor's or coordinator's run on a clean
+checkout of that exact SHA, and CI's run before an agent merges; a reviewer
+running the suite too only spends the time in which every cache expires.
+
+Before the pair, create one run directory outside every worktree with
+`scripts/mo-review-report.mjs namespace` and give each reviewer
+`Body-File: <dir>/<dispatch-id>.md`. The reviewer writes the file once through
+`prepare`, which validates the bytes first and refuses an existing file, and
+sends exactly that content. Where Orca runs the reviewer on another host, the
+brief says `Body-File: none` and the reviewer validates the same bytes on stdin.
 
 Every finding states `confirmed|strongly_supported` evidence, causal path,
 impact, actionable location, proof, post-fix invariant, technical direction,
@@ -230,23 +234,35 @@ proof named as concrete cases: input and state, expected behavior and where the
 check belongs, precise enough to write without a second question to a reviewer
 who may no longer exist.
 
-Request one complete corrected report only while public evidence still shows
-that Dispatch active. `worker_done` ends it, so a structurally wrong body is
-`UNKNOWN` with `malformed_report` for that reviewer; a further Dispatch on the
-same candidate is a new review with its own cost, never a correction. Terminal
-text never replaces `worker_done`.
-
-Validate the report against caller-owned expected values: exact candidate,
+Only the body the coordinator received from Orca is authoritative, and only
+after its own validation against caller-owned expected values: exact candidate,
 native Dispatch id, requested mode and observed effective mode. A stale but
-self-consistent header/footer is `UNKNOWN`. Parse structural markers as
-top-level CommonMark prose with an AST; marker-looking bytes inside any code,
-quote or list container remain body evidence. The index is exactly the
-top-level paragraphs strictly between `Counts:` and the single top-level
-`Evidence report`, and a repeated `F-001 [P3] …` line inside `Findings` is
-valid prose. Run bundled `scripts/mo-review-report.mjs validate --file <path>
---dispatch <id> --candidate <sha> --requested <mode>` rather than judging the
-shape by eye: `status=malformed reason=<code> line=<n>` is what a reviewer can
-be asked to fix, and exit 2 is a call error, not a bad report.
+self-consistent header/footer is `UNKNOWN`. Run the bundled validator rather
+than judging the shape by eye, and compare with the prepared file in the same
+call:
+
+```text
+scripts/mo-review-report.mjs validate --file <received> --dispatch <id> \
+  --candidate <sha> --requested <mode> --prepared <Body-File> \
+  --normalization <none|final-newline>
+```
+
+`status=malformed reason=<code> line=<n>` is a malformed report and exit 2 is a
+call error. Structure and identity are two claims, reported separately: the
+`MO-REVIEW-BODY/1 prepared_body_identity=` line is `identical`, `different` or
+`unverified`. The normalization is the one the Orca compatibility probe recorded
+for the observed version — a body sent as `--body "$(cat <file>)"` loses its
+final line feed, which is `final-newline` — and anything else is none. A
+`different` body is `UNKNOWN/body_integrity`; an unreadable or absent file is
+`prepared_body_identity=unverified`, and the received body is then accepted on
+its structure alone unless the brief required the proof, in which case that
+Dispatch is `UNKNOWN/body_integrity_unverified`. Screen text never stands in for
+either claim, and the body file is deleted when the slot is released.
+
+`worker_done` ends a Dispatch, so a structurally wrong body is `UNKNOWN` with
+`malformed_report` for that Dispatch and is never corrected in its name. A
+further Dispatch on the same candidate is a new review with its own id and full
+validation, never a correction.
 
 ## Lossless handoff and projection
 
@@ -290,4 +306,4 @@ retry `unknown_effect`. Report E2E as not evaluated unless separately requested.
 
 ## Meta-O calls
 
-- none
+- `mo-reviewer`

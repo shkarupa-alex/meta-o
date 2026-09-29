@@ -176,16 +176,21 @@ No universal question classes, correlation IDs or option grammar are required.
 After the executor settles, validate the branch, clean worktree, commit object
 and full `HEAD`, then freeze that SHA. Start both reviewer sessions concurrently
 and independently. Give them the same task/spec, complete intent ledger and the
-same candidate SHA. On the post-cleanup candidate of section 7 those artifacts
-are no longer in the tree: give the frozen object ids the deletion recorded, and
-the durable knowledge that replaced them. Do not give either reviewer peer
-output.
+same candidate SHA; the specification travels as one line,
+`Spec: <path|object>`, or `Spec: none` when the work followed none. On the
+post-cleanup candidate of section 7 those artifacts are no longer in the tree:
+give the frozen object ids the deletion recorded, and the durable knowledge that
+replaced them. Do not give either reviewer peer output.
 
 Each reviewer is a native interactive Codex, Claude Code or OpenCode instance
 started inside a terminal, pane or session by the selected backend's native
 surface. Deliver the review brief through the backend's ordinary prompt, input,
 task-injection or message field, either as inline text or an accessible file
-path. Never create or execute a shell script to invoke the reviewer harness.
+path. Never create or execute a shell script to invoke the reviewer harness. The
+brief names the reviewer skill of the same installation and the report literal
+for that Dispatch. Reviewers read by SHA and never run the project's tests,
+linters or QC gate: QC of the candidate is owned by the executor, the
+orchestrator and CI.
 
 The first required pair uses `deep`. Remediation uses `follow_up`, giving each
 reviewer only its own prior report and finding dispositions; peer bytes remain
@@ -195,8 +200,11 @@ place to `deep` when the portable protocol detects broad or high-risk semantics.
 Wait for both complete settled final responses. Each follows the canonical
 review grammar: exact `Review-Execution`/candidate/mode, `Delegation: none`,
 verdict, authored P0–P3 census, keyed index, complete evidence sections and a
-matching final `End-Review`. A structural mismatch receives one full correction
-in the same hot session; a second mismatch is `UNKNOWN`.
+matching final `End-Review`. Only the body received from the backend and
+validated by the caller is authoritative; its identity with the file the
+reviewer prepared is a separate claim, compared where the file is readable. A
+completed response that is structurally wrong is `UNKNOWN` for its Dispatch and
+is never corrected in its name.
 
 Under `umask 077`, save them unchanged through exclusive `0600` temporary files
 in a unique `mktemp -d` namespace mode `0700`, then fsync/close. Publish each
@@ -247,17 +255,29 @@ creates no pair artifacts.
 ## 6. QC and E2E
 
 Run the project's deterministic QC on the frozen candidate without modifying the
-worktree. Reviewer diagnostics are non-mutating; any diagnostic capable of
+worktree: the executor or orchestrator runs the project's declared QC command in
+a clean checkout of exactly that SHA and names the command and its exit code.
+Reviewers never run tests, linters or the QC gate; any diagnostic capable of
 rewriting tracked files runs only in an isolated disposable copy.
 
 The full gate is host-sensitive. It runs in the foreground to a terminal exit
 status, one run at a time per candidate worktree, and never through `nohup`, `&`
 or another detached form whose immediate `0` is not a suite result. A repeated
 run is independent proof only once the previous run's descendants are gone.
-Reviewers analyse in parallel, but the orchestrator owns the sequencing of that
-gate between them: it serializes the runs through one shared lock or gives each
-reviewer its own worktree, and never starts a second full gate against a
-worktree that already has one running.
+
+CI is the gate that guarantees QC before an agent merges. G1, the agent-owned
+MR/PR create, needs the local QC result and the hosting provider's source head
+equal to the candidate. G2, the agent-owned merge, additionally needs
+`CI-Coverage/1 covered` for the candidate from the setup contract and an
+observed successful run of every covering QC job that checked out exactly the
+candidate: the job prints `git rev-parse HEAD` before QC, and that value, the
+pull request's head SHA and the observed remote head all equal the candidate. A
+workflow run's own head SHA is not enough, because a pull-request run may belong
+to a synthetic merge commit; a merge-queue commit is an integration signal of
+its own and never stands in for QC of the candidate. Any other coverage outcome,
+another checkout SHA, or a missing or failed run blocks the agent merge with
+`needs_attention` naming the gap. Review and delivery of a locally proven
+candidate proceed without CI; integrating without CI is a human decision.
 
 Read the project's E2E and acceptance-to-proof documents. Run applicable
 agent-required scenarios through `mo-e2e`. Production, destructive, credential
@@ -317,8 +337,9 @@ Ambiguous or incomplete cleanup is reported rather than broadened destructively.
 
 Immediately before an agent-owned MR/PR create, rerun the same closure proof as
 G1 and read the hosting provider's source head; both must equal the expected
-SHA. Immediately before an agent-owned merge, repeat G2 and bind the write to
-the observed head with a provider compare-and-set/required policy. A
+SHA. Immediately before an agent-owned merge, repeat G2 — the closure proof, the
+remote head and the CI evidence of section 6 for exactly that SHA — and bind the
+write to the observed head with a provider compare-and-set/required policy. A
 hosting-provided integration candidate is proved only in its exact checkout.
 Human-created MRs do not waive G2; server-side CI/protection changes remain a
 separate human decision.

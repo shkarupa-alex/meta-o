@@ -6,22 +6,25 @@ about — costing a turn — or invents, which costs the whole review.
 
 ## Fields
 
-Every brief carries all twelve, in this order, each on its own line or block:
+Every brief carries all of these, in this order, each on its own line or block:
 
-| Field                  | What it settles                                                           |
-| ---------------------- | ------------------------------------------------------------------------- |
-| `Target`               | the exact 40-hex candidate SHA, never a branch or a moving ref            |
-| `Intent`               | what the change is for, in the requester's words                          |
-| `Scope`                | the commit range and the named sections; what is out of scope             |
-| `Mode`                 | `fast`, `deep` or `follow_up`, and that self-escalation is the reviewer's |
-| `Placement`            | `isolated` or `shared_checkout`, the exact workspace, where its `HEAD` is |
-| `Environment`          | how a pointed test may be run, or that none may be                        |
-| `Constraints`          | what the reviewer may not do: no writes, no full gate in parallel         |
-| `Ownership`            | which resources are the reviewer's and which are not                      |
-| `Acceptance`           | what a finding must state to be actionable                                |
-| `Report`               | the authoritative response, its shape, and where it goes                  |
-| `Methodology-Friction` | where to report a rule that got in the way rather than a defect           |
-| `Cleanup`              | what to remove, and what to report when removal fails                     |
+| Field                  | What it settles                                                             |
+| ---------------------- | --------------------------------------------------------------------------- |
+| `Target`               | the exact 40-hex candidate SHA, never a branch or a moving ref              |
+| `Intent`               | what the change is for, in the requester's words                            |
+| `Spec`                 | `Spec: <path\|object>` the work followed, or `Spec: none`                   |
+| `Scope`                | the commit range and the named sections; what is out of scope               |
+| `Mode`                 | `fast`, `deep` or `follow_up`, and that self-escalation is the reviewer's   |
+| `Placement`            | `isolated` or `shared_checkout`, the exact workspace, where its `HEAD` is   |
+| `Environment`          | that no test, linter or QC is run: reading is by SHA, nothing is executed   |
+| `Constraints`          | what the reviewer may not do: no writes, no tests, lint, QC or subagents    |
+| `Ownership`            | which resources are the reviewer's and which are not                        |
+| `Acceptance`           | what a finding must state to be actionable                                  |
+| `Reviewer-Skill`       | `mo-reviewer`, with the path of its `SKILL.md` in the caller's installation |
+| `Report`               | the authoritative response, the grammar that replaces the generic one       |
+| `Body-File`            | the one path the reviewer creates, validates and sends, or `none`           |
+| `Methodology-Friction` | where to report a rule that got in the way rather than a defect             |
+| `Cleanup`              | what to remove, and what to report when removal fails                       |
 
 `Review-Execution` in the report is the Dispatch id from Orca's own preamble,
 copied verbatim; the brief says so rather than supplying a guess. No placeholder
@@ -33,6 +36,32 @@ proved with `git cat-file -t <sha>` before the brief is sent. An abbreviation
 expanded by hand looks exactly like a real SHA and names no tree: the reviewer
 cannot materialize the candidate, answers `UNKNOWN` with
 `Unknown-Reason: retrieval_failure`, and the whole round is spent.
+
+## The report the reviewer sends
+
+`Report` says two things in so many words. The response is the complete report
+in the grammar of [Portable review protocol](review-protocol.md), and that
+grammar replaces whatever generic completion format the backend's own preamble
+describes — a reviewer that sees two formats and no such sentence has to guess
+which one loses the review. It also carries the literal template for this very
+Dispatch, printed by `mo-review-report.mjs template` with the brief's candidate
+and modes, so the service lines are copied rather than rebuilt from prose.
+
+`Body-File` names one path, `Body-File: <dir>/<dispatch-id>.md`, in a directory
+the caller created for this run outside every worktree. The reviewer creates
+that file exclusively with `mo-review-report.mjs prepare`, which validates the
+bytes first and refuses an existing file, and sends exactly the file's content.
+The caller then compares what it received with the file byte for byte. Where the
+reviewer runs on another host and cannot reach the caller's directory, the field
+says `Body-File: none` and the reviewer validates the same bytes on stdin
+instead; the caller then accepts the received body on its structure alone and
+says that the prepared bytes were not compared.
+
+`Reviewer-Skill` names `mo-reviewer` and the absolute path of its `SKILL.md` in
+the same installation this caller runs from. The reviewer reads it from there —
+it carries the risk lenses, the no-execution rule and the validator — and never
+from a copy of unknown origin. The reviewer does not start the coordinator's
+review skill; calling its validator is not starting a review.
 
 ## Grounding sources are reachable from the candidate
 
