@@ -163,6 +163,23 @@ test("the CLI prints one typed line per question", () => {
     "60000",
   ]);
   assert.equal(young.status, 0);
+  // An empty or non-numeric observation is unknown, never age zero or zero tokens.
+  const ready = ["hot", "--alive", "yes", "--ready", "yes", "--composer", "empty"];
+  for (const extra of [
+    ["--age-ms", ""],
+    ["--age-ms", " "],
+    ["--age-ms", "7200000", "--context-tokens", ""],
+    ["--age-ms", "7200000", "--context-percent", "", "--context-window", "258000"],
+    ["--age-ms", "7200000", "--context-percent", "1", "--context-window", ""],
+  ]) {
+    const empty = run([...ready, ...extra]);
+    assert.equal(empty.status, 1, extra.join(" "));
+    assert.equal(
+      empty.stdout,
+      "MO-REVIEW-SLOT/1 hot=no context=unknown reason=cold\n",
+      extra.join(" "),
+    );
+  }
   const released = run(["release"], JSON.stringify({ ...owned, worktreeId: "wt-8" }));
   assert.equal(
     released.stdout,

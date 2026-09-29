@@ -160,15 +160,21 @@ function options(argv) {
 
 const yesNo = (value) => (value === "yes" ? true : value === "no" ? false : undefined);
 
+// A flag value is a number only when it is written as one. `Number("")` is 0,
+// so an empty observation read as age zero, a young slot, or as zero tokens, a
+// proven small context, and an old slot stayed hot on nothing; NaN is unknown.
+const decimal = (value) =>
+  value === undefined ? undefined : /^\d+(?:\.\d+)?$/u.test(value) ? Number(value) : Number.NaN;
+
 function contextOption(parsed) {
   if (parsed["context-tokens"] !== undefined) {
-    return { kind: "absolute", used: Number(parsed["context-tokens"]) };
+    return { kind: "absolute", used: decimal(parsed["context-tokens"]) };
   }
   if (parsed["context-percent"] !== undefined) {
     return {
       kind: "percent",
-      usedPercent: Number(parsed["context-percent"]),
-      window: Number(parsed["context-window"]),
+      usedPercent: decimal(parsed["context-percent"]),
+      window: decimal(parsed["context-window"]),
     };
   }
   return { kind: "unknown" };
@@ -196,7 +202,7 @@ function main(argv) {
       alive: yesNo(parsed.alive),
       ready: yesNo(parsed.ready),
       composerEmpty: parsed.composer === "empty" ? true : undefined,
-      ageMs: parsed["age-ms"] === undefined ? undefined : Number(parsed["age-ms"]),
+      ageMs: decimal(parsed["age-ms"]),
       context: contextOption(parsed),
     });
     process.stdout.write(
