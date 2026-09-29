@@ -654,13 +654,17 @@ function renderReport(result) {
   lines.push("", "## Version attributions", "");
   lines.push(
     ...table(
-      ["Session", "Skill", "Version", "Commits", "History"],
+      // The same fields as the stdout `skill` line: a stamp that stays unproven
+      // is the only evidence of what was loaded, and two different stamps must
+      // not collapse into identical rows.
+      ["Session", "Skill", "Version", "Commits", "History", "Stamp"],
       result.attributions.map((item) => [
         token(item.session),
         item.name,
         item.version,
         item.commits,
-        item.history
+        item.history,
+        item.stamp
       ])
     )
   );

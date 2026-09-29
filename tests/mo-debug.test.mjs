@@ -171,6 +171,11 @@ test("Codex extraction covers attached skills, whole-file reads and both command
     result.stdout,
     /^skill name=mo-x session=\S+ version=unknown commits=unknown history=none stamp=2{40}$/mu,
   );
+  // The report carries the stamp too, the only evidence left of what was loaded.
+  assert.match(
+    report,
+    new RegExp(`^\\| ${CODEX_ID} \\| mo-x \\| unknown \\| unknown \\| none \\| 2{40} \\|$`, "mu"),
+  );
 });
 
 test("a visible source_tree stamp resolves to the commits that carried it", () => {
