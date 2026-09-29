@@ -7,7 +7,6 @@ var __export = (target, all2) => {
 
 // shared/scripts/mo-knowledge-history.mjs
 import { readFileSync, realpathSync } from "node:fs";
-import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // node_modules/mdast-util-to-string/lib/index.js
@@ -10194,6 +10193,7 @@ function historyPins(markdown, path) {
 
 // shared/scripts/knowledge-history-reader.mjs
 import { spawnSync } from "node:child_process";
+import { resolve } from "node:path";
 var ARCHITECTURE_ROOT = "docs/architecture";
 var BUSINESS_DOCUMENT = "docs/business.md";
 var OBJECT_TYPES = ["blob", "tree", "commit", "tag"];
@@ -10455,14 +10455,21 @@ function createHistoryReader(root, options = {}) {
     }
   };
 }
+function gitRoot(start) {
+  const result = spawnSync("git", ["-C", resolve(start), "rev-parse", "--show-toplevel"], {
+    encoding: "utf8"
+  });
+  if (result.error || result.status !== 0) return null;
+  return result.stdout.replace(/\n$/u, "");
+}
 
 // shared/scripts/mo-knowledge-history.mjs
-var ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+var NO_DEFINITIONS = "HEAD defines no identifier in the declared business and architecture scope";
 var TRAILER = /^Knowledge-ID-Change: (remove|reuse|editorial) (\S+) via (\S+)$/;
 var USAGE = `usage: mo-knowledge-history.mjs --repo <root> --cutoff <sha> [options]
        mo-knowledge-history.mjs --repo <root> --pins-from <markdown> [options]
 
-  --repo <root>                  repository to verify (default: this checkout)
+  --repo <root>                  repository to verify (default: Git root of the cwd)
   --cutoff <sha>                 lower boundary of the verified history
   --semantic-from <sha>          first parent whose edges enforce semantic reuse
   --current-record-from <sha>    first parent needing a distinct authorization record
@@ -10474,6 +10481,8 @@ var USAGE = `usage: mo-knowledge-history.mjs --repo <root> --cutoff <sha> [optio
   --timing                       add ms, spawns and blobs to the status line
   --help                         print this grammar and exit
 
+output: MO-KNOWLEDGE-HISTORY/1 status=<ok|violations|unavailable> cutoff=<sha>
+        commits=<n> edges=<n> definitions=<n>
 exit: 0 ok | 1 violations or unavailable | 2 call error
 `;
 function snapshot(reader, commit) {
@@ -10710,11 +10719,14 @@ function historyRun(reader, cutoff, pins) {
       errors.push(...edgeErrors(reader, { parent, commit }, siblings, rules));
     }
   }
+  const definitions2 = snapshot(reader, reader.git(["rev-parse", "HEAD^{commit}"]).trim()).size;
+  if (definitions2 === 0) errors.push(`no_definitions: ${NO_DEFINITIONS}`);
   return {
     errors,
     unavailable: false,
     commits: lines.length,
     edges,
+    definitions: definitions2,
     ms: Date.now() - started,
     stats: reader.stats()
   };
@@ -10734,6 +10746,15 @@ var OPTIONS = /* @__PURE__ */ new Set([
 ]);
 function callError(detail) {
   return Object.assign(new Error(detail), { callError: true });
+}
+function repositoryRoot(repo) {
+  const root = gitRoot(repo ?? process.cwd());
+  if (root === null) {
+    throw callError(
+      `not_git_repository: ${repo ?? "the current directory"} is not in a Git work tree`
+    );
+  }
+  return root;
 }
 function parseArguments(argv) {
   const given = /* @__PURE__ */ new Map();
@@ -10756,7 +10777,7 @@ function parseArguments(argv) {
   return {
     timing,
     audit,
-    root: resolve(given.get("--repo") ?? ROOT),
+    root: repositoryRoot(given.get("--repo")),
     cutoff: pins.cutoff,
     documents: {
       business: given.get("--business"),
@@ -10826,7 +10847,7 @@ function report(values, run) {
   }
   const timing = values.timing ? ` ms=${run.ms ?? 0} spawns=${run.stats.spawns} blobs=${run.stats.uniqueMarkdownBlobs}` : "";
   process.stdout.write(
-    `MO-KNOWLEDGE-HISTORY/1 status=${status} cutoff=${values.cutoff} commits=${run.commits} edges=${run.edges}${timing}
+    `MO-KNOWLEDGE-HISTORY/1 status=${status} cutoff=${values.cutoff} commits=${run.commits} edges=${run.edges} definitions=${run.definitions ?? 0}${timing}
 `
   );
 }
@@ -10877,6 +10898,7 @@ function invokedDirectly() {
 }
 if (invokedDirectly()) main(process.argv.slice(2));
 export {
+  TRAILER,
   authorizationRecords,
   citations,
   createHistoryReader,
@@ -10887,4 +10909,4 @@ export {
   runHistory,
   verifyHistory
 };
-// MO-KNOWLEDGE-HISTORY-SOURCE 0.2.0 847605cdbd27a53110319684adfe3e4d18697568ba5ff228fb6eaa02fb2e0158
+// MO-KNOWLEDGE-HISTORY-SOURCE 0.2.0 70ea742092c5421c3c864b7c842c9f0e729b2ca24137289fee14defbdbbb1454

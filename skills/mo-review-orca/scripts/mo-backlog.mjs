@@ -6979,7 +6979,7 @@ var USAGE = `usage: mo-backlog.mjs [--candidate <40hex>] [--repo <root>] [schema
   --candidate <40hex>    fail unless the observed HEAD is exactly this commit
   --expect-head <sha>    same comparison under the name the gates use
   --remote-head <sha>    fail unless the remote source HEAD is this commit
-  --repo <root>          repository to inspect (default: this checkout)
+  --repo <root>          repository to inspect (default: Git root of the cwd)
   --path <rel>           notebook path inside the repository
   --title <text>         expected level-one heading
   --open-heading <text>  expected heading of the open section
@@ -7230,13 +7230,17 @@ function parseArguments(args) {
   if (declared && !schemaComplete(given)) return { invalid: true };
   return { given, declared };
 }
+function defaultRoot() {
+  const found = git(process.cwd(), ["rev-parse", "--show-toplevel"]);
+  return found.status === 0 ? found.stdout.replace(/\n$/u, "") : process.cwd();
+}
 function main() {
   const parsed = parseArguments(process.argv.slice(2));
   if (parsed.help) {
     process.stdout.write(USAGE);
     return;
   }
-  const root = parsed.given?.get("--repo") ?? ROOT;
+  const root = parsed.given?.get("--repo") ?? defaultRoot();
   if (parsed.invalid) {
     const result2 = unknown("internal_error", null, worktreeState(root), META_O_SCHEMA.path);
     process.stderr.write(`${result2.line}

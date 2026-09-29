@@ -322,3 +322,14 @@ test("the setup contract requires a linked commands-and-papercuts document", () 
   // incidents stops being read, and methodology friction has its own channel.
   assert.match(contractProse, /one-off incidents and methodology friction/u);
 });
+
+test("the generated agent contract commits verified increments and pushes only on request", () => {
+  const contract = readFileSync(
+    join(ROOT, "skills", "mo-setup", "references", "project-setup.md"),
+    "utf8",
+  ).replace(/\s+/gu, " ");
+  assert.match(
+    contract,
+    /commit every coherent, verified increment, and push only when the user asks/u,
+  );
+});

@@ -20,7 +20,6 @@
  */
 
 import { readFileSync, realpathSync } from "node:fs";
-import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -29,17 +28,18 @@ import {
   historyPins,
   stableValue,
 } from "./knowledge-documents.mjs";
-import { createHistoryReader, unreadable } from "./knowledge-history-reader.mjs";
+import { createHistoryReader, gitRoot, unreadable } from "./knowledge-history-reader.mjs";
 
 export { authorizationRecords, definitions } from "./knowledge-documents.mjs";
 export { createHistoryReader, git } from "./knowledge-history-reader.mjs";
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const TRAILER = /^Knowledge-ID-Change: (remove|reuse|editorial) (\S+) via (\S+)$/;
+const NO_DEFINITIONS = "HEAD defines no identifier in the declared business and architecture scope";
+/** §A-MEMORY-01 one authorization trailer; `editorial` lists its ids sorted and comma-joined. */
+export const TRAILER = /^Knowledge-ID-Change: (remove|reuse|editorial) (\S+) via (\S+)$/;
 const USAGE = `usage: mo-knowledge-history.mjs --repo <root> --cutoff <sha> [options]
        mo-knowledge-history.mjs --repo <root> --pins-from <markdown> [options]
 
-  --repo <root>                  repository to verify (default: this checkout)
+  --repo <root>                  repository to verify (default: Git root of the cwd)
   --cutoff <sha>                 lower boundary of the verified history
   --semantic-from <sha>          first parent whose edges enforce semantic reuse
   --current-record-from <sha>    first parent needing a distinct authorization record
@@ -51,6 +51,8 @@ const USAGE = `usage: mo-knowledge-history.mjs --repo <root> --cutoff <sha> [opt
   --timing                       add ms, spawns and blobs to the status line
   --help                         print this grammar and exit
 
+output: MO-KNOWLEDGE-HISTORY/1 status=<ok|violations|unavailable> cutoff=<sha>
+        commits=<n> edges=<n> definitions=<n>
 exit: 0 ok | 1 violations or unavailable | 2 call error
 `;
 
@@ -426,11 +428,15 @@ function historyRun(reader, cutoff, pins) {
       errors.push(...edgeErrors(reader, { parent, commit }, siblings, rules));
     }
   }
+  // An empty declared scope protects nothing and would pass every edge vacuously.
+  const definitions = snapshot(reader, reader.git(["rev-parse", "HEAD^{commit}"]).trim()).size;
+  if (definitions === 0) errors.push(`no_definitions: ${NO_DEFINITIONS}`);
   return {
     errors,
     unavailable: false,
     commits: lines.length,
     edges,
+    definitions,
     ms: Date.now() - started,
     stats: reader.stats(),
   };
@@ -462,6 +468,16 @@ function callError(detail) {
   return Object.assign(new Error(detail), { callError: true });
 }
 
+function repositoryRoot(repo) {
+  const root = gitRoot(repo ?? process.cwd());
+  if (root === null) {
+    throw callError(
+      `not_git_repository: ${repo ?? "the current directory"} is not in a Git work tree`,
+    );
+  }
+  return root;
+}
+
 function parseArguments(argv) {
   const given = new Map();
   const timing = argv.includes("--timing");
@@ -483,7 +499,7 @@ function parseArguments(argv) {
   return {
     timing,
     audit,
-    root: resolve(given.get("--repo") ?? ROOT),
+    root: repositoryRoot(given.get("--repo")),
     cutoff: pins.cutoff,
     documents: {
       business: given.get("--business"),
@@ -575,7 +591,7 @@ function report(values, run) {
     : "";
   process.stdout.write(
     `MO-KNOWLEDGE-HISTORY/1 status=${status} cutoff=${values.cutoff}` +
-      ` commits=${run.commits} edges=${run.edges}${timing}\n`,
+      ` commits=${run.commits} edges=${run.edges} definitions=${run.definitions ?? 0}${timing}\n`,
   );
 }
 

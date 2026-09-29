@@ -59,7 +59,7 @@ const USAGE = `usage: mo-backlog.mjs [--candidate <40hex>] [--repo <root>] [sche
   --candidate <40hex>    fail unless the observed HEAD is exactly this commit
   --expect-head <sha>    same comparison under the name the gates use
   --remote-head <sha>    fail unless the remote source HEAD is this commit
-  --repo <root>          repository to inspect (default: this checkout)
+  --repo <root>          repository to inspect (default: Git root of the cwd)
   --path <rel>           notebook path inside the repository
   --title <text>         expected level-one heading
   --open-heading <text>  expected heading of the open section
@@ -389,13 +389,27 @@ function parseArguments(args) {
   return { given, declared };
 }
 
+/**
+ * §A-BACKLOG-01 inspects the repository the command runs in.
+ *
+ * The checker is copied into a project's `tools/`, so a root derived from the
+ * script's own path would name a directory outside that project. An explicit
+ * `--repo` wins; otherwise the Git root of the working directory, from any
+ * nested directory. Outside Git the working directory stays the root, and
+ * reading its HEAD answers `not_git_repository`.
+ */
+function defaultRoot() {
+  const found = git(process.cwd(), ["rev-parse", "--show-toplevel"]);
+  return found.status === 0 ? found.stdout.replace(/\n$/u, "") : process.cwd();
+}
+
 function main() {
   const parsed = parseArguments(process.argv.slice(2));
   if (parsed.help) {
     process.stdout.write(USAGE);
     return;
   }
-  const root = parsed.given?.get("--repo") ?? ROOT;
+  const root = parsed.given?.get("--repo") ?? defaultRoot();
   if (parsed.invalid) {
     const result = unknown("internal_error", null, worktreeState(root), META_O_SCHEMA.path);
     process.stderr.write(`${result.line}\n`);
