@@ -251,9 +251,8 @@ function readFindingBodies(lines, prose, span, keys) {
 /** §A-REVIEW-04 makes an UNKNOWN account for itself rather than only declaring itself. */
 function readUnknown(lines, prose, sections, verdict) {
   const account = sections.found.get("Unknown-Account");
-  const reasons = [...prose]
-    .map((position) => lines[position])
-    .filter((line) => line.startsWith("Unknown-Reason:"));
+  const reasonRows = [...prose].filter((position) => lines[position].startsWith("Unknown-Reason:"));
+  const reasons = reasonRows.map((position) => lines[position]);
   if (verdict !== "UNKNOWN") {
     if (account.length > 0) return fail("unknown_account", account[0]);
     if (reasons.length > 0) return fail("unknown_reason", 0);
@@ -268,6 +267,10 @@ function readUnknown(lines, prose, sections, verdict) {
   );
   if (!stated) return fail("unknown_account", account[0]);
   if (reasons.length !== 1) return fail("unknown_reason", account[0]);
+  // The reason is part of the account it types, not a line found anywhere.
+  if (reasonRows[0] < account[0] || reasonRows[0] > unknowns) {
+    return fail("unknown_reason", reasonRows[0]);
+  }
   const reason = reasons[0].match(/^Unknown-Reason: (\S+)$/u)?.[1];
   if (reason === undefined || !UNKNOWN_REASONS.has(reason))
     return fail("unknown_reason", account[0]);

@@ -205,6 +205,30 @@ test("UNKNOWN without its account is malformed", () => {
   assert.equal(reasonOf(stripped), "unknown_account");
 });
 
+test("the Unknown-Reason stands inside the account it types", () => {
+  const text = reportTemplate({
+    verdict: "UNKNOWN",
+    dispatch: "ctx_a",
+    candidate: SHA,
+    requested: "deep",
+    effective: "deep",
+    reason: "review_incomplete",
+  }).text;
+  const reason = "Unknown-Reason: review_incomplete";
+  const without = text.replace(`${reason}\n`, "");
+  for (const label of ["Grounding", "Scope and checks", "Unknowns", "Residual risks"]) {
+    const moved = without.replace(`\n${label}\n`, `\n${label}\n${reason}\n`);
+    assert.notEqual(moved, without, label);
+    assert.equal(reasonOf(moved), "unknown_reason", label);
+  }
+  // The compact layout of section markers stays valid: §A-REVIEW-04 reads
+  // markers from top-level prose rows so a report is not lost to formatting.
+  assert.equal(
+    reasonOf(text.replace("Evidence report\n\nGrounding", "Evidence report\nGrounding")),
+    undefined,
+  );
+});
+
 test("prepare writes a valid body once and a malformed draft not at all", () => {
   const dir = space();
   const path = join(dir, "ctx_a.md");
