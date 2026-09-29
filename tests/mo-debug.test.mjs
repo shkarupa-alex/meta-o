@@ -688,6 +688,20 @@ test("a short or option-form credential is redacted, in both harnesses' records"
     ['x --api-key "k3y Value" tail', 'x --api-key "[REDACTED:flag]" tail'],
     ["mysql -u root -ps3cret db", "mysql -u root -p[REDACTED:flag] db"],
     ["curl -u bob:s3cret https://host/x", "curl -u bob:[REDACTED:user_credentials] https://host/x"],
+    // A quoted, glued, escaped or differently cased argument is one argument too.
+    ['mysql -u root -p"correct horse" db', 'mysql -u root -p"[REDACTED:flag]" db'],
+    ["mariadb -p'correct horse' db", "mariadb -p'[REDACTED:flag]' db"],
+    ["mysql -pcorrect\\ horse db", "mysql -p[REDACTED:flag] db"],
+    [
+      'curl -u "alice:correct horse" https://h',
+      'curl -u "alice:[REDACTED:user_credentials]" https://h',
+    ],
+    [
+      "curl --user='alice:correct horse' https://h",
+      "curl --user='alice:[REDACTED:user_credentials]' https://h",
+    ],
+    ["curl -ubob:pa@ss https://h", "curl -ubob:[REDACTED:user_credentials] https://h"],
+    ["x --Password s3c -Token abc", "x --Password [REDACTED:flag] -Token [REDACTED:flag]"],
   ];
   for (const [input, expected] of cases) {
     assert.equal(redact(input), expected);
@@ -699,9 +713,9 @@ test("a short or option-form credential is redacted, in both harnesses' records"
   assert.equal(redact(kept), kept);
 
   const { home, claude, codex } = fixtureHome();
-  const values = ["s3cr3tValue", "0a1b2c3d4e5f", "PIN12"];
+  const values = ["s3cr3tValue", "0a1b2c3d4e5f", "PIN12", "correct", "horse"];
   const command =
-    "docker login --password s3cr3tValue && pwd=PIN12 node ~/.claude/skills/mo-setup/scripts/mo-setup.mjs check";
+    'docker login --password s3cr3tValue && mysql -p"correct horse" db && pwd=PIN12 node ~/.claude/skills/mo-setup/scripts/mo-setup.mjs check';
   const UUID = "9f8e7d6c-5b4a-4321-8fed-cba987654323";
   const claudeRecord = {
     sessionId: UUID,
@@ -720,7 +734,12 @@ test("a short or option-form credential is redacted, in both harnesses' records"
     payload: {
       type: "message",
       role: "user",
-      content: [{ type: "input_text", text: "$mo-debug with --token 0a1b2c3d4e5f" }],
+      content: [
+        {
+          type: "input_text",
+          text: '$mo-debug with --token 0a1b2c3d4e5f and curl -u "alice:correct horse"',
+        },
+      ],
     },
   };
   writeFileSync(rollout, `${readFileSync(rollout, "utf8")}${JSON.stringify(codexRecord)}\n`);

@@ -18,6 +18,8 @@ var EXCERPT_LIMIT = 240;
 var WINDOW = 4096;
 var PATH_ROOTS = "home|Users|mnt|tmp|var|private|root|opt|srv|Volumes|media|run|workspace|workspaces|data";
 var CREDENTIAL_KEY = "[A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|private[_-]?key)";
+var BARE = `(?:\\\\{1,2}[^\\n\\\\"']|[^\\s"'&;|)\\\\])+`;
+var argument = (group) => `(?:(\\\\?["'])(?:(?!\\${group})[^\\n])*(?:\\${group}|$)|${BARE})`;
 var SECRETS = [
   [
     /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----[\s\S]*?(?:-----END (?:[A-Z0-9]+ )*PRIVATE KEY-----|$)/gu,
@@ -67,25 +69,34 @@ var SECRETS = [
   ],
   [
     // The same key as a command-line option whose value is the next argument:
-    // `--password s3cret`, `--api-key "a b"`. A next argument that is itself an
-    // option means the value was prompted for, and nothing follows to redact.
+    // `--password s3cret`, `--api-key "a b"`, `-Token x`. A next argument that
+    // is itself an option means the value was prompted for, and nothing
+    // follows to redact.
     new RegExp(
-      `(?<=^|[\\s"'\`(])(-{1,2}${CREDENTIAL_KEY})(\\s+)(?!-)(?!\\[REDACTED)(?:(\\\\?["'])(?:(?!\\3)[^\\n])*(?:\\3|$)|[^\\s"'&;|)]+)`,
-      "gu"
+      `(?<=^|[\\s"'\`(])(-{1,2}${CREDENTIAL_KEY})(\\s+)(?!-)(?!\\[REDACTED)${argument(3)}`,
+      "giu"
     ),
     (_, flag, space, quote) => quote ? `${flag}${space}${quote}[REDACTED:flag]${quote}` : `${flag}${space}[REDACTED:flag]`
   ],
   [
-    // A MySQL-family client takes its password glued to `-p`; a bare `-p`
-    // prompts instead. `-P` is the port and stays.
-    /(\b(?:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump)\b[^\n|;&]*?\s-p)(?!\[REDACTED)[^\s"'&;|]+/gu,
-    (_, head) => `${head}[REDACTED:flag]`
+    // A MySQL-family client takes its password glued to `-p`, bare or quoted;
+    // a bare `-p` prompts instead. `-P` is the port and stays.
+    new RegExp(
+      `(\\b(?:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump)\\b[^\\n|;&]*?\\s-p)(?!\\[REDACTED)${argument(2)}`,
+      "gu"
+    ),
+    (_, head, quote) => quote ? `${head}${quote}[REDACTED:flag]${quote}` : `${head}[REDACTED:flag]`
   ],
   [
     // `curl -u user:pass` and its kin carry the password after the colon of the
-    // user argument, with no URL around it for the scheme rule to catch.
-    /((?:^|\s)(?:-u|--user)(?:\s+|=)["']?[^\s:"'@]+:)(?!\[REDACTED)[^\s"'@&;|]+/gu,
-    (_, head) => `${head}[REDACTED:user_credentials]`
+    // user argument, with no URL around it for the scheme rule to catch. The
+    // argument may be glued (`-ubob:pass`) or quoted, and the password may hold
+    // `@` or spaces; only the name before the first colon stays.
+    new RegExp(
+      `((?:^|\\s)(?:-u\\s*|--user(?:\\s+|=)))(?:(\\\\?["'])([^\\s:"'\\\\]+):(?!\\[REDACTED)(?:(?!\\2)[^\\n])*(?:\\2|$)|([^\\s:"'@\\\\]+):(?!\\[REDACTED)${BARE})`,
+      "gu"
+    ),
+    (_, head, quote, quotedUser, bareUser) => quote ? `${head}${quote}${quotedUser}:[REDACTED:user_credentials]${quote}` : `${head}${bareUser}:[REDACTED:user_credentials]`
   ]
 ];
 var SEGMENT = "[^\\s\"'`<>|;\\\\/]";
