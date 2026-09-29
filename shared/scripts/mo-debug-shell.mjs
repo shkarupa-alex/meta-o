@@ -108,13 +108,26 @@ function contextStep(text, at, stack) {
   return { next: token.end, stack: stackAfter(text, token, stack, top) };
 }
 
-// A single quote that opens right after `sh -c`, `eval` or `ssh <host>` holds
-// a command, so it is really closed later, and a quote that closes it ends
-// the credential word inside it. Any other open single quote may be prose that
-// no shell ever read (`the '90s`), and ending a word there leaked the rest of
-// the password.
-const COMMAND_STRING =
-  /(?:(?:^|[\s;&|(])-c|(?:^|[\s;&|(])eval|(?:^|[\s;&|(])ssh(?:\s+-\S+(?:\s+[^\s-]\S*)?)*\s+[^\s-]\S*)\s+$/u;
+// A quote that opens the command string of a shell's `-c` (`bash -lc '…'`,
+// `sh -euc "…"`), of `eval` at the start of a command, or of `ssh <host>`
+// holds a command, and so does a double quote that opens a JSON string after
+// `{ [ , :`. Such a quote is really closed later, and a quote that closes it
+// ends the credential word inside it. Any other open quote may be prose that no
+// shell ever read (`the '90s`, `a 12" screen`, `do not eval '…`), and ending a
+// word there leaked the rest of the password.
+const SHELL = String.raw`(?:^|[^\w.-])(?:[\w.-]*/)*(?:sh|bash|dash|zsh|ksh|mksh|ash|fish)`;
+const SHELL_OPTION = String.raw`(?:\s+(?:--?[A-Za-z][\w-]*|[-+]o\s+\S+))`;
+const COMMAND_STRING = new RegExp(
+  [
+    String.raw`${SHELL}${SHELL_OPTION}*?\s+-[A-Za-z]*c[A-Za-z]*`,
+    String.raw`(?:^|[;&|("])\s*eval`,
+    String.raw`(?:^|[^\w.-])(?:[\w.-]*/)*ssh(?:\s+-\S+(?:\s+[^\s-]\S*)?)*\s+[^\s-]\S*`,
+  ]
+    .map((form) => `(?:${form})\\s+$`)
+    .join("|"),
+  "u",
+);
+const JSON_STRING = /[{[,:]\s*$/u;
 
 function lineBefore(text, at) {
   return text.slice(text.lastIndexOf("\n", at - 1) + 1, at);
@@ -131,7 +144,9 @@ function stackAfter(text, token, stack, top) {
     return [...stack, { ...token, proven: COMMAND_STRING.test(lineBefore(text, token.start)) }];
   }
   if (top && closes(top, token)) return stack.slice(0, -1);
-  return token.level === levelOf(stack) ? [...stack, token] : stack;
+  if (token.level !== levelOf(stack)) return stack;
+  const before = lineBefore(text, token.start);
+  return [...stack, { ...token, proven: COMMAND_STRING.test(before) || JSON_STRING.test(before) }];
 }
 
 /**
@@ -143,7 +158,8 @@ function stackAfter(text, token, stack, top) {
  * quote; a deeper double quote is an escaped byte of the word. Any other quote
  * — the one that closes the enclosing string, or a shallower one — ends the
  * word only when a word boundary follows it (whitespace, a separator, JSON
- * punctuation, another quote or the end), as the `"` after `abc` does in
+ * punctuation, another quote or the end) and the enclosing string opened a
+ * command string or a JSON string, as the `"` after `abc` does in
  * `bash -c "x --token abc" && ls`. Otherwise it opens a segment too: the
  * context can be wrong after prose, and a wrong end leaks the rest of the
  * password while a wrong segment only hides more text. An unclosed segment
@@ -211,10 +227,10 @@ function closingStep(text, token, enclosing) {
     return { next: again.end };
   }
   if (token.end < text.length && !AFTER_CLOSE.has(text[token.end])) return undefined;
-  // An enclosing single quote that no command opened may be a phantom, and
+  // An enclosing quote that opened no command string may be a phantom, and
   // then this quote opens part of the password, closed or not: the longer
   // word only hides more, to the window edge at worst.
-  if (enclosing?.kind === "'" && !enclosing.proven) return undefined;
+  if (enclosing && !enclosing.proven) return undefined;
   return null;
 }
 

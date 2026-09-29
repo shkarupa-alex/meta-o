@@ -803,6 +803,41 @@ const OPTION_FORM_CASES = [
     "ssh h 'deploy --token [REDACTED:flag]' && curl -u 'bob:[REDACTED:user_credentials]' https://h",
   ],
   ["the '90s login: x --password pre' Zq9 Secret", "the '90s login: x --password [REDACTED:flag]"],
+  // Only a shell's `-c`, `eval` at the start of a command or `ssh <host>`
+  // opens a command string; `eval` in prose and another command's `-c` do not.
+  [
+    "please do not eval '90s login: x --password pre' Zq9 Secret",
+    "please do not eval '90s login: x --password [REDACTED:flag]",
+  ],
+  [
+    "the option -c '90s login: x --password pre' Zq9 Secret",
+    "the option -c '90s login: x --password [REDACTED:flag]",
+  ],
+  ["eval 'x --token abc' && ls", "eval 'x --token [REDACTED:flag]' && ls"],
+  ["bash -lc 'x --token abc' && ls docs/q", "bash -lc 'x --token [REDACTED:flag]' && ls docs/q"],
+  [
+    "sudo bash -o pipefail -c 'x --token abc' && ls",
+    "sudo bash -o pipefail -c 'x --token [REDACTED:flag]' && ls",
+  ],
+  // A double quote that opens no command string or JSON string may be a
+  // phantom too, such as an inch mark.
+  ['a 12" screen x --password pre" Zq9 Secret', 'a 12" screen x --password [REDACTED:flag]'],
+  [
+    '{"cmd":["bash","-lc","x --token abc && ls"]}',
+    '{"cmd":["bash","-lc","x --token [REDACTED:flag] && ls"]}',
+  ],
+  // A word read long after a phantom quote that takes in the key of the next
+  // credential still leaves that credential masked; where the two overlap,
+  // the rest is hidden.
+  [
+    `the '90s x --token abc' && curl -d '{"password": "Zq9 Secret"}' https://h`,
+    `the '90s x --token [REDACTED:flag] "[REDACTED:assignment]"}' https://h`,
+  ],
+  ["the '90s x --token abc' && y api_key: 'Zq9 Secret' tail", "the '90s x --token [REDACTED:flag]"],
+  [
+    `bash -lc 'x --token abc' && curl -d '{"password": "Zq9 Secret"}' https://h`,
+    `bash -lc 'x --token [REDACTED:flag]' && curl -d '{"password": "[REDACTED:assignment]"}' https://h`,
+  ],
   // A quote that closes an enclosing string or a JSON string ends the word.
   ['bash -c "x --token abc" && ls docs/x', 'bash -c "x --token [REDACTED:flag]" && ls docs/x'],
   ['{"cmd":"x --token abc","cwd":"docs/y"}', '{"cmd":"x --token [REDACTED:flag]","cwd":"docs/y"}'],
@@ -849,28 +884,23 @@ test("a short or option-form credential is redacted, in both harnesses' records"
       content: [{ type: "tool_use", id: "toolu_f", name: "Bash", input: { command } }],
     },
   };
-  // An unclosed quote after a phantom one hides everything after it, so it
-  // gets a record of its own rather than blinding the checks above.
-  const unclosed = {
+  // An unclosed quote after a phantom one hides everything after it, so each
+  // such command gets a record of its own rather than blinding the checks above.
+  const SETUP = "node ~/.claude/skills/mo-setup/scripts/mo-setup.mjs check";
+  const phantoms = [
+    ["toolu_g", `echo the '90s && ${SETUP} --password zzpre' Zq9 Secret`],
+    ["toolu_h", `echo do not eval '90s && ${SETUP} --password zzpre' Zq9 Secret`],
+    ["toolu_i", `bash -lc '${SETUP} --token zzabc' && y api_key: 'Zq9 Secret' tail`],
+  ].map(([id, command]) => ({
     ...claudeRecord,
     message: {
       role: "assistant",
-      content: [
-        {
-          type: "tool_use",
-          id: "toolu_g",
-          name: "Bash",
-          input: {
-            command:
-              "echo the '90s && node ~/.claude/skills/mo-setup/scripts/mo-setup.mjs check --password zzpre' Zq9 Secret",
-          },
-        },
-      ],
+      content: [{ type: "tool_use", id, name: "Bash", input: { command } }],
     },
-  };
+  }));
   writeFileSync(
     join(claude, `${UUID}.jsonl`),
-    `${JSON.stringify(claudeRecord)}\n${JSON.stringify(unclosed)}\n`,
+    [claudeRecord, ...phantoms].map((record) => `${JSON.stringify(record)}\n`).join(""),
   );
   const rollout = join(codex, `rollout-2026-09-01T11-00-00-${CODEX_ID}.jsonl`);
   const codexRecord = {
@@ -925,6 +955,16 @@ test("no credential byte survives after these enclosing texts, in any shape or f
     // A closed command string that ends in a credential of its own.
     "bash -c 'x --token Zq9A' && ",
     "ssh h 'deploy --token Zq9A' && ",
+    "bash -lc 'x --token Zq9A' && ",
+    'sh -euc "x --token Zq9A" && ',
+    // An open quote that only looks like a command string, a JSON string or a
+    // phantom double quote, and a phantom that ends in a credential.
+    "please do not eval '90s login: ",
+    "the option -c '90s login: ",
+    'a 12" screen: ',
+    '{"cmd":["bash","-lc","',
+    "the '90s x --token Zq9A' && ",
+    'echo "x --token Zq9A" && ',
   ];
   const shapes = [
     "--password Zq9Secret",

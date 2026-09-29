@@ -95,41 +95,28 @@ function maskUser(text, start, word, glued) {
 }
 
 /**
- * §A-DIAGNOSTICS-01 replaces every credential that is a whole shell word.
- *
- * Quote context comes from one left-to-right read of the text, so a quote
- * that closes `bash -c "…"` or a JSON string ends the word while a quote
- * inside the password does not.
+ * The value range of every credential that is a whole shell word, with the
+ * placeholder for it. Quote context comes from one left-to-right read of the
+ * text, so a quote that closes `bash -c "…"` or a JSON string ends the word
+ * while a quote inside the password does not.
  */
-function redactShellWords(text) {
-  const starts = [];
+function shellWordRanges(text) {
+  const ranges = [];
+  let contexts = null;
   for (const trigger of WORD_TRIGGERS) {
     for (const match of text.matchAll(trigger.pattern)) {
-      starts.push({ ...trigger, start: match.index + match[0].length });
+      contexts ??= quoteContexts(text);
+      const start = match.index + match[0].length;
+      const word = shellWord(text, start, contexts[start]);
+      if (word.end === start) continue;
+      const value =
+        trigger.kind === "user"
+          ? maskUser(text, start, word, trigger.glued)
+          : mask(text, start, word, trigger.kind);
+      if (value !== null) ranges.push({ start, end: word.end, value });
     }
   }
-  if (starts.length === 0) return text;
-  starts.sort((left, right) => left.start - right.start);
-  const contexts = quoteContexts(text);
-  let out = "";
-  let copied = 0;
-  for (const { kind, glued, start } of starts) {
-    const word = shellWord(text, start, contexts[start]);
-    if (word.end === start) continue;
-    if (start < copied) {
-      // A credential word that starts inside one already masked is still read
-      // whole, and the earlier placeholder now stands for both: skipping it
-      // left whatever of it lay past the earlier word.
-      copied = Math.max(copied, word.end);
-      continue;
-    }
-    const masked =
-      kind === "user" ? maskUser(text, start, word, glued) : mask(text, start, word, kind);
-    if (masked === null) continue;
-    out += text.slice(copied, start) + masked;
-    copied = word.end;
-  }
-  return out + text.slice(copied);
+  return ranges;
 }
 
 /**
@@ -157,8 +144,9 @@ const TOKEN_SHAPES = [
 
 /**
  * Credentials keyed by name in `key: value`, `"key": "value"` and similar
- * forms, after the shell words have been read. A value already replaced by a
- * more specific rule is left as it is.
+ * forms. Each pattern's first two groups are the key and the separator, and
+ * the value is the rest of the match. A value already replaced by a more
+ * specific rule is left as it is.
  */
 const ASSIGNMENTS = [
   // A quoted value is a value up to its closing quote, spaces included: a
@@ -185,14 +173,60 @@ const ASSIGNMENTS = [
     // A key that *ends* in a credential word, then `=` or `:`. Requiring the
     // word at the end keeps `max_output_tokens: 30000` and `token_count` out,
     // so the value needs no minimum length: `pwd=123` is a whole PIN. A value
-    // opening an object or a list is structure, not a credential.
+    // opening an object or a list is structure, not a credential, and a
+    // backslash before a quote is that quote's JSON escape, not the value.
     new RegExp(
-      `\\b(${CREDENTIAL_KEY})(["']?\\s*[=:]\\s*["']?)(?!\\[REDACTED)(?![[{])([^\\s"'&,;}]+)`,
+      `\\b(${CREDENTIAL_KEY})(["']?\\s*[=:]\\s*["']?)(?!\\[REDACTED)(?![[{])((?:[^\\s"'&,;}\\\\]|\\\\(?!["']))+)`,
       "giu",
     ),
     (_, key, separator) => `${key}${separator}[REDACTED:assignment]`,
   ],
 ];
+
+/** The value range of every `ASSIGNMENTS` match, with the placeholder for it. */
+function assignmentRanges(text) {
+  const ranges = [];
+  for (const [pattern, replace] of ASSIGNMENTS) {
+    for (const match of text.matchAll(pattern)) {
+      const key = match[1].length + match[2].length;
+      const start = match.index + key;
+      ranges.push({
+        start,
+        end: match.index + match[0].length,
+        value: replace(...match).slice(key),
+      });
+    }
+  }
+  return ranges;
+}
+
+/**
+ * §A-DIAGNOSTICS-01 replaces every keyed credential value.
+ *
+ * Every rule reads the same text, and the ranges are joined: where one range
+ * starts inside another, the earlier placeholder stands for both. A shell word
+ * read long after a quote that may be a phantom can take in the key of the
+ * next credential, `"password":` or `api_key: '`, and a rule that ran on the
+ * text left by an earlier one then found no key and let that value through.
+ */
+function redactCredentials(text) {
+  const ranges = [...shellWordRanges(text), ...assignmentRanges(text)].sort(
+    (left, right) => left.start - right.start || right.end - left.end,
+  );
+  let out = "";
+  let copied = 0;
+  for (const { start, end, value } of ranges) {
+    if (start < copied) {
+      // The earlier word was read past a quote that may be a phantom, so
+      // where the text after both ends is unknown, and the rest is hidden.
+      if (end > copied) copied = text.length;
+      continue;
+    }
+    out += text.slice(copied, start) + value;
+    copied = end;
+  }
+  return out + text.slice(copied);
+}
 
 // Characters an unquoted path segment may hold. An unquoted space, a quote, a
 // backslash or a shell separator ends it; brackets, braces, parentheses, colons
@@ -300,8 +334,7 @@ function redactUnquoted(text, pattern, separator) {
 export function redact(text) {
   let out = String(text);
   for (const [pattern, replace] of TOKEN_SHAPES) out = out.replace(pattern, replace);
-  out = redactShellWords(out);
-  for (const [pattern, replace] of ASSIGNMENTS) out = out.replace(pattern, replace);
+  out = redactCredentials(out);
   for (const pattern of QUOTED) {
     out = out.replace(pattern, (whole, quote, content) => {
       const absolute = ABSOLUTE.exec(content);

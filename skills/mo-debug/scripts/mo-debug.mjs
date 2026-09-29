@@ -68,7 +68,17 @@ function contextStep(text, at, stack) {
   }
   return { next: token2.end, stack: stackAfter(text, token2, stack, top) };
 }
-var COMMAND_STRING = /(?:(?:^|[\s;&|(])-c|(?:^|[\s;&|(])eval|(?:^|[\s;&|(])ssh(?:\s+-\S+(?:\s+[^\s-]\S*)?)*\s+[^\s-]\S*)\s+$/u;
+var SHELL = String.raw`(?:^|[^\w.-])(?:[\w.-]*/)*(?:sh|bash|dash|zsh|ksh|mksh|ash|fish)`;
+var SHELL_OPTION = String.raw`(?:\s+(?:--?[A-Za-z][\w-]*|[-+]o\s+\S+))`;
+var COMMAND_STRING = new RegExp(
+  [
+    String.raw`${SHELL}${SHELL_OPTION}*?\s+-[A-Za-z]*c[A-Za-z]*`,
+    String.raw`(?:^|[;&|("])\s*eval`,
+    String.raw`(?:^|[^\w.-])(?:[\w.-]*/)*ssh(?:\s+-\S+(?:\s+[^\s-]\S*)?)*\s+[^\s-]\S*`
+  ].map((form) => `(?:${form})\\s+$`).join("|"),
+  "u"
+);
+var JSON_STRING = /[{[,:]\s*$/u;
 function lineBefore(text, at) {
   return text.slice(text.lastIndexOf("\n", at - 1) + 1, at);
 }
@@ -80,7 +90,9 @@ function stackAfter(text, token2, stack, top) {
     return [...stack, { ...token2, proven: COMMAND_STRING.test(lineBefore(text, token2.start)) }];
   }
   if (top && closes(top, token2)) return stack.slice(0, -1);
-  return token2.level === levelOf(stack) ? [...stack, token2] : stack;
+  if (token2.level !== levelOf(stack)) return stack;
+  const before = lineBefore(text, token2.start);
+  return [...stack, { ...token2, proven: COMMAND_STRING.test(before) || JSON_STRING.test(before) }];
 }
 function shellWord(text, start, stack) {
   const context = { enclosing: stack.at(-1) ?? null, level: levelOf(stack) };
@@ -118,7 +130,7 @@ function closingStep(text, token2, enclosing) {
     return { next: again.end };
   }
   if (token2.end < text.length && !AFTER_CLOSE.has(text[token2.end])) return void 0;
-  if (enclosing?.kind === "'" && !enclosing.proven) return void 0;
+  if (enclosing && !enclosing.proven) return void 0;
   return null;
 }
 function segmentEnd(text, token2) {
@@ -181,31 +193,20 @@ function maskUser(text, start, word, glued) {
   const rest = { end: word.end, segments: word.segments.filter((segment) => segment.start > at) };
   return `${text.slice(start, at + 1)}${mask(text, at + 1, rest, "user_credentials")}`;
 }
-function redactShellWords(text) {
-  const starts = [];
+function shellWordRanges(text) {
+  const ranges = [];
+  let contexts = null;
   for (const trigger of WORD_TRIGGERS) {
     for (const match of text.matchAll(trigger.pattern)) {
-      starts.push({ ...trigger, start: match.index + match[0].length });
+      contexts ??= quoteContexts(text);
+      const start = match.index + match[0].length;
+      const word = shellWord(text, start, contexts[start]);
+      if (word.end === start) continue;
+      const value = trigger.kind === "user" ? maskUser(text, start, word, trigger.glued) : mask(text, start, word, trigger.kind);
+      if (value !== null) ranges.push({ start, end: word.end, value });
     }
   }
-  if (starts.length === 0) return text;
-  starts.sort((left, right) => left.start - right.start);
-  const contexts = quoteContexts(text);
-  let out = "";
-  let copied = 0;
-  for (const { kind, glued, start } of starts) {
-    const word = shellWord(text, start, contexts[start]);
-    if (word.end === start) continue;
-    if (start < copied) {
-      copied = Math.max(copied, word.end);
-      continue;
-    }
-    const masked = kind === "user" ? maskUser(text, start, word, glued) : mask(text, start, word, kind);
-    if (masked === null) continue;
-    out += text.slice(copied, start) + masked;
-    copied = word.end;
-  }
-  return out + text.slice(copied);
+  return ranges;
 }
 var TOKEN_SHAPES = [
   [
@@ -249,14 +250,46 @@ var ASSIGNMENTS = [
     // A key that *ends* in a credential word, then `=` or `:`. Requiring the
     // word at the end keeps `max_output_tokens: 30000` and `token_count` out,
     // so the value needs no minimum length: `pwd=123` is a whole PIN. A value
-    // opening an object or a list is structure, not a credential.
+    // opening an object or a list is structure, not a credential, and a
+    // backslash before a quote is that quote's JSON escape, not the value.
     new RegExp(
-      `\\b(${CREDENTIAL_KEY})(["']?\\s*[=:]\\s*["']?)(?!\\[REDACTED)(?![[{])([^\\s"'&,;}]+)`,
+      `\\b(${CREDENTIAL_KEY})(["']?\\s*[=:]\\s*["']?)(?!\\[REDACTED)(?![[{])((?:[^\\s"'&,;}\\\\]|\\\\(?!["']))+)`,
       "giu"
     ),
     (_, key, separator) => `${key}${separator}[REDACTED:assignment]`
   ]
 ];
+function assignmentRanges(text) {
+  const ranges = [];
+  for (const [pattern, replace] of ASSIGNMENTS) {
+    for (const match of text.matchAll(pattern)) {
+      const key = match[1].length + match[2].length;
+      const start = match.index + key;
+      ranges.push({
+        start,
+        end: match.index + match[0].length,
+        value: replace(...match).slice(key)
+      });
+    }
+  }
+  return ranges;
+}
+function redactCredentials(text) {
+  const ranges = [...shellWordRanges(text), ...assignmentRanges(text)].sort(
+    (left, right) => left.start - right.start || right.end - left.end
+  );
+  let out = "";
+  let copied = 0;
+  for (const { start, end, value } of ranges) {
+    if (start < copied) {
+      if (end > copied) copied = text.length;
+      continue;
+    }
+    out += text.slice(copied, start) + value;
+    copied = end;
+  }
+  return out + text.slice(copied);
+}
 var SEGMENT = "[^\\s\"'`<>|;\\\\/]";
 var ESCAPED = `\\\\{1,2}[^\\n\\\\"']`;
 var POSIX_SEGMENT = `(?:${ESCAPED}|${SEGMENT})`;
@@ -308,8 +341,7 @@ function redactUnquoted(text, pattern, separator) {
 function redact(text) {
   let out = String(text);
   for (const [pattern, replace] of TOKEN_SHAPES) out = out.replace(pattern, replace);
-  out = redactShellWords(out);
-  for (const [pattern, replace] of ASSIGNMENTS) out = out.replace(pattern, replace);
+  out = redactCredentials(out);
   for (const pattern of QUOTED) {
     out = out.replace(pattern, (whole, quote, content) => {
       const absolute = ABSOLUTE.exec(content);
