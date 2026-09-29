@@ -267,3 +267,13 @@ test("received bytes are compared with the prepared file, and the two claims sta
   );
   assert.equal(unnamed.status, 2);
 });
+
+test("the index may follow Counts with no empty line", () => {
+  // The first entry then shares the header's paragraph; reading entries by
+  // paragraph start once counted zero of them and threw the report away.
+  const tight = findingsReport().replace("P3=0\n\nF-001", "P3=0\nF-001");
+  assert.notEqual(tight, findingsReport());
+  assert.equal(validateReport(tight, expected()).status, "valid");
+  const miscounted = tight.replace("P2=1", "P2=2");
+  assert.equal(reasonOf(miscounted), "counts_mismatch");
+});

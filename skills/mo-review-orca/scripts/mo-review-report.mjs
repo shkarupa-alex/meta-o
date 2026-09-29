@@ -7061,13 +7061,13 @@ function readIndexLayout(lines, prose, from, to) {
   return {};
 }
 function readIndex(paragraphs, from, to, counts) {
-  const found = paragraphs.filter(({ line }) => line > from && line < to);
   const entries = [];
-  for (const { line, rows } of found) {
-    for (const [step, row] of rows.entries()) {
+  for (const { line, rows } of paragraphs) {
+    const inside = rows.map((row, step) => ({ row, at: line + step })).filter(({ at }) => at > from && at < to);
+    for (const [step, { row, at }] of inside.entries()) {
       const match = row.match(ENTRY);
-      if (match) entries.push({ key: match[1], severity: match[2], line: line + step });
-      else if (step === 0) return fail("index_key_order", line);
+      if (match) entries.push({ key: match[1], severity: match[2], line: at });
+      else if (step === 0) return fail("index_key_order", at);
     }
   }
   for (const [step, entry] of entries.entries()) {

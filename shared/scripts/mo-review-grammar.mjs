@@ -174,15 +174,20 @@ function readIndexLayout(lines, prose, from, to) {
  * belongs to the UNKNOWN account, where the template prints it.
  */
 function readIndex(paragraphs, from, to, counts) {
-  const found = paragraphs.filter(({ line }) => line > from && line < to);
   const entries = [];
-  for (const { line, rows } of found) {
-    for (const [step, row] of rows.entries()) {
+  for (const { line, rows } of paragraphs) {
+    // Rows are taken by their own line, not by where their paragraph starts:
+    // with no empty line after `Counts` the first entry shares the header's
+    // paragraph, and the grammar allows exactly that.
+    const inside = rows
+      .map((row, step) => ({ row, at: line + step }))
+      .filter(({ at }) => at > from && at < to);
+    for (const [step, { row, at }] of inside.entries()) {
       const match = row.match(ENTRY);
       // An entry opens a paragraph; a row that follows one is that entry
       // continued, however much it looks like structure on its own.
-      if (match) entries.push({ key: match[1], severity: match[2], line: line + step });
-      else if (step === 0) return fail("index_key_order", line);
+      if (match) entries.push({ key: match[1], severity: match[2], line: at });
+      else if (step === 0) return fail("index_key_order", at);
     }
   }
   for (const [step, entry] of entries.entries()) {

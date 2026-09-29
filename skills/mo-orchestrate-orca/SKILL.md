@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-orchestrate-orca; run
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "2a6e6e5b013825388c753e8d2927ec08525aee7c"
+  source_tree: "b5f3e8369416354d927ea5f0dbed82efb4a2757f"
 ---
 
 # Orchestrate a feature through Orca
@@ -63,8 +63,9 @@ file into a tracked path and return `needs_attention`.
 A project that cannot answer the readiness questions is not ready, and this
 skill does not prepare it. Read the knowledge layer of every exact SHA with
 bundled `scripts/mo-knowledge-layer.mjs --candidate <sha>` and keep its one
-line. `not_enabled` means the project has no knowledge layer to close: skip G0,
-GC, G1 and G2 for it and keep every other gate. `needs_attention` — a missing
+line. `not_enabled` means the project has no knowledge layer to close: drop
+only the `MO-BACKLOG/1` closure proof from G0, GC, G1 and G2. The remote-head
+equality of G1 and G2, G2's CI evidence and every other gate still apply. `needs_attention` — a missing
 `MO-BACKLOG/1` command, papercut document or identifier-history gate in a
 project that had or half-declared them — is reported with the helper's reason,
 and running the setup skill stays the human's own step.
@@ -122,7 +123,7 @@ another checkout SHA or unsupported integration candidate proof is
 merged by the agent without that CI evidence.
 
 Return only when one unchanged full SHA has QC, two fresh vendor-diverse PASS
-reports, applicable E2E and empty GC. Otherwise return honest
+reports, applicable E2E and, with the knowledge layer `enabled`, an empty GC. Otherwise return honest
 `needs_attention`. Never finish with unacknowledged reports, unresolved backlog,
 foreign cleanup or a required question.
 

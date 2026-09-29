@@ -56,9 +56,9 @@ Before starting agents:
    `scripts/mo-knowledge-layer.mjs --candidate <sha>`. With `enabled`, run the
    project-owned `MO-BACKLOG/1` closure command: G0 must be `EMPTY` on the exact
    committed SHA before substantive implementation; `NOT-EMPTY` and `UNKNOWN`
-   both block. With `not_enabled`, G0, GC, G1 and G2 do not apply to the
-   knowledge layer, while the exact SHA, QC, vendor-diverse reviews and
-   applicable E2E still do.
+   both block. With `not_enabled`, only the closure proof drops out of G0, GC,
+   G1 and G2; the exact SHA, QC, vendor-diverse reviews, applicable E2E, the
+   remote-head equality of G1 and G2 and G2's CI evidence still apply.
 
 A project that cannot answer these is not ready, and no lifecycle skill prepares
 it on its own initiative. `not_enabled` is an answer: the project never adopted
@@ -393,15 +393,16 @@ knowledge, routes every confirmed out-of-scope item to a canonical
 project/upstream Issue, and removes the temporary spec, ledger and checklist. It
 then runs GC through the project-owned `MO-BACKLOG/1` command; completion cannot
 be announced while the committed exact SHA is `NOT-EMPTY` or `UNKNOWN`. A
-project whose knowledge layer is `not_enabled` on that SHA has no GC, G1 or G2
-for the layer; the helper is read again on the final SHA, because a change can
-enable or break the layer. Repeat deterministic gates on the deletion SHA, and
-let the hot pair review it. Only after that pair has returned two PASS reports
-on one SHA, release its owned resources and create two fresh independent
-reviewers with no prior reports on that same SHA for the final proof. Findings
-of the fresh pair are remediated in that pair, which becomes the hot pair; no
-further fresh pair starts until it passes. Repeat only E2E that cannot carry
-forward under section 8.
+project whose knowledge layer is `not_enabled` on that SHA owes no closure proof
+at GC, G1 or G2, while G1's and G2's remote head and G2's CI evidence still
+bind; the helper is read again on the final SHA, because a change can enable or
+break the layer. Repeat deterministic gates on the deletion SHA, and let the hot
+pair review it. Only after that pair has returned two PASS reports on one SHA,
+release its owned resources and create two fresh independent reviewers with no
+prior reports on that same SHA for the final proof. Findings of the fresh pair
+are remediated in that pair, which becomes the hot pair; no further fresh pair
+starts until it passes. Repeat only E2E that cannot carry forward under
+section 8.
 
 Before success, prove that the same full candidate SHA has:
 

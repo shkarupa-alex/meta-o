@@ -63,8 +63,9 @@ it. The declared closure command carries the literal `MO-BACKLOG/1`, `AGENTS.md`
 records `history_cutoff_sha:` and links the papercut document, and on the
 human's answer `AGENTS.md` holds `Knowledge-Layer: enabled` or
 `Knowledge-Layer: disabled` on its own line. A project that never had these is
-`not_enabled` and owes no G0, GC, G1 or G2 for them; a project that had them and
-lost one is a gap.
+`not_enabled` and owes no closure proof at G0, GC, G1 or G2, while remote-head
+equality and CI evidence still bind an agent's MR/PR and merge; a project that
+had them and lost one is a gap.
 
 ## Knowledge id history
 

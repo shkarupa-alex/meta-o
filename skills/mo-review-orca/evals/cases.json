@@ -34,16 +34,18 @@
         "§A-BACKLOG-01",
         "§A-MEMORY-05"
       ],
-      "scenario": "The user makes a generic review request outside the Meta-O lifecycle and supplies no opaque Review-Execution id. A second request names the lifecycle correctly, but the project has a `MO-BACKLOG/1` command and no papercut document or identifier-history gate, and the knowledge-layer helper prints `Knowledge-Layer: state=needs_attention reason=partial_signals`.",
+      "scenario": "The user makes a generic review request outside the Meta-O lifecycle and supplies no opaque Review-Execution id. A second request names the lifecycle correctly, but the project has a `MO-BACKLOG/1` command and no papercut document or identifier-history gate, and the knowledge-layer helper prints `Knowledge-Layer: state=needs_attention reason=partial_signals`. Two further lifecycle requests come from other projects: one never had the layer, and the helper prints `Knowledge-Layer: state=not_enabled reason=never_enabled`; the other removed it and declares `Knowledge-Layer: disabled`, and the helper prints `Knowledge-Layer: state=not_enabled reason=declared_disabled`.",
       "must": [
         "avoid implicit Meta-O activation under §A-ACTIVATION-01 and report that the portable header cannot be fabricated",
         "under §A-MEMORY-05 take the state from the helper on the exact SHA and never send a brief without its literal Knowledge-Layer line",
-        "under §A-BACKLOG-01 return needs_attention naming each missing readiness signal and leave running the setup skill to the human"
+        "under §A-BACKLOG-01 return needs_attention naming each missing readiness signal and leave running the setup skill to the human",
+        "under §A-MEMORY-05 start the pair for both `not_enabled` projects, each brief carrying the helper's literal line so the backlog-closure part of the deferral lens is `not_applicable`"
       ],
       "mustNot": [
         "create Orca workers",
         "change model configuration or invent an execution id",
-        "start the pair against an unready project or prepare it"
+        "start the pair against an unready project or prepare it",
+        "treat a `not_enabled` project as a readiness gap or a `needs_attention` project as ordinary"
       ]
     },
     {

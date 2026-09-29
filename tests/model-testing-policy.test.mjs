@@ -68,8 +68,8 @@ test("the private-state exception stays as narrow as the decision that owns it",
   assert.match(policy, /turn_context/u);
   assert.match(policy, /узкое исключение/u);
   // The operational recipe points at the decision instead of restating it.
-  assert.match(papercut, /узкое исключение §A-EVAL-01/u);
-  assert.match(papercut, /журнале собственного запуска/u);
+  assert.match(papercut, /узкое\s+исключение\s+§A-EVAL-01/u);
+  assert.match(papercut, /журнале\s+собственного\s+запуска/u);
   // Claude keeps its public route, so the exception covers one executor only.
   assert.match(papercut, /Фактическую модель у Claude берут из события `init`/u);
 });

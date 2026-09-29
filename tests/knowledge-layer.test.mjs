@@ -207,10 +207,16 @@ test("every consumer takes the helper's line instead of guessing from the tree",
   const reviewer = flat("src/skills/mo-reviewer/SKILL.md");
   assert.match(reviewer, /`needs_attention` or a missing line makes the lens `unknown`/u);
   const method = flat("shared/references/methodology.md");
+  // Only the closure proof leaves the gates: G1 and G2 also carry the remote
+  // head and G2 the CI evidence, and neither depends on the knowledge layer.
   assert.match(
     method,
-    /With `not_enabled`, G0, GC, G1 and G2 do not apply to the knowledge layer/u,
+    /With `not_enabled`, only the closure proof drops out of G0, GC,\s+G1 and G2/u,
   );
+  assert.match(method, /the\s+remote-head equality of G1 and G2 and G2's CI evidence still apply/u);
+  const orchestrate = flat("src/skills/mo-orchestrate-orca/SKILL.md");
+  assert.match(orchestrate, /drop only the `MO-BACKLOG\/1` closure proof/u);
+  assert.match(orchestrate, /with the knowledge layer `enabled`, an empty GC/u);
   const setup = flat("src/skills/mo-setup/SKILL.md");
   assert.match(setup, /Whether a project has the layer is the human's decision/u);
   assert.match(setup, /carry the literal `MO-BACKLOG\/1`/u);
