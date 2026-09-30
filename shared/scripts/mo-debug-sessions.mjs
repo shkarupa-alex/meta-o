@@ -290,9 +290,10 @@ export function sessionIdOf(path) {
  * line limit is yielded as `null` so the caller counts it as unparsed.
  *
  * @param {number} fd descriptor from `openOwnedSession`
+ * @param {Function} [read] `readSync`, replaced only by tests of a failing read
  * @yields {{number: number, text: string|null}} 1-based line number and text
  */
-export function* sessionLines(fd) {
+export function* sessionLines(fd, read = readSync) {
   const chunk = Buffer.alloc(1 << 16);
   const decoder = new TextDecoder("utf-8");
   let pending = [];
@@ -305,8 +306,8 @@ export function* sessionLines(fd) {
     pendingBytes = 0;
     return { number, text };
   };
-  for (let read = readSync(fd, chunk); read > 0; read = readSync(fd, chunk)) {
-    const view = chunk.subarray(0, read);
+  for (let got = read(fd, chunk); got > 0; got = read(fd, chunk)) {
+    const view = chunk.subarray(0, got);
     let start = 0;
     for (let at = view.indexOf(10); at !== -1; at = view.indexOf(10, start)) {
       if (pendingBytes <= LINE_LIMIT) pending.push(Buffer.from(view.subarray(start, at)));
@@ -315,7 +316,7 @@ export function* sessionLines(fd) {
       start = at + 1;
     }
     if (pendingBytes <= LINE_LIMIT) pending.push(Buffer.from(view.subarray(start)));
-    pendingBytes += read - start;
+    pendingBytes += got - start;
   }
   if (pendingBytes > 0) yield flush();
 }

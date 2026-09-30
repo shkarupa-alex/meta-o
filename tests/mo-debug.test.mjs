@@ -21,6 +21,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -31,6 +32,7 @@ import { basename, dirname, join, resolve, sep } from "node:path";
 import { after, test } from "node:test";
 
 import { attribute, openHistory } from "../shared/scripts/mo-debug-history.mjs";
+import { scan } from "../shared/scripts/mo-debug.mjs";
 import { openOwnedSession, resolveSession } from "../shared/scripts/mo-debug-sessions.mjs";
 import { EXCERPT_LIMIT, excerpt, redact } from "../shared/scripts/mo-debug-redact.mjs";
 import {
@@ -530,6 +532,51 @@ test("a log that vanishes or fails after its open is refused alone and its descr
   closeSync(opened.fd);
 });
 
+test("a read that fails on one owned log settles that session alone", () => {
+  const { home } = fixtureHome();
+  const options = (sessions, read) => ({
+    sessions,
+    home,
+    codexHome: null,
+    maxRecords: Infinity,
+    since: null,
+    read,
+  });
+  // The fixture logs fit in one chunk: call 1 reads the whole first log, and
+  // call 2 is the read that would have seen its end.
+  const failingOn = (failing) => {
+    let calls = 0;
+    return (fd, buffer) => {
+      calls += 1;
+      if (calls === failing) throw Object.assign(new Error("EIO"), { code: "EIO" });
+      return readSync(fd, buffer);
+    };
+  };
+  const eio = () => failingOn(1);
+  // (1) The first read fails: that session is read_failed, the other one is kept.
+  const first = scan(options([CLAUDE_ID, CODEX_ID], eio()));
+  assert.deepEqual(
+    first.sessions.map((session) => session.outcome),
+    ["read_failed", "ok"],
+  );
+  assert.equal(first.sessions[0].harness, "claude");
+  assert.match(first.lines[0], /^MO-DEBUG\/1 status=partial sessions=2 /u);
+  const alone = scan(options([CODEX_ID])).events.length;
+  assert.equal(first.events.length, alone);
+  // (2) A read fails after lines were yielded: those events are withheld rather
+  // than shown as a complete read.
+  const late = scan(options([CLAUDE_ID, CODEX_ID], failingOn(2)));
+  assert.equal(late.sessions[0].outcome, "read_failed");
+  assert.deepEqual(late.sessions[0].events, []);
+  assert.equal(late.events.length, alone);
+  // (3) The only session fails: the scan still returns a typed unknown.
+  const only = scan(options([CLAUDE_ID], eio()));
+  assert.equal(only.status, "unknown");
+  assert.match(only.lines[0], /^MO-DEBUG\/1 status=unknown sessions=1 events=0 refused=0$/u);
+  // (4) Without the failure the same log is read as before.
+  assert.equal(scan(options([CLAUDE_ID])).sessions[0].outcome, "ok");
+});
+
 test("a set CODEX_HOME replaces the default Codex root, and only an absolute one is accepted", () => {
   const { home, claude, codex } = fixtureHome();
   const name = `rollout-2026-09-01T11-00-00-${CODEX_ID}.jsonl`;
@@ -801,6 +848,9 @@ test("the skill names every way an id search can end incomplete", () => {
   assert.match(skill, /`search_incomplete` means a session root could not be reached/u);
   assert.match(skill, /`partial` means [^.]*an id search was incomplete/u);
   assert.match(skill, /`unknown` means [^.]*its id search was incomplete/u);
+  assert.match(skill, /`read_failed` means an owned log was opened but reading it failed/u);
+  assert.match(skill, /`partial` means [^.]*a read failed next to a readable session/u);
+  assert.match(skill, /`unknown` means [^.]*its read failed/u);
 });
 
 test("ids resolve inside the roots only, and not-found or ambiguous ids are typed", () => {

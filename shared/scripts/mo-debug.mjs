@@ -177,7 +177,7 @@ function readSession(opened, options) {
       : createCodexExtractor(opened.id);
   const counts = { records: 0, unparsed: 0, untimed: 0, skipped: 0 };
   let partial = false;
-  for (const { number, text } of sessionLines(opened.fd)) {
+  for (const { number, text } of sessionLines(opened.fd, options.read)) {
     if (text !== null && text.trim() === "") continue;
     if (counts.records >= options.maxRecords) {
       partial = true;
@@ -204,8 +204,14 @@ function scanSession(spec, options) {
   if (resolved.outcome) return refusedSession(spec, resolved.outcome);
   const opened = openOwnedSession(resolved.path, options.home, options.codexHome);
   if (opened.outcome) return refusedSession(spec, opened.outcome);
+  // A read error on one owned log, such as EIO on a failing or network home,
+  // settles that session alone: the others keep their results, the status line
+  // is still printed and a created report still gets written. Events read
+  // before the error are withheld, so a cut read is never shown as complete.
   try {
     return readSession(opened, options);
+  } catch {
+    return { ...refusedSession(spec, "read_failed"), id: opened.id, harness: opened.harness };
   } finally {
     closeSync(opened.fd);
   }

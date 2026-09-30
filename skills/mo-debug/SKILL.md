@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-debug; read a bounded
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "d86f3f1ad5c01d938de9a8eaf72e13e008cff795"
+  source_tree: "fc4be3714fa92981449e2a1783cdbee928a8eb2b"
 ---
 
 # Diagnose your own agent sessions
@@ -37,18 +37,20 @@ The helper reads only regular files under `~/.claude/projects/` or
 `session_ambiguous` are refusals: the file stayed unread, and you do not try
 another way in. `search_incomplete` means a session root could not be reached or
 a directory under it could not be read, so the id was neither found nor proven
-absent; name the session as unknown. `--history` names a Meta-O Git checkout
+absent; name the session as unknown. `read_failed` means an owned log was
+opened but reading it failed; its events are withheld, so name it as unknown
+too. `--history` names a Meta-O Git checkout
 used for version attribution. The events and their locators are only in the
 report, so always pass `--out` with a path the user names or a new file under
 the system temp directory; it must not exist yet and is created with mode
 `0600`. `out_exists` means the path is somebody's data: pick another.
 
 The first line is `MO-DEBUG/1 status=<ok|partial|unknown|refused> …`. `partial`
-means a bound was reached, a session was refused, an id search was incomplete
-next to a readable session, or history was incomplete — a shallow clone, or
-`history=unreadable` when a Git read failed; `unknown` means no requested
-session could be read, because none had a recognized format or its id search was
-incomplete. Say which, and never present a partial read as complete.
+means a bound was reached, a session was refused, an id search was incomplete or
+a read failed next to a readable session, or history was incomplete — a shallow
+clone, or `history=unreadable` when a Git read failed; `unknown` means no
+requested session could be read, because none had a recognized format, its id
+search was incomplete or its read failed. Say which, and never present a partial read as complete.
 
 ## Classify
 

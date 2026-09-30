@@ -878,7 +878,7 @@ function sessionIdOf(path) {
   if (name.startsWith("rollout-") && codex) return codex[1];
   return name.replace(/\.jsonl$/u, "");
 }
-function* sessionLines(fd) {
+function* sessionLines(fd, read = readSync) {
   const chunk = Buffer.alloc(1 << 16);
   const decoder = new TextDecoder("utf-8");
   let pending = [];
@@ -891,8 +891,8 @@ function* sessionLines(fd) {
     pendingBytes = 0;
     return { number, text };
   };
-  for (let read = readSync(fd, chunk); read > 0; read = readSync(fd, chunk)) {
-    const view = chunk.subarray(0, read);
+  for (let got = read(fd, chunk); got > 0; got = read(fd, chunk)) {
+    const view = chunk.subarray(0, got);
     let start = 0;
     for (let at = view.indexOf(10); at !== -1; at = view.indexOf(10, start)) {
       if (pendingBytes <= LINE_LIMIT) pending.push(Buffer.from(view.subarray(start, at)));
@@ -901,7 +901,7 @@ function* sessionLines(fd) {
       start = at + 1;
     }
     if (pendingBytes <= LINE_LIMIT) pending.push(Buffer.from(view.subarray(start)));
-    pendingBytes += read - start;
+    pendingBytes += got - start;
   }
   if (pendingBytes > 0) yield flush();
 }
@@ -1022,7 +1022,7 @@ function readSession(opened, options) {
   const extractor = opened.harness === "claude" ? createClaudeExtractor(opened.id) : createCodexExtractor(opened.id);
   const counts = { records: 0, unparsed: 0, untimed: 0, skipped: 0 };
   let partial = false;
-  for (const { number, text } of sessionLines(opened.fd)) {
+  for (const { number, text } of sessionLines(opened.fd, options.read)) {
     if (text !== null && text.trim() === "") continue;
     if (counts.records >= options.maxRecords) {
       partial = true;
@@ -1050,6 +1050,8 @@ function scanSession(spec, options) {
   if (opened.outcome) return refusedSession(spec, opened.outcome);
   try {
     return readSession(opened, options);
+  } catch {
+    return { ...refusedSession(spec, "read_failed"), id: opened.id, harness: opened.harness };
   } finally {
     closeSync2(opened.fd);
   }
