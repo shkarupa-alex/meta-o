@@ -1139,6 +1139,34 @@ test("the coordinator's validate command binds the effective mode it needs", () 
   }
 });
 
+test("a needs_attention project is found before intake migration writes anything", () => {
+  // Migrating intake first materialized a spec and ledger for a project the
+  // helper then reported as a readiness gap, which the lifecycle forbids.
+  for (const path of [
+    "shared/references/methodology.md",
+    "skills/mo-orchestrate-orca/references/methodology.md",
+  ]) {
+    const methodology = source(path).replace(/\s+/gu, " ");
+    assert.doesNotMatch(
+      methodology,
+      /Migrate raw human intake into the live spec\/ledger, then read/u,
+      path,
+    );
+    assert.match(
+      methodology,
+      /`needs_attention` stops here, before any spec, ledger or executor exists/u,
+      path,
+    );
+  }
+  for (const path of [
+    "src/skills/mo-orchestrate-orca/SKILL.md",
+    "skills/mo-orchestrate-orca/SKILL.md",
+  ]) {
+    const orchestrate = source(path).replace(/\s+/gu, " ");
+    assert.match(orchestrate, /before intake migration writes anything/u, path);
+  }
+});
+
 test("what the review and E2E skills name for Orca is defined where they read it", () => {
   // Live actors hit each of these: a trust procedure named but defined nowhere,
   // a template "for this Dispatch" the caller cannot print before the Dispatch

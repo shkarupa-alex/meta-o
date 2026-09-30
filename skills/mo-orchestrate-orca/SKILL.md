@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-orchestrate-orca; run
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "58bc4402e36e938aec9b72a33e532ad12aef820f"
+  source_tree: "3e82890afbc96120d369afe63edfe34b931b13df"
 ---
 
 # Orchestrate a feature through Orca
@@ -68,7 +68,9 @@ only the `MO-BACKLOG/1` closure proof from G0, GC, G1 and G2. The remote-head
 equality of G1 and G2, G2's CI evidence and every other gate still apply. `needs_attention` — a missing
 `MO-BACKLOG/1` command, papercut document or identifier-history gate in a
 project that had or half-declared them — is reported with the helper's reason,
-and running the setup skill stays the human's own step.
+and running the setup skill stays the human's own step. Read the layer of the
+committed `HEAD` before intake migration writes anything, so that a
+`needs_attention` request ends with no spec, ledger or executor.
 
 With `enabled`, run G0 through the project's `MO-BACKLOG/1` command after
 intake migration and before substantive work. The one hot executor owns all product/spec edits,

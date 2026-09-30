@@ -51,14 +51,16 @@ Before starting agents:
    and the backend capabilities in [Backend contract](backend-contract.md).
 5. Confirm the selected harness can run unsandboxed in this backend. Supported
    harnesses are Codex, Claude Code and OpenCode.
-6. Migrate raw human intake into the live spec/ledger, then read the knowledge
-   layer of that exact committed SHA with the bundled
-   `scripts/mo-knowledge-layer.mjs --candidate <sha>`. With `enabled`, run the
-   project-owned `MO-BACKLOG/1` closure command: G0 must be `EMPTY` on the exact
-   committed SHA before substantive implementation; `NOT-EMPTY` and `UNKNOWN`
-   both block. With `not_enabled`, only the closure proof drops out of G0, GC,
-   G1 and G2; the exact SHA, QC, vendor-diverse reviews, applicable E2E, the
-   remote-head equality of G1 and G2 and G2's CI evidence still apply.
+6. Before writing anything, read the knowledge layer of the exact committed
+   `HEAD` with the bundled `scripts/mo-knowledge-layer.mjs --candidate <sha>`.
+   `needs_attention` stops here, before any spec, ledger or executor exists.
+   Otherwise migrate raw human intake into the live spec/ledger, commit it and
+   read the layer again on that exact SHA. With `enabled`, run the project-owned
+   `MO-BACKLOG/1` closure command: G0 must be `EMPTY` on the exact committed SHA
+   before substantive implementation; `NOT-EMPTY` and `UNKNOWN` both block. With
+   `not_enabled`, only the closure proof drops out of G0, GC, G1 and G2; the
+   exact SHA, QC, vendor-diverse reviews, applicable E2E, the remote-head
+   equality of G1 and G2 and G2's CI evidence still apply.
 
 A project that cannot answer these is not ready, and no lifecycle skill prepares
 it on its own initiative. `not_enabled` is an answer: the project never adopted
