@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
+  readdirSync,
   copyFileSync,
   mkdirSync,
   mkdtempSync,
@@ -25,6 +26,7 @@ import { join, resolve } from "node:path";
 import { after, test } from "node:test";
 
 import { attribute, openHistory } from "../shared/scripts/mo-debug-history.mjs";
+import { resolveSession } from "../shared/scripts/mo-debug-sessions.mjs";
 import { EXCERPT_LIMIT, excerpt, redact } from "../shared/scripts/mo-debug-redact.mjs";
 import {
   claudeBody,
@@ -90,10 +92,15 @@ function historyRepo() {
   return { repo, short: shas.map((sha) => sha.slice(0, 12)) };
 }
 
-function run(home, args) {
+// CODEX_HOME moves the Codex root, so it reaches the helper only when a test
+// names it, never from the environment the suite happens to run in.
+function run(home, args, codexHome) {
+  const env = { ...process.env, HOME: home };
+  delete env.CODEX_HOME;
+  if (codexHome !== undefined) env.CODEX_HOME = codexHome;
   return spawnSync(process.execPath, [CLI, ...args], {
     cwd: home,
-    env: { ...process.env, HOME: home },
+    env,
     encoding: "utf8",
     timeout: 30_000,
   });
@@ -473,6 +480,127 @@ test("files outside the session roots, symlinks and non-regular files are never 
     assert.match(result.stdout, /^MO-DEBUG\/1 status=refused sessions=1 events=0 refused=1$/mu);
     assert.match(result.stdout, / outcome=foreign_path records=0 /u);
   }
+});
+
+test("a set CODEX_HOME replaces the default Codex root, and only an absolute one is accepted", () => {
+  const { home, claude, codex } = fixtureHome();
+  const name = `rollout-2026-09-01T11-00-00-${CODEX_ID}.jsonl`;
+  const alt = join(home, "alt");
+  const moved = join(alt, "sessions", "2026", "09", "01");
+  mkdirSync(moved, { recursive: true });
+  copyFileSync(join(codex, name), join(moved, name));
+  const outcome = (result) => / outcome=([a-z_]+) /u.exec(result.stdout)?.[1];
+  // (1) The user's own rollout under $CODEX_HOME/sessions reads by path and by id.
+  assert.equal(outcome(run(home, ["scan", "--session", join(moved, name)], alt)), "ok");
+  const byId = run(home, ["scan", "--session", CODEX_ID], alt);
+  assert.equal(outcome(byId), "ok", byId.stdout + byId.stderr);
+  // (2) The variable replaces the default rather than widening it.
+  assert.equal(outcome(run(home, ["scan", "--session", join(codex, name)], alt)), "foreign_path");
+  rmSync(join(moved, name));
+  assert.equal(outcome(run(home, ["scan", "--session", CODEX_ID], alt)), "session_not_found");
+  // (3) Unset or empty keeps the default root.
+  for (const value of [undefined, ""]) {
+    assert.equal(outcome(run(home, ["scan", "--session", CODEX_ID], value)), "ok", `${value}`);
+  }
+  // (4) A symlinked root behaves exactly as a symlinked default root: an
+  // explicit path is checked against the root's realpath, and an id lookup
+  // never walks into a symlinked directory.
+  const elsewhere = temporary("mo-debug-codex-elsewhere-");
+  copyFileSync(join(codex, name), join(elsewhere, name));
+  const linked = join(home, "linked");
+  mkdirSync(linked);
+  symlinkSync(elsewhere, join(linked, "sessions"));
+  const defaultLink = temporary("mo-debug-default-link-");
+  mkdirSync(join(defaultLink, ".codex"), { recursive: true });
+  symlinkSync(elsewhere, join(defaultLink, ".codex", "sessions"));
+  for (const [spec, expected] of [
+    [join(linked, "sessions", name), "ok"],
+    [CODEX_ID, "session_not_found"],
+  ]) {
+    const viaVariable = outcome(run(home, ["scan", "--session", spec], linked));
+    const defaultSpec = spec === CODEX_ID ? spec : join(defaultLink, ".codex", "sessions", name);
+    assert.equal(viaVariable, outcome(run(defaultLink, ["scan", "--session", defaultSpec])), spec);
+    assert.equal(viaVariable, expected, spec);
+  }
+  // (5) A relative value is a call error, never resolved against the cwd.
+  const relative = run(home, ["scan", "--session", CODEX_ID], "alt");
+  assert.equal(relative.status, 2);
+  assert.match(relative.stderr, /^MO-DEBUG\/1 status=error reason=codex_home_relative$/mu);
+  // (6) Claude sessions are unaffected.
+  const own = run(home, ["scan", "--session", join(claude, `${CLAUDE_ID}.jsonl`)], alt);
+  assert.equal(outcome(own), "ok");
+  assert.equal(outcome(run(home, ["scan", "--session", CLAUDE_ID], alt)), "ok");
+});
+
+test("an unreadable directory makes an id search incomplete, and other sessions survive", () => {
+  const { home, claude, codex } = fixtureHome();
+  const outcomes = (result) =>
+    [...result.stdout.matchAll(/ outcome=([a-z_]+) /gu)].map(([, o]) => o);
+  const locked = (path, action) => {
+    chmodSync(path, 0o000);
+    try {
+      return action();
+    } finally {
+      chmodSync(path, 0o755);
+    }
+  };
+  // (1) An unreadable Codex date directory: the Claude match cannot be proven
+  // the only one, so the id is unknown, not ok, found-once or not found.
+  locked(codex, () => {
+    const { result, report, out } = reportOf(home, [
+      "scan",
+      "--session",
+      CLAUDE_ID,
+      "--max-records",
+      "50",
+    ]);
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stdout, /^MO-DEBUG\/1 status=unknown sessions=1 events=0 refused=0$/mu);
+    assert.deepEqual(outcomes(result), ["search_incomplete"]);
+    assert.ok(report.length > 0);
+    assert.equal(statSync(out).mode & 0o777, 0o600);
+  });
+  // (2) An unreadable root of either harness, whichever harness the id belongs to.
+  for (const [root, id] of [
+    [join(home, ".claude", "projects"), CODEX_ID],
+    [join(home, ".codex", "sessions"), CLAUDE_ID],
+  ]) {
+    locked(root, () => {
+      const result = run(home, ["scan", "--session", id]);
+      assert.equal(result.status, 1, result.stdout + result.stderr);
+      assert.deepEqual(outcomes(result), ["search_incomplete"], root);
+    });
+  }
+  // (3) A readable explicit session keeps its events next to the incomplete one.
+  const explicit = join(claude, `${CLAUDE_ID}.jsonl`);
+  const alone = eventRows(reportOf(home, ["scan", "--session", explicit]).report).length;
+  assert.ok(alone > 0);
+  locked(codex, () => {
+    const { result, report } = reportOf(home, [
+      "scan",
+      "--session",
+      explicit,
+      "--session",
+      CLAUDE_ID,
+    ]);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stdout, /^MO-DEBUG\/1 status=partial sessions=2 /mu);
+    assert.deepEqual(outcomes(result), ["ok", "search_incomplete"]);
+    assert.equal(eventRows(report).length, alone);
+  });
+  // (4) A child that disappears between listing its parent and reading it.
+  const vanishing = (dir, options) => {
+    if (dir === codex) throw Object.assign(new Error("gone"), { code: "ENOENT" });
+    return readdirSync(dir, options);
+  };
+  assert.deepEqual(resolveSession(CODEX_ID, home, null, vanishing), {
+    outcome: "search_incomplete",
+  });
+  // (5) Controls: a complete search still finds, misses and refuses as before.
+  assert.equal(resolveSession(CODEX_ID, home).path.endsWith(`${CODEX_ID}.jsonl`), true);
+  assert.deepEqual(resolveSession("ffffffff-ffff-4fff-8fff-ffffffffffff", home), {
+    outcome: "session_not_found",
+  });
 });
 
 test("ids resolve inside the roots only, and not-found or ambiguous ids are typed", () => {

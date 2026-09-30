@@ -33,13 +33,17 @@ const LINE_LIMIT = 64 * 1024 * 1024;
 /**
  * §A-DIAGNOSTICS-01 names the only two directories a session may live under.
  *
+ * Codex writes its rollouts under `$CODEX_HOME/sessions` whenever that is set,
+ * so the variable replaces the default root rather than adding a second one.
+ *
  * @param {string} home the invoking user's home directory
+ * @param {string | null} codexHome absolute `CODEX_HOME`, or null when unset
  * @returns {{claude: string, codex: string}} absolute root paths
  */
-export function sessionRoots(home) {
+export function sessionRoots(home, codexHome = null) {
   return {
     claude: join(home, ".claude", "projects"),
-    codex: join(home, ".codex", "sessions"),
+    codex: codexHome === null ? join(home, ".codex", "sessions") : join(codexHome, "sessions"),
   };
 }
 
@@ -51,38 +55,61 @@ function isDirectory(path) {
   }
 }
 
-function claudeMatches(root, id) {
-  if (!UUID.test(id) || !isDirectory(root)) return [];
+// A directory that could not be read says nothing about what it holds, so a
+// search that met one is incomplete rather than a proven absence or a proven
+// single match. Any error counts, including one that appears between listing a
+// parent and reading its child.
+function listed(readdir, dir) {
+  try {
+    return readdir(dir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+}
+
+function claudeMatches(root, id, readdir) {
+  if (!UUID.test(id) || !isDirectory(root)) return { matches: [], complete: true };
+  const entries = listed(readdir, root);
+  if (entries === null) return { matches: [], complete: false };
   const matches = [];
-  for (const entry of readdirSync(root, { withFileTypes: true })) {
+  let complete = true;
+  for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const candidate = join(root, entry.name, `${id}.jsonl`);
     try {
       lstatSync(candidate);
       matches.push(candidate);
-    } catch {
-      // Absent in this project directory.
+    } catch (error) {
+      // Absent in this project directory, unless the directory itself was unreadable.
+      if (error.code !== "ENOENT") complete = false;
     }
   }
-  return matches;
+  return { matches, complete };
 }
 
 /**
  * Codex writes `YYYY/MM/DD/rollout-<time>-<id>.jsonl`. The walk never follows
  * a symlinked directory and is bounded, so a pathological tree cannot turn an
- * id lookup into an unbounded scan. Only the whole thread id taken from the
- * name counts: a fragment such as `2026` or a UUID prefix would otherwise open
- * whichever one session happened to contain it.
+ * id lookup into an unbounded scan; a walk stopped by that bound is incomplete.
+ * Only the whole thread id taken from the name counts: a fragment such as
+ * `2026` or a UUID prefix would otherwise open whichever one session happened
+ * to contain it.
  */
-function codexMatches(root, id) {
-  if (!UUID.test(id) || !isDirectory(root)) return [];
+function codexMatches(root, id, readdir) {
+  if (!UUID.test(id) || !isDirectory(root)) return { matches: [], complete: true };
   const wanted = id.toLowerCase();
   const matches = [];
   const pending = [{ dir: root, depth: 0 }];
   let seen = 0;
+  let complete = true;
   while (pending.length > 0 && seen < WALK_ENTRIES) {
     const { dir, depth } = pending.pop();
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const entries = listed(readdir, dir);
+    if (entries === null) {
+      complete = false;
+      continue;
+    }
+    for (const entry of entries) {
       seen += 1;
       const name = entry.name;
       if (entry.isDirectory() && depth < WALK_DEPTH)
@@ -92,7 +119,7 @@ function codexMatches(root, id) {
       }
     }
   }
-  return matches;
+  return { matches, complete: complete && pending.length === 0 };
 }
 
 /**
@@ -104,15 +131,20 @@ function codexMatches(root, id) {
  *
  * @param {string} spec the `--session` argument
  * @param {string} home the invoking user's home directory
- * @returns {{path: string} | {outcome: "session_not_found"|"session_ambiguous"}}
+ * @param {string | null} codexHome absolute `CODEX_HOME`, or null when unset
+ * @param {Function} readdir directory listing, replaceable so a test can fail one read
+ * @returns {{path: string} | {outcome: "session_not_found"|"session_ambiguous"|"search_incomplete"}}
  */
-export function resolveSession(spec, home) {
+export function resolveSession(spec, home, codexHome = null, readdir = readdirSync) {
   if (spec.includes("/") || spec.includes(sep) || spec.endsWith(".jsonl") || isAbsolute(spec)) {
     return { path: resolve(spec) };
   }
   if (!SESSION_ID.test(spec)) return { outcome: "session_not_found" };
-  const roots = sessionRoots(home);
-  const matches = [...claudeMatches(roots.claude, spec), ...codexMatches(roots.codex, spec)];
+  const roots = sessionRoots(home, codexHome);
+  const claude = claudeMatches(roots.claude, spec, readdir);
+  const codex = codexMatches(roots.codex, spec, readdir);
+  if (!claude.complete || !codex.complete) return { outcome: "search_incomplete" };
+  const matches = [...claude.matches, ...codex.matches];
   if (matches.length === 0) return { outcome: "session_not_found" };
   if (matches.length > 1) return { outcome: "session_ambiguous" };
   return { path: matches[0] };
@@ -191,10 +223,11 @@ function verifiedDescriptor(path, roots) {
  *
  * @param {string} path candidate path from `resolveSession`
  * @param {string} home the invoking user's home directory
+ * @param {string | null} codexHome absolute `CODEX_HOME`, or null when unset
  * @returns {{fd: number, harness: "claude"|"codex", id: string} | {outcome: string}}
  */
-export function openOwnedSession(path, home) {
-  const verified = verifiedDescriptor(path, sessionRoots(home));
+export function openOwnedSession(path, home, codexHome = null) {
+  const verified = verifiedDescriptor(path, sessionRoots(home, codexHome));
   if (verified.outcome) return verified;
   return { fd: verified.fd, harness: verified.harness, id: sessionIdOf(verified.real) };
 }

@@ -22,7 +22,7 @@ import {
   realpathSync,
   writeSync,
 } from "node:fs";
-import { resolve } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createClaudeExtractor } from "./mo-debug-claude.mjs";
@@ -49,7 +49,8 @@ const USAGE = `usage: mo-debug.mjs scan --session <path-or-id> [--session ...] [
   --out <new-file>        also write a Markdown report; the file must not exist
 
 Only files under ~/.claude/projects/ or ~/.codex/sessions/ that the invoking
-user owns are read; anything else is refused as foreign_path, unread.
+user owns are read; anything else is refused as foreign_path, unread. A set
+CODEX_HOME replaces ~/.codex with itself and must be an absolute path.
 
 exit: 0 ok or partial | 1 unknown or every session refused | 2 call error
 `;
@@ -199,9 +200,9 @@ function readSession(opened, options) {
 }
 
 function scanSession(spec, options) {
-  const resolved = resolveSession(spec, options.home);
+  const resolved = resolveSession(spec, options.home, options.codexHome);
   if (resolved.outcome) return refusedSession(spec, resolved.outcome);
-  const opened = openOwnedSession(resolved.path, options.home);
+  const opened = openOwnedSession(resolved.path, options.home, options.codexHome);
   if (opened.outcome) return refusedSession(spec, opened.outcome);
   try {
     return readSession(opened, options);
@@ -288,11 +289,20 @@ function fail(reason) {
   return 2;
 }
 
+// A relative CODEX_HOME would resolve against whatever directory the helper
+// was started in, so it is a call error rather than a guess.
+function sessionPlaces(env) {
+  if (typeof env.HOME !== "string" || env.HOME === "") return { error: "home_unset" };
+  const codexHome = env.CODEX_HOME ? env.CODEX_HOME : null;
+  if (codexHome !== null && !isAbsolute(codexHome)) return { error: "codex_home_relative" };
+  return { home: env.HOME, codexHome };
+}
+
 /**
  * §A-DIAGNOSTICS-01 runs the command line and returns the exit code.
  *
  * @param {string[]} argv arguments after the script name
- * @param {NodeJS.ProcessEnv} env environment; only `HOME` is read
+ * @param {NodeJS.ProcessEnv} env environment; only `HOME` and `CODEX_HOME` are read
  * @returns {number} 0 ok or partial, 1 unknown or refused, 2 call error
  */
 export function main(argv, env = process.env) {
@@ -302,17 +312,23 @@ export function main(argv, env = process.env) {
     return 0;
   }
   if (options.error) return fail(options.error);
-  if (typeof env.HOME !== "string" || env.HOME === "") return fail("home_unset");
+  const places = sessionPlaces(env);
+  if (places.error) return fail(places.error);
+  const { home, codexHome } = places;
   const history =
     options.history === null ? null : openHistory(resolve(options.history), options.maxHistory);
   if (options.history !== null && history === null) return fail("history_unreadable");
   const report = options.out === null ? null : createReport(resolve(options.out));
   if (report?.error) return fail(report.error);
-  const result = scan({ ...options, home: env.HOME }, history);
-  if (report) {
-    writeSync(report.fd, renderReport(result));
-    fsyncSync(report.fd);
-    closeSync(report.fd);
+  let result;
+  try {
+    result = scan({ ...options, home, codexHome }, history);
+    if (report) {
+      writeSync(report.fd, renderReport(result));
+      fsyncSync(report.fd);
+    }
+  } finally {
+    if (report) closeSync(report.fd);
   }
   process.stdout.write(`${result.lines.join("\n")}\n`);
   return result.status === "ok" || result.status === "partial" ? 0 : 1;

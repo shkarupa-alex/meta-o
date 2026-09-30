@@ -10,7 +10,7 @@ import {
   realpathSync as realpathSync2,
   writeSync
 } from "node:fs";
-import { resolve as resolve2 } from "node:path";
+import { isAbsolute as isAbsolute2, resolve as resolve2 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // shared/scripts/mo-debug-redact.mjs
@@ -575,14 +575,14 @@ function parseBatch(buffer) {
 function skillHistory(history, name) {
   if (history.cache.has(name)) return history.cache.get(name);
   const path = `skills/${name}/SKILL.md`;
-  const listed = git(history.repo, [
+  const listed2 = git(history.repo, [
     "rev-list",
     `--max-count=${history.maxHistory + 1}`,
     history.head,
     "--",
     path
   ]);
-  const shas = succeeded(listed) ? listed.stdout.toString("utf8").split("\n").filter(Boolean) : [];
+  const shas = succeeded(listed2) ? listed2.stdout.toString("utf8").split("\n").filter(Boolean) : [];
   const partial = shas.length > history.maxHistory || history.shallow;
   const walked = shas.slice(0, history.maxHistory);
   const checked = git(
@@ -600,7 +600,7 @@ function skillHistory(history, name) {
   const blobs = batch === null ? /* @__PURE__ */ new Map() : parseBatch(batch.stdout);
   const read = batch === null || succeeded(batch) && unique.every((oid) => blobs.has(oid));
   const entries = walked.map((sha, index) => ({ sha, text: blobs.get(oids[index]) ?? null })).filter((entry) => entry.text !== null);
-  const failed = !succeeded(listed) || !answered || !read;
+  const failed = !succeeded(listed2) || !answered || !read;
   const result = { entries, partial, failed };
   history.cache.set(name, result);
   return result;
@@ -722,10 +722,10 @@ var CODEX_ID = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.
 var WALK_DEPTH = 6;
 var WALK_ENTRIES = 2e5;
 var LINE_LIMIT = 64 * 1024 * 1024;
-function sessionRoots(home) {
+function sessionRoots(home, codexHome = null) {
   return {
     claude: join(home, ".claude", "projects"),
-    codex: join(home, ".codex", "sessions")
+    codex: codexHome === null ? join(home, ".codex", "sessions") : join(codexHome, "sessions")
   };
 }
 function isDirectory(path) {
@@ -735,29 +735,46 @@ function isDirectory(path) {
     return false;
   }
 }
-function claudeMatches(root, id) {
-  if (!UUID.test(id) || !isDirectory(root)) return [];
+function listed(readdir, dir) {
+  try {
+    return readdir(dir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+}
+function claudeMatches(root, id, readdir) {
+  if (!UUID.test(id) || !isDirectory(root)) return { matches: [], complete: true };
+  const entries = listed(readdir, root);
+  if (entries === null) return { matches: [], complete: false };
   const matches = [];
-  for (const entry of readdirSync(root, { withFileTypes: true })) {
+  let complete = true;
+  for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const candidate = join(root, entry.name, `${id}.jsonl`);
     try {
       lstatSync(candidate);
       matches.push(candidate);
-    } catch {
+    } catch (error) {
+      if (error.code !== "ENOENT") complete = false;
     }
   }
-  return matches;
+  return { matches, complete };
 }
-function codexMatches(root, id) {
-  if (!UUID.test(id) || !isDirectory(root)) return [];
+function codexMatches(root, id, readdir) {
+  if (!UUID.test(id) || !isDirectory(root)) return { matches: [], complete: true };
   const wanted = id.toLowerCase();
   const matches = [];
   const pending = [{ dir: root, depth: 0 }];
   let seen = 0;
+  let complete = true;
   while (pending.length > 0 && seen < WALK_ENTRIES) {
     const { dir, depth } = pending.pop();
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const entries = listed(readdir, dir);
+    if (entries === null) {
+      complete = false;
+      continue;
+    }
+    for (const entry of entries) {
       seen += 1;
       const name = entry.name;
       if (entry.isDirectory() && depth < WALK_DEPTH)
@@ -767,15 +784,18 @@ function codexMatches(root, id) {
       }
     }
   }
-  return matches;
+  return { matches, complete: complete && pending.length === 0 };
 }
-function resolveSession(spec, home) {
+function resolveSession(spec, home, codexHome = null, readdir = readdirSync) {
   if (spec.includes("/") || spec.includes(sep) || spec.endsWith(".jsonl") || isAbsolute(spec)) {
     return { path: resolve(spec) };
   }
   if (!SESSION_ID.test(spec)) return { outcome: "session_not_found" };
-  const roots = sessionRoots(home);
-  const matches = [...claudeMatches(roots.claude, spec), ...codexMatches(roots.codex, spec)];
+  const roots = sessionRoots(home, codexHome);
+  const claude = claudeMatches(roots.claude, spec, readdir);
+  const codex = codexMatches(roots.codex, spec, readdir);
+  if (!claude.complete || !codex.complete) return { outcome: "search_incomplete" };
+  const matches = [...claude.matches, ...codex.matches];
   if (matches.length === 0) return { outcome: "session_not_found" };
   if (matches.length > 1) return { outcome: "session_ambiguous" };
   return { path: matches[0] };
@@ -825,8 +845,8 @@ function verifiedDescriptor(path, roots) {
   }
   return { fd, harness, real };
 }
-function openOwnedSession(path, home) {
-  const verified = verifiedDescriptor(path, sessionRoots(home));
+function openOwnedSession(path, home, codexHome = null) {
+  const verified = verifiedDescriptor(path, sessionRoots(home, codexHome));
   if (verified.outcome) return verified;
   return { fd: verified.fd, harness: verified.harness, id: sessionIdOf(verified.real) };
 }
@@ -877,7 +897,8 @@ var USAGE = `usage: mo-debug.mjs scan --session <path-or-id> [--session ...] [op
   --out <new-file>        also write a Markdown report; the file must not exist
 
 Only files under ~/.claude/projects/ or ~/.codex/sessions/ that the invoking
-user owns are read; anything else is refused as foreign_path, unread.
+user owns are read; anything else is refused as foreign_path, unread. A set
+CODEX_HOME replaces ~/.codex with itself and must be an absolute path.
 
 exit: 0 ok or partial | 1 unknown or every session refused | 2 call error
 `;
@@ -1001,9 +1022,9 @@ function readSession(opened, options) {
   };
 }
 function scanSession(spec, options) {
-  const resolved = resolveSession(spec, options.home);
+  const resolved = resolveSession(spec, options.home, options.codexHome);
   if (resolved.outcome) return refusedSession(spec, resolved.outcome);
-  const opened = openOwnedSession(resolved.path, options.home);
+  const opened = openOwnedSession(resolved.path, options.home, options.codexHome);
   if (opened.outcome) return refusedSession(spec, opened.outcome);
   try {
     return readSession(opened, options);
@@ -1065,6 +1086,12 @@ function fail(reason) {
   if (reason === "usage") process.stderr.write(USAGE);
   return 2;
 }
+function sessionPlaces(env) {
+  if (typeof env.HOME !== "string" || env.HOME === "") return { error: "home_unset" };
+  const codexHome = env.CODEX_HOME ? env.CODEX_HOME : null;
+  if (codexHome !== null && !isAbsolute2(codexHome)) return { error: "codex_home_relative" };
+  return { home: env.HOME, codexHome };
+}
 function main(argv, env = process.env) {
   const options = parseArguments(argv);
   if (options.help) {
@@ -1072,16 +1099,22 @@ function main(argv, env = process.env) {
     return 0;
   }
   if (options.error) return fail(options.error);
-  if (typeof env.HOME !== "string" || env.HOME === "") return fail("home_unset");
+  const places = sessionPlaces(env);
+  if (places.error) return fail(places.error);
+  const { home, codexHome } = places;
   const history = options.history === null ? null : openHistory(resolve2(options.history), options.maxHistory);
   if (options.history !== null && history === null) return fail("history_unreadable");
   const report = options.out === null ? null : createReport(resolve2(options.out));
   if (report?.error) return fail(report.error);
-  const result = scan({ ...options, home: env.HOME }, history);
-  if (report) {
-    writeSync(report.fd, renderReport(result));
-    fsyncSync(report.fd);
-    closeSync2(report.fd);
+  let result;
+  try {
+    result = scan({ ...options, home, codexHome }, history);
+    if (report) {
+      writeSync(report.fd, renderReport(result));
+      fsyncSync(report.fd);
+    }
+  } finally {
+    if (report) closeSync2(report.fd);
   }
   process.stdout.write(`${result.lines.join("\n")}
 `);
