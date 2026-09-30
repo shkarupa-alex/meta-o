@@ -276,6 +276,38 @@ test("received bytes are compared with the prepared file, and the two claims sta
   assert.equal(bodyIdentity(other, path).identity, "different");
   assert.equal(bodyIdentity(same, join(dir, "absent.md")).identity, "unverified");
 
+  // A prepared file damaged after prepare into invalid UTF-8 is another file,
+  // even where decoding would turn both sides into the same replacement text.
+  const witness = findingsReport().replace("read by SHA", "read by SHA \ufffd");
+  const damaged = join(dir, "damaged.md");
+  const received = Buffer.from(witness);
+  const at = received.indexOf(Buffer.from("\ufffd"));
+  for (const bytes of [
+    [0xff, 0x20, 0x20],
+    [0xf0, 0x9f, 0x92],
+  ]) {
+    const copy = Buffer.from(received);
+    copy.set(bytes, at);
+    writeFileSync(damaged, copy);
+    for (const mode of ["none", "final-newline"]) {
+      assert.equal(bodyIdentity(received, damaged, mode).identity, "different", `${bytes} ${mode}`);
+    }
+    const cli = call(["validate", "--file", "-", ...flags(), "--prepared", damaged], witness);
+    assert.equal(cli.status, 1, cli.stdout);
+    assert.match(cli.stdout, /prepared_body_identity=different/u);
+  }
+  // A plain character changed at the same length differs in both modes.
+  writeFileSync(damaged, findingsReport().replace("causal path", "causal patH"));
+  for (const mode of ["none", "final-newline"]) {
+    assert.equal(bodyIdentity(same, damaged, mode).identity, "different", mode);
+  }
+  // Invalid UTF-8 on the received side stays a malformed report.
+  const broken = Buffer.from(received);
+  broken.set([0xff, 0x20, 0x20], at);
+  const invalid = call(["validate", "--file", "-", ...flags(), "--prepared", path], broken);
+  assert.equal(invalid.status, 1);
+  assert.match(invalid.stdout, /status=malformed reason=invalid_utf8/u);
+
   const valid = call(["validate", "--file", "-", ...flags(), "--prepared", path], findingsReport());
   assert.equal(valid.status, 0);
   assert.match(valid.stdout, /status=valid/u);

@@ -7337,17 +7337,17 @@ function prepareBody({ path, buffer, expected }) {
   return { status: "prepared", path, bytes: buffer.length, verdict };
 }
 var NORMALIZATIONS = {
-  none: (text3) => text3,
-  "final-newline": (text3) => text3.endsWith("\n") ? text3.slice(0, -1) : text3
+  none: (bytes) => bytes,
+  "final-newline": (bytes) => bytes.at(-1) === 10 ? bytes.subarray(0, -1) : bytes
 };
 function bodyIdentity(received, preparedPath, normalization = "none") {
   const normalize = NORMALIZATIONS[normalization];
   if (normalize === void 0) return { identity: "unverified", reason: "normalization" };
   const prepared = readReportBytes(preparedPath);
   if (prepared.error) return { identity: "unverified", reason: prepared.error };
-  const left = normalize(received.toString("utf8"));
-  const right = normalize(prepared.buffer.toString("utf8"));
-  return { identity: left === right ? "identical" : "different", reason: normalization };
+  const left = normalize(received);
+  const right = normalize(prepared.buffer);
+  return { identity: left.equals(right) ? "identical" : "different", reason: normalization };
 }
 var VENDOR = /^[a-z0-9][a-z0-9-]{0,31}$/u;
 var LINK_UNSUPPORTED = /* @__PURE__ */ new Set(["EPERM", "ENOSYS", "EXDEV", "EMLINK"]);

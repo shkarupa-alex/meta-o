@@ -123,10 +123,12 @@ export function prepareBody({ path, buffer, expected }) {
  * `final-newline` is what a shell command substitution does to a body read with
  * `--body "$(cat <file>)"`: it strips the line feed after `End-Review`. The
  * grammar allows at most one there, so this names exactly one byte and no more.
+ * Both work on bytes: decoding first would turn different invalid sequences into
+ * the same replacement character and call two files one.
  */
 export const NORMALIZATIONS = {
-  none: (text) => text,
-  "final-newline": (text) => (text.endsWith("\n") ? text.slice(0, -1) : text),
+  none: (bytes) => bytes,
+  "final-newline": (bytes) => (bytes.at(-1) === 0x0a ? bytes.subarray(0, -1) : bytes),
 };
 
 /**
@@ -144,9 +146,9 @@ export function bodyIdentity(received, preparedPath, normalization = "none") {
   if (normalize === undefined) return { identity: "unverified", reason: "normalization" };
   const prepared = readReportBytes(preparedPath);
   if (prepared.error) return { identity: "unverified", reason: prepared.error };
-  const left = normalize(received.toString("utf8"));
-  const right = normalize(prepared.buffer.toString("utf8"));
-  return { identity: left === right ? "identical" : "different", reason: normalization };
+  const left = normalize(received);
+  const right = normalize(prepared.buffer);
+  return { identity: left.equals(right) ? "identical" : "different", reason: normalization };
 }
 
 const VENDOR = /^[a-z0-9][a-z0-9-]{0,31}$/u;
