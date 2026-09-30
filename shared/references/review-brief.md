@@ -55,9 +55,11 @@ cannot materialize the candidate, answers `UNKNOWN` with
 in the grammar of [Portable review protocol](review-protocol.md), and that
 grammar replaces whatever generic completion format the backend's own preamble
 describes — a reviewer that sees two formats and no such sentence has to guess
-which one loses the review. It also carries the literal template for this very
-Dispatch, printed by `mo-review-report.mjs template` with the brief's candidate
-and modes, so the service lines are copied rather than rebuilt from prose.
+which one loses the review. It also carries the `mo-review-report.mjs template`
+command with the brief's candidate and modes, so the service lines are copied
+rather than rebuilt from prose. Its `--dispatch` value is the reviewer's to take
+from Orca's preamble: the Dispatch id exists only after the task is written, and
+naming where a value comes from is not a placeholder.
 
 `Body-File` names one path, `Body-File: <dir>/slot-<a|b>-r<round>-d<n>.md`, in a
 directory the caller created for this run outside every worktree. The name is

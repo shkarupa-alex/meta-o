@@ -1139,6 +1139,54 @@ test("the coordinator's validate command binds the effective mode it needs", () 
   }
 });
 
+test("what the review and E2E skills name for Orca is defined where they read it", () => {
+  // Live actors hit each of these: a trust procedure named but defined nowhere,
+  // a template "for this Dispatch" the caller cannot print before the Dispatch
+  // exists, a relative common dir that made an owned orphan look foreign, and
+  // an actor dispatched as a worker that could start no reviewer at all.
+  for (const path of [
+    "shared/references/orca-mechanics.md",
+    "skills/mo-review-orca/references/orca-mechanics.md",
+  ]) {
+    const mechanics = source(path).replace(/\s+/gu, " ");
+    assert.match(
+      mechanics,
+      /The trust procedure answers a trust dialog only when three ownership conditions hold/u,
+      path,
+    );
+    assert.match(mechanics, /Codex's is one — is `needs_human` with the recipe/u, path);
+    assert.match(mechanics, /runs as an ordinary Orca tab and never as a Dispatch/u, path);
+    assert.match(mechanics, /also opens one shell terminal that its receipt does not name/u, path);
+  }
+  for (const path of ["src/skills/mo-review-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
+    const review = source(path).replace(/\s+/gu, " ");
+    assert.doesNotMatch(review, /carries the literal printed for this Dispatch/u, path);
+    assert.match(
+      review,
+      /`--dispatch` is the one argument the brief says to take from there/u,
+      path,
+    );
+    assert.match(review, /`git rev-parse --path-format=absolute --git-common-dir`/u, path);
+  }
+  for (const path of [
+    "shared/references/review-brief.md",
+    "skills/mo-review-orca/references/review-brief.md",
+  ]) {
+    const brief = source(path).replace(/\s+/gu, " ");
+    assert.doesNotMatch(brief, /literal template for this very Dispatch/u, path);
+    assert.match(
+      brief,
+      /Its `--dispatch` value is the reviewer's to take from Orca's preamble/u,
+      path,
+    );
+  }
+  for (const path of ["src/skills/mo-e2e/SKILL.md", "skills/mo-e2e/SKILL.md"]) {
+    const e2e = source(path).replace(/\s+/gu, " ");
+    assert.match(e2e, /runs as an ordinary Orca tab/u, path);
+    assert.match(e2e, /removed with `orca project setup-delete`/u, path);
+  }
+});
+
 test("a Codex trust failure is recovered inside the supported harness, never by codex exec", () => {
   // #43's implemented outcome rests on this rule staying inside the supported
   // harness: without the check, dropping or inverting it passed every gate.

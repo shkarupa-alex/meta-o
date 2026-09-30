@@ -72,6 +72,16 @@ The receipt carries what was launched: `launch.requested == launch.effective`
 for agent, model and effort, and `turnStart: observed`. A mismatch is a failed
 start of that exact Dispatch, never a model to accept.
 
+Orca refuses a worker that another worker starts: `nested_worker_depth_exceeded`
+at the default nested depth of one, and that default stays. A role that starts
+workers itself — a coordinator, a review caller, an E2E actor exercising a
+reviewer pair — runs as an ordinary Orca tab and never as a Dispatch.
+
+`orca worktree create` without `--agent` also opens one shell terminal that its
+receipt does not name. Find it with `orca terminal list` on that worktree and
+record its handle in OwnedResourceSet/1 with the worktree, so that release
+closes it first rather than leaving a tab nobody owns.
+
 A harness whose model `worker-start` cannot pass, such as OpenCode, starts
 terminal-first, and so does a start whose readiness the installed version does
 not observe:
@@ -133,6 +143,16 @@ follow-up review in the same session — with its own prior reasoning still
 present — reachable at all. Reattach only where public surfaces prove the same
 provider session id, the same supervised harness and a mailbox that still
 delivers `worker_done`; `--continue` and a live terminal prove none of these.
+
+The trust procedure answers a trust dialog only when three ownership conditions
+hold: this run created the terminal and recorded it in OwnedResourceSet/1, the
+realpath of the path the dialog names equals the realpath of that terminal's
+worktree, and that worktree is a run resource or the root the user named. Then
+the dialog's own highlight decides the answer. A missing condition, or a trust
+prompt `scripts/mo-harness-screen.mjs` does not recognize — Codex's is one — is
+`needs_human` with the recipe: open the tab `<title>` and confirm trust for that
+folder. It is never a retry, because confirming trust answers for whatever is in
+the folder.
 
 A Codex start that fails with `agent-trust-workspace` is recovered inside the
 supported harness: release the failed Dispatch by its exact id, prove the

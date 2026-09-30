@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-e2e or an active mo-o
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "c0c6f51b27909e3a86a2ddba62e6475dcae6a29f"
+  source_tree: "91d5140d2988fe9d563459899903dd69da3e59ad"
 ---
 
 # Agent-required end-to-end verification
@@ -60,7 +60,14 @@ Use one run-wide 300000 ms blocking waiter for active E2E actors. A quiet
 timeout permits one public liveness snapshot and immediate re-arm without
 narration; one repeated transport failure gives `UNKNOWN`. Task bytes wait for
 a proven normal agent prompt and every resource must preserve the initial Orca
-project-registration inventory.
+project-registration inventory. A disposable fixture that Orca has to place is
+registered only on the human's confirmation for this run and removed with
+`orca project setup-delete`, so the inventory after the run equals the one
+before.
+
+An actor whose scenario starts workers, such as a reviewer pair or an executor,
+runs as an ordinary Orca tab. Orca refuses a worker that another worker starts,
+so an actor dispatched as a worker records every such scenario `NOT_RUN`.
 
 ## Meta-O calls
 

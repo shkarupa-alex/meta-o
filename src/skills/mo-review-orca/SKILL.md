@@ -129,8 +129,10 @@ and no new `REVIEW-START` code.
 Before a new pair, inventory the review worktrees this project owns and let
 bundled `scripts/mo-review-resource.mjs release` decide each one from facts read
 through Orca: the `worktree show` id and comment, the Git common directory
-against the source project's, the project's Orca registration, the terminal and
-provider session bindings proven through `terminal show/list` and
+against the source project's, both read with
+`git rev-parse --path-format=absolute --git-common-dir` because the main
+checkout otherwise answers a relative path that matches nothing, the project's
+Orca registration, the terminal and provider session bindings proven through `terminal show/list` and
 `worker show/status`, whether a live session or the coordinator's or
 executor's checkout uses it, a clean tree, and whether another live resource
 depends on it. It answers one line:
@@ -311,7 +313,10 @@ summary, a pointer to the terminal or a promise to send more cannot be repaired
 afterwards, and that reviewer is spent. The brief's `Report` field declares the
 report grammar of [Portable review protocol](references/review-protocol.md) as
 the task-specific body that replaces the generic completion format of Orca's
-injected preamble, and carries the literal printed for this Dispatch:
+injected preamble, and carries this command with every value the caller holds.
+The Dispatch id does not exist when the task is written and reaches only the
+reviewer, in Orca's preamble, so `--dispatch` is the one argument the brief
+says to take from there:
 
 ```text
 scripts/mo-review-report.mjs template --verdict <PASS|FINDINGS|UNKNOWN> \

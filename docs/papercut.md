@@ -194,6 +194,17 @@
   `orca orchestration inbox --limit <n> --full --json`. Это и есть способ
   восстановить отчёт после падения ожидателя; `worker-read --source transcript`
   возвращает обрезанные блоки и для отчёта не годится.
+- Рабочий Orca, который сам создаёт Run через `run-create`, становится его
+  координатором: `coordinator_handle` нового Run указывает на терминал рабочего,
+  и `check --terminal <его handle>` дальше читает входящие этого Run, а не канал
+  своего Dispatch. `send` такому рабочему по `dispatch:<ctx>` отвечает сразу
+  `recipient_run_mismatch` и `dispatch_run_mismatch`; доходит `reply` на его
+  сообщение или `send --to <handle терминала>`. Команды удаления Run в Orca нет
+  — такой Run остаётся записью, его задачи закрывают как `failed` с причиной.
+- Регистрацию проекта в Orca снимают через
+  `orca project setup-delete --setup <id>`: у `orca repo` глагола удаления нет.
+  После `orca worktree rm` в каталоге проекта остаётся пустой
+  `.orca-worktree-trash`.
 
 ## Поставка
 
