@@ -194,7 +194,14 @@ Git-объекте, а `source_sha` — последний коммит, чьё 
 all_open_issues_closure:
   source_sha: 5a3336916146d8292f9d017fbd5327e9a88e78d6
   spec_blob: 000782c92934b6b987ec3cf9be3d86247524ec71
+  owner_addendum_source_sha: 47dcf02973a4aefe52ab8b25ce859f58c1d61d96
+  owner_addendum_spec_blob: 2bd1add6a77c545833e6e50f3366d22781b07a0a
 ```
+
+Уточнения владельца, данные после закрытия, дописаны дословно в конец той же
+спецификации и удалены вместе с ней ещё раз: `owner_addendum_spec_blob` — её
+полный текст с разделом «Уточнения владельца после закрытия», а
+`owner_addendum_source_sha` — коммит, чьё дерево его содержит.
 
 Постоянное доказательство: `git cat-file -e <blob>` и `git cat-file blob <blob>`
 для исходных байтов.
