@@ -48,6 +48,7 @@ export function sessionRoots(home, codexHome = null) {
 }
 
 const FILESYSTEM = { readdir: readdirSync, lstat: lstatSync };
+const OPENING = { open: openSync, fstat: fstatSync, stat: statSync, close: closeSync };
 
 // Only ENOENT or ENOTDIR proves a root absent. Any other error, such as a parent
 // the user cannot traverse, leaves the root unknown, and a search that could not
@@ -213,7 +214,7 @@ function containingHarness(real, roots) {
  * O_NONBLOCK keeps a FIFO or device from hanging the open; it is refused by
  * rule 3 before any read. Until all four hold, not one byte is read.
  */
-function verifiedDescriptor(path, roots) {
+function verifiedDescriptor(path, roots, io) {
   let real;
   try {
     real = realpathSync(path);
@@ -224,20 +225,28 @@ function verifiedDescriptor(path, roots) {
   if (harness === null || isSymlink(path)) return { outcome: "foreign_path" };
   let fd;
   try {
-    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    fd = io.open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   } catch {
     return { outcome: "foreign_path" };
   }
-  const opened = fstatSync(fd);
-  const checked = statSync(real);
-  const ownUid = typeof process.getuid === "function" ? process.getuid() : opened.uid;
-  if (
-    !opened.isFile() ||
-    opened.dev !== checked.dev ||
-    opened.ino !== checked.ino ||
-    opened.uid !== ownUid
-  ) {
-    closeSync(fd);
+  // Until ownership is proved the descriptor is this check's to close: a log
+  // renamed or removed after the open makes the stat throw, and that refuses
+  // this one session instead of ending every other session's scan with it.
+  let owned;
+  try {
+    const opened = io.fstat(fd);
+    const checked = io.stat(real);
+    const ownUid = typeof process.getuid === "function" ? process.getuid() : opened.uid;
+    owned =
+      opened.isFile() &&
+      opened.dev === checked.dev &&
+      opened.ino === checked.ino &&
+      opened.uid === ownUid;
+  } catch {
+    owned = false;
+  }
+  if (!owned) {
+    io.close(fd);
     return { outcome: "foreign_path" };
   }
   return { fd, harness, real };
@@ -249,10 +258,12 @@ function verifiedDescriptor(path, roots) {
  * @param {string} path candidate path from `resolveSession`
  * @param {string} home the invoking user's home directory
  * @param {string | null} codexHome absolute `CODEX_HOME`, or null when unset
+ * @param {{open: Function, fstat: Function, stat: Function, close: Function}} [io]
+ *   the descriptor operations, replaced only by tests of the race after open
  * @returns {{fd: number, harness: "claude"|"codex", id: string} | {outcome: string}}
  */
-export function openOwnedSession(path, home, codexHome = null) {
-  const verified = verifiedDescriptor(path, sessionRoots(home, codexHome));
+export function openOwnedSession(path, home, codexHome = null, io = OPENING) {
+  const verified = verifiedDescriptor(path, sessionRoots(home, codexHome), io);
   if (verified.outcome) return verified;
   return { fd: verified.fd, harness: verified.harness, id: sessionIdOf(verified.real) };
 }
