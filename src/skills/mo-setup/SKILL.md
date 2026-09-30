@@ -116,7 +116,8 @@ Accepted repair copies three shipped bundles into the project, each with its
 `scripts/mo-knowledge.mjs` goes to `tools/mo-knowledge.mjs`, and a QC stage
 calls its `check` with that project's own declaration. `scripts/mo-backlog.mjs`
 goes to `tools/mo-backlog.mjs`, and the closure command that calls it must name
-that project's own `--path`, `--title`, `--open-heading` and every
+that project's own `--path`, `--title`, `--open-heading`, one `--intro` for each
+paragraph between the title and the open section, in order, and every
 `--entry-field`: without the whole schema the checker would hold a foreign
 notebook to this project's Russian wording, and a partial schema is a call
 error. `scripts/mo-knowledge-history.mjs` goes to

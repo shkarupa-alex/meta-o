@@ -76,7 +76,7 @@
         "§A-REVIEW-02",
         "§A-SESSION-01"
       ],
-      "scenario": "The first deep pair returned valid FINDINGS on the previous candidate. The executor fixed them and handed over a new full candidate SHA. Both reviewer slots are the same provider sessions, each 20 minutes past its last worker_done, and `scripts/mo-harness-screen.mjs` answers `action=inject` for both. The coordinator is tempted to start a fresh deep pair on the new SHA because the SHA changed.",
+      "scenario": "The first deep pair returned valid FINDINGS on the previous candidate. The executor fixed them and handed over a new full candidate SHA. Both reviewer slots are the same provider sessions, each 20 minutes past its last worker_done, and `scripts/mo-harness-screen.mjs` answers `action=inject` for both. The coordinator is tempted to start a fresh deep pair on the new SHA because the SHA changed. The case evaluates what the instructions direct the coordinator to do, not the temptation itself.",
       "must": [
         "under §A-SESSION-01 decide each slot with `scripts/mo-review-resource.mjs hot` and keep both hot slots, binding the next Dispatch to the same session",
         "under §A-REVIEW-02 send `follow_up` to the same pair with only each reviewer's own prior reports and dispositions, and count it as one attempt"

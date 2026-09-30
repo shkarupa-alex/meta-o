@@ -199,10 +199,15 @@ test("the shipped CI examples keep full history and a separate closure job", () 
   for (const line of commands.filter((command) => command.includes("mo-backlog"))) {
     assert.match(line, /<backlog-schema>/u);
   }
-  for (const flag of ["--path", "--title", "--open-heading", "--entry-field"]) {
+  // A notebook with an introduction and no `--intro` answers schema_invalid,
+  // so a closure command written from a list without it cannot pass.
+  for (const flag of ["--path", "--title", "--open-heading", "--intro", "--entry-field"]) {
     assert.ok(setup.includes(flag), `the accepted repair never names ${flag}`);
   }
-  assert.match(contractProse, /path, title, open heading and\s*every entry field/u);
+  assert.match(
+    contractProse,
+    /path, title, every introductory paragraph in order, open heading and\s*every entry field/u,
+  );
 });
 
 test("the shipped backlog checker answers for a foreign notebook as installed", () => {
