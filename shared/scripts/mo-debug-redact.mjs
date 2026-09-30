@@ -33,7 +33,8 @@ const TOKEN_SHAPES = [
     () => "[REDACTED:private_key]",
   ],
   [
-    /\b([a-z][a-z0-9+.-]*:\/\/)[^\s:/@]+:[^\s@/]+@/giu,
+    // The user name may be empty, as in `redis://:<password>@host`.
+    /\b([a-z][a-z0-9+.-]*:\/\/)[^\s:/@]*:[^\s@/]+@/giu,
     (_, scheme) => `${scheme}[REDACTED:url_credentials]@`,
   ],
   [/\bsk-ant-[A-Za-z0-9_-]{8,}/gu, () => "[REDACTED:anthropic_key]"],
@@ -47,9 +48,10 @@ const TOKEN_SHAPES = [
 ];
 
 // A key that *ends* in a credential word, so `max_output_tokens: 30000` and
-// `token_count=12` are not keys and the value needs no minimum length.
-const CREDENTIAL_KEY =
-  "[A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|private[_-]?key)";
+// `token_count=12` are not keys and the value needs no minimum length. A bare
+// `pass` is a word only where the key starts or a separator precedes it, so
+// `DB_PASS` is a key while `bypass` and `compass` are not.
+const CREDENTIAL_KEY = String.raw`(?:[A-Za-z0-9_.-]*(?:password|passwd|passphrase|pwd|token|secret|secret[_-]?key|api[_-]?key|access[_-]?key|private[_-]?key)|(?:[A-Za-z0-9_.-]*[_.-])?pass)`;
 
 /**
  * Where a keyed credential value starts: `KEY=…`, `key: …` and `"key": "…"`

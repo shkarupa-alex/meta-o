@@ -10,6 +10,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
+  chmodSync,
   copyFileSync,
   mkdirSync,
   mkdtempSync,
@@ -264,6 +265,141 @@ test("a Claude body without a stamp is matched byte for byte against committed b
   assert.equal(bounded.status, 0, bounded.stderr);
   assert.match(bounded.stdout, /^MO-DEBUG\/1 status=partial /u);
   assert.match(bounded.stdout, /version=body_match commits=\S+ history=partial stamp=none$/mu);
+});
+
+/** A loaded, complete copy of one committed fixture version, stamp included. */
+function loadOf(version) {
+  const text = readFileSync(join(FIXTURES, `skill-v${version}.txt`), "utf8");
+  const stamp = String(version).repeat(40);
+  return {
+    name: "mo-x",
+    sourceTree: stamp,
+    complete: true,
+    comparison: "file",
+    candidates: [text],
+  };
+}
+
+// A `git` on PATH that answers one `cat-file` mode wrongly and hands every
+// other call to the real Git. Modes: `exit` fails with nothing written,
+// `prefix` writes the first answer and fails, `missing` answers every object
+// as missing and succeeds, `killed` writes the first answer and dies.
+function fakeGit(mode, verb) {
+  const bin = temporary("mo-debug-fake-git-");
+  const real = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).stdout.trim();
+  const script = `#!${process.execPath}
+const { spawnSync } = require("node:child_process");
+const args = process.argv.slice(2);
+const input = require("node:fs").readFileSync(0);
+const result = spawnSync(${JSON.stringify(real)}, args, { input, maxBuffer: 1 << 28 });
+if (!args.includes(${JSON.stringify(verb)})) {
+  process.stdout.write(result.stdout);
+  process.exit(result.status ?? 1);
+}
+const out = result.stdout;
+const firstLine = out.indexOf(10);
+const header = out.subarray(0, firstLine).toString().split(" ");
+const first = ${JSON.stringify(verb)} === "--batch" && header[2] !== undefined
+  ? out.subarray(0, firstLine + 1 + Number(header[2]) + 1)
+  : out.subarray(0, firstLine + 1);
+const mode = ${JSON.stringify(mode)};
+if (mode === "exit") process.exit(42);
+if (mode === "missing") {
+  const names = input.toString().split("\\n").filter(Boolean);
+  process.stdout.write(names.map((name) => name + " missing\\n").join(""));
+  process.exit(0);
+}
+process.stdout.write(first, () => {
+  if (mode === "killed") process.kill(process.pid, "SIGKILL");
+  else process.exit(42);
+});
+`;
+  writeFileSync(join(bin, "git"), script);
+  chmodSync(join(bin, "git"), 0o755);
+  return bin;
+}
+
+function withPath(bin, action) {
+  const saved = process.env.PATH;
+  process.env.PATH = `${bin}:${saved}`;
+  try {
+    return action();
+  } finally {
+    process.env.PATH = saved;
+  }
+}
+
+test("a shallow clone or a failed Git read never claims a complete history", () => {
+  const { repo, short } = historyRepo();
+  // Controls: the full history attributes exactly and is complete.
+  assert.deepEqual(attribute(loadOf(1), openHistory(repo, 2000)), {
+    version: `source_tree:${"1".repeat(40)}`,
+    commits: `${short[0]}..${short[0]}`,
+    history: "complete",
+    stamp: "1".repeat(40),
+  });
+
+  // (1) and (2): a depth-1 clone cannot see v1, and a match on v3 still says
+  // nothing about the commits it cannot reach.
+  const shallow = join(temporary("mo-debug-shallow-"), "clone");
+  git(tmpdir(), ["clone", "-q", "--depth", "1", `file://${repo}`, shallow]);
+  const cut = openHistory(shallow, 2000);
+  assert.deepEqual(attribute(loadOf(1), cut), {
+    version: "unknown",
+    commits: "none",
+    history: "partial",
+    stamp: "1".repeat(40),
+  });
+  const latest = attribute(loadOf(3), cut);
+  assert.equal(latest.version, `source_tree:${"3".repeat(40)}`);
+  assert.equal(latest.history, "partial");
+
+  // (3) to (5): each failed read is unreadable, never a complete negative.
+  for (const [mode, verb] of [
+    ["exit", "--batch-check"],
+    ["prefix", "--batch-check"],
+    ["killed", "--batch-check"],
+    ["exit", "--batch"],
+    ["prefix", "--batch"],
+    ["missing", "--batch"],
+    ["killed", "--batch"],
+  ]) {
+    const bin = fakeGit(mode, verb);
+    const result = withPath(bin, () => attribute(loadOf(1), openHistory(repo, 2000)));
+    assert.equal(result.history, "unreadable", `${mode} ${verb}: ${JSON.stringify(result)}`);
+  }
+});
+
+test("a commit that deleted the skill is history, not a failed read", () => {
+  const repo = temporary("mo-debug-deleted-");
+  git(repo, ["init", "-q"]);
+  git(repo, ["config", "user.name", "Fixture"]);
+  git(repo, ["config", "user.email", "fixture@example.invalid"]);
+  const file = join(repo, "skills", "mo-x", "SKILL.md");
+  mkdirSync(join(repo, "skills", "mo-x"), { recursive: true });
+  for (const step of ["v1", "v2", "delete", "v3"]) {
+    if (step === "delete") git(repo, ["rm", "-q", "skills/mo-x/SKILL.md"]);
+    else {
+      mkdirSync(join(repo, "skills", "mo-x"), { recursive: true });
+      copyFileSync(join(FIXTURES, `skill-${step}.txt`), file);
+      git(repo, ["add", "."]);
+    }
+    git(repo, ["commit", "-qm", step]);
+  }
+  const result = attribute(loadOf(1), openHistory(repo, 2000));
+  assert.equal(result.version, `source_tree:${"1".repeat(40)}`);
+  assert.equal(result.history, "complete");
+});
+
+test("the CLI reports a shallow history as partial", () => {
+  const { home } = fixtureHome();
+  const { repo } = historyRepo();
+  const shallow = join(temporary("mo-debug-shallow-"), "clone");
+  git(tmpdir(), ["clone", "-q", "--depth", "1", `file://${repo}`, shallow]);
+  const result = run(home, ["scan", "--session", CODEX_ID, "--history", shallow]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /^MO-DEBUG\/1 status=partial /u);
+  assert.doesNotMatch(result.stdout, /history=complete/u);
 });
 
 test("the Claude normalization and the stamp parser follow the recorded shapes", () => {
@@ -734,6 +870,73 @@ const OPTION_FORM_CASES = [
   ["ls docs\nPASSWORD=Zq9 make\ngit status", "ls docs\nPASSWORD=[REDACTED:assignment]\ngit status"],
   ["x --password\nnext", "x --password\nnext"],
 ];
+
+// Keys that end in a secret-key compound or a separator-bounded `pass`, and a
+// URL whose user name is empty; each input with its exact redaction.
+const KEYED_VOCABULARY_CASES = [
+  ["SECRET_KEY=Zq9Secret tail", "SECRET_KEY=[REDACTED:assignment]"],
+  ["STRIPE_SECRET_KEY=sk_live_Zq9Secret", "STRIPE_SECRET_KEY=[REDACTED:assignment]"],
+  ["aws_secret_key: Zq9Secret", "aws_secret_key: [REDACTED:assignment]"],
+  ['{"secretKey": "Zq9 Secret", "n": 1}', '{"secretKey": [REDACTED:assignment]'],
+  ["x --secret-key Zq9Secret tail", "x --secret-key [REDACTED:flag]"],
+  ["DB_PASS=Zq9Secret make", "DB_PASS=[REDACTED:assignment]"],
+  ["PASSPHRASE='Zq9 Secret'", "PASSPHRASE=[REDACTED:assignment]"],
+  ["gpg --batch --passphrase Zq9Secret -c f", "gpg --batch --passphrase [REDACTED:flag]"],
+  ["redis://:Zq9Secret@localhost:6379/0", "redis://[REDACTED:url_credentials]@localhost:6379/0"],
+  [
+    "REDIS_URL=rediss://:Zq9Secret@cache:6380",
+    "REDIS_URL=rediss://[REDACTED:url_credentials]@cache:6380",
+  ],
+];
+
+test("a secret-key compound, a separator-bounded pass and an empty URL user are redacted", () => {
+  for (const [input, expected] of KEYED_VOCABULARY_CASES) {
+    assert.equal(redact(input), expected);
+    assert.equal(redact(expected), expected, `idempotent: ${expected}`);
+  }
+  // A word that only contains `pass`, a counter and a port are not credentials.
+  const kept =
+    "bypass=1 compass: north --pass-through x passes=3 secret_key_count=3 git@host:repo.git http://host:8080/x";
+  assert.equal(redact(kept), kept);
+
+  const { home, claude, codex } = fixtureHome();
+  const lines = KEYED_VOCABULARY_CASES.map(([input]) => input).join("\n");
+  const UUID = "9f8e7d6c-5b4a-4321-8fed-cba987654324";
+  const record = {
+    sessionId: UUID,
+    type: "assistant",
+    timestamp: "2026-09-01T12:00:00.000Z",
+    message: {
+      role: "assistant",
+      content: [
+        {
+          type: "tool_use",
+          id: "toolu_v",
+          name: "Skill",
+          input: { skill: "mo-debug", args: lines },
+        },
+      ],
+    },
+  };
+  writeFileSync(join(claude, `${UUID}.jsonl`), `${JSON.stringify(record)}\n`);
+  const rollout = join(codex, `rollout-2026-09-01T11-00-00-${CODEX_ID}.jsonl`);
+  const message = {
+    timestamp: "2026-09-01T11:05:00.000Z",
+    type: "response_item",
+    payload: {
+      type: "message",
+      role: "user",
+      content: [{ type: "input_text", text: `$mo-debug ${lines}` }],
+    },
+  };
+  writeFileSync(rollout, `${readFileSync(rollout, "utf8")}${JSON.stringify(message)}\n`);
+  for (const id of [UUID, CODEX_ID]) {
+    const { result, report } = reportOf(home, ["scan", "--session", id]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(report, /skill\\_invocation \| mo-debug \|/u, id);
+    assert.doesNotMatch(`${result.stdout}\n${report}`, /Zq9|Secret/u, id);
+  }
+});
 
 test("a short or option-form credential is redacted, in both harnesses' records", () => {
   const cases = OPTION_FORM_CASES;

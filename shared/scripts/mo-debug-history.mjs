@@ -5,7 +5,9 @@
  * so attribution reads only committed history: the `metadata.source_tree`
  * stamp when the session shows it, otherwise a byte-exact body comparison.
  * The walk is bounded and reports `partial` instead of silently stopping, and
- * it never touches the checkout — every byte comes from Git objects.
+ * it never touches the checkout — every byte comes from Git objects. A shallow
+ * clone ends its history early, and a Git read that failed says nothing about
+ * the commits it did not return, so neither may claim a complete search.
  *
  * Implements §A-DIAGNOSTICS-01.
  */
@@ -24,6 +26,12 @@ function git(repo, args, input) {
   });
 }
 
+// A killed, overflowing (`ENOBUFS`) or failing Git leaves partial stdout that
+// parses cleanly, so only a zero exit with no spawn error counts as a read.
+function succeeded(result) {
+  return result.status === 0 && result.error === undefined;
+}
+
 /**
  * §A-DIAGNOSTICS-01 opens a Meta-O checkout as read-only attribution history.
  *
@@ -34,9 +42,13 @@ function git(repo, args, input) {
  */
 export function openHistory(repo, maxHistory) {
   const head = git(repo, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
-  const sha = head.status === 0 ? head.stdout.toString("utf8").trim() : "";
+  const sha = succeeded(head) ? head.stdout.toString("utf8").trim() : "";
   if (!SHA.test(sha)) return null;
-  return { repo, head: sha, maxHistory, cache: new Map() };
+  // A shallow clone's walk stops at its graft, so its history is partial; an
+  // answer other than `false` is treated the same way.
+  const probe = git(repo, ["rev-parse", "--is-shallow-repository"]);
+  const shallow = !succeeded(probe) || probe.stdout.toString("utf8").trim() !== "false";
+  return { repo, head: sha, maxHistory, shallow, cache: new Map() };
 }
 
 /** `git cat-file --batch` output: `<oid> <type> <size>\n<bytes>\n` per object. */
@@ -52,6 +64,8 @@ function parseBatch(buffer) {
       continue;
     }
     const length = Number(size);
+    // An object cut off by a failed read is not an object.
+    if (end + 1 + length > buffer.length) break;
     objects.set(oid, buffer.subarray(end + 1, end + 1 + length).toString("utf8"));
     at = end + 1 + length + 1;
   }
@@ -73,29 +87,36 @@ function skillHistory(history, name) {
     "--",
     path,
   ]);
-  const shas =
-    listed.status === 0 ? listed.stdout.toString("utf8").split("\n").filter(Boolean) : [];
-  const partial = shas.length > history.maxHistory;
+  const shas = succeeded(listed) ? listed.stdout.toString("utf8").split("\n").filter(Boolean) : [];
+  const partial = shas.length > history.maxHistory || history.shallow;
   const walked = shas.slice(0, history.maxHistory);
   const checked = git(
     history.repo,
     ["cat-file", "--batch-check"],
     walked.map((sha) => `${sha}:${path}\n`).join(""),
   );
-  const oids = checked.stdout
-    .toString("utf8")
-    .split("\n")
-    .slice(0, walked.length)
-    .map((line) => (/^([0-9a-f]{40}) blob /u.exec(line) ?? [])[1] ?? null);
+  // One answer per commit: a blob, or `missing` where that commit deleted the
+  // skill. Anything else, or fewer answers, is a failed read.
+  const answers = checked.stdout.toString("utf8").split("\n").slice(0, walked.length);
+  const oids = answers.map((line) => (/^([0-9a-f]{40}) blob \d+$/u.exec(line) ?? [])[1] ?? null);
+  const answered =
+    succeeded(checked) &&
+    answers.length === walked.length &&
+    answers.every((line, index) => oids[index] !== null || /^\S+ missing$/u.test(line));
   const unique = [...new Set(oids.filter(Boolean))];
-  const blobs =
+  const batch =
     unique.length === 0
-      ? new Map()
-      : parseBatch(git(history.repo, ["cat-file", "--batch"], `${unique.join("\n")}\n`).stdout);
+      ? null
+      : git(history.repo, ["cat-file", "--batch"], `${unique.join("\n")}\n`);
+  const blobs = batch === null ? new Map() : parseBatch(batch.stdout);
+  // A blob the check just confirmed and the batch did not return is a failed
+  // read, not an absent version.
+  const read = batch === null || (succeeded(batch) && unique.every((oid) => blobs.has(oid)));
   const entries = walked
     .map((sha, index) => ({ sha, text: blobs.get(oids[index]) ?? null }))
     .filter((entry) => entry.text !== null);
-  const result = { entries, partial, failed: listed.status !== 0 };
+  const failed = !succeeded(listed) || !answered || !read;
+  const result = { entries, partial, failed };
   history.cache.set(name, result);
   return result;
 }

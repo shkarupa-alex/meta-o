@@ -23,7 +23,8 @@ var TOKEN_SHAPES = [
     () => "[REDACTED:private_key]"
   ],
   [
-    /\b([a-z][a-z0-9+.-]*:\/\/)[^\s:/@]+:[^\s@/]+@/giu,
+    // The user name may be empty, as in `redis://:<password>@host`.
+    /\b([a-z][a-z0-9+.-]*:\/\/)[^\s:/@]*:[^\s@/]+@/giu,
     (_, scheme) => `${scheme}[REDACTED:url_credentials]@`
   ],
   [/\bsk-ant-[A-Za-z0-9_-]{8,}/gu, () => "[REDACTED:anthropic_key]"],
@@ -35,7 +36,7 @@ var TOKEN_SHAPES = [
   [/\bAKIA[0-9A-Z]{16}\b/gu, () => "[REDACTED:aws_access_key]"],
   [/\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/giu, (_, prefix) => `${prefix}[REDACTED:bearer_token]`]
 ];
-var CREDENTIAL_KEY = "[A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|private[_-]?key)";
+var CREDENTIAL_KEY = String.raw`(?:[A-Za-z0-9_.-]*(?:password|passwd|passphrase|pwd|token|secret|secret[_-]?key|api[_-]?key|access[_-]?key|private[_-]?key)|(?:[A-Za-z0-9_.-]*[_.-])?pass)`;
 var TRIGGERS = [
   ["assignment", String.raw`\b${CREDENTIAL_KEY}(?:\\?["'])?[ \t]*[=:][ \t]*(?=\S)`, "giu"],
   ["flag", String.raw`(?<=^|[\s"'${"`"}(])-{1,2}${CREDENTIAL_KEY}[ \t]+(?=[^\s-])`, "giu"],
@@ -537,11 +538,16 @@ function git(repo, args, input) {
     maxBuffer: 256 * 1024 * 1024
   });
 }
+function succeeded(result) {
+  return result.status === 0 && result.error === void 0;
+}
 function openHistory(repo, maxHistory) {
   const head = git(repo, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
-  const sha = head.status === 0 ? head.stdout.toString("utf8").trim() : "";
+  const sha = succeeded(head) ? head.stdout.toString("utf8").trim() : "";
   if (!SHA.test(sha)) return null;
-  return { repo, head: sha, maxHistory, cache: /* @__PURE__ */ new Map() };
+  const probe = git(repo, ["rev-parse", "--is-shallow-repository"]);
+  const shallow = !succeeded(probe) || probe.stdout.toString("utf8").trim() !== "false";
+  return { repo, head: sha, maxHistory, shallow, cache: /* @__PURE__ */ new Map() };
 }
 function parseBatch(buffer) {
   const objects = /* @__PURE__ */ new Map();
@@ -555,6 +561,7 @@ function parseBatch(buffer) {
       continue;
     }
     const length = Number(size);
+    if (end + 1 + length > buffer.length) break;
     objects.set(oid, buffer.subarray(end + 1, end + 1 + length).toString("utf8"));
     at = end + 1 + length + 1;
   }
@@ -570,8 +577,8 @@ function skillHistory(history, name) {
     "--",
     path
   ]);
-  const shas = listed.status === 0 ? listed.stdout.toString("utf8").split("\n").filter(Boolean) : [];
-  const partial = shas.length > history.maxHistory;
+  const shas = succeeded(listed) ? listed.stdout.toString("utf8").split("\n").filter(Boolean) : [];
+  const partial = shas.length > history.maxHistory || history.shallow;
   const walked = shas.slice(0, history.maxHistory);
   const checked = git(
     history.repo,
@@ -579,12 +586,17 @@ function skillHistory(history, name) {
     walked.map((sha) => `${sha}:${path}
 `).join("")
   );
-  const oids = checked.stdout.toString("utf8").split("\n").slice(0, walked.length).map((line) => (/^([0-9a-f]{40}) blob /u.exec(line) ?? [])[1] ?? null);
+  const answers = checked.stdout.toString("utf8").split("\n").slice(0, walked.length);
+  const oids = answers.map((line) => (/^([0-9a-f]{40}) blob \d+$/u.exec(line) ?? [])[1] ?? null);
+  const answered = succeeded(checked) && answers.length === walked.length && answers.every((line, index) => oids[index] !== null || /^\S+ missing$/u.test(line));
   const unique = [...new Set(oids.filter(Boolean))];
-  const blobs = unique.length === 0 ? /* @__PURE__ */ new Map() : parseBatch(git(history.repo, ["cat-file", "--batch"], `${unique.join("\n")}
-`).stdout);
+  const batch = unique.length === 0 ? null : git(history.repo, ["cat-file", "--batch"], `${unique.join("\n")}
+`);
+  const blobs = batch === null ? /* @__PURE__ */ new Map() : parseBatch(batch.stdout);
+  const read = batch === null || succeeded(batch) && unique.every((oid) => blobs.has(oid));
   const entries = walked.map((sha, index) => ({ sha, text: blobs.get(oids[index]) ?? null })).filter((entry) => entry.text !== null);
-  const result = { entries, partial, failed: listed.status !== 0 };
+  const failed = !succeeded(listed) || !answered || !read;
+  const result = { entries, partial, failed };
   history.cache.set(name, result);
   return result;
 }

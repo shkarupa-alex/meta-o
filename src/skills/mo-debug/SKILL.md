@@ -40,7 +40,8 @@ under the system temp directory; it must not exist yet and is created with mode
 `0600`. `out_exists` means the path is somebody's data: pick another.
 
 The first line is `MO-DEBUG/1 status=<ok|partial|unknown|refused> …`. `partial`
-means a bound was reached, a session was refused or history was incomplete;
+means a bound was reached, a session was refused or history was incomplete —
+a shallow clone, or `history=unreadable` when a Git read failed;
 `unknown` means no requested session had a recognized format. Say which, and
 never present a partial read as complete.
 
