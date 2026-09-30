@@ -204,6 +204,14 @@ test("the shipped CI examples keep full history and a separate closure job", () 
   for (const flag of ["--path", "--title", "--open-heading", "--intro", "--entry-field"]) {
     assert.ok(setup.includes(flag), `the accepted repair never names ${flag}`);
   }
+  // The owner fills <backlog-schema> from the template header, not from the
+  // skill text, so the header has to name the same five flags.
+  for (const name of ["github-actions.yml", "gitlab-ci.yml"]) {
+    const header = readFileSync(join(assets, name), "utf8").split(/^[^#]/mu)[0];
+    for (const flag of ["--path", "--title", "--open-heading", "--intro", "--entry-field"]) {
+      assert.ok(header.includes(flag), `${name} defines <backlog-schema> without ${flag}`);
+    }
+  }
   assert.match(
     contractProse,
     /path, title, every introductory paragraph in order, open heading and\s*every entry field/u,
