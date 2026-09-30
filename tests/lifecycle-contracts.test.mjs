@@ -217,6 +217,77 @@ test("every source issue #18-#43 has one outcome its legend defines", () => {
 });
 
 /**
+ * Why a scenario may type its failure as an external block, or not.
+ *
+ * `blocked:external_capability` admits an issue into
+ * `needs_attention/external_blocked`, which needs a named missing contract and
+ * its owner's Issue. An implemented issue has neither, so a failure of its live
+ * part is an ordinary failure; an issue blocked on a contract that no longer
+ * has a row would name an owner nobody can find.
+ */
+function externalBlockErrors(dispositions, scenarios, contracts) {
+  const outcome = new Map(dispositions.map(([id, value]) => [id, value]));
+  const errors = [];
+  for (const [id, value] of outcome) {
+    if (value === "external_blocked" && !contracts.has(id)) {
+      errors.push(`${id}: external_blocked without an external-contract row`);
+    }
+  }
+  for (const [scenario, ...cells] of scenarios) {
+    for (const [, issue] of cells.join(" ").matchAll(/`blocked:external_capability` по (#\d+)/gu)) {
+      if (outcome.get(issue) !== "external_blocked" || !contracts.has(issue)) {
+        errors.push(
+          `${scenario}: blocked:external_capability for ${issue}, which is ${outcome.get(issue) ?? "absent"}`,
+        );
+      }
+    }
+  }
+  return errors;
+}
+
+function externalBlockSources() {
+  const dispositions = markdownTables(source("docs/acceptance.md"))
+    .find(([, first]) => first?.[0] === "#18")
+    .slice(1);
+  const scenarios = markdownTables(source("docs/e2e.md"))
+    .flat()
+    .filter(([id]) => /^B\d+$/u.test(id ?? ""));
+  const contracts = new Set(
+    markdownTables(source("docs/backend-capabilities.md"))
+      .flat()
+      .map(([first]) => /^(#\d+) \(\[Orca #\d+\]/u.exec(first ?? "")?.[1])
+      .filter(Boolean),
+  );
+  return { dispositions, scenarios, contracts };
+}
+
+test("only an external_blocked issue with a named contract types a scenario failure as external", () => {
+  const { dispositions, scenarios, contracts } = externalBlockSources();
+  assert.deepEqual(externalBlockErrors(dispositions, scenarios, contracts), []);
+  // #43 is implemented, and its live part B63 fails as an ordinary failure.
+  assert.equal(dispositions.find(([id]) => id === "#43")[1], "implemented");
+  const b63 = scenarios.find(([id]) => id === "B63").join(" ");
+  assert.doesNotMatch(b63, /blocked:external_capability/u);
+  // The two blocked issues keep the contract rows their owner can be found by.
+  assert.deepEqual([...contracts].sort(), ["#29", "#33"]);
+  for (const id of ["#29", "#33"]) {
+    assert.equal(dispositions.find(([row]) => row === id)[1], "external_blocked", id);
+  }
+  // Switching #43 back without a contract row, or typing B63 as external again,
+  // is caught and named.
+  const reverted = dispositions.map((row) =>
+    row[0] === "#43" ? [row[0], "external_blocked", row[2]] : row,
+  );
+  assert.deepEqual(externalBlockErrors(reverted, [], contracts), [
+    "#43: external_blocked without an external-contract row",
+  ]);
+  const retyped = [["B63", "x", "Иначе — `blocked:external_capability` по #43."]];
+  assert.deepEqual(externalBlockErrors(dispositions, retyped, contracts), [
+    "B63: blocked:external_capability for #43, which is implemented",
+  ]);
+});
+
+/**
  * The production validator, read through the assertion style of this suite.
  *
  * The rule itself lives in `mo-review-report.mjs`, where the shipped skills can
@@ -988,8 +1059,8 @@ test("the coordinator's validate command binds the effective mode it needs", () 
 });
 
 test("a Codex trust failure is recovered inside the supported harness, never by codex exec", () => {
-  // #43 is external_blocked on Orca, so this rule is what the outcome rests on
-  // until then: without the check, dropping or inverting it passed every gate.
+  // #43's implemented outcome rests on this rule staying inside the supported
+  // harness: without the check, dropping or inverting it passed every gate.
   for (const path of ["src/skills/mo-review-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
     const review = source(path).replace(/\s+/gu, " ");
     assert.match(
