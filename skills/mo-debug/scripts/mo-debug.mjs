@@ -47,10 +47,14 @@ var TRIGGERS = [
   ],
   [
     "user_credentials",
-    String.raw`(?<=^|\s)(?:--?user(?:[ \t]+|=)|-u[ \t]+)(?:\\?["'])?[^\s:"'\\]+:(?=\S)`,
+    String.raw`(?<=^|\s)(?:--?user(?:[ \t]+|=)|-u[ \t]+)(?:\\?["'])?(?:[^\s:"'\\]|\\(?!["']))+:(?=\S)`,
     "gu"
   ],
-  ["user_credentials", String.raw`(?<=^|\s)-u(?:\\?["'])?[^\s:"'\\=/-][^\s:"'\\=/]*:(?=\S)`, "gu"]
+  [
+    "user_credentials",
+    String.raw`(?<=^|\s)-u(?:\\?["'])?(?:[^\s:"'\\=/-]|\\(?!["']))(?:[^\s:"'\\=/]|\\(?!["']))*:(?=\S)`,
+    "gu"
+  ]
 ].map(([kind, trigger, flags]) => ({
   kind,
   // The trigger, then the rest of its line. A value a token shape already

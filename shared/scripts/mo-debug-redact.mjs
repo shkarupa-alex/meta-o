@@ -60,7 +60,9 @@ const CREDENTIAL_KEY = String.raw`(?:[A-Za-z0-9_.-]*(?:password|passwd|passphras
  * A next word that is itself an option means the value was prompted for, a
  * bare `-p` prompts too, and `-P` is the port, which is why that one trigger
  * is case-sensitive. Glued, `-u` is ambiguous with other single-dash options
- * such as Go's `-url=…`, so a glued name carries no `=` or `/`.
+ * such as Go's `-url=…`, so a glued name carries no `=` or `/`. A name may
+ * hold a backslash, as a Windows domain user does, but not one that escapes a
+ * quote: that quote belongs to JSON text around the command.
  */
 const TRIGGERS = [
   ["assignment", String.raw`\b${CREDENTIAL_KEY}(?:\\?["'])?[ \t]*[=:][ \t]*(?=\S)`, "giu"],
@@ -72,10 +74,14 @@ const TRIGGERS = [
   ],
   [
     "user_credentials",
-    String.raw`(?<=^|\s)(?:--?user(?:[ \t]+|=)|-u[ \t]+)(?:\\?["'])?[^\s:"'\\]+:(?=\S)`,
+    String.raw`(?<=^|\s)(?:--?user(?:[ \t]+|=)|-u[ \t]+)(?:\\?["'])?(?:[^\s:"'\\]|\\(?!["']))+:(?=\S)`,
     "gu",
   ],
-  ["user_credentials", String.raw`(?<=^|\s)-u(?:\\?["'])?[^\s:"'\\=/-][^\s:"'\\=/]*:(?=\S)`, "gu"],
+  [
+    "user_credentials",
+    String.raw`(?<=^|\s)-u(?:\\?["'])?(?:[^\s:"'\\=/-]|\\(?!["']))(?:[^\s:"'\\=/]|\\(?!["']))*:(?=\S)`,
+    "gu",
+  ],
 ].map(([kind, trigger, flags]) => ({
   kind,
   // The trigger, then the rest of its line. A value a token shape already

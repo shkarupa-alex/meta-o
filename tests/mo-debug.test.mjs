@@ -859,6 +859,32 @@ const OPTION_FORM_CASES = [
     "curl -u me@example.com:[REDACTED:user_credentials]",
   ],
   ["go run -user=alice:secret", "go run -user=alice:[REDACTED:user_credentials]"],
+  // A Windows domain name holds a backslash that escapes no quote.
+  [
+    "curl --ntlm -u CORP\\alice:Zq9Secret https://h",
+    "curl --ntlm -u CORP\\alice:[REDACTED:user_credentials]",
+  ],
+  [
+    "curl -u 'CORP\\alice:Zq9 Secret' https://h",
+    "curl -u 'CORP\\alice:[REDACTED:user_credentials]",
+  ],
+  [
+    'curl -u "CORP\\alice:Zq9 Secret" https://h',
+    'curl -u "CORP\\alice:[REDACTED:user_credentials]',
+  ],
+  [
+    "curl --user CORP\\alice:Zq9Secret https://h",
+    "curl --user CORP\\alice:[REDACTED:user_credentials]",
+  ],
+  [
+    "curl --user=CORP\\alice:Zq9Secret https://h",
+    "curl --user=CORP\\alice:[REDACTED:user_credentials]",
+  ],
+  ["curl -uCORP\\alice:Zq9Secret https://h", "curl -uCORP\\alice:[REDACTED:user_credentials]"],
+  [
+    '{"cmd":"curl -u \\"CORP\\\\alice:Zq9 Secret\\" https://h"}',
+    '{"cmd":"curl -u \\"CORP\\\\alice:[REDACTED:user_credentials]',
+  ],
   ['PASSWORD=pre"correct horse"post run', "PASSWORD=[REDACTED:assignment]"],
   ["api_key: 'Zq9 Secret' tail", "api_key: [REDACTED:assignment]"],
   ['{"password": "Zq9 Secret", "n": 1}', '{"password": [REDACTED:assignment]'],
@@ -949,6 +975,12 @@ test("a secret-key compound, a separator-bounded pass and an empty URL user are 
   }
 });
 
+// A Windows domain user in a command, plain and as the JSON text of one.
+const DOMAIN_USERS = [
+  "curl --ntlm -u CORP\\alice:Zq9Secret https://h",
+  '{"cmd":"curl -u \\"CORP\\\\alice:Zq9 Secret\\" https://h"}',
+];
+
 test("a short or option-form credential is redacted, in both harnesses' records", () => {
   const cases = OPTION_FORM_CASES;
   for (const [input, expected] of cases) {
@@ -957,7 +989,7 @@ test("a short or option-form credential is redacted, in both harnesses' records"
   }
   // A counter or a prompted option is not a credential and stays readable.
   const kept =
-    "max_output_tokens=3 token_count=2 --max-tokens 5 mysql -P3306 -p db --password --stdin git push -u origin main go run -url=https://host/x";
+    "max_output_tokens=3 token_count=2 --max-tokens 5 mysql -P3306 -p db --password --stdin git push -u origin main go run -url=https://host/x curl -u alice: https://h";
   assert.equal(redact(kept), kept);
 
   const { home, claude, codex } = fixtureHome();
@@ -997,6 +1029,7 @@ test("a short or option-form credential is redacted, in both harnesses' records"
     ["toolu_k", `[1+, "90s && ${SETUP} --password zzpre" Zq9 Secret`],
     ["toolu_l", `curl -H 'X-Api-Key: Zq9 Secret' https://h && ${SETUP}`],
     ["toolu_m", `[1,\u00a0"90s && ${SETUP} --password zzpre" Zq9 Secret`],
+    ...DOMAIN_USERS.map((line, index) => [`toolu_n${index}`, `${line} && ${SETUP}`]),
   ].map(([id, command]) => ({
     ...claudeRecord,
     message: {
@@ -1024,7 +1057,20 @@ test("a short or option-form credential is redacted, in both harnesses' records"
       ],
     },
   };
-  writeFileSync(rollout, `${readFileSync(rollout, "utf8")}${JSON.stringify(codexRecord)}\n`);
+  const domainCalls = DOMAIN_USERS.map((line, index) => ({
+    timestamp: "2026-09-01T11:06:00.000Z",
+    type: "response_item",
+    payload: {
+      type: "function_call",
+      name: "exec_command",
+      arguments: JSON.stringify({ cmd: `${line} && ${SETUP.replace("~/.claude", "~/.codex")}` }),
+      call_id: `call_n${index}`,
+    },
+  }));
+  writeFileSync(
+    rollout,
+    `${readFileSync(rollout, "utf8")}${[codexRecord, ...domainCalls].map((record) => `${JSON.stringify(record)}\n`).join("")}`,
+  );
   for (const id of [UUID, CODEX_ID]) {
     const { result, report } = reportOf(home, ["scan", "--session", id]);
     assert.equal(result.status, 0, result.stderr);
