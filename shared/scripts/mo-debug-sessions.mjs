@@ -47,11 +47,17 @@ export function sessionRoots(home, codexHome = null) {
   };
 }
 
-function isDirectory(path) {
+const FILESYSTEM = { readdir: readdirSync, lstat: lstatSync };
+
+// Only ENOENT or ENOTDIR proves a root absent. Any other error, such as a parent
+// the user cannot traverse, leaves the root unknown, and a search that could not
+// look there is incomplete. A root that is a symlink or not a directory is
+// treated as absent, as it always was, so the walk never follows it.
+function rootProbe(io, root) {
   try {
-    return lstatSync(path).isDirectory();
-  } catch {
-    return false;
+    return io.lstat(root).isDirectory() ? "directory" : "absent";
+  } catch (error) {
+    return error.code === "ENOENT" || error.code === "ENOTDIR" ? "absent" : "unknown";
   }
 }
 
@@ -67,9 +73,11 @@ function listed(readdir, dir) {
   }
 }
 
-function claudeMatches(root, id, readdir) {
-  if (!UUID.test(id) || !isDirectory(root)) return { matches: [], complete: true };
-  const entries = listed(readdir, root);
+function claudeMatches(root, id, io) {
+  if (!UUID.test(id)) return { matches: [], complete: true };
+  const probe = rootProbe(io, root);
+  if (probe !== "directory") return { matches: [], complete: probe === "absent" };
+  const entries = listed(io.readdir, root);
   if (entries === null) return { matches: [], complete: false };
   const matches = [];
   let complete = true;
@@ -77,7 +85,7 @@ function claudeMatches(root, id, readdir) {
     if (!entry.isDirectory()) continue;
     const candidate = join(root, entry.name, `${id}.jsonl`);
     try {
-      lstatSync(candidate);
+      io.lstat(candidate);
       matches.push(candidate);
     } catch (error) {
       // Absent in this project directory, unless the directory itself was unreadable.
@@ -95,8 +103,10 @@ function claudeMatches(root, id, readdir) {
  * `2026` or a UUID prefix would otherwise open whichever one session happened
  * to contain it.
  */
-function codexMatches(root, id, readdir) {
-  if (!UUID.test(id) || !isDirectory(root)) return { matches: [], complete: true };
+function codexMatches(root, id, io) {
+  if (!UUID.test(id)) return { matches: [], complete: true };
+  const probe = rootProbe(io, root);
+  if (probe !== "directory") return { matches: [], complete: probe === "absent" };
   const wanted = id.toLowerCase();
   const matches = [];
   const pending = [{ dir: root, depth: 0 }];
@@ -104,7 +114,7 @@ function codexMatches(root, id, readdir) {
   let complete = true;
   while (pending.length > 0 && seen < WALK_ENTRIES) {
     const { dir, depth } = pending.pop();
-    const entries = listed(readdir, dir);
+    const entries = listed(io.readdir, dir);
     if (entries === null) {
       complete = false;
       continue;
@@ -132,17 +142,18 @@ function codexMatches(root, id, readdir) {
  * @param {string} spec the `--session` argument
  * @param {string} home the invoking user's home directory
  * @param {string | null} codexHome absolute `CODEX_HOME`, or null when unset
- * @param {Function} readdir directory listing, replaceable so a test can fail one read
+ * @param {{readdir: Function, lstat: Function}} io directory reads, replaceable so a
+ *   test can fail one read
  * @returns {{path: string} | {outcome: "session_not_found"|"session_ambiguous"|"search_incomplete"}}
  */
-export function resolveSession(spec, home, codexHome = null, readdir = readdirSync) {
+export function resolveSession(spec, home, codexHome = null, io = FILESYSTEM) {
   if (spec.includes("/") || spec.includes(sep) || spec.endsWith(".jsonl") || isAbsolute(spec)) {
     return { path: resolve(spec) };
   }
   if (!SESSION_ID.test(spec)) return { outcome: "session_not_found" };
   const roots = sessionRoots(home, codexHome);
-  const claude = claudeMatches(roots.claude, spec, readdir);
-  const codex = codexMatches(roots.codex, spec, readdir);
+  const claude = claudeMatches(roots.claude, spec, io);
+  const codex = codexMatches(roots.codex, spec, io);
   if (!claude.complete || !codex.complete) return { outcome: "search_incomplete" };
   const matches = [...claude.matches, ...codex.matches];
   if (matches.length === 0) return { outcome: "session_not_found" };

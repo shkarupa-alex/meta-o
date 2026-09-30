@@ -728,11 +728,12 @@ function sessionRoots(home, codexHome = null) {
     codex: codexHome === null ? join(home, ".codex", "sessions") : join(codexHome, "sessions")
   };
 }
-function isDirectory(path) {
+var FILESYSTEM = { readdir: readdirSync, lstat: lstatSync };
+function rootProbe(io, root) {
   try {
-    return lstatSync(path).isDirectory();
-  } catch {
-    return false;
+    return io.lstat(root).isDirectory() ? "directory" : "absent";
+  } catch (error) {
+    return error.code === "ENOENT" || error.code === "ENOTDIR" ? "absent" : "unknown";
   }
 }
 function listed(readdir, dir) {
@@ -742,9 +743,11 @@ function listed(readdir, dir) {
     return null;
   }
 }
-function claudeMatches(root, id, readdir) {
-  if (!UUID.test(id) || !isDirectory(root)) return { matches: [], complete: true };
-  const entries = listed(readdir, root);
+function claudeMatches(root, id, io) {
+  if (!UUID.test(id)) return { matches: [], complete: true };
+  const probe = rootProbe(io, root);
+  if (probe !== "directory") return { matches: [], complete: probe === "absent" };
+  const entries = listed(io.readdir, root);
   if (entries === null) return { matches: [], complete: false };
   const matches = [];
   let complete = true;
@@ -752,7 +755,7 @@ function claudeMatches(root, id, readdir) {
     if (!entry.isDirectory()) continue;
     const candidate = join(root, entry.name, `${id}.jsonl`);
     try {
-      lstatSync(candidate);
+      io.lstat(candidate);
       matches.push(candidate);
     } catch (error) {
       if (error.code !== "ENOENT") complete = false;
@@ -760,8 +763,10 @@ function claudeMatches(root, id, readdir) {
   }
   return { matches, complete };
 }
-function codexMatches(root, id, readdir) {
-  if (!UUID.test(id) || !isDirectory(root)) return { matches: [], complete: true };
+function codexMatches(root, id, io) {
+  if (!UUID.test(id)) return { matches: [], complete: true };
+  const probe = rootProbe(io, root);
+  if (probe !== "directory") return { matches: [], complete: probe === "absent" };
   const wanted = id.toLowerCase();
   const matches = [];
   const pending = [{ dir: root, depth: 0 }];
@@ -769,7 +774,7 @@ function codexMatches(root, id, readdir) {
   let complete = true;
   while (pending.length > 0 && seen < WALK_ENTRIES) {
     const { dir, depth } = pending.pop();
-    const entries = listed(readdir, dir);
+    const entries = listed(io.readdir, dir);
     if (entries === null) {
       complete = false;
       continue;
@@ -786,14 +791,14 @@ function codexMatches(root, id, readdir) {
   }
   return { matches, complete: complete && pending.length === 0 };
 }
-function resolveSession(spec, home, codexHome = null, readdir = readdirSync) {
+function resolveSession(spec, home, codexHome = null, io = FILESYSTEM) {
   if (spec.includes("/") || spec.includes(sep) || spec.endsWith(".jsonl") || isAbsolute(spec)) {
     return { path: resolve(spec) };
   }
   if (!SESSION_ID.test(spec)) return { outcome: "session_not_found" };
   const roots = sessionRoots(home, codexHome);
-  const claude = claudeMatches(roots.claude, spec, readdir);
-  const codex = codexMatches(roots.codex, spec, readdir);
+  const claude = claudeMatches(roots.claude, spec, io);
+  const codex = codexMatches(roots.codex, spec, io);
   if (!claude.complete || !codex.complete) return { outcome: "search_incomplete" };
   const matches = [...claude.matches, ...codex.matches];
   if (matches.length === 0) return { outcome: "session_not_found" };

@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
+  lstatSync,
   readdirSync,
   copyFileSync,
   mkdirSync,
@@ -593,13 +594,67 @@ test("an unreadable directory makes an id search incomplete, and other sessions 
     if (dir === codex) throw Object.assign(new Error("gone"), { code: "ENOENT" });
     return readdirSync(dir, options);
   };
-  assert.deepEqual(resolveSession(CODEX_ID, home, null, vanishing), {
+  assert.deepEqual(resolveSession(CODEX_ID, home, null, { readdir: vanishing, lstat: lstatSync }), {
     outcome: "search_incomplete",
   });
   // (5) Controls: a complete search still finds, misses and refuses as before.
   assert.equal(resolveSession(CODEX_ID, home).path.endsWith(`${CODEX_ID}.jsonl`), true);
   assert.deepEqual(resolveSession("ffffffff-ffff-4fff-8fff-ffffffffffff", home), {
     outcome: "session_not_found",
+  });
+});
+
+test("a root the user cannot reach is unknown, while an absent root is proven absent", () => {
+  const { home } = fixtureHome();
+  const outcome = (result) => / outcome=([a-z_]+) /u.exec(result.stdout)?.[1];
+  const locked = (path, action) => {
+    chmodSync(path, 0o000);
+    try {
+      return action();
+    } finally {
+      chmodSync(path, 0o755);
+    }
+  };
+  // (1) and (2): an untraversable parent of the Codex root hides it for either id.
+  locked(join(home, ".codex"), () => {
+    const codexId = run(home, ["scan", "--session", CODEX_ID]);
+    assert.equal(outcome(codexId), "search_incomplete");
+    assert.match(codexId.stdout, /^MO-DEBUG\/1 status=unknown /mu);
+    assert.equal(codexId.status, 1);
+    assert.equal(outcome(run(home, ["scan", "--session", CLAUDE_ID])), "search_incomplete");
+  });
+  // (3) The same through CODEX_HOME.
+  const alt = join(home, "alt");
+  mkdirSync(join(alt, "sessions"), { recursive: true });
+  locked(alt, () => {
+    assert.equal(outcome(run(home, ["scan", "--session", CODEX_ID], alt)), "search_incomplete");
+  });
+  // (4) An untraversable parent of the Claude root, for both ids.
+  locked(join(home, ".claude"), () => {
+    for (const id of [CLAUDE_ID, CODEX_ID]) {
+      assert.equal(outcome(run(home, ["scan", "--session", id])), "search_incomplete", id);
+    }
+  });
+  // (5) Controls: a removed root or a root that is a file is a proven absence.
+  const bare = fixtureHome().home;
+  rmSync(join(bare, ".codex"), { recursive: true });
+  assert.equal(outcome(run(bare, ["scan", "--session", CODEX_ID])), "session_not_found");
+  assert.equal(outcome(run(bare, ["scan", "--session", CLAUDE_ID])), "ok");
+  mkdirSync(join(bare, ".codex"));
+  writeFileSync(join(bare, ".codex", "sessions"), "not a directory\n");
+  assert.equal(outcome(run(bare, ["scan", "--session", CODEX_ID])), "session_not_found");
+  // (6) Any other error on the root probe, such as EIO, is not an absence.
+  const failing = {
+    readdir: readdirSync,
+    lstat: (path) => {
+      if (path === join(home, ".codex", "sessions")) {
+        throw Object.assign(new Error("io"), { code: "EIO" });
+      }
+      return lstatSync(path);
+    },
+  };
+  assert.deepEqual(resolveSession(CLAUDE_ID, home, null, failing), {
+    outcome: "search_incomplete",
   });
 });
 
