@@ -80,6 +80,25 @@ test("worker-start --agent is the route, and terminal-first only where it cannot
   assert.doesNotMatch(mechanics, /fallback binding for no_owned_resource/u);
 });
 
+test("the papercut audit lists no release fallback that Orca 1.4.217 made obsolete", () => {
+  const papercut = readFileSync(join(ROOT, "docs", "papercut.md"), "utf8");
+  const nodes = fromMarkdown(papercut).children;
+  const heading = nodes.findIndex(
+    (node) =>
+      node.type === "heading" &&
+      node.children.map((child) => child.value ?? "").join("") ===
+        "Аудит Issues для обходных решений жизненного цикла",
+  );
+  assert.ok(heading >= 0, "audit section missing");
+  const next = nodes.findIndex((node, index) => index > heading && node.type === "heading");
+  const section = nodes.slice(heading + 1, next === -1 ? undefined : next);
+  const audit = papercut.slice(
+    section[0].position.start.offset,
+    section.at(-1).position.end.offset,
+  );
+  assert.doesNotMatch(audit, /резервного терминала|no_owned_resource/u);
+});
+
 test("the recovery path forbids the two moves that duplicate an executor", () => {
   const mechanics = read("orca-mechanics.md");
   assert.match(mechanics, /--retry-of <old>/u);

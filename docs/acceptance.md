@@ -75,27 +75,27 @@
 спецификации; исходные байты остаются в замороженном Git-объекте, указанном
 ниже.
 
-| Источник | Исход       | Долговечное доказательство                                                                                                |
-| -------- | ----------- | ------------------------------------------------------------------------------------------------------------------------- |
-| BKL-00   | implemented | `make mo-qc`, ревью точного SHA и матрица оценок                                                                          |
-| BKL-01   | refuted     | `shared/references/review-protocol.md`: делегирование не является обязательным                                            |
-| BKL-02   | implemented | `tests/review-handoff.test.mjs`: уникальное закрытое пространство имён и публикация без коллизий                          |
-| BKL-03   | implemented | `docs/architecture/orca-session-ownership.md`: устойчивые видимые названия ролей                                          |
-| BKL-04   | implemented | резервный путь по точному дескриптору проверен тестом; внешняя запись пока `unsupported`, см. `docs/papercut.md`          |
-| BKL-05   | implemented | `shared/references/issue-routing.md` и `tests/backlog-empty.test.mjs`                                                     |
-| BKL-06   | implemented | безопасная готовность доставки реализована; внешняя запись пока `unsupported`, см. `docs/papercut.md`                     |
-| BKL-07   | implemented | контракт полезного замечания в `shared/references/review-protocol.md`                                                     |
-| BKL-08   | implemented | явная активация в `src/skills/mo-review-orca/SKILL.md`                                                                    |
-| BKL-09   | implemented | защита доставки и режим запуска реализованы; инциденты ведёт [Orca #16527](https://github.com/stablyai/orca/issues/16527) |
-| BKL-10   | implemented | активное исправление и новая финальная пара в `src/skills/mo-review-orca/SKILL.md`                                        |
-| BKL-11   | duplicate   | BKL-03; цвет остаётся необязательным улучшением                                                                           |
-| BKL-12   | duplicate   | BKL-09; у флагов среды один владелец                                                                                      |
-| BKL-13   | implemented | авторская сводка и передача ревью без потерь в `tests/lifecycle-contracts.test.mjs`                                       |
-| BKL-14   | implemented | отдельное ревью создаёт только пару ревьюеров                                                                             |
-| BKL-15   | implemented | основной ответ исполнителя реализован; внешняя запись пока `unsupported`, см. `docs/papercut.md`                          |
-| BKL-16   | implemented | фикстуры `orchestration` и `orca-cli` подходящей версии                                                                   |
-| BKL-17   | duplicate   | BKL-10; ревьюер остаётся активным до продолжения                                                                          |
-| BKL-18   | implemented | регрессионные тесты и долговечные идентификаторы архитектуры                                                              |
+| Источник | Исход       | Долговечное доказательство                                                                                                                                                                                                   |
+| -------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| BKL-00   | implemented | `make mo-qc`, ревью точного SHA и матрица оценок                                                                                                                                                                             |
+| BKL-01   | refuted     | `shared/references/review-protocol.md`: делегирование не является обязательным                                                                                                                                               |
+| BKL-02   | implemented | `tests/review-handoff.test.mjs`: уникальное закрытое пространство имён и публикация без коллизий                                                                                                                             |
+| BKL-03   | implemented | `docs/architecture/orca-session-ownership.md`: устойчивые видимые названия ролей                                                                                                                                             |
+| BKL-04   | implemented | Orca 1.4.217+ освобождает исполнителя `worker-start --agent` ([Orca #18737](https://github.com/stablyai/orca/issues/18737)); вызывающий закрывает только созданный и записанный им терминал, `tests/orca-placement.test.mjs` |
+| BKL-05   | implemented | `shared/references/issue-routing.md` и `tests/backlog-empty.test.mjs`                                                                                                                                                        |
+| BKL-06   | implemented | безопасная готовность доставки реализована; внешняя запись пока `unsupported`, см. `docs/papercut.md`                                                                                                                        |
+| BKL-07   | implemented | контракт полезного замечания в `shared/references/review-protocol.md`                                                                                                                                                        |
+| BKL-08   | implemented | явная активация в `src/skills/mo-review-orca/SKILL.md`                                                                                                                                                                       |
+| BKL-09   | implemented | защита доставки и режим запуска реализованы; инциденты ведёт [Orca #16527](https://github.com/stablyai/orca/issues/16527)                                                                                                    |
+| BKL-10   | implemented | активное исправление и новая финальная пара в `src/skills/mo-review-orca/SKILL.md`                                                                                                                                           |
+| BKL-11   | duplicate   | BKL-03; цвет остаётся необязательным улучшением                                                                                                                                                                              |
+| BKL-12   | duplicate   | BKL-09; у флагов среды один владелец                                                                                                                                                                                         |
+| BKL-13   | implemented | авторская сводка и передача ревью без потерь в `tests/lifecycle-contracts.test.mjs`                                                                                                                                          |
+| BKL-14   | implemented | отдельное ревью создаёт только пару ревьюеров                                                                                                                                                                                |
+| BKL-15   | implemented | основной ответ исполнителя реализован; внешняя запись пока `unsupported`, см. `docs/papercut.md`                                                                                                                             |
+| BKL-16   | implemented | фикстуры `orchestration` и `orca-cli` подходящей версии                                                                                                                                                                      |
+| BKL-17   | duplicate   | BKL-10; ревьюер остаётся активным до продолжения                                                                                                                                                                             |
+| BKL-18   | implemented | регрессионные тесты и долговечные идентификаторы архитектуры                                                                                                                                                                 |
 
 ## Разбор исходных записей #1–#17
 

@@ -184,6 +184,11 @@ test("the harvested intake has one closed disposition for every BKL source", () 
     const evidence = rows.find(([sourceId]) => sourceId === id)[2];
     assert.match(evidence, /https:\/\/|`unsupported`/u, `${id}: workaround disposition missing`);
   }
+  // The release fallback left with Orca 1.4.217, so its disposition names the
+  // closed upstream issue instead of an unsupported workaround.
+  const released = rows.find(([sourceId]) => sourceId === "BKL-04")[2];
+  assert.match(released, /https:\/\/github\.com\/stablyai\/orca\/issues\/18737/u);
+  assert.doesNotMatch(released, /unsupported/u);
 });
 
 test("every source issue #18-#43 has one outcome its legend defines", () => {
