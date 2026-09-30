@@ -283,7 +283,9 @@ function loadOf(version) {
 // A `git` on PATH that answers one `cat-file` mode wrongly and hands every
 // other call to the real Git. Modes: `exit` fails with nothing written,
 // `prefix` writes the first answer and fails, `missing` answers every object
-// as missing and succeeds, `killed` writes the first answer and dies.
+// as missing and succeeds, `killed` writes the first answer and dies, and
+// `vanish` answers truthfully and then deletes itself, so the next Git cannot
+// start at all and leaves no stdout.
 function fakeGit(mode, verb) {
   const bin = temporary("mo-debug-fake-git-");
   const real = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).stdout.trim();
@@ -292,7 +294,8 @@ const { spawnSync } = require("node:child_process");
 const args = process.argv.slice(2);
 const input = require("node:fs").readFileSync(0);
 const result = spawnSync(${JSON.stringify(real)}, args, { input, maxBuffer: 1 << 28 });
-if (!args.includes(${JSON.stringify(verb)})) {
+if (!args.includes(${JSON.stringify(verb)}) || ${JSON.stringify(mode)} === "vanish") {
+  if (args.includes(${JSON.stringify(verb)})) require("node:fs").unlinkSync(process.argv[1]);
   process.stdout.write(result.stdout);
   process.exit(result.status ?? 1);
 }
@@ -319,9 +322,9 @@ process.stdout.write(first, () => {
   return bin;
 }
 
-function withPath(bin, action) {
+function withPath(bin, action, only = false) {
   const saved = process.env.PATH;
-  process.env.PATH = `${bin}:${saved}`;
+  process.env.PATH = only ? bin : `${bin}:${saved}`;
   try {
     return action();
   } finally {
@@ -367,6 +370,14 @@ test("a shallow clone or a failed Git read never claims a complete history", () 
     const bin = fakeGit(mode, verb);
     const result = withPath(bin, () => attribute(loadOf(1), openHistory(repo, 2000)));
     assert.equal(result.history, "unreadable", `${mode} ${verb}: ${JSON.stringify(result)}`);
+  }
+
+  // (6): a Git that cannot start leaves no stdout at all. The fake is the only
+  // Git on PATH, so after it deletes itself the next read has nothing to run.
+  for (const verb of ["--is-shallow-repository", "rev-list", "--batch-check"]) {
+    const bin = fakeGit("vanish", verb);
+    const result = withPath(bin, () => attribute(loadOf(1), openHistory(repo, 2000)), true);
+    assert.equal(result.history, "unreadable", `vanish ${verb}: ${JSON.stringify(result)}`);
   }
 });
 

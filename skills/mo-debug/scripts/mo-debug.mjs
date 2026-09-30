@@ -533,10 +533,11 @@ import { spawnSync } from "node:child_process";
 var SHA = /^[0-9a-f]{40}$/u;
 var SHORT = 12;
 function git(repo, args, input) {
-  return spawnSync("git", ["-C", repo, ...args], {
+  const result = spawnSync("git", ["-C", repo, ...args], {
     input,
     maxBuffer: 256 * 1024 * 1024
   });
+  return { ...result, stdout: result.stdout ?? Buffer.alloc(0) };
 }
 function succeeded(result) {
   return result.status === 0 && result.error === void 0;

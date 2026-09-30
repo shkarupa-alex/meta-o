@@ -19,11 +19,14 @@ import { SKILL_NAME, claudeBody, metadataSourceTree, splitFrontmatter } from "./
 const SHA = /^[0-9a-f]{40}$/u;
 const SHORT = 12;
 
+// A Git that could not start at all has no stdout; an empty one keeps every
+// read below on the `succeeded` path instead of a TypeError.
 function git(repo, args, input) {
-  return spawnSync("git", ["-C", repo, ...args], {
+  const result = spawnSync("git", ["-C", repo, ...args], {
     input,
     maxBuffer: 256 * 1024 * 1024,
   });
+  return { ...result, stdout: result.stdout ?? Buffer.alloc(0) };
 }
 
 // A killed, overflowing (`ENOBUFS`) or failing Git leaves partial stdout that

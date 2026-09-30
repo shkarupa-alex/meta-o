@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-debug; read a bounded
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "d09f1caf2b2ed646e730f4c6c353dcc8f9ca808a"
+  source_tree: "3aeef05b41244438332f0bbf0fecb27424a80b95"
 ---
 
 # Diagnose your own agent sessions
