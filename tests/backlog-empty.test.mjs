@@ -297,6 +297,9 @@ test("the named schema validator answers for this notebook and a foreign one", (
   // notebook is one nobody will read when it reports on a broken one.
   assert.deepEqual(backlogSchemaViolations(EMPTY), []);
   assert.deepEqual(backlogSchemaViolations(foreignEmpty, FOREIGN), []);
+  // A closure call that leaves out --intro holds half this notebook's schema,
+  // and the introduction it did not declare makes the notebook unknown.
+  assert.equal(inspectBacklog(foreignEmpty, { ...FOREIGN, intro: [] }).reason, "schema_invalid");
 
   // Each document rule names itself rather than collapsing into one verdict.
   assert.deepEqual(backlogSchemaViolations("# Wrong\n\n## Открыто\n"), [
