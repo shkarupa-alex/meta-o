@@ -225,6 +225,27 @@ test("every source issue #18-#43 has one outcome its legend defines", () => {
  * part is an ordinary failure; an issue blocked on a contract that no longer
  * has a row would name an owner nobody can find.
  */
+/**
+ * The issue each external typing in one scenario names.
+ *
+ * The wording around the typing varies («по #33», «с внешним Issue по #29»), so
+ * an occurrence is attributed to the one issue named in its own sentence, and
+ * one that names none or several is an error rather than a silent skip.
+ */
+function externalBlockIssues(scenario, text, errors) {
+  const issues = [];
+  for (const match of text.matchAll(/`blocked:external_capability`/gu)) {
+    const rest = text.slice(match.index);
+    const end = rest.search(/\.(?:\s|$)/u);
+    const named = [...(end === -1 ? rest : rest.slice(0, end)).matchAll(/#\d+/gu)].map(
+      ([id]) => id,
+    );
+    if (named.length === 1) issues.push(named[0]);
+    else errors.push(`${scenario}: blocked:external_capability names ${named.length} issues`);
+  }
+  return issues;
+}
+
 function externalBlockErrors(dispositions, scenarios, contracts) {
   const outcome = new Map(dispositions.map(([id, value]) => [id, value]));
   const errors = [];
@@ -234,7 +255,7 @@ function externalBlockErrors(dispositions, scenarios, contracts) {
     }
   }
   for (const [scenario, ...cells] of scenarios) {
-    for (const [, issue] of cells.join(" ").matchAll(/`blocked:external_capability` по (#\d+)/gu)) {
+    for (const issue of externalBlockIssues(scenario, cells.join(" "), errors)) {
       if (outcome.get(issue) !== "external_blocked" || !contracts.has(issue)) {
         errors.push(
           `${scenario}: blocked:external_capability for ${issue}, which is ${outcome.get(issue) ?? "absent"}`,
@@ -268,8 +289,33 @@ test("only an external_blocked issue with a named contract types a scenario fail
   assert.equal(dispositions.find(([id]) => id === "#43")[1], "implemented");
   const b63 = scenarios.find(([id]) => id === "B63").join(" ");
   assert.doesNotMatch(b63, /blocked:external_capability/u);
-  // The two blocked issues keep the contract rows their owner can be found by.
+  // The two blocked issues keep the contract rows their owner can be found by,
+  // and both of their scenarios are read, whatever words surround the typing.
   assert.deepEqual([...contracts].sort(), ["#29", "#33"]);
+  const typed = scenarios.filter((row) => row.join(" ").includes("blocked:external_capability"));
+  assert.deepEqual(
+    typed.map(([id, ...cells]) => [id, externalBlockIssues(id, cells.join(" "), [])]),
+    [
+      ["B53", ["#29"]],
+      ["B62", ["#33"]],
+    ],
+  );
+  // #29 implemented while B53 still types its failure as external is named,
+  // with the contract row kept or removed.
+  const unblocked = dispositions.map((row) =>
+    row[0] === "#29" ? [row[0], "implemented", row[2]] : row,
+  );
+  const b53 = scenarios.filter(([id]) => id === "B53");
+  for (const rows of [contracts, new Set(["#33"])]) {
+    assert.deepEqual(externalBlockErrors(unblocked, b53, rows), [
+      "B53: blocked:external_capability for #29, which is implemented",
+    ]);
+  }
+  // A typing that names no issue is an error, not a skip.
+  const unattributed = [["B99", "x", "Иначе — `blocked:external_capability`."]];
+  assert.deepEqual(externalBlockErrors(dispositions, unattributed, contracts), [
+    "B99: blocked:external_capability names 0 issues",
+  ]);
   for (const id of ["#29", "#33"]) {
     assert.equal(dispositions.find(([row]) => row === id)[1], "external_blocked", id);
   }
