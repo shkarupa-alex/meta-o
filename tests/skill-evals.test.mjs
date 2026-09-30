@@ -49,7 +49,7 @@ function envelope(
     : `${selected}-${matrixProfile}-native-execution-1`;
   const identity = {
     "required-claude-opus": { route: "claude", model: "opus[1m]", effort: "low" },
-    "required-codex-sol": { route: "codex", model: "gpt-6-sol", effort: "low" },
+    "required-codex-sol": { route: "codex", model: "gpt-6.1-sol", effort: "low" },
     "required-codex-luna": { route: "codex", model: "gpt-6-luna", effort: "high" },
     "desired-codex": { route: "codex", model: "gpt-5.6-luna", effort: "max" },
     "desired-opencode": { route: "opencode", model: "provider/qwen3.8-27b", effort: "low" },
@@ -486,8 +486,8 @@ test("a resolved catalogue alias is proof, and only on the route that has aliase
   // substituted model wearing a nickname.
   const codex = finalizedEnvelope("find-reuse", { matrixProfile: "required-codex-sol" });
   codex.execution.aliasResolution = {
-    requested: "gpt-6-sol",
-    effective: "gpt-6-sol",
+    requested: "gpt-6.1-sol",
+    effective: "gpt-6.1-sol",
     source: "invented resolution",
   };
   assert.throws(
@@ -530,7 +530,7 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
   );
 
   const expensive = finalizedEnvelope("find-reuse");
-  expensive.requested = { route: "codex", model: "gpt-6-sol", effort: "high" };
+  expensive.requested = { route: "codex", model: "gpt-6.1-sol", effort: "high" };
   expensive.execution.effective = { ...expensive.requested };
   expensive.execution.evaluationDigest = evaluationDigest(evaluatedDocument(expensive), expensive);
   assert.throws(() => validateEvidence(ROOT, expensive, HEAD), /testCodexSol must be/);
@@ -1021,7 +1021,7 @@ test("the CLI exposes a bounded prompt without launching a model", () => {
     "--route",
     "codex",
     "--model",
-    "gpt-6-sol",
+    "gpt-6.1-sol",
     "--effort",
     "low",
     "--harness",

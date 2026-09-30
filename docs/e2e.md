@@ -100,7 +100,7 @@ companion-скил, среду агента, поставщика модели, 
 нельзя равноценно проверить детерминированной фикстурой. Для обычного скила
 выполняются три ограниченных случая `positive`, `forbidden` и `degraded` и его
 случаи класса `regression` на `claude/opus[1m]/low` с фактическим
-`claude-opus-5-5[1m]`, на `codex/gpt-6-sol/low` и на `codex/gpt-6-luna/high`.
+`claude-opus-5-5[1m]`, на `codex/gpt-6.1-sol/low` и на `codex/gpt-6-luna/high`.
 Координаты желаемых Codex `gpt-5.6-luna/max` и OpenCode/Qwen всегда
 материализуются минимум как `not_available`. Неприменимый случай получает
 `not_applicable`; отсутствующая обязательная настройка — `blocked|not_run`.

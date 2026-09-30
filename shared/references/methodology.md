@@ -373,7 +373,7 @@ repeated; there is no partial pass.
 When a named scenario genuinely needs a model actor, deterministic proof remains
 preferred. Every applicable case uses all three required selections: Claude
 `opus[1m]`/low, which must actually resolve to `claude-opus-5-5[1m]`, Codex
-`gpt-6-sol/low` and Codex `gpt-6-luna/high`. The two Codex selections share a
+`gpt-6.1-sol/low` and Codex `gpt-6-luna/high`. The two Codex selections share a
 route and are still two obligations: a run on one never covers the other. Record
 requested and effective identity, and record the alias resolution whenever the
 two model strings differ. Desired Codex `gpt-5.6-luna/max` and OpenCode/Qwen

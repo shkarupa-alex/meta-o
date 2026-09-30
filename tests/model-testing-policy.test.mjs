@@ -25,7 +25,7 @@ test("durable business and architecture layers preserve the low-cost policy", ()
     // durable layers have to carry both halves: what is written down and what
     // must actually have run. One literal alone would let the other drift.
     assert.match(source, /claude\/opus\[1m\]\/low/u);
-    assert.match(source, /codex\/gpt-6-sol\/low/u);
+    assert.match(source, /codex\/gpt-6\.1-sol\/low/u);
     assert.match(source, /codex\/gpt-6-luna\/high/u);
     assert.match(source, /gpt-5\.6-luna\/max/u);
     assert.match(source, /Qwen\/OpenCode/u);
@@ -127,8 +127,10 @@ test("the stored coordinate and the model that actually ran are closed separatel
   );
   assert.match(testingPolicyError("testClaude", "claude/opus[1m]/high"), /opus\[1m\]\/low/u);
   assert.match(testingPolicyError("testClaude", "claude/anything/opus[1m]/low"), /opus\[1m\]/u);
-  assert.match(testingPolicyError("testCodexSol", "codex/gpt-6-sol/high"), /gpt-6-sol\/low/u);
-  assert.match(testingPolicyError("testCodexSol", "codex/gpt-6-luna/low"), /gpt-6-sol\/low/u);
+  assert.match(testingPolicyError("testCodexSol", "codex/gpt-6.1-sol/high"), /gpt-6\.1-sol\/low/u);
+  assert.match(testingPolicyError("testCodexSol", "codex/gpt-6-luna/low"), /gpt-6\.1-sol\/low/u);
+  // The owner replaced gpt-6-sol with gpt-6.1-sol; the old model no longer fills the role.
+  assert.match(testingPolicyError("testCodexSol", "codex/gpt-6-sol/low"), /gpt-6\.1-sol\/low/u);
   assert.match(testingPolicyError("testCodexLuna", "codex/gpt-6-luna/low"), /gpt-6-luna\/high/u);
   assert.match(testingPolicyError("testCodexLuna", "codex/gpt-6/high"), /gpt-6-luna\/high/u);
   assert.match(
@@ -168,16 +170,16 @@ test("the stored coordinate and the model that actually ran are closed separatel
   assert.match(drift, /claude-opus-5-5\[1m\]/u);
 
   // An exact-id route resolves nothing, so both halves name the same literal.
-  assert.equal(testingEffectiveIdentityError("testCodexSol", "gpt-6-sol", "gpt-6-sol"), null);
+  assert.equal(testingEffectiveIdentityError("testCodexSol", "gpt-6.1-sol", "gpt-6.1-sol"), null);
   assert.equal(testingEffectiveIdentityError("testCodexLuna", "gpt-6-luna", "gpt-6-luna"), null);
   assert.match(
-    testingEffectiveIdentityError("testCodexSol", "gpt-6-sol", "gpt-6-luna"),
+    testingEffectiveIdentityError("testCodexSol", "gpt-6.1-sol", "gpt-6-luna"),
     /alias_resolution_changed/u,
   );
 
   // Two roles may share a route and differ in model and effort; the desired
   // coordinate stays its own role and literal.
-  assert.equal(testingPolicyError("testCodexSol", "codex/gpt-6-sol/low"), null);
+  assert.equal(testingPolicyError("testCodexSol", "codex/gpt-6.1-sol/low"), null);
   assert.equal(testingPolicyError("testCodexLuna", "codex/gpt-6-luna/high"), null);
   assert.equal(testingPolicyError("testCodexDesired", "codex/gpt-5.6-luna/max"), null);
 });
@@ -201,10 +203,10 @@ test("the consumed show path rejects hand-written expensive or invalid selection
     let result = run({ testClaude: "claude/opus-5/high" });
     assert.equal(result.status, 1);
     assert.match(result.stderr, /testClaude.*opus\[1m\]\/low/u);
-    result = run({ testCodexSol: "codex/gpt-6-sol/high" });
+    result = run({ testCodexSol: "codex/gpt-6.1-sol/high" });
     assert.equal(result.status, 1);
     assert.match(result.stderr, /testCodexSol must be/u);
-    result = run({ testCodexLuna: "codex/gpt-6-sol/high" });
+    result = run({ testCodexLuna: "codex/gpt-6.1-sol/high" });
     assert.equal(result.status, 1);
     assert.match(result.stderr, /testCodexLuna must be/u);
     // The replaced single Codex role is named, not silently dropped, so a

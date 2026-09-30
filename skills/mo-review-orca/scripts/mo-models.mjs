@@ -19666,10 +19666,10 @@ var TESTING_PROFILES = {
   testCodexSol: {
     route: "codex",
     effort: "low",
-    id: /^gpt-6-sol$/u,
-    effectiveId: /^gpt-6-sol$/u,
-    effectiveRequirement: "gpt-6-sol",
-    requirement: "testCodexSol must be codex/gpt-6-sol/low"
+    id: /^gpt-6\.1-sol$/u,
+    effectiveId: /^gpt-6\.1-sol$/u,
+    effectiveRequirement: "gpt-6.1-sol",
+    requirement: "testCodexSol must be codex/gpt-6.1-sol/low"
   },
   testCodexLuna: {
     route: "codex",
