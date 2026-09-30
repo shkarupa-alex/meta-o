@@ -217,15 +217,6 @@ test("every source issue #18-#43 has one outcome its legend defines", () => {
 });
 
 /**
- * Why a scenario may type its failure as an external block, or not.
- *
- * `blocked:external_capability` admits an issue into
- * `needs_attention/external_blocked`, which needs a named missing contract and
- * its owner's Issue. An implemented issue has neither, so a failure of its live
- * part is an ordinary failure; an issue blocked on a contract that no longer
- * has a row would name an owner nobody can find.
- */
-/**
  * The issue each external typing in one scenario names.
  *
  * The wording around the typing varies («по #33», «с внешним Issue по #29»), so
@@ -246,6 +237,15 @@ function externalBlockIssues(scenario, text, errors) {
   return issues;
 }
 
+/**
+ * Why a scenario may type its failure as an external block, or not.
+ *
+ * `blocked:external_capability` admits an issue into
+ * `needs_attention/external_blocked`, which needs a named missing contract and
+ * its owner's Issue. An implemented issue has neither, so a failure of its live
+ * part is an ordinary failure; an issue blocked on a contract that no longer
+ * has a row would name an owner nobody can find.
+ */
 function externalBlockErrors(dispositions, scenarios, contracts) {
   const outcome = new Map(dispositions.map(([id, value]) => [id, value]));
   const errors = [];
@@ -281,6 +281,41 @@ function externalBlockSources() {
   );
   return { dispositions, scenarios, contracts };
 }
+
+/**
+ * External-contract rows whose observations all predate the supported floor.
+ *
+ * An issue is held open as an external block only on the record that the
+ * contract is still missing, and a record from a release the methodology no
+ * longer supports says nothing about the ones it does.
+ */
+function staleContractRows(document) {
+  const floor = /Orca (\d+\.\d+\.\d+) — самая старая поддерживаемая версия/u.exec(document)?.[1];
+  assert.ok(floor, "supported Orca floor missing");
+  const version = (text) => text.split(".").map(Number);
+  const atLeast = (left, right) => {
+    const [a, b] = [version(left), version(right)];
+    const index = a.findIndex((part, at) => part !== b[at]);
+    return index === -1 || a[index] > b[index];
+  };
+  return markdownTables(document)
+    .flat()
+    .filter(([first]) => /^#\d+ \(\[Orca #\d+\]/u.test(first ?? ""))
+    .filter(([, , observed]) => {
+      const cell = observed.replace(/Claude Code [\d., ]+/gu, "");
+      const orca = [...cell.matchAll(/(\d+\.\d+\.\d+)/gu)].map(([, found]) => found);
+      return !orca.some((found) => atLeast(found, floor));
+    })
+    .map(([first]) => /^#\d+/u.exec(first)[0]);
+}
+
+test("every external-contract row was observed on a supported Orca", () => {
+  const document = source("docs/backend-capabilities.md");
+  assert.deepEqual(staleContractRows(document), []);
+  // Rows observed only on 1.4.211, below the 1.4.217 floor, are named.
+  const stale = document.replaceAll("1.4.211, 1.4.217 (2026-09-30)", "1.4.211");
+  assert.deepEqual(staleContractRows(stale), ["#29", "#33"]);
+});
 
 test("only an external_blocked issue with a named contract types a scenario failure as external", () => {
   const { dispositions, scenarios, contracts } = externalBlockSources();
