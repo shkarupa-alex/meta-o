@@ -211,11 +211,16 @@ test("the shipped CI examples keep full history and a separate closure job", () 
     for (const flag of ["--path", "--title", "--open-heading", "--intro", "--entry-field"]) {
       assert.ok(header.includes(flag), `${name} defines <backlog-schema> without ${flag}`);
     }
+    assert.match(header.replace(/\s*#\s*/gu, " "), /отрендеренным текстом/u);
   }
   assert.match(
     contractProse,
     /path, title, every introductory paragraph in order, open heading and\s*every entry field/u,
   );
+  // The checker compares rendered text, so a schema copied from Markdown source
+  // fails on the first inline code span unless the texts say so.
+  assert.match(contractProse, /given as rendered text, without Markdown markup/u);
+  assert.match(setup.replace(/\s+/gu, " "), /as rendered text, without Markdown markup/u);
 });
 
 test("the shipped backlog checker answers for a foreign notebook as installed", () => {

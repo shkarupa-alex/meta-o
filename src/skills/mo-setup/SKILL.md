@@ -118,7 +118,8 @@ calls its `check` with that project's own declaration. `scripts/mo-backlog.mjs`
 goes to `tools/mo-backlog.mjs`, and the closure command that calls it must name
 that project's own `--path`, `--title`, `--open-heading`, one `--intro` for each
 paragraph between the title and the open section, in order, and every
-`--entry-field`: without the whole schema the checker would hold a foreign
+`--entry-field`, with the title and each paragraph as rendered text, without
+Markdown markup and with whitespace collapsed: without the whole schema the checker would hold a foreign
 notebook to this project's Russian wording, and a partial schema is a call
 error. `scripts/mo-knowledge-history.mjs` goes to
 `tools/mo-knowledge-history.mjs` with its version line; a stage calling it joins

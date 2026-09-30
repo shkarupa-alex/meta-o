@@ -300,6 +300,13 @@ test("the named schema validator answers for this notebook and a foreign one", (
   // A closure call that leaves out --intro holds half this notebook's schema,
   // and the introduction it did not declare makes the notebook unknown.
   assert.equal(inspectBacklog(foreignEmpty, { ...FOREIGN, intro: [] }).reason, "schema_invalid");
+  // The checker compares rendered text, which is what the schema texts tell an
+  // owner to pass: the Markdown source of a paragraph with inline code is not it.
+  const marked = "# Backlog\n\nKeep `docs/x.md`   short.\n\n## Open\n";
+  const rendered = { ...FOREIGN, intro: ["Keep docs/x.md short."] };
+  assert.equal(inspectBacklog(marked, rendered).kind, "empty");
+  const source = { ...FOREIGN, intro: ["Keep `docs/x.md`   short."] };
+  assert.equal(inspectBacklog(marked, source).reason, "schema_invalid");
 
   // Each document rule names itself rather than collapsing into one verdict.
   assert.deepEqual(backlogSchemaViolations("# Wrong\n\n## Открыто\n"), [

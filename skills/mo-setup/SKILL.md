@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-setup; inspect or bri
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "63013a3f2e152ffca7d8ec3efaa05ff6b2f7c866"
+  source_tree: "8060c09fd6764786f903657220ec2038745fc8ef"
 ---
 
 # Set up a project for Meta-O
@@ -119,7 +119,8 @@ calls its `check` with that project's own declaration. `scripts/mo-backlog.mjs`
 goes to `tools/mo-backlog.mjs`, and the closure command that calls it must name
 that project's own `--path`, `--title`, `--open-heading`, one `--intro` for each
 paragraph between the title and the open section, in order, and every
-`--entry-field`: without the whole schema the checker would hold a foreign
+`--entry-field`, with the title and each paragraph as rendered text, without
+Markdown markup and with whitespace collapsed: without the whole schema the checker would hold a foreign
 notebook to this project's Russian wording, and a partial schema is a call
 error. `scripts/mo-knowledge-history.mjs` goes to
 `tools/mo-knowledge-history.mjs` with its version line; a stage calling it joins

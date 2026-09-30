@@ -19,7 +19,9 @@ Inspect substance, not file presence. A ready project has:
   the shipped checker as the project's own `tools/mo-backlog.mjs` and calls it
   with that project's whole notebook schema — path, title, every introductory
   paragraph in order, open heading and every entry field — because half a schema
-  silently checks a foreign notebook against the supplier's wording;
+  silently checks a foreign notebook against the supplier's wording. The title
+  and each paragraph are given as rendered text, without Markdown markup and
+  with whitespace collapsed, because that is what the checker compares;
 - a short commands-and-papercuts document, `docs/papercut.md` by default and any
   equivalent accepted on content, linked from `AGENTS.md`, whose writing rule is
   narrow on purpose: a frequent or routine command hung or failed and the cause
