@@ -13,262 +13,10 @@ import {
 import { resolve as resolve2 } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// shared/scripts/mo-debug-shell.mjs
-var WORD_END = /* @__PURE__ */ new Set([" ", "	", "\n", "\r", ";", "&", "|", "<", ">", "(", ")", "`"]);
-function backslashesBefore(text, at) {
-  let count = 0;
-  while (at - count - 1 >= 0 && text[at - count - 1] === "\\") count += 1;
-  return count;
-}
-function trailingOnes(count) {
-  let ones = 0;
-  while (count & 1 << ones) ones += 1;
-  return ones;
-}
-function quoteAt(text, at) {
-  if (text[at] === "'") return { kind: "'", level: null, start: at, end: at + 1 };
-  if (text[at] === "\\") {
-    let run = 0;
-    while (text[at + run] === "\\") run += 1;
-    if (text[at + run] !== '"') return null;
-    if (backslashesBefore(text, at) > 0) return null;
-    return { kind: '"', level: trailingOnes(run), start: at, end: at + run + 1 };
-  }
-  if (text[at] === '"' && backslashesBefore(text, at) === 0) {
-    return { kind: '"', level: 0, start: at, end: at + 1 };
-  }
-  return null;
-}
-var levelOf = (stack) => {
-  const doubles = stack.filter((quote) => quote.kind === '"');
-  return doubles.length === 0 ? 0 : doubles.at(-1).level + 1;
-};
-var closes = (open, token2) => token2.kind === open.kind && (token2.kind === "'" || token2.level === open.level);
-function quoteContexts(text) {
-  const contexts = new Array(text.length + 1);
-  let stack = [];
-  let at = 0;
-  while (at < text.length) {
-    const step = contextStep(text, at, stack);
-    for (let index = at; index < step.next; index += 1) contexts[index] = stack;
-    stack = step.stack;
-    at = step.next;
-  }
-  contexts[text.length] = stack;
-  return contexts;
-}
-var WORD_CHARACTER = /[\p{L}\p{N}]/u;
-var AFTER_POSSESSIVE = /^(?:$|[\s.,;:!?)\]}])/u;
-function contextStep(text, at, stack) {
-  const top = stack.at(-1) ?? null;
-  const token2 = quoteAt(text, at);
-  if (!token2) {
-    const escapes = text[at] === "\\" && top?.kind !== "'" && at + 1 < text.length;
-    return { next: at + (escapes ? 2 : 1), stack };
-  }
-  return { next: token2.end, stack: stackAfter(text, token2, stack, top) };
-}
-var SHELL = String.raw`(?:^|[^\w.-])(?:[\w.-]*/)*(?:sh|bash|dash|zsh|ksh|mksh|ash|fish)`;
-var SHELL_OPTION = String.raw`(?:[ \t]+(?:--[A-Za-z][\w-]*|-(?!o(?:[ \t]|$))[A-Za-z]+|[-+]o[ \t]+[^ \t]+))`;
-var COMMAND_STRING = new RegExp(
-  [
-    String.raw`${SHELL}${SHELL_OPTION}*?[ \t]+-[A-Za-z]*c[A-Za-z]*`,
-    String.raw`(?:^|[;&|("])[ \t]*eval`,
-    String.raw`(?:^|[^\w.-])(?:[\w.-]*/)*ssh(?:[ \t]+-[^ \t]+(?:[ \t]+[^ \t-][^ \t]*)?)*[ \t]+[^ \t-][^ \t]*`
-  ].map((form) => `(?:${form})[ \\t]+$`).join("|"),
-  "u"
-);
-var JSON_SPACE = "[ \\t\\r\\n]";
-var JSON_STRING = String.raw`"(?:[^"\\\u0000-\u001f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"`;
-var JSON_SCALAR = String.raw`(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)(?=${JSON_SPACE}|[,\]}]|$)`;
-var JSON_TOKEN = new RegExp(
-  String.raw`${JSON_SPACE}*(?:(${JSON_STRING})|${JSON_SCALAR}|([{}[\]:,]))`,
-  "uy"
-);
-var JSON_START = new RegExp(`^${JSON_SPACE}*[{[]`, "u");
-var JSON_REST = new RegExp(`^${JSON_SPACE}*$`, "u");
-var JSON_OPEN = { "{": "firstKey", "[": "firstValue" };
-var JSON_KEY = /* @__PURE__ */ new Set(["key", "firstKey"]);
-var JSON_VALUE = /* @__PURE__ */ new Set(["value", "firstValue"]);
-function jsonStep(state, string, punctuation) {
-  const { stack, expect } = state;
-  if (punctuation === void 0) return jsonScalar(state, string);
-  if (punctuation in JSON_OPEN) {
-    if (!JSON_VALUE.has(expect)) return null;
-    return { stack: [...stack, punctuation], expect: JSON_OPEN[punctuation] };
-  }
-  if (punctuation === ":") return expect === "colon" ? { stack, expect: "value" } : null;
-  if (punctuation === ",") {
-    if (expect !== "next" || stack.length === 0) return null;
-    return { stack, expect: stack.at(-1) === "{" ? "key" : "value" };
-  }
-  const open = punctuation === "}" ? "{" : "[";
-  const closable = expect === "next" || expect === JSON_OPEN[open];
-  return stack.at(-1) === open && closable ? { stack: stack.slice(0, -1), expect: "next" } : null;
-}
-function jsonScalar({ stack, expect }, string) {
-  if (JSON_KEY.has(expect)) return string === void 0 ? null : { stack, expect: "colon" };
-  return JSON_VALUE.has(expect) ? { stack, expect: "next" } : null;
-}
-function opensJsonString(prefix) {
-  if (!JSON_START.test(prefix)) return false;
-  let state = { stack: [], expect: "value" };
-  JSON_TOKEN.lastIndex = 0;
-  while (!JSON_REST.test(prefix.slice(JSON_TOKEN.lastIndex))) {
-    const match = JSON_TOKEN.exec(prefix);
-    if (!match) return false;
-    state = jsonStep(state, match[1], match[2]);
-    if (state === null) return false;
-  }
-  return state.stack.length > 0 && (JSON_KEY.has(state.expect) || JSON_VALUE.has(state.expect));
-}
-function lineBefore(text, at) {
-  return text.slice(text.lastIndexOf("\n", at - 1) + 1, at);
-}
-function stackAfter(text, token2, stack, top) {
-  if (top?.kind === "'") return token2.kind === "'" ? stack.slice(0, -1) : stack;
-  if (token2.kind === "'") {
-    const prose = WORD_CHARACTER.test(text[token2.start - 1] ?? "") && (WORD_CHARACTER.test(text[token2.end] ?? "") || AFTER_POSSESSIVE.test(text.slice(token2.end, token2.end + 1)));
-    if (top || prose) return stack;
-    return [...stack, { ...token2, proven: proofOf(text, token2) }];
-  }
-  if (top && closes(top, token2)) return stack.slice(0, -1);
-  if (token2.level !== levelOf(stack)) return stack;
-  return [...stack, { ...token2, proven: proofOf(text, token2) }];
-}
-function proofOf(text, token2) {
-  const before = lineBefore(text, token2.start);
-  if (COMMAND_STRING.test(before)) return "command";
-  if (token2.kind === '"' && token2.level === 0 && opensJsonString(before)) return "json";
-  return false;
-}
-function shellWord(text, start, stack) {
-  const context = { enclosing: stack.at(-1) ?? null, level: levelOf(stack) };
-  const segments = [];
-  let at = start;
-  while (at < text.length) {
-    const step = wordStep(text, at, at === start, context);
-    if (step === null) break;
-    if (step.segment) segments.push(step.segment);
-    at = step.next;
-  }
-  return { end: at, segments };
-}
-var AFTER_CLOSE = /* @__PURE__ */ new Set([...WORD_END, ",", "}", "]", ":", '"', "'", "\\"]);
-function wordStep(text, at, first, { enclosing, level }) {
-  const token2 = quoteAt(text, at);
-  if (!token2) {
-    if (WORD_END.has(text[at])) return null;
-    return { next: at + (text[at] === "\\" && at + 1 < text.length ? 2 : 1) };
-  }
-  if (token2.kind === '"' && token2.level > level) return { next: token2.end };
-  const own = token2.kind === "'" || token2.level === level;
-  const ends = !first && (own ? Boolean(enclosing) && closes(enclosing, token2) : true);
-  if (ends) {
-    const closing = closingStep(text, token2, enclosing);
-    if (closing !== void 0) return closing;
-  }
-  const end = segmentEnd(text, token2);
-  const open = text.slice(token2.start, token2.end);
-  return { next: end.at, segment: { open, close: end.closed ? open : "", start: at, end: end.at } };
-}
-function closingStep(text, token2, enclosing) {
-  const again = quoteAt(text, token2.end);
-  if (again && again.kind === token2.kind && again.level === token2.level) {
-    return { next: again.end };
-  }
-  if (token2.end < text.length && !AFTER_CLOSE.has(text[token2.end])) return void 0;
-  if (enclosing && !enclosing.proven) return void 0;
-  return null;
-}
-function dataStringEnd(text, start, stack) {
-  const enclosing = stack.at(-1);
-  if (!enclosing || enclosing.proven === "command") return start;
-  for (let at = start; at < text.length; ) {
-    const inner = quoteAt(text, at);
-    if (inner && closes(enclosing, inner)) {
-      return enclosing.proven ? inner.start : text.length;
-    }
-    at = inner ? inner.end : at + 1;
-  }
-  return text.length;
-}
-function segmentEnd(text, token2) {
-  let at = token2.end;
-  while (at < text.length) {
-    const inner = quoteAt(text, at);
-    if (inner && closes(token2, inner)) return { at: inner.end, closed: true };
-    at = inner ? inner.end : at + 1;
-  }
-  return { at: text.length, closed: false };
-}
-
 // shared/scripts/mo-debug-redact.mjs
 var EXCERPT_LIMIT = 240;
 var WINDOW = 4096;
 var PATH_ROOTS = "home|Users|mnt|tmp|var|private|root|opt|srv|Volumes|media|run|workspace|workspaces|data";
-var CREDENTIAL_KEY = "[A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|private[_-]?key)";
-var PLACEHOLDER = /^\[REDACTED:[a-z_]+\]$/u;
-var WORD_TRIGGERS = [
-  { kind: "assignment", pattern: new RegExp(String.raw`\b${CREDENTIAL_KEY}=(?=\S)`, "giu") },
-  {
-    kind: "flag",
-    // A next word that is itself an option means the value was prompted for.
-    pattern: new RegExp(
-      String.raw`(?<=^|[\s"'${"`"}(])-{1,2}${CREDENTIAL_KEY}\s+(?=[^\s-])`,
-      "giu"
-    )
-  },
-  {
-    kind: "flag",
-    // A bare `-p` prompts instead; `-P` is the port and stays.
-    pattern: /\b(?:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump)\b[^\n|;&]*?\s-p(?=\S)/gu
-  },
-  { kind: "user", pattern: /(?<=^|\s)(?:--?user(?:\s+|=)|-u\s+)(?=[^\s-])/gu },
-  // Glued, `-u` is ambiguous with other single-dash options such as Go's
-  // `-url=…`, so a glued name that carries `=` or `/` is not a user.
-  { kind: "user", glued: true, pattern: /(?<=^|\s)-u(?=[^\s-])/gu }
-];
-function mask(text, start, word, kind) {
-  const only = word.segments.length === 1 ? word.segments[0] : null;
-  const whole = only && only.start === start && only.end === word.end && only.close;
-  const inner = whole ? text.slice(start + only.open.length, word.end - only.close.length) : text.slice(start, word.end);
-  if (PLACEHOLDER.test(inner)) return text.slice(start, word.end);
-  return whole ? `${only.open}[REDACTED:${kind}]${only.close}` : `[REDACTED:${kind}]`;
-}
-function maskUser(text, start, word, glued) {
-  const value = text.slice(start, word.end);
-  const colon = value.indexOf(":");
-  if (colon <= 0) return null;
-  if (glued && /[=/]/u.test(value.slice(0, colon))) return null;
-  const at = start + colon;
-  const inside = word.segments.find((segment) => segment.start < at && at < segment.end);
-  if (inside) {
-    const secret = text.slice(at + 1, inside.end - inside.close.length);
-    const whole = inside.end === word.end;
-    if (whole && (secret === "" || PLACEHOLDER.test(secret))) return value;
-    return `${text.slice(start, at + 1)}[REDACTED:user_credentials]${inside.close}`;
-  }
-  if (at + 1 >= word.end) return null;
-  const rest = { end: word.end, segments: word.segments.filter((segment) => segment.start > at) };
-  return `${text.slice(start, at + 1)}${mask(text, at + 1, rest, "user_credentials")}`;
-}
-function shellWordRanges(text, contexts) {
-  const ranges = [];
-  for (const trigger of WORD_TRIGGERS) {
-    for (const match of text.matchAll(trigger.pattern)) {
-      const start = match.index + match[0].length;
-      const stack = contexts()[start];
-      const read = shellWord(text, start, stack);
-      if (read.end === start) continue;
-      const end = trigger.kind === "assignment" ? Math.max(read.end, dataStringEnd(text, read.end, stack)) : read.end;
-      const word = end === read.end ? read : { end, segments: [] };
-      const value = trigger.kind === "user" ? maskUser(text, start, word, trigger.glued) : mask(text, start, word, trigger.kind);
-      if (value !== null) ranges.push({ start, end: word.end, value });
-    }
-  }
-  return ranges;
-}
 var TOKEN_SHAPES = [
   [
     /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----[\s\S]*?(?:-----END (?:[A-Z0-9]+ )*PRIVATE KEY-----|$)/gu,
@@ -287,74 +35,33 @@ var TOKEN_SHAPES = [
   [/\bAKIA[0-9A-Z]{16}\b/gu, () => "[REDACTED:aws_access_key]"],
   [/\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/giu, (_, prefix) => `${prefix}[REDACTED:bearer_token]`]
 ];
-var ASSIGNMENTS = [
-  // A quoted value is a value up to its closing quote, spaces included: a
-  // passphrase is several words, and stopping at the first space left the
-  // rest in the report. An unclosed quote runs to the end of the text, which
-  // fails closed at a window edge. Quotes escaped for JSON, as a tool call
-  // carries them, are one more shape of the same value.
+var CREDENTIAL_KEY = "[A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|private[_-]?key)";
+var TRIGGERS = [
+  ["assignment", String.raw`\b${CREDENTIAL_KEY}(?:\\?["'])?[ \t]*[=:][ \t]*(?=\S)`, "giu"],
+  ["flag", String.raw`(?<=^|[\s"'${"`"}(])-{1,2}${CREDENTIAL_KEY}[ \t]+(?=[^\s-])`, "giu"],
   [
-    new RegExp(
-      `\\b(${CREDENTIAL_KEY})(\\\\?["']?\\s*[=:]\\s*)\\\\(["'])(?!\\[REDACTED)(?:(?!\\\\\\3)[\\s\\S])+(\\\\\\3|$)`,
-      "giu"
-    ),
-    (_, key, separator, quote, close) => `${key}${separator}\\${quote}[REDACTED:assignment]${close}`
+    "flag",
+    String.raw`\b(?:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump)\b[^\n|;&]{0,512}?[ \t]-p(?=\S)`,
+    "gu"
   ],
   [
-    new RegExp(
-      `\\b(${CREDENTIAL_KEY})(["']?\\s*[=:]\\s*)(["'])(?!\\[REDACTED)(?:\\\\[\\s\\S]|(?!\\3)[^\\\\])+(\\3|$)`,
-      "giu"
-    ),
-    (_, key, separator, quote, close) => `${key}${separator}${quote}[REDACTED:assignment]${close}`
+    "user_credentials",
+    String.raw`(?<=^|\s)(?:--?user(?:[ \t]+|=)|-u[ \t]+)(?:\\?["'])?[^\s:"'\\]+:(?=\S)`,
+    "gu"
   ],
-  [
-    // A key that *ends* in a credential word, then `=` or `:`. Requiring the
-    // word at the end keeps `max_output_tokens: 30000` and `token_count` out,
-    // so the value needs no minimum length: `pwd=123` is a whole PIN. A value
-    // opening an object or a list is structure, not a credential, and a
-    // backslash before a quote is that quote's JSON escape, not the value.
-    new RegExp(
-      `\\b(${CREDENTIAL_KEY})(["']?\\s*[=:]\\s*["']?)(?!\\[REDACTED)(?![[{])((?:[^\\s"'&,;}\\\\]|\\\\(?!["']))+)`,
-      "giu"
-    ),
-    (_, key, separator) => `${key}${separator}[REDACTED:assignment]`,
-    // Bare: the value stops at whitespace, which inside a data string is
-    // part of it, so there the value runs to the string's end.
-    { bare: true }
-  ]
-];
-function assignmentRanges(text, contexts) {
-  const ranges = [];
-  for (const [pattern, replace, { bare } = {}] of ASSIGNMENTS) {
-    for (const match of text.matchAll(pattern)) {
-      const key = match[1].length + match[2].length;
-      const start = match.index + key;
-      const read = match.index + match[0].length;
-      const data = bare && !/["']$/u.test(match[2]);
-      const end = data ? Math.max(read, dataStringEnd(text, read, contexts()[start])) : read;
-      const value = end === read ? replace(...match).slice(key) : "[REDACTED:assignment]";
-      ranges.push({ start, end, value });
-    }
-  }
-  return ranges;
-}
+  ["user_credentials", String.raw`(?<=^|\s)-u(?:\\?["'])?[^\s:"'\\=/-][^\s:"'\\=/]*:(?=\S)`, "gu"]
+].map(([kind, trigger, flags]) => ({
+  kind,
+  // The trigger, then the rest of its line. A value a token shape already
+  // typed keeps that placeholder, which also makes a second pass change nothing.
+  pattern: new RegExp(String.raw`(${trigger})(?:\\?["'])?(\[REDACTED:[a-z_]+\])?[^\n]*`, flags)
+}));
 function redactCredentials(text) {
-  let computed = null;
-  const contexts = () => computed ??= quoteContexts(text);
-  const ranges = [...shellWordRanges(text, contexts), ...assignmentRanges(text, contexts)].sort(
-    (left, right) => left.start - right.start || right.end - left.end
-  );
-  let out = "";
-  let copied = 0;
-  for (const { start, end, value } of ranges) {
-    if (start < copied) {
-      if (end > copied) copied = text.length;
-      continue;
-    }
-    out += text.slice(copied, start) + value;
-    copied = end;
+  let out = text;
+  for (const { kind, pattern } of TRIGGERS) {
+    out = out.replace(pattern, (_, trigger, typed) => `${trigger}${typed ?? `[REDACTED:${kind}]`}`);
   }
-  return out + text.slice(copied);
+  return out;
 }
 var SEGMENT = "[^\\s\"'`<>|;\\\\/]";
 var ESCAPED = `\\\\{1,2}[^\\n\\\\"']`;
@@ -429,6 +136,19 @@ function excerpt(text) {
   if (cut) line = line.replace(/\s*\S*$/u, "");
   if (line.length <= EXCERPT_LIMIT) return line;
   return `${line.slice(0, EXCERPT_LIMIT - 1)}\u2026`;
+}
+var MESSAGE = 65536;
+function mentionExcerpt(text, mention) {
+  const source = String(text ?? "");
+  let clean = redact(source.slice(0, MESSAGE));
+  if (source.length > MESSAGE) clean = clean.replace(/\s*\S*$/u, "");
+  const at = Math.max(0, clean.indexOf(mention));
+  const from = Math.max(0, at - 80);
+  const to = at + 160;
+  let window = clean.slice(from, to);
+  if (from > 0) window = window.replace(/^\S*\s*/u, "");
+  if (to < clean.length) window = window.replace(/\s*\S*$/u, "");
+  return window;
 }
 function token(value) {
   const cleaned = redact(String(value ?? "")).replace(/[^A-Za-z0-9._:<>/@+-]/gu, "_").slice(0, 120);
@@ -676,8 +396,7 @@ function userMessage(evidence, payload, number) {
     for (const match of text.matchAll(MENTION)) {
       if (seen.has(match[1])) continue;
       seen.add(match[1]);
-      const from = Math.max(0, match.index - 80);
-      evidence.event(number, "skill_invocation", match[1], text.slice(from, match.index + 160));
+      evidence.event(number, "skill_invocation", match[1], mentionExcerpt(text, match[0]));
     }
   }
 }

@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-debug; read a bounded
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "c2106c2fea61fd2c146984130637619f9b1e48cc"
+  source_tree: "0a4504a40abfe1b728ad7a61fc9c4c9d2cd23edb"
 ---
 
 # Diagnose your own agent sessions
@@ -68,7 +68,11 @@ because a locally built or edited skill carries a stamp too.
 Only the local report: the helper's typed lines, your classification and, when
 the user wants one, a local draft of an external report. Every excerpt you
 quote comes from the helper's redacted output; never copy a raw session line, a
-secret, an absolute path or a private message body. This skill publishes
+secret, an absolute path or a private message body. An excerpt that ends at
+`[REDACTED:<kind>]` lost the rest of that line to redaction after a credential
+key; the missing words are not evidence of a defect. Redaction recognizes known
+token shapes and keyed values, not every password, so ask the user to read the
+report before sharing it. This skill publishes
 nothing and creates no Issue: filing the draft is a separate step of an
 explicitly activated lifecycle skill that routes external work, and only with
 the user's permission to publish.

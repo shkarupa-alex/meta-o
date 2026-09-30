@@ -618,7 +618,8 @@ test("secrets and absolute paths never reach stdout or the report", () => {
             id: `toolu_${index}`,
             name: "Bash",
             input: {
-              command: `echo ${sample} ${SHA} claude-opus-5-5 | node ${home}/.claude/skills/mo-x/scripts/mo-review-report.mjs validate --file /tmp/r.md`,
+              // A keyed credential hides the rest of its line, so the evidence comes first.
+              command: `echo ${SHA} claude-opus-5-5 | node ${home}/.claude/skills/mo-x/scripts/mo-review-report.mjs validate --file /tmp/r.md; echo ${sample}`,
             },
           },
         ],
@@ -648,7 +649,7 @@ test("a quoted multi-word credential is redacted whole, in both harnesses' recor
   const { home, claude, codex } = fixtureHome();
   const secrets = `password="correct horse battery staple" api_key: 'alpha beta gamma'`;
   const words = ["correct", "horse", "battery", "staple", "alpha", "beta", "gamma"];
-  const command = `echo ${secrets} message="kept words" | node ~/.claude/skills/mo-x/scripts/mo-review-report.mjs validate`;
+  const command = `node ~/.claude/skills/mo-x/scripts/mo-review-report.mjs validate message="kept words" ${secrets}`;
   const UUID = "9f8e7d6c-5b4a-4321-8fed-cba987654322";
   const claudeRecord = {
     sessionId: UUID,
@@ -686,223 +687,52 @@ test("a quoted multi-word credential is redacted whole, in both harnesses' recor
 });
 
 // Each input with its exact redaction; every output must also be idempotent.
+// A keyed credential hides the rest of its line, whatever quotes follow.
 const OPTION_FORM_CASES = [
-  [
-    "pwd=x password=12 token=abc",
-    "pwd=[REDACTED:assignment] password=[REDACTED:assignment] token=[REDACTED:assignment]",
-  ],
+  ["pwd=x", "pwd=[REDACTED:assignment]"],
+  ["pwd=x password=12 token=abc", "pwd=[REDACTED:assignment]"],
   [
     "docker login -u bob --password s3cr3tValue reg.example",
-    "docker login -u bob --password [REDACTED:flag] reg.example",
+    "docker login -u bob --password [REDACTED:flag]",
   ],
   ["gh auth login --token 0a1b2c3d4e5f", "gh auth login --token [REDACTED:flag]"],
-  ['x --api-key "k3y Value" tail', 'x --api-key "[REDACTED:flag]" tail'],
-  ["mysql -u root -ps3cret db", "mysql -u root -p[REDACTED:flag] db"],
-  ["curl -u bob:s3cret https://host/x", "curl -u bob:[REDACTED:user_credentials] https://host/x"],
-  // A quoted, glued, escaped or differently cased argument is one argument too.
-  ['mysql -u root -p"correct horse" db', 'mysql -u root -p"[REDACTED:flag]" db'],
-  ["mariadb -p'correct horse' db", "mariadb -p'[REDACTED:flag]' db"],
-  ["mysql -pcorrect\\ horse db", "mysql -p[REDACTED:flag] db"],
-  [
-    'curl -u "alice:correct horse" https://h',
-    'curl -u "alice:[REDACTED:user_credentials]" https://h',
-  ],
-  [
-    "curl --user='alice:correct horse' https://h",
-    "curl --user='alice:[REDACTED:user_credentials]' https://h",
-  ],
-  ["curl -ubob:pa@ss https://h", "curl -ubob:[REDACTED:user_credentials] https://h"],
-  ["x --Password s3c -Token abc", "x --Password [REDACTED:flag] -Token [REDACTED:flag]"],
-  // The whole shell word goes, across adjacent bare and quoted segments.
-  ['x --password pre"correct horse"post tail', "x --password [REDACTED:flag] tail"],
-  ['mysql -p"correct horse"post db', "mysql -p[REDACTED:flag] db"],
-  ['PASSWORD=pre"correct horse"post run', "PASSWORD=[REDACTED:assignment] run"],
-  ['x --password "a\\"b c" tail', 'x --password "[REDACTED:flag]" tail'],
-  [
-    'curl -u alice:"correct horse" https://h',
-    'curl -u alice:"[REDACTED:user_credentials]" https://h',
-  ],
-  [
-    'curl -u "alice:correct horse"suffix https://h',
-    'curl -u "alice:[REDACTED:user_credentials]" https://h',
-  ],
+  ['x --api-key "k3y Value" tail', "x --api-key [REDACTED:flag]"],
+  ["x --Password s3c -Token abc", "x --Password [REDACTED:flag]"],
+  ["mysql -u root -ps3cret db", "mysql -u root -p[REDACTED:flag]"],
+  ['mysql -u root -p"correct horse" db', "mysql -u root -p[REDACTED:flag]"],
+  ["mariadb -p'correct horse' db", "mariadb -p[REDACTED:flag]"],
+  ["curl -u bob:s3cret https://host/x", "curl -u bob:[REDACTED:user_credentials]"],
+  ['curl -u "alice:correct horse" https://h', 'curl -u "alice:[REDACTED:user_credentials]'],
+  ["curl --user='alice:correct horse' https://h", "curl --user='alice:[REDACTED:user_credentials]"],
+  ["curl -ubob:pa@ss https://h", "curl -ubob:[REDACTED:user_credentials]"],
+  ["curl -u tenant/user:s3cr3t https://h", "curl -u tenant/user:[REDACTED:user_credentials]"],
+  ["curl --user uid=alice:s3cr3t https://h", "curl --user uid=alice:[REDACTED:user_credentials]"],
   [
     "curl -u me@example.com:ATATT3xFfGF0 https://h",
-    "curl -u me@example.com:[REDACTED:user_credentials] https://h",
-  ],
-  [
-    "curl --user me@example.com:ATATT3xFfGF0 https://h",
-    "curl --user me@example.com:[REDACTED:user_credentials] https://h",
-  ],
-  // A later segment may open with a space or be empty, and a user name may
-  // carry `/`, `=` or `@`; only a glued `-u` needs a plain name.
-  ['x --password pre" correct horse"post tail', "x --password [REDACTED:flag] tail"],
-  ['x --password pre""post tail', "x --password [REDACTED:flag] tail"],
-  [
-    'curl -u alice:" correct horse" https://h',
-    'curl -u alice:"[REDACTED:user_credentials]" https://h',
-  ],
-  [
-    "curl -u tenant/user:s3cr3t https://h",
-    "curl -u tenant/user:[REDACTED:user_credentials] https://h",
-  ],
-  [
-    "curl --user uid=alice:s3cr3t https://h",
-    "curl --user uid=alice:[REDACTED:user_credentials] https://h",
+    "curl -u me@example.com:[REDACTED:user_credentials]",
   ],
   ["go run -user=alice:secret", "go run -user=alice:[REDACTED:user_credentials]"],
-  ["don't; x --password 'a b' tail", "don't; x --password '[REDACTED:flag]' tail"],
-  [
-    '{"cmd":"bash -c \\"x --token abc\\"","cwd":"docs/y"}',
-    '{"cmd":"bash -c \\"x --token [REDACTED:flag]\\"","cwd":"docs/y"}',
-  ],
-  // An apostrophe in prose, inside double quotes or escaped is no quote, and
-  // a typed placeholder keeps its type only when it is the whole password.
-  [
-    "echo don\\'t; x --password pre' secret'post tail",
-    "echo don\\'t; x --password [REDACTED:flag] tail",
-  ],
-  [
-    'git commit -m "don\'t" && curl -u alice:"correct horse" https://h',
-    'git commit -m "don\'t" && curl -u alice:"[REDACTED:user_credentials]" https://h',
-  ],
-  [
-    "$mo-debug it didn't work: curl -u alice:'correct horse' https://h",
-    "$mo-debug it didn't work: curl -u alice:'[REDACTED:user_credentials]' https://h",
-  ],
-  [
-    'echo "it\'s" && x --password pre"correct horse"post tail',
-    'echo "it\'s" && x --password [REDACTED:flag] tail',
-  ],
-  [
-    'curl -u "bob:ghp_AAAAAAAAAAAAAAAAAAAA"-extra https://h',
-    'curl -u "bob:[REDACTED:user_credentials]" https://h',
-  ],
-  [
-    'bash -c "x --password pre""post" && ls docs/q',
-    'bash -c "x --password [REDACTED:flag]" && ls docs/q',
-  ],
-  // A possessive is prose, and after a phantom quote the longer reading wins.
-  [
-    "users' reports: x --password pre' Zq9 Secret'post tail",
-    "users' reports: x --password [REDACTED:flag] tail",
-  ],
-  [
-    "the '90s login: curl -u alice:' Zq9 Secret' https://h",
-    "the '90s login: curl -u alice:'[REDACTED:user_credentials]' https://h",
-  ],
-  ["bash -c 'x --token abc' && ls docs/q", "bash -c 'x --token [REDACTED:flag]' && ls docs/q"],
-  // A credential word ending a real `bash -c '…'` string ends there, and a
-  // phantom quote never shortens a later one, closed or not.
-  [
-    "bash -c 'x --token abc' && y --password 'Zq9 Secret' tail",
-    "bash -c 'x --token [REDACTED:flag]' && y --password '[REDACTED:flag]' tail",
-  ],
-  [
-    "ssh h 'deploy --token abc' && curl -u 'bob:correct horse' https://h",
-    "ssh h 'deploy --token [REDACTED:flag]' && curl -u 'bob:[REDACTED:user_credentials]' https://h",
-  ],
-  ["the '90s login: x --password pre' Zq9 Secret", "the '90s login: x --password [REDACTED:flag]"],
-  // Only a shell's `-c`, `eval` at the start of a command or `ssh <host>`
-  // opens a command string; `eval` in prose and another command's `-c` do not.
-  [
-    "please do not eval '90s login: x --password pre' Zq9 Secret",
-    "please do not eval '90s login: x --password [REDACTED:flag]",
-  ],
-  [
-    "the option -c '90s login: x --password pre' Zq9 Secret",
-    "the option -c '90s login: x --password [REDACTED:flag]",
-  ],
-  ["eval 'x --token abc' && ls", "eval 'x --token [REDACTED:flag]' && ls"],
-  ["bash -lc 'x --token abc' && ls docs/q", "bash -lc 'x --token [REDACTED:flag]' && ls docs/q"],
-  [
-    "sudo bash -o pipefail -c 'x --token abc' && ls",
-    "sudo bash -o pipefail -c 'x --token [REDACTED:flag]' && ls",
-  ],
-  // Prose punctuation proves no JSON string; a JSON document's own quotes do.
-  [
-    'note: "90s login: x --password pre" Zq9 Secret',
-    'note: "90s login: x --password [REDACTED:flag]',
-  ],
-  [
-    'one, "90s login: x --password pre" Zq9 Secret',
-    'one, "90s login: x --password [REDACTED:flag]',
-  ],
-  [
-    '{"a": 1, "b": [true, {"c": "x --token abc"}], "d": "e"}',
-    '{"a": 1, "b": [true, {"c": "x --token [REDACTED:flag]"}], "d": "e"}',
-  ],
-  // A prefix that only looks like JSON proves nothing: an invalid number, a
-  // trailing comma, an illegal escape. Valid JSON of every kind still does.
-  [
-    '[1+, "90s login: x --password pre" Zq9 Secret',
-    '[1+, "90s login: x --password [REDACTED:flag]',
-  ],
-  [
-    '{"a":1,"b":[true,],"c":"90s login: x --password pre" Zq9 Secret',
-    '{"a":1,"b":[true,],"c":"90s login: x --password [REDACTED:flag]',
-  ],
-  [
-    String.raw`{"a":"\x","b":"90s login: x --password pre" Zq9 Secret`,
-    String.raw`{"a":"\x","b":"90s login: x --password [REDACTED:flag]`,
-  ],
-  [
-    String.raw`{"n":-1.25e+3,"u":"\u0041","e":[],"o":{},"p":[[1],{"q":null}],"c":"x --token abc","d":"e"}`,
-    String.raw`{"n":-1.25e+3,"u":"\u0041","e":[],"o":{},"p":[[1],{"q":null}],"c":"x --token [REDACTED:flag]","d":"e"}`,
-  ],
-  // JSON whitespace is space, tab, CR and LF only, and a shell splits words at
-  // a space or a tab only; any other space proves nothing.
-  [
-    '[1,\u00a0"90s login: x --password pre" Zq9 Secret',
-    '[1,\u00a0"90s login: x --password [REDACTED:flag]',
-  ],
-  [
-    '[1,\u000b"90s login: x --password pre" Zq9 Secret',
-    '[1,\u000b"90s login: x --password [REDACTED:flag]',
-  ],
-  ['[1,\t"x --token abc","tail"]', '[1,\t"x --token [REDACTED:flag]","tail"]'],
-  ["bash\u00a0-c 'x --token abc' Zq9 Secret", "bash\u00a0-c 'x --token [REDACTED:flag]"],
-  // In a string that holds data, a space is part of a `KEY=` value, so the
-  // value runs to the string's closing quote; in a command string it does not.
-  ["curl -d 'password=Zq9 Secret' https://h", "curl -d 'password=[REDACTED:assignment]"],
-  ['{"body":"password=Zq9 Secret","n":1}', '{"body":"password=[REDACTED:assignment]","n":1}'],
-  ["bash -c 'PASSWORD=x ls' && y", "bash -c 'PASSWORD=[REDACTED:assignment] ls' && y"],
-  // The same holds for a bare `key: value` there, but not for one whose key
-  // is a JSON string that has already closed.
-  [
-    '{"access_token": null, "expires_in": 1}',
-    '{"access_token": [REDACTED:assignment], "expires_in": 1}',
-  ],
-  ['INFO {"token": 5, "user": "bob"}', 'INFO {"token": [REDACTED:assignment], "user": "bob"}'],
-  ['{"token": 5} tail', '{"token": [REDACTED:assignment]} tail'],
-  ["curl -H 'X-Api-Key: Zq9 Secret' https://h", "curl -H 'X-Api-Key: [REDACTED:assignment]"],
-  ['{"note":"password: Zq9 Secret","n":1}', '{"note":"password: [REDACTED:assignment]","n":1}'],
-  // A double quote that opens no command string or JSON string may be a
-  // phantom too, such as an inch mark.
-  ['a 12" screen x --password pre" Zq9 Secret', 'a 12" screen x --password [REDACTED:flag]'],
-  [
-    '{"cmd":["bash","-lc","x --token abc && ls"]}',
-    '{"cmd":["bash","-lc","x --token [REDACTED:flag] && ls"]}',
-  ],
-  // A word read long after a phantom quote that takes in the key of the next
-  // credential still leaves that credential masked; where the two overlap,
-  // the rest is hidden.
-  [
-    `the '90s x --token abc' && curl -d '{"password": "Zq9 Secret"}' https://h`,
-    `the '90s x --token [REDACTED:flag] "[REDACTED:assignment]"}' https://h`,
-  ],
-  ["the '90s x --token abc' && y api_key: 'Zq9 Secret' tail", "the '90s x --token [REDACTED:flag]"],
-  [
-    `bash -lc 'x --token abc' && curl -d '{"password": "Zq9 Secret"}' https://h`,
-    `bash -lc 'x --token [REDACTED:flag]' && curl -d '{"password": "[REDACTED:assignment]"}' https://h`,
-  ],
-  // A quote that closes an enclosing string or a JSON string ends the word.
-  ['bash -c "x --token abc" && ls docs/x', 'bash -c "x --token [REDACTED:flag]" && ls docs/x'],
-  ['{"cmd":"x --token abc","cwd":"docs/y"}', '{"cmd":"x --token [REDACTED:flag]","cwd":"docs/y"}'],
+  ['PASSWORD=pre"correct horse"post run', "PASSWORD=[REDACTED:assignment]"],
+  ["api_key: 'Zq9 Secret' tail", "api_key: [REDACTED:assignment]"],
+  ['{"password": "Zq9 Secret", "n": 1}', '{"password": [REDACTED:assignment]'],
+  ['{"cmd":"x --token abc","cwd":"docs/y"}', '{"cmd":"x --token [REDACTED:flag]'],
   [
     '{"cmd":"curl -u \\"alice:correct horse\\" https://h"}',
-    '{"cmd":"curl -u \\"alice:[REDACTED:user_credentials]\\" https://h"}',
+    '{"cmd":"curl -u \\"alice:[REDACTED:user_credentials]',
   ],
+  ['{\\"password\\": \\"Zq9 Secret\\"}', '{\\"password\\": [REDACTED:assignment]'],
+  ["curl -H 'X-Api-Key: Zq9 Secret' https://h", "curl -H 'X-Api-Key: [REDACTED:assignment]"],
+  // A quote the old reading took for a closing one no longer matters.
+  ["the '90s login: x --password pre' Zq9 Secret", "the '90s login: x --password [REDACTED:flag]"],
+  ["bash -c 'x --token abc' && ls docs/q", "bash -c 'x --token [REDACTED:flag]"],
+  // A value a token shape typed keeps its type, and the rest of the line still goes.
+  [
+    'curl -u "bob:ghp_AAAAAAAAAAAAAAAAAAAA"-extra https://h',
+    'curl -u "bob:[REDACTED:github_token]',
+  ],
+  // Only the line of the credential is hidden.
+  ["ls docs\nPASSWORD=Zq9 make\ngit status", "ls docs\nPASSWORD=[REDACTED:assignment]\ngit status"],
+  ["x --password\nnext", "x --password\nnext"],
 ];
 
 test("a short or option-form credential is redacted, in both harnesses' records", () => {
@@ -1074,13 +904,38 @@ test("no credential byte survives after these enclosing texts, in any shape or f
   }
 });
 
-test("a long run of shell options before a quote is read in linear time", () => {
-  // `-o` once had two readings, as an option and as the option that takes a
-  // value, and forty of them before a quote took seconds per quote. A test
-  // timeout cannot interrupt synchronous code, so the time is asserted.
-  const input = `bash${" -o".repeat(40)} x 'y --token abc'`;
+test("a credential far from a Codex mention is redacted before the window is cut", () => {
+  // The window around a mention was once cut from the raw message, so it could
+  // start inside a quoted password or after the key that marks it.
+  const messages = [
+    `GH_TOKEN=ghp_${"Q".repeat(36)} ${"w".repeat(50)} $mo-debug why`,
+    `password="Zq9 correct horse Secret" ${"w".repeat(60)} $mo-debug why`,
+    `$mo-debug clone failed: ${"w".repeat(115)} https://alice:Zq9Secret@git.example.com/r.git`,
+  ];
+  for (const text of messages) {
+    const { home, codex } = fixtureHome();
+    const rollout = join(codex, `rollout-2026-09-01T11-00-00-${CODEX_ID}.jsonl`);
+    const record = {
+      timestamp: "2026-09-01T11:05:00.000Z",
+      type: "response_item",
+      payload: { type: "message", role: "user", content: [{ type: "input_text", text }] },
+    };
+    writeFileSync(rollout, `${readFileSync(rollout, "utf8")}${JSON.stringify(record)}\n`);
+    const { result, report } = reportOf(home, ["scan", "--session", CODEX_ID]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(report, /skill\\_invocation \| mo-debug \|/u, text);
+    const output = `${result.stdout}\n${report}`;
+    assert.doesNotMatch(output, /QQQQQQQQ|horse|Secret|Zq9/u, text);
+  }
+});
+
+test("a long line with many client names is read in linear time", () => {
+  // The MySQL trigger looks ahead for `-p` from every client name, so that
+  // look-ahead is bounded. A test timeout cannot interrupt synchronous code,
+  // so the time is asserted.
+  const input = `${"mysql -u root ".repeat(20000)}-pZq9`;
   const started = performance.now();
-  assert.equal(redact(input), `bash${" -o".repeat(40)} x 'y --token [REDACTED:flag]`);
+  assert.doesNotMatch(redact(input), /Zq9/u);
   assert.ok(performance.now() - started < 1000, "backtracking");
 });
 

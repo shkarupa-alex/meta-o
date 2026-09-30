@@ -12,6 +12,7 @@
  * Implements §A-DIAGNOSTICS-01.
  */
 
+import { mentionExcerpt } from "./mo-debug-redact.mjs";
 import {
   SKILL_NAME,
   createEvidence,
@@ -69,8 +70,7 @@ function userMessage(evidence, payload, number) {
     for (const match of text.matchAll(MENTION)) {
       if (seen.has(match[1])) continue;
       seen.add(match[1]);
-      const from = Math.max(0, match.index - 80);
-      evidence.event(number, "skill_invocation", match[1], text.slice(from, match.index + 160));
+      evidence.event(number, "skill_invocation", match[1], mentionExcerpt(text, match[0]));
     }
   }
 }

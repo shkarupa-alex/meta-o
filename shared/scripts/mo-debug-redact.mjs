@@ -14,8 +14,6 @@
  * Implements §A-DIAGNOSTICS-01.
  */
 
-import { dataStringEnd, quoteContexts, shellWord } from "./mo-debug-shell.mjs";
-
 export const EXCERPT_LIMIT = 240;
 
 // Redaction runs on a bounded window of the source so a multi-megabyte tool
@@ -24,104 +22,6 @@ const WINDOW = 4096;
 
 const PATH_ROOTS =
   "home|Users|mnt|tmp|var|private|root|opt|srv|Volumes|media|run|workspace|workspaces|data";
-
-// A key that *ends* in a credential word; shared by the quoted and bare forms.
-const CREDENTIAL_KEY =
-  "[A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|private[_-]?key)";
-
-const PLACEHOLDER = /^\[REDACTED:[a-z_]+\]$/u;
-
-// Where a credential is the next shell word: a shell assignment
-// `PASSWORD=…`, an option named by a credential key, a MySQL-family client's
-// glued `-p…`, and the `name:secret` of `-u`/`--user`. Each match ends where
-// the value starts; `shellWord` then reads the value in its quote context.
-const WORD_TRIGGERS = [
-  { kind: "assignment", pattern: new RegExp(String.raw`\b${CREDENTIAL_KEY}=(?=\S)`, "giu") },
-  {
-    kind: "flag",
-    // A next word that is itself an option means the value was prompted for.
-    pattern: new RegExp(
-      String.raw`(?<=^|[\s"'${"`"}(])-{1,2}${CREDENTIAL_KEY}\s+(?=[^\s-])`,
-      "giu",
-    ),
-  },
-  {
-    kind: "flag",
-    // A bare `-p` prompts instead; `-P` is the port and stays.
-    pattern: /\b(?:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump)\b[^\n|;&]*?\s-p(?=\S)/gu,
-  },
-  { kind: "user", pattern: /(?<=^|\s)(?:--?user(?:\s+|=)|-u\s+)(?=[^\s-])/gu },
-  // Glued, `-u` is ambiguous with other single-dash options such as Go's
-  // `-url=…`, so a glued name that carries `=` or `/` is not a user.
-  { kind: "user", glued: true, pattern: /(?<=^|\s)-u(?=[^\s-])/gu },
-];
-
-/** The placeholder for one word, inside its own quotes when it is exactly one quoted segment. */
-function mask(text, start, word, kind) {
-  const only = word.segments.length === 1 ? word.segments[0] : null;
-  const whole = only && only.start === start && only.end === word.end && only.close;
-  const inner = whole
-    ? text.slice(start + only.open.length, word.end - only.close.length)
-    : text.slice(start, word.end);
-  // A value an earlier, more specific rule already typed keeps its type.
-  if (PLACEHOLDER.test(inner)) return text.slice(start, word.end);
-  return whole ? `${only.open}[REDACTED:${kind}]${only.close}` : `[REDACTED:${kind}]`;
-}
-
-/**
- * `name:secret` keeps the name and masks everything after the first colon. A
- * colon inside a quoted segment keeps that segment's quotes around the
- * placeholder and drops the rest of the word, so `"alice:correct horse"suffix`
- * reads `"alice:[REDACTED:user_credentials]"`.
- */
-function maskUser(text, start, word, glued) {
-  const value = text.slice(start, word.end);
-  const colon = value.indexOf(":");
-  if (colon <= 0) return null;
-  if (glued && /[=/]/u.test(value.slice(0, colon))) return null;
-  const at = start + colon;
-  const inside = word.segments.find((segment) => segment.start < at && at < segment.end);
-  if (inside) {
-    const secret = text.slice(at + 1, inside.end - inside.close.length);
-    // A typed placeholder is kept only when it is the whole password: bytes
-    // after the segment are more of the same password.
-    const whole = inside.end === word.end;
-    if (whole && (secret === "" || PLACEHOLDER.test(secret))) return value;
-    return `${text.slice(start, at + 1)}[REDACTED:user_credentials]${inside.close}`;
-  }
-  if (at + 1 >= word.end) return null;
-  const rest = { end: word.end, segments: word.segments.filter((segment) => segment.start > at) };
-  return `${text.slice(start, at + 1)}${mask(text, at + 1, rest, "user_credentials")}`;
-}
-
-/**
- * The value range of every credential that is a whole shell word, with the
- * placeholder for it. Quote context comes from one left-to-right read of the
- * text, so a quote that closes `bash -c "…"` or a JSON string ends the word
- * while a quote inside the password does not.
- */
-function shellWordRanges(text, contexts) {
-  const ranges = [];
-  for (const trigger of WORD_TRIGGERS) {
-    for (const match of text.matchAll(trigger.pattern)) {
-      const start = match.index + match[0].length;
-      const stack = contexts()[start];
-      const read = shellWord(text, start, stack);
-      if (read.end === start) continue;
-      const end =
-        trigger.kind === "assignment"
-          ? Math.max(read.end, dataStringEnd(text, read.end, stack))
-          : read.end;
-      const word = end === read.end ? read : { end, segments: [] };
-      const value =
-        trigger.kind === "user"
-          ? maskUser(text, start, word, trigger.glued)
-          : mask(text, start, word, trigger.kind);
-      if (value !== null) ranges.push({ start, end: word.end, value });
-    }
-  }
-  return ranges;
-}
 
 /**
  * Ordered credential shapes. The more specific shapes run first so that, for
@@ -146,102 +46,56 @@ const TOKEN_SHAPES = [
   [/\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/giu, (_, prefix) => `${prefix}[REDACTED:bearer_token]`],
 ];
 
-/**
- * Credentials keyed by name in `key: value`, `"key": "value"` and similar
- * forms. Each pattern's first two groups are the key and the separator, and
- * the value is the rest of the match. A value already replaced by a more
- * specific rule is left as it is.
- */
-const ASSIGNMENTS = [
-  // A quoted value is a value up to its closing quote, spaces included: a
-  // passphrase is several words, and stopping at the first space left the
-  // rest in the report. An unclosed quote runs to the end of the text, which
-  // fails closed at a window edge. Quotes escaped for JSON, as a tool call
-  // carries them, are one more shape of the same value.
-  [
-    new RegExp(
-      `\\b(${CREDENTIAL_KEY})(\\\\?["']?\\s*[=:]\\s*)\\\\(["'])(?!\\[REDACTED)(?:(?!\\\\\\3)[\\s\\S])+(\\\\\\3|$)`,
-      "giu",
-    ),
-    (_, key, separator, quote, close) =>
-      `${key}${separator}\\${quote}[REDACTED:assignment]${close}`,
-  ],
-  [
-    new RegExp(
-      `\\b(${CREDENTIAL_KEY})(["']?\\s*[=:]\\s*)(["'])(?!\\[REDACTED)(?:\\\\[\\s\\S]|(?!\\3)[^\\\\])+(\\3|$)`,
-      "giu",
-    ),
-    (_, key, separator, quote, close) => `${key}${separator}${quote}[REDACTED:assignment]${close}`,
-  ],
-  [
-    // A key that *ends* in a credential word, then `=` or `:`. Requiring the
-    // word at the end keeps `max_output_tokens: 30000` and `token_count` out,
-    // so the value needs no minimum length: `pwd=123` is a whole PIN. A value
-    // opening an object or a list is structure, not a credential, and a
-    // backslash before a quote is that quote's JSON escape, not the value.
-    new RegExp(
-      `\\b(${CREDENTIAL_KEY})(["']?\\s*[=:]\\s*["']?)(?!\\[REDACTED)(?![[{])((?:[^\\s"'&,;}\\\\]|\\\\(?!["']))+)`,
-      "giu",
-    ),
-    (_, key, separator) => `${key}${separator}[REDACTED:assignment]`,
-    // Bare: the value stops at whitespace, which inside a data string is
-    // part of it, so there the value runs to the string's end.
-    { bare: true },
-  ],
-];
+// A key that *ends* in a credential word, so `max_output_tokens: 30000` and
+// `token_count=12` are not keys and the value needs no minimum length.
+const CREDENTIAL_KEY =
+  "[A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|private[_-]?key)";
 
 /**
- * The value range of every `ASSIGNMENTS` match, with the placeholder for it.
- * A bare value runs to the end of a data string that encloses the value
- * itself, and only when no quote ends the separator: `password: '…'` is the
- * quoted rule's, whole, and in `"token": 5` the key's own string has closed.
+ * Where a keyed credential value starts: `KEY=…`, `key: …` and `"key": "…"`
+ * with plain or JSON-escaped quotes, an option named by a credential key, a
+ * MySQL-family client's glued `-p…`, and the secret half of `-u name:secret`.
+ * A next word that is itself an option means the value was prompted for, a
+ * bare `-p` prompts too, and `-P` is the port, which is why that one trigger
+ * is case-sensitive. Glued, `-u` is ambiguous with other single-dash options
+ * such as Go's `-url=…`, so a glued name carries no `=` or `/`.
  */
-function assignmentRanges(text, contexts) {
-  const ranges = [];
-  for (const [pattern, replace, { bare } = {}] of ASSIGNMENTS) {
-    for (const match of text.matchAll(pattern)) {
-      const key = match[1].length + match[2].length;
-      const start = match.index + key;
-      const read = match.index + match[0].length;
-      const data = bare && !/["']$/u.test(match[2]);
-      const end = data ? Math.max(read, dataStringEnd(text, read, contexts()[start])) : read;
-      const value = end === read ? replace(...match).slice(key) : "[REDACTED:assignment]";
-      ranges.push({ start, end, value });
-    }
-  }
-  return ranges;
-}
+const TRIGGERS = [
+  ["assignment", String.raw`\b${CREDENTIAL_KEY}(?:\\?["'])?[ \t]*[=:][ \t]*(?=\S)`, "giu"],
+  ["flag", String.raw`(?<=^|[\s"'${"`"}(])-{1,2}${CREDENTIAL_KEY}[ \t]+(?=[^\s-])`, "giu"],
+  [
+    "flag",
+    String.raw`\b(?:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump)\b[^\n|;&]{0,512}?[ \t]-p(?=\S)`,
+    "gu",
+  ],
+  [
+    "user_credentials",
+    String.raw`(?<=^|\s)(?:--?user(?:[ \t]+|=)|-u[ \t]+)(?:\\?["'])?[^\s:"'\\]+:(?=\S)`,
+    "gu",
+  ],
+  ["user_credentials", String.raw`(?<=^|\s)-u(?:\\?["'])?[^\s:"'\\=/-][^\s:"'\\=/]*:(?=\S)`, "gu"],
+].map(([kind, trigger, flags]) => ({
+  kind,
+  // The trigger, then the rest of its line. A value a token shape already
+  // typed keeps that placeholder, which also makes a second pass change nothing.
+  pattern: new RegExp(String.raw`(${trigger})(?:\\?["'])?(\[REDACTED:[a-z_]+\])?[^\n]*`, flags),
+}));
 
 /**
- * §A-DIAGNOSTICS-01 replaces every keyed credential value.
+ * §A-DIAGNOSTICS-01 hides a keyed credential together with the rest of its
+ * line.
  *
- * Every rule reads the same text, and the ranges are joined: where one range
- * starts inside another, the earlier placeholder stands for both. A shell word
- * read long after a quote that may be a phantom can take in the key of the
- * next credential, `"password":` or `api_key: '`, and a rule that ran on the
- * text left by an earlier one then found no key and let that value through.
+ * Where a quoted value ends depends on every quote before it, in shell, JSON
+ * and prose at once, and each attempt to read that exactly left a new shape
+ * through. The end of the line is a bound that needs no such reading: it
+ * costs the diagnosis the words after a credential and never shows one.
  */
 function redactCredentials(text) {
-  // The quote contexts cost a pass over the text, so only a text with a
-  // credential key or trigger pays for them.
-  let computed = null;
-  const contexts = () => (computed ??= quoteContexts(text));
-  const ranges = [...shellWordRanges(text, contexts), ...assignmentRanges(text, contexts)].sort(
-    (left, right) => left.start - right.start || right.end - left.end,
-  );
-  let out = "";
-  let copied = 0;
-  for (const { start, end, value } of ranges) {
-    if (start < copied) {
-      // The earlier word was read past a quote that may be a phantom, so
-      // where the text after both ends is unknown, and the rest is hidden.
-      if (end > copied) copied = text.length;
-      continue;
-    }
-    out += text.slice(copied, start) + value;
-    copied = end;
+  let out = text;
+  for (const { kind, pattern } of TRIGGERS) {
+    out = out.replace(pattern, (_, trigger, typed) => `${trigger}${typed ?? `[REDACTED:${kind}]`}`);
   }
-  return out + text.slice(copied);
+  return out;
 }
 
 // Characters an unquoted path segment may hold. An unquoted space, a quote, a
@@ -386,6 +240,35 @@ export function excerpt(text) {
   if (cut) line = line.replace(/\s*\S*$/u, "");
   if (line.length <= EXCERPT_LIMIT) return line;
   return `${line.slice(0, EXCERPT_LIMIT - 1)}…`;
+}
+
+// How much of one message is redacted before a window is taken inside it.
+const MESSAGE = 65536;
+
+/**
+ * §A-DIAGNOSTICS-01 shows the redacted words around one mention in a message.
+ *
+ * The message is redacted first and the window taken afterwards: a window cut
+ * from the raw text can start inside a quoted password or after the key that
+ * marks it, and the part left is no longer recognizable as a credential. A
+ * mention the redaction itself hid anchors the window at the start. A partial
+ * word at either edge is dropped.
+ *
+ * @param {string} text one session message of any length
+ * @param {string} mention the exact mention text, such as `$mo-debug`
+ * @returns {string} redacted text of at most a few hundred characters
+ */
+export function mentionExcerpt(text, mention) {
+  const source = String(text ?? "");
+  let clean = redact(source.slice(0, MESSAGE));
+  if (source.length > MESSAGE) clean = clean.replace(/\s*\S*$/u, "");
+  const at = Math.max(0, clean.indexOf(mention));
+  const from = Math.max(0, at - 80);
+  const to = at + 160;
+  let window = clean.slice(from, to);
+  if (from > 0) window = window.replace(/^\S*\s*/u, "");
+  if (to < clean.length) window = window.replace(/\s*\S*$/u, "");
+  return window;
 }
 
 /**

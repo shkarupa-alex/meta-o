@@ -67,7 +67,11 @@ because a locally built or edited skill carries a stamp too.
 Only the local report: the helper's typed lines, your classification and, when
 the user wants one, a local draft of an external report. Every excerpt you
 quote comes from the helper's redacted output; never copy a raw session line, a
-secret, an absolute path or a private message body. This skill publishes
+secret, an absolute path or a private message body. An excerpt that ends at
+`[REDACTED:<kind>]` lost the rest of that line to redaction after a credential
+key; the missing words are not evidence of a defect. Redaction recognizes known
+token shapes and keyed values, not every password, so ask the user to read the
+report before sharing it. This skill publishes
 nothing and creates no Issue: filing the draft is a separate step of an
 explicitly activated lifecycle skill that routes external work, and only with
 the user's permission to publish.
