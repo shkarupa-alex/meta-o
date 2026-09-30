@@ -731,9 +731,14 @@ function sessionRoots(home, codexHome = null) {
 var FILESYSTEM = { readdir: readdirSync, lstat: lstatSync };
 function rootProbe(io, root) {
   try {
-    return io.lstat(root).isDirectory() ? "directory" : "absent";
+    const stat = io.lstat(root);
+    if (stat.isDirectory()) return { state: "directory", dir: root };
+    if (!stat.isSymbolicLink()) return { state: "absent" };
+    const real = realpathSync(root);
+    return statSync(real).isDirectory() ? { state: "directory", dir: real } : { state: "absent" };
   } catch (error) {
-    return error.code === "ENOENT" || error.code === "ENOTDIR" ? "absent" : "unknown";
+    const absent = error.code === "ENOENT" || error.code === "ENOTDIR";
+    return { state: absent ? "absent" : "unknown" };
   }
 }
 function listed(readdir, dir) {
@@ -746,14 +751,14 @@ function listed(readdir, dir) {
 function claudeMatches(root, id, io) {
   if (!UUID.test(id)) return { matches: [], complete: true };
   const probe = rootProbe(io, root);
-  if (probe !== "directory") return { matches: [], complete: probe === "absent" };
-  const entries = listed(io.readdir, root);
+  if (probe.state !== "directory") return { matches: [], complete: probe.state === "absent" };
+  const entries = listed(io.readdir, probe.dir);
   if (entries === null) return { matches: [], complete: false };
   const matches = [];
   let complete = true;
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    const candidate = join(root, entry.name, `${id}.jsonl`);
+    const candidate = join(probe.dir, entry.name, `${id}.jsonl`);
     try {
       io.lstat(candidate);
       matches.push(candidate);
@@ -766,10 +771,10 @@ function claudeMatches(root, id, io) {
 function codexMatches(root, id, io) {
   if (!UUID.test(id)) return { matches: [], complete: true };
   const probe = rootProbe(io, root);
-  if (probe !== "directory") return { matches: [], complete: probe === "absent" };
+  if (probe.state !== "directory") return { matches: [], complete: probe.state === "absent" };
   const wanted = id.toLowerCase();
   const matches = [];
-  const pending = [{ dir: root, depth: 0 }];
+  const pending = [{ dir: probe.dir, depth: 0 }];
   let seen = 0;
   let complete = true;
   while (pending.length > 0 && seen < WALK_ENTRIES) {
@@ -780,11 +785,16 @@ function codexMatches(root, id, io) {
       continue;
     }
     for (const entry of entries) {
+      if (seen === WALK_ENTRIES) {
+        complete = false;
+        break;
+      }
       seen += 1;
       const name = entry.name;
-      if (entry.isDirectory() && depth < WALK_DEPTH)
-        pending.push({ dir: join(dir, name), depth: depth + 1 });
-      else if (name.startsWith("rollout-") && CODEX_ID.exec(name)?.[1].toLowerCase() === wanted) {
+      if (entry.isDirectory()) {
+        if (depth < WALK_DEPTH) pending.push({ dir: join(dir, name), depth: depth + 1 });
+        else complete = false;
+      } else if (name.startsWith("rollout-") && CODEX_ID.exec(name)?.[1].toLowerCase() === wanted) {
         matches.push(join(dir, name));
       }
     }

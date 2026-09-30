@@ -13,6 +13,7 @@ import {
   chmodSync,
   lstatSync,
   readdirSync,
+  renameSync,
   copyFileSync,
   mkdirSync,
   mkdtempSync,
@@ -23,7 +24,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { after, test } from "node:test";
 
 import { attribute, openHistory } from "../shared/scripts/mo-debug-history.mjs";
@@ -505,7 +506,7 @@ test("a set CODEX_HOME replaces the default Codex root, and only an absolute one
   }
   // (4) A symlinked root behaves exactly as a symlinked default root: an
   // explicit path is checked against the root's realpath, and an id lookup
-  // never walks into a symlinked directory.
+  // walks the root at that same realpath.
   const elsewhere = temporary("mo-debug-codex-elsewhere-");
   copyFileSync(join(codex, name), join(elsewhere, name));
   const linked = join(home, "linked");
@@ -516,7 +517,7 @@ test("a set CODEX_HOME replaces the default Codex root, and only an absolute one
   symlinkSync(elsewhere, join(defaultLink, ".codex", "sessions"));
   for (const [spec, expected] of [
     [join(linked, "sessions", name), "ok"],
-    [CODEX_ID, "session_not_found"],
+    [CODEX_ID, "ok"],
   ]) {
     const viaVariable = outcome(run(home, ["scan", "--session", spec], linked));
     const defaultSpec = spec === CODEX_ID ? spec : join(defaultLink, ".codex", "sessions", name);
@@ -656,6 +657,104 @@ test("a root the user cannot reach is unknown, while an absent root is proven ab
   assert.deepEqual(resolveSession(CLAUDE_ID, home, null, failing), {
     outcome: "search_incomplete",
   });
+});
+
+test("an id search never calls a session absent in a place it did not look", () => {
+  const outcome = (result) => / outcome=([a-z_]+) /u.exec(result.stdout)?.[1];
+  // (2) and (3): a symlinked default Codex root and Claude root are walked at
+  // their realpath, so the user's own session is found by id.
+  for (const [harness, id] of [
+    [join(".codex", "sessions"), CODEX_ID],
+    [join(".claude", "projects"), CLAUDE_ID],
+  ]) {
+    const { home } = fixtureHome();
+    const moved = temporary("mo-debug-moved-root-");
+    renameSync(join(home, harness), join(moved, "root"));
+    symlinkSync(join(moved, "root"), join(home, harness));
+    assert.equal(outcome(run(home, ["scan", "--session", id])), "ok", harness);
+  }
+  // (4) A rollout below the depth bound was not looked at, so the search is
+  // incomplete rather than a proven absence.
+  const { home, codex } = fixtureHome();
+  const name = `rollout-2026-09-01T11-00-00-${CODEX_ID}.jsonl`;
+  const deep = join(home, ".codex", "sessions", "a", "b", "c", "d", "e", "f", "g");
+  mkdirSync(deep, { recursive: true });
+  renameSync(join(codex, name), join(deep, name));
+  assert.equal(outcome(run(home, ["scan", "--session", CODEX_ID])), "search_incomplete");
+});
+
+test("the Codex walk budget holds inside one directory and never fakes a complete search", () => {
+  const home = join(sep, "virtual");
+  const root = join(home, ".codex", "sessions");
+  const rollout = (id = CODEX_ID) => `rollout-2026-09-30T00-00-00-${id}.jsonl`;
+  // A virtual tree: every directory lists its entries, and each entry counts
+  // how often the walk looked at it.
+  const walk = (tree) => {
+    let looked = 0;
+    const dirent = (name, directory) => ({
+      name,
+      isDirectory: () => {
+        looked += 1;
+        return directory;
+      },
+      isFile: () => !directory,
+    });
+    const io = {
+      readdir: (dir) => {
+        const entries = tree.get(dir);
+        if (!entries) throw Object.assign(new Error("absent"), { code: "ENOENT" });
+        return entries.map(([name, directory]) => dirent(name, directory));
+      },
+      lstat: (path) => {
+        if (!tree.has(path)) throw Object.assign(new Error("absent"), { code: "ENOENT" });
+        return { isDirectory: () => true, isSymbolicLink: () => false };
+      },
+    };
+    return { result: resolveSession(CODEX_ID, home, null, io), looked: () => looked };
+  };
+  const files = (count) => Array.from({ length: count }, (_, n) => [`note-${n}.txt`, false]);
+  // (3) A match past the budget in one wide directory is never reached.
+  const wide = walk(new Map([[root, [...files(200_000), [rollout(), false]]]]));
+  assert.deepEqual(wide.result, { outcome: "search_incomplete" });
+  assert.equal(wide.looked(), 200_000);
+  // (4) Exactly the budget, all of it read, proves absence.
+  assert.deepEqual(walk(new Map([[root, files(200_000)]])).result, {
+    outcome: "session_not_found",
+  });
+  // (5) A match already found does not prove uniqueness while a directory is unread.
+  const child = join(root, "2026");
+  const cut = walk(
+    new Map([
+      [root, [["2026", true], [rollout(), false], ...files(199_998)]],
+      [child, []],
+    ]),
+  );
+  assert.deepEqual(cut.result, { outcome: "search_incomplete" });
+  // (6) Files at the depth bound are still read.
+  const deepest = join(root, "a", "b", "c", "d", "e", "f");
+  const chain = (leaf) => {
+    const tree = new Map([[deepest, leaf]]);
+    for (let dir = deepest; dir !== root; dir = dirname(dir)) {
+      tree.set(dirname(dir), [[basename(dir), true]]);
+    }
+    return tree;
+  };
+  assert.equal(walk(chain([[rollout(), false]])).result.path, join(deepest, rollout()));
+  assert.deepEqual(walk(chain(files(3))).result, { outcome: "session_not_found" });
+  // (2) A readable match next to a directory past the depth bound is not unique.
+  const both = chain([["g", true]]);
+  both.set(root, [...both.get(root), [rollout(), false]]);
+  assert.deepEqual(walk(both).result, { outcome: "search_incomplete" });
+});
+
+test("the skill names every way an id search can end incomplete", () => {
+  const skill = readFileSync(join(ROOT, "skills", "mo-debug", "SKILL.md"), "utf8").replace(
+    /\s+/gu,
+    " ",
+  );
+  assert.match(skill, /`search_incomplete` means a session root could not be reached/u);
+  assert.match(skill, /`partial` means [^.]*an id search was incomplete/u);
+  assert.match(skill, /`unknown` means [^.]*its id search was incomplete/u);
 });
 
 test("ids resolve inside the roots only, and not-found or ambiguous ids are typed", () => {

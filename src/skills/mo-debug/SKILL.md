@@ -32,21 +32,22 @@ node scripts/mo-debug.mjs scan --session <path-or-id> [--session …] \
 
 The helper reads only regular files under `~/.claude/projects/` or
 `~/.codex/sessions/` that the invoking user owns; a set `CODEX_HOME` replaces
-`~/.codex` and must be absolute. `foreign_path`,
-`session_not_found` and `session_ambiguous` are refusals: the file stayed
-unread, and you do not try another way in. `search_incomplete` means a
-directory under a root could not be read, so the id was neither found nor
-proven absent; name the session as unknown. `--history` names a Meta-O Git
-checkout used for version attribution. The events and their locators are only
-in the report, so always pass `--out` with a path the user names or a new file
-under the system temp directory; it must not exist yet and is created with mode
+`~/.codex` and must be absolute. `foreign_path`, `session_not_found` and
+`session_ambiguous` are refusals: the file stayed unread, and you do not try
+another way in. `search_incomplete` means a session root could not be reached or
+a directory under it could not be read, so the id was neither found nor proven
+absent; name the session as unknown. `--history` names a Meta-O Git checkout
+used for version attribution. The events and their locators are only in the
+report, so always pass `--out` with a path the user names or a new file under
+the system temp directory; it must not exist yet and is created with mode
 `0600`. `out_exists` means the path is somebody's data: pick another.
 
 The first line is `MO-DEBUG/1 status=<ok|partial|unknown|refused> …`. `partial`
-means a bound was reached, a session was refused or history was incomplete —
-a shallow clone, or `history=unreadable` when a Git read failed;
-`unknown` means no requested session had a recognized format. Say which, and
-never present a partial read as complete.
+means a bound was reached, a session was refused, an id search was incomplete
+next to a readable session, or history was incomplete — a shallow clone, or
+`history=unreadable` when a Git read failed; `unknown` means no requested
+session could be read, because none had a recognized format or its id search was
+incomplete. Say which, and never present a partial read as complete.
 
 ## Classify
 
