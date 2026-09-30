@@ -10,7 +10,8 @@ current registered worktree. Do not install guide copies in harness homes.
 
 Run focused, bounded probes rather than one large agent-context dump:
 
-1. verify `orca status --json` belongs to the intended instance/worktree;
+1. verify `orca status --json` belongs to the intended instance/worktree and
+   `orca --version` is 1.4.217 or later;
 2. verify the version-matched `orchestration` companion;
 3. run the selected provider's documented provider-native auth status command;
 4. read `orca account list --json`, including `updatedAt`, and classify
@@ -46,19 +47,37 @@ orca orchestration run-create --objective <objective> --json
 orca orchestration task-create --spec <task> --json
 ```
 
-Terminal-first is the default route for every agent environment. A composed
-start hands Orca both the harness launch and the task bytes in one call, and
-nothing in the version-matched surface promises those bytes wait for the agent
-to be ready; where they do not, the task is typed into whatever holds the
-keyboard. Use a composed start only when `worker-start --help` or the
-version-matched `orchestration` guide says in so many words that task input
-waits for agent readiness. No such sentence is there today.
+Orca 1.4.217 is the oldest supported version. Before it, `worker-start` never
+saw a Codex 0.157+ fullscreen composer as ready, and `worker-release` could
+report a closed terminal that kept running; the workarounds those two defects
+required are gone from this document.
+
+`worker-start --agent` is the route for every agent environment whose model and
+effort it passes — Claude and Codex. One call composes placement, the harness
+launch, readiness, one prompt injection and supervised ownership, and the
+version-matched `orchestration` guide names it the normal path. Task input waits
+for the agent's readiness, so no terminal is created first and no screen is read
+before the injection.
+
+```text
+orca orchestration worker-start --task <id> --worktree id:<repo>::<path> \
+  --agent <claude|codex> --model <id> --effort <e> --timeout-ms 240000 --json
+  # the posture flag is not passed: the user's own setting for new agent tabs owns it
+→ record the dispatch id and the created terminal of `effects[kind=terminal].id`
+  in OwnedResourceSet/1 at once
+```
+
+The receipt carries what was launched: `launch.requested == launch.effective`
+for agent, model and effort, and `turnStart: observed`. A mismatch is a failed
+start of that exact Dispatch, never a model to accept.
+
+A harness whose model `worker-start` cannot pass, such as OpenCode, starts
+terminal-first, and so does a start whose readiness the installed version does
+not observe:
 
 ```text
 orca terminal create --worktree id:<repo>::<path> --title <title> --command "<agent argv>" --json
-  # claude: claude --model <id> --effort <e>     codex: codex -m <id> -c model_reasoning_effort=<e>
-  # the posture flag is not repeated here: the wrapper owns it
-→ record the handle in OwnedResourceSet/1 at once, as the fallback binding for no_owned_resource
+→ record the handle in OwnedResourceSet/1 at once: the caller created it, so the caller closes it
 orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 120000 --json
 orca terminal read --terminal <handle> --screen --json \
   | node scripts/mo-harness-screen.mjs --harness <claude|codex|opencode> --expect-path <abs>
@@ -84,11 +103,13 @@ already carries them, and a second source of the same fact is a second answer to
 
 Recovery from `outcome_unknown` or `turn_start_unobserved` runs in one
 direction: `worker-stop --dispatch <old>`, prove a settled stop or `blocked`
-from the receipt and `worker-show`, create a terminal by the recipe above, then
-`worker-start --task <id> --retry-of <old> --worktree id:<repo>::<path> --terminal <handle>`.
-When `worker-stop` itself answers `unknown_effect`, both a second stop and a
-replacement Dispatch are forbidden: either can leave two executors working the
-same task, and two executors of one task is worse than none.
+from the receipt and `worker-show`, then
+`worker-start --task <id> --retry-of <old> --worktree id:<repo>::<path>` with
+the same `--agent`, `--model` and `--effort`, or `--terminal <handle>` of a new
+terminal-first start. When `worker-stop` itself answers `unknown_effect`, both a
+second stop and a replacement Dispatch are forbidden: either can leave two
+executors working the same task, and two executors of one task is worse than
+none.
 
 The screen classifier knows each harness's composer by its own chrome: Claude's
 rule above `❯`, and Codex's `›` row directly above its footer, whose context
@@ -104,8 +125,9 @@ is never erased to make room.
 
 Sending `worker_done` completes the Dispatch, but the agent session behind it
 stays hot. A new Dispatch binds to that same session with
-`worker-start --task <id> --terminal <handle> --worktree id:<repo>::<path>`;
-omitting `--worktree` answers `terminal_worktree_mismatch`. This is what makes a
+`worker-start --task <id> --terminal <handle> --worktree id:<repo>::<path>`,
+where the handle is `worker.agentTerminalHandle` from `worker-show`; omitting
+`--worktree` answers `terminal_worktree_mismatch`. This is what makes a
 follow-up review in the same session — with its own prior reasoning still
 present — reachable at all. Reattach only where public surfaces prove the same
 provider session id, the same supervised harness and a mailbox that still
@@ -114,8 +136,7 @@ delivers `worker_done`; `--continue` and a live terminal prove none of these.
 A Codex start that fails with `agent-trust-workspace` is recovered inside the
 supported harness: release the failed Dispatch by its exact id, prove the
 worktree's trust through the trust procedure, then start the normal supervised
-Codex harness again, terminal-first by the recipe above where that yields the
-interactive harness and its `worker_done` mailbox.
+Codex harness again with `worker-start --agent codex`.
 `orca terminal create --command "codex exec …"` is never a reviewer: it has
 neither the harness input nor the mailbox, and its output would have to be
 carried by hand.
@@ -137,12 +158,13 @@ received the task. An untouched harness prompt, a shell prompt, or task text
 executed by the shell is a failed composed start, even while Orca still labels
 the worker ready. Stop only that exact dispatch.
 
-Verify effective model, effort, process identity, absence of Claude trust UI or
-shell prompt and unsandboxed posture before injection. Respect launch wrappers:
-do not duplicate a posture flag that the resolved wrapper already supplies. If
-this documented fallback also fails, report the backend unsupported rather than
-trying unrelated harnesses until one accepts the task. Start all independent
-workers successfully before waiting for either result.
+On the terminal-first route, verify effective model, effort, process identity,
+absence of Claude trust UI or shell prompt and unsandboxed posture before
+injection. Respect launch wrappers: do not duplicate a posture flag that the
+resolved wrapper already supplies. If a documented route fails, report the
+backend unsupported rather than trying unrelated harnesses until one accepts the
+task. Start all independent workers successfully before waiting for either
+result.
 
 ## Reading the version-matched references
 
@@ -298,13 +320,13 @@ text or accessible file path delivered by `worker-start` or the documented
 native terminal injection, never a generated or executed shell script that
 invokes the reviewer harness. Keep the messages isolated until both
 `worker_done` bodies are complete. Release a settled supervised worker only with
-`orca orchestration worker-release`; never substitute a broad terminal close. A
-`no_owned_resource` result permits exactly one fallback only when the caller
-recorded that Dispatch's low-level terminal handle in its run-owned resource
-set: close that exact handle and re-read the resource projection. Without that
-saved binding, return `needs_attention` and close nothing. This workaround is
-currently `unsupported` for durable automation because no authenticated search
-confirmed a canonical upstream Issue URL; see the project papercut audit. A
+`orca orchestration worker-release`; never substitute a broad terminal close.
+For a worker `worker-start --agent` created, release answers `released` with
+`processAction=closed_agent_terminal` and the terminal is gone. For a worker
+bound to a terminal the caller created, it answers `retained` with
+`external_terminal` or `no_owned_resource`: Orca never owned that process, and
+the caller closes exactly the handle it recorded when it created the terminal.
+Without that recorded handle, return `needs_attention` and close nothing. A
 low-level injected terminal is not a supervised worker resource, so close only
 its exact returned handle after its Dispatch settles and its response is
 delivered. A failed or uncertain worker follows the exact recovery action in its

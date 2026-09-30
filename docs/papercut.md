@@ -168,10 +168,16 @@
   `~/.codex`), найденном по идентификатору треда из его же `thread.started`.
   Чужая сессия и любое другое содержимое журнала остаются под запретом. Сам
   ответ модели на эти поля не годится.
+- Начиная с Orca 1.4.217 ревьюеров Claude и Codex запускают
+  `orca orchestration worker-start --agent <claude|codex> --model <id> --effort <e>`.
+  Квитанция называет созданный терминал в `effects[kind=terminal].id`, а
+  запрошенные и фактические модель и уровень рассуждений — в `launch`;
+  `worker-release` такого исполнителя отвечает
+  `processAction=closed_agent_terminal`, и терминала больше нет.
 - `orca orchestration worker-start --terminal <handle>` на терминале, который
   создал вызывающий, оставляет ресурс за вызывающим: `worker-release` отвечает
-  `state=retained processAction=none`, и терминал закрывают своим
-  `orca terminal close`.
+  `state=retained` с `reason=external_terminal` или `no_owned_resource`, и
+  терминал закрывают своим `orca terminal close`.
 - Преамбула воркера Orca просит ответить тремя предложениями в теле
   `worker_done`, а протокол ревью требует там же весь канонический отчёт. Текст
   задачи обязан сказать это прямо: оба ревьюера пары следуют задаче, но сообщают

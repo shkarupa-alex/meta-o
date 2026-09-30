@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-review-orca or an act
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "a426fd666800b5c43ef033b596d794432cb05408"
+  source_tree: "ed468ff3b6c18c9f432c7d2d94ea761b78908e0b"
 ---
 
 # Review through Orca
@@ -209,11 +209,20 @@ instructions from a copy of unknown origin. The recorded value is not proved
 against Meta-O history: an installation does not know its source commit, and the
 project under review usually has no Meta-O history at all.
 
-Start each harness without task bytes. Positive version-matched observation must
-prove its process, normal agent prompt and absence of trust UI or shell prompt
-before one Dispatch injection. A composed start is allowed only when public
-Orca evidence proves it holds bytes until that readiness. The Orca wrapper owns
-unsandboxed posture; never duplicate its flags.
+Start each Claude or Codex reviewer on Orca 1.4.217 or later with:
+
+```text
+orca orchestration worker-start --task <id> --worktree id:<repo>::<path> \
+  --agent <claude|codex> --model <id> --effort <e> --json
+```
+
+Orca injects the task only once the harness shows its normal agent prompt, and
+its receipt must show `launch.requested` equal to `launch.effective` and
+`turnStart: observed`. Record the Dispatch and the
+terminal of `effects[kind=terminal].id` at once. A harness whose model
+`worker-start` cannot pass starts terminal-first by the recipe in
+[Orca native mechanics](references/orca-mechanics.md). The user's setting for
+new agent tabs owns unsandboxed posture; never duplicate its flags.
 
 The first lifecycle pair uses `deep`. A Dispatch, the provider session, its PTY
 and its worktree are four resources, and `worker_done` spends only the Dispatch:
@@ -273,11 +282,11 @@ once after transport failure; a second consecutive failure is
 `UNKNOWN/needs_attention`. Process every event in a returned batch before
 acknowledgement.
 
-On `worker-release: no_owned_resource`, close only the exact fallback-terminal
-handle already stored for that Dispatch in `OwnedResourceSet/1`, then re-read
-the resource projection. If that binding is absent, close nothing and return
-`needs_attention`. The project records this workaround as `unsupported` until
-an authenticated duplicate search establishes its canonical upstream Issue.
+`worker-release` closes the terminal of a reviewer `worker-start --agent`
+started. A terminal this skill created itself answers `retained`; close exactly
+the handle recorded for it in `OwnedResourceSet/1`, then re-read the resource
+projection. If that handle is absent, close nothing and return
+`needs_attention`.
 
 Wait for both full reports before disposition or handoff.
 
