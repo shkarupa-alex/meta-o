@@ -712,3 +712,17 @@ test("a conclusion that is not bound to the candidate is unknown", () => {
   );
   assert.equal(groundingBound("I read the files in the shared checkout", sha), "UNKNOWN");
 });
+
+test("the shared Orca mechanics agree with the placement ladder for a folder project", () => {
+  const mechanics = readFileSync(
+    resolve(import.meta.dirname, "..", "shared/references/orca-mechanics.md"),
+    "utf8",
+  ).replace(/\s+/gu, " ");
+  // A folder project without child worktrees takes the shared rung; calling it
+  // unsupported outright contradicted the ladder the review skill follows.
+  assert.doesNotMatch(mechanics, /isolated worktrees is an unsupported placement/u);
+  assert.match(
+    mechanics,
+    /takes the next rung of the caller's placement ladder, the exact existing project workspace read by SHA, and is unsupported only when not even that workspace is there/u,
+  );
+});

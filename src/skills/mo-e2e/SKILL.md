@@ -20,8 +20,9 @@ Read the knowledge layer of the candidate with bundled
 the project never adopted the layer or switched it off. `needs_attention` — a
 missing `MO-BACKLOG/1` command, papercut document or identifier-history gate in
 a project that had or half-declared them — is a readiness gap: record the
-helper's reason and return `needs_attention`, and leave running the setup skill
-to the human.
+helper's reason, name each of those three signals that is missing at the
+candidate, return `needs_attention`, and leave running the setup skill to the
+human.
 
 Act as a separate read-only E2E actor. Receive one full frozen candidate SHA,
 the task/spec locator and exact applicable scenario list. Read the project's E2E

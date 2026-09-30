@@ -31,7 +31,11 @@ Do not create a backend fixture document in an ordinary target project without
 a named consumer.
 
 Read the knowledge layer first with bundled
-`scripts/mo-knowledge-layer.mjs --candidate <HEAD sha>` and report its line.
+`scripts/mo-knowledge-layer.mjs --candidate <HEAD sha>` and report its line
+verbatim, the one a reviewer brief carries: a project that never had the layer
+answers `Knowledge-Layer: state=not_enabled reason=never_enabled`, and one that
+had it and lost a signal answers `Knowledge-Layer: state=needs_attention` with
+the helper's reason.
 Whether a project has the layer is the human's decision: on their answer write
 `Knowledge-Layer: enabled` or `Knowledge-Layer: disabled` as its own line in
 `AGENTS.md`, and never choose for them. `disabled` is only valid once the

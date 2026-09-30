@@ -248,8 +248,9 @@ and dispositions — not a new deep pair and not the final pair — while a hot
 slot beside it stays. Readiness and an empty composer come from
 `scripts/mo-harness-screen.mjs` answering `action=inject`, and its
 `context=`/`context_window=` fields are what the context flags take. A refused
-screen on an idle session is `session_unavailable` recorded with that line,
-never by itself a reason for a new deep pair.
+screen on an idle session is `session_unavailable` recorded with that line: that
+slot returns `needs_attention`, its composer text is left as it is, nothing else
+is closed, and it is never by itself a reason for a new deep pair.
 
 A Codex start that fails with `agent-trust-workspace` stays inside the
 supported harness: release the failed Dispatch by its exact id, prove trust by

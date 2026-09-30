@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-e2e or an active mo-o
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "ef52a7e963886373d93e273df032a2511b4bd774"
+  source_tree: "c0c6f51b27909e3a86a2ddba62e6475dcae6a29f"
 ---
 
 # Agent-required end-to-end verification
@@ -21,8 +21,9 @@ Read the knowledge layer of the candidate with bundled
 the project never adopted the layer or switched it off. `needs_attention` — a
 missing `MO-BACKLOG/1` command, papercut document or identifier-history gate in
 a project that had or half-declared them — is a readiness gap: record the
-helper's reason and return `needs_attention`, and leave running the setup skill
-to the human.
+helper's reason, name each of those three signals that is missing at the
+candidate, return `needs_attention`, and leave running the setup skill to the
+human.
 
 Act as a separate read-only E2E actor. Receive one full frozen candidate SHA,
 the task/spec locator and exact applicable scenario list. Read the project's E2E

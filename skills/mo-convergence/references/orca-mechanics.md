@@ -36,9 +36,10 @@ one harness at a time, with no product work and exact-target release.
 Before a Run, record normalized project/repository registrations and owned
 worktree/terminal/worker resources. Meta-O actors may add only exact-owned
 resources attributed to the original project; registration inventory must not
-change. A folder project without existing attributable isolated worktrees is an
-unsupported placement, never permission for raw Git worktrees or
-`orca repo add`.
+change. A folder project without existing attributable isolated worktrees takes
+the next rung of the caller's placement ladder, the exact existing project
+workspace read by SHA, and is unsupported only when not even that workspace is
+there; it is never permission for raw Git worktrees or `orca repo add`.
 
 Bind a lightweight Run and create all independent tasks first:
 

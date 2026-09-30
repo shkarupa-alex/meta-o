@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-setup; inspect or bri
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "05f5b2f79f0fb5f6dabd331ae219161f04077c0b"
+  source_tree: "7cdc89ad1b96220314163cb7450e9d34c98677f9"
 ---
 
 # Set up a project for Meta-O
@@ -32,7 +32,11 @@ Do not create a backend fixture document in an ordinary target project without
 a named consumer.
 
 Read the knowledge layer first with bundled
-`scripts/mo-knowledge-layer.mjs --candidate <HEAD sha>` and report its line.
+`scripts/mo-knowledge-layer.mjs --candidate <HEAD sha>` and report its line
+verbatim, the one a reviewer brief carries: a project that never had the layer
+answers `Knowledge-Layer: state=not_enabled reason=never_enabled`, and one that
+had it and lost a signal answers `Knowledge-Layer: state=needs_attention` with
+the helper's reason.
 Whether a project has the layer is the human's decision: on their answer write
 `Knowledge-Layer: enabled` or `Knowledge-Layer: disabled` as its own line in
 `AGENTS.md`, and never choose for them. `disabled` is only valid once the

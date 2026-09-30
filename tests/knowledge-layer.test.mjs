@@ -269,3 +269,14 @@ test("every consumer takes the helper's line instead of guessing from the tree",
   assert.match(setup, /Whether a project has the layer is the human's decision/u);
   assert.match(setup, /carry the literal `MO-BACKLOG\/1`/u);
 });
+
+test("a readiness gap names its missing signals, and setup reports the literal lines", () => {
+  const flat = (path) => readFileSync(join(ROOT, path), "utf8").replace(/\s+/gu, " ");
+  assert.match(
+    flat("src/skills/mo-e2e/SKILL.md"),
+    /record the helper's reason, name each of those three signals that is missing at the candidate, return `needs_attention`/u,
+  );
+  const setup = flat("src/skills/mo-setup/SKILL.md");
+  assert.match(setup, /`Knowledge-Layer: state=not_enabled reason=never_enabled`/u);
+  assert.match(setup, /`Knowledge-Layer: state=needs_attention` with the helper's reason/u);
+});

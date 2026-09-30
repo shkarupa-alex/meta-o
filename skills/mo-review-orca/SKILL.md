@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-review-orca or an act
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "d1bc9e37fb9b03cd094a148cd3b4aa673a07e677"
+  source_tree: "134171f3db04c106285f75be5f1699de5c72a7e1"
 ---
 
 # Review through Orca
@@ -249,8 +249,9 @@ and dispositions — not a new deep pair and not the final pair — while a hot
 slot beside it stays. Readiness and an empty composer come from
 `scripts/mo-harness-screen.mjs` answering `action=inject`, and its
 `context=`/`context_window=` fields are what the context flags take. A refused
-screen on an idle session is `session_unavailable` recorded with that line,
-never by itself a reason for a new deep pair.
+screen on an idle session is `session_unavailable` recorded with that line: that
+slot returns `needs_attention`, its composer text is left as it is, nothing else
+is closed, and it is never by itself a reason for a new deep pair.
 
 A Codex start that fails with `agent-trust-workspace` stays inside the
 supported harness: release the failed Dispatch by its exact id, prove trust by
