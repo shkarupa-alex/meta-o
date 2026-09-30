@@ -13,7 +13,7 @@ Every brief carries all of these, in this order, each on its own line or block:
 | `Target`               | the exact 40-hex candidate SHA, never a branch or a moving ref            |
 | `Intent`               | what the change is for, in the requester's words                          |
 | `Spec`                 | `Spec: <path\|object>` the work followed, or `Spec: none`                 |
-| `Scope`                | the commit range and the named sections; what is out of scope             |
+| `Scope`                | the task range `<base>..<Target>`, named sections, what is out of scope   |
 | `Mode`                 | `fast`, `deep` or `follow_up`, and that self-escalation is the reviewer's |
 | `Placement`            | `isolated` or `shared_checkout`, the exact workspace, where its `HEAD` is |
 | `Environment`          | that no test, linter or QC is run: reading is by SHA, nothing is executed |
@@ -26,6 +26,13 @@ Every brief carries all of these, in this order, each on its own line or block:
 | `Methodology-Friction` | where to report a rule that got in the way rather than a defect           |
 | `Cleanup`              | what to remove, and what to report when removal fails                     |
 | `Knowledge-Layer`      | the helper's literal `state=… reason=…` line on the same SHA              |
+
+`Scope` names the task, not the last change. `base` is where the task starts:
+the point the task branch left the branch it came from, or, when the work has no
+branch of its own, the start the caller names — in the simplest case the branch
+name, resolved to a full SHA. `Target` is only the upper bound. A `follow_up`
+brief carries the same range together with the delta since the previous
+candidate; the delta says where to look first, not what may be reported.
 
 `Review-Execution` in the report is the Dispatch id from Orca's own preamble,
 copied verbatim; the brief says so rather than supplying a guess. No placeholder

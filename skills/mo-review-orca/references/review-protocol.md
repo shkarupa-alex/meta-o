@@ -9,6 +9,12 @@ belong to its caller.
 Ground every review in the original intent, accepted specification, repository
 instructions, exact full candidate SHA, claimed scope and requested mode.
 
+The scope is the task, not the last commit: the range `<base>..<candidate>`.
+`base` is where the task starts — the point its own branch left the branch it
+came from, or the start the caller names when the work has no branch of its own.
+The candidate SHA is only the upper bound, the state being judged. Every mode
+reviews that whole range.
+
 When the work follows a specification, the brief names it in one line,
 `Spec: <path|object>`, a tracked path or Git object the candidate can reach, and
 the review checks the requirements against the code. Work without one carries
@@ -24,7 +30,9 @@ the work followed.
   relevant history and optional prior-change context when available.
 - `follow_up` requires the previous candidate SHA, this reviewer's own complete
   prior report, dispositions of that reviewer's findings and a computable delta.
-  Peer reports or reasoning are forbidden.
+  Peer reports or reasoning are forbidden. The delta and the prior report say
+  where to look first and what was already read; they do not narrow the scope,
+  and a defect found in an unchanged part of the task range is a finding.
 
 Modes are coverage profiles, not evidence standards. Escalate `fast` or
 `follow_up` to effective `deep` in the same execution for trust/auth,
@@ -48,8 +56,9 @@ Perform and retain evidence for these stages in order:
 5. Candidate verification — try to falsify each candidate with a test, trace,
    contract, guard, caller, configuration or language/framework semantics.
    Classify it as `confirmed`, `strongly_supported`, `unproven` or `refuted`.
-6. Causality — a finding must be caused or materially worsened by the candidate.
-   Mark a pre-existing blocker only as residual risk.
+6. Causality — a finding must be caused or materially worsened by the task
+   range. Mark a blocker that predates `base`, lies outside the task or waits on
+   an external owner only as residual risk.
 7. Severity — assign impact only after evidence and causality.
 8. Reporting — publish `confirmed` and `strongly_supported`; keep `unproven` in
    Unknowns and omit `refuted`. Zero findings is a valid `PASS`.
@@ -200,6 +209,21 @@ input and state, expected behavior, and where the check belongs — precise enou
 to write them without asking the reviewer a second question. A finding whose
 acceptance is "make it correct" sends remediation guessing, and every guess
 costs another full review round.
+
+Some classes of finding have no finite fix: recognizing secrets in free text,
+parsing a foreign format by heuristics, sanitizing arbitrary input. There each
+fix meets a new shape, and a review that raises one more shape per round never
+converges. A finding of such a class lists the complete set of concrete cases
+the fix must satisfy, and the fix is judged against that list and its regression
+tests. A shape outside the list raised in a later round is a new finding only
+when it is a different class or a regression; otherwise it is a residual risk.
+
+`Residual risks` records what the reviewer saw and deliberately did not report
+as a finding: a pre-existing problem outside the task range, an external
+blocker, an unverified live part, a known limit of a heuristic. That record is
+the correct outcome, not unfinished work: it informs the owner, who decides
+whether it becomes work, and the executor does not turn it into part of the task
+without that decision. Confirmed work outside the task is routed as an Issue.
 
 `PASS` means no required change remains and evidence covers the complete scope.
 Dirty or mismatched checkout, unknown SHA, truncated/unreadable output or

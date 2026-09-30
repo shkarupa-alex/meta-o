@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-review-orca or an act
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "de5229438685437a0c14d00d23f6c7735cf4b76f"
+  source_tree: "a426fd666800b5c43ef033b596d794432cb05408"
 ---
 
 # Review through Orca
@@ -219,8 +219,11 @@ The first lifecycle pair uses `deep`. A Dispatch, the provider session, its PTY
 and its worktree are four resources, and `worker_done` spends only the Dispatch:
 after FINDINGS neither reviewer is released or closed until both dispositions
 settle, and remediation goes to the same pair as `follow_up` with only that
-reviewer's own prior reports and dispositions. Before each such Dispatch decide
-every slot separately with `scripts/mo-review-resource.mjs hot`:
+reviewer's own prior reports and dispositions. Every brief, `follow_up`
+included, scopes the whole task range `<base>..<candidate>`: `base` is where
+the task branch starts, or the start the caller names when there is no branch.
+Before each such Dispatch decide every slot separately with
+`scripts/mo-review-resource.mjs hot`:
 
 ```text
 hot(slot) = alive_and_ready(slot) AND (age < 1h OR context_proven_small(slot))

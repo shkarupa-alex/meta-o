@@ -219,8 +219,12 @@ orchestrator and CI.
 
 The first required pair uses `deep`. Remediation uses `follow_up`, giving each
 reviewer only its own prior report and finding dispositions; peer bytes remain
-forbidden. `fast` is advisory or explicitly standalone. Any profile escalates in
-place to `deep` when the portable protocol detects broad or high-risk semantics.
+forbidden. Every mode reviews the whole task range `<base>..<candidate>`: the
+task branch's start, or the start the orchestrator or executor names when there
+is no branch, up to the candidate SHA as the upper bound. The prior report is
+evidence of what was already read, not a limit on what a `follow_up` may find.
+`fast` is advisory or explicitly standalone. Any profile escalates in place to
+`deep` when the portable protocol detects broad or high-risk semantics.
 
 Wait for both complete settled final responses. Each follows the canonical
 review grammar: exact `Review-Execution`/candidate/mode, `Delegation: none`,
@@ -288,10 +292,16 @@ one repeated Dispatch after a malformed report does not. A substantive slice has
 at most five, and a new SHA does not reset the count. Each round's report names
 `attempt <n>/5` and `deep_reads <m>`, the number of full independent rereads —
 deep pairs and the final fresh pair — as text in the report, not a store.
-Deliver every P3, but do not start a separate round only for P3. This local
-budget never replaces two final same-SHA passes. After attempt five, complete
-the active remediation, then move to the next substantive slice or stop with
-`needs_attention` when no progress path remains.
+Deliver every P3, but do not start a separate round only for P3. Residual risks
+a reviewer records outside findings are a record for the owner, not remediation:
+the executor fixes them only when the owner decides so. When a finding belongs
+to a class with no finite fix — secret recognition, heuristic parsing — and does
+not list the complete set of concrete cases, ask the same hot reviewer for that
+list before fixing; the fix is judged against the list and its regressions, and
+reasonable coverage of most cases is enough unless the owner named more. This
+local budget never replaces two final same-SHA passes. After attempt five,
+complete the active remediation, then move to the next substantive slice or stop
+with `needs_attention` when no progress path remains.
 
 Early repair after the first complete valid FINDINGS report is allowed only when
 the owner approved it and every property is proven: the executor works in its

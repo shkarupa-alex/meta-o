@@ -58,16 +58,25 @@ runs the suite as well spends minutes that let every participant's cache expire
 and proves nothing new. When a finding needs an executed check to be decided,
 write that check as its regression case or record the gap under Unknowns.
 Write nothing in the checkout. When the brief says the executor repairs early,
-never read its branch, worktree or any moving ref. In `follow_up` mode you
-receive only your own prior reports and the dispositions of their findings;
-check each fix and its causal neighbours and never ask for the other reviewer's
-report.
+never read its branch, worktree or any moving ref.
+
+The scope is the whole task range the brief's `Scope` names, `<base>..<Target>`,
+in every mode; `Target` is only the upper bound. In `follow_up` mode you
+receive only your own prior reports and the dispositions of their findings:
+check each fix and its causal neighbours first, and report a defect anywhere in
+the task range, changed in this round or not. Never ask for the other
+reviewer's report.
 
 Each finding survives an attempt to falsify it and is caused or worsened by the
-candidate. It states its evidence state, causal path, impact, location, proof,
+task range. It states its evidence state, causal path, impact, location, proof,
 the invariant that must hold after the fix, technical direction, depth
 `local patch|boundary repair|affected-slice redesign`, and a regression case
-named as input and state, expected behavior and where the check belongs.
+named as input and state, expected behavior and where the check belongs. For a
+class with no finite fix — secret recognition, heuristic parsing — list the
+complete set of cases the fix must satisfy, because the fix is judged against
+that list. What you saw but do not report — a problem older than `base`, an
+external blocker, a known limit of a heuristic — goes under Residual risks; it
+is a record for the owner, not work you assign.
 
 ## One report, validated before it leaves
 
