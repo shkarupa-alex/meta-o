@@ -31,8 +31,10 @@ Neither step is a judgement call. Whether a reviewer slot is hot is answered
 per slot by bundled `scripts/mo-review-resource.mjs hot`, whose flags its `--help`
 lists, from the age since its
 last `worker_done` and the context its screen shows, as
-[Orca native mechanics](references/orca-mechanics.md) describes; a slot it does
-not answer hot is cold. Bytes reach a live agent only through its proven empty
+[Orca native mechanics](references/orca-mechanics.md) describes, including
+what answers `--alive`: the slot's own recorded terminal and screen, never
+Orca's worker liveness `unverifiable` alone; a slot it does not answer hot is
+cold. Bytes reach a live agent only through its proven empty
 composer: right before each message, bundled
 `scripts/mo-harness-screen.mjs` reads that exact terminal's current screen and
 must answer `action=inject`. A draft, a suggestion, a trust dialog, a shell

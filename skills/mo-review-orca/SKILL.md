@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-review-orca or an act
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "67ff6103ba2bf12b282b59a3f7a147942fb31c8b"
+  source_tree: "57db8bc4cf92fc0021b81fc9e6c00f3752b8e985"
 ---
 
 # Review through Orca
@@ -270,16 +270,15 @@ public surface or the approved model catalogue; anything else is
 `context=unknown`, and age alone decides. A slot that is not hot is replaced by
 a new session of the same model in that slot with `follow_up`, its own reports
 and dispositions — not a new deep pair and not the final pair — while a hot
-slot beside it stays. `--alive yes` means the slot's own recorded terminal
-still runs its harness: `terminal show` reports it running and its screen is
-the harness's prompt. Orca's worker liveness `unverifiable` on an idle session
-is missing evidence, not death, and never answers `--alive no` by itself; a
-terminal that is gone or shows a shell does. Readiness and an empty composer come from
-`scripts/mo-harness-screen.mjs` answering `action=inject`, and its
-`context=`/`context_window=` fields are what the context flags take. A refused
-screen on an idle session is `session_unavailable` recorded with that line: that
-slot returns `needs_attention`, its composer text is left as it is, nothing else
-is closed, and it is never by itself a reason for a new deep pair.
+slot beside it stays. What answers `--alive` is defined once in
+[Orca native mechanics](references/orca-mechanics.md): the slot's own recorded
+terminal and screen, never Orca's worker liveness `unverifiable` alone.
+Readiness and an empty composer come from `scripts/mo-harness-screen.mjs`
+answering `action=inject`, and its `context=`/`context_window=` fields are
+what the context flags take. A refused screen on an idle session is
+`session_unavailable` recorded with that line: that slot returns
+`needs_attention`, its composer text is left as it is, nothing else is closed,
+and it is never by itself a reason for a new deep pair.
 
 A Codex start that fails with `agent-trust-workspace` stays inside the
 supported harness: release the failed Dispatch by its exact id, prove trust by

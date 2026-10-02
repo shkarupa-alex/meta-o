@@ -341,7 +341,12 @@ session.
 
 A review slot is decided differently, by `mo-review-resource.mjs hot`: its age
 runs from the slot's last `worker_done`, not from `lastOutputAt`, and the owner
-set that bound at one hour; a proven small context keeps an older slot hot.
+set that bound at one hour; a proven small context keeps an older slot hot. Its
+`--alive yes` means the slot's own recorded terminal still runs its harness:
+`terminal show` reports it running and its screen is the harness's prompt.
+Orca's worker liveness `unverifiable` on an idle session is missing evidence,
+not death, and never answers `--alive no` by itself; a terminal that is gone or
+shows a shell does.
 
 ## Reviews and cleanup
 

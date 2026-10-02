@@ -8,7 +8,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -271,15 +271,32 @@ test("every input the helper reads is printed by --help and stated in the callin
   }
   // An idle session Orca cannot verify is not a dead one: the slot's own
   // terminal and screen answer --alive, so a young slot is not replaced on it.
-  for (const skillPath of [
-    "src/skills/mo-review-orca/SKILL.md",
-    "skills/mo-review-orca/SKILL.md",
-  ]) {
-    const flat = readFileSync(join(ROOT, skillPath), "utf8").replace(/\s+/gu, " ");
-    assert.match(
-      flat,
-      /liveness `unverifiable` on an idle session is missing evidence, not death/u,
+  // Every shipped skill that asks the helper whether a slot is hot carries
+  // that definition, so a skill added later cannot call hot without it.
+  const hotCallers = readdirSync(join(ROOT, "skills")).filter((name) => {
+    const skill = join(ROOT, "skills", name, "SKILL.md");
+    return (
+      existsSync(join(ROOT, "skills", name, "scripts", "mo-review-resource.mjs")) &&
+      readFileSync(skill, "utf8").replace(/\s+/gu, " ").includes("mo-review-resource.mjs hot")
     );
+  });
+  assert.deepEqual(hotCallers.sort(), ["mo-convergence", "mo-review-orca"]);
+  for (const name of hotCallers) {
+    for (const root of ["skills", "src/skills"]) {
+      const skill = readFileSync(join(ROOT, root, name, "SKILL.md"), "utf8");
+      assert.ok(skill.replace(/\s+/gu, " ").includes("answers `--alive`"), `${root}/${name}`);
+      assert.ok(skill.includes("(references/orca-mechanics.md)"), `${root}/${name}`);
+    }
+    const mechanics = readFileSync(
+      join(ROOT, "skills", name, "references", "orca-mechanics.md"),
+      "utf8",
+    ).replace(/\s+/gu, " ");
+    assert.match(
+      mechanics,
+      /liveness `unverifiable` on an idle session is missing evidence, not death/u,
+      name,
+    );
+    assert.match(mechanics, /`--alive yes` means the slot's own recorded terminal/u, name);
   }
   // An UNKNOWN for missing grounding says what was missing, or the caller
   // cannot supply it without a second question.
