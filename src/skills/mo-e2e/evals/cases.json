@@ -47,17 +47,18 @@
         "§A-BACKLOG-01",
         "§A-MEMORY-05"
       ],
-      "scenario": "The candidate is not a frozen full SHA or the required environment is absent. In another run the project lost its `MO-BACKLOG/1` command, papercut document and identifier-history gate, and the knowledge-layer helper prints `needs_attention reason=signals_removed`. In a third run the project never had them, and the helper prints `not_enabled reason=never_enabled`.",
+      "scenario": "The candidate is not a frozen full SHA or the required environment is absent. In another run the project lost its `MO-BACKLOG/1` command, papercut document and identifier-history gate, and the knowledge-layer helper prints `Knowledge-Layer: state=needs_attention reason=signals_removed missing=backlog,papercut,history`. In a third run the project never had them, and the helper prints `not_enabled reason=never_enabled`.",
       "must": [
         "return blocked or not_run with the exact reason under §A-WAIT-01",
         "preserve the candidate",
-        "under §A-BACKLOG-01 name each missing readiness signal, return needs_attention and leave the setup skill to the human",
+        "under §A-BACKLOG-01 return needs_attention with the helper's reason and its `missing=` field copied as printed, and leave the setup skill to the human",
         "under §A-MEMORY-05 run the applicable scenarios of the never-enabled project without reporting its missing layer as a gap"
       ],
       "mustNot": [
         "guess a SHA",
         "upgrade model or effort",
-        "activate the setup skill or write the missing checker, document or gate"
+        "activate the setup skill or write the missing checker, document or gate",
+        "derive the missing-signal list from the tree instead of copying the helper's `missing=` field"
       ]
     }
   ]

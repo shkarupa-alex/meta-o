@@ -7,7 +7,15 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { after, test } from "node:test";
@@ -310,4 +318,32 @@ test("a readiness gap names its missing signals, and setup reports the literal l
   const setup = flat("src/skills/mo-setup/SKILL.md");
   assert.match(setup, /`Knowledge-Layer: state=not_enabled reason=never_enabled`/u);
   assert.match(setup, /`Knowledge-Layer: state=needs_attention` with the helper's reason/u);
+});
+
+test("every eval scenario quotes a needs_attention line this helper can print", () => {
+  // An eval that quotes a line without `missing=` describes output the helper
+  // no longer produces, so a skill told to copy the field has nothing to copy.
+  const strings = (value) =>
+    typeof value === "string"
+      ? [value]
+      : Object.values(value ?? {}).flatMap((item) =>
+          typeof item === "object" || typeof item === "string" ? strings(item) : [],
+        );
+  const skills = readdirSync(join(ROOT, "src", "skills"));
+  const quoted = [];
+  for (const skill of skills) {
+    const path = join(ROOT, "src", "skills", skill, "evals", "cases.json");
+    if (!existsSync(path)) continue;
+    for (const text of strings(JSON.parse(readFileSync(path, "utf8")))) {
+      for (const [line] of text.matchAll(/(?:state=)?needs_attention reason=[^`]*/gu)) {
+        quoted.push(line);
+        assert.match(
+          line,
+          /^state=needs_attention reason=[a-z_]+ missing=(none|unknown|(backlog|papercut|history)(,(papercut|history))*)$/u,
+          `${skill}: ${line}`,
+        );
+      }
+    }
+  }
+  assert.ok(quoted.length >= 3, "the corpus quotes the needs_attention branch");
 });
