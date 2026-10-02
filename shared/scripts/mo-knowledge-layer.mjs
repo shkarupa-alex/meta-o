@@ -83,6 +83,25 @@ function localPath(url) {
 }
 
 /**
+ * A link destination names a file the way mo-knowledge reads the same link:
+ * percent-decoded, with one leading `/` meaning the repository root. Decoding
+ * comes before the outside-repository check, so an encoded `../` still escapes
+ * and declares nothing; an undecodable destination declares nothing either.
+ */
+function linkPath(url) {
+  if (url.startsWith("//") || /^[a-z][a-z0-9+.-]*:/iu.test(url)) return null;
+  let decoded;
+  try {
+    decoded = decodeURIComponent(url.replace(/[?#].*$/su, ""));
+  } catch {
+    return null;
+  }
+  // Decoded bytes are a file name now: a `%23` or `%3F` stays part of it.
+  const path = posix.normalize(decoded.replace(/^\//u, ""));
+  return path === ".." || path.startsWith("../") || path.startsWith("/") ? null : path;
+}
+
+/**
  * The papercut documents `AGENTS.md` declares.
  *
  * Two forms, because a name cannot carry every project's choice: a link to a
@@ -113,7 +132,7 @@ function declaredPapercut(agents) {
         : node.type === "linkReference"
           ? targets.get(node.identifier)
           : undefined;
-    const path = url === undefined ? null : localPath(url ?? "");
+    const path = url === undefined ? null : linkPath(url ?? "");
     if (path && /(?:^|\/)[^/]*papercut[^/]*\.md$/iu.test(path)) found.push(path);
     for (const child of node.children ?? []) visit(child);
   };

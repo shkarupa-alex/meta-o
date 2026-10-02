@@ -179,6 +179,50 @@ test("a papercut document elsewhere counts only when AGENTS.md links it", () => 
   }
 });
 
+test("a link destination names the papercut file as mo-knowledge reads the same link", () => {
+  const root = repository();
+  commit(root, {
+    ...LAYER,
+    "docs/papercut.md": null,
+    "knowledge/team papercut.md": "# Papercuts\n",
+    "knowledge/team-papercuts.md": "# Papercuts\n",
+    "knowledge/грабли-papercut.md": "# Грабли\n",
+  });
+  const bundle = join(ROOT, "skills", "mo-setup", "scripts", "mo-knowledge-layer.mjs");
+  const cli = (sha) =>
+    [HELPER, bundle].map((script) =>
+      spawnSync(process.execPath, [script, "--candidate", sha, "--repo", root], {
+        encoding: "utf8",
+      }),
+    );
+  const at = (text) => commit(root, { "AGENTS.md": `${LAYER["AGENTS.md"]}\n${text}\n` });
+  const enabled = {
+    "a percent-encoded space": "[Papercuts](knowledge/team%20papercut.md)",
+    "an encoded reference definition": "[Papercuts][pc]\n\n[pc]: knowledge/team%20papercut.md",
+    "a repository-root path": "[Papercuts](/knowledge/team-papercuts.md)",
+    "an encoded UTF-8 name": `[Грабли](knowledge/${encodeURIComponent("грабли")}-papercut.md)`,
+    "an angle-bracketed space": "[Papercuts](<knowledge/team papercut.md>)",
+  };
+  for (const [label, text] of Object.entries(enabled)) {
+    const sha = at(text);
+    assert.deepEqual(answer(root, sha), { state: "enabled", reason: "signals_present" }, label);
+    for (const run of cli(sha)) assert.equal(run.status, 0, `${label}\n${run.stdout}${run.stderr}`);
+  }
+  const gap = { state: "needs_attention", reason: "partial_signals", missing: "papercut" };
+  const declined = {
+    "an encoded escape above the repository": "[Papercuts](%2e%2e/team-papercuts.md)",
+    "an undecodable destination": "[Papercuts](knowledge/bad%zzpapercut.md)",
+  };
+  for (const [label, text] of Object.entries(declined)) {
+    const sha = at(text);
+    assert.deepEqual(answer(root, sha), gap, label);
+    for (const run of cli(sha)) {
+      assert.equal(run.status, 1, label);
+      assert.equal(run.stderr, "", label);
+    }
+  }
+});
+
 test("a reference link through a definition declares the papercut document like an inline one", () => {
   const root = repository();
   const base = {

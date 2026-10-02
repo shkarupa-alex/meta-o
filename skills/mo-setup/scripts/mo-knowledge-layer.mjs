@@ -6985,6 +6985,17 @@ function localPath(url) {
   const path = posix.normalize(url.replace(/[?#].*$/su, "").replace(/^\.\//u, ""));
   return path.startsWith("../") ? null : path;
 }
+function linkPath(url) {
+  if (url.startsWith("//") || /^[a-z][a-z0-9+.-]*:/iu.test(url)) return null;
+  let decoded;
+  try {
+    decoded = decodeURIComponent(url.replace(/[?#].*$/su, ""));
+  } catch {
+    return null;
+  }
+  const path = posix.normalize(decoded.replace(/^\//u, ""));
+  return path === ".." || path.startsWith("../") || path.startsWith("/") ? null : path;
+}
 function declaredPapercut(agents) {
   const tree = fromMarkdown(agents);
   const targets = /* @__PURE__ */ new Map();
@@ -6997,7 +7008,7 @@ function declaredPapercut(agents) {
   const found = [];
   const visit = (node2) => {
     const url = node2.type === "link" ? node2.url : node2.type === "linkReference" ? targets.get(node2.identifier) : void 0;
-    const path = url === void 0 ? null : localPath(url ?? "");
+    const path = url === void 0 ? null : linkPath(url ?? "");
     if (path && /(?:^|\/)[^/]*papercut[^/]*\.md$/iu.test(path)) found.push(path);
     for (const child of node2.children ?? []) visit(child);
   };
