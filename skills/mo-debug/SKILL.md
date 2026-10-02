@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-debug; read a bounded
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "fc4be3714fa92981449e2a1783cdbee928a8eb2b"
+  source_tree: "1df47dc8fa46933f52f62a346667ba2a85d708c5"
 ---
 
 # Diagnose your own agent sessions
@@ -32,8 +32,9 @@ node scripts/mo-debug.mjs scan --session <path-or-id> [--session …] \
 ```
 
 The helper reads only regular files under `~/.claude/projects/` or
-`~/.codex/sessions/` that the invoking user owns; a set `CODEX_HOME` replaces
-`~/.codex` and must be absolute. `foreign_path`, `session_not_found` and
+`~/.codex/sessions/` that the invoking user owns; a set `CLAUDE_CONFIG_DIR`
+replaces `~/.claude` and a set `CODEX_HOME` replaces `~/.codex`, and each must
+be absolute. `foreign_path`, `session_not_found` and
 `session_ambiguous` are refusals: the file stayed unread, and you do not try
 another way in. `search_incomplete` means a session root could not be reached or
 a directory under it could not be read, so the id was neither found nor proven

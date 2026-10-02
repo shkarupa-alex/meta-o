@@ -99,12 +99,14 @@ function historyRepo() {
   return { repo, short: shas.map((sha) => sha.slice(0, 12)) };
 }
 
-// CODEX_HOME moves the Codex root, so it reaches the helper only when a test
-// names it, never from the environment the suite happens to run in.
-function run(home, args, codexHome) {
+// CODEX_HOME and CLAUDE_CONFIG_DIR move the session roots, so they reach the
+// helper only when a test names them, never from the suite's own environment.
+function run(home, args, codexHome, claudeConfigDir) {
   const env = { ...process.env, HOME: home };
   delete env.CODEX_HOME;
+  delete env.CLAUDE_CONFIG_DIR;
   if (codexHome !== undefined) env.CODEX_HOME = codexHome;
+  if (claudeConfigDir !== undefined) env.CLAUDE_CONFIG_DIR = claudeConfigDir;
   return spawnSync(process.execPath, [CLI, ...args], {
     cwd: home,
     env,
@@ -537,7 +539,7 @@ test("a read that fails on one owned log settles that session alone", () => {
   const options = (sessions, read) => ({
     sessions,
     home,
-    codexHome: null,
+    places: null,
     maxRecords: Infinity,
     since: null,
     read,
@@ -625,6 +627,55 @@ test("a set CODEX_HOME replaces the default Codex root, and only an absolute one
   const own = run(home, ["scan", "--session", join(claude, `${CLAUDE_ID}.jsonl`)], alt);
   assert.equal(outcome(own), "ok");
   assert.equal(outcome(run(home, ["scan", "--session", CLAUDE_ID], alt)), "ok");
+});
+
+test("a set CLAUDE_CONFIG_DIR replaces the default Claude root, and only an absolute one is accepted", () => {
+  const { home, claude } = fixtureHome();
+  const outcomeOf = (result) => / outcome=([a-z_]+) /u.exec(result.stdout)?.[1] ?? null;
+  const config = temporary("mo-debug-claude-config-");
+  const moved = join(config, "projects", "-work-project");
+  mkdirSync(moved, { recursive: true });
+  const log = join(moved, `${CLAUDE_ID}.jsonl`);
+  copyFileSync(join(FIXTURES, "claude-session.jsonl"), log);
+  rmSync(join(claude, `${CLAUDE_ID}.jsonl`));
+  // (1) The user's own transcript under $CLAUDE_CONFIG_DIR/projects reads by
+  // path and by id.
+  const claudeRun = (args, value) => run(home, args, undefined, value);
+  for (const spec of [log, CLAUDE_ID]) {
+    const result = claudeRun(["scan", "--session", spec], config);
+    assert.equal(outcomeOf(result), "ok", spec);
+    assert.match(result.stdout, / harness=claude /u, spec);
+  }
+  // (2) The variable replaces the default root: a transcript left under
+  // ~/.claude/projects is foreign by path and absent by id.
+  copyFileSync(log, join(claude, `${CLAUDE_ID}.jsonl`));
+  rmSync(log);
+  assert.equal(
+    outcomeOf(claudeRun(["scan", "--session", join(claude, `${CLAUDE_ID}.jsonl`)], config)),
+    "foreign_path",
+  );
+  assert.equal(outcomeOf(claudeRun(["scan", "--session", CLAUDE_ID], config)), "session_not_found");
+  // (3) Unset or empty keeps the default root.
+  for (const value of [undefined, ""]) {
+    assert.equal(outcomeOf(claudeRun(["scan", "--session", CLAUDE_ID], value)), "ok", `${value}`);
+  }
+  // (4) A relative value is a call error, never resolved against the cwd.
+  const relative = claudeRun(["scan", "--session", CLAUDE_ID], "relative/dir");
+  assert.equal(relative.status, 2);
+  assert.match(relative.stderr, /^MO-DEBUG\/1 status=error reason=claude_config_dir_relative$/mu);
+  // (5) A root behind a parent the user cannot traverse is not proven absent.
+  const shut = temporary("mo-debug-claude-shut-");
+  const hidden = join(shut, "config");
+  mkdirSync(join(hidden, "projects"), { recursive: true });
+  chmodSync(shut, 0o000);
+  try {
+    assert.equal(
+      outcomeOf(claudeRun(["scan", "--session", CLAUDE_ID], hidden)),
+      "search_incomplete",
+    );
+  } finally {
+    chmodSync(shut, 0o755);
+  }
 });
 
 test("an unreadable directory makes an id search incomplete, and other sessions survive", () => {

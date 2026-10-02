@@ -33,17 +33,20 @@ const LINE_LIMIT = 64 * 1024 * 1024;
 /**
  * §A-DIAGNOSTICS-01 names the only two directories a session may live under.
  *
- * Codex writes its rollouts under `$CODEX_HOME/sessions` whenever that is set,
- * so the variable replaces the default root rather than adding a second one.
+ * Claude Code keeps its data under `$CLAUDE_CONFIG_DIR` and Codex its rollouts
+ * under `$CODEX_HOME/sessions` whenever the variable is set, so each variable
+ * replaces its harness's default root rather than adding a second one.
  *
  * @param {string} home the invoking user's home directory
- * @param {string | null} codexHome absolute `CODEX_HOME`, or null when unset
+ * @param {{codexHome?: string|null, claudeConfigDir?: string|null} | null} [places]
+ *   absolute `CODEX_HOME` and `CLAUDE_CONFIG_DIR`; an absent or null one is unset
  * @returns {{claude: string, codex: string}} absolute root paths
  */
-export function sessionRoots(home, codexHome = null) {
+export function sessionRoots(home, places = null) {
+  const { codexHome = null, claudeConfigDir = null } = places ?? {};
   return {
-    claude: join(home, ".claude", "projects"),
-    codex: codexHome === null ? join(home, ".codex", "sessions") : join(codexHome, "sessions"),
+    claude: join(claudeConfigDir ?? join(home, ".claude"), "projects"),
+    codex: join(codexHome ?? join(home, ".codex"), "sessions"),
   };
 }
 
@@ -156,17 +159,18 @@ function codexMatches(root, id, io) {
  *
  * @param {string} spec the `--session` argument
  * @param {string} home the invoking user's home directory
- * @param {string | null} codexHome absolute `CODEX_HOME`, or null when unset
+ * @param {{codexHome?: string|null, claudeConfigDir?: string|null} | null} [places]
+ *   the harness homes `sessionRoots` reads
  * @param {{readdir: Function, lstat: Function}} io directory reads, replaceable so a
  *   test can fail one read
  * @returns {{path: string} | {outcome: "session_not_found"|"session_ambiguous"|"search_incomplete"}}
  */
-export function resolveSession(spec, home, codexHome = null, io = FILESYSTEM) {
+export function resolveSession(spec, home, places = null, io = FILESYSTEM) {
   if (spec.includes("/") || spec.includes(sep) || spec.endsWith(".jsonl") || isAbsolute(spec)) {
     return { path: resolve(spec) };
   }
   if (!SESSION_ID.test(spec)) return { outcome: "session_not_found" };
-  const roots = sessionRoots(home, codexHome);
+  const roots = sessionRoots(home, places);
   const claude = claudeMatches(roots.claude, spec, io);
   const codex = codexMatches(roots.codex, spec, io);
   if (!claude.complete || !codex.complete) return { outcome: "search_incomplete" };
@@ -257,13 +261,14 @@ function verifiedDescriptor(path, roots, io) {
  *
  * @param {string} path candidate path from `resolveSession`
  * @param {string} home the invoking user's home directory
- * @param {string | null} codexHome absolute `CODEX_HOME`, or null when unset
+ * @param {{codexHome?: string|null, claudeConfigDir?: string|null} | null} [places]
+ *   the harness homes `sessionRoots` reads
  * @param {{open: Function, fstat: Function, stat: Function, close: Function}} [io]
  *   the descriptor operations, replaced only by tests of the race after open
  * @returns {{fd: number, harness: "claude"|"codex", id: string} | {outcome: string}}
  */
-export function openOwnedSession(path, home, codexHome = null, io = OPENING) {
-  const verified = verifiedDescriptor(path, sessionRoots(home, codexHome), io);
+export function openOwnedSession(path, home, places = null, io = OPENING) {
+  const verified = verifiedDescriptor(path, sessionRoots(home, places), io);
   if (verified.outcome) return verified;
   return { fd: verified.fd, harness: verified.harness, id: sessionIdOf(verified.real) };
 }

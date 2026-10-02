@@ -50,7 +50,8 @@ const USAGE = `usage: mo-debug.mjs scan --session <path-or-id> [--session ...] [
 
 Only files under ~/.claude/projects/ or ~/.codex/sessions/ that the invoking
 user owns are read; anything else is refused as foreign_path, unread. A set
-CODEX_HOME replaces ~/.codex with itself and must be an absolute path.
+CLAUDE_CONFIG_DIR replaces ~/.claude and a set CODEX_HOME replaces ~/.codex;
+each must be an absolute path.
 
 exit: 0 ok or partial | 1 unknown or every session refused | 2 call error
 `;
@@ -200,9 +201,9 @@ function readSession(opened, options) {
 }
 
 function scanSession(spec, options) {
-  const resolved = resolveSession(spec, options.home, options.codexHome);
+  const resolved = resolveSession(spec, options.home, options.places);
   if (resolved.outcome) return refusedSession(spec, resolved.outcome);
-  const opened = openOwnedSession(resolved.path, options.home, options.codexHome);
+  const opened = openOwnedSession(resolved.path, options.home, options.places);
   if (opened.outcome) return refusedSession(spec, opened.outcome);
   // A read error on one owned log, such as EIO on a failing or network home,
   // settles that session alone: the others keep their results, the status line
@@ -295,20 +296,25 @@ function fail(reason) {
   return 2;
 }
 
-// A relative CODEX_HOME would resolve against whatever directory the helper
-// was started in, so it is a call error rather than a guess.
+// A relative CODEX_HOME or CLAUDE_CONFIG_DIR would resolve against whatever
+// directory the helper was started in, so it is a call error rather than a guess.
 function sessionPlaces(env) {
   if (typeof env.HOME !== "string" || env.HOME === "") return { error: "home_unset" };
   const codexHome = env.CODEX_HOME ? env.CODEX_HOME : null;
   if (codexHome !== null && !isAbsolute(codexHome)) return { error: "codex_home_relative" };
-  return { home: env.HOME, codexHome };
+  const claudeConfigDir = env.CLAUDE_CONFIG_DIR ? env.CLAUDE_CONFIG_DIR : null;
+  if (claudeConfigDir !== null && !isAbsolute(claudeConfigDir)) {
+    return { error: "claude_config_dir_relative" };
+  }
+  return { home: env.HOME, places: { codexHome, claudeConfigDir } };
 }
 
 /**
  * §A-DIAGNOSTICS-01 runs the command line and returns the exit code.
  *
  * @param {string[]} argv arguments after the script name
- * @param {NodeJS.ProcessEnv} env environment; only `HOME` and `CODEX_HOME` are read
+ * @param {NodeJS.ProcessEnv} env environment; only `HOME`, `CODEX_HOME` and
+ *   `CLAUDE_CONFIG_DIR` are read
  * @returns {number} 0 ok or partial, 1 unknown or refused, 2 call error
  */
 export function main(argv, env = process.env) {
@@ -318,9 +324,9 @@ export function main(argv, env = process.env) {
     return 0;
   }
   if (options.error) return fail(options.error);
-  const places = sessionPlaces(env);
-  if (places.error) return fail(places.error);
-  const { home, codexHome } = places;
+  const located = sessionPlaces(env);
+  if (located.error) return fail(located.error);
+  const { home, places } = located;
   const history =
     options.history === null ? null : openHistory(resolve(options.history), options.maxHistory);
   if (options.history !== null && history === null) return fail("history_unreadable");
@@ -328,7 +334,7 @@ export function main(argv, env = process.env) {
   if (report?.error) return fail(report.error);
   let result;
   try {
-    result = scan({ ...options, home, codexHome }, history);
+    result = scan({ ...options, home, places }, history);
     if (report) {
       writeSync(report.fd, renderReport(result));
       fsyncSync(report.fd);

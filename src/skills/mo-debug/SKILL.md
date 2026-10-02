@@ -31,8 +31,9 @@ node scripts/mo-debug.mjs scan --session <path-or-id> [--session …] \
 ```
 
 The helper reads only regular files under `~/.claude/projects/` or
-`~/.codex/sessions/` that the invoking user owns; a set `CODEX_HOME` replaces
-`~/.codex` and must be absolute. `foreign_path`, `session_not_found` and
+`~/.codex/sessions/` that the invoking user owns; a set `CLAUDE_CONFIG_DIR`
+replaces `~/.claude` and a set `CODEX_HOME` replaces `~/.codex`, and each must
+be absolute. `foreign_path`, `session_not_found` and
 `session_ambiguous` are refusals: the file stayed unread, and you do not try
 another way in. `search_incomplete` means a session root could not be reached or
 a directory under it could not be read, so the id was neither found nor proven

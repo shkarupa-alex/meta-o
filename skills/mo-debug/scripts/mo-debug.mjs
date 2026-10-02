@@ -722,10 +722,11 @@ var CODEX_ID = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.
 var WALK_DEPTH = 6;
 var WALK_ENTRIES = 2e5;
 var LINE_LIMIT = 64 * 1024 * 1024;
-function sessionRoots(home, codexHome = null) {
+function sessionRoots(home, places = null) {
+  const { codexHome = null, claudeConfigDir = null } = places ?? {};
   return {
-    claude: join(home, ".claude", "projects"),
-    codex: codexHome === null ? join(home, ".codex", "sessions") : join(codexHome, "sessions")
+    claude: join(claudeConfigDir ?? join(home, ".claude"), "projects"),
+    codex: join(codexHome ?? join(home, ".codex"), "sessions")
   };
 }
 var FILESYSTEM = { readdir: readdirSync, lstat: lstatSync };
@@ -802,12 +803,12 @@ function codexMatches(root, id, io) {
   }
   return { matches, complete: complete && pending.length === 0 };
 }
-function resolveSession(spec, home, codexHome = null, io = FILESYSTEM) {
+function resolveSession(spec, home, places = null, io = FILESYSTEM) {
   if (spec.includes("/") || spec.includes(sep) || spec.endsWith(".jsonl") || isAbsolute(spec)) {
     return { path: resolve(spec) };
   }
   if (!SESSION_ID.test(spec)) return { outcome: "session_not_found" };
-  const roots = sessionRoots(home, codexHome);
+  const roots = sessionRoots(home, places);
   const claude = claudeMatches(roots.claude, spec, io);
   const codex = codexMatches(roots.codex, spec, io);
   if (!claude.complete || !codex.complete) return { outcome: "search_incomplete" };
@@ -867,8 +868,8 @@ function verifiedDescriptor(path, roots, io) {
   }
   return { fd, harness, real };
 }
-function openOwnedSession(path, home, codexHome = null, io = OPENING) {
-  const verified = verifiedDescriptor(path, sessionRoots(home, codexHome), io);
+function openOwnedSession(path, home, places = null, io = OPENING) {
+  const verified = verifiedDescriptor(path, sessionRoots(home, places), io);
   if (verified.outcome) return verified;
   return { fd: verified.fd, harness: verified.harness, id: sessionIdOf(verified.real) };
 }
@@ -920,7 +921,8 @@ var USAGE = `usage: mo-debug.mjs scan --session <path-or-id> [--session ...] [op
 
 Only files under ~/.claude/projects/ or ~/.codex/sessions/ that the invoking
 user owns are read; anything else is refused as foreign_path, unread. A set
-CODEX_HOME replaces ~/.codex with itself and must be an absolute path.
+CLAUDE_CONFIG_DIR replaces ~/.claude and a set CODEX_HOME replaces ~/.codex;
+each must be an absolute path.
 
 exit: 0 ok or partial | 1 unknown or every session refused | 2 call error
 `;
@@ -1044,9 +1046,9 @@ function readSession(opened, options) {
   };
 }
 function scanSession(spec, options) {
-  const resolved = resolveSession(spec, options.home, options.codexHome);
+  const resolved = resolveSession(spec, options.home, options.places);
   if (resolved.outcome) return refusedSession(spec, resolved.outcome);
-  const opened = openOwnedSession(resolved.path, options.home, options.codexHome);
+  const opened = openOwnedSession(resolved.path, options.home, options.places);
   if (opened.outcome) return refusedSession(spec, opened.outcome);
   try {
     return readSession(opened, options);
@@ -1114,7 +1116,11 @@ function sessionPlaces(env) {
   if (typeof env.HOME !== "string" || env.HOME === "") return { error: "home_unset" };
   const codexHome = env.CODEX_HOME ? env.CODEX_HOME : null;
   if (codexHome !== null && !isAbsolute2(codexHome)) return { error: "codex_home_relative" };
-  return { home: env.HOME, codexHome };
+  const claudeConfigDir = env.CLAUDE_CONFIG_DIR ? env.CLAUDE_CONFIG_DIR : null;
+  if (claudeConfigDir !== null && !isAbsolute2(claudeConfigDir)) {
+    return { error: "claude_config_dir_relative" };
+  }
+  return { home: env.HOME, places: { codexHome, claudeConfigDir } };
 }
 function main(argv, env = process.env) {
   const options = parseArguments(argv);
@@ -1123,16 +1129,16 @@ function main(argv, env = process.env) {
     return 0;
   }
   if (options.error) return fail(options.error);
-  const places = sessionPlaces(env);
-  if (places.error) return fail(places.error);
-  const { home, codexHome } = places;
+  const located = sessionPlaces(env);
+  if (located.error) return fail(located.error);
+  const { home, places } = located;
   const history = options.history === null ? null : openHistory(resolve2(options.history), options.maxHistory);
   if (options.history !== null && history === null) return fail("history_unreadable");
   const report = options.out === null ? null : createReport(resolve2(options.out));
   if (report?.error) return fail(report.error);
   let result;
   try {
-    result = scan({ ...options, home, codexHome }, history);
+    result = scan({ ...options, home, places }, history);
     if (report) {
       writeSync(report.fd, renderReport(result));
       fsyncSync(report.fd);
