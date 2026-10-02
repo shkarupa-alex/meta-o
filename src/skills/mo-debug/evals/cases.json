@@ -8,7 +8,7 @@
       "id": "mo-debug.positive",
       "class": "positive",
       "contracts": ["§A-DIAGNOSTICS-01", "§A-ISSUE-01"],
-      "scenario": "The user names `mo-debug`, gives one own Claude session id and one own Codex thread id with `--since 2026-09-01`, and a Meta-O checkout for history. In the Codex session the orchestrator skipped the G0 backlog gate; the loaded skill text carries a `source_tree` stamp present in history.",
+      "scenario": "The user names `mo-debug`, gives one own Claude session id and one own Codex thread id with `--since 2026-09-01`, and a Meta-O checkout for history. In the Codex session the orchestrator skipped the G0 backlog gate; the loaded skill file carries a `source_tree` stamp present in history and matches its committed file byte for byte.",
       "must": [
         "under §A-DIAGNOSTICS-01 read the sessions only through `mo-debug.mjs scan` with the given ids, the bound, `--history` and a new `--out` file",
         "under §A-DIAGNOSTICS-01 classify the skipped gate as agent_deviation citing its locator and report the version as the helper's `source_tree:<id>` with its commit range",
