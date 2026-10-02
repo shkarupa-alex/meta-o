@@ -36,8 +36,8 @@ export { createHistoryReader, git } from "./knowledge-history-reader.mjs";
 const NO_DEFINITIONS = "HEAD defines no identifier in the declared business and architecture scope";
 /** §A-MEMORY-01 one authorization trailer; `editorial` lists its ids sorted and comma-joined. */
 export const TRAILER = /^Knowledge-ID-Change: (remove|reuse|editorial) (\S+) via (\S+)$/;
-const USAGE = `usage: mo-knowledge-history.mjs --repo <root> --cutoff <sha> [options]
-       mo-knowledge-history.mjs --repo <root> --pins-from <markdown> [options]
+const USAGE = `usage: mo-knowledge-history.mjs [--repo <root>] --cutoff <sha> [options]
+       mo-knowledge-history.mjs [--repo <root>] --pins-from <markdown> [options]
 
   --repo <root>                  repository to verify (default: Git root of the cwd)
   --cutoff <sha>                 lower boundary of the verified history

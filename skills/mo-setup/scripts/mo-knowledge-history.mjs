@@ -10466,8 +10466,8 @@ function gitRoot(start) {
 // shared/scripts/mo-knowledge-history.mjs
 var NO_DEFINITIONS = "HEAD defines no identifier in the declared business and architecture scope";
 var TRAILER = /^Knowledge-ID-Change: (remove|reuse|editorial) (\S+) via (\S+)$/;
-var USAGE = `usage: mo-knowledge-history.mjs --repo <root> --cutoff <sha> [options]
-       mo-knowledge-history.mjs --repo <root> --pins-from <markdown> [options]
+var USAGE = `usage: mo-knowledge-history.mjs [--repo <root>] --cutoff <sha> [options]
+       mo-knowledge-history.mjs [--repo <root>] --pins-from <markdown> [options]
 
   --repo <root>                  repository to verify (default: Git root of the cwd)
   --cutoff <sha>                 lower boundary of the verified history
@@ -10909,4 +10909,4 @@ export {
   runHistory,
   verifyHistory
 };
-// MO-KNOWLEDGE-HISTORY-SOURCE 0.2.0 70ea742092c5421c3c864b7c842c9f0e729b2ca24137289fee14defbdbbb1454
+// MO-KNOWLEDGE-HISTORY-SOURCE 0.2.0 da6dcf3fa4658b0ba9d3bef1476a54bf92d6de979ca47b1973ed00816eb1c2aa
