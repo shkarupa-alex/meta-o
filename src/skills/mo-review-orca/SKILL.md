@@ -143,13 +143,15 @@ Orca registration, the terminal and provider session bindings proven through `te
 executor's checkout uses it, a clean tree, and whether another live resource
 depends on it. The facts go to its stdin as one JSON object, each boolean
 observed and never assumed; `scripts/mo-review-resource.mjs --help` prints this
-and every other command's inputs:
+and every other command's inputs. Every `<bool>` stays a placeholder here, so a
+copied skeleton is not JSON until each fact has been observed, and no default
+can stand in for a fact that decides closing a resource:
 
-```json
+```text
 {"comment": "<worktree comment>", "worktreeId": "<orca worktree id>",
- "project": "<project id>", "sameGitDir": true, "projectRegistered": true,
- "bindingsProven": true, "liveSession": false, "coordinatorCheckout": false,
- "clean": true, "dependency": false, "head": "<sha>", "nextCandidate": "<sha>"}
+ "project": "<project id>", "sameGitDir": <bool>, "projectRegistered": <bool>,
+ "bindingsProven": <bool>, "liveSession": <bool>, "coordinatorCheckout": <bool>,
+ "clean": <bool>, "dependency": <bool>, "head": "<sha>", "nextCandidate": "<sha>"}
 ```
 
 It answers one line:

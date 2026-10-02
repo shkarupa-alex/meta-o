@@ -255,6 +255,15 @@ test("every input the helper reads is printed by --help and stated in the callin
       assert.match(help.stdout, new RegExp(`"${key}"`, "u"), key);
       assert.match(skill, new RegExp(`"${key}"`, "u"), `${skillPath} ${key}`);
     }
+    // A copied skeleton must not carry the booleans that authorize release.
+    for (const key of keys.slice(3, 10)) {
+      assert.match(skill, new RegExp(`"${key}": <bool>`, "u"), `${skillPath} ${key}`);
+      assert.doesNotMatch(
+        skill,
+        new RegExp(`"${key}": (?:true|false)`, "u"),
+        `${skillPath} ${key}`,
+      );
+    }
     for (const flag of flags) {
       assert.ok(help.stdout.includes(`${flag} `), flag);
       assert.ok(skill.includes(`${flag} `), `${skillPath} ${flag}`);
