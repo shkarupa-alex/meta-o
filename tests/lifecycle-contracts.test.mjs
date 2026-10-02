@@ -1215,6 +1215,59 @@ test("what the review and E2E skills name for Orca is defined where they read it
   }
 });
 
+test("the rules live actors and evals found missing are stated where they are read", () => {
+  // Each was hit on Orca 1.4.217: a Claude start that waits out its timeout on
+  // the folder-trust dialog, an executor that skipped the self-review advice it
+  // had already followed, fixture trust no actor could remove, a worker tab
+  // whose title no rename changes, and a generic review request with no
+  // Dispatch id to put in the report header.
+  for (const path of [
+    "shared/references/orca-mechanics.md",
+    "skills/mo-review-orca/references/orca-mechanics.md",
+  ]) {
+    const mechanics = source(path).replace(/\s+/gu, " ");
+    assert.match(
+      mechanics,
+      /stops on Claude's folder-trust dialog and fails only when readiness times out/u,
+      path,
+    );
+    assert.match(mechanics, /start again with `worker-start --retry-of <id>`/u, path);
+    assert.match(mechanics, /keeps the tab title `worker-task_<id>` on Orca 1\.4\.217/u, path);
+  }
+  for (const path of ["src/skills/mo-review-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
+    const review = source(path).replace(/\s+/gu, " ");
+    assert.match(
+      review,
+      /portable report header cannot be produced for it rather than invent one/u,
+      path,
+    );
+    assert.match(review, /a self-review it already completed satisfies the recommendation/u, path);
+    assert.match(review, /times out at `agent_readiness` on Claude's folder-trust dialog/u, path);
+  }
+  for (const path of ["src/skills/mo-e2e/SKILL.md", "skills/mo-e2e/SKILL.md"]) {
+    const e2e = source(path).replace(/\s+/gu, " ");
+    assert.match(
+      e2e,
+      /list each entry in the cleanup status with the exact command that removes it/u,
+      path,
+    );
+  }
+  const rows = new Map(
+    markdownTables(source("docs/e2e.md"))
+      .flat()
+      .filter((row) => /^B\d+$/u.test(row[0]))
+      .map(([id, ...cells]) => [id, cells.join(" ")]),
+  );
+  // A cooled slot is one whose context is not proven small, not only unknown.
+  assert.match(
+    rows.get("B57"),
+    /не доказанном малым \(`context=unknown` или больше 100000 токенов\)/u,
+  );
+  // On Orca 1.4.217+ worker-start writes Codex trust itself; that start passes.
+  assert.match(rows.get("B63"), /либо проходит без экрана доверия/u);
+  assert.match(rows.get("B66"), /если она уже выполнена, её итогом/u);
+});
+
 test("a Codex trust failure is recovered inside the supported harness, never by codex exec", () => {
   // #43's implemented outcome rests on this rule staying inside the supported
   // harness: without the check, dropping or inverting it passed every gate.

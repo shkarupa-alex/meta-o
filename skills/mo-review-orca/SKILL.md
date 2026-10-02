@@ -4,13 +4,16 @@ description: Use only when the user explicitly requests mo-review-orca or an act
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "c1338e4904ee4819cbe422dd507a71b77a5b1f83"
+  source_tree: "a60aaeeb8b3cac1b095dd801b48f784240b0003c"
 ---
 
 # Review through Orca
 
 This skill starts only when the user names `mo-review-orca` or the active
 orchestration skill calls it. A generic code-review request is not activation.
+Such a request also has no opaque `Review-Execution` id, which only an Orca
+Dispatch issues, so say that the portable report header cannot be produced for
+it rather than invent one.
 
 Read [Portable review protocol](references/review-protocol.md),
 [Обратная связь о методологии](references/methodology-feedback.md),
@@ -36,8 +39,11 @@ Those two selections form the vendor-diverse pair; neither may be substituted.
 When the caller is the executor itself and no orchestrator stands behind it,
 recommend to that caller once, before the pair starts, a cleanroom self-review:
 a fresh subagent that receives only the specification, the diff and the
-candidate SHA, fixes checked by the same hot subagent. The recommendation never
-blocks the pair. Record the caller's own statement as
+candidate SHA, fixes checked by the same hot subagent. An executor running this
+skill on its own work is that caller, so the recommendation is one line of its
+message to the human before the pair; a self-review it already completed
+satisfies the recommendation, and the line names that result instead of
+repeating the advice. The recommendation never blocks the pair. Record the caller's own statement as
 `self_review=<pass|not_done|unavailable>` in the report to the human; a caller
 that says nothing is `not_done`, and the value is the caller's claim, not proof.
 
@@ -257,8 +263,11 @@ is closed, and it is never by itself a reason for a new deep pair.
 
 A Codex start that fails with `agent-trust-workspace` stays inside the
 supported harness: release the failed Dispatch by its exact id, prove trust by
-the trust procedure, and start the normal supervised harness again. A terminal
-running `codex exec` is never a reviewer.
+the trust procedure, and start the normal supervised harness again. A Claude start that times out
+at `agent_readiness` on Claude's folder-trust dialog is recovered the same way:
+answer the dialog in that start's own terminal by the trust procedure, release
+the failed Dispatch and start again with `--retry-of`. A terminal running
+`codex exec` is never a reviewer.
 
 A new independent deep pair while this pair has no PASS needs a recorded reason
 that `scripts/mo-review-resource.mjs deep --phase remediation --reason <r>`

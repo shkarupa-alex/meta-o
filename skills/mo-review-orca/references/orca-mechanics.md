@@ -157,7 +157,13 @@ the folder.
 A Codex start that fails with `agent-trust-workspace` is recovered inside the
 supported harness: release the failed Dispatch by its exact id, prove the
 worktree's trust through the trust procedure, then start the normal supervised
-Codex harness again with `worker-start --agent codex`.
+Codex harness again with `worker-start --agent codex`. A Claude start into a
+worktree Claude has not trusted stops on Claude's folder-trust dialog and fails
+only when readiness times out (`failedStage=agent_readiness`, no task
+delivered). Read that start's own terminal through
+`scripts/mo-harness-screen.mjs`; when it shows the trust UI and the trust
+procedure's conditions hold, answer it there, release the failed Dispatch by its
+exact id and start again with `worker-start --retry-of <id>`.
 `orca terminal create --command "codex exec …"` is never a reviewer: it has
 neither the harness input nor the mailbox, and its output would have to be
 carried by hand.
@@ -168,9 +174,13 @@ titles are `<feature>:orchestrator`, `<feature>:executor`,
 public surfaces. `terminal create --title` and `terminal rename` set the tab
 title; verify it under `visualLayouts[].root.tabs[].title` from
 `terminal list --include-visual-layouts --json`, because `terminals[].title` is
-the pane title a running harness repaints. The worker's injected lifecycle
-preamble is part of Orca's public orchestration surface. Use
-`orchestration send --to dispatch:<id>` for ordinary follow-ups.
+the pane title a running harness repaints. A terminal that `worker-start`
+created keeps the tab title `worker-task_<id>` on Orca 1.4.217 whatever
+`terminal rename` sets, so there the stable title is a label recorded with the
+exact handle; its absence is never an ownership or cleanup failure, because the
+handle owns cleanup. The worker's injected lifecycle preamble is part of Orca's
+public orchestration surface. Use `orchestration send --to dispatch:<id>` for
+ordinary follow-ups.
 
 `worker-start` reporting `ready` and `input_accepted` is only a transport
 receipt. Before treating the task as delivered, verify through the public worker

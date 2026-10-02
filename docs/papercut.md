@@ -17,11 +17,27 @@
 - Публичная поверхность исполнителя не доказывает фактическую идентичность
   модели: основная внешняя запись —
   [Orca issue #16527](https://github.com/stablyai/orca/issues/16527).
-- Состояние интерфейса доверия Claude и файл тела для `glab issue note`:
-  `unsupported` для новой записи в этом жизненном цикле — `gh` ответил 401, а
-  `glab auth status` не завершился за ограниченную проверку; точного публичного
-  дубликата не найдено. Эти исходы не разрешают пробную запись или выбор другого
-  удалённого репозитория.
+- Диалог доверия Claude останавливает `worker-start --agent claude` до таймаута
+  `agent_readiness`: основная внешняя запись —
+  [Orca issue #21867](https://github.com/stablyai/orca/issues/21867).
+- Файл тела для `glab issue note`: `unsupported` для новой записи в этом
+  жизненном цикле — `glab auth status` не завершился за ограниченную проверку;
+  точного публичного дубликата не найдено. Этот исход не разрешает пробную
+  запись или выбор другого удалённого репозитория.
+- Вкладка терминала, созданного `worker-start`, сохраняет заголовок
+  `worker-task_<id>` после `terminal rename`: основная внешняя запись —
+  [Orca issue #21917](https://github.com/stablyai/orca/issues/21917).
+- Публичная поверхность исполнителя не называет сессию или тред провайдера:
+  основная внешняя запись —
+  [Orca issue #16485](https://github.com/stablyai/orca/issues/16485).
+- Доверие, которое `worker-start --agent codex` записывает в `config.toml`
+  аккаунта Orca, переживает `orca worktree rm`: основная внешняя запись —
+  [Orca issue #24697](https://github.com/stablyai/orca/issues/24697).
+- Закрыть или удалить законченный Run нечем: основная внешняя запись —
+  [Orca issue #24698](https://github.com/stablyai/orca/issues/24698).
+- `run-create` в терминале рабочего делает его Dispatch недостижимым по
+  `dispatch:<ctx>` из обоих Run: основная внешняя запись —
+  [Orca issue #24699](https://github.com/stablyai/orca/issues/24699).
 
 ## Проверки и сборка
 

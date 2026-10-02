@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-e2e or an active mo-o
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "63d791a1babf9edc23205c36af848b5a775952dd"
+  source_tree: "8bd6ec9fe76055dddaa2fb5cfe22b2d356add8fb"
 ---
 
 # Agent-required end-to-end verification
@@ -40,7 +40,11 @@ the recorded provenance proves that rule. Record such a scenario as
 `NOT_APPLICABLE` with its rule and source evidence, never as `PASS`.
 
 Do not edit or commit tracked files. Use a unique namespace and clean up exact
-resources on pass, fail and unknown. Never run a production, destructive,
+resources on pass, fail and unknown. Trust a harness or Orca writes for a
+fixture path into a personal or account configuration — `~/.claude.json`,
+`~/.codex/config.toml`, the Orca Codex account's `config.toml` — is not yours to
+edit while live sessions share that file: list each entry in the cleanup status
+with the exact command that removes it, and the human removes it. Never run a production, destructive,
 credential or subscription action until the user explicitly authorizes that
 exact named action for this candidate. Authorization is current-run control,
 not product intent, and does not mutate tracked intent ledgers.
