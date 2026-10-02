@@ -38,7 +38,9 @@ Modes are coverage profiles, not evidence standards. Escalate `fast` or
 `follow_up` to effective `deep` in the same execution for trust/auth,
 concurrency, schema/transaction/migration, compatibility, destructive effects,
 resource ownership or another broad semantic delta. Missing grounding yields
-`UNKNOWN`, never a shortened `PASS`. Report requested and effective mode.
+`UNKNOWN`, never a shortened `PASS`, and its `Unknown-Account` names each
+missing input, for `follow_up` which of the four above is absent, so the caller
+supplies exactly those. Report requested and effective mode.
 
 ## Ordered algorithm
 

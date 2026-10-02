@@ -260,6 +260,27 @@ test("every input the helper reads is printed by --help and stated in the callin
       assert.ok(skill.includes(`${flag} `), `${skillPath} ${flag}`);
     }
   }
+  // An idle session Orca cannot verify is not a dead one: the slot's own
+  // terminal and screen answer --alive, so a young slot is not replaced on it.
+  for (const skillPath of [
+    "src/skills/mo-review-orca/SKILL.md",
+    "skills/mo-review-orca/SKILL.md",
+  ]) {
+    const flat = readFileSync(join(ROOT, skillPath), "utf8").replace(/\s+/gu, " ");
+    assert.match(
+      flat,
+      /liveness `unverifiable` on an idle session is missing evidence, not death/u,
+    );
+  }
+  // An UNKNOWN for missing grounding says what was missing, or the caller
+  // cannot supply it without a second question.
+  for (const path of [
+    "shared/references/review-protocol.md",
+    "skills/mo-reviewer/references/review-protocol.md",
+  ]) {
+    const flat = readFileSync(join(ROOT, path), "utf8").replace(/\s+/gu, " ");
+    assert.match(flat, /its `Unknown-Account` names each missing input/u, path);
+  }
   // A missing observation is a call error with the usage, never a verdict.
   const bare = spawnSync(process.execPath, [HELPER, "hot", "--age-ms", "60000"], {
     encoding: "utf8",

@@ -267,7 +267,11 @@ public surface or the approved model catalogue; anything else is
 `context=unknown`, and age alone decides. A slot that is not hot is replaced by
 a new session of the same model in that slot with `follow_up`, its own reports
 and dispositions — not a new deep pair and not the final pair — while a hot
-slot beside it stays. Readiness and an empty composer come from
+slot beside it stays. `--alive yes` means the slot's own recorded terminal
+still runs its harness: `terminal show` reports it running and its screen is
+the harness's prompt. Orca's worker liveness `unverifiable` on an idle session
+is missing evidence, not death, and never answers `--alive no` by itself; a
+terminal that is gone or shows a shell does. Readiness and an empty composer come from
 `scripts/mo-harness-screen.mjs` answering `action=inject`, and its
 `context=`/`context_window=` fields are what the context flags take. A refused
 screen on an idle session is `session_unavailable` recorded with that line: that
