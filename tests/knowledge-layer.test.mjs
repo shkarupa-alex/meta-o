@@ -276,6 +276,10 @@ test("a readiness gap names its missing signals, and setup reports the literal l
     flat("src/skills/mo-e2e/SKILL.md"),
     /record the helper's reason, name each of those three signals that is missing at the candidate, return `needs_attention`/u,
   );
+  assert.match(
+    flat("src/skills/mo-review-orca/SKILL.md"),
+    /`needs_attention` with the helper's reason and the name of each of those three that is missing/u,
+  );
   const setup = flat("src/skills/mo-setup/SKILL.md");
   assert.match(setup, /`Knowledge-Layer: state=not_enabled reason=never_enabled`/u);
   assert.match(setup, /`Knowledge-Layer: state=needs_attention` with the helper's reason/u);

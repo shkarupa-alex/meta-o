@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-review-orca or an act
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "57db8bc4cf92fc0021b81fc9e6c00f3752b8e985"
+  source_tree: "24fc8f03ee5cfe1c9b0c192a9f914fbb52795401"
 ---
 
 # Review through Orca
@@ -53,8 +53,10 @@ line into both briefs; a brief without it makes the reviewer's deferral lens
 `unknown`. `not_enabled` is an answer, not a gap. `needs_attention` — a missing
 `MO-BACKLOG/1` command, papercut document or identifier-history gate in a
 project that had or half-declared them — is reported as `needs_attention` with
-the helper's reason, and no pair starts. Preparing the project is the human's
-own step; this skill never does it and never starts the setup skill for them.
+the helper's reason and the name of each of those three that is missing, so the
+human knows what to prepare without a second question, and no pair starts.
+Preparing the project is the human's own step; this skill never does it and
+never starts the setup skill for them.
 
 ## Pre-pair placement
 
