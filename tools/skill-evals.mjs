@@ -15,8 +15,8 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync, realpathSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { readFileSync, realpathSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 
@@ -28,14 +28,17 @@ import {
 } from "./skill-eval-aggregate.mjs";
 import { buildEvaluationPrompt } from "./skill-eval-prompt.mjs";
 import {
+  evaluationCoordinate,
   expectedDigest,
   expectedExecution,
   readExpectedBindings,
   writeExpectation,
 } from "./skill-eval-expectations.mjs";
 
+import { EXPECTED_SKILLS, loadCorpus } from "./skill-eval-corpus.mjs";
 import {
   assertBoundedString,
+  assertString,
   rejectSensitiveOrMachineLocal,
   validateActorIdentity,
   validateExecution,
@@ -46,19 +49,7 @@ import {
 import { diagnoseLegacyEvidenceAtCandidate } from "./skill-eval-legacy.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const CONTRACT = "meta-o.skill-eval-cases.v2";
 const EVIDENCE_CONTRACT = "meta-o.skill-eval-evidence.v3";
-const EXPECTED_SKILLS = [
-  "find-reuse",
-  "mo-e2e",
-  "mo-orchestrate-orca",
-  "mo-review-orca",
-  "mo-setup",
-  "mo-watchdog",
-  "senior-jsts",
-  "senior-python",
-];
-const EXPECTED_CLASSES = ["degraded", "forbidden", "positive"];
 const VERDICTS = new Set([
   "PASS",
   "FAIL",
@@ -69,17 +60,22 @@ const VERDICTS = new Set([
   "NOT_APPLICABLE",
 ]);
 const REQUIRED_MATRIX = [
-  { matrixProfile: "required-claude", route: "claude", role: "testClaude" },
-  { matrixProfile: "required-codex", route: "codex", role: "testCodex" },
+  { matrixProfile: "required-claude-opus", route: "claude", role: "testClaude" },
+  { matrixProfile: "required-codex-sol", route: "codex", role: "testCodexSol" },
+  { matrixProfile: "required-codex-luna", route: "codex", role: "testCodexLuna" },
 ];
+// §A-EVAL-01: v3 evidence on the replaced required pair stays readable as a
+// diagnostic, never as proof, so an old green run cannot close the new matrix.
+const LEGACY_REQUIRED_PROFILES = new Set(["required-claude", "required-codex"]);
 const DESIRED_MATRIX = [
   { matrixProfile: "desired-codex", route: "codex", role: "testCodexDesired" },
   { matrixProfile: "desired-opencode", route: "opencode", role: "testOpenCodeDesired" },
 ];
 const EXPECTED_MATRIX = [...REQUIRED_MATRIX, ...DESIRED_MATRIX];
 const AGGREGATE_MATRIX_ORDER = [
-  "required-codex",
-  "required-claude",
+  "required-codex-sol",
+  "required-codex-luna",
+  "required-claude-opus",
   "desired-codex",
   "desired-opencode",
 ];
@@ -94,94 +90,14 @@ function git(root, args) {
   return result.stdout.trim();
 }
 
-function assertString(value, label) {
-  if (typeof value !== "string" || value.trim() === "") throw new Error(`${label} is empty`);
-}
-
-function validateCase(item, expectedSkill) {
-  assertString(item.id, `${expectedSkill}: case id`);
-  if (item.id !== `${expectedSkill}.${item.class}`) {
-    throw new Error(`${expectedSkill}: case ${item.id} does not match its class`);
-  }
-  assertString(item.scenario, `${item.id}: scenario`);
-  if (!Array.isArray(item.contracts) || item.contracts.length === 0) {
-    throw new Error(`${item.id}: contracts needs at least one architecture/business id`);
-  }
-  for (const contract of item.contracts) {
-    if (!/^§[AB]-[A-Z][A-Z0-9-]*-\d{2}$/u.test(contract)) {
-      throw new Error(`${item.id}: invalid contract id ${contract}`);
-    }
-  }
-  for (const field of ["must", "mustNot"]) {
-    if (!Array.isArray(item[field]) || item[field].length === 0) {
-      throw new Error(`${item.id}: ${field} needs at least one oracle`);
-    }
-    item[field].forEach((entry, index) => assertString(entry, `${item.id}: ${field}[${index}]`));
-  }
-  const oracleText = [...item.must, ...item.mustNot].join(" ");
-  for (const contract of item.contracts) {
-    if (!oracleText.includes(contract)) {
-      throw new Error(`${item.id}: contract ${contract} has no same-case oracle`);
-    }
-  }
-}
-
-function validateCaseSet(document, expectedSkill) {
-  if (!Array.isArray(document.cases) || document.cases.length !== 3) {
-    throw new Error(`${expectedSkill}: exactly three bounded cases are required`);
-  }
-  document.cases.forEach((item) => validateCase(item, expectedSkill));
-  const ids = document.cases.map(({ id }) => id);
-  if (new Set(ids).size !== ids.length) throw new Error(`${expectedSkill}: duplicate case id`);
-  const classes = document.cases.map(({ class: value }) => value).sort();
-  if (JSON.stringify(classes) !== JSON.stringify(EXPECTED_CLASSES)) {
-    throw new Error(`${expectedSkill}: needs positive, forbidden and degraded cases`);
-  }
-}
-
-function validateEvalPolicy(document, expectedSkill) {
-  if (!new Set(["advisory", "critical"]).has(document.policy)) {
-    throw new Error(`${expectedSkill}: invalid ownership policy`);
-  }
-}
-
-function validateCaseFile(document, expectedSkill) {
-  if (document.contract !== CONTRACT) throw new Error(`${expectedSkill}: wrong cases contract`);
-  if (document.skill !== expectedSkill)
-    throw new Error(`${expectedSkill}: skill identity mismatch`);
-  assertString(document.owner, `${expectedSkill}: owner`);
-  if (!new Set(["advisory", "critical"]).has(document.policy)) {
-    throw new Error(`${expectedSkill}: invalid policy`);
-  }
-  validateCaseSet(document, expectedSkill);
-  validateEvalPolicy(document, expectedSkill);
-  return document;
-}
-
-/** §A-EVAL-01 loads the complete embedded corpus and rejects missing skill owners or cases. */
-export function loadCorpus(root = ROOT) {
-  const sourceRoot = join(root, "src", "skills");
-  const discovered = readdirSync(sourceRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .sort();
-  if (JSON.stringify(discovered) !== JSON.stringify(EXPECTED_SKILLS)) {
-    throw new Error(`skill inventory mismatch: ${discovered.join(", ")}`);
-  }
-  return new Map(
-    EXPECTED_SKILLS.map((skill) => {
-      const path = join(sourceRoot, skill, "evals", "cases.json");
-      return [skill, validateCaseFile(JSON.parse(readFileSync(path, "utf8")), skill)];
-    }),
-  );
-}
-
 /** §A-EVAL-01 binds a result to the exact candidate, corpus, requested actor and harness inputs. */
 export function evaluationDigest(document, envelope) {
   const payload = {
     candidate: envelope.candidate,
     skillRevision: envelope.skillRevision,
     skill: envelope.skill,
+    // A frozen v2 envelope predates the case-level coordinate and has no case.
+    ...(envelope.caseId === undefined ? {} : { caseId: envelope.caseId }),
     policy: envelope.policy,
     repetition: envelope.repetition,
     tier: envelope.tier,
@@ -193,9 +109,19 @@ export function evaluationDigest(document, envelope) {
   return createHash("sha256").update(canonicalJson(payload)).digest("hex");
 }
 
-/** §A-EVAL-01 gives caller-frozen prompt inputs one stable lookup coordinate. */
-export function evaluationCoordinate(envelope) {
-  return `${envelope.skill}:${envelope.matrixProfile}:${envelope.repetition}`;
+/**
+ * The corpus narrowed to the one case an evidence coordinate evaluates.
+ *
+ * Prompt, digest and result validation all read this view, so a turn is shown,
+ * frozen and checked against exactly its own case, as §A-EVAL-01 fixes it.
+ */
+export function caseDocument(document, caseId) {
+  if (typeof caseId !== "string" || caseId === "") {
+    throw new Error(`${document.skill}: --case names the one case to evaluate`);
+  }
+  const item = document.cases.find(({ id }) => id === caseId);
+  if (!item) throw new Error(`${document.skill}: unknown case ${caseId}`);
+  return { ...document, cases: [item] };
 }
 
 function makePrompt(root, corpus, skill, values) {
@@ -212,7 +138,7 @@ function makePrompt(root, corpus, skill, values) {
     candidate,
     skillRevision,
     skill,
-    document,
+    document: caseDocument(document, values.case),
     values,
     digest: evaluationDigest,
   });
@@ -229,7 +155,7 @@ async function makeUnavailableEvidence(root, corpus, skill, values) {
     candidate,
     skill,
     skillRevision: git(root, ["rev-parse", `${candidate}:skills/${skill}`]),
-    document,
+    document: caseDocument(document, values.case),
     values,
     digest: evaluationDigest,
   });
@@ -380,6 +306,8 @@ function validateEnvelope(
   const document = corpus.get(envelope.skill);
   if (!document) throw new Error(`unknown evidence skill ${envelope.skill}`);
   if (envelope.policy !== document.policy) throw new Error(`${envelope.skill}: policy mismatch`);
+  assertString(envelope.caseId, `${envelope.skill}: caseId`);
+  const evaluated = caseDocument(document, envelope.caseId);
   if (!new Set(["required", "desired", "critical"]).has(envelope.tier)) {
     throw new Error(`${envelope.skill}: invalid tier`);
   }
@@ -393,12 +321,12 @@ function validateEnvelope(
   const unavailable = envelopeIsUnavailable(envelope);
   // Apply every declared author-controlled field bound before the shared
   // classifier scans the envelope (§A-EVAL-01).
-  validateResults(envelope, document, unavailable);
+  validateResults(envelope, evaluated, unavailable);
   validateActorIdentity(envelope, criticalProfile, unavailable);
   validateHarness(envelope, unavailable);
   rejectSensitiveOrMachineLocal(envelope, envelope.skill);
   const frozenDigest = expectedDigest(expectedDigests, envelope);
-  if (evaluationDigest(document, envelope) !== frozenDigest) {
+  if (evaluationDigest(evaluated, envelope) !== frozenDigest) {
     throw new Error(`${envelope.skill}: returned evaluation inputs do not match frozen digest`);
   }
   validateExecution(envelope, unavailable, frozenDigest);
@@ -411,9 +339,54 @@ function validateEnvelope(
   );
 }
 
+/** §A-EVAL-01 names v3 evidence recorded on the replaced required pair, or null. */
+export function legacyProfileDiagnostic(evidence) {
+  const profiles = (Array.isArray(evidence) ? evidence : [evidence])
+    .filter((envelope) => envelope?.contract === EVIDENCE_CONTRACT)
+    .map((envelope) => envelope.matrixProfile)
+    .filter((profile) => LEGACY_REQUIRED_PROFILES.has(profile));
+  if (profiles.length === 0) return null;
+  return { status: "legacy", accepted: false, profiles: [...new Set(profiles)].sort() };
+}
+
+/**
+ * Admit one envelope per coordinate and one coordinate per native execution.
+ *
+ * A turn reused for a second case or profile would count one judgement as two.
+ */
+function registerCoordinate(envelope, seen) {
+  const key = evaluationCoordinate(envelope);
+  const executionId = envelope.execution?.id;
+  if (seen.has(key)) throw new Error(`duplicate evidence ${key}`);
+  const owner = [...seen.entries()].find(([, id]) => id === executionId);
+  if (owner) throw new Error(`${key}: execution ${executionId} already evidences ${owner[0]}`);
+  seen.set(key, executionId);
+}
+
+/** Fail unless every case of every skill has evidence on every matrix profile. */
+function requireEveryCase(corpus, envelopes) {
+  const covered = new Set(
+    envelopes.map(({ skill, caseId, matrixProfile }) => `${skill}:${caseId}:${matrixProfile}`),
+  );
+  const missing = EXPECTED_SKILLS.flatMap((skill) =>
+    corpus
+      .get(skill)
+      .cases.flatMap(({ id }) =>
+        EXPECTED_MATRIX.map(({ matrixProfile }) => `${skill}:${id}:${matrixProfile}`),
+      ),
+  ).filter((coordinate) => !covered.has(coordinate));
+  if (missing.length > 0) throw new Error(`missing case evidence: ${missing.join(", ")}`);
+}
+
 /** §A-EVAL-01 verifies exact identity, completeness and redaction of live eval evidence. */
 export function validateEvidence(root, evidence, candidate, requireAll = false, options = {}) {
   if (!/^[a-f0-9]{40}$/u.test(candidate ?? "")) throw new Error("candidate must be a full SHA");
+  const legacyProfiles = legacyProfileDiagnostic(evidence);
+  if (legacyProfiles) {
+    throw new Error(
+      `legacy: diagnostic only; ${legacyProfiles.profiles.join(", ")} predate the required matrix`,
+    );
+  }
   const declaredLegacy = (Array.isArray(evidence) ? evidence : [evidence]).some(
     (envelope) => envelope?.contract === "meta-o.skill-eval-evidence.v2",
   );
@@ -431,13 +404,11 @@ export function validateEvidence(root, evidence, candidate, requireAll = false, 
     throw new Error("candidate is not current HEAD");
   const corpus = loadCorpus(root);
   const envelopes = Array.isArray(evidence) ? evidence : [evidence];
-  const seen = new Set();
+  const seen = new Map();
   const compositeIdentities = new Set();
   const nonPass = [];
   for (const envelope of envelopes) {
-    const key = `${envelope.skill}:${envelope.matrixProfile}:${envelope.repetition}`;
-    if (seen.has(key)) throw new Error(`duplicate evidence ${key}`);
-    seen.add(key);
+    registerCoordinate(envelope, seen);
     registerCompositeIdentities(envelope, compositeIdentities);
     nonPass.push(
       ...validateEnvelope(
@@ -451,15 +422,7 @@ export function validateEvidence(root, evidence, candidate, requireAll = false, 
       ),
     );
   }
-  if (requireAll) {
-    const covered = new Set(
-      envelopes.map(({ skill, matrixProfile }) => `${skill}:${matrixProfile}`),
-    );
-    const missing = EXPECTED_SKILLS.flatMap((skill) =>
-      EXPECTED_MATRIX.map(({ matrixProfile }) => `${skill}:${matrixProfile}`),
-    ).filter((coordinate) => !covered.has(coordinate));
-    if (missing.length > 0) throw new Error(`missing skill evidence: ${missing.join(", ")}`);
-  }
+  if (requireAll) requireEveryCase(corpus, envelopes);
   const aggregate = buildEvidenceAggregate(envelopes, AGGREGATE_MATRIX_ORDER);
   return { envelopes: envelopes.length, nonPass, aggregate };
 }
@@ -467,14 +430,14 @@ export function validateEvidence(root, evidence, candidate, requireAll = false, 
 function usage() {
   return `usage:
   node tools/skill-evals.mjs --check
-  node tools/skill-evals.mjs --prompt <skill> --expectations-out <json> --candidate <sha> --tier <required|desired|critical> --matrix-profile <name> --route <route> --model <id> --effort <level> --harness <name> --harness-version <version> --profile-version <version> --quantization <value> --context <value> --sampling <value> --tool-permissions <csv> [--repetition 1]
-  node tools/skill-evals.mjs --availability-probe <skill> --expectations-out <json> --candidate <sha> --tier desired --matrix-profile <name> --route <route> --model <id> --effort <level> --harness <name> [--repetition 1]
+  node tools/skill-evals.mjs --prompt <skill> --case <case-id> --expectations-out <json> --candidate <sha> --tier <required|desired|critical> --matrix-profile <name> --route <route> --model <id> --effort <level> --harness <name> --harness-version <version> --profile-version <version> --quantization <value> --context <value> --sampling <value> --tool-permissions <csv> [--repetition 1]
+  node tools/skill-evals.mjs --availability-probe <skill> --case <case-id> --expectations-out <json> --candidate <sha> --tier desired --matrix-profile <name> --route <route> --model <id> --effort <level> --harness <name> [--repetition 1]
   node tools/skill-evals.mjs --validate-evidence <json> --expectations <json> --execution-observations <json> --candidate <sha> [--require-all] [--critical-profile <route/model/effort>]\n`;
 }
 
 async function main() {
   // prettier-ignore
-  const stringOptions = ["prompt", "availability-probe", "candidate", "route", "model", "effort", "harness", "harness-version", "profile-version", "quantization", "context", "sampling", "tool-permissions", "repetition", "tier", "matrix-profile", "validate-evidence", "expectations", "expectations-out", "execution-observations", "critical-profile"];
+  const stringOptions = ["prompt", "availability-probe", "case", "candidate", "route", "model", "effort", "harness", "harness-version", "profile-version", "quantization", "context", "sampling", "tool-permissions", "repetition", "tier", "matrix-profile", "validate-evidence", "expectations", "expectations-out", "execution-observations", "critical-profile"];
   const booleanOptions = ["check", "require-all"];
   const options = Object.fromEntries(stringOptions.map((name) => [name, { type: "string" }]));
   for (const name of booleanOptions) options[name] = { type: "boolean" };
@@ -522,7 +485,9 @@ async function main() {
       values.expectations,
       values["execution-observations"],
     );
-    const legacy = diagnoseLegacyEvidenceForCandidate(ROOT, evidence, values.candidate);
+    const legacy =
+      diagnoseLegacyEvidenceForCandidate(ROOT, evidence, values.candidate) ??
+      legacyProfileDiagnostic(evidence);
     if (legacy) {
       process.stdout.write(`${JSON.stringify(legacy)}\n`);
       process.exitCode = 1;

@@ -52,27 +52,57 @@ test("context and ownership recovery remain bounded", () => {
   assert.match(mechanics, /32768-token context/);
   assert.match(mechanics, /cap it at 8000 tokens/);
   assert.match(mechanics, /raw 21k\/41k dump/);
-  assert.match(mechanics, /Never close unnamed human tabs/);
+  assert.match(mechanics, /Never close\s+unnamed human tabs/);
   assert.match(mechanics, /bare shell or expired Dispatch cannot\s+settle work/);
+  // Naming the degraded outcomes apart is not enough: each needs the recovery
+  // that keeps its task and owner, or a reader invents a new task for it.
+  assert.match(
+    mechanics.replace(/\s+/gu, " "),
+    /different outcomes\. Each is recovered on the same task and in the same ownership: .* Never a new task, another model or a second owner\./u,
+  );
 });
 
-test("terminal-first is the route, and a composed start needs a sentence that does not exist", () => {
+test("worker-start --agent is the route, and terminal-first only where it cannot pass the model", () => {
   const mechanics = read("orca-mechanics.md");
-  assert.match(mechanics, /Terminal-first is the default route for every agent environment/u);
-  // The permission is written as a condition on upstream text, not as a
-  // preference. A reader who cannot find that sentence has to stay on the
-  // terminal-first route rather than weigh the two.
+  // Before 1.4.217 Orca never saw a Codex fullscreen composer as ready and
+  // could report a closed terminal that kept running, so the route and the
+  // release rule both depend on that floor.
+  assert.match(mechanics, /Orca 1\.4\.217 is the oldest supported version/u);
   assert.match(
     mechanics,
-    /`worker-start --help` or the\s+version-matched `orchestration` guide says in so many words/u,
+    /`worker-start --agent` is the route for every agent environment whose model and\s+effort it passes/u,
   );
-  assert.match(mechanics, /No such sentence is there today/u);
+  assert.match(mechanics, /--agent <claude\|codex> --model <id> --effort <e>/u);
+  assert.match(
+    mechanics,
+    /`launch\.requested == launch\.effective`\s+for agent, model and effort/u,
+  );
   assert.match(mechanics, /orca terminal create --worktree id:<repo>::<path>/u);
   assert.match(
     mechanics,
     /orca orchestration worker-start --task <id> --worktree id:<repo>::<path> --terminal <handle>/u,
   );
-  assert.doesNotMatch(mechanics, /Prefer the composed worker start/u);
+  assert.doesNotMatch(mechanics, /No such sentence is there today/u);
+  assert.doesNotMatch(mechanics, /fallback binding for no_owned_resource/u);
+});
+
+test("the papercut audit lists no release fallback that Orca 1.4.217 made obsolete", () => {
+  const papercut = readFileSync(join(ROOT, "docs", "papercut.md"), "utf8");
+  const nodes = fromMarkdown(papercut).children;
+  const heading = nodes.findIndex(
+    (node) =>
+      node.type === "heading" &&
+      node.children.map((child) => child.value ?? "").join("") ===
+        "Аудит Issues для обходных решений жизненного цикла",
+  );
+  assert.ok(heading >= 0, "audit section missing");
+  const next = nodes.findIndex((node, index) => index > heading && node.type === "heading");
+  const section = nodes.slice(heading + 1, next === -1 ? undefined : next);
+  const audit = papercut.slice(
+    section[0].position.start.offset,
+    section.at(-1).position.end.offset,
+  );
+  assert.doesNotMatch(audit, /резервного терминала|no_owned_resource/u);
 });
 
 test("the recovery path forbids the two moves that duplicate an executor", () => {
@@ -80,9 +110,9 @@ test("the recovery path forbids the two moves that duplicate an executor", () =>
   assert.match(mechanics, /--retry-of <old>/u);
   assert.match(
     mechanics,
-    /`unknown_effect`, both a second stop and a\s+replacement Dispatch are forbidden/u,
+    /`unknown_effect`, both a\s+second stop and a\s+replacement Dispatch are forbidden/u,
   );
-  assert.match(mechanics, /two executors of one task is worse than none/u);
+  assert.match(mechanics, /two executors of one\s+task is worse than\s+none/u);
   // The handle is useless as an owned resource if it is recorded after the
   // wait that can fail.
   assert.match(mechanics, /record the handle in OwnedResourceSet\/1 at once/u);

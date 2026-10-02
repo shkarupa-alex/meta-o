@@ -55,7 +55,8 @@ const ROLES = [
   "reviewerB",
   "e2eTester",
   "testClaude",
-  "testCodex",
+  "testCodexSol",
+  "testCodexLuna",
   "testCodexDesired",
   "testOpenCodeDesired",
 ];
@@ -63,6 +64,7 @@ const ROLES = [
 /** Retired keys stay visible so a settings vocabulary change is never silent. */
 const RETIRED_ROLES = new Map([
   ["testOpenCode", "configure testOpenCodeDesired for the current optional OpenCode coordinate"],
+  ["testCodex", "configure testCodexSol and testCodexLuna for the two required Codex coordinates"],
 ]);
 
 /** Only this schema is understood; a newer file is left strictly alone. */

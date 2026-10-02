@@ -2,6 +2,8 @@
 name: find-reuse
 description: Produce a portable, read-only evidence report about whether to reuse, extend, or build. Run only for an explicit reuse-research request; do not trigger for ordinary package questions.
 license: MIT
+metadata:
+  source_tree: "d4a266eb3e6a2f21eac43154571b7df95d8d2b1b"
 ---
 
 # Find reusable solutions

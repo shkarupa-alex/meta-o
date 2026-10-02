@@ -12,6 +12,12 @@
  * The project's own notation is decided, so citing an undefined one is an
  * error. Everything else is a guess about somebody's coinage and is reported as
  * a warning: a checker that blocks on a guess gets switched off.
+ *
+ * Where `§A-*` and `§B-*` are defined is not this tool's decision. Given the
+ * project's knowledge plan it runs the portable core of §A-MEMORY-05 first,
+ * reports that answer unchanged, and resolves the project's own ids against
+ * the definitions the core found; only the warnings about foreign notation
+ * stay local to this project.
  */
 
 import { spawnSync } from "node:child_process";
@@ -19,6 +25,8 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import MarkdownIt from "markdown-it";
+
+import { checkKnowledge, knowledgeReport } from "../shared/scripts/mo-knowledge.mjs";
 
 const markdown = new MarkdownIt();
 
@@ -259,25 +267,42 @@ export function deliberateFixture(text, path = "") {
 }
 
 /**
- * Report every token the corpus cites and never introduces.
- *
- * §A-MEMORY-01 needs one answer per token rather than one per mention: a term
- * used forty times is one missing definition, and forty findings would bury it.
+ * Definitions and mentions across the corpus. With the core's definitions, an
+ * id of the project's own notation counts as defined only where the core found
+ * it, not wherever it happens to open a table row.
  */
-export function vocabularyFindings({ files, read, layers = DEFAULT_LAYERS, minMentions = 2 }) {
-  const defined = new Set();
+function gather(files, read, owned) {
+  const defined = new Set(owned ?? []);
   const mentions = new Map();
+  const local = (token) => owned === null || !/^§[AB]-/u.test(token);
   for (const path of files) {
     const text = read(path);
     if (deliberateFixture(text, path)) continue;
     const markdown = path.endsWith(".md");
-    if (markdown) for (const token of definedTokens(text)) defined.add(token);
+    if (markdown) for (const token of definedTokens(text)) if (local(token)) defined.add(token);
     for (const { token, line } of markdown ? citedTokens(text) : citedInSource(text)) {
       const entry = mentions.get(token) ?? { count: 0, first: `${path}:${line}` };
       entry.count += 1;
       mentions.set(token, entry);
     }
   }
+  return { defined, mentions };
+}
+
+/**
+ * Report every token the corpus cites and never introduces.
+ *
+ * §A-MEMORY-01 needs one answer per token rather than one per mention: a term
+ * used forty times is one missing definition, and forty findings would bury it.
+ */
+export function vocabularyFindings({
+  files,
+  read,
+  layers = DEFAULT_LAYERS,
+  minMentions = 2,
+  owned = null,
+}) {
+  const { defined, mentions } = gather(files, read, owned);
   const findings = [];
   for (const [token, entry] of mentions) {
     if (defined.has(token)) continue;
@@ -318,11 +343,26 @@ export function trackedFiles(root) {
     .filter((path) => SOURCE_EXTENSIONS.some((extension) => path.endsWith(extension)));
 }
 
+const PLAN_FLAGS = {
+  "--business": "business",
+  "--architecture": "architecture",
+  "--docs": "docs",
+  "--first-party-root": "firstPartyRoots",
+  "--knowledge-exclude": "excludes",
+};
+
 function parseArguments(argv) {
   const options = { root: process.cwd(), strict: false, minMentions: 2, layers: DEFAULT_LAYERS };
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
-    if (flag === "--strict") options.strict = true;
+    if (PLAN_FLAGS[flag]) {
+      const key = PLAN_FLAGS[flag];
+      const value = argv[(index += 1)];
+      if (value === undefined) throw new Error(`${flag} requires a value`);
+      options.plan ??= { docs: [], firstPartyRoots: [], excludes: [] };
+      if (Array.isArray(options.plan[key])) options.plan[key].push(value);
+      else options.plan[key] = value;
+    } else if (flag === "--strict") options.strict = true;
     else if (flag === "--root") options.root = argv[(index += 1)];
     else if (flag === "--min-mentions") options.minMentions = Number(argv[(index += 1)]);
     else if (flag === "--layers") options.layers = argv[(index += 1)].split(",");
@@ -340,15 +380,23 @@ function main(argv) {
   const files = trackedFiles(root).filter(
     (path) => !excluded.some((prefix) => path === prefix || path.startsWith(`${prefix}/`)),
   );
+  let knowledge = null;
+  if (options.plan) {
+    knowledge = checkKnowledge({ root, ...options.plan });
+    if (knowledge.status === "call_error") throw new Error(knowledge.message);
+    process.stdout.write(knowledgeReport(knowledge));
+    if (knowledge.status === "unknown") return 2;
+  }
   const findings = vocabularyFindings({
     files,
     read: (path) => readFileSync(join(root, path), "utf8"),
     layers: options.layers,
     minMentions: options.minMentions,
+    owned: knowledge?.defined ?? null,
   });
   const report = vocabularyReport(findings);
   process.stdout.write(report.text);
-  if (report.errors > 0) return 1;
+  if (report.errors > 0 || knowledge?.status === "violations") return 1;
   return options.strict && report.warnings > 0 ? 1 : 0;
 }
 

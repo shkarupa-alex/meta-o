@@ -6,7 +6,7 @@
  */
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 
@@ -184,6 +184,188 @@ test("the harvested intake has one closed disposition for every BKL source", () 
     const evidence = rows.find(([sourceId]) => sourceId === id)[2];
     assert.match(evidence, /https:\/\/|`unsupported`/u, `${id}: workaround disposition missing`);
   }
+  // The release fallback left with Orca 1.4.217, so its disposition names the
+  // closed upstream issue instead of an unsupported workaround.
+  const released = rows.find(([sourceId]) => sourceId === "BKL-04")[2];
+  assert.match(released, /https:\/\/github\.com\/stablyai\/orca\/issues\/18737/u);
+  assert.doesNotMatch(released, /unsupported/u);
+});
+
+test("every source issue #18-#43 has one outcome its legend defines", () => {
+  const table = markdownTables(source("docs/acceptance.md")).find(
+    ([, first]) => first?.[0] === "#18",
+  );
+  assert.ok(table, "#18-#43 disposition table missing");
+  const rows = table.slice(1);
+  // #42 was closed before the snapshot and is not a source of this feature.
+  const expected = Array.from({ length: 26 }, (_, index) => `#${index + 18}`).filter(
+    (id) => id !== "#42",
+  );
+  assert.deepEqual(
+    rows.map(([id]) => id),
+    expected,
+  );
+  // Each value carries its weight for the final outcome in the legend, so an
+  // unlisted value would leave that weight unstated.
+  const outcomes = new Set(["implemented", "external_blocked", "refuted"]);
+  for (const [id, outcome, evidence] of rows) {
+    assert.ok(outcomes.has(outcome), `${id}: outcome ${outcome} is not in the legend`);
+    if (outcome === "external_blocked") {
+      assert.match(evidence, /Orca #\d+/u, `${id}: external owner's issue missing`);
+    }
+  }
+});
+
+/**
+ * The issue each external typing in one scenario names.
+ *
+ * The wording around the typing varies («по #33», «с внешним Issue по #29»), so
+ * an occurrence is attributed to the one issue named in its own sentence, and
+ * one that names none or several is an error rather than a silent skip.
+ */
+function externalBlockIssues(scenario, text, errors) {
+  const issues = [];
+  for (const match of text.matchAll(/`blocked:external_capability`/gu)) {
+    const rest = text.slice(match.index);
+    const end = rest.search(/\.(?:\s|$)/u);
+    const named = [...(end === -1 ? rest : rest.slice(0, end)).matchAll(/#\d+/gu)].map(
+      ([id]) => id,
+    );
+    if (named.length === 1) issues.push(named[0]);
+    else errors.push(`${scenario}: blocked:external_capability names ${named.length} issues`);
+  }
+  return issues;
+}
+
+/**
+ * Why a scenario may type its failure as an external block, or not.
+ *
+ * `blocked:external_capability` admits an issue into
+ * `needs_attention/external_blocked`, which needs a named missing contract and
+ * its owner's Issue. An implemented issue has neither, so a failure of its live
+ * part is an ordinary failure; an issue blocked on a contract that no longer
+ * has a row would name an owner nobody can find.
+ */
+function externalBlockErrors(dispositions, scenarios, contracts) {
+  const outcome = new Map(dispositions.map(([id, value]) => [id, value]));
+  const errors = [];
+  for (const [id, value] of outcome) {
+    if (value === "external_blocked" && !contracts.has(id)) {
+      errors.push(`${id}: external_blocked without an external-contract row`);
+    }
+  }
+  for (const [scenario, ...cells] of scenarios) {
+    for (const issue of externalBlockIssues(scenario, cells.join(" "), errors)) {
+      if (outcome.get(issue) !== "external_blocked" || !contracts.has(issue)) {
+        errors.push(
+          `${scenario}: blocked:external_capability for ${issue}, which is ${outcome.get(issue) ?? "absent"}`,
+        );
+      }
+    }
+  }
+  return errors;
+}
+
+function externalBlockSources() {
+  const dispositions = markdownTables(source("docs/acceptance.md"))
+    .find(([, first]) => first?.[0] === "#18")
+    .slice(1);
+  const scenarios = markdownTables(source("docs/e2e.md"))
+    .flat()
+    .filter(([id]) => /^B\d+$/u.test(id ?? ""));
+  const contracts = new Set(
+    markdownTables(source("docs/backend-capabilities.md"))
+      .flat()
+      .map(([first]) => /^(#\d+) \(\[Orca #\d+\]/u.exec(first ?? "")?.[1])
+      .filter(Boolean),
+  );
+  return { dispositions, scenarios, contracts };
+}
+
+/**
+ * External-contract rows whose observations all predate the supported floor.
+ *
+ * An issue is held open as an external block only on the record that the
+ * contract is still missing, and a record from a release the methodology no
+ * longer supports says nothing about the ones it does.
+ */
+function staleContractRows(document) {
+  const floor = /Orca (\d+\.\d+\.\d+) — самая старая поддерживаемая версия/u.exec(document)?.[1];
+  assert.ok(floor, "supported Orca floor missing");
+  const version = (text) => text.split(".").map(Number);
+  const atLeast = (left, right) => {
+    const [a, b] = [version(left), version(right)];
+    const index = a.findIndex((part, at) => part !== b[at]);
+    return index === -1 || a[index] > b[index];
+  };
+  return markdownTables(document)
+    .flat()
+    .filter(([first]) => /^#\d+ \(\[Orca #\d+\]/u.test(first ?? ""))
+    .filter(([, , observed]) => {
+      const cell = observed.replace(/Claude Code [\d., ]+/gu, "");
+      const orca = [...cell.matchAll(/(\d+\.\d+\.\d+)/gu)].map(([, found]) => found);
+      return !orca.some((found) => atLeast(found, floor));
+    })
+    .map(([first]) => /^#\d+/u.exec(first)[0]);
+}
+
+test("every external-contract row was observed on a supported Orca", () => {
+  const document = source("docs/backend-capabilities.md");
+  assert.deepEqual(staleContractRows(document), []);
+  // Rows observed only on 1.4.211, below the 1.4.217 floor, are named.
+  const stale = document.replaceAll("1.4.211, 1.4.217 (2026-09-30)", "1.4.211");
+  assert.deepEqual(staleContractRows(stale), ["#29", "#33"]);
+});
+
+test("only an external_blocked issue with a named contract types a scenario failure as external", () => {
+  const { dispositions, scenarios, contracts } = externalBlockSources();
+  assert.deepEqual(externalBlockErrors(dispositions, scenarios, contracts), []);
+  // #43 is implemented, and its live part B63 fails as an ordinary failure.
+  assert.equal(dispositions.find(([id]) => id === "#43")[1], "implemented");
+  const b63 = scenarios.find(([id]) => id === "B63").join(" ");
+  assert.doesNotMatch(b63, /blocked:external_capability/u);
+  // The two blocked issues keep the contract rows their owner can be found by,
+  // and both of their scenarios are read, whatever words surround the typing.
+  assert.deepEqual([...contracts].sort(), ["#29", "#33"]);
+  const typed = scenarios.filter((row) => row.join(" ").includes("blocked:external_capability"));
+  assert.deepEqual(
+    typed.map(([id, ...cells]) => [id, externalBlockIssues(id, cells.join(" "), [])]),
+    [
+      ["B53", ["#29"]],
+      ["B62", ["#33"]],
+    ],
+  );
+  // #29 implemented while B53 still types its failure as external is named,
+  // with the contract row kept or removed.
+  const unblocked = dispositions.map((row) =>
+    row[0] === "#29" ? [row[0], "implemented", row[2]] : row,
+  );
+  const b53 = scenarios.filter(([id]) => id === "B53");
+  for (const rows of [contracts, new Set(["#33"])]) {
+    assert.deepEqual(externalBlockErrors(unblocked, b53, rows), [
+      "B53: blocked:external_capability for #29, which is implemented",
+    ]);
+  }
+  // A typing that names no issue is an error, not a skip.
+  const unattributed = [["B99", "x", "Иначе — `blocked:external_capability`."]];
+  assert.deepEqual(externalBlockErrors(dispositions, unattributed, contracts), [
+    "B99: blocked:external_capability names 0 issues",
+  ]);
+  for (const id of ["#29", "#33"]) {
+    assert.equal(dispositions.find(([row]) => row === id)[1], "external_blocked", id);
+  }
+  // Switching #43 back without a contract row, or typing B63 as external again,
+  // is caught and named.
+  const reverted = dispositions.map((row) =>
+    row[0] === "#43" ? [row[0], "external_blocked", row[2]] : row,
+  );
+  assert.deepEqual(externalBlockErrors(reverted, [], contracts), [
+    "#43: external_blocked without an external-contract row",
+  ]);
+  const retyped = [["B63", "x", "Иначе — `blocked:external_capability` по #43."]];
+  assert.deepEqual(externalBlockErrors(dispositions, retyped, contracts), [
+    "B63: blocked:external_capability for #43, which is implemented",
+  ]);
 });
 
 /**
@@ -278,9 +460,9 @@ test("PASS, FINDINGS and UNKNOWN fixtures preserve the canonical review envelope
       base(
         "UNKNOWN",
         "P0=0 P1=0 P2=0 P3=0",
-        "Unknown-Reason: review_incomplete\n\n",
         "",
-        "Unknown-Account\ncovered scope and blocking public observation\n",
+        "",
+        "Unknown-Account\nUnknown-Reason: review_incomplete\ncovered scope and blocking public observation\n",
       ),
     ),
   );
@@ -315,9 +497,9 @@ test("PASS, FINDINGS and UNKNOWN fixtures preserve the canonical review envelope
       base(
         "UNKNOWN",
         "P0=0 P1=0 P2=0 P3=0",
-        "Unknown-Reason: anything\n\n",
         "",
-        "Unknown-Account\ncovered scope and blocking public observation\n",
+        "",
+        "Unknown-Account\nUnknown-Reason: anything\ncovered scope and blocking public observation\n",
       ),
     ),
     "unknown_reason",
@@ -502,6 +684,36 @@ function gitlabCoverage(documents, hosting) {
   return required ? "covered" : "config_present";
 }
 
+/**
+ * §A-BACKLOG-01 admits one GitHub expression: the checkout ref that pins a
+ * pull-request run to the candidate instead of its synthetic merge commit. It
+ * selects what is checked out, never whether the job runs.
+ */
+const CHECKOUT_REF = "${{ github.event.pull_request.head.sha || github.sha }}";
+
+function expressionOutsideCheckoutRef(provider, parsed) {
+  const admitted = new Set();
+  if (provider === "github") {
+    for (const job of Object.values(parsed?.jobs ?? {})) {
+      for (const step of job?.steps ?? []) {
+        if (String(step?.uses).startsWith("actions/checkout@") && step.with?.ref === CHECKOUT_REF) {
+          admitted.add(step.with);
+        }
+      }
+    }
+  }
+  const walk = (value, owner, key) => {
+    if (typeof value === "string") {
+      return value.includes("${{") && !(key === "ref" && admitted.has(owner));
+    }
+    if (value && typeof value === "object") {
+      return Object.entries(value).some(([name, child]) => walk(child, value, name));
+    }
+    return false;
+  };
+  return walk(parsed, null, null);
+}
+
 /** §A-BACKLOG-01 evaluates only the finite literal GitHub/GitLab CI subset. */
 function ciCoverage({ provider, entrypoint, files, hosting = {} }) {
   if (!entrypoint || !Object.hasOwn(files, entrypoint)) return "no_ci_surface";
@@ -511,8 +723,9 @@ function ciCoverage({ provider, entrypoint, files, hosting = {} }) {
     if (seen.has(path)) throw new Error("include cycle");
     seen.add(path);
     const text = files[path];
-    if (typeof text !== "string" || text.includes("${{")) throw new Error("unknown construct");
+    if (typeof text !== "string") throw new Error("unknown construct");
     const parsed = yaml.load(text);
+    if (expressionOutsideCheckoutRef(provider, parsed)) throw new Error("unknown construct");
     documents.push({ path, parsed });
     const includes = Array.isArray(parsed?.include)
       ? parsed.include
@@ -904,6 +1117,247 @@ test("an isolated reviewer workspace stands on the candidate", () => {
   }
 });
 
+test("the coordinator and the reviewer ship the same protocol and validator bytes", () => {
+  // The same-build check compares these two files, so one build must ship them
+  // byte for byte in both skills.
+  for (const file of ["references/review-protocol.md", "scripts/mo-review-report.mjs"]) {
+    assert.equal(
+      source(`skills/mo-reviewer/${file}`),
+      source(`skills/mo-review-orca/${file}`),
+      file,
+    );
+  }
+});
+
+test("the coordinator's validate command binds the effective mode it needs", () => {
+  // Without the flag the documented call checked the requested mode only, so a
+  // closure report that declared a lower coverage was never compared.
+  for (const path of ["src/skills/mo-review-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
+    const command = /scripts\/mo-review-report\.mjs validate [^`]*/u.exec(source(path))?.[0] ?? "";
+    assert.match(command, /--requested <mode> --effective <mode>/u, path);
+    assert.match(source(path).replace(/\s+/gu, " "), /`deep` for a `deep` request/u, path);
+  }
+});
+
+test("a needs_attention project is found before intake migration writes anything", () => {
+  // Migrating intake first materialized a spec and ledger for a project the
+  // helper then reported as a readiness gap, which the lifecycle forbids.
+  for (const path of [
+    "shared/references/methodology.md",
+    "skills/mo-orchestrate-orca/references/methodology.md",
+  ]) {
+    const methodology = source(path).replace(/\s+/gu, " ");
+    assert.doesNotMatch(
+      methodology,
+      /Migrate raw human intake into the live spec\/ledger, then read/u,
+      path,
+    );
+    assert.match(
+      methodology,
+      /`needs_attention` stops here, before any spec, ledger or executor exists/u,
+      path,
+    );
+  }
+  for (const path of [
+    "src/skills/mo-orchestrate-orca/SKILL.md",
+    "skills/mo-orchestrate-orca/SKILL.md",
+  ]) {
+    const orchestrate = source(path).replace(/\s+/gu, " ");
+    assert.match(orchestrate, /before intake migration writes anything/u, path);
+  }
+});
+
+test("what the review and E2E skills name for Orca is defined where they read it", () => {
+  // Live actors hit each of these: a trust procedure named but defined nowhere,
+  // a template "for this Dispatch" the caller cannot print before the Dispatch
+  // exists, a relative common dir that made an owned orphan look foreign, and
+  // an actor dispatched as a worker that could start no reviewer at all.
+  for (const path of [
+    "shared/references/orca-mechanics.md",
+    "skills/mo-review-orca/references/orca-mechanics.md",
+  ]) {
+    const mechanics = source(path).replace(/\s+/gu, " ");
+    assert.match(
+      mechanics,
+      /The trust procedure answers a trust dialog only when three ownership conditions hold/u,
+      path,
+    );
+    assert.match(mechanics, /Codex's is one — is `needs_human` with the recipe/u, path);
+    assert.match(mechanics, /runs as an ordinary Orca tab and never as a Dispatch/u, path);
+    assert.match(mechanics, /also opens one shell terminal that its receipt does not name/u, path);
+  }
+  for (const path of ["src/skills/mo-review-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
+    const review = source(path).replace(/\s+/gu, " ");
+    assert.doesNotMatch(review, /carries the literal printed for this Dispatch/u, path);
+    assert.match(
+      review,
+      /`--dispatch` is the one argument the brief says to take from there/u,
+      path,
+    );
+    assert.match(review, /`git rev-parse --path-format=absolute --git-common-dir`/u, path);
+  }
+  for (const path of [
+    "shared/references/review-brief.md",
+    "skills/mo-review-orca/references/review-brief.md",
+  ]) {
+    const brief = source(path).replace(/\s+/gu, " ");
+    assert.doesNotMatch(brief, /literal template for this very Dispatch/u, path);
+    assert.match(
+      brief,
+      /Its `--dispatch` value is the reviewer's to take from Orca's preamble/u,
+      path,
+    );
+  }
+  for (const path of ["src/skills/mo-e2e/SKILL.md", "skills/mo-e2e/SKILL.md"]) {
+    const e2e = source(path).replace(/\s+/gu, " ");
+    assert.match(e2e, /runs as an ordinary Orca tab/u, path);
+    assert.match(e2e, /removed with `orca project setup-delete`/u, path);
+    assert.match(
+      e2e,
+      /the exact actor \(its Orca terminal handle and its route, model and effort\)/u,
+      path,
+    );
+  }
+});
+
+test("the rules live actors and evals found missing are stated where they are read", () => {
+  // Each was hit on Orca 1.4.217: a Claude start that waits out its timeout on
+  // the folder-trust dialog, an executor that skipped the self-review advice it
+  // had already followed, fixture trust no actor could remove, a worker tab
+  // whose title no rename changes, and a generic review request with no
+  // Dispatch id to put in the report header.
+  for (const path of [
+    "shared/references/orca-mechanics.md",
+    "skills/mo-review-orca/references/orca-mechanics.md",
+  ]) {
+    const mechanics = source(path).replace(/\s+/gu, " ");
+    assert.match(
+      mechanics,
+      /stops on Claude's folder-trust dialog and fails only when readiness times out/u,
+      path,
+    );
+    assert.match(mechanics, /start again with `worker-start --retry-of <id>`/u, path);
+    assert.match(mechanics, /keeps the tab title `worker-task_<id>` on Orca 1\.4\.217/u, path);
+  }
+  for (const path of ["src/skills/mo-review-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
+    const review = source(path).replace(/\s+/gu, " ");
+    assert.match(
+      review,
+      /portable report header cannot be produced for it rather than invent one/u,
+      path,
+    );
+    assert.match(review, /a self-review it already completed satisfies the recommendation/u, path);
+    assert.match(review, /times out at `agent_readiness` on Claude's folder-trust dialog/u, path);
+  }
+  for (const path of ["src/skills/mo-e2e/SKILL.md", "skills/mo-e2e/SKILL.md"]) {
+    const e2e = source(path).replace(/\s+/gu, " ");
+    assert.match(
+      e2e,
+      /list each entry in the cleanup status with the exact command that removes it/u,
+      path,
+    );
+  }
+  const rows = new Map(
+    markdownTables(source("docs/e2e.md"))
+      .flat()
+      .filter((row) => /^B\d+$/u.test(row[0]))
+      .map(([id, ...cells]) => [id, cells.join(" ")]),
+  );
+  // A cooled slot is one whose context is not proven small, not only unknown.
+  assert.match(
+    rows.get("B57"),
+    /не доказанном малым \(`context=unknown` или больше 100000 токенов\)/u,
+  );
+  // On Orca 1.4.217+ worker-start writes Codex trust itself; that start passes.
+  assert.match(rows.get("B63"), /либо проходит без экрана доверия/u);
+  assert.match(rows.get("B66"), /если она уже выполнена, её итогом/u);
+});
+
+test("a Codex trust failure is recovered inside the supported harness, never by codex exec", () => {
+  // #43's implemented outcome rests on this rule staying inside the supported
+  // harness: without the check, dropping or inverting it passed every gate.
+  for (const path of ["src/skills/mo-review-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
+    const review = source(path).replace(/\s+/gu, " ");
+    assert.match(
+      review,
+      /fails with `agent-trust-workspace` stays inside the supported harness/u,
+      path,
+    );
+    assert.match(review, /release the failed Dispatch by its exact id/u, path);
+    assert.match(review, /prove trust by the trust procedure/u, path);
+    assert.match(review, /start the normal supervised harness again/u, path);
+    assert.match(review, /A terminal running `codex exec` is never a reviewer\./u, path);
+  }
+  for (const path of [
+    "shared/references/orca-mechanics.md",
+    "skills/mo-review-orca/references/orca-mechanics.md",
+  ]) {
+    const mechanics = source(path).replace(/\s+/gu, " ");
+    assert.match(
+      mechanics,
+      /`orca terminal create --command "codex exec …"` is never a reviewer/u,
+      path,
+    );
+  }
+  const cases = JSON.parse(source("src/skills/mo-review-orca/evals/cases.json")).cases;
+  const degraded = cases.find(({ id }) => id === "mo-review-orca.degraded");
+  assert.match(degraded.scenario, /agent-trust-workspace/u);
+  assert.equal(degraded.mustNot.includes("start a raw `codex exec` terminal as a reviewer"), true);
+});
+
+test("the Body-File name uses only what the caller holds before sending", () => {
+  // The Dispatch id reaches only the reviewer, so a name built from it is a
+  // placeholder that no sent brief can fill.
+  // The Dispatch ordinal keeps the one repeat Dispatch of a round off the
+  // earlier body, which `prepare` would refuse as existing.
+  const form = "`Body-File: <dir>/slot-<a|b>-r<round>-d<n>.md`";
+  for (const path of [
+    "shared/references/review-brief.md",
+    "src/skills/mo-review-orca/SKILL.md",
+    "skills/mo-review-orca/SKILL.md",
+  ]) {
+    const text = source(path).replace(/\s+/gu, " ");
+    assert.equal(text.includes(form), true, path);
+    assert.doesNotMatch(text, /Body-File: <dir>\/<dispatch-id>/u, path);
+  }
+});
+
+test("every reviewer Dispatch records the installed reviewer version", () => {
+  // The body carries no version header by design, so the Dispatch context is
+  // the only place that can say which grammar accepted a report once the
+  // installation moves on.
+  const brief = source("shared/references/review-brief.md").replace(/\s+/gu, " ");
+  const form = "mo-reviewer <path> source_tree=<40-hex> skill=<id> protocol=<id> validator=<id>";
+  assert.equal(brief.includes(`\`Reviewer-Skill: ${form}\``), true);
+  assert.match(brief, /no Dispatch starts from it/u);
+  // The stamp names authored inputs only: bundled package bytes and a local
+  // edit leave it unchanged, so the installed bytes are named by object id.
+  assert.match(brief, /does not cover the bytes of the bundled third-party packages/u);
+  assert.match(brief, /`git log --find-object=<id>`/u);
+  // A record, not a provenance proof: the project under review has no Meta-O
+  // history, so a proof there would refuse every review.
+  assert.match(brief, /a record, not a proof of provenance/u);
+  for (const path of ["src/skills/mo-review-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
+    const review = source(path).replace(/\s+/gu, " ");
+    const [stamp, ids] = [
+      "mo-reviewer <path> source_tree=<40-hex>",
+      "skill=<id> protocol=<id> validator=<id>",
+    ];
+    assert.equal(review.includes(`\`${stamp}\` followed by \`${ids}\``), true, path);
+    assert.match(review, /immediately before the Dispatch, take `git hash-object`/u, path);
+    assert.match(review, /carries no stamp, lacks one of the three files/u, path);
+    // "Same build" is decidable from the record and this skill's own files.
+    assert.match(review, /Same build means that its `protocol` and `validator` ids equal/u, path);
+    assert.match(review, /The two `source_tree` stamps are not compared/u, path);
+    assert.match(review, /repeats the whole value next to `prepared_body_identity`/u, path);
+  }
+  // The stamp can name all three only while the skill bundles the other two.
+  for (const bundled of ["references/review-protocol.md", "scripts/mo-review-report.mjs"]) {
+    assert.equal(existsSync(join(ROOT, "skills", "mo-reviewer", bundled)), true, bundled);
+  }
+  assert.match(source("skills/mo-reviewer/SKILL.md"), /^ {2}source_tree: "[0-9a-f]{40}"$/mu);
+});
+
 test("the final pair is told where its grounding went after cleanup", () => {
   // Closure deletes the specification, and the fresh final pair reads the SHA
   // that no longer holds it. Without a second route the brief must cite a path
@@ -939,7 +1393,7 @@ test("every reviewer wave has a mode the protocol can actually issue", () => {
   for (const path of ["src/skills/mo-review-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
     const review = source(path).replace(/\s+/gu, " ");
     assert.match(review, /The first lifecycle pair uses `deep`/u, path);
-    assert.match(review, /remediation uses `follow_up` in the same hot sessions/u, path);
+    assert.match(review, /remediation goes to the same pair as `follow_up`/u, path);
     assert.match(review, /That final pair is `deep` as well/u, path);
     assert.match(review, /`follow_up` needs the same reviewer's prior report/u, path);
     assert.match(review, /advisory `fast` cannot carry a required closure proof/u, path);
@@ -979,17 +1433,19 @@ test("report completeness is required before delivery, not repaired after it", (
   // second chance, so the demand has to reach the reviewer in the task bytes.
   assert.match(protocol, /Deliver the whole report inside the single authoritative response/u);
   assert.match(protocol, /promise to send it separately are each a malformed report/u);
-  assert.match(protocol, /Read the body back before delivering it/u);
+  assert.match(protocol, /Validate the exact bytes before sending them/u);
   assert.match(
     review,
     /Say so in the task\s+bytes, because `worker_done` is what completes the Dispatch/u,
   );
 
-  // Correction is bounded by observed liveness rather than assumed; the old
-  // "same hot session" wording promised a repair path Orca does not have.
-  assert.match(review, /only while public evidence still shows\s+that Dispatch active/u);
-  assert.match(review, /`UNKNOWN` with `malformed_report`/u);
-  assert.match(review, /new review with its own cost, never a correction/u);
+  // `worker_done` ends the Dispatch, so there is no repair path in its name;
+  // the old "same hot session" wording promised one Orca does not have.
+  assert.match(
+    review,
+    /`UNKNOWN` with\s+`malformed_report` for that Dispatch and is never corrected in its name/u,
+  );
+  assert.match(review, /new review with its own id and full\s+validation, never a correction/u);
   assert.doesNotMatch(review, /corrected report in that hot\s+session/u);
 
   // Acceptance that cannot be turned into a check sends remediation guessing,

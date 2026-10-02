@@ -56,6 +56,11 @@ test("setup checks controls, companions and every harness posture separately", (
   assert.match(contract, /Backend-wide health does not prove harness readiness/);
   assert.match(setup, /check mature `jq` and `flock` dependencies/);
   assert.match(contract, /require `jq` and `flock` separately\s+from the Orca control/);
+  // Naming a gap without the step that closes it leaves the human guessing.
+  assert.match(
+    setup.replace(/\s+/gu, " "),
+    /independently, each with one actionable next step the human runs: the exact install, login, trust or configuration command, with no secret value in it\. Never ask for or collect the credential itself\./u,
+  );
 });
 
 test("private Orca and specification workspaces are ignored and absent from the index", () => {
@@ -199,10 +204,28 @@ test("the shipped CI examples keep full history and a separate closure job", () 
   for (const line of commands.filter((command) => command.includes("mo-backlog"))) {
     assert.match(line, /<backlog-schema>/u);
   }
-  for (const flag of ["--path", "--title", "--open-heading", "--entry-field"]) {
+  // A notebook with an introduction and no `--intro` answers schema_invalid,
+  // so a closure command written from a list without it cannot pass.
+  for (const flag of ["--path", "--title", "--open-heading", "--intro", "--entry-field"]) {
     assert.ok(setup.includes(flag), `the accepted repair never names ${flag}`);
   }
-  assert.match(contractProse, /path, title, open heading and\s*every entry field/u);
+  // The owner fills <backlog-schema> from the template header, not from the
+  // skill text, so the header has to name the same five flags.
+  for (const name of ["github-actions.yml", "gitlab-ci.yml"]) {
+    const header = readFileSync(join(assets, name), "utf8").split(/^[^#]/mu)[0];
+    for (const flag of ["--path", "--title", "--open-heading", "--intro", "--entry-field"]) {
+      assert.ok(header.includes(flag), `${name} defines <backlog-schema> without ${flag}`);
+    }
+    assert.match(header.replace(/\s*#\s*/gu, " "), /отрендеренным текстом/u);
+  }
+  assert.match(
+    contractProse,
+    /path, title, every introductory paragraph in order, open heading and\s*every entry field/u,
+  );
+  // The checker compares rendered text, so a schema copied from Markdown source
+  // fails on the first inline code span unless the texts say so.
+  assert.match(contractProse, /given as rendered text, without Markdown markup/u);
+  assert.match(setup.replace(/\s+/gu, " "), /as rendered text, without Markdown markup/u);
 });
 
 test("the shipped backlog checker answers for a foreign notebook as installed", () => {
@@ -321,4 +344,52 @@ test("the setup contract requires a linked commands-and-papercuts document", () 
   // The narrow rule is the whole value: a document that collects one-off
   // incidents stops being read, and methodology friction has its own channel.
   assert.match(contractProse, /one-off incidents and methodology friction/u);
+});
+
+test("mo-setup declares a papercut document by the line the layer helper reads", () => {
+  // mo-setup finds the document by content, the helper only by path, name or an
+  // explicit line; both must name the same line or a ready project reads partial.
+  const helper = readFileSync(join(ROOT, "shared", "scripts", "mo-knowledge-layer.mjs"), "utf8");
+  assert.match(helper, /\^Knowledge-Layer-Papercut: /u);
+  for (const text of [setup, contract]) {
+    assert.match(text.replace(/\s+/gu, " "), /`Knowledge-Layer-Papercut: <path>`/u);
+  }
+});
+
+test("the generated agent contract commits verified increments and pushes only on request", () => {
+  const contract = readFileSync(
+    join(ROOT, "skills", "mo-setup", "references", "project-setup.md"),
+    "utf8",
+  ).replace(/\s+/gu, " ");
+  assert.match(
+    contract,
+    /commit every coherent, verified increment, and push only when the user asks/u,
+  );
+});
+
+test("the generated Claude contract is a byte copy, not an import", () => {
+  const contract = readFileSync(
+    join(ROOT, "skills", "mo-setup", "references", "project-setup.md"),
+    "utf8",
+  ).replace(/\s+/gu, " ");
+  // A live canary saw Claude Code skip a one-line import from a nested working
+  // directory, so an import would leave such sessions without the contract.
+  assert.match(
+    contract,
+    /`CLAUDE\.md` stays a byte copy of `AGENTS\.md`, never a one-line `@AGENTS\.md` import/u,
+  );
+  assert.equal(
+    readFileSync(join(ROOT, "CLAUDE.md"), "utf8"),
+    readFileSync(join(ROOT, "AGENTS.md"), "utf8"),
+  );
+  // Six modes naming the token through a plugin do not prove that Claude Code
+  // reads AGENTS.md itself, so neither the canary rule nor the acceptance row
+  // may let a passing run alone retire the copy.
+  const e2e = readFileSync(join(ROOT, "docs", "e2e.md"), "utf8").replace(/\s+/gu, " ");
+  assert.match(e2e, /в каждом доказано, что `AGENTS\.md` читает сам Claude Code, а не плагин/u);
+  assert.doesNotMatch(e2e, /Пока хотя бы один режим не доказан, `CLAUDE\.md` остаётся/u);
+  const row = readFileSync(join(ROOT, "docs", "acceptance.md"), "utf8")
+    .split("\n")
+    .find((line) => line.startsWith("| #22 "));
+  assert.match(row, /`cc-plugin-agents-md`.*нативное происхождение не доказано/u);
 });

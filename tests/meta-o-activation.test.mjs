@@ -120,3 +120,24 @@ test("an undeclared exact Meta-O reference fails the activation lint", () => {
     /declared callees drift/u,
   );
 });
+
+test("the diagnostics skills are leaves that only the human starts", () => {
+  // Both act on the user's own behalf: one polls live participants, the other
+  // reads the user's session logs. An edge from any skill would take that
+  // decision away from the human.
+  const diagnostics = ["mo-convergence", "mo-debug"];
+  for (const name of moSkills("src/skills")) {
+    const document = skillDocument("src/skills", name);
+    for (const callee of diagnostics) {
+      assert.equal(calls(document, name).includes(callee), false, `${name} calls ${callee}`);
+    }
+  }
+  for (const name of diagnostics) {
+    const document = skillDocument("src/skills", name);
+    assert.deepEqual(calls(document, name), ["none"], `${name}: not a leaf`);
+    assert.match(
+      document.frontmatter.description,
+      new RegExp(`^Use only when the user explicitly requests ${name};`, "u"),
+    );
+  }
+});

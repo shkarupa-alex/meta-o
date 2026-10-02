@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { existsSync, rmSync } from "node:fs";
 import { test } from "node:test";
 
-import { namespace, pair, stage } from "../shared/scripts/mo-review-report.mjs";
+import { checkAck, namespace, pair, preview, stage } from "../shared/scripts/mo-review-report.mjs";
 
 const SHA = "c".repeat(40);
 
@@ -105,5 +105,65 @@ test("human caller receives paths and never triggers automatic cleanup", () => {
     assert.ok(existsSync(result.b.path));
   } finally {
     rmSync(result.directory, { recursive: true });
+  }
+});
+
+test("an early preview hands over one unchanged slot and is acknowledged by its size", () => {
+  const created = namespace();
+  try {
+    const staged = stage({
+      dir: created.dir,
+      slot: "A",
+      vendor: "claude",
+      buffer: Buffer.from(report("ctx_a"), "utf8"),
+      expected: {
+        execution: "ctx_a",
+        candidate: SHA,
+        requestedMode: "deep",
+        effectiveMode: "deep",
+      },
+    });
+    const slot = { ...staged, vendor: "claude" };
+    const shown = preview({ dir: created.dir, pairId: created.pairId, slot });
+    assert.equal(shown.status, "previewed");
+    assert.match(
+      shown.line,
+      new RegExp(`^Review-Preview: ${created.pairId} A=".+" A_bytes=${staged.bytes}$`, "u"),
+    );
+    const expect = { kind: "Preview", pairId: created.pairId, bytes: { A: staged.bytes } };
+    assert.equal(
+      checkAck(`Review-Preview-Ack: ${created.pairId} A=${staged.bytes}`, expect).status,
+      "matched",
+    );
+    // A preview acknowledgement is not a pair acknowledgement, a wrong size is
+    // not an acknowledgement, and the other slot is not this one.
+    assert.equal(
+      checkAck(`Review-Handoff-Ack: ${created.pairId} A=${staged.bytes}`, expect).reason,
+      "form",
+    );
+    assert.equal(
+      checkAck(`Review-Preview-Ack: ${created.pairId} A=${staged.bytes + 1}`, expect).reason,
+      "bytes",
+    );
+    assert.equal(
+      checkAck(`Review-Preview-Ack: ${created.pairId} B=${staged.bytes}`, expect).reason,
+      "slots",
+    );
+    assert.equal(checkAck(`Review-Preview-Ack: other A=${staged.bytes}`, expect).reason, "form");
+    // The pair handoff still needs both slots after a preview.
+    const pairExpect = { kind: "Handoff", pairId: created.pairId, bytes: { A: 10, B: 20 } };
+    assert.equal(
+      checkAck(`Review-Handoff-Ack: ${created.pairId} A=10 B=20`, pairExpect).status,
+      "matched",
+    );
+    assert.equal(
+      checkAck(`Review-Handoff-Ack: ${created.pairId} A=10`, pairExpect).reason,
+      "slots",
+    );
+    // A preview of a slot whose file changed after staging is refused.
+    rmSync(staged.path);
+    assert.equal(preview({ dir: created.dir, pairId: created.pairId, slot }).status, "unknown");
+  } finally {
+    rmSync(created.dir, { recursive: true, force: true });
   }
 });

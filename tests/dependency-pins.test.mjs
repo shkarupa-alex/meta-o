@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 
-import { BUNDLES } from "../tools/build-skills.mjs";
+import { BUNDLES } from "../tools/skill-build-plan.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const manifest = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
