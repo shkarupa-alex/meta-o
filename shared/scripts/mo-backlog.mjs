@@ -32,6 +32,7 @@ const REASONS = new Set([
   "snapshot_changed",
   "candidate_mismatch",
   "remote_head_unreadable",
+  "call_error",
   "internal_error",
 ]);
 
@@ -85,6 +86,9 @@ export function asciiJson(value) {
 
 /** §A-BACKLOG-01 extracts visible text from the real Markdown AST. */
 function text(node) {
+  // A hard line break has no value of its own; dropping it would glue the two
+  // words it separates into one and fail an introduction declared as rendered.
+  if (node?.type === "break") return "\n";
   if (typeof node?.value === "string") return node.value;
   return (node?.children ?? []).map(text).join("");
 }
@@ -386,7 +390,7 @@ function parseArguments(args) {
     if (given.has(flag) && !/^[a-f0-9]{40}$/u.test(given.get(flag))) return { invalid: true };
   }
   const declared = [...SCHEMA_FLAGS].some((flag) => given.has(flag));
-  if (declared && !schemaComplete(given)) return { invalid: true };
+  if (declared && !schemaComplete(given)) return { invalid: true, given, declared };
   return { given, declared };
 }
 
@@ -412,7 +416,10 @@ function main() {
   }
   const root = parsed.given?.get("--repo") ?? defaultRoot();
   if (parsed.invalid) {
-    const result = unknown("internal_error", null, worktreeState(root), META_O_SCHEMA.path);
+    // A call error names the notebook the caller declared, or none: this
+    // project's own default path would point a foreign caller at the wrong file.
+    const path = parsed.declared ? (parsed.given.get("--path") ?? null) : META_O_SCHEMA.path;
+    const result = unknown("call_error", null, worktreeState(root), path);
     process.stderr.write(`${result.line}\n`);
     process.exitCode = 2;
     return;

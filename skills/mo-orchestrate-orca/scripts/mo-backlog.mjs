@@ -6963,6 +6963,7 @@ var REASONS = /* @__PURE__ */ new Set([
   "snapshot_changed",
   "candidate_mismatch",
   "remote_head_unreadable",
+  "call_error",
   "internal_error"
 ]);
 var META_O_SCHEMA = {
@@ -7001,6 +7002,7 @@ function asciiJson(value) {
   );
 }
 function text3(node2) {
+  if (node2?.type === "break") return "\n";
   if (typeof node2?.value === "string") return node2.value;
   return (node2?.children ?? []).map(text3).join("");
 }
@@ -7228,7 +7230,7 @@ function parseArguments(args) {
     if (given.has(flag) && !/^[a-f0-9]{40}$/u.test(given.get(flag))) return { invalid: true };
   }
   const declared = [...SCHEMA_FLAGS].some((flag) => given.has(flag));
-  if (declared && !schemaComplete(given)) return { invalid: true };
+  if (declared && !schemaComplete(given)) return { invalid: true, given, declared };
   return { given, declared };
 }
 function defaultRoot() {
@@ -7243,7 +7245,8 @@ function main() {
   }
   const root = parsed.given?.get("--repo") ?? defaultRoot();
   if (parsed.invalid) {
-    const result2 = unknown("internal_error", null, worktreeState(root), META_O_SCHEMA.path);
+    const path = parsed.declared ? parsed.given.get("--path") ?? null : META_O_SCHEMA.path;
+    const result2 = unknown("call_error", null, worktreeState(root), path);
     process.stderr.write(`${result2.line}
 `);
     process.exitCode = 2;

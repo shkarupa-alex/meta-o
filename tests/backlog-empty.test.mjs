@@ -97,7 +97,7 @@ test("the AST owner distinguishes empty, entries, and arbitrary content", () => 
   }
 });
 
-test("malformed CLI input is an internal error rather than an ambiguous backlog path", () => {
+test("malformed CLI input is a call error rather than an ambiguous backlog path", () => {
   const result = spawnSync(
     process.execPath,
     ["shared/scripts/mo-backlog.mjs", "--candidate", "bad"],
@@ -107,7 +107,7 @@ test("malformed CLI input is an internal error rather than an ambiguous backlog 
     },
   );
   assert.equal(result.status, 2);
-  assert.match(result.stderr, /reason=internal_error/u);
+  assert.match(result.stderr, /reason=call_error/u);
   assert.doesNotMatch(result.stderr, /reason=path_ambiguous/u);
 });
 
@@ -234,7 +234,10 @@ test("a foreign notebook needs its whole schema, never half of this project's", 
   ]) {
     const result = run(...partial);
     assert.equal(result.status, 2, partial.join(" "));
-    assert.match(result.stderr, /MO-BACKLOG-UNKNOWN version=1 reason=internal_error /u);
+    assert.match(result.stderr, /MO-BACKLOG-UNKNOWN version=1 reason=call_error /u);
+    // The line names the caller's own notebook, or none, never this project's.
+    const named = partial.includes("--path") ? '"notes/backlog.md"' : "null";
+    assert.match(result.stderr, new RegExp(` path=${named}$`, "mu"), partial.join(" "));
   }
   // A complete foreign schema is accepted and answers about that notebook.
   const complete = run(
@@ -307,6 +310,13 @@ test("the named schema validator answers for this notebook and a foreign one", (
   assert.equal(inspectBacklog(marked, rendered).kind, "empty");
   const source = { ...FOREIGN, intro: ["Keep `docs/x.md`   short."] };
   assert.equal(inspectBacklog(marked, source).reason, "schema_invalid");
+  // A hard line break, by two trailing spaces or a backslash, renders as a break
+  // between words, not as nothing.
+  for (const broken of ["First  \nsecond.", "First\\\nsecond."]) {
+    const document = `# Backlog\n\n${broken}\n\n## Open\n`;
+    const schema = { ...FOREIGN, intro: ["First second."] };
+    assert.equal(inspectBacklog(document, schema).kind, "empty", JSON.stringify(broken));
+  }
 
   // Each document rule names itself rather than collapsing into one verdict.
   assert.deepEqual(backlogSchemaViolations("# Wrong\n\n## Открыто\n"), [
