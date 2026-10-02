@@ -48,8 +48,9 @@ credential or subscription action until the user explicitly authorizes that
 exact named action for this candidate. Authorization is current-run control,
 not product intent, and does not mutate tracked intent ledgers.
 
-For every scenario report the candidate, ID, actor/model vendor, environment,
-action, observed result and `PASS`, `FAIL`, `UNKNOWN`, `NOT_RUN` or
+For every scenario report the full candidate SHA, ID, the exact actor (its Orca
+terminal handle and its route, model and effort), environment, action, observed
+result and `PASS`, `FAIL`, `UNKNOWN`, `NOT_RUN` or
 `NOT_APPLICABLE`. Do not include secrets, reasoning or raw artifact dumps. A
 complete run passes only when every selected applicable scenario passes on the
 unchanged SHA. Missing or incomplete evidence is `UNKNOWN`; there is no partial

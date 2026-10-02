@@ -1212,6 +1212,11 @@ test("what the review and E2E skills name for Orca is defined where they read it
     const e2e = source(path).replace(/\s+/gu, " ");
     assert.match(e2e, /runs as an ordinary Orca tab/u, path);
     assert.match(e2e, /removed with `orca project setup-delete`/u, path);
+    assert.match(
+      e2e,
+      /the exact actor \(its Orca terminal handle and its route, model and effort\)/u,
+      path,
+    );
   }
 });
 

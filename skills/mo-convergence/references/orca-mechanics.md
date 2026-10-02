@@ -317,10 +317,18 @@ its hook-reported provider transcript is outside Meta-O's allowed surface.
 whole-session diagnostics and delivery checks only.
 
 Treat quota, capacity, reconnecting, compaction, refusal, lost process and
-credentials as different outcomes. After compaction or approximately 75% of a
-32768-token context, start a fresh orchestrator turn/session and re-ground from
-the Git spec/checklist plus public Orca state. Sanitize each structured
-observation and cap it at 8000 tokens; never inject a raw 21k/41k dump.
+credentials as different outcomes. Each is recovered on the same task and in the
+same ownership: follow the exact recovery action in that Dispatch's public
+receipt, and when the outcome is unknown or its turn start unobserved, use the
+one-direction stop-then-`--retry-of` ladder above with the same selection, which
+ends at a `worker-stop` answering `unknown_effect`. Work done before a refusal
+stays `output_blocked_after_work`. Never a new task, another model or a second
+owner.
+
+After compaction or approximately 75% of a 32768-token context, start a fresh
+orchestrator turn/session and re-ground from the Git spec/checklist plus public
+Orca state. Sanitize each structured observation and cap it at 8000 tokens;
+never inject a raw 21k/41k dump.
 
 Public capability belongs to the exact Dispatch/turn/process and expires on exit
 or replacement. `worker_done` from a bare shell or expired Dispatch cannot

@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-e2e or an active mo-o
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "9b573b6d51065e96a5f958549e13b57c6f53eb50"
+  source_tree: "2010bbe9a4748c39b6bdb51c5b57a6a7c8724610"
 ---
 
 # Agent-required end-to-end verification
@@ -49,8 +49,9 @@ credential or subscription action until the user explicitly authorizes that
 exact named action for this candidate. Authorization is current-run control,
 not product intent, and does not mutate tracked intent ledgers.
 
-For every scenario report the candidate, ID, actor/model vendor, environment,
-action, observed result and `PASS`, `FAIL`, `UNKNOWN`, `NOT_RUN` or
+For every scenario report the full candidate SHA, ID, the exact actor (its Orca
+terminal handle and its route, model and effort), environment, action, observed
+result and `PASS`, `FAIL`, `UNKNOWN`, `NOT_RUN` or
 `NOT_APPLICABLE`. Do not include secrets, reasoning or raw artifact dumps. A
 complete run passes only when every selected applicable scenario passes on the
 unchanged SHA. Missing or incomplete evidence is `UNKNOWN`; there is no partial

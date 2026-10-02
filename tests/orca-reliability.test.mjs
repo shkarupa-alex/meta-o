@@ -54,6 +54,12 @@ test("context and ownership recovery remain bounded", () => {
   assert.match(mechanics, /raw 21k\/41k dump/);
   assert.match(mechanics, /Never close\s+unnamed human tabs/);
   assert.match(mechanics, /bare shell or expired Dispatch cannot\s+settle work/);
+  // Naming the degraded outcomes apart is not enough: each needs the recovery
+  // that keeps its task and owner, or a reader invents a new task for it.
+  assert.match(
+    mechanics.replace(/\s+/gu, " "),
+    /different outcomes\. Each is recovered on the same task and in the same ownership: .* Never a new task, another model or a second owner\./u,
+  );
 });
 
 test("worker-start --agent is the route, and terminal-first only where it cannot pass the model", () => {
