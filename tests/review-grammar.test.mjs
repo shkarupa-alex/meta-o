@@ -392,3 +392,83 @@ test("a key quoted inside a multi-line code span in the index is summary text", 
   const counted = indexed(bare, two);
   assert.equal(validateReport(counted, expected()).status, "valid");
 });
+
+test("the closing row of a multi-line code span is quoted text for every prefix reader", () => {
+  const template = (verdict, extra = {}) =>
+    reportTemplate({
+      verdict,
+      dispatch: "ctx_a",
+      candidate: SHA,
+      requested: "deep",
+      effective: "deep",
+      ...extra,
+    }).text;
+  const closing = "F-001\n[P2] causal path `a\nF-002 [P2] quoted` continues.\n";
+  const result = validateReport(findingsReport({ body: closing }), expected());
+  assert.equal(result.status, "valid");
+  assert.deepEqual(result.counts, [0, 0, 1, 0]);
+  const inline = "F-001 [P2] causal path `a\nF-002 [P2] quoted` continues.\n";
+  assert.equal(validateReport(findingsReport({ body: inline }), expected()).status, "valid");
+  const two = findingsReport({
+    head: header.join("\n").replace("P1=0 P2=1", "P1=1 P2=1"),
+    body: "F-001\n[P2] path `a\nF-002 [P2] x`.\nF-002\n[P1] path.\n",
+  }).replace("F-001 [P2] One defect.\n", "F-001 [P2] One defect.\n\nF-002 [P1] Another defect.\n");
+  const counted = validateReport(two, expected());
+  assert.equal(counted.status, "valid");
+  assert.deepEqual(counted.counts, [0, 1, 1, 0]);
+  const quoted = "Quoted `x\nUnknown-Reason: retrieval_failure` here.\n";
+  const pass = template("PASS").replace("\nResidual risks\n", `\nResidual risks\n${quoted}`);
+  assert.equal(validateReport(pass, expected()).status, "valid");
+  const unknown = template("UNKNOWN", { reason: "review_incomplete" }).replace(
+    "\nUnknowns\n",
+    `\nUnknowns\n${quoted}`,
+  );
+  assert.equal(validateReport(unknown, expected()).status, "valid");
+  // Without the delimiters the same rows are structure again.
+  assert.equal(
+    reasonOf(findingsReport({ body: closing.replaceAll("`", "") })),
+    "index_body_mismatch",
+  );
+  assert.equal(reasonOf(pass.replace(quoted, quoted.replaceAll("`", ""))), "unknown_reason");
+});
+
+test("a key quoted on a closing code row neither answers the index nor opens a stray body", () => {
+  const bundles = ["mo-reviewer", "mo-review-orca", "mo-orchestrate-orca"].map((skill) =>
+    join(ROOT, "skills", skill, "scripts", "mo-review-report.mjs"),
+  );
+  const dir = space();
+  const judged = (text, label) => {
+    const reason = validateReport(text, expected()).reason ?? "valid";
+    const path = join(dir, "report.md");
+    writeFileSync(path, text);
+    for (const script of [HELPER, ...bundles]) {
+      const run = spawnSync(process.execPath, [script, "validate", "--file", path, ...flags()], {
+        encoding: "utf8",
+      });
+      const printed = run.stdout.match(/status=(\w+)(?: reason=(\w+))?/u);
+      assert.equal(printed[1] === "valid" ? "valid" : printed[2], reason, `${script} ${label}`);
+    }
+    return reason;
+  };
+  const two = (body) =>
+    findingsReport({ head: header.join("\n").replace("P2=1", "P2=2"), body }).replace(
+      "F-001 [P2] One defect.\n",
+      "F-001 [P2] One defect.\n\nF-002 [P2] Another defect.\n",
+    );
+  for (const [open, close] of [
+    ["`", "`"],
+    ["`` a ` tick", "``"],
+  ]) {
+    const quoteOnly = `Example literal: ${open} opening row\nF-001 [P2] quoted text${close}.\n`;
+    assert.equal(judged(findingsReport({ body: quoteOnly }), "quote only"), "index_body_mismatch");
+    for (const severity of ["P0", "P1", "P2", "P3"]) {
+      const stray = `F-001 [P2] evidence quotes ${open} opening row\nF-999 [${severity}] quoted${close}.\n`;
+      assert.equal(judged(findingsReport({ body: stray }), `stray ${severity}`), "valid");
+    }
+    const early = `F-001 [P2] path ${open} a\nF-002 [P2] quoted text${close}.\n`;
+    assert.equal(judged(two(early), "early"), "index_body_mismatch");
+    assert.equal(judged(two(`${early}F-002 [P2] the real body.\n`), "both"), "valid");
+  }
+  const opened = "F-001 [P2] causal path `a\nplain text` continues.\n";
+  assert.equal(judged(findingsReport({ body: opened }), "opened"), "valid");
+});

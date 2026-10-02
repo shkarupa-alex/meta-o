@@ -68,18 +68,16 @@ export function topLevelParagraphs(text) {
  * a multi-line span whose middle line reads `Grounding` has not opened a second
  * Grounding section, and a valid report must not turn malformed for it.
  */
-function literalRows(tree, { closing = false } = {}) {
+function literalRows(tree) {
   const rows = new Set();
   const visit = (node) => {
     const { start, end } = node.position ?? {};
-    // Only the rows strictly inside count: the first and last rows also hold a
-    // delimiter, so they can never read as a bare marker, and the first one may
-    // be a finding's own opening line. An index entry is read from the start
-    // of its row, though, and the closing row starts inside the literal, so
-    // the index asks for that row as well.
+    // Every row that begins inside the span counts, the closing one included:
+    // a key, a severity or `Unknown-Reason:` is read from the start of its
+    // row, and the closing row starts inside the literal. The opening row
+    // stays, because it may be a finding's own opening line.
     if (node.type === "inlineCode") {
-      const last = closing ? end.line : end.line - 1;
-      for (let line = start.line + 1; line <= last; line += 1) rows.add(line - 1);
+      for (let line = start.line + 1; line <= end.line; line += 1) rows.add(line - 1);
     }
     for (const child of node.children ?? []) visit(child);
   };
@@ -398,7 +396,7 @@ export function validateReport(text, expected) {
   if (layout.status === "malformed") return layout;
   const index = readIndex(
     topLevelParagraphs(text),
-    literalRows(fromMarkdown(text), { closing: true }),
+    literalRows(fromMarkdown(text)),
     header.countsRow,
     sections.evidence,
     header.counts,

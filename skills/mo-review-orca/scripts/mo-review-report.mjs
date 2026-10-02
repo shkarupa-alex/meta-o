@@ -6991,13 +6991,12 @@ function topLevelParagraphs(text3) {
     rows: lines.slice(node2.position.start.line - 1, node2.position.end.line)
   }));
 }
-function literalRows(tree, { closing = false } = {}) {
+function literalRows(tree) {
   const rows = /* @__PURE__ */ new Set();
   const visit = (node2) => {
     const { start, end } = node2.position ?? {};
     if (node2.type === "inlineCode") {
-      const last = closing ? end.line : end.line - 1;
-      for (let line = start.line + 1; line <= last; line += 1) rows.add(line - 1);
+      for (let line = start.line + 1; line <= end.line; line += 1) rows.add(line - 1);
     }
     for (const child of node2.children ?? []) visit(child);
   };
@@ -7209,7 +7208,7 @@ function validateReport(text3, expected) {
   if (layout.status === "malformed") return layout;
   const index2 = readIndex(
     topLevelParagraphs(text3),
-    literalRows(fromMarkdown(text3), { closing: true }),
+    literalRows(fromMarkdown(text3)),
     header.countsRow,
     sections.evidence,
     header.counts

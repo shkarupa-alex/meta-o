@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-orchestrate-orca; run
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "321a9a52b8c4206563b409204f146a00d6f11e83"
+  source_tree: "5970f25d5546db3f91a81fd5c93b647d427637d1"
 ---
 
 # Orchestrate a feature through Orca
