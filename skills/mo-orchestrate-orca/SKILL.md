@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-orchestrate-orca; run
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "599c52139721e1b6e00eb671018a50794a3e1757"
+  source_tree: "3aab9a38c9827cc9bf041e18b15db30315df984b"
 ---
 
 # Orchestrate a feature through Orca
@@ -63,12 +63,13 @@ file into a tracked path and return `needs_attention`.
 A project that cannot answer the readiness questions is not ready, and this
 skill does not prepare it. Read the knowledge layer of every exact SHA with
 bundled `scripts/mo-knowledge-layer.mjs --candidate <sha>` and keep its one
-line. `not_enabled` means the project has no knowledge layer to close: drop
-only the `MO-BACKLOG/1` closure proof from G0, GC, G1 and G2. The remote-head
-equality of G1 and G2, G2's CI evidence and every other gate still apply. `needs_attention` — a missing
-`MO-BACKLOG/1` command, papercut document or identifier-history gate in a
-project that had or half-declared them — is reported with the helper's reason,
-and running the setup skill stays the human's own step. Read the layer of the
+line. `not_enabled` means the project has no knowledge layer to close: drop only
+the `MO-BACKLOG/1` closure proof from G0, GC, G1 and G2. The remote-head
+equality of G1 and G2, G2's CI evidence and every other gate still apply.
+`needs_attention` — a missing `MO-BACKLOG/1` command, papercut document or
+identifier-history gate in a project that had or half-declared them — is
+reported with the helper's reason and its `missing=` field as printed, and
+running the setup skill stays the human's own step. Read the layer of the
 committed `HEAD` before intake migration writes anything, so that a
 `needs_attention` request ends with no spec, ledger or executor.
 

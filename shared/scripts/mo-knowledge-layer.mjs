@@ -45,6 +45,7 @@ const USAGE = `usage: mo-knowledge-layer.mjs --candidate <40hex> [--repo <git-ro
   --repo <git-root>    repository (default: Git root of the cwd)
 
 output: Knowledge-Layer: state=<enabled|not_enabled|needs_attention> reason=<reason>
+        [missing=<backlog,papercut,history subset|none|unknown>]  (needs_attention only)
 exit: 0 enabled or not_enabled | 1 needs_attention | 2 call error
 `;
 
@@ -171,14 +172,48 @@ function everCarried(root, candidate) {
   return { carried: found.stdout.toString("utf8").trim() !== "" };
 }
 
+/** The signals in the fixed order a `missing=` field lists them. */
+const SIGNALS = ["backlog", "papercut", "history"];
+
+// A contradiction is not an absence: every signal may be there and the answer
+// is still a gap, so these reasons name nothing as missing.
+const NOTHING_MISSING = new Set([
+  "disabled_with_signals",
+  "conflicting_marker",
+  "conflicting_papercut",
+]);
+
+/**
+ * Which signals a `needs_attention` answer lacks, as this helper detected them.
+ *
+ * §A-MEMORY-05 makes the helper the only authority on the signals: a skill
+ * that must tell the human what to prepare copies this field, because
+ * re-deriving it from the tree would re-implement the detection rules and get
+ * a declared or a dangling papercut document wrong. An answer that read no
+ * signals at all says `unknown` rather than guessing a list.
+ */
+function missingSignals(reason, signals) {
+  if (reason === "partial_signals") return SIGNALS.filter((name) => !signals[name]).join(",");
+  if (reason === "enabled_without_signals" || reason === "signals_removed")
+    return SIGNALS.join(",");
+  return NOTHING_MISSING.has(reason) ? "none" : "unknown";
+}
+
 /**
  * §A-MEMORY-05 settles one state from the candidate, in the declared order.
  *
  * @param {string} root resolved Git root
  * @param {string} candidate exact 40-hex commit
- * @returns {{state: string, reason: string}} the typed answer
+ * @returns {{state: string, reason: string, missing?: string}} the typed
+ *   answer; `missing` accompanies exactly the `needs_attention` state
  */
 export function knowledgeLayer(root, candidate) {
+  const { signals, ...answer } = settle(root, candidate);
+  if (answer.state !== "needs_attention") return answer;
+  return { ...answer, missing: missingSignals(answer.reason, signals) };
+}
+
+function settle(root, candidate) {
   const verified = git(root, ["rev-parse", "--verify", "--quiet", `${candidate}^{commit}`]);
   if (verified.error || verified.status !== 0) {
     return { state: "needs_attention", reason: "candidate_unreadable" };
@@ -195,7 +230,7 @@ export function knowledgeLayer(root, candidate) {
   if (backlog && papercut && history) return { state: "enabled", reason: "signals_present" };
   // A marker over some of the signals is still a partial set: naming it
   // "without signals" would tell the human that present signals are missing.
-  if (any) return { state: "needs_attention", reason: "partial_signals" };
+  if (any) return { state: "needs_attention", reason: "partial_signals", signals: read.signals };
   if (marker === "enabled") return { state: "needs_attention", reason: "enabled_without_signals" };
   // Nothing in the tree: "never" must be proven over the whole first-parent
   // path, and a history that cannot be read is not a negative proof.
@@ -207,8 +242,9 @@ export function knowledgeLayer(root, candidate) {
 }
 
 /** §A-MEMORY-05 renders the literal line a reviewer brief carries. */
-export function knowledgeLayerLine({ state, reason }) {
-  return `Knowledge-Layer: state=${state} reason=${reason}`;
+export function knowledgeLayerLine({ state, reason, missing }) {
+  const line = `Knowledge-Layer: state=${state} reason=${reason}`;
+  return missing === undefined ? line : `${line} missing=${missing}`;
 }
 
 function resolveRoot(repo) {
@@ -241,7 +277,7 @@ function main(argv) {
   const root = resolveRoot(given.get("--repo"));
   const result =
     root === null
-      ? { state: "needs_attention", reason: "not_git_repository" }
+      ? { state: "needs_attention", reason: "not_git_repository", missing: "unknown" }
       : knowledgeLayer(root, candidate);
   process.stdout.write(`${knowledgeLayerLine(result)}\n`);
   return result.state === "needs_attention" ? 1 : 0;

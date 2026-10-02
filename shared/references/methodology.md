@@ -68,9 +68,10 @@ the knowledge layer, or its owner switched it off on purpose. `needs_attention`
 from the helper — a missing `MO-BACKLOG/1` command, a missing papercut document
 or a missing identifier-history gate in a project whose layer is partial or
 disappeared — is a readiness gap: report it as `needs_attention`, name the
-helper's reason, and recommend that the human run the setup skill. Setting a
-project up changes files a human never asked to change, which is why it is their
-call and not a step taken silently on the way to something else.
+helper's reason, copy its `missing=` field, and recommend that the human run the
+setup skill. Setting a project up changes files a human never asked to change,
+which is why it is their call and not a step taken silently on the way to
+something else.
 <!-- mo:source-anchor §A-MEMORY-05 -->
 
 The executor's first coherent commit materializes a temporary feature bundle:

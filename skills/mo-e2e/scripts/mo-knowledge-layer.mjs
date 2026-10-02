@@ -6959,6 +6959,7 @@ var USAGE = `usage: mo-knowledge-layer.mjs --candidate <40hex> [--repo <git-root
   --repo <git-root>    repository (default: Git root of the cwd)
 
 output: Knowledge-Layer: state=<enabled|not_enabled|needs_attention> reason=<reason>
+        [missing=<backlog,papercut,history subset|none|unknown>]  (needs_attention only)
 exit: 0 enabled or not_enabled | 1 needs_attention | 2 call error
 `;
 function git(root, args) {
@@ -7046,7 +7047,24 @@ function everCarried(root, candidate) {
   if (found.error || found.status !== 0) return { reason: "git_failed" };
   return { carried: found.stdout.toString("utf8").trim() !== "" };
 }
+var SIGNALS = ["backlog", "papercut", "history"];
+var NOTHING_MISSING = /* @__PURE__ */ new Set([
+  "disabled_with_signals",
+  "conflicting_marker",
+  "conflicting_papercut"
+]);
+function missingSignals(reason, signals) {
+  if (reason === "partial_signals") return SIGNALS.filter((name) => !signals[name]).join(",");
+  if (reason === "enabled_without_signals" || reason === "signals_removed")
+    return SIGNALS.join(",");
+  return NOTHING_MISSING.has(reason) ? "none" : "unknown";
+}
 function knowledgeLayer(root, candidate) {
+  const { signals, ...answer } = settle(root, candidate);
+  if (answer.state !== "needs_attention") return answer;
+  return { ...answer, missing: missingSignals(answer.reason, signals) };
+}
+function settle(root, candidate) {
   const verified = git(root, ["rev-parse", "--verify", "--quiet", `${candidate}^{commit}`]);
   if (verified.error || verified.status !== 0) {
     return { state: "needs_attention", reason: "candidate_unreadable" };
@@ -7059,14 +7077,15 @@ function knowledgeLayer(root, candidate) {
     return any ? { state: "needs_attention", reason: "disabled_with_signals" } : { state: "not_enabled", reason: "declared_disabled" };
   }
   if (backlog && papercut && history) return { state: "enabled", reason: "signals_present" };
-  if (any) return { state: "needs_attention", reason: "partial_signals" };
+  if (any) return { state: "needs_attention", reason: "partial_signals", signals: read.signals };
   if (marker === "enabled") return { state: "needs_attention", reason: "enabled_without_signals" };
   const past = everCarried(root, candidate);
   if (past.reason) return { state: "needs_attention", reason: past.reason };
   return past.carried ? { state: "needs_attention", reason: "signals_removed" } : { state: "not_enabled", reason: "never_enabled" };
 }
-function knowledgeLayerLine({ state, reason }) {
-  return `Knowledge-Layer: state=${state} reason=${reason}`;
+function knowledgeLayerLine({ state, reason, missing }) {
+  const line = `Knowledge-Layer: state=${state} reason=${reason}`;
+  return missing === void 0 ? line : `${line} missing=${missing}`;
 }
 function resolveRoot(repo) {
   const result = spawnSync("git", ["-C", repo ?? process.cwd(), "rev-parse", "--show-toplevel"], {
@@ -7096,7 +7115,7 @@ ${USAGE}`);
     return 2;
   }
   const root = resolveRoot(given.get("--repo"));
-  const result = root === null ? { state: "needs_attention", reason: "not_git_repository" } : knowledgeLayer(root, candidate);
+  const result = root === null ? { state: "needs_attention", reason: "not_git_repository", missing: "unknown" } : knowledgeLayer(root, candidate);
   process.stdout.write(`${knowledgeLayerLine(result)}
 `);
   return result.state === "needs_attention" ? 1 : 0;

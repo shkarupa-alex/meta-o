@@ -47,15 +47,16 @@ repeating the advice. The recommendation never blocks the pair. Record the calle
 that says nothing is `not_done`, and the value is the caller's claim, not proof.
 
 Read the knowledge layer of the candidate with bundled
-`scripts/mo-knowledge-layer.mjs --candidate <sha>` and put its exact output
-line into both briefs; a brief without it makes the reviewer's deferral lens
+`scripts/mo-knowledge-layer.mjs --candidate <sha>` and put its exact output line
+into both briefs; a brief without it makes the reviewer's deferral lens
 `unknown`. `not_enabled` is an answer, not a gap. `needs_attention` — a missing
 `MO-BACKLOG/1` command, papercut document or identifier-history gate in a
 project that had or half-declared them — is reported as `needs_attention` with
-the helper's reason and the name of each of those three that is missing, so the
-human knows what to prepare without a second question, and no pair starts.
-Preparing the project is the human's own step; this skill never does it and
-never starts the setup skill for them.
+the helper's reason and the helper's `missing=` field copied as printed: it
+names each of those three the helper found absent, or says `none` or `unknown`,
+so the human knows what to prepare without a second question, and no pair
+starts. Preparing the project is the human's own step; this skill never does it
+and never starts the setup skill for them.
 
 ## Pre-pair placement
 

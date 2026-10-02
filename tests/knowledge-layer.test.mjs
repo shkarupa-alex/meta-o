@@ -84,7 +84,11 @@ test("removing the signals is a gap, not a project without the layer", () => {
     "AGENTS.md": "# Project\n",
     "docs/papercut.md": null,
   });
-  assert.deepEqual(answer(root, sha), { state: "needs_attention", reason: "signals_removed" });
+  assert.deepEqual(answer(root, sha), {
+    state: "needs_attention",
+    reason: "signals_removed",
+    missing: "backlog,papercut,history",
+  });
 });
 
 test("only an explicit disabled marker with no signal left switches the layer off", () => {
@@ -100,13 +104,20 @@ test("only an explicit disabled marker with no signal left switches the layer of
   assert.deepEqual(answer(root, contradictory), {
     state: "needs_attention",
     reason: "disabled_with_signals",
+    missing: "none",
   });
 });
 
 test("a partial set, an unbacked enabled marker and two markers are typed gaps", () => {
   const root = repository();
   const partial = commit(root, { Makefile: LAYER.Makefile, "AGENTS.md": "# Project\n" });
-  assert.deepEqual(answer(root, partial), { state: "needs_attention", reason: "partial_signals" });
+  assert.deepEqual(answer(root, partial), {
+    state: "needs_attention",
+    reason: "partial_signals",
+    missing: "papercut,history",
+  });
+  const other = repository();
+  assert.equal(answer(other, commit(other, { ...LAYER, Makefile: null })).missing, "backlog");
   const unbacked = commit(root, {
     Makefile: null,
     "AGENTS.md": "# Project\n\nKnowledge-Layer: enabled\n",
@@ -114,11 +125,16 @@ test("a partial set, an unbacked enabled marker and two markers are typed gaps",
   assert.deepEqual(answer(root, unbacked), {
     state: "needs_attention",
     reason: "enabled_without_signals",
+    missing: "backlog,papercut,history",
   });
   const both = commit(root, {
     "AGENTS.md": "# P\n\nKnowledge-Layer: enabled\nKnowledge-Layer: disabled\n",
   });
-  assert.equal(answer(root, both).reason, "conflicting_marker");
+  assert.deepEqual(answer(root, both), {
+    state: "needs_attention",
+    reason: "conflicting_marker",
+    missing: "none",
+  });
 });
 
 test("a papercut document elsewhere counts only when AGENTS.md links it", () => {
@@ -165,10 +181,12 @@ test("a papercut document under any name counts when AGENTS.md declares it by li
     state: "enabled",
     reason: "signals_present",
   });
-  // The marker over the two remaining signals is a partial set, not "without signals".
+  // The marker over the two remaining signals is a partial set, not "without signals",
+  // and a declared document absent at the candidate is the one signal missing.
   assert.deepEqual(answer(root, commit(root, { "docs/commands.md": null })), {
     state: "needs_attention",
     reason: "partial_signals",
+    missing: "papercut",
   });
 });
 
@@ -201,8 +219,13 @@ test("a shallow clone cannot prove never, and a missing commit is not a project"
   assert.deepEqual(answer(shallow, git(shallow, "rev-parse", "HEAD")), {
     state: "needs_attention",
     reason: "shallow_clone",
+    missing: "unknown",
   });
-  assert.equal(answer(origin, "f".repeat(40)).reason, "candidate_unreadable");
+  assert.deepEqual(answer(origin, "f".repeat(40)), {
+    state: "needs_attention",
+    reason: "candidate_unreadable",
+    missing: "unknown",
+  });
 });
 
 test("the CLI prints the literal brief line and types its exit", () => {
@@ -222,7 +245,7 @@ test("the CLI prints the literal brief line and types its exit", () => {
   assert.equal(refused.status, 1);
   assert.equal(
     refused.stdout,
-    "Knowledge-Layer: state=needs_attention reason=not_git_repository\n",
+    "Knowledge-Layer: state=needs_attention reason=not_git_repository missing=unknown\n",
   );
   assert.equal(
     knowledgeLayerLine({ state: "not_enabled", reason: "never_enabled" }),
@@ -274,11 +297,15 @@ test("a readiness gap names its missing signals, and setup reports the literal l
   const flat = (path) => readFileSync(join(ROOT, path), "utf8").replace(/\s+/gu, " ");
   assert.match(
     flat("src/skills/mo-e2e/SKILL.md"),
-    /record the helper's reason, name each of those three signals that is missing at the candidate, return `needs_attention`/u,
+    /record the helper's reason and copy its `missing=` field as printed, never a list derived from the tree, return `needs_attention`/u,
   );
   assert.match(
     flat("src/skills/mo-review-orca/SKILL.md"),
-    /`needs_attention` with the helper's reason and the name of each of those three that is missing/u,
+    /`needs_attention` with the helper's reason and the helper's `missing=` field copied as printed/u,
+  );
+  assert.match(
+    flat("src/skills/mo-orchestrate-orca/SKILL.md"),
+    /reported with the helper's reason and its `missing=` field as printed/u,
   );
   const setup = flat("src/skills/mo-setup/SKILL.md");
   assert.match(setup, /`Knowledge-Layer: state=not_enabled reason=never_enabled`/u);

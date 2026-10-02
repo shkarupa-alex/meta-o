@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-e2e or an active mo-o
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "8bd6ec9fe76055dddaa2fb5cfe22b2d356add8fb"
+  source_tree: "1c71d166b715cc63ed0cdbbc4da7ab2eac42054e"
 ---
 
 # Agent-required end-to-end verification
@@ -17,13 +17,13 @@ completely: friction you hit is reported to the caller as one ordinary
 `Methodology-Friction:` message, and this actor writes no Issue itself.
 
 Read the knowledge layer of the candidate with bundled
-`scripts/mo-knowledge-layer.mjs --candidate <sha>`. `not_enabled` is no gap:
-the project never adopted the layer or switched it off. `needs_attention` — a
+`scripts/mo-knowledge-layer.mjs --candidate <sha>`. `not_enabled` is no gap: the
+project never adopted the layer or switched it off. `needs_attention` — a
 missing `MO-BACKLOG/1` command, papercut document or identifier-history gate in
 a project that had or half-declared them — is a readiness gap: record the
-helper's reason, name each of those three signals that is missing at the
-candidate, return `needs_attention`, and leave running the setup skill to the
-human.
+helper's reason and copy its `missing=` field as printed, never a list derived
+from the tree, return `needs_attention`, and leave running the setup skill to
+the human.
 
 Act as a separate read-only E2E actor. Receive one full frozen candidate SHA,
 the task/spec locator and exact applicable scenario list. Read the project's E2E
