@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-review-orca or an act
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "24fc8f03ee5cfe1c9b0c192a9f914fbb52795401"
+  source_tree: "2f51f2b2fdb5c4ef5cccb4c9f648f7080e1b0657"
 ---
 
 # Review through Orca
@@ -272,7 +272,9 @@ public surface or the approved model catalogue; anything else is
 `context=unknown`, and age alone decides. A slot that is not hot is replaced by
 a new session of the same model in that slot with `follow_up`, its own reports
 and dispositions — not a new deep pair and not the final pair — while a hot
-slot beside it stays. What answers `--alive` is defined once in
+slot beside it stays. Release the cold slot's settled Dispatch by its exact id
+before the replacement starts, so two sessions never share that worktree. What
+answers `--alive` is defined once in
 [Orca native mechanics](references/orca-mechanics.md): the slot's own recorded
 terminal and screen, never Orca's worker liveness `unverifiable` alone.
 Readiness and an empty composer come from `scripts/mo-harness-screen.mjs`
@@ -434,16 +436,19 @@ scripts/mo-review-report.mjs stage --dir <ns> --slot <A|B> --vendor <slug> <vali
 scripts/mo-review-report.mjs pair --dir <ns> --a-vendor … --a-bytes … --a-dev … --a-ino … --a-sha256 … --b-…
 ```
 
-The namespace is mode `0700` under system temp with at least eighteen random
-characters in its name. Slots A/B are assigned before launch and vendor slugs
-match `^[a-z0-9][a-z0-9-]{0,31}$`. Each payload is validated as the exact buffer
-that gets written, goes to a regular `0600` sibling, is fsynced, and is
-published create-if-absent by hard-linking that complete sibling into the
-slot — never by an overwrite-capable rename. `final_exists`, `link_unsupported`, `permission`,
-`identity_changed`, `symlink`, `malformed` and `invalid_utf8` are each
-`UNKNOWN` and leave the existing final path untouched. Send the
-named consumer one ordinary message with `pair_id`, both exact paths and decimal
-sizes. A machine consumer acknowledges only after reading both:
+Each round publishes into a new namespace: a `follow_up` round's reports are
+staged there, never into the previous round's namespace, whose slot names
+already exist and answer `final_exists`. The namespace is mode `0700` under
+system temp with at least eighteen random characters in its name. Slots A/B are
+assigned before launch and vendor slugs match `^[a-z0-9][a-z0-9-]{0,31}$`. Each
+payload is validated as the exact buffer that gets written, goes to a regular
+`0600` sibling, is fsynced, and is published create-if-absent by hard-linking
+that complete sibling into the slot — never by an overwrite-capable rename.
+`final_exists`, `link_unsupported`, `permission`, `identity_changed`, `symlink`,
+`malformed` and `invalid_utf8` are each `UNKNOWN` and leave the existing final
+path untouched. Send the named consumer one ordinary message with `pair_id`,
+both exact paths and decimal sizes. A machine consumer acknowledges only after
+reading both:
 
 ```text
 Review-Handoff-Ack: <pair_id> A=<decimal-bytes> B=<decimal-bytes>

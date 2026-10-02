@@ -427,6 +427,31 @@ export function screenLine(record) {
   return parts.join(" ");
 }
 
+/**
+ * Every input of the one call, printed by `--help`.
+ *
+ * §A-DELIVERY-01 makes this the gate before every task byte, so a caller that
+ * had to read the source to form the call was one guessed flag from refusing a
+ * ready composer or never asking at all.
+ */
+export const USAGE = `usage: orca terminal read --terminal <handle> --screen --json \\
+         | mo-harness-screen.mjs --harness <claude|codex|opencode> --expect-path <abs>
+                                 [--fixtures-version <screen_version>]
+
+  stdin           the JSON envelope of \`orca terminal read --screen --json\`
+  --harness       the harness the caller started in that terminal
+  --expect-path   the absolute worktree path a trust dialog must name
+  --fixtures-version
+                  refuse unless the frame matches this recorded screen version
+
+  answers one line:
+  MO-HARNESS-SCREEN/1 state=<...> [trust_path=<json>] [selection=<yes|no|unknown>]
+                      [path_match=<yes|no>] [screen_version=<id>]
+                      [context=<tokens:<n>|percent:<n>|unknown> context_window=<n|unknown>]
+                      action=<inject|accept_trust|confirm_trust|refuse|wait>
+  exit 0 classified, 2 unreadable input or a call it cannot answer
+`;
+
 /** §A-DELIVERY-01 accepts only the exact call the mechanics document writes. */
 export function readOptions(argv) {
   const options = {};
@@ -466,8 +491,11 @@ function invokedDirectly() {
 
 if (invokedDirectly()) {
   const options = readOptions(process.argv.slice(2));
-  if (options.error !== undefined) {
-    process.stderr.write(`mo-harness-screen: ${options.error}\n`);
+  if (process.argv.length === 3 && process.argv[2] === "--help") {
+    process.stdout.write(USAGE);
+    process.exitCode = 0;
+  } else if (options.error !== undefined) {
+    process.stderr.write(`mo-harness-screen: ${options.error}\n${USAGE}`);
     process.exitCode = 2;
   } else {
     const envelope = readEnvelope(readFileSync(0, "utf8"));

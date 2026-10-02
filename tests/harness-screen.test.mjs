@@ -613,3 +613,16 @@ test("a refused idle screen leaves its slot needing attention and closes nothing
     /A refused screen on an idle session is `session_unavailable` recorded with that line: that slot returns `needs_attention`, its composer text is left as it is, nothing else is closed/u,
   );
 });
+
+test("every input of the screen gate is printed by --help", () => {
+  // A caller once had to read the source to learn the required flags.
+  const script = join(ROOT, "shared", "scripts", "mo-harness-screen.mjs");
+  const help = spawnSync(process.execPath, [script, "--help"], { encoding: "utf8" });
+  assert.equal(help.status, 0);
+  for (const flag of ["--harness ", "--expect-path ", "--fixtures-version ", "--screen --json"]) {
+    assert.ok(help.stdout.includes(flag), flag);
+  }
+  const missing = spawnSync(process.execPath, [script], { encoding: "utf8", input: "" });
+  assert.equal(missing.status, 2);
+  assert.match(missing.stderr, /--harness is required\nusage: /u);
+});
