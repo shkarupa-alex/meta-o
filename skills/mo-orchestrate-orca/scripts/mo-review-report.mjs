@@ -6991,6 +6991,22 @@ function topLevelParagraphs(text3) {
     rows: lines.slice(node2.position.start.line - 1, node2.position.end.line)
   }));
 }
+function literalRows(tree) {
+  const rows = /* @__PURE__ */ new Set();
+  const visit = (node2) => {
+    const { start, end } = node2.position ?? {};
+    if (node2.type === "inlineCode") {
+      for (let line = start.line + 1; line < end.line; line += 1) rows.add(line - 1);
+    }
+    for (const child of node2.children ?? []) visit(child);
+  };
+  for (const node2 of tree.children) if (node2.type === "paragraph") visit(node2);
+  return rows;
+}
+function topLevelMarkers(text3) {
+  const literal = literalRows(fromMarkdown(text3));
+  return new Set([...topLevelProse(text3)].filter((row) => !literal.has(row)));
+}
 function topLevelProse(text3) {
   return new Set(
     topLevelParagraphs(text3).flatMap(({ line, rows }) => rows.map((_, step) => line + step))
@@ -7103,15 +7119,16 @@ function bodyOpening(line, expected, opened) {
 function readFindingBodies(lines, prose, span, keys) {
   const rows = [...prose].filter((position2) => position2 > span.from && position2 < span.to).sort((left, right) => left - right);
   const opened = /* @__PURE__ */ new Set();
-  for (const [step, position2] of rows.entries()) {
+  for (const position2 of rows) {
     const expected = keys[opened.size];
     const opening = bodyOpening(lines[position2], expected, opened);
     if (opening.kind === "prose") continue;
     if (opening.kind === "stray") return fail("index_body_mismatch", position2);
     let severity = opening.severity;
     if (opening.kind === "bare") {
-      const detail = rows.slice(step + 1).find((row) => lines[row].trim() !== "");
-      severity = /^\[(P[0-3])\]\s+\S/u.exec(lines[detail] ?? "")?.[1];
+      let detail = position2 + 1;
+      while (detail < span.to && lines[detail].trim() === "") detail += 1;
+      severity = prose.has(detail) ? /^\[(P[0-3])\]\s+\S/u.exec(lines[detail])?.[1] : void 0;
     }
     if (severity !== expected.severity) return fail("index_body_mismatch", position2);
     opened.add(expected.key);
@@ -7182,9 +7199,10 @@ function reportLines(text3) {
 function validateReport(text3, expected) {
   const lines = reportLines(text3);
   const prose = topLevelProse(text3);
+  const markers = topLevelMarkers(text3);
   const header = readHeader(lines, prose, expected);
   if (header.status === "malformed") return header;
-  const sections = readSections(lines, prose, header.countsRow);
+  const sections = readSections(lines, markers, header.countsRow);
   if (sections.status === "malformed") return sections;
   const layout = readIndexLayout(lines, prose, header.countsRow + 1, sections.evidence);
   if (layout.status === "malformed") return layout;
@@ -7195,7 +7213,7 @@ function validateReport(text3, expected) {
     header.counts
   );
   if (index2.status === "malformed") return index2;
-  const evidence = readEvidence(lines, prose, sections, header, index2);
+  const evidence = readEvidence(lines, markers, sections, header, index2);
   if (evidence.status === "malformed") return evidence;
   return {
     status: "valid",

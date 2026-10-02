@@ -173,9 +173,30 @@ test("both finding bodies are accepted and nothing else is", () => {
     "F-001\n\n[P2]   \n",
     // An unannounced key stays a stray body whatever follows its severity.
     "F-001 [P2] the announced body.\nF-002 [P1]\nevidence for a finding the index hides.\n",
+    // The severity line follows the bare key directly, not past a container.
+    "F-001\n\n> a quote between key and severity.\n\n[P2] causal path.\n",
+    "F-001\n\n- a list between key and severity.\n\n[P2] causal path.\n",
   ]) {
     assert.equal(reasonOf(findingsReport({ body })), "index_body_mismatch", body);
   }
+});
+
+test("a marker inside a multi-line inline literal is quoted text, not structure", () => {
+  const pass = reportTemplate({
+    verdict: "PASS",
+    dispatch: "ctx_a",
+    candidate: SHA,
+    requested: "deep",
+    effective: "deep",
+  }).text;
+  for (const quoted of ["`git show\nGrounding\nHEAD`", "`a\nFindings\nb`"]) {
+    const text = pass.replace("Read: <intent", `Quoted: ${quoted}.\nRead: <intent`);
+    assert.equal(validateReport(text, expected()).status, "valid", quoted);
+  }
+  const body = "F-001\n[P2] causal path `a\nF-002\nb` continues.\n";
+  assert.equal(validateReport(findingsReport({ body }), expected()).status, "valid");
+  const opened = "F-001 [P2] causal path `a\nb` continues.\n";
+  assert.equal(validateReport(findingsReport({ body: opened }), expected()).status, "valid");
 });
 
 test("the index takes one empty line between entries and at either end", () => {

@@ -61,6 +61,40 @@ export function topLevelParagraphs(text) {
     }));
 }
 
+/**
+ * The rows strictly inside a multi-line inline code span.
+ *
+ * §A-REVIEW-04 makes a marker structure only as plain prose: a reviewer quoting
+ * a multi-line span whose middle line reads `Grounding` has not opened a second
+ * Grounding section, and a valid report must not turn malformed for it.
+ */
+function literalRows(tree) {
+  const rows = new Set();
+  const visit = (node) => {
+    const { start, end } = node.position ?? {};
+    // Only the rows strictly inside count: the first and last rows also hold a
+    // delimiter, so they can never read as a bare marker, and the first one may
+    // be a finding's own opening line.
+    if (node.type === "inlineCode") {
+      for (let line = start.line + 1; line < end.line; line += 1) rows.add(line - 1);
+    }
+    for (const child of node.children ?? []) visit(child);
+  };
+  for (const node of tree.children) if (node.type === "paragraph") visit(node);
+  return rows;
+}
+
+/**
+ * §A-REVIEW-04 indexes the plain top-level prose rows by line for the markers.
+ *
+ * Rows inside a multi-line literal stay out: they belong to their paragraph,
+ * which `topLevelParagraphs` still reports whole for the index layout.
+ */
+function topLevelMarkers(text) {
+  const literal = literalRows(fromMarkdown(text));
+  return new Set([...topLevelProse(text)].filter((row) => !literal.has(row)));
+}
+
 /** §A-REVIEW-04 indexes those same paragraphs by line for the section markers. */
 export function topLevelProse(text) {
   return new Set(
@@ -244,15 +278,18 @@ function readFindingBodies(lines, prose, span, keys) {
     .filter((position) => position > span.from && position < span.to)
     .sort((left, right) => left - right);
   const opened = new Set();
-  for (const [step, position] of rows.entries()) {
+  for (const position of rows) {
     const expected = keys[opened.size];
     const opening = bodyOpening(lines[position], expected, opened);
     if (opening.kind === "prose") continue;
     if (opening.kind === "stray") return fail("index_body_mismatch", position);
     let severity = opening.severity;
     if (opening.kind === "bare") {
-      const detail = rows.slice(step + 1).find((row) => lines[row].trim() !== "");
-      severity = /^\[(P[0-3])\]\s+\S/u.exec(lines[detail] ?? "")?.[1];
+      // The very next non-empty line opens the severity, and it must be prose
+      // itself: a quote or list between key and severity is not that line.
+      let detail = position + 1;
+      while (detail < span.to && lines[detail].trim() === "") detail += 1;
+      severity = prose.has(detail) ? /^\[(P[0-3])\]\s+\S/u.exec(lines[detail])?.[1] : undefined;
     }
     if (severity !== expected.severity) return fail("index_body_mismatch", position);
     opened.add(expected.key);
@@ -348,9 +385,10 @@ function reportLines(text) {
 export function validateReport(text, expected) {
   const lines = reportLines(text);
   const prose = topLevelProse(text);
+  const markers = topLevelMarkers(text);
   const header = readHeader(lines, prose, expected);
   if (header.status === "malformed") return header;
-  const sections = readSections(lines, prose, header.countsRow);
+  const sections = readSections(lines, markers, header.countsRow);
   if (sections.status === "malformed") return sections;
   const layout = readIndexLayout(lines, prose, header.countsRow + 1, sections.evidence);
   if (layout.status === "malformed") return layout;
@@ -361,7 +399,7 @@ export function validateReport(text, expected) {
     header.counts,
   );
   if (index.status === "malformed") return index;
-  const evidence = readEvidence(lines, prose, sections, header, index);
+  const evidence = readEvidence(lines, markers, sections, header, index);
   if (evidence.status === "malformed") return evidence;
   return {
     status: "valid",
