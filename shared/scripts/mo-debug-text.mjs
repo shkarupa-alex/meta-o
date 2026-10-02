@@ -107,17 +107,20 @@ export function claudeBody(file) {
 /**
  * §A-DIAGNOSTICS-01 lists the texts a recorded Claude load may be equal to.
  *
+ * Only the suffix built from the arguments recorded for this very load is
+ * removed. A body may itself contain `ARGUMENTS:`, and a locally edited skill
+ * may end with it; cutting at the marker alone would make that edited text
+ * equal to an older committed body and attribute bytes the agent never read.
+ *
  * @param {string} shown text after the `Base directory for this skill:` line
- * @param {string|null} args arguments passed to the Skill tool, when known
- * @returns {string[]} the shown text, and the text without an arguments suffix
+ * @param {string|null} args arguments recorded for this load, when known
+ * @returns {string[]} the shown text, and the text without that exact suffix
  */
 export function claudeBodyCandidates(shown, args) {
   const candidates = [shown];
   const suffix = typeof args === "string" && args !== "" ? `\n\nARGUMENTS: ${args}` : null;
   if (suffix && shown.endsWith(suffix)) candidates.push(shown.slice(0, -suffix.length));
-  const marker = shown.lastIndexOf("\n\nARGUMENTS: ");
-  if (marker !== -1) candidates.push(shown.slice(0, marker));
-  return [...new Set(candidates)];
+  return candidates;
 }
 
 /**

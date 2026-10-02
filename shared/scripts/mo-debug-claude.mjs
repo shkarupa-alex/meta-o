@@ -80,7 +80,13 @@ function skillLoad(state, record, text, number) {
   const name = directory.replace(/\/+$/u, "").split("/").at(-1);
   if (!SKILL_NAME.test(name) || lineEnd === -1) return;
   const shown = text.slice(lineEnd + 1).replace(/^\n/u, "");
-  const args = state.skillCalls.get(record.sourceToolUseID)?.args ?? null;
+  // A load answers either its own Skill call or the slash command typed just
+  // before it; anything else has no recorded arguments to strip.
+  const slash = state.slashCall?.skill === name ? state.slashCall.args : null;
+  state.slashCall = null;
+  const args = record.sourceToolUseID
+    ? (state.skillCalls.get(record.sourceToolUseID)?.args ?? null)
+    : slash;
   state.evidence.event(number, "skill_loaded", name, text);
   state.evidence.load(number, {
     name,
@@ -123,24 +129,27 @@ function toolResult(state, item, number) {
   }
 }
 
+// A slash command's arguments are what Claude appends to the load that follows
+// it, so they are kept until that load; a command without them strips nothing.
+function slashCommand(state, text, number, plain) {
+  const name = COMMAND.exec(text)[1];
+  const args = COMMAND_ARGS.exec(text)?.[1];
+  const shown = plain ? `/${name} ${args ?? ""}` : `/${name}`;
+  state.evidence.event(number, "skill_invocation", name, shown);
+  state.slashCall = args === undefined && !plain ? null : { skill: name, args: args ?? "" };
+}
+
 function userRecord(state, record, number) {
   const content = record.message?.content;
   if (typeof content === "string") {
-    const command = COMMAND.exec(content);
-    if (command) {
-      const args = COMMAND_ARGS.exec(content)?.[1] ?? "";
-      state.evidence.event(number, "skill_invocation", command[1], `/${command[1]} ${args}`);
-    }
+    if (COMMAND.test(content)) slashCommand(state, content, number, true);
     return;
   }
   if (!Array.isArray(content)) return;
   for (const item of content) {
     if (item?.type === "text" && typeof item.text === "string") {
       if (item.text.startsWith(LOAD_PREFIX)) skillLoad(state, record, item.text, number);
-      else if (COMMAND.test(item.text)) {
-        const name = COMMAND.exec(item.text)[1];
-        state.evidence.event(number, "skill_invocation", name, `/${name}`);
-      }
+      else if (COMMAND.test(item.text)) slashCommand(state, item.text, number, false);
     } else if (item?.type === "tool_result") toolResult(state, item, number);
   }
 }
@@ -156,6 +165,7 @@ export function createClaudeExtractor(session) {
   const state = {
     evidence: createEvidence(session, "claude"),
     skillCalls: new Map(),
+    slashCall: null,
     helperCalls: new Map(),
     readCalls: new Map(),
   };

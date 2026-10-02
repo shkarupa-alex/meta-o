@@ -37,6 +37,7 @@ import { openOwnedSession, resolveSession } from "../shared/scripts/mo-debug-ses
 import { EXCERPT_LIMIT, excerpt, redact } from "../shared/scripts/mo-debug-redact.mjs";
 import {
   claudeBody,
+  claudeBodyCandidates,
   helperNames,
   metadataSourceTree,
   sourceTreeIn,
@@ -281,6 +282,100 @@ test("a Claude body without a stamp is matched byte for byte against committed b
   assert.equal(bounded.status, 0, bounded.stderr);
   assert.match(bounded.stdout, /^MO-DEBUG\/1 status=partial /u);
   assert.match(bounded.stdout, /version=body_match commits=\S+ history=partial stamp=none$/mu);
+});
+
+test("only the arguments recorded for a Claude load are stripped before matching", () => {
+  // Cutting at the last `ARGUMENTS:` marker made a locally edited skill equal to
+  // an older committed body; only the suffix of this load's own Skill call or
+  // the slash command just before it may go.
+  const { home, claude } = fixtureHome();
+  const { repo, short } = historyRepo();
+  const body = claudeBody(readFileSync(join(FIXTURES, "skill-v1.txt"), "utf8"));
+  const edited = body.replace("Version one", "Locally changed");
+  const marker = "\n\nARGUMENTS: ";
+  const added = "Uncommitted instruction.";
+  const given = "review candidate";
+  const base = { sessionId: CLAUDE_ID, cwd: "/home/fixture-user/work/project", version: "2.1.0" };
+  const at = (n) => `2026-09-01T10:0${n}:00.000Z`;
+  const skill = (n, id, args) => ({
+    ...base,
+    timestamp: at(n),
+    type: "assistant",
+    uuid: `a${n}`,
+    message: {
+      role: "assistant",
+      content: [{ type: "tool_use", id, name: "Skill", input: { skill: "mo-x", args } }],
+    },
+  });
+  const slash = (n, args) => ({
+    ...base,
+    timestamp: at(n),
+    type: "user",
+    uuid: `c${n}`,
+    message: {
+      role: "user",
+      content: `<command-message>mo-x</command-message>\n<command-name>/mo-x</command-name>\n<command-args>${args}</command-args>`,
+    },
+  });
+  const load = (n, source, shown) => ({
+    ...base,
+    timestamp: at(n),
+    type: "user",
+    uuid: `l${n}`,
+    isMeta: true,
+    ...(source ? { sourceToolUseID: source } : {}),
+    message: {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: `Base directory for this skill: /home/fixture-user/.claude/skills/mo-x\n\n${shown}`,
+        },
+      ],
+    },
+  });
+  const unknown = `skill name=mo-x session=${CLAUDE_ID} version=unknown commits=none history=complete stamp=none`;
+  const matched = `skill name=mo-x session=${CLAUDE_ID} version=body_match commits=${short[0]}..${short[0]} history=complete stamp=none`;
+  // One session per case: the report merges equal skill lines of one session.
+  for (const [records, expected] of [
+    // The marker belongs to the shown text, not to the empty recorded arguments.
+    [[skill(1, "s1", ""), load(1, "s1", `${body}${marker}${added}`)], unknown],
+    // No Skill call and no slash command: nothing is known to strip.
+    [[load(2, null, `${body}${marker}${added}`)], unknown],
+    // Recorded arguments that are not the shown suffix strip nothing.
+    [[skill(3, "s3", given), load(3, "s3", `${body}${marker}${added}`)], unknown],
+    // The exact recorded suffix goes, through a Skill call and a slash command.
+    [[skill(4, "s4", given), load(4, "s4", `${body}${marker}${given}`)], matched],
+    [[slash(5, given), load(5, null, `${body}${marker}${given}`)], matched],
+    // Stripping real arguments never hides an edit of the body itself.
+    [[skill(6, "s6", given), load(6, "s6", `${edited}${marker}${given}`)], unknown],
+  ]) {
+    writeFileSync(
+      join(claude, `${CLAUDE_ID}.jsonl`),
+      records.map((record) => JSON.stringify(record)).join("\n") + "\n",
+    );
+    const result = run(home, ["scan", "--session", CLAUDE_ID, "--history", repo]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(
+      result.stdout.split("\n").filter((line) => line.startsWith("skill ")),
+      [expected],
+      records.at(-1).message.content[0].text.slice(-40),
+    );
+  }
+  // An authored body that itself ends with the marker keeps it, and arguments
+  // that contain the marker are removed whole, once.
+  const authored = `${body}${marker}${added}`;
+  assert.deepEqual(claudeBodyCandidates(authored, ""), [authored]);
+  assert.deepEqual(claudeBodyCandidates(authored, null), [authored]);
+  assert.deepEqual(claudeBodyCandidates(`${authored}${marker}${given}`, given), [
+    `${authored}${marker}${given}`,
+    authored,
+  ]);
+  const nested = `first${marker}second`;
+  assert.deepEqual(claudeBodyCandidates(`${authored}${marker}${nested}`, nested), [
+    `${authored}${marker}${nested}`,
+    authored,
+  ]);
 });
 
 /** A loaded, complete copy of one committed fixture version, stamp included. */
