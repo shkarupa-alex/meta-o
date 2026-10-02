@@ -114,6 +114,67 @@ test("the marker is the first comment line and the second line is for a human", 
   assert.equal(parseResourceMarker(marker.replace(SHA, SHA.slice(0, 12))), null);
 });
 
+test("a worktree id whose path holds spaces is written, read and matched exactly", () => {
+  // Orca ids are `<repo>::<absolute path>`, and a home directory may hold a space.
+  const write = (worktree) =>
+    resourceComment({
+      pair: "review-space",
+      slot: "A",
+      candidate: SHA,
+      project: "proj-1",
+      worktree,
+      feature: "all-open-issues",
+    });
+  for (const worktree of [
+    "repo-1::/home/Alex Smith/orca/slot-a",
+    "repo-1::/tmp/Acme  Team/slot-a",
+  ]) {
+    const { text } = write(worktree);
+    assert.equal(parseResourceMarker(text).worktree, worktree);
+    const facts = {
+      ...owned,
+      comment: text,
+      worktreeId: worktree,
+      head: "d".repeat(40),
+      nextCandidate: SHA,
+    };
+    assert.deepEqual(releaseDecision(facts), { action: "release", reason: "owned_orphan" });
+    assert.deepEqual(releaseDecision({ ...facts, head: SHA }), {
+      action: "reuse",
+      reason: "exact_placement",
+    });
+    assert.deepEqual(
+      releaseDecision({ ...facts, worktreeId: worktree.replace("slot-a", "slot-b") }),
+      { action: "keep", reason: "marker_mismatch" },
+    );
+  }
+  assert.deepEqual(write("repo-1::/tmp/a\nMO-REVIEW-RESOURCE/1 x"), { error: "invalid_marker" });
+  assert.deepEqual(write("repo-1::/tmp/a\rb"), { error: "invalid_marker" });
+  assert.equal(parseResourceMarker(comment).worktree, "wt-7");
+  const cli = spawnSync(
+    process.execPath,
+    [
+      join(ROOT, "skills", "mo-review-orca", "scripts", "mo-review-resource.mjs"),
+      "comment",
+      "--pair",
+      "review-space",
+      "--slot",
+      "A",
+      "--candidate",
+      SHA,
+      "--project",
+      "proj-1",
+      "--worktree",
+      "repo-1::/home/Alex Smith/orca/slot-a",
+      "--feature",
+      "all-open-issues",
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(cli.status, 0, cli.stderr);
+  assert.match(cli.stdout, /worktree=repo-1::\/home\/Alex Smith\/orca\/slot-a\n/u);
+});
+
 test("only a proven owned orphan is released, and everything uncertain stays", () => {
   assert.deepEqual(releaseDecision(owned), { action: "release", reason: "owned_orphan" });
   assert.deepEqual(releaseDecision({ ...owned, nextCandidate: SHA }), {

@@ -20,8 +20,11 @@ import { fileURLToPath } from "node:url";
 /** §A-SESSION-01 first line of the worktree comment a review slot owns. */
 export const RESOURCE_PREFIX = "MO-REVIEW-RESOURCE/1";
 
+// The worktree id is the last field and runs to the end of the line: Orca
+// writes it as `<repo>::<absolute path>`, and a path may hold spaces, so a
+// whitespace-free field would refuse a real id that release must match exactly.
 const MARKER =
-  /^MO-REVIEW-RESOURCE\/1 pair=([A-Za-z0-9._-]+) slot=(A|B) candidate=([0-9a-f]{40}) project=(\S+) worktree=(\S+)$/u;
+  /^MO-REVIEW-RESOURCE\/1 pair=([A-Za-z0-9._-]+) slot=(A|B) candidate=([0-9a-f]{40}) project=(\S+) worktree=([^\r\n]+)$/u;
 
 /** §A-SESSION-01 an hour since the slot's last `worker_done` keeps it hot. */
 export const HOT_AGE_MS = 3_600_000;

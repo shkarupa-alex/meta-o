@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-convergence; ask the 
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "4c9e5166538ec6bc595da8d49fa5c616d5e69ef4"
+  source_tree: "6ffc572696b24352f7d4e0d7bb1055970366f9dc"
 ---
 
 # Diagnose work that does not converge
