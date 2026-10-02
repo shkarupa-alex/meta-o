@@ -10211,7 +10211,8 @@ function citationsIn(nodes, suppressed) {
 function linksIn(tree) {
   const targets = /* @__PURE__ */ new Map();
   walk(tree, (node2) => {
-    if (node2.type === "definition") targets.set(node2.identifier, node2.url);
+    if (node2.type === "definition" && !targets.has(node2.identifier))
+      targets.set(node2.identifier, node2.url);
   });
   const links = [];
   walk(tree, (node2) => {

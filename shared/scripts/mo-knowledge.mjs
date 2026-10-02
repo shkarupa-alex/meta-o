@@ -270,7 +270,10 @@ function citationsIn(nodes, suppressed) {
 function linksIn(tree) {
   const targets = new Map();
   walk(tree, (node) => {
-    if (node.type === "definition") targets.set(node.identifier, node.url);
+    // Markdown renders a repeated label with its first definition, so a later
+    // one must not decide which document the check reads.
+    if (node.type === "definition" && !targets.has(node.identifier))
+      targets.set(node.identifier, node.url);
   });
   const links = [];
   walk(tree, (node) => {

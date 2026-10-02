@@ -172,6 +172,44 @@ test("a hard line break inside a link label keeps the words apart", () => {
   }
 });
 
+test("a repeated link label resolves to its first definition, as Markdown renders it", () => {
+  const BUNDLE = resolve(ROOT, "skills", "mo-setup", "scripts", "mo-knowledge.mjs");
+  const link = "[Зачем существует Demo](docs/business.md)";
+  const forms = [
+    ["[Зачем существует Demo][BiZ]", "biz", "BIZ"],
+    ["[Зачем существует Demo][]", "зачем существует demo", "ЗАЧЕМ СУЩЕСТВУЕТ DEMO"],
+    ["[Зачем существует Demo]", "зачем существует demo", "ЗАЧЕМ СУЩЕСТВУЕТ DEMO"],
+  ];
+  const missing = "docs/missing.md";
+  const external = "https://example.invalid/x.md";
+  const core = "docs/architecture/core.md";
+  const cases = [
+    [missing, "docs/business.md", "broken_link", missing],
+    ["docs/business.md", missing, null],
+    ["docs/business.md", core, null],
+    [core, "docs/business.md", "link_label_mismatch", core],
+    [external, missing, null],
+    [missing, external, "broken_link", missing],
+  ];
+  for (const [use, first, second] of forms) {
+    for (const [one, two, reason, target] of cases) {
+      const readme =
+        BASE["README.md"].replace(link, use) + `\n[${first}]: ${one}\n[${second}]: ${two}\n`;
+      const root = fixture({ "README.md": readme });
+      for (const script of [CLI, BUNDLE]) {
+        const label = `${script} ${use} ${one} ${two}`;
+        const result = spawnSync(process.execPath, [script, "check", "--repo", root, ...ARGS], {
+          cwd: root,
+          encoding: "utf8",
+          env: ENV,
+        });
+        if (reason === null) assert.equal(result.status, 0, `${label}\n${result.stdout}`);
+        else assert.ok(assertViolation(result, reason, `target="${target}"`), label);
+      }
+    }
+  }
+});
+
 test("a relative Markdown link must resolve to a tracked file", () => {
   const readme = `${BASE["README.md"]}\nСм. [Missing](docs/missing%20file.md).\n`;
   assertViolation(
