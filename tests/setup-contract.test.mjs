@@ -377,4 +377,14 @@ test("the generated Claude contract is a byte copy, not an import", () => {
     readFileSync(join(ROOT, "CLAUDE.md"), "utf8"),
     readFileSync(join(ROOT, "AGENTS.md"), "utf8"),
   );
+  // Six modes naming the token through a plugin do not prove that Claude Code
+  // reads AGENTS.md itself, so neither the canary rule nor the acceptance row
+  // may let a passing run alone retire the copy.
+  const e2e = readFileSync(join(ROOT, "docs", "e2e.md"), "utf8").replace(/\s+/gu, " ");
+  assert.match(e2e, /в каждом доказано, что `AGENTS\.md` читает сам Claude Code, а не плагин/u);
+  assert.doesNotMatch(e2e, /Пока хотя бы один режим не доказан, `CLAUDE\.md` остаётся/u);
+  const row = readFileSync(join(ROOT, "docs", "acceptance.md"), "utf8")
+    .split("\n")
+    .find((line) => line.startsWith("| #22 "));
+  assert.match(row, /`cc-plugin-agents-md`.*нативное происхождение не доказано/u);
 });
