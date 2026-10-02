@@ -151,6 +151,27 @@ test("a link label must contain the target document's H1", () => {
   assert.equal(check(fixture({ "README.md": spaced })).status, 0);
 });
 
+test("a hard line break inside a link label keeps the words apart", () => {
+  const BUNDLE = resolve(ROOT, "skills", "mo-setup", "scripts", "mo-knowledge.mjs");
+  const reference = (label) =>
+    BASE["README.md"].replace("[Зачем существует Demo](docs/business.md)", `[${label}][business]`) +
+    "\n[business]: docs/business.md\n";
+  const inline = (label) => BASE["README.md"].replace("[Зачем существует Demo]", `[${label}]`);
+  for (const script of [CLI, BUNDLE]) {
+    for (const label of ["Зачем  \nсуществует Demo", "Зачем\\\nсуществует Demo"]) {
+      for (const readme of [inline(label), reference(label)]) {
+        const root = fixture({ "README.md": readme });
+        const result = spawnSync(process.execPath, [script, "check", "--repo", root, ...ARGS], {
+          cwd: root,
+          encoding: "utf8",
+          env: ENV,
+        });
+        assert.equal(result.status, 0, `${script}\n${readme}\n${result.stdout}`);
+      }
+    }
+  }
+});
+
 test("a relative Markdown link must resolve to a tracked file", () => {
   const readme = `${BASE["README.md"]}\nСм. [Missing](docs/missing%20file.md).\n`;
   assertViolation(

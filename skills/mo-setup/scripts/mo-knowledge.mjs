@@ -10049,6 +10049,7 @@ function callError(message) {
 }
 function plainText(node2) {
   if (typeof node2.value === "string") return node2.value;
+  if (node2.type === "break") return "\n";
   return (node2.children ?? []).map(plainText).join("");
 }
 function normalized(value) {

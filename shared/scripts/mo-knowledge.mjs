@@ -78,6 +78,9 @@ function callError(message) {
 
 function plainText(node) {
   if (typeof node.value === "string") return node.value;
+  // A hard break carries no text of its own; without a separator the words on
+  // either side of it would be glued and a correct link label rejected.
+  if (node.type === "break") return "\n";
   return (node.children ?? []).map(plainText).join("");
 }
 
