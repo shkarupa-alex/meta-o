@@ -68,15 +68,18 @@ export function topLevelParagraphs(text) {
  * a multi-line span whose middle line reads `Grounding` has not opened a second
  * Grounding section, and a valid report must not turn malformed for it.
  */
-function literalRows(tree) {
+function literalRows(tree, { closing = false } = {}) {
   const rows = new Set();
   const visit = (node) => {
     const { start, end } = node.position ?? {};
     // Only the rows strictly inside count: the first and last rows also hold a
     // delimiter, so they can never read as a bare marker, and the first one may
-    // be a finding's own opening line.
+    // be a finding's own opening line. An index entry is read from the start
+    // of its row, though, and the closing row starts inside the literal, so
+    // the index asks for that row as well.
     if (node.type === "inlineCode") {
-      for (let line = start.line + 1; line < end.line; line += 1) rows.add(line - 1);
+      const last = closing ? end.line : end.line - 1;
+      for (let line = start.line + 1; line <= last; line += 1) rows.add(line - 1);
     }
     for (const child of node.children ?? []) visit(child);
   };
@@ -213,7 +216,7 @@ function readIndexLayout(lines, prose, from, to) {
  * with two findings. Nothing else stands in the index: `Unknown-Reason`
  * belongs to the UNKNOWN account, where the template prints it.
  */
-function readIndex(paragraphs, from, to, counts) {
+function readIndex(paragraphs, literal, from, to, counts) {
   const entries = [];
   for (const { line, rows } of paragraphs) {
     // Rows are taken by their own line, not by where their paragraph starts:
@@ -223,7 +226,8 @@ function readIndex(paragraphs, from, to, counts) {
       .map((row, step) => ({ row, at: line + step }))
       .filter(({ at }) => at > from && at < to);
     for (const [step, { row, at }] of inside.entries()) {
-      const match = row.match(ENTRY);
+      // A key quoted inside a multi-line code span is the summary's text.
+      const match = literal.has(at) ? null : row.match(ENTRY);
       // An entry opens a paragraph; a row that follows one is that entry
       // continued, however much it looks like structure on its own.
       if (match) entries.push({ key: match[1], severity: match[2], line: at });
@@ -394,6 +398,7 @@ export function validateReport(text, expected) {
   if (layout.status === "malformed") return layout;
   const index = readIndex(
     topLevelParagraphs(text),
+    literalRows(fromMarkdown(text), { closing: true }),
     header.countsRow,
     sections.evidence,
     header.counts,

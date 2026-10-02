@@ -360,3 +360,35 @@ test("the index may follow Counts with no empty line", () => {
   const miscounted = tight.replace("P2=1", "P2=2");
   assert.equal(reasonOf(miscounted), "counts_mismatch");
 });
+
+test("a key quoted inside a multi-line code span in the index is summary text", () => {
+  const indexed = (summary, report = findingsReport()) =>
+    report.replace("F-001 [P2] One defect.\n", `${summary}\n`);
+  for (const summary of [
+    "F-001 [P2] A single finding quotes `the literal\nF-002 [P2] example key\ninside its summary`.",
+    "F-001 [P2] A quote ``with a ` tick\nF-002 [P2] example key\ninside``.",
+    "F-001 [P2] The closing row `starts\nF-002 [P2] inside the span`.",
+    "F-001 [P2] Repeated and out of order `a\nF-001 [P0] b\nF-999 [P3] c\nF-002 [P1] d`.",
+  ]) {
+    const result = validateReport(indexed(summary), expected());
+    assert.equal(result.status, "valid", summary);
+    // A valid report has exactly as many entries as its counts.
+    assert.deepEqual(result.counts, [0, 0, 1, 0], summary);
+  }
+  const two = findingsReport({
+    head: header.join("\n").replace("P2=1", "P2=2"),
+    body: "F-001\n[P2] causal path.\nF-002\n[P2] another path.\n",
+  });
+  const quoted = indexed(
+    "F-001 [P2] One defect quoting `x\nF-999 [P3] y\nz`.\n\nF-002 [P2] Another defect.",
+    two,
+  );
+  const result = validateReport(quoted, expected());
+  assert.equal(result.status, "valid");
+  assert.deepEqual(result.counts, [0, 0, 2, 0]);
+  // Without the delimiters the second key is a real entry and must be counted.
+  const bare = "F-001 [P2] A single finding quotes the literal\nF-002 [P2] example key";
+  assert.equal(reasonOf(indexed(bare)), "counts_mismatch");
+  const counted = indexed(bare, two);
+  assert.equal(validateReport(counted, expected()).status, "valid");
+});

@@ -6991,12 +6991,13 @@ function topLevelParagraphs(text3) {
     rows: lines.slice(node2.position.start.line - 1, node2.position.end.line)
   }));
 }
-function literalRows(tree) {
+function literalRows(tree, { closing = false } = {}) {
   const rows = /* @__PURE__ */ new Set();
   const visit = (node2) => {
     const { start, end } = node2.position ?? {};
     if (node2.type === "inlineCode") {
-      for (let line = start.line + 1; line < end.line; line += 1) rows.add(line - 1);
+      const last = closing ? end.line : end.line - 1;
+      for (let line = start.line + 1; line <= last; line += 1) rows.add(line - 1);
     }
     for (const child of node2.children ?? []) visit(child);
   };
@@ -7081,12 +7082,12 @@ function readIndexLayout(lines, prose, from, to) {
   }
   return {};
 }
-function readIndex(paragraphs, from, to, counts) {
+function readIndex(paragraphs, literal, from, to, counts) {
   const entries = [];
   for (const { line, rows } of paragraphs) {
     const inside = rows.map((row, step) => ({ row, at: line + step })).filter(({ at }) => at > from && at < to);
     for (const [step, { row, at }] of inside.entries()) {
-      const match = row.match(ENTRY);
+      const match = literal.has(at) ? null : row.match(ENTRY);
       if (match) entries.push({ key: match[1], severity: match[2], line: at });
       else if (step === 0) return fail("index_key_order", at);
     }
@@ -7208,6 +7209,7 @@ function validateReport(text3, expected) {
   if (layout.status === "malformed") return layout;
   const index2 = readIndex(
     topLevelParagraphs(text3),
+    literalRows(fromMarkdown(text3), { closing: true }),
     header.countsRow,
     sections.evidence,
     header.counts
