@@ -356,8 +356,9 @@ function createClaudeExtractor(session) {
     if (!isClaudeRecord(record)) return;
     state.evidence.recognized += 1;
     const content = record.message?.content;
-    if (record.type === "assistant" && Array.isArray(content)) {
-      for (const item of content) assistantItem(state, item, number);
+    if (record.type === "assistant") {
+      state.slashCall = null;
+      if (Array.isArray(content)) for (const item of content) assistantItem(state, item, number);
     } else if (record.type === "user") userRecord(state, record, number);
   };
   return { evidence: state.evidence, feed };

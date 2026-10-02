@@ -317,6 +317,13 @@ test("only the arguments recorded for a Claude load are stripped before matching
       content: `<command-message>mo-x</command-message>\n<command-name>/mo-x</command-name>\n<command-args>${args}</command-args>`,
     },
   });
+  const answer = (n) => ({
+    ...base,
+    timestamp: at(n),
+    type: "assistant",
+    uuid: `r${n}`,
+    message: { role: "assistant", content: [{ type: "text", text: "Cancelled." }] },
+  });
   const load = (n, source, shown) => ({
     ...base,
     timestamp: at(n),
@@ -347,6 +354,8 @@ test("only the arguments recorded for a Claude load are stripped before matching
     // The exact recorded suffix goes, through a Skill call and a slash command.
     [[skill(4, "s4", given), load(4, "s4", `${body}${marker}${given}`)], matched],
     [[slash(5, given), load(5, null, `${body}${marker}${given}`)], matched],
+    // A slash command the model already answered strips nothing from a later load.
+    [[slash(7, given), answer(7), load(7, null, `${body}${marker}${given}`)], unknown],
     // Stripping real arguments never hides an edit of the body itself.
     [[skill(6, "s6", given), load(6, "s6", `${edited}${marker}${given}`)], unknown],
   ]) {
