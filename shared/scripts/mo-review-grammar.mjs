@@ -62,7 +62,8 @@ export function topLevelParagraphs(text) {
 }
 
 /**
- * The rows strictly inside a multi-line inline code span.
+ * The rows that begin inside a multi-line inline code span, its closing row
+ * included and its opening row excluded.
  *
  * §A-REVIEW-04 makes a marker structure only as plain prose: a reviewer quoting
  * a multi-line span whose middle line reads `Grounding` has not opened a second
