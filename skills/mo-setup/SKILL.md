@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-setup; inspect or bri
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "0371be3051a248770eb26536034a3eecb8cd7955"
+  source_tree: "798f25b554ca721e9a90a2e6b81beb9f2da12b42"
 ---
 
 # Set up a project for Meta-O
@@ -182,7 +182,10 @@ or server protection without a separate request.
 If tracked repair is accepted, use a separate `feature/meta-o-setup` branch
 based on current `develop`; never mix setup
 repair into the current feature branch. Preserve unrelated work. Report each missing
-control, companion, capability, credential and policy independently.
+control, companion, capability, credential and policy independently, each with
+one actionable next step the human runs: the exact install, login, trust or
+configuration command, with no secret value in it. Never ask for or collect the
+credential itself.
 
 ## Meta-O calls
 

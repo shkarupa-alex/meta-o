@@ -56,6 +56,11 @@ test("setup checks controls, companions and every harness posture separately", (
   assert.match(contract, /Backend-wide health does not prove harness readiness/);
   assert.match(setup, /check mature `jq` and `flock` dependencies/);
   assert.match(contract, /require `jq` and `flock` separately\s+from the Orca control/);
+  // Naming a gap without the step that closes it leaves the human guessing.
+  assert.match(
+    setup.replace(/\s+/gu, " "),
+    /independently, each with one actionable next step the human runs: the exact install, login, trust or configuration command, with no secret value in it\. Never ask for or collect the credential itself\./u,
+  );
 });
 
 test("private Orca and specification workspaces are ignored and absent from the index", () => {
