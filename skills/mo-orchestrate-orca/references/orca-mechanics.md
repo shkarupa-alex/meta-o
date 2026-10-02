@@ -110,7 +110,9 @@ The handle is written to the owned-resource set before the wait, not after it: a
 terminal that exists but is recorded nowhere is the one nothing can close.
 `--model` and `--effort` are never passed together with `--terminal`; the argv
 already carries them, and a second source of the same fact is a second answer to
-"what ran?".
+"what ran?". A bind to a caller-created terminal may answer
+`turnStart: unsupported` (Orca 1.4.217 did on a first bind); consumption is then
+proven from that terminal's screen, never assumed from `input_accepted`.
 
 Recovery from `outcome_unknown` or `turn_start_unobserved` runs in one
 direction: `worker-stop --dispatch <old>`, prove a settled stop or `blocked`
@@ -132,7 +134,9 @@ and, after its first turn, the window beside it; anything cut or absent is
 `Try "…"` on a fresh session, or one that only the envelope's `draft` carries —
 is not an empty composer: a rendered screen loses the attribute that marks it
 and Orca reports no origin for composer text, so it refuses like typed text and
-is never erased to make room.
+is never erased to make room. Claude Code paints that suggestion only sometimes
+(2.1.287 painted none on a fresh session), so live evidence of a refusal may
+come from a real draft instead.
 
 Sending `worker_done` completes the Dispatch, but the agent session behind it
 stays hot. A new Dispatch binds to that same session with
