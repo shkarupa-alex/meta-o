@@ -7222,15 +7222,32 @@ function collectArguments(args) {
 function schemaComplete(given) {
   return given.has("--path") && given.has("--title") && given.has("--open-heading") && (given.get("--entry-field") ?? []).length > 0;
 }
+function callTarget(args) {
+  const seen = /* @__PURE__ */ new Map();
+  for (let index2 = 0; index2 < args.length; index2 += 1) {
+    if (!VALUED.has(args[index2]) || index2 + 1 >= args.length) continue;
+    const flag = args[index2];
+    const value = args[index2 += 1];
+    seen.set(flag, seen.has(flag) && seen.get(flag) !== value ? null : value);
+  }
+  const declared = args.some((flag) => SCHEMA_FLAGS.has(flag));
+  return {
+    repo: seen.get("--repo") ?? null,
+    path: declared ? seen.get("--path") ?? null : META_O_SCHEMA.path
+  };
+}
 function parseArguments(args) {
   const collected = collectArguments(args);
-  if (collected.help || collected.invalid) return collected;
+  if (collected.help) return collected;
+  if (collected.invalid) return { invalid: true, target: callTarget(args) };
   const { given } = collected;
   for (const flag of ["--candidate", "--expect-head", "--remote-head"]) {
-    if (given.has(flag) && !/^[a-f0-9]{40}$/u.test(given.get(flag))) return { invalid: true };
+    if (given.has(flag) && !/^[a-f0-9]{40}$/u.test(given.get(flag))) {
+      return { invalid: true, target: callTarget(args) };
+    }
   }
   const declared = [...SCHEMA_FLAGS].some((flag) => given.has(flag));
-  if (declared && !schemaComplete(given)) return { invalid: true, given, declared };
+  if (declared && !schemaComplete(given)) return { invalid: true, target: callTarget(args) };
   return { given, declared };
 }
 function defaultRoot() {
@@ -7243,16 +7260,16 @@ function main() {
     process.stdout.write(USAGE);
     return;
   }
-  const root = parsed.given?.get("--repo") ?? defaultRoot();
   if (parsed.invalid) {
-    const path = parsed.declared ? parsed.given.get("--path") ?? null : META_O_SCHEMA.path;
-    const result2 = unknown("call_error", null, worktreeState(root), path);
+    const { repo, path } = parsed.target;
+    const result2 = unknown("call_error", null, worktreeState(repo ?? defaultRoot()), path);
     process.stderr.write(`${result2.line}
 `);
     process.exitCode = 2;
     return;
   }
   const { given, declared } = parsed;
+  const root = given.get("--repo") ?? defaultRoot();
   const schema = declared ? {
     path: given.get("--path"),
     title: given.get("--title"),

@@ -254,6 +254,41 @@ test("a foreign notebook needs its whole schema, never half of this project's", 
   assert.match(complete.stderr, /reason=missing_file .*notes\/backlog\.md/u);
 });
 
+test("every call error answers about the caller's own repository and notebook", () => {
+  // Only a partial schema used to keep the caller's notebook: a bad SHA, an
+  // unknown or repeated flag fell back to this project's path and to the
+  // repository of the working directory, which at a foreign gate is neither.
+  const elsewhere = repositoryFixture();
+  const target = repositoryFixture();
+  writeFileSync(join(target, "untracked.txt"), "makes the caller's repository dirty\n");
+  const schema = ["--path", "notes/backlog.md", "--title", "Backlog", "--open-heading", "Open"];
+  const fields = ["--entry-field", "Reason."];
+  for (const [args, named] of [
+    [[...schema, ...fields, "--expect-head", "abc"], '"notes/backlog.md"'],
+    [[...schema, ...fields, "--remote-head", "xyz"], '"notes/backlog.md"'],
+    [["--bogus", "1", ...schema, ...fields], '"notes/backlog.md"'],
+    [[...schema, ...fields, "--bogus", "1"], '"notes/backlog.md"'],
+    [[...schema, "--title", "Other", ...fields], '"notes/backlog.md"'],
+    [["--title", "Backlog", "--expect-head", "abc"], "null"],
+    [["--path", "a.md", "--path", "b.md", "--title", "Backlog"], "null"],
+    [["--candidate", "bad"], '"docs/backlog.md"'],
+  ]) {
+    const result = spawnSync(process.execPath, [CLI, "--repo", target, ...args], {
+      cwd: elsewhere,
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 2, args.join(" "));
+    assert.match(
+      result.stderr,
+      new RegExp(
+        `^MO-BACKLOG-UNKNOWN version=1 reason=call_error sha=none worktree=dirty path=${named}$`,
+        "mu",
+      ),
+      args.join(" "),
+    );
+  }
+});
+
 test("the frozen line keeps its field order, names and streams", () => {
   const isolated = repositoryFixture();
   const empty = spawnSync(process.execPath, [CLI, "--repo", isolated], { encoding: "utf8" });

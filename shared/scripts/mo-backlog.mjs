@@ -382,15 +382,37 @@ function schemaComplete(given) {
   );
 }
 
+// A call error still answers about the caller's own repository and notebook,
+// so both are read from the raw arguments, before any rule can reject them: a
+// bad SHA, an unknown or repeated flag must not swap in this project's default
+// path or the working directory's repository. A repeated value names nothing.
+function callTarget(args) {
+  const seen = new Map();
+  for (let index = 0; index < args.length; index += 1) {
+    if (!VALUED.has(args[index]) || index + 1 >= args.length) continue;
+    const flag = args[index];
+    const value = args[(index += 1)];
+    seen.set(flag, seen.has(flag) && seen.get(flag) !== value ? null : value);
+  }
+  const declared = args.some((flag) => SCHEMA_FLAGS.has(flag));
+  return {
+    repo: seen.get("--repo") ?? null,
+    path: declared ? (seen.get("--path") ?? null) : META_O_SCHEMA.path,
+  };
+}
+
 function parseArguments(args) {
   const collected = collectArguments(args);
-  if (collected.help || collected.invalid) return collected;
+  if (collected.help) return collected;
+  if (collected.invalid) return { invalid: true, target: callTarget(args) };
   const { given } = collected;
   for (const flag of ["--candidate", "--expect-head", "--remote-head"]) {
-    if (given.has(flag) && !/^[a-f0-9]{40}$/u.test(given.get(flag))) return { invalid: true };
+    if (given.has(flag) && !/^[a-f0-9]{40}$/u.test(given.get(flag))) {
+      return { invalid: true, target: callTarget(args) };
+    }
   }
   const declared = [...SCHEMA_FLAGS].some((flag) => given.has(flag));
-  if (declared && !schemaComplete(given)) return { invalid: true, given, declared };
+  if (declared && !schemaComplete(given)) return { invalid: true, target: callTarget(args) };
   return { given, declared };
 }
 
@@ -414,17 +436,17 @@ function main() {
     process.stdout.write(USAGE);
     return;
   }
-  const root = parsed.given?.get("--repo") ?? defaultRoot();
   if (parsed.invalid) {
     // A call error names the notebook the caller declared, or none: this
     // project's own default path would point a foreign caller at the wrong file.
-    const path = parsed.declared ? (parsed.given.get("--path") ?? null) : META_O_SCHEMA.path;
-    const result = unknown("call_error", null, worktreeState(root), path);
+    const { repo, path } = parsed.target;
+    const result = unknown("call_error", null, worktreeState(repo ?? defaultRoot()), path);
     process.stderr.write(`${result.line}\n`);
     process.exitCode = 2;
     return;
   }
   const { given, declared } = parsed;
+  const root = given.get("--repo") ?? defaultRoot();
   const schema = declared
     ? {
         path: given.get("--path"),
