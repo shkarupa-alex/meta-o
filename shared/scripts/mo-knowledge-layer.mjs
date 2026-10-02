@@ -192,7 +192,7 @@ const NOTHING_MISSING = new Set([
  * a declared or a dangling papercut document wrong. An answer that read no
  * signals at all says `unknown` rather than guessing a list.
  */
-function missingSignals(reason, signals) {
+export function missingSignals(reason, signals) {
   if (reason === "partial_signals") return SIGNALS.filter((name) => !signals[name]).join(",");
   if (reason === "enabled_without_signals" || reason === "signals_removed")
     return SIGNALS.join(",");

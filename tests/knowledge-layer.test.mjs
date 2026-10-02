@@ -21,7 +21,11 @@ import { dirname, join, resolve } from "node:path";
 import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { knowledgeLayer, knowledgeLayerLine } from "../shared/scripts/mo-knowledge-layer.mjs";
+import {
+  knowledgeLayer,
+  knowledgeLayerLine,
+  missingSignals,
+} from "../shared/scripts/mo-knowledge-layer.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const HELPER = join(ROOT, "shared", "scripts", "mo-knowledge-layer.mjs");
@@ -321,29 +325,40 @@ test("a readiness gap names its missing signals, and setup reports the literal l
 });
 
 test("every eval scenario quotes a needs_attention line this helper can print", () => {
-  // An eval that quotes a line without `missing=` describes output the helper
-  // no longer produces, so a skill told to copy the field has nothing to copy.
+  // An eval that quotes a line the helper cannot print describes output that
+  // does not exist, so a skill told to copy the field has nothing to copy.
+  // The expected field comes from the helper's own mapping, not a copy of it.
   const strings = (value) =>
     typeof value === "string"
       ? [value]
       : Object.values(value ?? {}).flatMap((item) =>
           typeof item === "object" || typeof item === "string" ? strings(item) : [],
         );
-  const skills = readdirSync(join(ROOT, "src", "skills"));
+  const LINE = /^state=needs_attention reason=([a-z_]+) missing=([a-z,]+)$/u;
   const quoted = [];
-  for (const skill of skills) {
+  for (const skill of readdirSync(join(ROOT, "src", "skills"))) {
     const path = join(ROOT, "src", "skills", skill, "evals", "cases.json");
     if (!existsSync(path)) continue;
     for (const text of strings(JSON.parse(readFileSync(path, "utf8")))) {
       for (const [line] of text.matchAll(/(?:state=)?needs_attention reason=[^`]*/gu)) {
         quoted.push(line);
-        assert.match(
-          line,
-          /^state=needs_attention reason=[a-z_]+ missing=(none|unknown|(backlog|papercut|history)(,(papercut|history))*)$/u,
-          `${skill}: ${line}`,
+        const [, reason, missing] = line.match(LINE) ?? assert.fail(`${skill}: ${line}`);
+        const absent = new Set(missing.split(","));
+        const signals = Object.fromEntries(
+          ["backlog", "papercut", "history"].map((name) => [name, !absent.has(name)]),
         );
+        assert.equal(missingSignals(reason, signals), missing, `${skill}: ${line}`);
+        if (reason === "partial_signals") assert.ok(absent.size < 3, `${skill}: ${line}`);
       }
     }
   }
   assert.ok(quoted.length >= 3, "the corpus quotes the needs_attention branch");
+});
+
+test("the corpus guard compares against the helper's ordered missing= mapping", () => {
+  assert.equal(missingSignals("partial_signals", { backlog: true }), "papercut,history");
+  assert.notEqual(missingSignals("partial_signals", { backlog: true }), "history,papercut");
+  assert.equal(missingSignals("signals_removed", {}), "backlog,papercut,history");
+  assert.equal(missingSignals("conflicting_marker", {}), "none");
+  assert.equal(missingSignals("shallow_clone", {}), "unknown");
 });

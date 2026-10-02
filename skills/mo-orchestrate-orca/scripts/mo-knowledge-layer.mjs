@@ -7132,5 +7132,6 @@ export {
   HISTORY_PATHS,
   HISTORY_PATTERN,
   knowledgeLayer,
-  knowledgeLayerLine
+  knowledgeLayerLine,
+  missingSignals
 };
