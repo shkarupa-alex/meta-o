@@ -22,7 +22,7 @@
       "mustNot": [
         "overwrite unrelated user changes",
         "claim readiness from one proxy signal",
-        "report methodology friction anywhere other than that named repository"
+        "file methodology friction as an Issue anywhere other than that named repository, or write it to any external service during an eval or E2E run, where it stays a `Methodology-Friction:` line in the report"
       ]
     },
     {
