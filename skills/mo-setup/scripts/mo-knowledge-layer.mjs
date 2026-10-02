@@ -6986,13 +6986,22 @@ function localPath(url) {
   return path.startsWith("../") ? null : path;
 }
 function declaredPapercut(agents) {
+  const tree = fromMarkdown(agents);
+  const targets = /* @__PURE__ */ new Map();
+  const define = (node2) => {
+    if (node2.type === "definition" && !targets.has(node2.identifier))
+      targets.set(node2.identifier, node2.url);
+    for (const child of node2.children ?? []) define(child);
+  };
+  define(tree);
   const found = [];
   const visit = (node2) => {
-    const path = node2.type === "link" ? localPath(node2.url ?? "") : null;
+    const url = node2.type === "link" ? node2.url : node2.type === "linkReference" ? targets.get(node2.identifier) : void 0;
+    const path = url === void 0 ? null : localPath(url ?? "");
     if (path && /(?:^|\/)[^/]*papercut[^/]*\.md$/iu.test(path)) found.push(path);
     for (const child of node2.children ?? []) visit(child);
   };
-  visit(fromMarkdown(agents));
+  visit(tree);
   const lines = agents.split(/\r?\n/u).map((line) => PAPERCUT_LINE.exec(line.trim())?.[1]).filter(Boolean);
   if (lines.length > 1) return { reason: "conflicting_papercut" };
   for (const line of lines) {

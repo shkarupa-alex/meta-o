@@ -94,13 +94,30 @@ function localPath(url) {
  * @returns {{paths: string[]} | {reason: string}} declared paths or a typed failure
  */
 function declaredPapercut(agents) {
+  const tree = fromMarkdown(agents);
+  // A full, collapsed or shortcut reference link names the same document as an
+  // inline one, so its target is resolved through the document's definitions;
+  // a definition no link uses declares nothing.
+  const targets = new Map();
+  const define = (node) => {
+    if (node.type === "definition" && !targets.has(node.identifier))
+      targets.set(node.identifier, node.url);
+    for (const child of node.children ?? []) define(child);
+  };
+  define(tree);
   const found = [];
   const visit = (node) => {
-    const path = node.type === "link" ? localPath(node.url ?? "") : null;
+    const url =
+      node.type === "link"
+        ? node.url
+        : node.type === "linkReference"
+          ? targets.get(node.identifier)
+          : undefined;
+    const path = url === undefined ? null : localPath(url ?? "");
     if (path && /(?:^|\/)[^/]*papercut[^/]*\.md$/iu.test(path)) found.push(path);
     for (const child of node.children ?? []) visit(child);
   };
-  visit(fromMarkdown(agents));
+  visit(tree);
   const lines = agents
     .split(/\r?\n/u)
     .map((line) => PAPERCUT_LINE.exec(line.trim())?.[1])

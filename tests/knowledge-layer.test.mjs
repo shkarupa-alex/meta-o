@@ -179,6 +179,61 @@ test("a papercut document elsewhere counts only when AGENTS.md links it", () => 
   }
 });
 
+test("a reference link through a definition declares the papercut document like an inline one", () => {
+  const root = repository();
+  const base = {
+    ...LAYER,
+    "docs/papercut.md": null,
+    "knowledge/team-papercuts.md": "# Papercuts\n",
+  };
+  commit(root, base);
+  const bundle = join(ROOT, "skills", "mo-setup", "scripts", "mo-knowledge-layer.mjs");
+  const forms = [
+    (target) => `[Papercuts][PC]\n\n[pc]: ${target}\n`,
+    (target) => `[Papercuts][]\n\n[papercuts]: ${target}\n`,
+    (target) => `[Papercuts]\n\n[papercuts]: ${target}\n`,
+  ];
+  const enabled = "Knowledge-Layer: state=enabled reason=signals_present\n";
+  for (const [index, form] of forms.entries()) {
+    for (const marker of ["", "Knowledge-Layer: enabled\n\n"]) {
+      for (const suffix of ["", "#commands", "?view=full#commands"]) {
+        const label = `${index} ${marker !== ""} ${suffix}`;
+        const sha = commit(root, {
+          "AGENTS.md": `${LAYER["AGENTS.md"]}\n${marker}${form(`knowledge/team-papercuts.md${suffix}`)}`,
+        });
+        assert.deepEqual(answer(root, sha), { state: "enabled", reason: "signals_present" }, label);
+        for (const script of [HELPER, bundle]) {
+          const run = spawnSync(process.execPath, [script, "--candidate", sha, "--repo", root], {
+            encoding: "utf8",
+          });
+          assert.equal(run.status, 0, `${script} ${label}`);
+          assert.equal(run.stdout, enabled, `${script} ${label}`);
+        }
+      }
+    }
+  }
+  const gap = { state: "needs_attention", reason: "partial_signals", missing: "papercut" };
+  const negative = {
+    "an unused definition": "[pc]: knowledge/team-papercuts.md\n",
+    "a reference with no definition": "[Papercuts][pc]\n",
+    "a reference and definition in fenced code":
+      "```md\n[Papercuts][pc]\n\n[pc]: knowledge/team-papercuts.md\n```\n",
+    "an external target": "[Papercuts][pc]\n\n[pc]: https://example.com/team-papercuts.md\n",
+    "a target above the repository": "[Papercuts][pc]\n\n[pc]: ../team-papercuts.md\n",
+  };
+  for (const [label, text] of Object.entries(negative)) {
+    const sha = commit(root, { "AGENTS.md": `${LAYER["AGENTS.md"]}\n${text}` });
+    assert.deepEqual(answer(root, sha), gap, label);
+  }
+  // A file on disk that the candidate does not track is no document of it.
+  const untracked = commit(root, {
+    "knowledge/team-papercuts.md": null,
+    "AGENTS.md": `${LAYER["AGENTS.md"]}\n${forms[0]("knowledge/team-papercuts.md")}`,
+  });
+  writeFileSync(join(root, "knowledge", "team-papercuts.md"), "# Papercuts\n");
+  assert.deepEqual(answer(root, untracked), gap, "an untracked target");
+});
+
 test("a papercut document under any name counts when AGENTS.md declares it by line", () => {
   const root = repository();
   const agents = `${LAYER["AGENTS.md"]}\n[Грабли и команды проекта](docs/commands.md)\n`;
