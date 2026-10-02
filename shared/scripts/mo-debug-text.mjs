@@ -124,6 +124,22 @@ export function claudeBodyCandidates(shown, args) {
 }
 
 /**
+ * §A-DIAGNOSTICS-01 names the skill an installed `SKILL.md` read belongs to.
+ *
+ * Both harness extractors apply this one rule. A harness loads an installed copy
+ * under some `skills/<name>/` directory; the authored source under
+ * `src/skills/` is what a developer edits, and a `SKILL.md` outside a
+ * `skills/<name>/` directory is no install at all, so neither is a skill load.
+ *
+ * @param {string} path file path the agent read
+ * @returns {string|null} the skill name, or null when the read is no load
+ */
+export function installedSkillName(path) {
+  const match = /(?:^|\/)skills\/(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\/SKILL\.md$/u.exec(path);
+  return match && !/(?:^|\/)src\/skills\//u.test(path) ? match[1] : null;
+}
+
+/**
  * §A-DIAGNOSTICS-01 names the Meta-O helper scripts a shell command runs.
  *
  * @param {string} command recorded command text

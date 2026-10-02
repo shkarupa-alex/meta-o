@@ -17,6 +17,7 @@ import {
   SKILL_NAME,
   createEvidence,
   helperNames,
+  installedSkillName,
   owningSkill,
   sourceTreeIn,
   typedResult,
@@ -88,9 +89,8 @@ function skillReads(command, parsed) {
       : [];
   const names = [];
   for (const path of paths) {
-    const match = /(?:^|\/)skills\/(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\/SKILL\.md$/u.exec(path);
-    // The authored source is not what a harness loads; only installed copies count.
-    if (match && !/(?:^|\/)src\/skills\//u.test(path)) names.push(match[1]);
+    const name = installedSkillName(path);
+    if (name) names.push(name);
   }
   return [...new Set(names)];
 }

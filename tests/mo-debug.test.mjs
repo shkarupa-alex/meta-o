@@ -32,6 +32,8 @@ import { basename, dirname, join, resolve, sep } from "node:path";
 import { after, test } from "node:test";
 
 import { attribute, openHistory } from "../shared/scripts/mo-debug-history.mjs";
+import { createClaudeExtractor } from "../shared/scripts/mo-debug-claude.mjs";
+import { createCodexExtractor } from "../shared/scripts/mo-debug-codex.mjs";
 import { scan } from "../shared/scripts/mo-debug.mjs";
 import { openOwnedSession, resolveSession } from "../shared/scripts/mo-debug-sessions.mjs";
 import { EXCERPT_LIMIT, excerpt, redact } from "../shared/scripts/mo-debug-redact.mjs";
@@ -385,6 +387,84 @@ test("only the arguments recorded for a Claude load are stripped before matching
     `${authored}${marker}${nested}`,
     authored,
   ]);
+});
+
+test("both extractors count only an installed SKILL.md read as a skill load", () => {
+  // Opening the authored source to edit it is development, not a load; the
+  // Claude extractor used to report it as one while the Codex one did not.
+  const text = readFileSync(join(FIXTURES, "skill-v1.txt"), "utf8");
+  const claudeLoads = (path) => {
+    const { evidence, feed } = createClaudeExtractor(CLAUDE_ID);
+    const base = {
+      sessionId: CLAUDE_ID,
+      cwd: "/repo",
+      version: "2.1.0",
+      timestamp: "2026-09-01T10:00:00.000Z",
+    };
+    feed(
+      {
+        ...base,
+        type: "assistant",
+        uuid: "a1",
+        message: {
+          role: "assistant",
+          content: [{ type: "tool_use", id: "r1", name: "Read", input: { file_path: path } }],
+        },
+      },
+      1,
+    );
+    feed(
+      {
+        ...base,
+        type: "user",
+        uuid: "u1",
+        message: {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: "r1", content: text }],
+        },
+      },
+      2,
+    );
+    return evidence.events.filter((event) => event.kind === "skill_loaded").length;
+  };
+  const codexLoads = (path) => {
+    const { evidence, feed } = createCodexExtractor(CODEX_ID);
+    const command = `cat ${path}`;
+    feed(
+      {
+        timestamp: "2026-09-01T11:00:00.000Z",
+        type: "event_msg",
+        payload: {
+          type: "item_completed",
+          thread_id: CODEX_ID,
+          turn_id: "t1",
+          item: {
+            type: "CommandExecution",
+            id: "exec-1",
+            command: ["/bin/bash", "-lc", command],
+            cwd: "file:///repo",
+            parsed_cmd: [{ type: "read", cmd: command, name: "SKILL.md", path }],
+            status: "completed",
+            stdout: text,
+            stderr: "",
+            aggregated_output: text,
+            exit_code: 0,
+          },
+        },
+      },
+      1,
+    );
+    return evidence.events.filter((event) => event.kind === "skill_loaded").length;
+  };
+  for (const [path, expected] of [
+    ["/repo/src/skills/mo-review-orca/SKILL.md", 0],
+    ["/tmp/mo-foo/SKILL.md", 0],
+    ["/home/u/.claude/skills/mo-review-orca/SKILL.md", 1],
+    ["/home/u/.codex/skills/mo-review-orca/SKILL.md", 1],
+  ]) {
+    assert.equal(claudeLoads(path), expected, `claude ${path}`);
+    assert.equal(codexLoads(path), expected, `codex ${path}`);
+  }
 });
 
 /** A loaded, complete copy of one committed fixture version, stamp included. */

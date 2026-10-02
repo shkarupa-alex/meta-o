@@ -212,6 +212,10 @@ ARGUMENTS: ${args}` : null;
   if (suffix && shown.endsWith(suffix)) candidates.push(shown.slice(0, -suffix.length));
   return candidates;
 }
+function installedSkillName(path) {
+  const match = /(?:^|\/)skills\/(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\/SKILL\.md$/u.exec(path);
+  return match && !/(?:^|\/)src\/skills\//u.test(path) ? match[1] : null;
+}
 function helperNames(command) {
   return [...new Set([...String(command).matchAll(HELPER)].map((match) => match[1]))];
 }
@@ -249,7 +253,6 @@ function createEvidence(session, harness) {
 var LOAD_PREFIX = "Base directory for this skill: ";
 var COMMAND = /<command-name>\/?(mo-[a-z0-9]+(?:-[a-z0-9]+)*)<\/command-name>/u;
 var COMMAND_ARGS = /<command-args>([\s\S]*?)<\/command-args>/u;
-var SKILL_FILE = /(?:^|\/)(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\/SKILL\.md$/u;
 function isClaudeRecord(record) {
   return typeof record.type === "string" && (typeof record.sessionId === "string" || record.message !== null && typeof record.message === "object");
 }
@@ -279,8 +282,8 @@ function assistantItem(state, item, number) {
     state.helperCalls.set(item.id, skill);
     return;
   }
-  const read = item.name === "Read" ? SKILL_FILE.exec(item.input.file_path ?? "") : null;
-  if (read) state.readCalls.set(item.id, read[1]);
+  const read = item.name === "Read" ? installedSkillName(String(item.input.file_path ?? "")) : null;
+  if (read) state.readCalls.set(item.id, read);
 }
 function skillLoad(state, record, text, number) {
   const lineEnd = text.indexOf("\n");
@@ -415,8 +418,8 @@ function skillReads(command, parsed) {
   const paths = Array.isArray(parsed) ? parsed.filter((entry) => entry?.type === "read").map((entry) => String(entry.path ?? "")) : READ_VERB.test(command) ? [...command.matchAll(INSTALLED_READ)].map((match) => match[1]) : [];
   const names = [];
   for (const path of paths) {
-    const match = /(?:^|\/)skills\/(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\/SKILL\.md$/u.exec(path);
-    if (match && !/(?:^|\/)src\/skills\//u.test(path)) names.push(match[1]);
+    const name = installedSkillName(path);
+    if (name) names.push(name);
   }
   return [...new Set(names)];
 }

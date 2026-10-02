@@ -16,6 +16,7 @@ import {
   claudeBodyCandidates,
   createEvidence,
   helperNames,
+  installedSkillName,
   owningSkill,
   sourceTreeIn,
   typedLines,
@@ -25,7 +26,6 @@ import {
 const LOAD_PREFIX = "Base directory for this skill: ";
 const COMMAND = /<command-name>\/?(mo-[a-z0-9]+(?:-[a-z0-9]+)*)<\/command-name>/u;
 const COMMAND_ARGS = /<command-args>([\s\S]*?)<\/command-args>/u;
-const SKILL_FILE = /(?:^|\/)(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\/SKILL\.md$/u;
 
 function isClaudeRecord(record) {
   return (
@@ -65,8 +65,8 @@ function assistantItem(state, item, number) {
     state.helperCalls.set(item.id, skill);
     return;
   }
-  const read = item.name === "Read" ? SKILL_FILE.exec(item.input.file_path ?? "") : null;
-  if (read) state.readCalls.set(item.id, read[1]);
+  const read = item.name === "Read" ? installedSkillName(String(item.input.file_path ?? "")) : null;
+  if (read) state.readCalls.set(item.id, read);
 }
 
 /**
