@@ -85,7 +85,7 @@
         "§A-ORCHESTRATION-01",
         "§A-REVIEW-02"
       ],
-      "scenario": "The executor's earlier handoff carried a cleanroom self-review PASS from a subagent that saw only the specification, the diff and the candidate SHA. The external vendor pair then returned FINDINGS. The executor fixed them and proposes to ask the same hot subagent to confirm the fix before the next handoff. The case evaluates the orchestrator's answer to that proposal, not the proposal itself.",
+      "scenario": "The executor's earlier handoff carried a cleanroom self-review PASS from a subagent that saw only the specification, the diff and the candidate SHA. The external vendor pair then returned FINDINGS. The executor fixed them and proposes to ask the same hot subagent to confirm the fix before the next handoff. The case evaluates what the instructions direct the orchestrator to answer; the executor's proposal is only the stimulus, and an oracle is satisfied or not by that answer, never by the proposal.",
       "must": [
         "under §A-ORCHESTRATION-01 ask the executor for a new cleanroom subagent after the external FINDINGS, keeping the previous subagent only for follow-ups within its own earlier remediation",
         "under §A-REVIEW-02 send the fixed candidate to the vendor pair and treat the self-review as the executor's statement, not as review evidence"
