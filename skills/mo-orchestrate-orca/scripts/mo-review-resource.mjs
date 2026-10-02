@@ -146,12 +146,36 @@ export function deepPairDecision({ phase, reason }) {
   return { allowed: false, reason: "no_recorded_reason" };
 }
 
+// The calling skills point here for the exact inputs, so the usage names every
+// flag and JSON key the commands read; a guessed name would answer a verdict on
+// facts nobody gave instead of an error.
+const USAGE = `usage: mo-review-resource.mjs <command> …
+
+  comment --pair <id> --slot A|B --candidate <40-hex sha> --project <id>
+          --worktree <orca worktree id> --feature <name>
+      prints the two-line worktree comment of a review slot
+
+  release < facts.json
+      one JSON object on stdin, every boolean observed through Orca and Git:
+      {"comment": "<worktree comment>", "worktreeId": "<orca worktree id>",
+       "project": "<project id>", "sameGitDir": <bool>, "projectRegistered": <bool>,
+       "bindingsProven": <bool>, "liveSession": <bool>, "coordinatorCheckout": <bool>,
+       "clean": <bool>, "dependency": <bool>, "head": "<sha>", "nextCandidate": "<sha>"}
+
+  hot --alive yes|no --ready yes|no --composer empty|other [--age-ms <n>]
+      [--context-tokens <n> | --context-percent <n> --context-window <n>]
+
+  deep --phase first|final|remediation [--reason <code>]
+`;
+
+class UsageError extends Error {}
+
 function options(argv) {
   const parsed = {};
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
     if (!flag?.startsWith("--") || argv[index + 1] === undefined) {
-      throw new Error(`expected --flag value, got ${flag}`);
+      throw new UsageError(`expected --flag value, got ${flag}`);
     }
     parsed[flag.slice(2)] = argv[index + 1];
   }
@@ -180,8 +204,30 @@ function contextOption(parsed) {
   return { kind: "unknown" };
 }
 
+function releaseFacts() {
+  let facts;
+  try {
+    facts = JSON.parse(readFileSync(0, "utf8"));
+  } catch {
+    facts = null;
+  }
+  if (facts === null || typeof facts !== "object" || Array.isArray(facts)) {
+    throw new UsageError("release reads one JSON object of facts on stdin");
+  }
+  return facts;
+}
+
+function requireFlags(command, parsed, names) {
+  const missing = names.filter((flag) => parsed[flag] === undefined);
+  if (missing.length > 0) throw new UsageError(`${command} needs --${missing.join(", --")}`);
+}
+
 function main(argv) {
   const [command, ...rest] = argv;
+  if (command === "--help") {
+    process.stdout.write(USAGE);
+    return 0;
+  }
   const parsed = options(rest);
   if (command === "comment") {
     const result = resourceComment(parsed);
@@ -190,7 +236,7 @@ function main(argv) {
     return 0;
   }
   if (command === "release") {
-    const facts = JSON.parse(readFileSync(0, "utf8"));
+    const facts = releaseFacts();
     const result = releaseDecision(facts);
     process.stdout.write(
       `${RESOURCE_PREFIX} action=${result.action} reason=${result.reason} worktree=${JSON.stringify(String(facts.worktreeId))}\n`,
@@ -198,6 +244,7 @@ function main(argv) {
     return 0;
   }
   if (command === "hot") {
+    requireFlags("hot", parsed, ["alive", "ready", "composer"]);
     const result = slotHot({
       alive: yesNo(parsed.alive),
       ready: yesNo(parsed.ready),
@@ -217,7 +264,7 @@ function main(argv) {
     );
     return result.allowed ? 0 : 1;
   }
-  throw new Error("usage: mo-review-resource.mjs <comment|release|hot|deep> …");
+  throw new UsageError(`unknown command ${command}`);
 }
 
 /**
@@ -240,6 +287,7 @@ if (invokedDirectly()) {
     process.exitCode = main(process.argv.slice(2));
   } catch (error) {
     process.stderr.write(`${error.message}\n`);
+    if (error instanceof UsageError) process.stderr.write(USAGE);
     process.exitCode = 2;
   }
 }

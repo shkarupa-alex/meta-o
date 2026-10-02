@@ -210,3 +210,66 @@ test("the coordinator is told to use these answers, not to reason past them", ()
   assert.doesNotMatch(skill, /Before the one final same-SHA proof, release exact-owned/u);
   assert.doesNotMatch(skill, /git worktree prune` is (?:allowed|used)/u);
 });
+
+test("every input the helper reads is printed by --help and stated in the calling skill", () => {
+  // The calling skill named the commands but not their inputs, so a coordinator
+  // could form the call only from the source, and a guessed key or flag kept an
+  // owned worktree as ownership_unknown or replaced a hot slot as not ready.
+  const keys = [
+    "comment",
+    "worktreeId",
+    "project",
+    "sameGitDir",
+    "projectRegistered",
+    "bindingsProven",
+    "liveSession",
+    "coordinatorCheckout",
+    "clean",
+    "dependency",
+    "head",
+    "nextCandidate",
+  ];
+  const flags = [
+    "--pair",
+    "--slot",
+    "--candidate",
+    "--project",
+    "--worktree",
+    "--feature",
+    "--alive",
+    "--ready",
+    "--composer",
+    "--age-ms",
+    "--context-tokens",
+    "--context-percent",
+    "--context-window",
+  ];
+  const help = spawnSync(process.execPath, [HELPER, "--help"], { encoding: "utf8" });
+  assert.equal(help.status, 0);
+  for (const skillPath of [
+    "src/skills/mo-review-orca/SKILL.md",
+    "skills/mo-review-orca/SKILL.md",
+  ]) {
+    const skill = readFileSync(join(ROOT, skillPath), "utf8");
+    for (const key of keys) {
+      assert.match(help.stdout, new RegExp(`"${key}"`, "u"), key);
+      assert.match(skill, new RegExp(`"${key}"`, "u"), `${skillPath} ${key}`);
+    }
+    for (const flag of flags) {
+      assert.ok(help.stdout.includes(`${flag} `), flag);
+      assert.ok(skill.includes(`${flag} `), `${skillPath} ${flag}`);
+    }
+  }
+  // A missing observation is a call error with the usage, never a verdict.
+  const bare = spawnSync(process.execPath, [HELPER, "hot", "--age-ms", "60000"], {
+    encoding: "utf8",
+  });
+  assert.equal(bare.status, 2);
+  assert.equal(bare.stdout, "");
+  assert.match(bare.stderr, /^hot needs --alive, --ready, --composer\nusage: /u);
+  for (const input of ["", "[]", "null", "not json"]) {
+    const release = spawnSync(process.execPath, [HELPER, "release"], { input, encoding: "utf8" });
+    assert.equal(release.status, 2, input);
+    assert.match(release.stderr, /usage: mo-review-resource\.mjs/u, input);
+  }
+});

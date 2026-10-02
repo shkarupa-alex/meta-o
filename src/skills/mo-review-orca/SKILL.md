@@ -141,7 +141,18 @@ checkout otherwise answers a relative path that matches nothing, the project's
 Orca registration, the terminal and provider session bindings proven through `terminal show/list` and
 `worker show/status`, whether a live session or the coordinator's or
 executor's checkout uses it, a clean tree, and whether another live resource
-depends on it. It answers one line:
+depends on it. The facts go to its stdin as one JSON object, each boolean
+observed and never assumed; `scripts/mo-review-resource.mjs --help` prints this
+and every other command's inputs:
+
+```json
+{"comment": "<worktree comment>", "worktreeId": "<orca worktree id>",
+ "project": "<project id>", "sameGitDir": true, "projectRegistered": true,
+ "bindingsProven": true, "liveSession": false, "coordinatorCheckout": false,
+ "clean": true, "dependency": false, "head": "<sha>", "nextCandidate": "<sha>"}
+```
+
+It answers one line:
 
 ```text
 MO-REVIEW-RESOURCE/1 action=<release|reuse|keep|check_hot> reason=<code> worktree="<id>"
@@ -157,7 +168,8 @@ never stands in for a marker.
 
 Each slot's worktree is marked right after `orca worktree create` or `show`
 returns its exact id, with one `worktree set --comment` holding the two lines
-`mo-review-resource.mjs comment` prints: the
+`mo-review-resource.mjs comment --pair <id> --slot A|B --candidate <sha>
+--project <id> --worktree <orca worktree id> --feature <name>` prints: the
 `MO-REVIEW-RESOURCE/1 pair=… slot=… candidate=… project=… worktree=…` marker a
 restarted coordinator matches, and `<feature> review slot A|B @ <short sha>`
 for a human. `--workspace-status in-review` stays the human-readable status.
@@ -243,6 +255,8 @@ Before each such Dispatch decide every slot separately with
 
 ```text
 hot(slot) = alive_and_ready(slot) AND (age < 1h OR context_proven_small(slot))
+scripts/mo-review-resource.mjs hot --alive yes|no --ready yes|no --composer empty|other \
+  [--age-ms <n>] [--context-tokens <n> | --context-percent <n> --context-window <n>]
 ```
 
 `age` runs from the slot's last `worker_done` by Dispatch events;

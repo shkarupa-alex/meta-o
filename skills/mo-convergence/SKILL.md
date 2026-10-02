@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-convergence; ask the 
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "842d8685a1104a847e61a485db9a650fe129ab83"
+  source_tree: "654adea016caa5fab6eebab06c0b4550691dac93"
 ---
 
 # Diagnose work that does not converge
@@ -29,7 +29,8 @@ unavailable, not reconstructed.
 
 
 Neither step is a judgement call. Whether a reviewer slot is hot is answered
-per slot by bundled `scripts/mo-review-resource.mjs hot` from the age since its
+per slot by bundled `scripts/mo-review-resource.mjs hot`, whose flags its `--help`
+lists, from the age since its
 last `worker_done` and the context its screen shows, as
 [Orca native mechanics](references/orca-mechanics.md) describes; a slot it does
 not answer hot is cold. Bytes reach a live agent only through its proven empty

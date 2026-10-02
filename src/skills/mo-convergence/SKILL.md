@@ -28,7 +28,8 @@ unavailable, not reconstructed.
 <!-- mo:source-anchor §A-DELIVERY-01 -->
 
 Neither step is a judgement call. Whether a reviewer slot is hot is answered
-per slot by bundled `scripts/mo-review-resource.mjs hot` from the age since its
+per slot by bundled `scripts/mo-review-resource.mjs hot`, whose flags its `--help`
+lists, from the age since its
 last `worker_done` and the context its screen shows, as
 [Orca native mechanics](references/orca-mechanics.md) describes; a slot it does
 not answer hot is cold. Bytes reach a live agent only through its proven empty

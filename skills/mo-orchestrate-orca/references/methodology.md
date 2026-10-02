@@ -263,7 +263,8 @@ A Dispatch, a provider session, a PTY and a worktree are four resources, and
 neither reviewer is released or closed until both dispositions settle, and the
 next candidate goes to the same pair as `follow_up` with each reviewer's own
 prior reports and dispositions. Whether a slot can take that Dispatch is one
-rule per slot, answered by bundled `mo-review-resource.mjs hot`:
+rule per slot, answered by bundled `mo-review-resource.mjs hot`, whose flags its
+`--help` lists:
 
 ```text
 hot(slot) = alive_and_ready(slot) AND (age < 1h OR context_proven_small(slot))
