@@ -7232,7 +7232,7 @@ function callTarget(args) {
   }
   const declared = args.some((flag) => SCHEMA_FLAGS.has(flag));
   return {
-    repo: seen.get("--repo") ?? null,
+    repo: seen.has("--repo") ? seen.get("--repo") : void 0,
     path: declared ? seen.get("--path") ?? null : META_O_SCHEMA.path
   };
 }
@@ -7262,7 +7262,8 @@ function main() {
   }
   if (parsed.invalid) {
     const { repo, path } = parsed.target;
-    const result2 = unknown("call_error", null, worktreeState(repo ?? defaultRoot()), path);
+    const worktree = repo === null ? "unknown" : worktreeState(repo ?? defaultRoot());
+    const result2 = unknown("call_error", null, worktree, path);
     process.stderr.write(`${result2.line}
 `);
     process.exitCode = 2;

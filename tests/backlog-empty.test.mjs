@@ -287,6 +287,17 @@ test("every call error answers about the caller's own repository and notebook", 
       args.join(" "),
     );
   }
+  // Two different repositories name neither, and the working directory's
+  // clean tree must not stand in for the caller's.
+  const twice = spawnSync(process.execPath, [CLI, "--repo", target, "--repo", elsewhere], {
+    cwd: elsewhere,
+    encoding: "utf8",
+  });
+  assert.equal(twice.status, 2);
+  assert.match(
+    twice.stderr,
+    / reason=call_error sha=none worktree=unknown path="docs\/backlog\.md"$/mu,
+  );
 });
 
 test("the frozen line keeps its field order, names and streams", () => {

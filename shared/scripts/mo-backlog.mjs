@@ -396,7 +396,7 @@ function callTarget(args) {
   }
   const declared = args.some((flag) => SCHEMA_FLAGS.has(flag));
   return {
-    repo: seen.get("--repo") ?? null,
+    repo: seen.has("--repo") ? seen.get("--repo") : undefined,
     path: declared ? (seen.get("--path") ?? null) : META_O_SCHEMA.path,
   };
 }
@@ -439,8 +439,11 @@ function main() {
   if (parsed.invalid) {
     // A call error names the notebook the caller declared, or none: this
     // project's own default path would point a foreign caller at the wrong file.
+    // Two different --repo values name no repository, and the working
+    // directory's is not the caller's either: its state stays unknown.
     const { repo, path } = parsed.target;
-    const result = unknown("call_error", null, worktreeState(repo ?? defaultRoot()), path);
+    const worktree = repo === null ? "unknown" : worktreeState(repo ?? defaultRoot());
+    const result = unknown("call_error", null, worktree, path);
     process.stderr.write(`${result.line}\n`);
     process.exitCode = 2;
     return;
