@@ -285,11 +285,13 @@ what the context flags take. A refused screen on an idle session is
 and it is never by itself a reason for a new deep pair.
 
 Orca's own folder pre-trust, on by default, trusts the start's worktree before
-the harness launches, so a reviewer start meets no trust UI. With that setting
-turned off by the owner, a Codex start that fails with `agent-trust-workspace` stays inside the
-supported harness: release the failed Dispatch by its exact id, prove trust by
-the trust procedure, and start the normal supervised harness again. A Claude start that times out
-at `agent_readiness` on Claude's folder-trust dialog is recovered the same way:
+the harness launches, so a reviewer start normally meets no trust UI. Whenever a
+start still meets trust UI or a trust failure — the owner turned that setting
+off, or the start took a route it did not cover — a Codex start that fails with
+`agent-trust-workspace` stays inside the supported harness: release the failed
+Dispatch by its exact id, prove trust by the trust procedure, and start the
+normal supervised harness again. A Claude start that times out at
+`agent_readiness` on Claude's folder-trust dialog is recovered the same way:
 answer the dialog in that start's own terminal by the trust procedure, release
 the failed Dispatch and start again with `--retry-of`.
 

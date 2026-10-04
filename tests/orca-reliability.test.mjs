@@ -143,10 +143,25 @@ test("Orca's own folder pre-trust is the normal start and the trust procedure it
     join(ROOT, "src", "skills", "mo-review-orca", "SKILL.md"),
     "utf8",
   ).replace(/\s+/gu, " ");
+  // The skill states the same condition as the mechanics it ships, so a
+  // coordinator never reads its recovery as reserved for a disabled setting.
   assert.match(
     review,
-    /With that setting turned off by the owner, a Codex start that fails with `agent-trust-workspace`/u,
+    /Whenever a start still meets trust UI or a trust failure — the owner turned that setting off, or the start took a route it did not cover — a Codex start that fails with `agent-trust-workspace`/u,
   );
+  assert.doesNotMatch(
+    review,
+    /With that setting turned off by the owner|a reviewer start meets no trust UI/u,
+  );
+  for (const document of ["backend-capabilities.md", "papercut.md"]) {
+    const text = readFileSync(join(ROOT, "docs", document), "utf8").replace(/\s+/gu, " ");
+    assert.doesNotMatch(
+      text,
+      /остаётся путём для выключенной настройки\.|остаётся для выключенной:/u,
+      document,
+    );
+    assert.match(text, /который она не покрывает/u, document);
+  }
 });
 
 test("the papercut audit lists no release fallback that Orca 1.4.217 made obsolete", () => {
