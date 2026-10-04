@@ -25,7 +25,7 @@ const FRONTMATTER_BLOCK = /(?:^|\n)---\n([\s\S]*?)\n---(?:\n|$)/gu;
 const RESERVED = String.raw`(?:(?:[!{]|if|then|else|elif|do|while|until)[ \t]+)*`;
 const WRAPPER = String.raw`(?:[A-Za-z_]\w*=\S*[ \t]+)*(?:(?:env|timeout|time|nice|exec|command)(?:[ \t]+(?:-[-\w]*(?:=\S*)?|[A-Za-z_]\w*=\S*|[A-Z_][A-Z0-9_]*|\d+(?:\.\d+)?[smhd]?))*[ \t]+)*`;
 const HELPER = new RegExp(
-  String.raw`(?:^|[;&|(\n])[ \t]*${RESERVED}${WRAPPER}(?:node[ \t]+(?:-[-\w=]*[ \t]+)*)?["']?(?:[^\s"';&|]*\/)?(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\.mjs\b`,
+  String.raw`(?:^|[;&|(\n])[ \t]*${RESERVED}${WRAPPER}(?:node[ \t]+(?:-[-\w=]*[ \t]+)*)?["']?(?:[^\s"';&|=]*\/)?(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\.mjs\b`,
   "gu",
 );
 const SKILL_DIR = /(?:^|[\s/'"=])(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\/(?:scripts|SKILL\.md)\b/u;
@@ -160,13 +160,15 @@ export function helperNames(command) {
 }
 
 // Commit messages, PR bodies and here-documents quote helpers as text, so the
-// command-position rule reads a copy in which only what the shell itself would
-// run keeps its separators: a backtick counts when it is unescaped and outside
-// single quotes (inside double quotes it still substitutes) and becomes a
-// newline, while a newline inside quotes, a comment and the body of a
-// here-document become spaces. A backtick in an unquoted here-document still
-// substitutes. This is a bounded reading of shell text, not a shell parser.
+// command-position rule reads a copy of the command in which every shell word
+// stays one word and only what the shell itself would run keeps its
+// separators. A blank or separator that is data (quoted, escaped) becomes DATA,
+// a non-blank stand-in, so `NAME='a b'` or `printf 'x; y'` stays one word; a
+// comment and a here-document body become blanks, and a backtick or `$(`,
+// where it substitutes, opens a command again. This is a bounded reading of
+// shell text, not a shell parser.
 const HEREDOC = /^<<-?[ \t]*(['"]?)([A-Za-z0-9_.-]+)\1/u;
+const DATA = "\x01";
 
 function heredocBody(command, start, pending) {
   let index = start;
@@ -199,8 +201,9 @@ function opensComment(command, index) {
 function unquotedSpan(command, index, state) {
   const char = command[index];
   if (char === "\\" && !state.single) {
+    if (command[index + 1] === "\n") return { text: " ", next: index + 2 };
     const pair = command.slice(index, index + 2);
-    return { text: pair.replace(/[\n\x60;&|(]/u, " "), next: index + 2 };
+    return { text: pair.replace(/[\s\x60;&|()]/u, DATA), next: index + 2 };
   }
   if (state.single || state.double) return null;
   if (char === "#" && opensComment(command, index)) {
@@ -222,18 +225,46 @@ function unquotedSpan(command, index, state) {
   return null;
 }
 
-// Inside quotes a separator is data; only a backtick outside single quotes and
-// a `$(` inside double quotes still run a command there.
-function quotedChar(command, index, state) {
+// A substitution runs its text as code even inside double quotes, so it saves
+// the quote state it opened in and restores it when it closes.
+function backtick(state) {
+  if (state.frames.at(-1)?.close === "\x60") state.double = state.frames.pop().double;
+  else {
+    state.frames.push({ close: "\x60", double: state.double });
+    state.double = false;
+  }
+  return "\n";
+}
+
+// A `(` opens code wherever the shell reads it as syntax: unquoted, or as
+// `$(` inside double quotes; its `)` restores the quote state it saved.
+function parenthesis(command, index, state) {
   const char = command[index];
-  if (char === "\x60" && !state.single) return "\n";
-  if (!state.single && !state.double) return char;
-  if (char === "(" && state.double && command[index - 1] === "$") return char;
-  return /[\n;&|(]/u.test(char) ? " " : char;
+  if (char === "(" && (!state.double || command[index - 1] === "$")) {
+    state.frames.push({ close: ")", double: state.double });
+    state.double = false;
+    return true;
+  }
+  if (char === ")" && !state.double && state.frames.at(-1)?.close === ")") {
+    state.double = state.frames.pop().double;
+    return true;
+  }
+  return false;
+}
+
+function plainChar(command, index, state) {
+  const char = command[index];
+  if (char === "'" && !state.double) state.single = !state.single;
+  else if (char === '"' && !state.single) state.double = !state.double;
+  else if (state.single) return /[\s\x60;&|()]/u.test(char) ? DATA : char;
+  else if (char === "\x60") return backtick(state);
+  else if (parenthesis(command, index, state)) return char;
+  else if (state.double) return /[\s;&|()]/u.test(char) ? DATA : char;
+  return char;
 }
 
 function substitutionsOpened(command) {
-  const state = { single: false, double: false, pending: [] };
+  const state = { single: false, double: false, pending: [], frames: [] };
   let out = "";
   let index = 0;
   while (index < command.length) {
@@ -243,10 +274,7 @@ function substitutionsOpened(command) {
       index = span.next;
       continue;
     }
-    const char = command[index];
-    if (char === "'" && !state.double) state.single = !state.single;
-    else if (char === '"' && !state.single) state.double = !state.double;
-    out += quotedChar(command, index, state);
+    out += plainChar(command, index, state);
     index += 1;
   }
   return out;

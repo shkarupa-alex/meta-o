@@ -167,7 +167,7 @@ var FRONTMATTER_BLOCK = /(?:^|\n)---\n([\s\S]*?)\n---(?:\n|$)/gu;
 var RESERVED = String.raw`(?:(?:[!{]|if|then|else|elif|do|while|until)[ \t]+)*`;
 var WRAPPER = String.raw`(?:[A-Za-z_]\w*=\S*[ \t]+)*(?:(?:env|timeout|time|nice|exec|command)(?:[ \t]+(?:-[-\w]*(?:=\S*)?|[A-Za-z_]\w*=\S*|[A-Z_][A-Z0-9_]*|\d+(?:\.\d+)?[smhd]?))*[ \t]+)*`;
 var HELPER = new RegExp(
-  String.raw`(?:^|[;&|(\n])[ \t]*${RESERVED}${WRAPPER}(?:node[ \t]+(?:-[-\w=]*[ \t]+)*)?["']?(?:[^\s"';&|]*\/)?(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\.mjs\b`,
+  String.raw`(?:^|[;&|(\n])[ \t]*${RESERVED}${WRAPPER}(?:node[ \t]+(?:-[-\w=]*[ \t]+)*)?["']?(?:[^\s"';&|=]*\/)?(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\.mjs\b`,
   "gu"
 );
 var SKILL_DIR = /(?:^|[\s/'"=])(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\/(?:scripts|SKILL\.md)\b/u;
@@ -227,6 +227,7 @@ function helperNames(command) {
   return [...new Set([...text.matchAll(HELPER)].map((match) => match[1]))];
 }
 var HEREDOC = /^<<-?[ \t]*(['"]?)([A-Za-z0-9_.-]+)\1/u;
+var DATA = "";
 function heredocBody(command, start, pending) {
   let index = start;
   let out = "";
@@ -249,8 +250,9 @@ function opensComment(command, index) {
 function unquotedSpan(command, index, state) {
   const char = command[index];
   if (char === "\\" && !state.single) {
+    if (command[index + 1] === "\n") return { text: " ", next: index + 2 };
     const pair = command.slice(index, index + 2);
-    return { text: pair.replace(/[\n\x60;&|(]/u, " "), next: index + 2 };
+    return { text: pair.replace(/[\s\x60;&|()]/u, DATA), next: index + 2 };
   }
   if (state.single || state.double) return null;
   if (char === "#" && opensComment(command, index)) {
@@ -272,15 +274,39 @@ function unquotedSpan(command, index, state) {
   }
   return null;
 }
-function quotedChar(command, index, state) {
+function backtick(state) {
+  if (state.frames.at(-1)?.close === "`") state.double = state.frames.pop().double;
+  else {
+    state.frames.push({ close: "`", double: state.double });
+    state.double = false;
+  }
+  return "\n";
+}
+function parenthesis(command, index, state) {
   const char = command[index];
-  if (char === "`" && !state.single) return "\n";
-  if (!state.single && !state.double) return char;
-  if (char === "(" && state.double && command[index - 1] === "$") return char;
-  return /[\n;&|(]/u.test(char) ? " " : char;
+  if (char === "(" && (!state.double || command[index - 1] === "$")) {
+    state.frames.push({ close: ")", double: state.double });
+    state.double = false;
+    return true;
+  }
+  if (char === ")" && !state.double && state.frames.at(-1)?.close === ")") {
+    state.double = state.frames.pop().double;
+    return true;
+  }
+  return false;
+}
+function plainChar(command, index, state) {
+  const char = command[index];
+  if (char === "'" && !state.double) state.single = !state.single;
+  else if (char === '"' && !state.single) state.double = !state.double;
+  else if (state.single) return /[\s\x60;&|()]/u.test(char) ? DATA : char;
+  else if (char === "`") return backtick(state);
+  else if (parenthesis(command, index, state)) return char;
+  else if (state.double) return /[\s;&|()]/u.test(char) ? DATA : char;
+  return char;
 }
 function substitutionsOpened(command) {
-  const state = { single: false, double: false, pending: [] };
+  const state = { single: false, double: false, pending: [], frames: [] };
   let out = "";
   let index = 0;
   while (index < command.length) {
@@ -290,10 +316,7 @@ function substitutionsOpened(command) {
       index = span.next;
       continue;
     }
-    const char = command[index];
-    if (char === "'" && !state.double) state.single = !state.single;
-    else if (char === '"' && !state.single) state.double = !state.double;
-    out += quotedChar(command, index, state);
+    out += plainChar(command, index, state);
     index += 1;
   }
   return out;

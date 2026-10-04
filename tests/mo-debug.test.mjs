@@ -535,6 +535,11 @@ test("a helper named in an argument of another program is not a call", () => {
     'echo "$(node scripts/mo-backlog.mjs)"',
     'x="$(node scripts/mo-backlog.mjs)"',
     "cat <<EOF\n$(node scripts/mo-backlog.mjs)\nEOF",
+    "LABEL='note x' node scripts/mo-backlog.mjs",
+    'env LABEL="note x" node scripts/mo-backlog.mjs',
+    "LABEL=note\\ x node scripts/mo-backlog.mjs",
+    "env LABEL=$'note x' node scripts/mo-backlog.mjs",
+    "cd x \\\n  && node scripts/mo-backlog.mjs",
   ];
   const arguments_ = [printed, searched, "echo do node scripts/mo-backlog.mjs"];
   arguments_.push("printf '%s\\n' 'if node scripts/mo-backlog.mjs'");
@@ -570,6 +575,18 @@ test("a helper named in an argument of another program is not a call", () => {
     "git commit -m \"$(cat <<'EOF'\nfix: let mo-debug read it (mo-backlog.mjs)\nEOF\n)\"",
     "cat <<EOF\nnote; mo-backlog.mjs answers\nEOF",
     "grep mo-a.mjs\\|mo-backlog.mjs src",
+  );
+  // A quoted or escaped blank keeps an assignment one word, so a helper
+  // named inside its value is no command.
+  arguments_.push(
+    "LABEL='note scripts/mo-backlog.mjs' printf 'ok\\n'",
+    "LABEL=\"note scripts/mo-backlog.mjs\" printf 'ok\\n'",
+    "LABEL=$'note scripts/mo-backlog.mjs' printf 'ok\\n'",
+    "LABEL=note\\ scripts/mo-backlog.mjs printf 'ok\\n'",
+    "env LABEL='note scripts/mo-backlog.mjs' printf 'ok\\n'",
+    "env LABEL=\"note scripts/mo-backlog.mjs\" printf 'ok\\n'",
+    "env LABEL=$'note scripts/mo-backlog.mjs' printf 'ok\\n'",
+    "env LABEL=note\\ scripts/mo-backlog.mjs printf 'ok\\n'",
   );
   // Blank runs and comment lines are read in linear time.
   const started = performance.now();
