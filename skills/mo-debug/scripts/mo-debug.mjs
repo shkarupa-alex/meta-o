@@ -164,9 +164,10 @@ function token(value) {
 // shared/scripts/mo-debug-text.mjs
 var SOURCE_TREE = /^source_tree:\s*(["']?)([0-9a-f]{40})\1\s*$/u;
 var FRONTMATTER_BLOCK = /(?:^|\n)---\n([\s\S]*?)\n---(?:\n|$)/gu;
+var RESERVED = String.raw`(?:(?:[!{]|if|then|else|elif|do|while|until)\s+)*`;
 var WRAPPER = String.raw`(?:[A-Za-z_]\w*=\S*\s+)*(?:(?:env|timeout|time|nice|exec|command)(?:\s+(?:-[-\w]*(?:=\S*)?|[A-Za-z_]\w*=\S*|[A-Z_][A-Z0-9_]*|\d+(?:\.\d+)?[smhd]?))*\s+)*`;
 var HELPER = new RegExp(
-  String.raw`(?:^|[;&|(\n])\s*${WRAPPER}(?:node\s+(?:-[-\w=]*\s+)*)?["']?(?:[^\s"';&|]*\/)?(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\.mjs\b`,
+  String.raw`(?:^|[;&|(\n\x60])\s*${RESERVED}${WRAPPER}(?:node\s+(?:-[-\w=]*\s+)*)?["']?(?:[^\s"';&|]*\/)?(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\.mjs\b`,
   "gu"
 );
 var SKILL_DIR = /(?:^|[\s/'"=])(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\/(?:scripts|SKILL\.md)\b/u;

@@ -516,14 +516,37 @@ test("a helper named in an argument of another program is not a call", () => {
     feed({ timestamp: "2026-09-01T11:00:00.000Z", type: "event_msg", payload }, 1);
     return helperEvents(evidence);
   };
+  // A reserved word, a negation, a group or a substitution opens a command
+  // position too; the same words inside an argument still do not.
+  const positions = [
+    "if node scripts/mo-backlog.mjs; then echo ok; fi",
+    "if ! node scripts/mo-backlog.mjs --candidate x; then exit 1; fi",
+    "for i in 1; do node scripts/mo-backlog.mjs; done",
+    "while node scripts/mo-backlog.mjs; do sleep 1; done",
+    "true && { node scripts/mo-backlog.mjs; }",
+    "x=$(node scripts/mo-backlog.mjs)",
+    "x=`node scripts/mo-backlog.mjs`",
+    "if true; then :; else node scripts/mo-backlog.mjs; fi",
+  ];
+  const arguments_ = [printed, searched, "echo do node scripts/mo-backlog.mjs"];
+  arguments_.push("printf '%s\\n' 'if node scripts/mo-backlog.mjs'");
   for (const [name, extract] of [
     ["claude", claude],
     ["codex function_call", codexCall],
     ["codex CommandExecution", codexExecution],
   ]) {
-    assert.deepEqual(extract(printed, "node scripts/mo-backlog.mjs\n"), [], `${name} printf`);
-    assert.deepEqual(extract(searched, "7:node scripts/mo-backlog.mjs\n"), [], `${name} rg`);
-    assert.deepEqual(extract(ran, empty), ["helper_call", "helper_result"], `${name} node`);
+    for (const command of [ran, ...positions]) {
+      assert.deepEqual(helperNames(command), ["mo-backlog"], command);
+      assert.deepEqual(
+        extract(command, empty),
+        ["helper_call", "helper_result"],
+        `${name} ${command}`,
+      );
+    }
+    for (const command of arguments_) {
+      assert.deepEqual(helperNames(command), [], command);
+      assert.deepEqual(extract(command, "node scripts/mo-backlog.mjs\n"), [], `${name} ${command}`);
+    }
   }
 });
 
