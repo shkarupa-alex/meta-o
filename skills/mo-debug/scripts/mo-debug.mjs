@@ -722,6 +722,7 @@ import {
   openSync,
   readSync,
   readdirSync,
+  readlinkSync,
   realpathSync,
   statSync
 } from "node:fs";
@@ -740,7 +741,21 @@ function sessionRoots(home, places = null) {
   };
 }
 var FILESYSTEM = { readdir: readdirSync, lstat: lstatSync };
-var OPENING = { open: openSync, fstat: fstatSync, stat: statSync, close: closeSync };
+function descriptorPath(fd) {
+  try {
+    return readlinkSync(`/proc/self/fd/${fd}`);
+  } catch {
+    return null;
+  }
+}
+var OPENING = {
+  open: openSync,
+  fstat: fstatSync,
+  stat: statSync,
+  close: closeSync,
+  locate: descriptorPath,
+  resolve: realpathSync
+};
 function rootProbe(io, root) {
   try {
     const stat = io.lstat(root);
@@ -848,7 +863,12 @@ function containingHarness(real, roots) {
   }
   return null;
 }
-function verifiedDescriptor(path, roots, io) {
+function stillAt(fd, path, real, io) {
+  const located = io.locate(fd);
+  return located === null ? io.resolve(path) === real : located === real;
+}
+function verifiedDescriptor(path, roots, opening) {
+  const io = { ...OPENING, ...opening };
   let real;
   try {
     real = realpathSync(path);
@@ -868,7 +888,7 @@ function verifiedDescriptor(path, roots, io) {
     const opened = io.fstat(fd);
     const checked = io.stat(real);
     const ownUid = typeof process.getuid === "function" ? process.getuid() : opened.uid;
-    owned = opened.isFile() && opened.dev === checked.dev && opened.ino === checked.ino && opened.uid === ownUid;
+    owned = opened.isFile() && opened.dev === checked.dev && opened.ino === checked.ino && opened.uid === ownUid && stillAt(fd, path, real, io);
   } catch {
     owned = false;
   }

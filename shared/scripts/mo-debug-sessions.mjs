@@ -18,6 +18,7 @@ import {
   openSync,
   readSync,
   readdirSync,
+  readlinkSync,
   realpathSync,
   statSync,
 } from "node:fs";
@@ -51,7 +52,25 @@ export function sessionRoots(home, places = null) {
 }
 
 const FILESYSTEM = { readdir: readdirSync, lstat: lstatSync };
-const OPENING = { open: openSync, fstat: fstatSync, stat: statSync, close: closeSync };
+// Linux names the file an open descriptor refers to under /proc, wherever that
+// file was reached from; Node offers no such surface elsewhere, so there the
+// answer is null and the check falls back to resolving the path again.
+function descriptorPath(fd) {
+  try {
+    return readlinkSync(`/proc/self/fd/${fd}`);
+  } catch {
+    return null;
+  }
+}
+
+const OPENING = {
+  open: openSync,
+  fstat: fstatSync,
+  stat: statSync,
+  close: closeSync,
+  locate: descriptorPath,
+  resolve: realpathSync,
+};
 
 // Only ENOENT or ENOTDIR proves a root absent. Any other error, such as a parent
 // the user cannot traverse, leaves the root unknown, and a search that could not
@@ -204,6 +223,11 @@ function containingHarness(real, roots) {
   return null;
 }
 
+function stillAt(fd, path, real, io) {
+  const located = io.locate(fd);
+  return located === null ? io.resolve(path) === real : located === real;
+}
+
 /**
  * Accept a session file only when it is provably the user's own local log.
  *
@@ -214,11 +238,20 @@ function containingHarness(real, roots) {
  *    so a link swapped in after the check still cannot be followed;
  * 3. the opened descriptor is a regular file and the very inode whose realpath
  *    was checked, so a rename race cannot substitute another file;
- * 4. the file belongs to the invoking uid wherever the platform has uids.
+ * 4. the file belongs to the invoking uid wherever the platform has uids;
+ * 5. the opened file itself still lies at the checked realpath. O_NOFOLLOW
+ *    guards only the last component: a parent directory replaced by a link
+ *    after rule 1 leads the open outside the roots, and rule 3 then compares
+ *    the outside file with itself. On Linux the kernel's own name for the
+ *    descriptor is compared, which no later rename can fake. Elsewhere the
+ *    path is resolved again after the open, which refuses a link left in
+ *    place but not one a concurrent process of the same user swaps in and
+ *    out between the steps; that process could read the file directly.
  * O_NONBLOCK keeps a FIFO or device from hanging the open; it is refused by
- * rule 3 before any read. Until all four hold, not one byte is read.
+ * rule 3 before any read. Until all five hold, not one byte is read.
  */
-function verifiedDescriptor(path, roots, io) {
+function verifiedDescriptor(path, roots, opening) {
+  const io = { ...OPENING, ...opening };
   let real;
   try {
     real = realpathSync(path);
@@ -245,7 +278,8 @@ function verifiedDescriptor(path, roots, io) {
       opened.isFile() &&
       opened.dev === checked.dev &&
       opened.ino === checked.ino &&
-      opened.uid === ownUid;
+      opened.uid === ownUid &&
+      stillAt(fd, path, real, io);
   } catch {
     owned = false;
   }
@@ -263,8 +297,9 @@ function verifiedDescriptor(path, roots, io) {
  * @param {string} home the invoking user's home directory
  * @param {{codexHome?: string|null, claudeConfigDir?: string|null} | null} [places]
  *   the harness homes `sessionRoots` reads
- * @param {{open: Function, fstat: Function, stat: Function, close: Function}} [io]
- *   the descriptor operations, replaced only by tests of the race after open
+ * @param {{open?: Function, fstat?: Function, stat?: Function, close?: Function,
+ *   locate?: Function, resolve?: Function}} [io] descriptor operations; a test
+ *   of a race replaces some and the rest stay the real ones
  * @returns {{fd: number, harness: "claude"|"codex", id: string} | {outcome: string}}
  */
 export function openOwnedSession(path, home, places = null, io = OPENING) {
