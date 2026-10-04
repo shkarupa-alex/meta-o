@@ -45,6 +45,12 @@ export const DEEP_PAIR_REASONS = Object.freeze([
  * marker a restarted coordinator can match, and a line a human can read.
  */
 export function resourceComment({ pair, slot, candidate, project, worktree, feature }) {
+  // An absent field would serialize as the literal `undefined`, which the
+  // marker grammar accepts as an id, so the identity is checked before it is
+  // written rather than after.
+  if (![pair, slot, candidate, project, worktree].every((value) => typeof value === "string")) {
+    return { error: "invalid_marker" };
+  }
   const marker = `${RESOURCE_PREFIX} pair=${pair} slot=${slot} candidate=${candidate} project=${project} worktree=${worktree}`;
   if (!MARKER.test(marker) || typeof feature !== "string" || /[\n\r]/u.test(feature)) {
     return { error: "invalid_marker" };
@@ -233,6 +239,14 @@ function main(argv) {
   }
   const parsed = options(rest);
   if (command === "comment") {
+    requireFlags("comment", parsed, [
+      "pair",
+      "slot",
+      "candidate",
+      "project",
+      "worktree",
+      "feature",
+    ]);
     const result = resourceComment(parsed);
     if (result.error) throw new Error(result.error);
     process.stdout.write(result.text);

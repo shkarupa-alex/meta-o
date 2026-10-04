@@ -272,6 +272,49 @@ test("the coordinator is told to use these answers, not to reason past them", ()
   assert.doesNotMatch(skill, /git worktree prune` is (?:allowed|used)/u);
 });
 
+test("a comment call missing an identity is refused, never written with undefined", () => {
+  const full = {
+    pair: "review-run",
+    slot: "A",
+    candidate: SHA,
+    project: "proj-1",
+    worktree: "repo-1::/tmp/Acme Team/slot-a",
+    feature: "all-open-issues",
+  };
+  const argsOf = (values) =>
+    Object.entries(values).flatMap(([name, value]) => [`--${name}`, value]);
+  const copies = [
+    HELPER,
+    ...["mo-review-orca", "mo-orchestrate-orca", "mo-convergence"].map((skill) =>
+      join(ROOT, "skills", skill, "scripts", "mo-review-resource.mjs"),
+    ),
+  ];
+  for (const helper of copies) {
+    const call = (values) =>
+      spawnSync(process.execPath, [helper, "comment", ...argsOf(values)], { encoding: "utf8" });
+    const whole = call(full);
+    assert.equal(whole.status, 0, whole.stderr);
+    assert.equal(whole.stdout, resourceComment(full).text, helper);
+    const without = (...names) =>
+      Object.fromEntries(Object.entries(full).filter(([name]) => !names.includes(name)));
+    for (const name of Object.keys(full)) {
+      const refused = call(without(name));
+      assert.equal(refused.status, 2, `${helper} without --${name}`);
+      assert.equal(refused.stdout, "", `${helper} without --${name}`);
+      assert.match(refused.stderr, new RegExp(`--${name}\\b`, "u"), name);
+      assert.match(refused.stderr, /^usage:/mu, name);
+    }
+    const three = call(without("pair", "project", "worktree"));
+    assert.equal(three.status, 2, helper);
+    assert.match(three.stderr, /comment needs --pair, --project, --worktree/u, helper);
+  }
+  for (const name of ["pair", "project", "worktree"]) {
+    const rest = Object.fromEntries(Object.entries(full).filter(([key]) => key !== name));
+    assert.deepEqual(resourceComment(rest), { error: "invalid_marker" }, name);
+    assert.deepEqual(resourceComment({ ...full, [name]: null }), { error: "invalid_marker" }, name);
+  }
+});
+
 test("every input the helper reads is printed by --help and stated in the calling skill", () => {
   // The calling skill named the commands but not their inputs, so a coordinator
   // could form the call only from the source, and a guessed key or flag kept an
