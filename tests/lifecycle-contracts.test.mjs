@@ -312,8 +312,8 @@ function staleContractRows(document) {
 test("every external-contract row was observed on a supported Orca", () => {
   const document = source("docs/backend-capabilities.md");
   assert.deepEqual(staleContractRows(document), []);
-  // Rows observed only on 1.4.211, below the 1.4.217 floor, are named.
-  const stale = document.replaceAll("1.4.211, 1.4.217 (2026-09-30)", "1.4.211");
+  // Rows observed only below the 1.4.219 floor are named.
+  const stale = document.replaceAll(", 1.4.219 (2026-10-04)", "");
   assert.deepEqual(staleContractRows(stale), ["#29", "#33"]);
 });
 
@@ -1237,7 +1237,7 @@ test("the rules live actors and evals found missing are stated where they are re
       path,
     );
     assert.match(mechanics, /start again with `worker-start --retry-of <id>`/u, path);
-    assert.match(mechanics, /keeps the tab title `worker-task_<id>` on Orca 1\.4\.217/u, path);
+    assert.match(mechanics, /keeps the tab title `worker-task_<id>` on Orca 1\.4\.219/u, path);
   }
   for (const path of ["src/skills/mo-review-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
     const review = source(path).replace(/\s+/gu, " ");
@@ -1268,7 +1268,7 @@ test("the rules live actors and evals found missing are stated where they are re
     rows.get("B57"),
     /не доказанном малым \(`context=unknown` или больше 100000 токенов\)/u,
   );
-  // On Orca 1.4.217+ worker-start writes Codex trust itself; that start passes.
+  // On Orca 1.4.219+ worker-start writes Codex trust itself; that start passes.
   assert.match(rows.get("B63"), /либо проходит без экрана доверия/u);
   assert.match(rows.get("B66"), /если она уже выполнена, её итогом/u);
 });

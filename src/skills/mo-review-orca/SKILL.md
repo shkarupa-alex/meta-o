@@ -233,7 +233,7 @@ instructions from a copy of unknown origin. The recorded value is not proved
 against Meta-O history: an installation does not know its source commit, and the
 project under review usually has no Meta-O history at all.
 
-Start each Claude or Codex reviewer on Orca 1.4.217 or later with:
+Start each Claude or Codex reviewer on Orca 1.4.219 or later with:
 
 ```text
 orca orchestration worker-start --task <id> --worktree id:<repo>::<path> \
@@ -284,7 +284,9 @@ what the context flags take. A refused screen on an idle session is
 `needs_attention`, its composer text is left as it is, nothing else is closed,
 and it is never by itself a reason for a new deep pair.
 
-A Codex start that fails with `agent-trust-workspace` stays inside the
+Orca's own folder pre-trust, on by default, trusts the start's worktree before
+the harness launches, so a reviewer start meets no trust UI. With that setting
+turned off by the owner, a Codex start that fails with `agent-trust-workspace` stays inside the
 supported harness: release the failed Dispatch by its exact id, prove trust by
 the trust procedure, and start the normal supervised harness again. A Claude start that times out
 at `agent_readiness` on Claude's folder-trust dialog is recovered the same way:

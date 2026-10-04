@@ -17,8 +17,10 @@
 - Публичная поверхность исполнителя не доказывает фактическую идентичность
   модели: основная внешняя запись —
   [Orca issue #16527](https://github.com/stablyai/orca/issues/16527).
-- Диалог доверия Claude останавливает `worker-start --agent claude` до таймаута
-  `agent_readiness`: основная внешняя запись —
+- Диалог доверия Claude останавливал `worker-start --agent claude` до таймаута
+  `agent_readiness` до Orca 1.4.219; она сама доверяет папку, пока включена её
+  настройка «Trust the folder when Orca starts an agent», а процедура доверия
+  остаётся для выключенной: основная внешняя запись —
   [Orca issue #21867](https://github.com/stablyai/orca/issues/21867).
 - Файл тела для `glab issue note`: `unsupported` для новой записи в этом
   жизненном цикле — `glab auth status` не завершился за ограниченную проверку;
@@ -30,8 +32,10 @@
 - Публичная поверхность исполнителя не называет сессию или тред провайдера:
   основная внешняя запись —
   [Orca issue #16485](https://github.com/stablyai/orca/issues/16485).
-- Доверие, которое `worker-start --agent codex` записывает в `config.toml`
-  аккаунта Orca, переживает `orca worktree rm`: основная внешняя запись —
+- Доверие, которое Orca 1.4.219 записывает при `worker-start --agent`, — Codex в
+  `~/.codex/config.toml` и в `config.toml` своего
+  `~/.config/orca/codex-runtime-home/home`, Claude в `projects` файла
+  `~/.claude.json` — переживает `orca worktree rm`: основная внешняя запись —
   [Orca issue #24697](https://github.com/stablyai/orca/issues/24697).
 - Закрыть или удалить законченный Run нечем: основная внешняя запись —
   [Orca issue #24698](https://github.com/stablyai/orca/issues/24698).
@@ -85,6 +89,14 @@
   шести режимах B70, включая проект сразу после `mo-setup`; баннер называет
   источником `cc-plugin-agents-md`, происхождение которого не доказано, поэтому
   копия остаётся (канарейка 2026-09-30).
+
+- `CODEX_HOME` не переопределяют: дом Codex — `~/.codex` по умолчанию. Сессия,
+  унаследовавшая `CODEX_HOME` на каталог аккаунта Orca, которого уже нет,
+  запускает дочерние `codex` и помощники через `env -u CODEX_HOME`, а не
+  подставляет другой каталог.
+- Терминал, который закрыл `worker-release`, `terminal show` на Orca 1.4.219
+  показывает с `exitCause.kind=operator_close`. Это закрытие самой Orca по
+  освобождению, а не след ручного закрытия вкладки человеком.
 
 - macOS без GNU coreutils: команды `timeout` нет. Ограничивать время нужно
   средствами самого агента или фоновым запуском, а не `timeout N ...`.

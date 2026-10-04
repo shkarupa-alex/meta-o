@@ -65,9 +65,10 @@ test("context and ownership recovery remain bounded", () => {
 test("worker-start --agent is the route, and terminal-first only where it cannot pass the model", () => {
   const mechanics = read("orca-mechanics.md");
   // Before 1.4.217 Orca never saw a Codex fullscreen composer as ready and
-  // could report a closed terminal that kept running, so the route and the
-  // release rule both depend on that floor.
-  assert.match(mechanics, /Orca 1\.4\.217 is the oldest supported version/u);
+  // could report a closed terminal that kept running, and before 1.4.219 it
+  // trusted a guessed repository root instead of the Codex worktree, so the
+  // route, the release rule and the trust fallback all depend on that floor.
+  assert.match(mechanics, /Orca 1\.4\.219 is the oldest supported version/u);
   assert.match(
     mechanics,
     /`worker-start --agent` is the route for every agent environment whose model and\s+effort it passes/u,
@@ -84,6 +85,43 @@ test("worker-start --agent is the route, and terminal-first only where it cannot
   );
   assert.doesNotMatch(mechanics, /No such sentence is there today/u);
   assert.doesNotMatch(mechanics, /fallback binding for no_owned_resource/u);
+});
+
+test("every text that states the supported Orca floor states the same one", () => {
+  // A reader takes the floor from whichever text it reads first; two floors
+  // let one reader accept a release whose trust or release defect another
+  // reader's rules assume is gone.
+  const floors = [
+    [read("orca-mechanics.md"), /`orca --version` is (\d+\.\d+\.\d+) or later/u],
+    [read("orca-mechanics.md"), /Orca (\d+\.\d+\.\d+) is the oldest supported version/u],
+    [
+      readFileSync(join(ROOT, "src", "skills", "mo-review-orca", "SKILL.md"), "utf8"),
+      /reviewer on Orca (\d+\.\d+\.\d+) or later/u,
+    ],
+    [
+      readFileSync(join(ROOT, "docs", "backend-capabilities.md"), "utf8"),
+      /Orca (\d+\.\d+\.\d+) — самая старая поддерживаемая версия/u,
+    ],
+  ].map(([text, pattern]) => pattern.exec(text.replace(/\s+/gu, " "))?.[1]);
+  assert.deepEqual(floors, Array(4).fill("1.4.219"));
+});
+
+test("Orca's own folder pre-trust is the normal start and the trust procedure its fallback", () => {
+  const mechanics = read("orca-mechanics.md").replace(/\s+/gu, " ");
+  assert.match(
+    mechanics,
+    /"Trust the folder when Orca starts an agent" \(Settings → Agents, on by default\)/u,
+  );
+  assert.match(mechanics, /That write is the owner's setting acting, not a Meta-O answer/u);
+  assert.match(mechanics, /applies when the owner has turned that setting off/u);
+  const review = readFileSync(
+    join(ROOT, "src", "skills", "mo-review-orca", "SKILL.md"),
+    "utf8",
+  ).replace(/\s+/gu, " ");
+  assert.match(
+    review,
+    /With that setting turned off by the owner, a Codex start that fails with `agent-trust-workspace`/u,
+  );
 });
 
 test("the papercut audit lists no release fallback that Orca 1.4.217 made obsolete", () => {

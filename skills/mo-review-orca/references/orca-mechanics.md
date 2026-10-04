@@ -11,7 +11,7 @@ current registered worktree. Do not install guide copies in harness homes.
 Run focused, bounded probes rather than one large agent-context dump:
 
 1. verify `orca status --json` belongs to the intended instance/worktree and
-   `orca --version` is 1.4.217 or later;
+   `orca --version` is 1.4.219 or later;
 2. verify the version-matched `orchestration` companion;
 3. run the selected provider's documented provider-native auth status command;
 4. read `orca account list --json`, including `updatedAt`, and classify
@@ -48,10 +48,13 @@ orca orchestration run-create --objective <objective> --json
 orca orchestration task-create --spec <task> --json
 ```
 
-Orca 1.4.217 is the oldest supported version. Before it, `worker-start` never
-saw a Codex 0.157+ fullscreen composer as ready, and `worker-release` could
-report a closed terminal that kept running; the workarounds those two defects
-required are gone from this document.
+Orca 1.4.219 is the oldest supported version. Before 1.4.217 `worker-start`
+never saw a Codex 0.157+ fullscreen composer as ready, and `worker-release`
+could report a closed terminal that kept running; before 1.4.219 Orca wrote
+Codex trust for a guessed repository root rather than the worktree itself, so a
+Codex worker in a worktree of a bare repository failed with
+`agent-trust-workspace`. The workarounds those defects required are gone from
+this document.
 
 `worker-start --agent` is the route for every agent environment whose model and
 effort it passes — Claude and Codex. One call composes placement, the harness
@@ -148,6 +151,14 @@ present — reachable at all. Reattach only where public surfaces prove the same
 provider session id, the same supervised harness and a mailbox that still
 delivers `worker_done`; `--continue` and a live terminal prove none of these.
 
+Orca's setting "Trust the folder when Orca starts an agent" (Settings → Agents,
+on by default) writes the harness's trust for the exact folder of the start
+before the harness launches, so a Claude or Codex start into a run worktree
+meets no trust UI. That write is the owner's setting acting, not a Meta-O
+answer, and Orca leaves it behind after the worktree is gone
+([Orca #24697](https://github.com/stablyai/orca/issues/24697)). Everything below
+in this section applies when the owner has turned that setting off.
+
 The trust procedure answers a trust dialog only when three ownership conditions
 hold: this run created the terminal and recorded it in OwnedResourceSet/1, the
 realpath of the path the dialog names equals the realpath of that terminal's
@@ -179,7 +190,7 @@ public surfaces. `terminal create --title` and `terminal rename` set the tab
 title; verify it under `visualLayouts[].root.tabs[].title` from
 `terminal list --include-visual-layouts --json`, because `terminals[].title` is
 the pane title a running harness repaints. A terminal that `worker-start`
-created keeps the tab title `worker-task_<id>` on Orca 1.4.217 whatever
+created keeps the tab title `worker-task_<id>` on Orca 1.4.219 whatever
 `terminal rename` sets, so there the stable title is a label recorded with the
 exact handle; its absence is never an ownership or cleanup failure, because the
 handle owns cleanup. The worker's injected lifecycle preamble is part of Orca's
@@ -355,7 +366,7 @@ A review slot is decided differently, by `mo-review-resource.mjs hot`: its age
 runs from the slot's last `worker_done`, not from `lastOutputAt`, and the owner
 set that bound at one hour; a proven small context keeps an older slot hot. Its
 `--alive yes` means the slot's own recorded terminal still runs its harness:
-`terminal show` reports it `connected:true` and `orphaned:false` (Orca 1.4.217
+`terminal show` reports it `connected:true` and `orphaned:false` (Orca 1.4.219
 has no running field there) and its screen is the harness's prompt. Orca's
 worker liveness `unverifiable` on an idle session is missing evidence, not
 death, and never answers `--alive no` by itself; a terminal that is gone or
