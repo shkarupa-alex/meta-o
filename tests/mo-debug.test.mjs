@@ -645,6 +645,48 @@ test("--max-records and --since bound what is read", () => {
   assert.match(since.stdout, / untimed=1 skipped_since=4$/mu);
 });
 
+test("a session whose every record precedes --since is an empty window, not an unknown format", () => {
+  const { home, claude, codex } = fixtureHome();
+  const after = ["--since", "2027-01-01T00:00:00Z"];
+  // Only parsed, timestamped Claude records, so none is fed past the bound.
+  const transcript = join(claude, `${CLAUDE_ID}.jsonl`);
+  const timestamp = (line) => {
+    try {
+      return Date.parse(JSON.parse(line).timestamp);
+    } catch {
+      return Number.NaN;
+    }
+  };
+  const timed = readFileSync(transcript, "utf8")
+    .split("\n")
+    .filter((line) => !Number.isNaN(timestamp(line)));
+  writeFileSync(transcript, `${timed.join("\n")}\n`);
+  const claudeScan = run(home, ["scan", "--session", CLAUDE_ID, ...after]);
+  assert.equal(claudeScan.status, 0, claudeScan.stderr);
+  assert.match(claudeScan.stdout, /^MO-DEBUG\/1 status=ok sessions=1 events=0 refused=0$/mu);
+  assert.match(
+    claudeScan.stdout,
+    new RegExp(` outcome=ok records=${timed.length} .*skipped_since=${timed.length}$`, "mu"),
+  );
+  const rollout = join(codex, `rollout-2026-09-01T11-00-00-${CODEX_ID}.jsonl`);
+  const records = readFileSync(rollout, "utf8")
+    .split("\n")
+    .filter((line) => !Number.isNaN(timestamp(line)));
+  writeFileSync(rollout, `${records.join("\n")}\n`);
+  const codexScan = run(home, ["scan", "--session", CODEX_ID, ...after]);
+  assert.equal(codexScan.status, 0, codexScan.stderr);
+  assert.match(codexScan.stdout, /^MO-DEBUG\/1 status=ok sessions=1 events=0 refused=0$/mu);
+  assert.match(
+    codexScan.stdout,
+    new RegExp(` outcome=ok records=${records.length} .*skipped_since=${records.length}$`, "mu"),
+  );
+  // A file of garbled lines stays an unknown format whatever the window.
+  writeFileSync(transcript, "not json\nstill not json\n");
+  const garbled = run(home, ["scan", "--session", CLAUDE_ID, ...after]);
+  assert.equal(garbled.status, 1, garbled.stderr);
+  assert.match(garbled.stdout, / outcome=unknown records=2 unparsed=2 /u);
+});
+
 test("files outside the session roots, symlinks and non-regular files are never read", () => {
   const { home, claude, codex } = fixtureHome();
   const outside = temporary("mo-debug-outside-");

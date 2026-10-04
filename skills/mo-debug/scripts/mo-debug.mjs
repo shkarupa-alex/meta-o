@@ -364,7 +364,10 @@ function createClaudeExtractor(session) {
       if (Array.isArray(content)) for (const item of content) assistantItem(state, item, number);
     } else if (record.type === "user") userRecord(state, record, number);
   };
-  return { evidence: state.evidence, feed };
+  const skip = (record) => {
+    if (isClaudeRecord(record)) state.evidence.recognized += 1;
+  };
+  return { evidence: state.evidence, feed, skip };
 }
 
 // shared/scripts/mo-debug-codex.mjs
@@ -527,14 +530,16 @@ function feedPayload(state, record, number) {
 }
 function createCodexExtractor(session) {
   const state = { evidence: createEvidence(session, "codex"), calls: /* @__PURE__ */ new Map() };
+  const recognizes = (record) => SHAPES.has(record.type) && record.payload !== null && typeof record.payload === "object";
   const feed = (record, number) => {
-    if (!SHAPES.has(record.type) || record.payload === null || typeof record.payload !== "object") {
-      return;
-    }
+    if (!recognizes(record)) return;
     state.evidence.recognized += 1;
     feedPayload(state, record, number);
   };
-  return { evidence: state.evidence, feed };
+  const skip = (record) => {
+    if (recognizes(record)) state.evidence.recognized += 1;
+  };
+  return { evidence: state.evidence, feed, skip };
 }
 
 // shared/scripts/mo-debug-history.mjs
@@ -1017,6 +1022,7 @@ function consume(extractor, text, number, counts, since) {
   if (Number.isNaN(time)) counts.untimed += 1;
   else if (since !== null && time < since) {
     counts.skipped += 1;
+    extractor.skip(record);
     return;
   }
   try {

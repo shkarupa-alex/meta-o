@@ -158,8 +158,10 @@ function userRecord(state, record, number) {
  * §A-DIAGNOSTICS-01 creates the extractor for one Claude Code transcript.
  *
  * @param {string} session session id used in locators
- * @returns {{evidence: object, feed: (record: object, number: number) => void}}
- *   `feed` takes one parsed JSONL record and its 1-based line number
+ * @returns {{evidence: object, feed: (record: object, number: number) => void,
+ *   skip: (record: object) => void}}
+ *   `feed` takes one parsed JSONL record and its 1-based line number; `skip`
+ *   takes a record outside the requested window, which still proves the format
  */
 export function createClaudeExtractor(session) {
   const state = {
@@ -180,5 +182,8 @@ export function createClaudeExtractor(session) {
       if (Array.isArray(content)) for (const item of content) assistantItem(state, item, number);
     } else if (record.type === "user") userRecord(state, record, number);
   };
-  return { evidence: state.evidence, feed };
+  const skip = (record) => {
+    if (isClaudeRecord(record)) state.evidence.recognized += 1;
+  };
+  return { evidence: state.evidence, feed, skip };
 }

@@ -155,7 +155,11 @@ function consume(extractor, text, number, counts, since) {
   const time = Date.parse(record.timestamp);
   if (Number.isNaN(time)) counts.untimed += 1;
   else if (since !== null && time < since) {
+    // Whether the format is recognized must not depend on the window: a
+    // session whose every record precedes --since is an empty window, not an
+    // unknown format.
     counts.skipped += 1;
+    extractor.skip(record);
     return;
   }
   try {

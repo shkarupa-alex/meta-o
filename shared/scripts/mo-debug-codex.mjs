@@ -216,17 +216,22 @@ function feedPayload(state, record, number) {
  * §A-DIAGNOSTICS-01 creates the extractor for one Codex rollout.
  *
  * @param {string} session session id used in locators
- * @returns {{evidence: object, feed: (record: object, number: number) => void}}
- *   `feed` takes one parsed JSONL record and its 1-based line number
+ * @returns {{evidence: object, feed: (record: object, number: number) => void,
+ *   skip: (record: object) => void}}
+ *   `feed` takes one parsed JSONL record and its 1-based line number; `skip`
+ *   takes a record outside the requested window, which still proves the format
  */
 export function createCodexExtractor(session) {
   const state = { evidence: createEvidence(session, "codex"), calls: new Map() };
+  const recognizes = (record) =>
+    SHAPES.has(record.type) && record.payload !== null && typeof record.payload === "object";
   const feed = (record, number) => {
-    if (!SHAPES.has(record.type) || record.payload === null || typeof record.payload !== "object") {
-      return;
-    }
+    if (!recognizes(record)) return;
     state.evidence.recognized += 1;
     feedPayload(state, record, number);
   };
-  return { evidence: state.evidence, feed };
+  const skip = (record) => {
+    if (recognizes(record)) state.evidence.recognized += 1;
+  };
+  return { evidence: state.evidence, feed, skip };
 }
