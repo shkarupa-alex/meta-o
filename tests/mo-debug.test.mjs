@@ -527,9 +527,19 @@ test("a helper named in an argument of another program is not a call", () => {
     "x=$(node scripts/mo-backlog.mjs)",
     "x=`node scripts/mo-backlog.mjs`",
     "if true; then :; else node scripts/mo-backlog.mjs; fi",
+    'echo "ok: `node scripts/mo-backlog.mjs`"',
   ];
   const arguments_ = [printed, searched, "echo do node scripts/mo-backlog.mjs"];
   arguments_.push("printf '%s\\n' 'if node scripts/mo-backlog.mjs'");
+  // A backtick quoted as text, escaped or inside single quotes, is no
+  // substitution, which is how commit messages and PR bodies name helpers.
+  arguments_.push(
+    'git commit -m "fix: run \\`mo-backlog.mjs\\` at closure"',
+    "git commit -m 'fix: run `mo-backlog.mjs` at closure'",
+    'gh pr create --body "Run \\`node scripts/mo-backlog.mjs\\` before merge"',
+    "echo 'see `shared/scripts/mo-backlog.mjs`'",
+    "printf '%s\\n' \"it's \\`mo-backlog.mjs\\`\"",
+  );
   for (const [name, extract] of [
     ["claude", claude],
     ["codex function_call", codexCall],

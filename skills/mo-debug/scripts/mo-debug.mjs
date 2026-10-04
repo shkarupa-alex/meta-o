@@ -167,7 +167,7 @@ var FRONTMATTER_BLOCK = /(?:^|\n)---\n([\s\S]*?)\n---(?:\n|$)/gu;
 var RESERVED = String.raw`(?:(?:[!{]|if|then|else|elif|do|while|until)\s+)*`;
 var WRAPPER = String.raw`(?:[A-Za-z_]\w*=\S*\s+)*(?:(?:env|timeout|time|nice|exec|command)(?:\s+(?:-[-\w]*(?:=\S*)?|[A-Za-z_]\w*=\S*|[A-Z_][A-Z0-9_]*|\d+(?:\.\d+)?[smhd]?))*\s+)*`;
 var HELPER = new RegExp(
-  String.raw`(?:^|[;&|(\n\x60])\s*${RESERVED}${WRAPPER}(?:node\s+(?:-[-\w=]*\s+)*)?["']?(?:[^\s"';&|]*\/)?(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\.mjs\b`,
+  String.raw`(?:^|[;&|(\n])\s*${RESERVED}${WRAPPER}(?:node\s+(?:-[-\w=]*\s+)*)?["']?(?:[^\s"';&|]*\/)?(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\.mjs\b`,
   "gu"
 );
 var SKILL_DIR = /(?:^|[\s/'"=])(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\/(?:scripts|SKILL\.md)\b/u;
@@ -223,7 +223,25 @@ function installedSkillName(path) {
   return match && !/(?:^|\/)src\/skills\//u.test(path) ? match[1] : null;
 }
 function helperNames(command) {
-  return [...new Set([...String(command).matchAll(HELPER)].map((match) => match[1]))];
+  const text = substitutionsOpened(String(command));
+  return [...new Set([...text.matchAll(HELPER)].map((match) => match[1]))];
+}
+function substitutionsOpened(command) {
+  let single = false;
+  let double = false;
+  let out = "";
+  for (let index = 0; index < command.length; index += 1) {
+    const char = command[index];
+    if (char === "\\" && !single) {
+      out += command.slice(index, index + 2);
+      index += 1;
+      continue;
+    }
+    if (char === "'" && !double) single = !single;
+    else if (char === '"' && !single) double = !double;
+    out += char === "`" && !single ? "\n" : char;
+  }
+  return out;
 }
 function owningSkill(command) {
   return SKILL_DIR.exec(String(command))?.[1] ?? "-";
