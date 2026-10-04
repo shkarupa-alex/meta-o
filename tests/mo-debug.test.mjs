@@ -528,6 +528,10 @@ test("a helper named in an argument of another program is not a call", () => {
     "x=`node scripts/mo-backlog.mjs`",
     "if true; then :; else node scripts/mo-backlog.mjs; fi",
     'echo "ok: `node scripts/mo-backlog.mjs`"',
+    'x="`node scripts/mo-backlog.mjs`"',
+    "cat <<EOF\n`node scripts/mo-backlog.mjs`\nEOF",
+    "cat <<'EOF' > f\ntext\nEOF\nnode scripts/mo-backlog.mjs",
+    "echo a # note\nnode scripts/mo-backlog.mjs",
   ];
   const arguments_ = [printed, searched, "echo do node scripts/mo-backlog.mjs"];
   arguments_.push("printf '%s\\n' 'if node scripts/mo-backlog.mjs'");
@@ -539,7 +543,19 @@ test("a helper named in an argument of another program is not a call", () => {
     'gh pr create --body "Run \\`node scripts/mo-backlog.mjs\\` before merge"',
     "echo 'see `shared/scripts/mo-backlog.mjs`'",
     "printf '%s\\n' \"it's \\`mo-backlog.mjs\\`\"",
+    "printf '%s\\n' '`node scripts/mo-backlog.mjs`'",
+    "printf '%s\\n' $'`node scripts/mo-backlog.mjs`'",
+    "printf '%s\\n' \\`node scripts/mo-backlog.mjs\\`",
+    ": # `node scripts/mo-backlog.mjs`",
+    "cat <<'EOF'\n`node scripts/mo-backlog.mjs`\nEOF",
+    "cat <<'EOF'\nnode scripts/mo-backlog.mjs\nEOF",
+    "printf 'a\nnode scripts/mo-backlog.mjs'",
   );
+  // Blank runs and comment lines are read in linear time.
+  const started = performance.now();
+  helperNames("\n".repeat(40000));
+  helperNames("#\n".repeat(20000));
+  assert.ok(performance.now() - started < 1000, "backtracking");
   for (const [name, extract] of [
     ["claude", claude],
     ["codex function_call", codexCall],

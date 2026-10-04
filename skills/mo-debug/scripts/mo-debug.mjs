@@ -164,10 +164,10 @@ function token(value) {
 // shared/scripts/mo-debug-text.mjs
 var SOURCE_TREE = /^source_tree:\s*(["']?)([0-9a-f]{40})\1\s*$/u;
 var FRONTMATTER_BLOCK = /(?:^|\n)---\n([\s\S]*?)\n---(?:\n|$)/gu;
-var RESERVED = String.raw`(?:(?:[!{]|if|then|else|elif|do|while|until)\s+)*`;
-var WRAPPER = String.raw`(?:[A-Za-z_]\w*=\S*\s+)*(?:(?:env|timeout|time|nice|exec|command)(?:\s+(?:-[-\w]*(?:=\S*)?|[A-Za-z_]\w*=\S*|[A-Z_][A-Z0-9_]*|\d+(?:\.\d+)?[smhd]?))*\s+)*`;
+var RESERVED = String.raw`(?:(?:[!{]|if|then|else|elif|do|while|until)[ \t]+)*`;
+var WRAPPER = String.raw`(?:[A-Za-z_]\w*=\S*[ \t]+)*(?:(?:env|timeout|time|nice|exec|command)(?:[ \t]+(?:-[-\w]*(?:=\S*)?|[A-Za-z_]\w*=\S*|[A-Z_][A-Z0-9_]*|\d+(?:\.\d+)?[smhd]?))*[ \t]+)*`;
 var HELPER = new RegExp(
-  String.raw`(?:^|[;&|(\n])\s*${RESERVED}${WRAPPER}(?:node\s+(?:-[-\w=]*\s+)*)?["']?(?:[^\s"';&|]*\/)?(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\.mjs\b`,
+  String.raw`(?:^|[;&|(\n])[ \t]*${RESERVED}${WRAPPER}(?:node[ \t]+(?:-[-\w=]*[ \t]+)*)?["']?(?:[^\s"';&|]*\/)?(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\.mjs\b`,
   "gu"
 );
 var SKILL_DIR = /(?:^|[\s/'"=])(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\/(?:scripts|SKILL\.md)\b/u;
@@ -226,20 +226,69 @@ function helperNames(command) {
   const text = substitutionsOpened(String(command));
   return [...new Set([...text.matchAll(HELPER)].map((match) => match[1]))];
 }
-function substitutionsOpened(command) {
-  let single = false;
-  let double = false;
+var HEREDOC = /^<<-?[ \t]*(['"]?)([A-Za-z0-9_.-]+)\1/u;
+function heredocBody(command, start, pending) {
+  let index = start;
   let out = "";
-  for (let index = 0; index < command.length; index += 1) {
-    const char = command[index];
-    if (char === "\\" && !single) {
-      out += command.slice(index, index + 2);
-      index += 1;
+  for (const { delimiter, quoted, strip } of pending) {
+    while (index < command.length) {
+      let end = command.indexOf("\n", index);
+      if (end === -1) end = command.length;
+      const line = command.slice(index, end);
+      const body = quoted ? line.replace(/\x60/gu, " ") : line.replace(/\x60/gu, "\n");
+      out += `${body} `;
+      index = end + 1;
+      if ((strip ? line.replace(/^\t+/u, "") : line) === delimiter) break;
+    }
+  }
+  return { out, index };
+}
+function opensComment(command, index) {
+  return index === 0 || /[\s;&|(]/u.test(command[index - 1]);
+}
+function unquotedSpan(command, index, state) {
+  const char = command[index];
+  if (char === "\\" && !state.single) {
+    const pair = command.slice(index, index + 2);
+    return { text: pair.replace(/[\n\x60]/u, " "), next: index + 2 };
+  }
+  if (state.single || state.double) return null;
+  if (char === "#" && opensComment(command, index)) {
+    let end = command.indexOf("\n", index);
+    if (end === -1) end = command.length;
+    return { text: " ".repeat(end - index), next: end };
+  }
+  const heredoc = char === "<" ? HEREDOC.exec(command.slice(index, index + 256)) : null;
+  if (heredoc) {
+    const [operator, quote, delimiter] = heredoc;
+    state.pending.push({ delimiter, quoted: quote !== "", strip: operator[2] === "-" });
+    return { text: operator, next: index + operator.length };
+  }
+  if (char === "\n" && state.pending.length > 0) {
+    const body = heredocBody(command, index + 1, state.pending);
+    state.pending = [];
+    return { text: ` ${body.out}
+`, next: body.index };
+  }
+  return null;
+}
+function substitutionsOpened(command) {
+  const state = { single: false, double: false, pending: [] };
+  let out = "";
+  let index = 0;
+  while (index < command.length) {
+    const span = unquotedSpan(command, index, state);
+    if (span) {
+      out += span.text;
+      index = span.next;
       continue;
     }
-    if (char === "'" && !double) single = !single;
-    else if (char === '"' && !single) double = !double;
-    out += char === "`" && !single ? "\n" : char;
+    const char = command[index];
+    if (char === "'" && !state.double) state.single = !state.single;
+    else if (char === '"' && !state.single) state.double = !state.double;
+    if (char === "`" && !state.single) out += "\n";
+    else out += char === "\n" && (state.single || state.double) ? " " : char;
+    index += 1;
   }
   return out;
 }
