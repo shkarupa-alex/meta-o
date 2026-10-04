@@ -157,8 +157,10 @@ before the harness launches, so a Claude or Codex start into a run worktree
 meets no trust UI. That write is the owner's setting acting, not a Meta-O
 answer, and Orca leaves it behind after the worktree is gone
 ([Orca #24697](https://github.com/stablyai/orca/issues/24697)). The next two
-paragraphs, the trust procedure and the trust-failure recovery, apply when the
-owner has turned that setting off; every other rule here holds either way.
+paragraphs, the trust procedure and the trust-failure recovery, apply whenever a
+start still meets trust UI or a trust failure: the owner has turned that setting
+off, or the start took a route the setting did not cover. Every other rule here
+holds either way.
 
 The trust procedure answers a trust dialog only when three ownership conditions
 hold: this run created the terminal and recorded it in OwnedResourceSet/1, the

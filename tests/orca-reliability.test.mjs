@@ -117,7 +117,7 @@ test("Orca's own folder pre-trust is the normal start and the trust procedure it
   // setting being off; delivery checks, titles and the codex exec ban hold in
   // the default configuration too, so the scoped span must end before them.
   const scoped =
-    /The next two paragraphs, the trust procedure and the trust-failure recovery, apply when the owner has turned that setting off; every other rule here holds either way\./u;
+    /The next two paragraphs, the trust procedure and the trust-failure recovery, apply whenever a start still meets trust UI or a trust failure: the owner has turned that setting off, or the start took a route the setting did not cover\. Every other rule here holds either way\./u;
   assert.match(mechanics, scoped);
   assert.doesNotMatch(mechanics, /Everything below in this section/u);
   const paragraphs = read("orca-mechanics.md")
