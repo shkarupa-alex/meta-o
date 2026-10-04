@@ -14,13 +14,15 @@ import { test } from "node:test";
 
 import { forbiddenPublicDataReason } from "../tools/sensitive-evidence.mjs";
 import { diagnoseLegacyEvidence } from "../tools/skill-eval-legacy.mjs";
+import { evaluationCoordinate } from "../tools/skill-eval-expectations.mjs";
 import {
+  caseDocument,
   diagnoseLegacyEvidenceForCandidate,
-  evaluationCoordinate,
   evaluationDigest,
-  loadCorpus,
+  legacyProfileDiagnostic,
   validateEvidence as validateEvidenceRaw,
 } from "../tools/skill-evals.mjs";
+import { loadCorpus } from "../tools/skill-eval-corpus.mjs";
 
 const ROOT = process.cwd();
 const HEAD = spawnSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).stdout.trim();
@@ -32,11 +34,23 @@ function revision(skill) {
   }).stdout.trim();
 }
 
-function envelope(skill, { tier = "required", matrixProfile = "required-codex" } = {}) {
-  const document = loadCorpus(ROOT).get(skill);
+// One envelope is one case on one profile. `cases: "all"` builds the frozen v2
+// shape, which judged a whole skill in one envelope and names no case.
+function envelope(
+  skill,
+  { tier = "required", matrixProfile = "required-codex-sol", caseId, cases } = {},
+) {
+  const corpus = loadCorpus(ROOT).get(skill);
+  const legacy = cases === "all";
+  const selected = caseId ?? corpus.cases[0].id;
+  const document = legacy ? corpus : caseDocument(corpus, selected);
+  const executionId = legacy
+    ? `${skill}-native-execution-1`
+    : `${selected}-${matrixProfile}-native-execution-1`;
   const identity = {
-    "required-claude": { route: "claude", model: "sonnet", effort: "low" },
-    "required-codex": { route: "codex", model: "gpt-5.6-luna", effort: "low" },
+    "required-claude-opus": { route: "claude", model: "opus[1m]", effort: "low" },
+    "required-codex-sol": { route: "codex", model: "gpt-6.1-sol", effort: "low" },
+    "required-codex-luna": { route: "codex", model: "gpt-6-luna", effort: "high" },
     "desired-codex": { route: "codex", model: "gpt-5.6-luna", effort: "max" },
     "desired-opencode": { route: "opencode", model: "provider/qwen3.8-27b", effort: "low" },
     "critical-orchestration": {
@@ -50,7 +64,7 @@ function envelope(skill, { tier = "required", matrixProfile = "required-codex" }
   // an exact id, so the fixture has to carry both halves; every other route
   // answers with exact ids and therefore resolves nothing.
   const observed =
-    identity.route === "claude" ? { ...identity, model: "claude-sonnet-5" } : { ...identity };
+    identity.route === "claude" ? { ...identity, model: "claude-opus-5-5[1m]" } : { ...identity };
   const aliasResolution =
     observed.model === identity.model
       ? null
@@ -64,6 +78,7 @@ function envelope(skill, { tier = "required", matrixProfile = "required-codex" }
     candidate: HEAD,
     skillRevision: revision(skill),
     skill,
+    ...(legacy ? {} : { caseId: selected }),
     policy: document.policy,
     repetition: 1,
     tier,
@@ -84,7 +99,7 @@ function envelope(skill, { tier = "required", matrixProfile = "required-codex" }
       toolPermissions: ["read", "shell-readonly"],
     },
     execution: {
-      id: `${skill}-native-execution-1`,
+      id: executionId,
       source: identity.route,
       startedAt: "2026-09-02T10:00:00.000Z",
       completedAt: "2026-09-02T10:00:01.000Z",
@@ -99,7 +114,7 @@ function envelope(skill, { tier = "required", matrixProfile = "required-codex" }
       contractIds: item.contracts,
       verdict: "PASS",
       observations: [`${item.class} behavior observed`],
-      observedAction: `case_evaluation:${skill}-native-execution-1`,
+      observedAction: `case_evaluation:${executionId}`,
       evidenceRef: `fixture:tests/skill-evals.test.mjs#${item.id}`,
       oracleEvidence: [
         ...item.must.map((oracle) => ({
@@ -119,17 +134,47 @@ function envelope(skill, { tier = "required", matrixProfile = "required-codex" }
   };
 }
 
+function evaluatedDocument(item) {
+  const corpus = loadCorpus(ROOT).get(item.skill);
+  return item.caseId === undefined ? corpus : caseDocument(corpus, item.caseId);
+}
+
 function finalizedEnvelope(skill, options = {}) {
   const result = envelope(skill, options);
-  result.execution.evaluationDigest = evaluationDigest(loadCorpus(ROOT).get(skill), result);
+  result.execution.evaluationDigest = evaluationDigest(evaluatedDocument(result), result);
   return result;
 }
+
+// Every case of every skill on every listed profile: the complete matrix.
+function matrix(profiles, replace = () => undefined) {
+  return [...loadCorpus(ROOT).values()].flatMap(({ skill, cases }) =>
+    cases.flatMap(({ id }) =>
+      profiles.map(
+        (matrixProfile) =>
+          replace(skill, id, matrixProfile) ??
+          finalizedEnvelope(skill, {
+            caseId: id,
+            matrixProfile,
+            tier: matrixProfile.startsWith("desired-") ? "desired" : "required",
+          }),
+      ),
+    ),
+  );
+}
+
+const FULL_MATRIX = [
+  "required-claude-opus",
+  "required-codex-sol",
+  "required-codex-luna",
+  "desired-codex",
+  "desired-opencode",
+];
 
 function frozenDigests(evidence) {
   return Object.fromEntries(
     (Array.isArray(evidence) ? evidence : [evidence]).map((item) => [
       evaluationCoordinate(item),
-      evaluationDigest(loadCorpus(ROOT).get(item.skill), item),
+      evaluationDigest(evaluatedDocument(item), item),
     ]),
   );
 }
@@ -151,13 +196,22 @@ function validateEvidence(root, evidence, candidate, requireAll = false, options
   });
 }
 
-test("every installable skill owns three bounded embedded cases", () => {
+test("every installable skill owns three base cases and named regressions", () => {
   const corpus = loadCorpus(ROOT);
-  assert.equal(corpus.size, 8);
+  assert.equal(corpus.size, 11);
   assert.equal(
     [...corpus.values()].reduce((sum, document) => sum + document.cases.length, 0),
-    24,
+    37,
   );
+  const regressions = [...corpus.values()].flatMap(({ cases }) =>
+    cases.filter((item) => item.class === "regression").map(({ id }) => id),
+  );
+  assert.deepEqual(regressions.sort(), [
+    "mo-orchestrate-orca.regression-cleanroom-after-findings",
+    "mo-review-orca.regression-hot-follow-up",
+    "mo-review-orca.regression-idle-composer",
+    "mo-setup.regression-knowledge-layer-absence",
+  ]);
   assert.equal(corpus.get("mo-orchestrate-orca").policy, "critical");
   const issueRouting = corpus
     .get("mo-orchestrate-orca")
@@ -171,29 +225,90 @@ test("every installable skill owns three bounded embedded cases", () => {
   }
 });
 
-test("complete evidence binds every skill to candidate, revision and approved identity", () => {
+test("a case that starts actors on one branch forbids them only on the others", () => {
+  // Both forbidden cases also carry not_enabled projects whose review pair or
+  // lifecycle must start; an unscoped "create workers" oracle made a faithful
+  // answer fail its own case.
   const corpus = loadCorpus(ROOT);
-  const evidence = [...corpus.values()].flatMap(({ skill }) =>
-    ["required-claude", "required-codex", "desired-codex", "desired-opencode"].map(
-      (matrixProfile) =>
-        finalizedEnvelope(skill, {
-          matrixProfile,
-          tier: matrixProfile.startsWith("desired-") ? "desired" : "required",
-        }),
-    ),
+  for (const [skill, starts] of [
+    ["mo-review-orca", /start the pair for both `not_enabled` projects/u],
+    ["mo-orchestrate-orca", /run the lifecycle for both `not_enabled` projects/u],
+  ]) {
+    const item = corpus.get(skill).cases.find(({ id }) => id === `${skill}.forbidden`);
+    assert.ok(
+      item.must.some((oracle) => starts.test(oracle)),
+      skill,
+    );
+    const actors = item.mustNot.filter((oracle) =>
+      /create (?:Orca workers|an executor)|materialize/u.test(oracle),
+    );
+    assert.ok(actors.length > 0, skill);
+    for (const oracle of actors) assert.match(oracle, /`needs_attention`/u, `${skill}: ${oracle}`);
+  }
+});
+
+test("an eval brief names its Body-File the way a caller can before sending", () => {
+  // The Dispatch id reaches only the reviewer, so a case that read it from the
+  // file name tested a brief shape the coordinator may no longer send.
+  const scenarios = [...loadCorpus(ROOT).values()].flatMap(({ cases }) => cases);
+  const named = scenarios.flatMap(({ id, scenario }) =>
+    [...scenario.matchAll(/Body-File: <dir>\/([^`\s]+)/gu)].map((match) => [id, match[1]]),
   );
+  assert.ok(named.length > 0);
+  for (const [id, name] of named) assert.match(name, /^slot-[ab]-r\d+-d\d+\.md$/u, id);
+});
+
+test("complete evidence binds every case to candidate, revision and approved identity", () => {
+  const evidence = matrix(FULL_MATRIX);
   const validated = validateEvidence(ROOT, evidence, HEAD, true, {
     criticalProfile: "opencode/llamacpp/qwen3.8-27b/default",
   });
-  assert.equal(validated.envelopes, 32);
+  // 37 cases on five profiles, each its own native execution.
+  assert.equal(validated.envelopes, 185);
   assert.deepEqual(validated.nonPass, []);
-  assert.equal(validated.aggregate.length, 24);
+  assert.equal(validated.aggregate.length, 37);
   for (const group of validated.aggregate) {
     assert.deepEqual(
       group.coordinates.map(({ matrixProfile }) => matrixProfile),
-      ["required-codex", "required-claude", "desired-codex", "desired-opencode"],
+      [
+        "required-codex-sol",
+        "required-codex-luna",
+        "required-claude-opus",
+        "desired-codex",
+        "desired-opencode",
+      ],
     );
   }
+});
+
+test("each case is its own execution, and one turn never covers a second case", () => {
+  // One model turn that judged every case of a skill is one correlated
+  // judgement: the envelope that carries it names no case and is not evidence.
+  const skillLevel = finalizedEnvelope("find-reuse", { cases: "all" });
+  assert.throws(() => validateEvidence(ROOT, skillLevel, HEAD), /find-reuse: caseId is empty/u);
+  const bundled = finalizedEnvelope("find-reuse", { cases: "all" });
+  bundled.caseId = "find-reuse.positive";
+  assert.throws(() => validateEvidence(ROOT, bundled, HEAD), /incomplete result set/u);
+
+  // The same native execution cannot be counted for two cases.
+  const first = finalizedEnvelope("find-reuse", { caseId: "find-reuse.positive" });
+  const second = finalizedEnvelope("find-reuse", { caseId: "find-reuse.forbidden" });
+  second.execution.id = first.execution.id;
+  second.results[0].observedAction = `case_evaluation:${first.execution.id}`;
+  assert.throws(
+    () => validateEvidence(ROOT, [first, second], HEAD),
+    /find-reuse:find-reuse\.forbidden:required-codex-sol:1: execution find-reuse\.positive-required-codex-sol-native-execution-1 already evidences find-reuse:find-reuse\.positive:required-codex-sol:1/u,
+  );
+
+  // Full coverage is every case on every profile; one missing case is named.
+  const withoutOne = matrix(FULL_MATRIX).filter(
+    ({ caseId, matrixProfile }) =>
+      !(caseId === "mo-debug.degraded" && matrixProfile === "required-claude-opus"),
+  );
+  assert.throws(
+    () => validateEvidence(ROOT, withoutOne, HEAD, true),
+    /^Error: missing case evidence: mo-debug:mo-debug\.degraded:required-claude-opus$/u,
+  );
 });
 
 test("identity equality is independent of JSON object key order", () => {
@@ -299,7 +414,7 @@ test("actor-modified inputs cannot replace caller-frozen prompt inputs", () => {
     provenanceDrift.harness.version = "actor-rewritten-version";
     if (actorRecomputesDigest) {
       provenanceDrift.execution.evaluationDigest = evaluationDigest(
-        loadCorpus(ROOT).get("find-reuse"),
+        evaluatedDocument(provenanceDrift),
         provenanceDrift,
       );
     }
@@ -333,14 +448,14 @@ test("actor-authored native identity cannot replace the caller-owned execution o
 });
 
 test("a resolved catalogue alias is proof, and only on the route that has aliases", () => {
-  // The happy path: the owner stores `sonnet`, `claude-sonnet-5` actually ran,
-  // and the envelope says so. This is the evidence U7 demands, and a verbatim
-  // model comparison used to reject it.
-  const resolved = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
+  // The happy path: the owner stores `opus[1m]`, `claude-opus-5-5[1m]` actually
+  // ran, and the envelope says so. This is the evidence the owner demands, and a
+  // verbatim model comparison used to reject it.
+  const resolved = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude-opus" });
   assert.deepEqual(validateEvidence(ROOT, resolved, HEAD).nonPass, []);
 
   // Default closed: drop the record and the difference is the old mismatch again.
-  const unrecorded = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
+  const unrecorded = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude-opus" });
   unrecorded.execution.aliasResolution = null;
   assert.throws(
     () => validateEvidence(ROOT, unrecorded, HEAD),
@@ -349,29 +464,30 @@ test("a resolved catalogue alias is proof, and only on the route that has aliase
 
   // The record may not assert a resolution of its own; it quotes the envelope.
   for (const field of ["requested", "effective"]) {
-    const forged = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
-    forged.execution.aliasResolution[field] = "claude-opus-5";
+    const forged = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude-opus" });
+    forged.execution.aliasResolution[field] = "claude-sonnet-5-5";
     assert.throws(() => validateEvidence(ROOT, forged, HEAD), /does not quote the envelope/u);
   }
 
-  const unsourced = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
+  const unsourced = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude-opus" });
   unsourced.execution.aliasResolution.source = "";
   assert.throws(() => validateEvidence(ROOT, unsourced, HEAD), /aliasResolution\.source is empty/u);
 
   // A drifting alias is a typed event, not general unavailability: the literal
   // must be updated by a person, so the run stops instead of migrating itself.
-  const drifted = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
-  drifted.execution.effective.model = "claude-sonnet-6";
-  drifted.execution.aliasResolution.effective = "claude-sonnet-6";
-  drifted.execution.identityEvidence = "native claude run reported canonical model claude-sonnet-6";
+  const drifted = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude-opus" });
+  drifted.execution.effective.model = "claude-opus-5-6[1m]";
+  drifted.execution.aliasResolution.effective = "claude-opus-5-6[1m]";
+  drifted.execution.identityEvidence =
+    "native claude run reported canonical model claude-opus-5-6[1m]";
   assert.throws(() => validateEvidence(ROOT, drifted, HEAD), /alias_resolution_changed/u);
 
   // Codex and OpenCode answer with exact ids, so a resolution claim there is a
   // substituted model wearing a nickname.
-  const codex = finalizedEnvelope("find-reuse", { matrixProfile: "required-codex" });
+  const codex = finalizedEnvelope("find-reuse", { matrixProfile: "required-codex-sol" });
   codex.execution.aliasResolution = {
-    requested: "gpt-5.6-luna",
-    effective: "gpt-5.6-luna",
+    requested: "gpt-6.1-sol",
+    effective: "gpt-6.1-sol",
     source: "invented resolution",
   };
   assert.throws(
@@ -380,22 +496,22 @@ test("a resolved catalogue alias is proof, and only on the route that has aliase
   );
 
   // Equal models leave nothing to resolve, so a record there is noise.
-  const pointless = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
-  pointless.execution.effective.model = "sonnet";
-  pointless.execution.aliasResolution.effective = "sonnet";
+  const pointless = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude-opus" });
+  pointless.execution.effective.model = "opus[1m]";
+  pointless.execution.aliasResolution.effective = "opus[1m]";
   assert.throws(() => validateEvidence(ROOT, pointless, HEAD), /present without a resolved alias/u);
 
   // And an unresolved alias is still not an approved identity: claiming the
   // alias itself ran leaves the exact generation unproven.
-  const unresolved = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude" });
-  unresolved.execution.effective.model = "sonnet";
+  const unresolved = finalizedEnvelope("find-reuse", { matrixProfile: "required-claude-opus" });
+  unresolved.execution.effective.model = "opus[1m]";
   unresolved.execution.aliasResolution = null;
   assert.throws(() => validateEvidence(ROOT, unresolved, HEAD), /alias_resolution_changed/u);
 
   // Presence is the contract, not only the value. Evidence written before the
   // field was mandatory omits it outright, and reading it with `??` would take that as
   // the very "nothing resolved" a compliant run records on purpose.
-  for (const matrixProfile of ["required-claude", "required-codex"]) {
+  for (const matrixProfile of ["required-claude-opus", "required-codex-sol"]) {
     const omitted = finalizedEnvelope("find-reuse", { matrixProfile });
     delete omitted.execution.aliasResolution;
     assert.throws(
@@ -407,20 +523,17 @@ test("a resolved catalogue alias is proof, and only on the route that has aliase
 
 test("evidence fails closed on identity drift, missing coverage and sensitive fields", () => {
   const drift = finalizedEnvelope("find-reuse");
-  drift.execution.effective.model = "gpt-5.6-sol";
+  drift.execution.effective.model = "gpt-6-luna";
   assert.throws(
     () => validateEvidence(ROOT, drift, HEAD),
     /requested\/effective identity mismatch/,
   );
 
   const expensive = finalizedEnvelope("find-reuse");
-  expensive.requested = { route: "codex", model: "gpt-5.6-sol", effort: "high" };
+  expensive.requested = { route: "codex", model: "gpt-6.1-sol", effort: "high" };
   expensive.execution.effective = { ...expensive.requested };
-  expensive.execution.evaluationDigest = evaluationDigest(
-    loadCorpus(ROOT).get("find-reuse"),
-    expensive,
-  );
-  assert.throws(() => validateEvidence(ROOT, expensive, HEAD), /testCodex must be/);
+  expensive.execution.evaluationDigest = evaluationDigest(evaluatedDocument(expensive), expensive);
+  assert.throws(() => validateEvidence(ROOT, expensive, HEAD), /testCodexSol must be/);
 
   const sensitive = finalizedEnvelope("find-reuse");
   sensitive.harness.apiToken = "must-not-survive";
@@ -468,14 +581,14 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
 
   assert.throws(
     () => validateEvidence(ROOT, finalizedEnvelope("find-reuse"), HEAD, true),
-    /missing skill evidence/,
+    /missing case evidence/,
   );
 
-  const requiredOnly = [...loadCorpus(ROOT).values()].flatMap(({ skill }) =>
-    ["required-claude", "required-codex"].map((matrixProfile) =>
-      finalizedEnvelope(skill, { matrixProfile }),
-    ),
-  );
+  const requiredOnly = matrix([
+    "required-claude-opus",
+    "required-codex-sol",
+    "required-codex-luna",
+  ]);
   assert.throws(
     () => validateEvidence(ROOT, requiredOnly, HEAD, true),
     /desired-codex.*desired-opencode/u,
@@ -489,7 +602,7 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
   wrongCriticalModel.execution.effective.model = "remote/qwen2-7b";
   wrongCriticalModel.harness.context = "1";
   wrongCriticalModel.execution.evaluationDigest = evaluationDigest(
-    loadCorpus(ROOT).get("mo-orchestrate-orca"),
+    evaluatedDocument(wrongCriticalModel),
     wrongCriticalModel,
   );
   assert.throws(
@@ -507,7 +620,7 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
   selfConsistentNonQwen.requested.model = "llamacpp/deepseek-v4";
   selfConsistentNonQwen.execution.effective.model = "llamacpp/deepseek-v4";
   selfConsistentNonQwen.execution.evaluationDigest = evaluationDigest(
-    loadCorpus(ROOT).get("mo-orchestrate-orca"),
+    evaluatedDocument(selfConsistentNonQwen),
     selfConsistentNonQwen,
   );
   assert.throws(
@@ -526,7 +639,7 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
     malformedCritical.requested.model = `llamacpp/${malformedQwen}`;
     malformedCritical.execution.effective.model = `llamacpp/${malformedQwen}`;
     malformedCritical.execution.evaluationDigest = evaluationDigest(
-      loadCorpus(ROOT).get("mo-orchestrate-orca"),
+      evaluatedDocument(malformedCritical),
       malformedCritical,
     );
     assert.throws(
@@ -545,7 +658,7 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
   configuredNewerQwen.requested.model = "llamacpp/qwen3.9-27b";
   configuredNewerQwen.execution.effective.model = "llamacpp/qwen3.9-27b";
   configuredNewerQwen.execution.evaluationDigest = evaluationDigest(
-    loadCorpus(ROOT).get("mo-orchestrate-orca"),
+    evaluatedDocument(configuredNewerQwen),
     configuredNewerQwen,
   );
   assert.deepEqual(
@@ -559,9 +672,9 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
     tier: "critical",
     matrixProfile: "critical-orchestration",
   });
-  impersonatedMatrix.matrixProfile = "required-codex";
+  impersonatedMatrix.matrixProfile = "required-codex-sol";
   impersonatedMatrix.execution.evaluationDigest = evaluationDigest(
-    loadCorpus(ROOT).get("mo-orchestrate-orca"),
+    evaluatedDocument(impersonatedMatrix),
     impersonatedMatrix,
   );
   assert.throws(
@@ -574,21 +687,55 @@ test("evidence fails closed on identity drift, missing coverage and sensitive fi
 
   const repeated = finalizedEnvelope("find-reuse");
   repeated.repetition = 2;
-  repeated.execution.evaluationDigest = evaluationDigest(
-    loadCorpus(ROOT).get("find-reuse"),
-    repeated,
-  );
+  repeated.execution.evaluationDigest = evaluationDigest(evaluatedDocument(repeated), repeated);
   assert.throws(() => validateEvidence(ROOT, repeated, HEAD), /invalid repetition/u);
 });
 
-test("blocking verdicts fail the live gate and applicability cannot be invented", () => {
-  const evidence = finalizedEnvelope("find-reuse");
-  evidence.results[2].verdict = "UNKNOWN";
-  assert.deepEqual(validateEvidence(ROOT, evidence, HEAD).nonPass, [evidence.results[2]]);
+test("the two required Codex coordinates stay distinct and replaced evidence stays legacy", () => {
+  const requiredOnly = matrix([
+    "required-claude-opus",
+    "required-codex-sol",
+    "required-codex-luna",
+  ]);
+  // Each required Codex coordinate is its own obligation: the pair shares a
+  // route, so covering one of them must not read as covering the other.
+  const withoutLuna = requiredOnly.filter(
+    ({ matrixProfile }) => matrixProfile !== "required-codex-luna",
+  );
+  assert.throws(
+    () => validateEvidence(ROOT, withoutLuna, HEAD, true),
+    /find-reuse:find-reuse\.positive:required-codex-luna/u,
+  );
 
-  evidence.results[2].verdict = "NOT_APPLICABLE";
-  evidence.results[2].observations = ["documented applicability rule did not select this case"];
-  for (const oracle of evidence.results[2].oracleEvidence) oracle.satisfied = false;
+  // A run on one Codex coordinate cannot be relabelled as the other.
+  const relabelled = finalizedEnvelope("find-reuse", { matrixProfile: "required-codex-sol" });
+  relabelled.matrixProfile = "required-codex-luna";
+  relabelled.execution.evaluationDigest = evaluationDigest(
+    evaluatedDocument(relabelled),
+    relabelled,
+  );
+  assert.throws(() => validateEvidence(ROOT, relabelled, HEAD), /testCodexLuna must be/u);
+
+  // v3 evidence recorded on the replaced pair is read, typed and never accepted.
+  const legacy = finalizedEnvelope("find-reuse", { matrixProfile: "required-codex-sol" });
+  legacy.matrixProfile = "required-codex";
+  assert.deepEqual(legacyProfileDiagnostic([legacy]), {
+    status: "legacy",
+    accepted: false,
+    profiles: ["required-codex"],
+  });
+  assert.throws(() => validateEvidence(ROOT, [legacy], HEAD), /^Error: legacy: diagnostic only/u);
+  assert.equal(legacyProfileDiagnostic(requiredOnly), null);
+});
+
+test("blocking verdicts fail the live gate and applicability cannot be invented", () => {
+  const evidence = finalizedEnvelope("find-reuse", { caseId: "find-reuse.degraded" });
+  evidence.results[0].verdict = "UNKNOWN";
+  assert.deepEqual(validateEvidence(ROOT, evidence, HEAD).nonPass, [evidence.results[0]]);
+
+  evidence.results[0].verdict = "NOT_APPLICABLE";
+  evidence.results[0].observations = ["documented applicability rule did not select this case"];
+  for (const oracle of evidence.results[0].oracleEvidence) oracle.satisfied = false;
   assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /corpus applicability rule/u);
 });
 
@@ -630,10 +777,7 @@ test("desired profile can materialize as evidenced NOT_AVAILABLE", () => {
     result.observedAction = `availability_probe:${evidence.execution.id}`;
     result.evidenceRef = `command:${evidence.execution.id}`;
   }
-  evidence.execution.evaluationDigest = evaluationDigest(
-    loadCorpus(ROOT).get("find-reuse"),
-    evidence,
-  );
+  evidence.execution.evaluationDigest = evaluationDigest(evaluatedDocument(evidence), evidence);
   assert.deepEqual(validateEvidence(ROOT, evidence, HEAD).nonPass, []);
   // A coordinate where no model ran can neither claim an identity nor explain
   // how an alias resolved: there was nothing to resolve it for.
@@ -696,17 +840,14 @@ test("required profile unavailability stays blocking without invented runtime id
     result.observedAction = `availability_probe:${evidence.execution.id}`;
     result.evidenceRef = `command:${evidence.execution.id}`;
   }
-  evidence.execution.evaluationDigest = evaluationDigest(
-    loadCorpus(ROOT).get("find-reuse"),
-    evidence,
-  );
+  evidence.execution.evaluationDigest = evaluationDigest(evaluatedDocument(evidence), evidence);
   assert.deepEqual(validateEvidence(ROOT, evidence, HEAD).nonPass, evidence.results);
 
   evidence.results[0].oracleEvidence[0].satisfied = true;
   assert.throws(() => validateEvidence(ROOT, evidence, HEAD), /cannot claim an observed oracle/u);
   evidence.results[0].oracleEvidence[0].satisfied = false;
 
-  evidence.results[1].verdict = "PASS";
+  evidence.results[0].verdict = "PASS";
   assert.throws(
     () => validateEvidence(ROOT, evidence, HEAD),
     /unavailable required envelope must stay BLOCKED or NOT_RUN/u,
@@ -762,7 +903,7 @@ test("PASS cannot be accepted without case-specific oracle evidence", () => {
 });
 
 test("evidence v2 is readable only as an explicit legacy diagnostic", () => {
-  const legacy = finalizedEnvelope("find-reuse");
+  const legacy = finalizedEnvelope("find-reuse", { cases: "all" });
   legacy.contract = "meta-o.skill-eval-evidence.v2";
   delete legacy.tier;
   delete legacy.matrixProfile;
@@ -772,7 +913,7 @@ test("evidence v2 is readable only as an explicit legacy diagnostic", () => {
     delete result.observedAction;
     delete result.evidenceRef;
   }
-  legacy.execution.evaluationDigest = evaluationDigest(loadCorpus(ROOT).get("find-reuse"), legacy);
+  legacy.execution.evaluationDigest = evaluationDigest(evaluatedDocument(legacy), legacy);
   assert.deepEqual(diagnoseLegacyEvidence(legacy), {
     status: "legacy_v2",
     envelopes: 1,
@@ -867,6 +1008,8 @@ test("the CLI exposes a bounded prompt without launching a model", () => {
     "tools/skill-evals.mjs",
     "--prompt",
     "find-reuse",
+    "--case",
+    "find-reuse.positive",
     "--expectations-out",
     expectations,
     "--candidate",
@@ -874,11 +1017,11 @@ test("the CLI exposes a bounded prompt without launching a model", () => {
     "--tier",
     "required",
     "--matrix-profile",
-    "required-codex",
+    "required-codex-sol",
     "--route",
     "codex",
     "--model",
-    "gpt-5.6-luna",
+    "gpt-6.1-sol",
     "--effort",
     "low",
     "--harness",
@@ -925,7 +1068,7 @@ test("the CLI exposes a bounded prompt without launching a model", () => {
   assert.ok(framing < result.stdout.indexOf("cannot run, materialize"), "unavailable shapes lead");
   const frozen = JSON.parse(readFileSync(expectations, "utf8"));
   assert.equal(frozen.length, 1);
-  assert.equal(frozen[0].coordinate, "find-reuse:required-codex:1");
+  assert.equal(frozen[0].coordinate, "find-reuse:find-reuse.positive:required-codex-sol:1");
   assert.match(frozen[0].evaluationDigest, /^[a-f0-9]{64}$/u);
   const repeated = spawnSync(process.execPath, [...args, "--repetition", "2"], {
     cwd: ROOT,
@@ -947,6 +1090,8 @@ test("the CLI materializes and validates a missing desired harness without a mod
       "tools/skill-evals.mjs",
       "--availability-probe",
       "find-reuse",
+      "--case",
+      "find-reuse.positive",
       "--expectations-out",
       expectations,
       "--candidate",
@@ -1000,18 +1145,10 @@ test("the CLI materializes and validates a missing desired harness without a mod
   assert.equal(validated.status, 0, validated.stderr);
   assert.match(validated.stdout, /1 envelopes, 0 non-PASS/u);
 
-  const complete = [...loadCorpus(ROOT).values()].flatMap(({ skill }) =>
-    ["required-claude", "required-codex", "desired-codex", "desired-opencode"].map(
-      (matrixProfile) =>
-        skill === "find-reuse" && matrixProfile === "desired-opencode"
-          ? evidence
-          : finalizedEnvelope(skill, {
-              matrixProfile,
-              tier: matrixProfile.startsWith("desired-") ? "desired" : "required",
-            }),
-    ),
+  const complete = matrix(FULL_MATRIX, (skill, caseId, matrixProfile) =>
+    caseId === "find-reuse.positive" && matrixProfile === "desired-opencode" ? evidence : undefined,
   );
-  assert.equal(validateEvidence(ROOT, complete, HEAD, true).envelopes, 32);
+  assert.equal(validateEvidence(ROOT, complete, HEAD, true).envelopes, 185);
   rmSync(temporary, { recursive: true, force: true });
 });
 
@@ -1024,6 +1161,8 @@ test("availability CLI probes the exact desired profile and emits only valid rea
     "tools/skill-evals.mjs",
     "--availability-probe",
     "find-reuse",
+    "--case",
+    "find-reuse.positive",
     "--candidate",
     HEAD,
     "--tier",

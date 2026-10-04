@@ -1,11 +1,16 @@
 # Пример для владельца проекта, а не готовая конфигурация.
 #
 # Замените <qc-command> на авторитетную проверку проекта, а <backlog-schema> —
-# на `--path`, `--title`, `--open-heading` и все `--entry-field` блокнота этого
-# проекта: половина схемы — ошибка вызова, а не проверка чужого блокнота по
-# чужим словам. Путь `tools/mo-backlog.mjs` создаёт принятый ремонт mo-setup.
-# Две вещи здесь не косметические: полная история и отдельная задача закрытия
-# блокнота.
+# на `--path`, `--title`, по одному `--intro` на каждый абзац между заголовком
+# и открытым разделом в их порядке, `--open-heading` и все `--entry-field`
+# блокнота этого проекта. Заголовок и абзацы передаются отрендеренным текстом:
+# без разметки Markdown и со схлопнутыми пробелами. Половина схемы — ошибка
+# вызова, а не проверка чужого блокнота по чужим словам. Путь
+# `tools/mo-backlog.mjs` создаёт принятый ремонт mo-setup.
+# Три вещи здесь не косметические: полная история, отдельная задача закрытия
+# блокнота и checkout ровно головы pull request с печатью `git rev-parse HEAD`.
+# По умолчанию запуск pull request проверяет синтетический merge commit, а
+# агентное слияние требует доказательства QC именно кандидата.
 name: quality
 
 on:
@@ -21,6 +26,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - run: git rev-parse HEAD
       - run: <qc-command>
 
   backlog-closure:
@@ -29,6 +36,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - run: git rev-parse HEAD
       # Отдельная задача: блокнот обязан быть пуст на закрытии, но не в
       # середине фичи, поэтому её результат читают отдельно от обычной проверки.
       - run: node tools/mo-backlog.mjs <backlog-schema>

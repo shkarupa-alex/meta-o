@@ -17,9 +17,11 @@ Inspect substance, not file presence. A ready project has:
   impact and next step, plus a project-owned non-mutating `MO-BACKLOG/1` closure
   command and G0/GC/G1/G2 rules in the entry contract. Accepted repair installs
   the shipped checker as the project's own `tools/mo-backlog.mjs` and calls it
-  with that project's whole notebook schema — path, title, open heading and
-  every entry field — because half a schema silently checks a foreign notebook
-  against the supplier's wording;
+  with that project's whole notebook schema — path, title, every introductory
+  paragraph in order, open heading and every entry field — because half a schema
+  silently checks a foreign notebook against the supplier's wording. The title
+  and each paragraph are given as rendered text, without Markdown markup and
+  with whitespace collapsed, because that is what the checker compares;
 - a short commands-and-papercuts document, `docs/papercut.md` by default and any
   equivalent accepted on content, linked from `AGENTS.md`, whose writing rule is
   narrow on purpose: a frequent or routine command hung or failed and the cause
@@ -30,10 +32,15 @@ Inspect substance, not file presence. A ready project has:
 - a plain-language README explaining purpose, use, constraints, commands and
   links to the knowledge layer;
 - concise, useful, byte-identical `AGENTS.md` and `CLAUDE.md` containing project
-  outcomes, boundaries, purpose, knowledge, commands, version-control rules and
-  a dictation rule: anomalous wording that could materially change scope or
+  outcomes, boundaries, purpose, knowledge, commands, version-control rules —
+  commit every coherent, verified increment, and push only when the user asks —
+  and a dictation rule: anomalous wording that could materially change scope or
   outcome is clarified with the user rather than silently corrected, while the
   confirmed intent remains verbatim.
+
+`CLAUDE.md` stays a byte copy of `AGENTS.md`, never a one-line `@AGENTS.md`
+import: a Claude Code session started in a nested directory does not expand that
+import and works without the project contract.
 
 Human-facing project knowledge uses the user's language, inferred from the
 business framing unless the user chooses another. Code, identifiers, commands,
@@ -47,7 +54,21 @@ mixed artifacts; only a genuinely undecidable case belongs in backlog.
 
 Internal Markdown links use a label containing the target document's H1 title,
 not its path. Enforce resolution and labels with a mature Markdown AST/link
-tool, never a regex Markdown parser.
+tool, never a regex Markdown parser. The shipped `mo-knowledge.mjs check` is
+that tool for the portable core: one H1, resolving links labelled with the
+target's H1, identifiers defined once in their layer, resolvable citations and a
+business reason in every decision. Purpose comments, the acceptance map,
+glossary agreement and foreign notation stay project-local rules.
+
+The knowledge layer is a capability the project declares, and the human decides
+it. The declared closure command carries the literal `MO-BACKLOG/1`, `AGENTS.md`
+records `history_cutoff_sha:` and links the papercut document — named for it, or
+declared by a `Knowledge-Layer-Papercut: <path>` line — and on the human's
+answer `AGENTS.md` holds `Knowledge-Layer: enabled` or
+`Knowledge-Layer: disabled` on its own line. A project that never had these is
+`not_enabled` and owes no closure proof at G0, GC, G1 or G2, while remote-head
+equality and CI evidence still bind an agent's MR/PR and merge; a project that
+had them and lost one is a gap.
 
 ## Knowledge id history
 

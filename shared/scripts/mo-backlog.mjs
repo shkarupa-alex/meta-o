@@ -9,6 +9,7 @@
 
 import { spawnSync } from "node:child_process";
 import { TextDecoder } from "node:util";
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, posix, resolve } from "node:path";
 
@@ -31,6 +32,7 @@ const REASONS = new Set([
   "snapshot_changed",
   "candidate_mismatch",
   "remote_head_unreadable",
+  "call_error",
   "internal_error",
 ]);
 
@@ -59,7 +61,7 @@ const USAGE = `usage: mo-backlog.mjs [--candidate <40hex>] [--repo <root>] [sche
   --candidate <40hex>    fail unless the observed HEAD is exactly this commit
   --expect-head <sha>    same comparison under the name the gates use
   --remote-head <sha>    fail unless the remote source HEAD is this commit
-  --repo <root>          repository to inspect (default: this checkout)
+  --repo <root>          repository to inspect (default: Git root of the cwd)
   --path <rel>           notebook path inside the repository
   --title <text>         expected level-one heading
   --open-heading <text>  expected heading of the open section
@@ -84,6 +86,9 @@ export function asciiJson(value) {
 
 /** §A-BACKLOG-01 extracts visible text from the real Markdown AST. */
 function text(node) {
+  // A hard line break has no value of its own; dropping it would glue the two
+  // words it separates into one and fail an introduction declared as rendered.
+  if (node?.type === "break") return "\n";
   if (typeof node?.value === "string") return node.value;
   return (node?.children ?? []).map(text).join("");
 }
@@ -377,16 +382,52 @@ function schemaComplete(given) {
   );
 }
 
+// A call error still answers about the caller's own repository and notebook,
+// so both are read from the raw arguments, before any rule can reject them: a
+// bad SHA, an unknown or repeated flag must not swap in this project's default
+// path or the working directory's repository. A repeated value names nothing.
+function callTarget(args) {
+  const seen = new Map();
+  for (let index = 0; index < args.length; index += 1) {
+    if (!VALUED.has(args[index]) || index + 1 >= args.length) continue;
+    const flag = args[index];
+    const value = args[(index += 1)];
+    seen.set(flag, seen.has(flag) && seen.get(flag) !== value ? null : value);
+  }
+  const declared = args.some((flag) => SCHEMA_FLAGS.has(flag));
+  return {
+    repo: seen.has("--repo") ? seen.get("--repo") : undefined,
+    path: declared ? (seen.get("--path") ?? null) : META_O_SCHEMA.path,
+  };
+}
+
 function parseArguments(args) {
   const collected = collectArguments(args);
-  if (collected.help || collected.invalid) return collected;
+  if (collected.help) return collected;
+  if (collected.invalid) return { invalid: true, target: callTarget(args) };
   const { given } = collected;
   for (const flag of ["--candidate", "--expect-head", "--remote-head"]) {
-    if (given.has(flag) && !/^[a-f0-9]{40}$/u.test(given.get(flag))) return { invalid: true };
+    if (given.has(flag) && !/^[a-f0-9]{40}$/u.test(given.get(flag))) {
+      return { invalid: true, target: callTarget(args) };
+    }
   }
   const declared = [...SCHEMA_FLAGS].some((flag) => given.has(flag));
-  if (declared && !schemaComplete(given)) return { invalid: true };
+  if (declared && !schemaComplete(given)) return { invalid: true, target: callTarget(args) };
   return { given, declared };
+}
+
+/**
+ * §A-BACKLOG-01 inspects the repository the command runs in.
+ *
+ * The checker is copied into a project's `tools/`, so a root derived from the
+ * script's own path would name a directory outside that project. An explicit
+ * `--repo` wins; otherwise the Git root of the working directory, from any
+ * nested directory. Outside Git the working directory stays the root, and
+ * reading its HEAD answers `not_git_repository`.
+ */
+function defaultRoot() {
+  const found = git(process.cwd(), ["rev-parse", "--show-toplevel"]);
+  return found.status === 0 ? found.stdout.replace(/\n$/u, "") : process.cwd();
 }
 
 function main() {
@@ -395,14 +436,20 @@ function main() {
     process.stdout.write(USAGE);
     return;
   }
-  const root = parsed.given?.get("--repo") ?? ROOT;
   if (parsed.invalid) {
-    const result = unknown("internal_error", null, worktreeState(root), META_O_SCHEMA.path);
+    // A call error names the notebook the caller declared, or none: this
+    // project's own default path would point a foreign caller at the wrong file.
+    // Two different --repo values name no repository, and the working
+    // directory's is not the caller's either: its state stays unknown.
+    const { repo, path } = parsed.target;
+    const worktree = repo === null ? "unknown" : worktreeState(repo ?? defaultRoot());
+    const result = unknown("call_error", null, worktree, path);
     process.stderr.write(`${result.line}\n`);
     process.exitCode = 2;
     return;
   }
   const { given, declared } = parsed;
+  const root = given.get("--repo") ?? defaultRoot();
   const schema = declared
     ? {
         path: given.get("--path"),
@@ -423,4 +470,19 @@ function main() {
   if (result.status !== "PASS") process.exitCode = result.status === "NOT_EMPTY" ? 1 : 2;
 }
 
-if (resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) main();
+/**
+ * Whether this file is the program Node was asked to run. Both sides go through
+ * realpath: Node resolves the main module through symlinks and percent-encodes
+ * its URL, while argv keeps the path as typed, so a textual comparison fails
+ * silently for a symlinked install or a directory with a space in its name,
+ * and a helper that answers by exit status would read as a yes.
+ */
+function invokedDirectly() {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (invokedDirectly()) main();

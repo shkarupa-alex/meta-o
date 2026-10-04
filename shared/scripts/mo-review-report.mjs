@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 /**
- * Decide whether one reviewer's authoritative response has the agreed shape.
+ * Decide whether one reviewer's authoritative response has the agreed shape,
+ * and carry it from the reviewer to its consumer without losing a byte.
  *
  * §A-REVIEW-04 makes that body the whole result of a review, so "is this a
  * report?" has to be answerable by a machine. The rule the caller applied by
  * eye lived inside a test, where the shipped skills could not reach it and
- * where a false `malformed` cost a whole review round.
+ * where a false `malformed` cost a whole review round. The grammar itself
+ * lives in `mo-review-grammar.mjs`; this file is the command surface both the
+ * reviewer (`template`, `prepare`, `validate`) and the coordinator (`validate`
+ * with `--prepared`, `namespace`, `stage`, `pair`) call.
  */
 
 import { createHash, randomBytes } from "node:crypto";
@@ -20,280 +24,23 @@ import {
   openSync,
   readFileSync,
   readSync,
+  realpathSync,
   unlinkSync,
   writeSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { fromMarkdown } from "mdast-util-from-markdown";
+import { reportLine, reportTemplate, validateReport } from "./mo-review-grammar.mjs";
 
-const MODES = new Set(["fast", "deep", "follow_up"]);
-const ORDER = ["Grounding", "Scope and checks", "Findings", "Unknowns", "Residual risks"];
-const LABELS = [...ORDER, "Evidence report", "Unknown-Account"];
-const UNKNOWN_REASONS = new Set([
-  "unreadable",
-  "candidate_mismatch",
-  "dirty_candidate",
-  "malformed_report",
-  "retrieval_failure",
-  "handoff_failure",
-  "review_incomplete",
-]);
-
-const fail = (reason, line) => ({ status: "malformed", reason, line: line + 1 });
-
-/** §A-REVIEW-04 indexes those same paragraphs by line for the section markers. */
-export function topLevelProse(text) {
-  return new Set(
-    topLevelParagraphs(text).flatMap(({ line, rows }) => rows.map((_, step) => line + step)),
-  );
-}
-
-/**
- * The top-level paragraph nodes, each as its first line and its own rows.
- *
- * §A-REVIEW-04 reads structure from the block AST: a marker inside a code span,
- * a quote or a list is body evidence, and a reviewer quoting `End-Review` while
- * explaining a finding has not ended the report.
- */
-export function topLevelParagraphs(text) {
-  const lines = text.split("\n");
-  return fromMarkdown(text)
-    .children.filter((node) => node.type === "paragraph")
-    .map((node) => ({
-      line: node.position.start.line - 1,
-      rows: lines.slice(node.position.start.line - 1, node.position.end.line),
-    }));
-}
-
-/** §A-REVIEW-04 reads the anchored envelope before any body byte is trusted. */
-function readEnvelope(lines) {
-  const shape = [
-    /^Review-Execution: (\S+)$/u,
-    /^Candidate: [a-f0-9]{40}$/u,
-    /^Mode: requested=(\S+) effective=(\S+)$/u,
-    null,
-    /^Verdict: (\S+)$/u,
-    /^Counts: P0=(\d+) P1=(\d+) P2=(\d+) P3=(\d+)$/u,
-  ];
-  for (const [row, pattern] of shape.entries()) {
-    if (pattern !== null && !pattern.test(lines[row] ?? "")) return fail("header_order", row);
-  }
-  if (lines[3] !== "Delegation: none") return fail("delegation", 3);
-  const mode = shape[2].exec(lines[2]);
-  if (!MODES.has(mode[1]) || !MODES.has(mode[2])) return fail("header_order", 2);
-  const verdict = shape[4].exec(lines[4])[1];
-  if (!["PASS", "FINDINGS", "UNKNOWN"].includes(verdict)) return fail("verdict", 4);
-  const execution = shape[0].exec(lines[0])[1];
-  const counts = shape[5].exec(lines[5]);
-  return {
-    execution,
-    candidate: lines[1].slice("Candidate: ".length),
-    requested: mode[1],
-    effective: mode[2],
-    verdict,
-    counts: counts.slice(1).map(Number),
-  };
-}
-
-/**
- * Check the envelope against what this caller asked for.
- *
- * §A-REVIEW-04 keeps the expected values with the caller: a report that is
- * internally consistent but answers a different dispatch, candidate or mode is
- * somebody else's report, and a stale one reads exactly like a fresh one.
- */
-function readHeader(lines, expected) {
-  const envelope = readEnvelope(lines);
-  if (envelope.status === "malformed") return envelope;
-  if (envelope.execution !== expected.execution) return fail("execution_mismatch", 0);
-  if (envelope.candidate !== expected.candidate) return fail("candidate_mismatch", 1);
-  if (envelope.requested !== expected.requestedMode) return fail("mode_mismatch", 2);
-  if (expected.effectiveMode !== undefined && envelope.effective !== expected.effectiveMode) {
-    return fail("mode_mismatch", 2);
-  }
-  if (lines.at(-1) !== `End-Review: ${envelope.execution}`) {
-    return fail("footer_mismatch", lines.length - 1);
-  }
-  return envelope;
-}
-
-/** §A-REVIEW-04 requires exactly one unquoted marker per section, in order. */
-function readSections(lines, prose) {
-  const found = new Map(LABELS.map((label) => [label, []]));
-  for (const index of prose) {
-    if (found.has(lines[index])) found.get(lines[index]).push(index);
-  }
-  for (const label of ["Evidence report", ...ORDER]) {
-    if (found.get(label).length !== 1) return fail("section_missing", found.get(label)[1] ?? 0);
-  }
-  const evidence = found.get("Evidence report")[0];
-  const positions = ORDER.map((label) => found.get(label)[0]);
-  if (evidence <= 5 || positions.some((position) => position < evidence)) {
-    return fail("section_order", evidence);
-  }
-  for (let step = 1; step < positions.length; step += 1) {
-    if (positions[step] < positions[step - 1]) return fail("section_order", positions[step]);
-  }
-  return { evidence, at: new Map(ORDER.map((label, step) => [label, positions[step]])), found };
-}
-
-/**
- * §A-REVIEW-04 keys the index monotonically so a body can answer it one to one.
- *
- * Reviewers write the index as consecutive rows, and a long summary wraps. So
- * an entry starts where a row starts with its key, and every row after it that
- * does not is the same entry continued. Reading each row as an entry rejected a
- * wrapped summary; reading each paragraph as one entry rejected every report
- * with two findings. Containers stay out of this entirely: only top-level
- * paragraphs are offered here.
- */
-function readIndex(paragraphs, from, to, counts) {
-  const found = paragraphs.filter(
-    ({ line, rows }) => line >= from && line < to && !rows[0].startsWith("Unknown-Reason:"),
-  );
-  const entries = [];
-  for (const { line, rows } of found) {
-    for (const [step, row] of rows.entries()) {
-      const match = row.match(/^(F-\d{3}) \[(P[0-3])\] .+/u);
-      // An entry opens a paragraph; a row that follows one is that entry
-      // continued, however much it looks like structure on its own.
-      if (match) entries.push({ key: match[1], severity: match[2], line: line + step });
-      else if (step === 0) return fail("index_key_order", line);
-    }
-  }
-  for (const [step, entry] of entries.entries()) {
-    if (entry.key !== `F-${String(step + 1).padStart(3, "0")}`)
-      return fail("index_key_order", from);
-  }
-  const severities = [0, 0, 0, 0];
-  for (const entry of entries) severities[Number(entry.severity.slice(1))] += 1;
-  const total = counts.reduce((sum, count) => sum + count, 0);
-  if (total !== entries.length) return fail("counts_mismatch", 5);
-  for (const [step, count] of counts.entries()) {
-    if (severities[step] !== count) return fail("counts_mismatch", 5);
-  }
-  return { keys: entries.map(({ key, severity }) => ({ key, severity })) };
-}
-
-/** §A-REVIEW-04 pairs every index key with a body that states its own severity. */
-function readFindingBodies(lines, prose, span, keys) {
-  const bodies = [...prose]
-    .filter((position) => position > span.from && position < span.to)
-    .map((position) => ({ match: lines[position].match(/^(F-\d{3})$/u), position }))
-    .filter(({ match }) => match);
-  if (bodies.length !== keys.length) return fail("index_body_mismatch", span.from);
-  for (const [step, body] of bodies.entries()) {
-    if (body.match[1] !== keys[step].key) return fail("index_body_mismatch", body.position);
-    const next = bodies[step + 1]?.position ?? span.to;
-    const detail = [...prose]
-      .filter((line) => line > body.position && line < next && lines[line].trim() !== "")
-      .map((line) => lines[line]);
-    if (detail.length === 0) return fail("index_body_mismatch", body.position);
-    if (!new RegExp(`^\\[${keys[step].severity}\\](?:\\s|$)`, "u").test(detail[0])) {
-      return fail("index_body_mismatch", body.position);
-    }
-  }
-  return { bodies };
-}
-
-/** §A-REVIEW-04 makes an UNKNOWN account for itself rather than only declaring itself. */
-function readUnknown(lines, prose, sections, verdict) {
-  const account = sections.found.get("Unknown-Account");
-  const reasons = [...prose]
-    .map((position) => lines[position])
-    .filter((line) => line.startsWith("Unknown-Reason:"));
-  if (verdict !== "UNKNOWN") {
-    if (account.length > 0) return fail("unknown_account", account[0]);
-    if (reasons.length > 0) return fail("unknown_reason", 0);
-    return {};
-  }
-  if (account.length !== 1) return fail("unknown_account", account[1] ?? 0);
-  const findings = sections.at.get("Findings");
-  const unknowns = sections.at.get("Unknowns");
-  if (account[0] < findings || account[0] > unknowns) return fail("unknown_account", account[0]);
-  const stated = [...prose].some(
-    (position) => position > account[0] && position < unknowns && lines[position].trim() !== "",
-  );
-  if (!stated) return fail("unknown_account", account[0]);
-  if (reasons.length !== 1) return fail("unknown_reason", account[0]);
-  const reason = reasons[0].match(/^Unknown-Reason: (\S+)$/u)?.[1];
-  if (reason === undefined || !UNKNOWN_REASONS.has(reason))
-    return fail("unknown_reason", account[0]);
-  return {};
-}
-
-/** §A-REVIEW-04 refuses a section that is announced and then left empty. */
-function bodyOf(lines, from, to) {
-  return lines.slice(from + 1, to).filter((line) => line.trim() !== "");
-}
-
-/**
- * Validate one authoritative response against what the caller asked for.
- *
- * §A-REVIEW-04 lets the caller own the expected values: a report that is
- * internally consistent but answers a different dispatch, candidate or mode is
- * somebody else's report, and reading it as this one is the failure this
- * function exists to prevent.
- */
-export function validateReport(text, expected) {
-  const lines = text.trimEnd().split("\n");
-  const header = readHeader(lines, expected);
-  if (header.status === "malformed") return header;
-  const prose = topLevelProse(text);
-  const sections = readSections(lines, prose);
-  if (sections.status === "malformed") return sections;
-  const index = readIndex(topLevelParagraphs(text), 6, sections.evidence, header.counts);
-  if (index.status === "malformed") return index;
-  const at = sections.at;
-  if (bodyOf(lines, at.get("Grounding"), at.get("Scope and checks")).length === 0) {
-    return fail("grounding_missing", at.get("Grounding"));
-  }
-  for (const [label, end] of [
-    ["Scope and checks", at.get("Findings")],
-    ["Unknowns", at.get("Residual risks")],
-    ["Residual risks", lines.length - 1],
-  ]) {
-    if (bodyOf(lines, at.get(label), end).length === 0)
-      return fail("section_missing", at.get(label));
-  }
-  const unknown = readUnknown(lines, prose, sections, header.verdict);
-  if (unknown.status === "malformed") return unknown;
-  const findingsEnd =
-    header.verdict === "UNKNOWN" ? sections.found.get("Unknown-Account")[0] : at.get("Unknowns");
-  const findingBody = bodyOf(lines, at.get("Findings"), findingsEnd);
-  if (header.verdict !== "FINDINGS") {
-    if (index.keys.length > 0 || findingBody.length > 0) {
-      return fail("pass_not_empty", at.get("Findings"));
-    }
-  } else {
-    if (index.keys.length === 0) return fail("counts_mismatch", 5);
-    const paired = readFindingBodies(
-      lines,
-      prose,
-      { from: at.get("Findings"), to: findingsEnd },
-      index.keys,
-    );
-    if (paired.status === "malformed") return paired;
-  }
-  return {
-    status: "valid",
-    verdict: header.verdict,
-    effective: header.effective,
-    counts: header.counts,
-    bytes: Buffer.byteLength(text),
-  };
-}
-
-/** §A-REVIEW-04 states one machine-readable verdict line for the caller. */
-export function reportLine(result) {
-  if (result.status === "valid") {
-    const counts = result.counts.map((count, step) => `P${step}=${count}`).join(",");
-    return `MO-REVIEW-REPORT/1 status=valid verdict=${result.verdict} effective=${result.effective} counts=${counts} bytes=${result.bytes}`;
-  }
-  return `MO-REVIEW-REPORT/1 status=malformed reason=${result.reason} line=${result.line}`;
-}
+export {
+  reportLine,
+  reportTemplate,
+  topLevelParagraphs,
+  topLevelProse,
+  validateReport,
+} from "./mo-review-grammar.mjs";
 
 /**
  * Read one report as bytes, refusing a source that is not a plain file.
@@ -330,6 +77,78 @@ export function decodeReport(buffer) {
   const text = buffer.toString("utf8");
   if (!Buffer.from(text, "utf8").equals(buffer)) return { error: "invalid_utf8" };
   return { text };
+}
+
+/**
+ * Write a validated body to the file the brief named, once.
+ *
+ * §A-REVIEW-04 lets a reviewer prove, before the irreversible `worker_done`,
+ * that the bytes it is about to send are a valid report: the bytes are
+ * validated in memory first and only a valid body is written, so a malformed
+ * draft leaves no file behind and can simply be corrected. The file is created
+ * exclusively — an existing file belongs to some other Dispatch, and writing
+ * over it would make the coordinator compare against bytes nobody sent.
+ */
+export function prepareBody({ path, buffer, expected }) {
+  const decoded = decodeReport(buffer);
+  if (decoded.error) return { status: "malformed", reason: decoded.error, line: 0 };
+  const verdict = validateReport(decoded.text, expected);
+  if (verdict.status === "malformed") return verdict;
+  let fd;
+  try {
+    fd = openSync(
+      path,
+      constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
+      0o600,
+    );
+  } catch (error) {
+    return { status: "refused", reason: error.code === "EEXIST" ? "exists" : "unwritable" };
+  }
+  try {
+    writeSync(fd, buffer);
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+  const written = readReportBytes(path);
+  if (written.error || !written.buffer.equals(buffer)) {
+    return { status: "refused", reason: "identity_changed" };
+  }
+  return { status: "prepared", path, bytes: buffer.length, verdict };
+}
+
+/**
+ * The only differences delivery may introduce between prepared and received bytes.
+ *
+ * `final-newline` is what a shell command substitution does to a body read with
+ * `--body "$(cat <file>)"`: it strips the line feed after `End-Review`. The
+ * grammar allows at most one there, so this names exactly one byte and no more.
+ * Both work on bytes: decoding first would turn different invalid sequences into
+ * the same replacement character and call two files one.
+ */
+export const NORMALIZATIONS = {
+  none: (bytes) => bytes,
+  "final-newline": (bytes) => (bytes.at(-1) === 0x0a ? bytes.subarray(0, -1) : bytes),
+};
+
+/**
+ * Compare the body Orca delivered with the file the reviewer prepared.
+ *
+ * §A-REVIEW-04 keeps two claims apart: a received body that validates is a
+ * well-formed report, and a received body equal to the prepared file is the
+ * report the reviewer checked. Only the second rules out a delivery that
+ * truncated or rewrote a body into another valid one, and it is only provable
+ * where the file is readable, so an unreadable file is `unverified`, never
+ * `identical`.
+ */
+export function bodyIdentity(received, preparedPath, normalization = "none") {
+  const normalize = NORMALIZATIONS[normalization];
+  if (normalize === undefined) return { identity: "unverified", reason: "normalization" };
+  const prepared = readReportBytes(preparedPath);
+  if (prepared.error) return { identity: "unverified", reason: prepared.error };
+  const left = normalize(received);
+  const right = normalize(prepared.buffer);
+  return { identity: left.equals(right) ? "identical" : "different", reason: normalization };
 }
 
 const VENDOR = /^[a-z0-9][a-z0-9-]{0,31}$/u;
@@ -448,6 +267,69 @@ export function stage({ dir, slot, vendor, buffer, expected }) {
  * and content hash are checked together because each alone is reusable.
  */
 export function pair({ dir, pairId, slots }) {
+  const parts = verifySlots(dir, slots);
+  if (!Array.isArray(parts)) return parts;
+  return { status: "paired", line: `Review-Pair: ${pairId} ${parts.join(" ")}` };
+}
+
+/**
+ * Hand over one slot early, unchanged, as a preview rather than a verdict.
+ *
+ * §A-RESPONSE-03 names the executor as a second consumer when the owner
+ * approved an early repair: it reads the first complete report while the other
+ * reviewer still works on the old SHA. The slot is checked exactly as a pair
+ * slot is, and the pair handoff still follows once the second report arrives.
+ */
+export function preview({ dir, pairId, slot }) {
+  const parts = verifySlots(dir, [slot]);
+  if (!Array.isArray(parts)) return parts;
+  return { status: "previewed", line: `Review-Preview: ${pairId} ${parts[0]}` };
+}
+
+const ACK = /^Review-(Preview|Handoff)-Ack: (\S+)((?: [AB]=\d+)+)$/u;
+
+/**
+ * Whether the expected sizes have the shape the acknowledgement kind needs:
+ * both slots for a pair handoff, exactly one for a preview.
+ */
+function ackSlotsValid(kind, slots) {
+  if (kind === "Handoff") return slots.length === 2 && slots.includes("A") && slots.includes("B");
+  if (kind === "Preview") return slots.length === 1 && ["A", "B"].includes(slots[0]);
+  return false;
+}
+
+/**
+ * §A-RESPONSE-03 accepts an acknowledgement only for this pair, these slots and
+ * the published sizes; anything else is an absent acknowledgement. Each slot
+ * appears once: a repeated slot, even with the same size, names two sizes for
+ * one report and acknowledges neither.
+ */
+export function checkAck(line, { kind, pairId, bytes }) {
+  const slots = Object.keys(bytes).sort();
+  if (!ackSlotsValid(kind, slots)) return { status: "mismatched", reason: "expected" };
+  const match = ACK.exec(String(line).trim());
+  if (match === null || match[1] !== kind || match[2] !== pairId) {
+    return { status: "mismatched", reason: "form" };
+  }
+  const fields = match[3]
+    .trim()
+    .split(" ")
+    .map((part) => part.split("="));
+  const acknowledged = Object.fromEntries(fields);
+  if (
+    fields.length !== Object.keys(acknowledged).length ||
+    JSON.stringify(Object.keys(acknowledged).sort()) !== JSON.stringify(slots)
+  ) {
+    return { status: "mismatched", reason: "slots" };
+  }
+  for (const slot of slots) {
+    if (Number(acknowledged[slot]) !== bytes[slot])
+      return { status: "mismatched", reason: "bytes" };
+  }
+  return { status: "matched" };
+}
+
+function verifySlots(dir, slots) {
   const parts = [];
   for (const expected of slots) {
     const path = join(dir, `${expected.slot}-${expected.vendor}.md`);
@@ -475,7 +357,7 @@ export function pair({ dir, pairId, slots }) {
     }
     parts.push(`${expected.slot}=${JSON.stringify(path)} ${expected.slot}_bytes=${expected.bytes}`);
   }
-  return { status: "paired", line: `Review-Pair: ${pairId} ${parts.join(" ")}` };
+  return parts;
 }
 
 function parseArguments(argv) {
@@ -558,7 +440,53 @@ function commandValidate(options) {
   }
   const result = validateReport(decoded.text, expectationOf(options));
   process.stdout.write(`${reportLine(result)}\n`);
-  return result.status === "valid" ? 0 : 1;
+  if (options.prepared === undefined) return result.status === "valid" ? 0 : 1;
+  const normalization = options.normalization ?? "none";
+  if (NORMALIZATIONS[normalization] === undefined) {
+    throw new Error("--normalization must be none or final-newline");
+  }
+  const identity = bodyIdentity(bytes.buffer, options.prepared, normalization);
+  process.stdout.write(
+    `MO-REVIEW-BODY/1 prepared_body_identity=${identity.identity} reason=${identity.reason}\n`,
+  );
+  return result.status === "valid" && identity.identity !== "different" ? 0 : 1;
+}
+
+function commandPrepare(options) {
+  require_(options, ["file"]);
+  const result = prepareBody({
+    path: options.file,
+    buffer: readFileSync(0),
+    expected: expectationOf(options),
+  });
+  if (result.status === "prepared") {
+    process.stdout.write(`${reportLine(result.verdict)}\n`);
+    process.stdout.write(
+      `MO-REVIEW-BODY/1 status=prepared path=${JSON.stringify(result.path)} bytes=${result.bytes}\n`,
+    );
+    return 0;
+  }
+  if (result.status === "refused") {
+    process.stdout.write(`MO-REVIEW-BODY/1 status=refused reason=${result.reason}\n`);
+    return 1;
+  }
+  process.stdout.write(`${reportLine(result)}\n`);
+  return 1;
+}
+
+function commandTemplate(options) {
+  require_(options, ["verdict", "dispatch", "candidate", "requested", "effective"]);
+  const template = reportTemplate({
+    verdict: options.verdict,
+    dispatch: options.dispatch,
+    candidate: options.candidate,
+    requested: options.requested,
+    effective: options.effective,
+    reason: options["unknown-reason"],
+  });
+  if (template.error) throw new Error(template.error);
+  process.stdout.write(template.text);
+  return 0;
 }
 
 function commandStage(options) {
@@ -587,26 +515,69 @@ function commandStage(options) {
   return 0;
 }
 
+function slotOption(options, slot) {
+  const prefix = slot.toLowerCase();
+  require_(options, [
+    `${prefix}-vendor`,
+    `${prefix}-bytes`,
+    `${prefix}-dev`,
+    `${prefix}-ino`,
+    `${prefix}-sha256`,
+  ]);
+  return {
+    slot,
+    vendor: options[`${prefix}-vendor`],
+    bytes: Number(options[`${prefix}-bytes`]),
+    dev: Number(options[`${prefix}-dev`]),
+    ino: Number(options[`${prefix}-ino`]),
+    sha256: options[`${prefix}-sha256`],
+  };
+}
+
+function commandPreview(options) {
+  require_(options, ["dir", "slot"]);
+  if (!["A", "B"].includes(options.slot)) throw new Error("--slot must be A or B");
+  const result = preview({
+    dir: options.dir,
+    pairId: basename(options.dir),
+    slot: slotOption(options, options.slot),
+  });
+  if (result.status !== "previewed") {
+    process.stdout.write(
+      `MO-REVIEW-PAIR/1 status=unknown reason=${result.reason} slot=${result.slot}\n`,
+    );
+    return 1;
+  }
+  process.stdout.write(`${result.line}\n`);
+  return 0;
+}
+
+function commandAck(options) {
+  require_(options, ["line", "kind", "pair-id"]);
+  const bytes = {};
+  for (const slot of ["A", "B"]) {
+    const value = options[`${slot.toLowerCase()}-bytes`];
+    if (value !== undefined) bytes[slot] = Number(value);
+  }
+  if (!ackSlotsValid(options.kind, Object.keys(bytes).sort())) {
+    throw new Error(
+      "--kind Handoff needs --a-bytes and --b-bytes, --kind Preview exactly one of them",
+    );
+  }
+  const result = checkAck(options.line, {
+    kind: options.kind,
+    pairId: options["pair-id"],
+    bytes,
+  });
+  process.stdout.write(
+    `MO-REVIEW-ACK/1 status=${result.status}${result.reason ? ` reason=${result.reason}` : ""}\n`,
+  );
+  return result.status === "matched" ? 0 : 1;
+}
+
 function commandPair(options) {
   require_(options, ["dir"]);
-  const slots = ["A", "B"].map((slot) => {
-    const prefix = slot.toLowerCase();
-    require_(options, [
-      `${prefix}-vendor`,
-      `${prefix}-bytes`,
-      `${prefix}-dev`,
-      `${prefix}-ino`,
-      `${prefix}-sha256`,
-    ]);
-    return {
-      slot,
-      vendor: options[`${prefix}-vendor`],
-      bytes: Number(options[`${prefix}-bytes`]),
-      dev: Number(options[`${prefix}-dev`]),
-      ino: Number(options[`${prefix}-ino`]),
-      sha256: options[`${prefix}-sha256`],
-    };
-  });
+  const slots = ["A", "B"].map((slot) => slotOption(options, slot));
   const result = pair({ dir: options.dir, pairId: basename(options.dir), slots });
   if (result.status !== "paired") {
     process.stdout.write(
@@ -618,8 +589,44 @@ function commandPair(options) {
   return 0;
 }
 
+// Each command takes exactly the flags it reads. A misspelled optional flag
+// such as `--prepare` or `--normalisation` would otherwise skip or weaken the
+// check it names and still answer valid, so any other name is a call error.
+const EXPECTATION_FLAGS = ["dispatch", "candidate", "requested", "effective"];
+const SLOT_FLAGS = ["a", "b"].flatMap((prefix) =>
+  ["vendor", "bytes", "dev", "ino", "sha256"].map((field) => `${prefix}-${field}`),
+);
+/**
+ * The flags each command reads. §A-REVIEW-04 makes a documented helper call
+ * part of the protocol, so the skill texts are checked against this table and a
+ * call copied from them is never refused.
+ */
+export const FLAGS = {
+  template: ["verdict", ...EXPECTATION_FLAGS, "unknown-reason"],
+  prepare: ["file", ...EXPECTATION_FLAGS],
+  validate: ["file", ...EXPECTATION_FLAGS, "prepared", "normalization"],
+  stage: ["dir", "slot", "vendor", "file", ...EXPECTATION_FLAGS],
+  pair: ["dir", ...SLOT_FLAGS],
+  preview: ["dir", "slot", ...SLOT_FLAGS],
+  ack: ["line", "kind", "pair-id", "a-bytes", "b-bytes"],
+};
+
+function knownFlags(name, options) {
+  const unknown = Object.keys(options).filter((flag) => !FLAGS[name].includes(flag));
+  if (unknown.length > 0) throw new Error(`${name} does not take --${unknown.join(", --")}`);
+  return options;
+}
+
 function main(argv) {
-  const commands = { validate: commandValidate, stage: commandStage, pair: commandPair };
+  const commands = {
+    template: commandTemplate,
+    prepare: commandPrepare,
+    validate: commandValidate,
+    stage: commandStage,
+    pair: commandPair,
+    preview: commandPreview,
+    ack: commandAck,
+  };
   if (argv[0] === "namespace") {
     const created = namespace();
     process.stdout.write(
@@ -629,12 +636,29 @@ function main(argv) {
   }
   const command = commands[argv[0]];
   if (command === undefined) {
-    throw new Error("usage: mo-review-report.mjs <namespace|validate|stage|pair> …");
+    throw new Error(
+      "usage: mo-review-report.mjs <namespace|template|prepare|validate|stage|pair|preview|ack> …",
+    );
   }
-  return command(parseArguments(argv.slice(1)));
+  return command(knownFlags(argv[0], parseArguments(argv.slice(1))));
 }
 
-if (process.argv[1] !== undefined && import.meta.url === `file://${process.argv[1]}`) {
+/**
+ * Whether this file is the program Node was asked to run. Both sides go through
+ * realpath: Node resolves the main module through symlinks and percent-encodes
+ * its URL, while argv keeps the path as typed, so a textual comparison fails
+ * silently for a symlinked install or a directory with a space in its name,
+ * and a helper that answers by exit status would read as a yes.
+ */
+function invokedDirectly() {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (invokedDirectly()) {
   try {
     process.exitCode = main(process.argv.slice(2));
   } catch (error) {

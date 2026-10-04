@@ -1,0 +1,11 @@
+---
+name: mo-x
+description: Synthetic fixture skill for mo-debug tests.
+license: MIT
+metadata:
+  source_tree: 1111111111111111111111111111111111111111
+---
+
+# Fixture skill X
+
+Version one of the body.

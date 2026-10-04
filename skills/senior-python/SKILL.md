@@ -6,6 +6,8 @@ description:
   generic tutoring, or tasks with no Python artifact unless explicitly invoked. Use for writing,
   review, diagnosis, design, refactoring, or maintenance where correctness, state, effects,
   concurrency, compatibility, security, reuse, testing, or long-term ownership materially matters.
+metadata:
+  source_tree: "2a4b49c2daa7a35e3cb8d5a2651343b2792ebed1"
 ---
 
 # Senior Python engineering

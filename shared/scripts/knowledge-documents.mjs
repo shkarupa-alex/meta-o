@@ -15,7 +15,9 @@
 import { fromMarkdown } from "mdast-util-from-markdown";
 import yaml from "js-yaml";
 
-const ID = /^§([AB])-[A-Z][A-Z0-9-]*-\d{2}(?=\s|$)/;
+/** §A-MEMORY-01 recognises a definition: a heading whose text starts with an identifier. */
+export const HEADING_ID = /^§([AB])-[A-Z][A-Z0-9-]*-\d{2}(?=\s|$)/;
+const ID = HEADING_ID;
 
 /** §A-MEMORY-01 matches every knowledge identifier written in prose or a heading. */
 export const CITATION = /§[AB]-[A-Z][A-Z0-9-]*-\d{2}/gu;

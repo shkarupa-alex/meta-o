@@ -8,12 +8,19 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-function coordinate(envelope) {
-  return `${envelope.skill}:${envelope.matrixProfile}:${envelope.repetition}`;
+/**
+ * §A-EVAL-01 fixes the evidence coordinate at one case on one matrix profile.
+ *
+ * The case is part of the key because one model turn that judged several cases
+ * at once is one correlated judgement, not independent coverage of each: a
+ * skill-level key let a single turn close every case of a skill.
+ */
+export function evaluationCoordinate(envelope) {
+  return `${envelope.skill}:${envelope.caseId}:${envelope.matrixProfile}:${envelope.repetition}`;
 }
 
 function lookup(records, envelope, label) {
-  const key = coordinate(envelope);
+  const key = evaluationCoordinate(envelope);
   const value = records instanceof Map ? records.get(key) : records?.[key];
   if (value === undefined || value === null) throw new Error(`${key}: ${label} is missing`);
   return value;
@@ -23,7 +30,9 @@ function lookup(records, envelope, label) {
 export function expectedDigest(records, envelope) {
   const digest = lookup(records, envelope, "caller-frozen evaluation digest");
   if (!/^[a-f0-9]{64}$/u.test(digest)) {
-    throw new Error(`${coordinate(envelope)}: caller-frozen evaluation digest is missing`);
+    throw new Error(
+      `${evaluationCoordinate(envelope)}: caller-frozen evaluation digest is missing`,
+    );
   }
   return digest;
 }
@@ -32,7 +41,9 @@ export function expectedDigest(records, envelope) {
 export function expectedExecution(records, envelope) {
   const execution = lookup(records, envelope, "caller-owned execution observation");
   if (typeof execution !== "object" || Array.isArray(execution)) {
-    throw new Error(`${coordinate(envelope)}: caller-owned execution observation is missing`);
+    throw new Error(
+      `${evaluationCoordinate(envelope)}: caller-owned execution observation is missing`,
+    );
   }
   return execution;
 }
@@ -41,7 +52,7 @@ export function expectedExecution(records, envelope) {
 export function writeExpectation(path, envelope) {
   if (!path) throw new Error("--expectations-out is required to freeze prompt inputs");
   const record = {
-    coordinate: coordinate(envelope),
+    coordinate: evaluationCoordinate(envelope),
     evaluationDigest: envelope.execution.evaluationDigest,
   };
   writeFileSync(resolve(path), `${JSON.stringify([record], null, 2)}\n`, {

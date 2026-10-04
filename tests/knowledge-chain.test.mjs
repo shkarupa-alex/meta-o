@@ -267,14 +267,19 @@ test("generated skills carry no project ids and sources use only explicit marker
     "shipped document discovery lost files",
   );
   for (const path of shipped) {
+    const text = readFileSync(path, "utf8");
+    // A shipped reference that teaches the grammar declares itself whole as
+    // examples; the consumer is not asked to resolve them.
+    if (deliberateFixture(text, path)) continue;
     assert.deepEqual(
-      references(readFileSync(path, "utf8"), path),
+      references(text, path),
       [],
       `${path}: shipped text carries an id the consumer cannot resolve`,
     );
   }
   for (const path of sources) {
     const source = readFileSync(path, "utf8");
+    if (deliberateFixture(source, path)) continue;
     for (const id of references(source, path)) {
       assert.ok(
         source.includes(`<!-- mo:source-anchor ${id} -->`),

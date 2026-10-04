@@ -22,7 +22,10 @@ import { basename, dirname, join, resolve } from "node:path";
 import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { fromMarkdown } from "mdast-util-from-markdown";
+
 import {
+  FLAGS,
   businessQuestion,
   linkFailureReason,
   namespace,
@@ -97,8 +100,9 @@ test("each verdict validates in its own complete shape", () => {
   const unknown = validateReport(
     report({
       verdict: "UNKNOWN",
-      index: "Unknown-Reason: review_incomplete\n\n",
-      account: "Unknown-Account\ncovered scope and blocking public observation\n",
+      account:
+        "Unknown-Account\nUnknown-Reason: review_incomplete\n" +
+        "covered scope and blocking public observation\n",
     }),
     context(),
   );
@@ -134,29 +138,31 @@ test("a marker inside a container stays body evidence", () => {
   }
 });
 
-test("a container before the evidence is diagnostic text, not an index entry", () => {
-  // The span between the counts and `Evidence report` is where a reviewer
-  // sometimes leaves the command it ran. Reading those lines as index keys
-  // threw a valid authoritative response away as malformed.
-  for (const container of [
+test("the index holds entries and nothing else", () => {
+  // Between the counts and `Evidence report` a container or loose prose is not
+  // an entry the counts can answer for. The reviewer validates the exact bytes
+  // before sending, so refusing it costs a correction, not a review.
+  for (const intruder of [
     "> diagnostic note\n\n",
     "- diagnostic note\n\n",
     "```text\nF-999 [P0] not a finding\n```\n\n",
     "    F-999 [P0] indented, so not a finding\n\n",
   ]) {
-    const text = report({ index: container });
-    assert.equal(validateReport(text, context()).status, "valid", container);
+    assert.equal(reasonOf(report({ index: intruder })), "index_layout", intruder);
   }
-  // A genuine top-level line in that span is still structure: the index keeps
-  // its order rule, and a body still has to answer every key.
+  assert.equal(
+    reasonOf(report({ index: "Unknown-Reason: review_incomplete\n\n" })),
+    "index_key_order",
+  );
   assert.equal(reasonOf(report({ index: "F-002 [P2] out of order.\n\n" })), "index_key_order");
-  const paired = report({
+  // A body quoted inside a container answers no key: only top-level lines do.
+  const quoted = report({
     verdict: "FINDINGS",
     counts: "P0=0 P1=0 P2=1 P3=0",
-    index: "> quoted note\n\nF-001 [P2] a real finding.\n\n",
-    findings: "F-001\n[P2] confirmed.\nProof and direction.\n",
+    index: "F-001 [P2] a real finding.\n\n",
+    findings: "> F-001 [P2] quoted, not a body.\n\n",
   });
-  assert.equal(validateReport(paired, context()).status, "valid");
+  assert.equal(reasonOf(quoted), "index_body_mismatch");
 });
 
 test("a wrapped summary is one entry, and two rows are two", () => {
@@ -210,6 +216,20 @@ test("a report that answers a different call is rejected before its body", () =>
     validateReport(escalated, { ...context("fast"), effectiveMode: undefined }).effective,
     "deep",
   );
+  // A reviewer may raise its coverage but never lower it, named or not.
+  for (const [requested, effective] of [
+    ["deep", "fast"],
+    ["deep", "follow_up"],
+    ["follow_up", "fast"],
+    ["fast", "follow_up"],
+  ]) {
+    const lowered = report().replace(
+      "Mode: requested=deep effective=deep",
+      `Mode: requested=${requested} effective=${effective}`,
+    );
+    const expected = { ...context(requested), effectiveMode: undefined };
+    assert.equal(validateReport(lowered, expected).reason, "mode_mismatch", effective);
+  }
 });
 
 test("each structural failure names itself", () => {
@@ -243,14 +263,43 @@ test("each structural failure names itself", () => {
     [
       report({
         verdict: "UNKNOWN",
-        index: "Unknown-Reason: made_up\n\n",
-        account: "Unknown-Account\nstated\n",
+        account: "Unknown-Account\nUnknown-Reason: made_up\nstated\n",
       }),
       "unknown_reason",
     ],
     [report({ account: "Unknown-Account\nstated\n" }), "unknown_account"],
   ];
   for (const [text, reason] of cases) assert.equal(reasonOf(text), reason, reason);
+});
+
+test("every command refuses a flag it does not read, in every shipped copy", () => {
+  const dir = space();
+  const good = join(dir, "good.md");
+  writeFileSync(good, report());
+  const prepared = join(dir, "prepared.md");
+  writeFileSync(prepared, report());
+  const base = ["validate", "--file", good, "--dispatch", "ctx_fixture", "--candidate", SHA];
+  const expected = [...base, "--requested", "deep", "--effective", "deep"];
+  const copies = [
+    HELPER,
+    ...["mo-reviewer", "mo-review-orca", "mo-orchestrate-orca"].map((skill) =>
+      join(ROOT, "skills", skill, "scripts", "mo-review-report.mjs"),
+    ),
+  ];
+  for (const helper of copies) {
+    const call = (args) => spawnSync(process.execPath, [helper, ...args], { encoding: "utf8" });
+    const typo = call([...expected, "--prepare", prepared]);
+    assert.equal(typo.status, 2, helper);
+    assert.equal(typo.stdout, "", helper);
+    assert.match(typo.stderr, /validate does not take --prepare\b/u, helper);
+    const spelled = call([...expected, "--prepared", prepared, "--normalisation", "final-newline"]);
+    assert.equal(spelled.status, 2, helper);
+    assert.equal(spelled.stdout, "", helper);
+    assert.match(spelled.stderr, /--normalisation/u, helper);
+    const named = call([...expected, "--prepared", prepared, "--normalization", "final-newline"]);
+    assert.equal(named.status, 0, named.stderr);
+    assert.match(named.stdout, /^MO-REVIEW-BODY\/1 prepared_body_identity=identical/mu, helper);
+  }
 });
 
 test("PASS with a body is not an empty verdict", () => {
@@ -651,4 +700,106 @@ test("the one permitted business question names its slot, its key and where to r
     }).reason,
     "index_line",
   );
+});
+
+// Every `mo-review-report.mjs <command> …` call a document writes, as the
+// tokens after the command name: one entry per call, continuation lines joined.
+function documentedCalls(text) {
+  const calls = [];
+  const visit = (node) => {
+    if (node.type === "code" || node.type === "inlineCode") {
+      const value = node.value
+        .replace(/\\\n/gu, " ")
+        .replace(/\n/gu, node.type === "code" ? "\n" : " ");
+      for (const line of value.split("\n")) {
+        for (const match of line.matchAll(/mo-review-report\.mjs[ \t]+([a-z]+)([^\n]*)/gu)) {
+          calls.push({ command: match[1], words: match[2].split(/[ \t]+/u).filter(Boolean) });
+        }
+      }
+    }
+    for (const child of node.children ?? []) visit(child);
+  };
+  visit(fromMarkdown(text));
+  return calls;
+}
+
+// The flags a call names, or the word that stands for flags it does not name.
+function namedFlags({ words }) {
+  const flags = [];
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index].replace(/^\[|\]$/gu, "");
+    if (word === "<" || word === "|" || word === ">") break;
+    if (!word.startsWith("--")) return { flags, unnamed: word };
+    flags.push(word.slice(2));
+    if (words[index + 1] !== undefined && !words[index + 1].replace(/^\[/u, "").startsWith("--"))
+      index += 1;
+  }
+  return { flags };
+}
+
+// `--b-…` and `--<a|b>-…` name a family of flags; each member must exist.
+function flagAccepted(command, flag) {
+  const accepted = FLAGS[command];
+  const family = /^(?:<([a-z|]+)>|([a-z]+))-…$/u.exec(flag);
+  if (family === null) return accepted.includes(flag);
+  const prefixes = (family[1] ?? family[2]).split("|");
+  return prefixes.every((prefix) => accepted.some((name) => name.startsWith(`${prefix}-`)));
+}
+
+test("every documented helper call names only flags its command takes", () => {
+  const listed = spawnSync("git", ["ls-files", "*.md"], { cwd: ROOT, encoding: "utf8" });
+  const documents = listed.stdout
+    .split("\n")
+    .filter((path) => path !== "" && !/^(?:skills|docs\/references)\//u.test(path));
+  const seen = new Set();
+  for (const path of documents) {
+    for (const call of documentedCalls(readFileSync(join(ROOT, path), "utf8"))) {
+      const where = `${path}: ${call.command} ${call.words.join(" ")}`;
+      if (call.command === "namespace") continue;
+      assert.ok(Object.hasOwn(FLAGS, call.command), `unknown command in ${where}`);
+      const { flags, unnamed } = namedFlags(call);
+      assert.equal(unnamed, undefined, `a placeholder stands for unnamed flags in ${where}`);
+      for (const flag of flags)
+        assert.ok(flagAccepted(call.command, flag), `--${flag} in ${where}`);
+      seen.add(call.command);
+    }
+  }
+  // The skill texts show these calls; a parser that found none would pass vacuously.
+  for (const command of ["template", "prepare", "validate", "stage", "pair", "preview", "ack"]) {
+    assert.ok(seen.has(command), command);
+  }
+  assert.deepEqual(namedFlags({ words: ["--dir", "<ns>", "<validate", "flags>"] }), {
+    flags: ["dir"],
+    unnamed: "<validate",
+  });
+});
+
+test("the stage call the skill documents is accepted, and validate-only flags are refused", () => {
+  const dir = space();
+  const valid = report();
+  const base = ["stage", "--dir", dir, "--slot", "A", "--vendor", "codex"];
+  const expected = [
+    "--dispatch",
+    "ctx_fixture",
+    "--candidate",
+    SHA,
+    "--requested",
+    "deep",
+    "--effective",
+    "deep",
+  ];
+  const extra = ["--prepared", join(dir, "body.md"), "--normalization", "final-newline"];
+  const refused = spawnSync(process.execPath, [HELPER, ...base, ...expected, ...extra], {
+    input: valid,
+    encoding: "utf8",
+  });
+  assert.equal(refused.status, 2);
+  assert.match(refused.stderr, /stage does not take --prepared, --normalization/u);
+  assert.deepEqual(readdirSync(dir), []);
+  const staged = spawnSync(process.execPath, [HELPER, ...base, ...expected], {
+    input: valid,
+    encoding: "utf8",
+  });
+  assert.equal(staged.status, 0, staged.stderr);
+  assert.match(staged.stdout, /^MO-REVIEW-STAGE\/1 slot=A /u);
 });

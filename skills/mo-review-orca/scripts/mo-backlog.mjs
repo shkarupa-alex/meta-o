@@ -8,6 +8,7 @@ var __export = (target, all2) => {
 // shared/scripts/mo-backlog.mjs
 import { spawnSync } from "node:child_process";
 import { TextDecoder as TextDecoder2 } from "node:util";
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, posix, resolve } from "node:path";
 
@@ -6962,6 +6963,7 @@ var REASONS = /* @__PURE__ */ new Set([
   "snapshot_changed",
   "candidate_mismatch",
   "remote_head_unreadable",
+  "call_error",
   "internal_error"
 ]);
 var META_O_SCHEMA = {
@@ -6979,7 +6981,7 @@ var USAGE = `usage: mo-backlog.mjs [--candidate <40hex>] [--repo <root>] [schema
   --candidate <40hex>    fail unless the observed HEAD is exactly this commit
   --expect-head <sha>    same comparison under the name the gates use
   --remote-head <sha>    fail unless the remote source HEAD is this commit
-  --repo <root>          repository to inspect (default: this checkout)
+  --repo <root>          repository to inspect (default: Git root of the cwd)
   --path <rel>           notebook path inside the repository
   --title <text>         expected level-one heading
   --open-heading <text>  expected heading of the open section
@@ -7000,6 +7002,7 @@ function asciiJson(value) {
   );
 }
 function text3(node2) {
+  if (node2?.type === "break") return "\n";
   if (typeof node2?.value === "string") return node2.value;
   return (node2?.children ?? []).map(text3).join("");
 }
@@ -7219,16 +7222,37 @@ function collectArguments(args) {
 function schemaComplete(given) {
   return given.has("--path") && given.has("--title") && given.has("--open-heading") && (given.get("--entry-field") ?? []).length > 0;
 }
+function callTarget(args) {
+  const seen = /* @__PURE__ */ new Map();
+  for (let index2 = 0; index2 < args.length; index2 += 1) {
+    if (!VALUED.has(args[index2]) || index2 + 1 >= args.length) continue;
+    const flag = args[index2];
+    const value = args[index2 += 1];
+    seen.set(flag, seen.has(flag) && seen.get(flag) !== value ? null : value);
+  }
+  const declared = args.some((flag) => SCHEMA_FLAGS.has(flag));
+  return {
+    repo: seen.has("--repo") ? seen.get("--repo") : void 0,
+    path: declared ? seen.get("--path") ?? null : META_O_SCHEMA.path
+  };
+}
 function parseArguments(args) {
   const collected = collectArguments(args);
-  if (collected.help || collected.invalid) return collected;
+  if (collected.help) return collected;
+  if (collected.invalid) return { invalid: true, target: callTarget(args) };
   const { given } = collected;
   for (const flag of ["--candidate", "--expect-head", "--remote-head"]) {
-    if (given.has(flag) && !/^[a-f0-9]{40}$/u.test(given.get(flag))) return { invalid: true };
+    if (given.has(flag) && !/^[a-f0-9]{40}$/u.test(given.get(flag))) {
+      return { invalid: true, target: callTarget(args) };
+    }
   }
   const declared = [...SCHEMA_FLAGS].some((flag) => given.has(flag));
-  if (declared && !schemaComplete(given)) return { invalid: true };
+  if (declared && !schemaComplete(given)) return { invalid: true, target: callTarget(args) };
   return { given, declared };
+}
+function defaultRoot() {
+  const found = git(process.cwd(), ["rev-parse", "--show-toplevel"]);
+  return found.status === 0 ? found.stdout.replace(/\n$/u, "") : process.cwd();
 }
 function main() {
   const parsed = parseArguments(process.argv.slice(2));
@@ -7236,15 +7260,17 @@ function main() {
     process.stdout.write(USAGE);
     return;
   }
-  const root = parsed.given?.get("--repo") ?? ROOT;
   if (parsed.invalid) {
-    const result2 = unknown("internal_error", null, worktreeState(root), META_O_SCHEMA.path);
+    const { repo, path } = parsed.target;
+    const worktree = repo === null ? "unknown" : worktreeState(repo ?? defaultRoot());
+    const result2 = unknown("call_error", null, worktree, path);
     process.stderr.write(`${result2.line}
 `);
     process.exitCode = 2;
     return;
   }
   const { given, declared } = parsed;
+  const root = given.get("--repo") ?? defaultRoot();
   const schema = declared ? {
     path: given.get("--path"),
     title: given.get("--title"),
@@ -7263,7 +7289,14 @@ function main() {
 `);
   if (result.status !== "PASS") process.exitCode = result.status === "NOT_EMPTY" ? 1 : 2;
 }
-if (resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) main();
+function invokedDirectly() {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+if (invokedDirectly()) main();
 export {
   META_O_SCHEMA,
   asciiJson,

@@ -57,6 +57,8 @@ export async function buildUnavailableEvidence({
   Object.entries(requested).forEach(([key, value]) => requiredString(value, `--${key}`));
   requiredString(values.harness, "--harness");
   requiredString(values.matrixProfile, "--matrix-profile");
+  if (document.cases.length !== 1) throw new Error("a probe materializes exactly one case");
+  const caseId = document.cases[0].id;
   const command = { claude: "claude", codex: "codex", opencode: "opencode" }[requested.route];
   if (!command) throw new Error("--route has no native availability probe");
 
@@ -84,7 +86,7 @@ export async function buildUnavailableEvidence({
     reason = "approved_profile_unavailable";
   }
   const executionId = `${requested.route}-availability-${createHash("sha256")
-    .update(`${candidate}:${skill}:${values.matrixProfile}:${startedAt}`)
+    .update(`${candidate}:${skill}:${caseId}:${values.matrixProfile}:${startedAt}`)
     .digest("hex")
     .slice(0, 16)}`;
   const envelope = {
@@ -92,6 +94,7 @@ export async function buildUnavailableEvidence({
     candidate,
     skillRevision,
     skill,
+    caseId,
     policy: document.policy,
     repetition: Number(values.repetition ?? 1),
     tier: values.tier,

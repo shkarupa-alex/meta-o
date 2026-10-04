@@ -1,3 +1,5 @@
+<!-- Every identifier below is an example of the grammar: mo-vocabulary-ok file -->
+
 # Knowledge id history contract
 
 Checking the current tree and checking history are different things. The tree
@@ -23,6 +25,121 @@ expression over the document. Locations are read, never assumed: this project's
 own `docs/business.md` and `docs/architecture/` are its convention, not a
 default anyone else agreed to, and a probe that guesses them either certifies
 documents the gate never reads or rewrites whichever file happened to match.
+
+## The grammar the stage enforces
+
+These are the expressions the shipped code uses, quoted verbatim. An identifier
+in a heading, from `knowledge-documents.mjs`:
+
+```text
+^§([AB])-[A-Z][A-Z0-9-]*-\d{2}(?=\s|$)
+```
+
+An identifier mentioned anywhere in the text, from the same module:
+
+```text
+§[AB]-[A-Z][A-Z0-9-]*-\d{2}
+```
+
+A definition is a Markdown heading of any level whose text starts with an
+identifier followed by whitespace or the end of the heading; its section runs
+to the next heading of the same or a higher level. A heading such as
+`## B2 — Title` or `## D24 — Title` defines nothing, and neither does an
+identifier followed by a colon. A project on such an older notation migrates
+its definitions and every reference explicitly first; adapting the stage to
+an empty set is not an option, because the stage prints `definitions=<n>` and
+refuses zero for the scope it was declared to read.
+
+The authorization trailer, from `mo-knowledge-history.mjs`, at most one per
+identifier per commit:
+
+```text
+^Knowledge-ID-Change: (remove|reuse|editorial) (\S+) via (\S+)$
+```
+
+`via` always names an architecture decision identifier, never a commit SHA. For
+`remove` and `reuse` the trailer names exactly one identifier, and the named
+decision's section holds a YAML record with `action`, `id`, a non-empty
+`reason`, a non-empty `new_boundary` and `references_updated: true`. For
+`editorial` the trailer names every changed identifier of the commit, sorted and
+comma-separated without spaces; the record has `action: editorial`, the same
+`ids` in the same order, a non-empty `reason` and `references_updated: true`,
+and neither `id` nor `new_boundary`. `editorial` never deletes and never covers
+a change of meaning: only heading text, link labels and whitespace may differ,
+while ordinary prose, inline and fenced code and citations stay as they were.
+
+The record is a fenced YAML block with the key `knowledge_id_change` (one
+record) or `knowledge_id_changes` (a list) inside the section of the decision
+the trailer names. A record explains only its own parent edge, and records are
+append-only: a later commit adds its own and never edits an old one.
+
+By default the stage reads the business document `docs/business.md` and the
+architecture directory `docs/architecture/`; a project names its own with
+`--business` and `--architecture`.
+
+## Worked examples
+
+Every example below starts from the same history: the business document
+defines two theses, and one decision in the architecture directory serves the
+first. Each example's record goes into that decision's section.
+
+A change of meaning of one thesis:
+
+```text
+Knowledge-ID-Change: reuse §B-RUNTIME-01 via §A-RUNTIME-01
+```
+
+```yaml
+knowledge_id_change:
+  action: reuse
+  id: §B-RUNTIME-01
+  reason: The thesis now covers restarts as well.
+  new_boundary: A restart keeps the promise the first start made.
+  references_updated: true
+```
+
+Removing a thesis, together with every citation of it:
+
+```text
+Knowledge-ID-Change: remove §B-RUNTIME-02 via §A-RUNTIME-01
+```
+
+```yaml
+knowledge_id_change:
+  action: remove
+  id: §B-RUNTIME-02
+  reason: The second thesis merged into the first.
+  new_boundary: Only the first thesis states the runtime promise.
+  references_updated: true
+```
+
+Retitling both theses without touching their text:
+
+```text
+Knowledge-ID-Change: editorial §B-RUNTIME-01,§B-RUNTIME-02 via §A-RUNTIME-01
+```
+
+```yaml
+knowledge_id_change:
+  action: editorial
+  ids: [§B-RUNTIME-01, §B-RUNTIME-02]
+  reason: Plainer titles for both theses.
+  references_updated: true
+```
+
+The same stage refuses `B2`-style headings as an empty scope, a decision
+heading whose identifier is followed by a colon as a deleted definition,
+`via <sha>`, an `editorial` record carrying `new_boundary`, and an `editorial`
+trailer whose identifiers are not sorted.
+
+## Where the gates run
+
+The history stage belongs to the project's authoritative QC. The closure proofs
+G0, GC, G1 and G2 run the project's `MO-BACKLOG/1` command on the exact committed
+SHA: G0 after intake and before substantive work, GC before completion is
+announced, G1 right before an agent creates a merge request and G2 right before
+an agent merges. A project whose knowledge layer is `not_enabled` runs none of
+them for the layer.
 
 ## What proves the stage is present
 

@@ -482,30 +482,47 @@ test("partial start removes only exact-owned resources and types incomplete clea
 });
 
 function releaseRecordedWorker(resource, result, closeExactTerminal) {
-  if (result === "released") return "released";
-  if (result !== "no_owned_resource") throw new Error("unknown release result");
-  if (resource.kind !== "worker" || typeof resource.terminalId !== "string") {
+  if (result.state === "released") return "released";
+  if (result.state !== "retained") throw new Error("unknown release result");
+  // Orca closes what worker-start --agent created; a retained answer means the
+  // caller created the terminal, and only its own recorded handle may close.
+  if (!["external_terminal", "no_owned_resource"].includes(result.reason)) {
     return "needs_attention";
   }
-  closeExactTerminal(resource.terminalId);
+  if (resource.kind !== "worker" || typeof resource.createdTerminalId !== "string") {
+    return "needs_attention";
+  }
+  closeExactTerminal(resource.createdTerminalId);
   return "released_exact_terminal";
 }
 
-test("no_owned_resource closes only the recorded fallback terminal handle", () => {
+test("a retained release closes only the terminal the caller created and recorded", () => {
   const closed = [];
   const owned = {
     id: "review-a-dispatch",
     kind: "worker",
-    terminalId: "review-a-terminal",
+    createdTerminalId: "review-a-terminal",
   };
+  const close = (handle) => closed.push(handle);
   assert.equal(
-    releaseRecordedWorker(owned, "no_owned_resource", (handle) => closed.push(handle)),
+    releaseRecordedWorker(
+      owned,
+      { state: "released", processAction: "closed_agent_terminal" },
+      close,
+    ),
+    "released",
+  );
+  assert.deepEqual(closed, []);
+  assert.equal(
+    releaseRecordedWorker(owned, { state: "retained", reason: "external_terminal" }, close),
     "released_exact_terminal",
   );
   assert.deepEqual(closed, ["review-a-terminal"]);
   assert.equal(
-    releaseRecordedWorker({ id: "foreign", kind: "worker" }, "no_owned_resource", (handle) =>
-      closed.push(handle),
+    releaseRecordedWorker(
+      { id: "foreign", kind: "worker" },
+      { state: "retained", reason: "no_owned_resource" },
+      close,
     ),
     "needs_attention",
   );
@@ -694,4 +711,18 @@ test("a conclusion that is not bound to the candidate is unknown", () => {
     "bound",
   );
   assert.equal(groundingBound("I read the files in the shared checkout", sha), "UNKNOWN");
+});
+
+test("the shared Orca mechanics agree with the placement ladder for a folder project", () => {
+  const mechanics = readFileSync(
+    resolve(import.meta.dirname, "..", "shared/references/orca-mechanics.md"),
+    "utf8",
+  ).replace(/\s+/gu, " ");
+  // A folder project without child worktrees takes the shared rung; calling it
+  // unsupported outright contradicted the ladder the review skill follows.
+  assert.doesNotMatch(mechanics, /isolated worktrees is an unsupported placement/u);
+  assert.match(
+    mechanics,
+    /takes the next rung of the caller's placement ladder, the exact existing project workspace read by SHA, and is unsupported only when not even that workspace is there/u,
+  );
 });
