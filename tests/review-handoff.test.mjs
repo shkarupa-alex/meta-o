@@ -8,8 +8,11 @@
  */
 
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { checkAck, namespace, pair, preview, stage } from "../shared/scripts/mo-review-report.mjs";
 
@@ -165,5 +168,90 @@ test("an early preview hands over one unchanged slot and is acknowledged by its 
     assert.equal(preview({ dir: created.dir, pairId: created.pairId, slot }).status, "unknown");
   } finally {
     rmSync(created.dir, { recursive: true, force: true });
+  }
+});
+
+test("an acknowledgement names each required slot exactly once", () => {
+  const handoff = { kind: "Handoff", pairId: "pair", bytes: { A: 10, B: 20 } };
+  const previewA = { kind: "Preview", pairId: "pair", bytes: { A: 10 } };
+  const previewB = { kind: "Preview", pairId: "pair", bytes: { B: 20 } };
+  const status = (line, expect) => checkAck(line, expect).status;
+  assert.equal(status("Review-Handoff-Ack: pair A=10 B=20", handoff), "matched");
+  assert.equal(status("Review-Preview-Ack: pair A=10", previewA), "matched");
+  assert.equal(status("Review-Preview-Ack: pair B=20", previewB), "matched");
+  // A repeated slot names two sizes for one report, whichever comes last.
+  for (const line of [
+    "Review-Handoff-Ack: pair A=9 A=10 B=20",
+    "Review-Handoff-Ack: pair A=10 A=9 B=20",
+    "Review-Handoff-Ack: pair A=10 A=10 B=20",
+    "Review-Handoff-Ack: pair A=10 B=19 B=20",
+    "Review-Handoff-Ack: pair A=10 B=20 B=19",
+    "Review-Handoff-Ack: pair A=10 B=20 B=20",
+    "Review-Handoff-Ack: pair A=10",
+    "Review-Handoff-Ack: pair B=20",
+  ]) {
+    assert.equal(status(line, handoff), "mismatched", line);
+  }
+  for (const [line, expect] of [
+    ["Review-Preview-Ack: pair A=9 A=10", previewA],
+    ["Review-Preview-Ack: pair A=10 A=9", previewA],
+    ["Review-Preview-Ack: pair A=10 A=10", previewA],
+    ["Review-Preview-Ack: pair B=19 B=20", previewB],
+    ["Review-Preview-Ack: pair B=20 B=19", previewB],
+    ["Review-Preview-Ack: pair B=20 B=20", previewB],
+    ["Review-Preview-Ack: pair A=10 B=20", previewA],
+  ]) {
+    assert.equal(status(line, expect), "mismatched", line);
+  }
+  // An expected context of the wrong shape acknowledges nothing.
+  const partial = { kind: "Handoff", pairId: "pair", bytes: { A: 10 } };
+  assert.equal(checkAck("Review-Handoff-Ack: pair A=10", partial).reason, "expected");
+  const both = { kind: "Preview", pairId: "pair", bytes: { A: 10, B: 20 } };
+  assert.equal(checkAck("Review-Preview-Ack: pair A=10 B=20", both).reason, "expected");
+});
+
+test("the ack command refuses a call whose sizes do not fit its kind, in every shipped copy", () => {
+  const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const scripts = [
+    "shared/scripts/mo-review-report.mjs",
+    "skills/mo-reviewer/scripts/mo-review-report.mjs",
+    "skills/mo-review-orca/scripts/mo-review-report.mjs",
+    "skills/mo-orchestrate-orca/scripts/mo-review-report.mjs",
+  ];
+  const ack = (script, kind, line, sizes) =>
+    spawnSync(
+      process.execPath,
+      [join(root, script), "ack", "--kind", kind, "--line", line, "--pair-id", "pair", ...sizes],
+      { encoding: "utf8" },
+    );
+  for (const script of scripts) {
+    for (const [kind, line, sizes] of [
+      ["Handoff", "Review-Handoff-Ack: pair A=10 B=20", ["--b-bytes", "20"]],
+      ["Handoff", "Review-Handoff-Ack: pair A=10", ["--a-bytes", "10"]],
+      ["Handoff", "Review-Handoff-Ack: pair A=10 B=20", []],
+      ["Preview", "Review-Preview-Ack: pair A=10", []],
+      ["Preview", "Review-Preview-Ack: pair A=10 B=20", ["--a-bytes", "10", "--b-bytes", "20"]],
+    ]) {
+      const result = ack(script, kind, line, sizes);
+      assert.equal(result.status, 2, `${script} ${kind} ${sizes.join(" ")}`);
+      assert.doesNotMatch(result.stdout, /status=matched/u, script);
+    }
+    for (const [kind, line, sizes] of [
+      ["Handoff", "Review-Handoff-Ack: pair A=10 B=20", ["--a-bytes", "10", "--b-bytes", "20"]],
+      ["Preview", "Review-Preview-Ack: pair A=10", ["--a-bytes", "10"]],
+      ["Preview", "Review-Preview-Ack: pair B=20", ["--b-bytes", "20"]],
+    ]) {
+      const result = ack(script, kind, line, sizes);
+      assert.equal(result.status, 0, `${script} ${result.stderr}`);
+      assert.match(result.stdout, /^MO-REVIEW-ACK\/1 status=matched$/mu, script);
+    }
+    const repeated = ack(script, "Handoff", "Review-Handoff-Ack: pair A=9 A=10 B=20", [
+      "--a-bytes",
+      "10",
+      "--b-bytes",
+      "20",
+    ]);
+    assert.equal(repeated.status, 1, script);
+    assert.match(repeated.stdout, /status=mismatched reason=slots/u, script);
   }
 });

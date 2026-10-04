@@ -7453,16 +7453,21 @@ function preview({ dir, pairId, slot }) {
   return { status: "previewed", line: `Review-Preview: ${pairId} ${parts[0]}` };
 }
 var ACK = /^Review-(Preview|Handoff)-Ack: (\S+)((?: [AB]=\d+)+)$/u;
+function ackSlotsValid(kind, slots) {
+  if (kind === "Handoff") return slots.length === 2 && slots.includes("A") && slots.includes("B");
+  if (kind === "Preview") return slots.length === 1 && ["A", "B"].includes(slots[0]);
+  return false;
+}
 function checkAck(line, { kind, pairId, bytes }) {
+  const slots = Object.keys(bytes).sort();
+  if (!ackSlotsValid(kind, slots)) return { status: "mismatched", reason: "expected" };
   const match = ACK.exec(String(line).trim());
   if (match === null || match[1] !== kind || match[2] !== pairId) {
     return { status: "mismatched", reason: "form" };
   }
-  const acknowledged = Object.fromEntries(
-    match[3].trim().split(" ").map((part) => part.split("="))
-  );
-  const slots = Object.keys(bytes).sort();
-  if (JSON.stringify(Object.keys(acknowledged).sort()) !== JSON.stringify(slots)) {
+  const fields = match[3].trim().split(" ").map((part) => part.split("="));
+  const acknowledged = Object.fromEntries(fields);
+  if (fields.length !== Object.keys(acknowledged).length || JSON.stringify(Object.keys(acknowledged).sort()) !== JSON.stringify(slots)) {
     return { status: "mismatched", reason: "slots" };
   }
   for (const slot of slots) {
@@ -7676,6 +7681,11 @@ function commandAck(options) {
   for (const slot of ["A", "B"]) {
     const value = options[`${slot.toLowerCase()}-bytes`];
     if (value !== void 0) bytes[slot] = Number(value);
+  }
+  if (!ackSlotsValid(options.kind, Object.keys(bytes).sort())) {
+    throw new Error(
+      "--kind Handoff needs --a-bytes and --b-bytes, --kind Preview exactly one of them"
+    );
   }
   const result = checkAck(options.line, {
     kind: options.kind,

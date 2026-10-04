@@ -289,22 +289,37 @@ export function preview({ dir, pairId, slot }) {
 const ACK = /^Review-(Preview|Handoff)-Ack: (\S+)((?: [AB]=\d+)+)$/u;
 
 /**
+ * Whether the expected sizes have the shape the acknowledgement kind needs:
+ * both slots for a pair handoff, exactly one for a preview.
+ */
+function ackSlotsValid(kind, slots) {
+  if (kind === "Handoff") return slots.length === 2 && slots.includes("A") && slots.includes("B");
+  if (kind === "Preview") return slots.length === 1 && ["A", "B"].includes(slots[0]);
+  return false;
+}
+
+/**
  * §A-RESPONSE-03 accepts an acknowledgement only for this pair, these slots and
- * the published sizes; anything else is an absent acknowledgement.
+ * the published sizes; anything else is an absent acknowledgement. Each slot
+ * appears once: a repeated slot, even with the same size, names two sizes for
+ * one report and acknowledges neither.
  */
 export function checkAck(line, { kind, pairId, bytes }) {
+  const slots = Object.keys(bytes).sort();
+  if (!ackSlotsValid(kind, slots)) return { status: "mismatched", reason: "expected" };
   const match = ACK.exec(String(line).trim());
   if (match === null || match[1] !== kind || match[2] !== pairId) {
     return { status: "mismatched", reason: "form" };
   }
-  const acknowledged = Object.fromEntries(
-    match[3]
-      .trim()
-      .split(" ")
-      .map((part) => part.split("=")),
-  );
-  const slots = Object.keys(bytes).sort();
-  if (JSON.stringify(Object.keys(acknowledged).sort()) !== JSON.stringify(slots)) {
+  const fields = match[3]
+    .trim()
+    .split(" ")
+    .map((part) => part.split("="));
+  const acknowledged = Object.fromEntries(fields);
+  if (
+    fields.length !== Object.keys(acknowledged).length ||
+    JSON.stringify(Object.keys(acknowledged).sort()) !== JSON.stringify(slots)
+  ) {
     return { status: "mismatched", reason: "slots" };
   }
   for (const slot of slots) {
@@ -543,6 +558,11 @@ function commandAck(options) {
   for (const slot of ["A", "B"]) {
     const value = options[`${slot.toLowerCase()}-bytes`];
     if (value !== undefined) bytes[slot] = Number(value);
+  }
+  if (!ackSlotsValid(options.kind, Object.keys(bytes).sort())) {
+    throw new Error(
+      "--kind Handoff needs --a-bytes and --b-bytes, --kind Preview exactly one of them",
+    );
   }
   const result = checkAck(options.line, {
     kind: options.kind,
