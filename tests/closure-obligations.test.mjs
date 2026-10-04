@@ -123,7 +123,7 @@ const OBLIGATIONS = [
     "O-BL-05",
     "a real review run has a pair barrier, hot remediation and a fresh final pair",
     {
-      life: [/keep both remediation reviewer sessions hot/, /two fresh independent reviewers/],
+      life: [/A pair that returned FINDINGS stays hot/, /two fresh independent reviewers/],
       e2e: [/Запустить новую финальную пару ревьюеров/u],
     },
   ],
@@ -172,7 +172,7 @@ const OBLIGATIONS = [
     {
       revskill: [
         /description: Use only when the user explicitly requests mo-review-orca/,
-        /Accept only an exact 40-hex `candidate_sha`, intent source, scope, mode and two\s+user-approved vendor-diverse selections/,
+        /Accept only an exact 40-hex `candidate_sha`, intent source, scope, mode, the\s+specification line and two user-approved vendor-diverse selections/,
       ],
     },
   ],
@@ -180,7 +180,7 @@ const OBLIGATIONS = [
     "O-BL-11",
     "owned roles use stable titles and foreign tabs survive",
     {
-      mech: [/Stable titles are/, /Never close unnamed human tabs/],
+      mech: [/Stable titles are/, /Never close\s+unnamed human tabs/],
     },
   ],
   [
@@ -439,7 +439,7 @@ const OBLIGATIONS = [
     "O-RR-025",
     "the executor stays a hot assigned role through remediation",
     {
-      life: [/keep both remediation reviewer sessions hot/],
+      life: [/A pair that returned FINDINGS stays hot/],
       mech: [/Keep the executor and remediation reviewers in their exact owned terminals/],
     },
   ],
@@ -494,8 +494,8 @@ const OBLIGATIONS = [
     "the per-slice attempt budget does not reset and does not replace settlement",
     {
       life: [
-        /at most five paired review\/fix attempts; a remediation SHA\s+does not reset it/,
-        /After attempt five, complete the active remediation, then move to the next/,
+        /A substantive\s+slice has at most five, and a new SHA does not reset the count/,
+        /After\s+attempt five, complete the active remediation, then move to the next/,
       ],
     },
   ],
@@ -588,7 +588,7 @@ const OBLIGATIONS = [
     "work packages, reviewable slices and external gates stay separate outcomes",
     {
       life: [
-        /A\s+substantive slice has at most five paired review\/fix attempts/,
+        /A paired attempt is one round in which both slots returned a valid report/,
         /Any executable or instruction change creates a new SHA and invalidates all\s+gates/,
       ],
     },
@@ -636,11 +636,8 @@ const OBLIGATIONS = [
       life: [
         /It runs in the foreground to a terminal exit\s+status, one run at a time per candidate worktree, and never through `nohup`, `&`\s+or another detached form whose immediate `0` is not a suite result/,
       ],
-      rev: [
-        /run one full gate at\s+a time, in the foreground/,
-        /Never launch it with `nohup`, `&` or another detached form/,
-        /A detached, overlapped or unreaped run is `UNKNOWN` for this\s+reviewer/,
-      ],
+      // The reviewer is out of the gate entirely, so it has nothing to overlap.
+      rev: [/the project's QC gate are not run by a reviewer, not even a\s+pointed test/],
     },
   ],
   [
@@ -659,8 +656,7 @@ const OBLIGATIONS = [
         /A repeated\s+run is independent proof only once the previous run's descendants are gone/,
       ],
       rev: [
-        /wait for the exact process this review owns and confirm it left no\s+orphan descendant/,
-        /a host-sensitive failure under those conditions is not reported as\s+a candidate finding without clean process evidence/,
+        /QC of the exact candidate belongs to the executor or coordinator, in a clean\s+checkout of that SHA/,
       ],
       post: [
         /Скрипт владеет одной группой процессов и читает закрытое дочернее доказательство\s+с NUL-разделителями/u,
@@ -692,7 +688,10 @@ const OBLIGATIONS = [
     "O-RR-051",
     "the executor leaves no untracked background terminal after the final gate",
     {
-      life: [/Release only owned hot reviewer\s+resources/, /a clean worktree/],
+      life: [
+        /release its owned\s+resources and create two fresh independent reviewers/,
+        /a clean worktree/,
+      ],
       mech: [/close\s+only its exact returned handle after its Dispatch settles/],
     },
   ],
@@ -701,10 +700,10 @@ const OBLIGATIONS = [
     "two reviewers cannot run the host-sensitive full gate concurrently",
     {
       life: [
-        /the orchestrator owns the sequencing of that\s+gate between them: it serializes the runs through one shared lock or gives each\s+reviewer its own worktree/,
-        /never starts a second full gate against a\s+worktree that already has one running/,
+        /Reviewers never run tests, linters or the QC gate/,
+        /one run at a time per candidate worktree/,
       ],
-      rev: [/only after the caller grants the shared lock or a\s+worktree of your own/],
+      rev: [/A reviewer reads; it does not execute the project/],
       acc: [
         /проверка, чувствительная к хосту, выполняется последовательно, на переднем плане и не оставляет процессов/iu,
       ],
@@ -754,7 +753,8 @@ const OBLIGATIONS = [
         /any diagnostic capable of\s+rewriting tracked files runs only in an isolated disposable copy/,
       ],
       rev: [
-        /Targeted read-only checks are always allowed; report their exact command and\s+environment/,
+        /What stays allowed is read-only inspection bound to the candidate SHA/,
+        /`Scope and checks` lists the commands actually used/,
       ],
     },
   ],
@@ -822,10 +822,8 @@ const OBLIGATIONS = [
     "O-RR-064",
     "the hot reviewer pair survives until both passes are settled",
     {
-      life: [
-        /Release old reviewers only before the fresh final pair|keep both remediation reviewer sessions hot/,
-      ],
-      mech: [/Release old reviewers only before the fresh final pair/],
+      life: [/neither reviewer is released or closed until both dispositions settle/],
+      mech: [/Release old reviewers only once they returned two PASS reports on one SHA/],
     },
   ],
   [
@@ -900,7 +898,10 @@ const OBLIGATIONS = [
     "O-RR-072",
     "a replacement reviewer preserves the accepted result and removes the superseded tab",
     {
-      mech: [/Release old reviewers only before the fresh final pair/, /Stable titles are/],
+      mech: [
+        /Release old reviewers only once they returned two PASS reports on one SHA/,
+        /Stable titles are/,
+      ],
     },
   ],
 ];

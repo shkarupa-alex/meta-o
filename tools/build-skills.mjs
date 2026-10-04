@@ -46,6 +46,9 @@ import yaml from "js-yaml";
 import { buildSync } from "esbuild";
 import { fromMarkdown } from "mdast-util-from-markdown";
 
+import { sourceTreeOfFiles } from "../shared/scripts/skill-source-tree.mjs";
+import { BUNDLES, SHARED_PLAN } from "./skill-build-plan.mjs";
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const VERSION = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version;
 const SKILLS_SRC = join(ROOT, "src", "skills");
@@ -116,67 +119,6 @@ function stripGeneratedAnchors(skillRoot, name) {
 }
 
 /**
- * The roots every Markdown-reading bundle carries.
- *
- * Measured from a trial build, not guessed: the parser pulls its own micromark
- * graph, and a hand-kept list drifts the first time upstream splits a package.
- */
-const MARKDOWN_ROOTS = [
-  "character-entities",
-  "decode-named-character-reference",
-  "mdast-util-from-markdown",
-  "mdast-util-to-string",
-  "micromark",
-  "micromark-core-commonmark",
-  "micromark-factory-destination",
-  "micromark-factory-label",
-  "micromark-factory-space",
-  "micromark-factory-title",
-  "micromark-factory-whitespace",
-  "micromark-util-character",
-  "micromark-util-chunked",
-  "micromark-util-classify-character",
-  "micromark-util-combine-extensions",
-  "micromark-util-decode-numeric-character-reference",
-  "micromark-util-decode-string",
-  "micromark-util-encode",
-  "micromark-util-html-tag-name",
-  "micromark-util-normalize-identifier",
-  "micromark-util-resolve-all",
-  "micromark-util-sanitize-uri",
-  "micromark-util-subtokenize",
-  "unist-util-stringify-position",
-];
-
-/**
- * One explicit closure per bundle: the package roots its metafile may contain
- * and the measured size it may not outgrow.
- *
- * §A-DISTRIBUTION-03 keeps the licence closure here rather than in the file
- * distribution, because roots belong to the bundle that pulls them, and one
- * mapping stopped describing a build that produces more than one bundle. An
- * unexpected root or a missing entry breaks generation; that is the property.
- */
-export const BUNDLES = {
-  "scripts/mo-models.mjs": {
-    baselineBytes: 1_012_923,
-    roots: ["@anthropic-ai/claude-agent-sdk"],
-  },
-  "scripts/mo-backlog.mjs": {
-    baselineBytes: 196_079,
-    roots: MARKDOWN_ROOTS,
-  },
-  "scripts/mo-knowledge-history.mjs": {
-    baselineBytes: 321_157,
-    roots: [...MARKDOWN_ROOTS, "js-yaml"],
-  },
-  "scripts/mo-review-report.mjs": {
-    baselineBytes: 200_550,
-    roots: MARKDOWN_ROOTS,
-  },
-};
-
-/**
  * The bundles a copy of which has to answer "am I stale?" without this repo.
  *
  * mo-setup tells a target project to copy the history checker into its own
@@ -216,62 +158,6 @@ export function licenseSlug(root) {
   return root.replace(/^@/u, "").replaceAll("/", "__");
 }
 
-/**
- * Which shared file lands in which skill.
- *
- * Every entry is a deliberate decision about standalone installability:
- * Orchestrators and standalone reviewers each carry their backend mechanics
- * plus the shared contracts they consume. Setup owns project readiness and the
- * watchdog owns only its methodology-independent observer helper.
- */
-export const SHARED_PLAN = {
-  "mo-orchestrate-orca": [
-    ["references/methodology.md", "references/methodology.md"],
-    ["references/backend-contract.md", "references/backend-contract.md"],
-    ["references/review-protocol.md", "references/review-protocol.md"],
-    ["references/review-brief.md", "references/review-brief.md"],
-    ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
-    ["references/orca-mechanics.md", "references/orca-mechanics.md"],
-    ["references/issue-routing.md", "references/issue-routing.md"],
-    ["references/methodology-feedback.md", "references/methodology-feedback.md"],
-    ["scripts/mo-models.mjs", "scripts/mo-models.mjs"],
-    ["scripts/mo-backlog.mjs", "scripts/mo-backlog.mjs"],
-    ["scripts/mo-harness-screen.mjs", "scripts/mo-harness-screen.mjs"],
-    ["scripts/mo-review-report.mjs", "scripts/mo-review-report.mjs"],
-    ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],
-  ],
-  "mo-review-orca": [
-    ["references/backend-contract.md", "references/backend-contract.md"],
-    ["references/issue-routing.md", "references/issue-routing.md"],
-    ["references/methodology-feedback.md", "references/methodology-feedback.md"],
-    ["references/review-protocol.md", "references/review-protocol.md"],
-    ["references/review-brief.md", "references/review-brief.md"],
-    ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
-    ["references/orca-mechanics.md", "references/orca-mechanics.md"],
-    ["scripts/mo-models.mjs", "scripts/mo-models.mjs"],
-    ["scripts/mo-backlog.mjs", "scripts/mo-backlog.mjs"],
-    ["scripts/mo-harness-screen.mjs", "scripts/mo-harness-screen.mjs"],
-    ["scripts/mo-review-report.mjs", "scripts/mo-review-report.mjs"],
-  ],
-  "mo-setup": [
-    ["references/project-setup.md", "references/project-setup.md"],
-    ["references/issue-routing.md", "references/issue-routing.md"],
-    ["references/methodology-feedback.md", "references/methodology-feedback.md"],
-    ["scripts/mo-backlog.mjs", "scripts/mo-backlog.mjs"],
-    ["scripts/mo-harness-screen.mjs", "scripts/mo-harness-screen.mjs"],
-    ["scripts/mo-knowledge-history.mjs", "scripts/mo-knowledge-history.mjs"],
-    ["references/backend-contract.md", "references/backend-contract.md"],
-    ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
-    ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],
-  ],
-  "mo-e2e": [["references/methodology-feedback.md", "references/methodology-feedback.md"]],
-  "mo-watchdog": [
-    ["references/watchdog.md", "references/watchdog.md"],
-    ["references/methodology-feedback.md", "references/methodology-feedback.md"],
-    ["scripts/mo-watchdog.sh", "scripts/mo-watchdog.sh"],
-  ],
-};
-
 /** Return the package root represented by an esbuild metafile input path. */
 /** §A-DISTRIBUTION-02 identifies bundled third-party roots for licence closure. */
 export function packageRoot(input) {
@@ -302,6 +188,9 @@ export function bundleShared(source, destination, closure, label) {
     sourcemap: false,
     metafile: true,
     preserveSymlinks: true,
+    // Input paths, and the path comments esbuild writes into the bundle, are
+    // relative to this directory; pinning it keeps both independent of cwd.
+    absWorkingDir: ROOT,
     logLevel: "silent",
   });
   chmodSync(destination, 0o755);
@@ -327,7 +216,10 @@ export function bundleShared(source, destination, closure, label) {
   if (bytes > ceiling) {
     throw new Error(`${label} bundle is ${bytes} bytes; measured ceiling is ${ceiling}`);
   }
-  return roots;
+  const inputs = Object.keys(result.metafile.inputs)
+    .filter((input) => packageRoot(input) === null)
+    .sort();
+  return { roots, inputs };
 }
 
 /**
@@ -342,6 +234,48 @@ export function stampSource(destination, version) {
   const digest = createHash("sha256").update(body).digest("hex");
   writeFileSync(destination, `${body}// MO-KNOWLEDGE-HISTORY-SOURCE ${version} ${digest}\n`);
   return digest;
+}
+
+/**
+ * §A-DISTRIBUTION-06 writes `metadata.source_tree` into one built SKILL.md.
+ *
+ * The value is the Git tree id of the files this skill is built from, not a
+ * commit SHA: the built tree is committed together with its sources, so a
+ * commit cannot name itself, while a tree id is reproduced by `--check` from
+ * the same inputs. It has two consumers: `mo-debug`, which narrows a loaded
+ * text to committed files carrying the same stamp, and the `Reviewer-Skill`
+ * field of every reviewer Dispatch, where it stands next to the object ids of
+ * the installed files; a format change must serve both. The line is inserted
+ * rather than the frontmatter re-serialized, so every authored byte stays as
+ * written, and the result is re-read with the same parser the gate uses.
+ */
+export function stampSourceTree(skillFile, tree) {
+  const text = readFileSync(skillFile, "utf8");
+  const end = text.indexOf("\n---\n", 3);
+  const before = frontmatter(text).data?.metadata ?? {};
+  if (end < 0 || before === null || typeof before !== "object" || Array.isArray(before)) {
+    throw new Error(`${skillFile} needs a metadata mapping to carry source_tree`);
+  }
+  if (Object.hasOwn(before, "source_tree")) {
+    throw new Error(`${skillFile} declares source_tree; only the build writes it`);
+  }
+  const lines = text.slice(0, end + 1).split("\n");
+  // Quoted, because an all-digit tree id is a number to YAML.
+  const line = `  source_tree: "${tree}"`;
+  let start = lines.indexOf("metadata:");
+  if (start < 0) {
+    start = lines.length - 1;
+    lines.splice(start, 0, "metadata:");
+  }
+  let last = start;
+  while (last + 1 < lines.length && /^[ \t]/u.test(lines[last + 1])) last += 1;
+  lines.splice(last + 1, 0, line);
+  const stamped = `${lines.join("\n")}${text.slice(end + 1)}`;
+  const after = frontmatter(stamped).data?.metadata;
+  if (after?.source_tree !== tree || Object.keys(after).length !== Object.keys(before).length + 1) {
+    throw new Error(`${skillFile} metadata could not carry source_tree as a direct child`);
+  }
+  writeFileSync(skillFile, stamped);
 }
 
 /**
@@ -564,6 +498,9 @@ export function build(outputRoot) {
 
   for (const name of names) {
     cpSync(join(SKILLS_SRC, name), join(outputRoot, name), { recursive: true });
+    const inputs = new Set(
+      walk(join(SKILLS_SRC, name)).map((path) => `src/skills/${name}/${path}`),
+    );
     for (const [source, destination] of SHARED_PLAN[name] ?? []) {
       const from = join(SHARED_SRC, source);
       if (!existsSync(from)) throw new Error(`shared/${source} does not exist`);
@@ -571,11 +508,17 @@ export function build(outputRoot) {
       mkdirSync(dirname(to), { recursive: true });
       const closure = BUNDLES[destination];
       if (closure) {
-        writeLicenses(join(outputRoot, name), bundleShared(from, to, closure, destination), name);
+        const bundled = bundleShared(from, to, closure, destination);
+        writeLicenses(join(outputRoot, name), bundled.roots, name);
+        for (const input of bundled.inputs) inputs.add(input);
         if (STAMPED.has(destination)) stampSource(to, VERSION);
-      } else cpSync(from, to);
+      } else {
+        cpSync(from, to);
+        inputs.add(`shared/${source}`);
+      }
     }
     stripGeneratedAnchors(join(outputRoot, name), name);
+    stampSourceTree(join(outputRoot, name, "SKILL.md"), sourceTreeOfFiles(ROOT, [...inputs]));
   }
 
   return names;

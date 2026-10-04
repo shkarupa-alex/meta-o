@@ -22,6 +22,7 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { resolve } from "node:path";
 
 import { definitionsFromTree, parseDocument } from "./knowledge-documents.mjs";
 
@@ -354,4 +355,23 @@ export function createHistoryReader(root, options = {}) {
       for (const entry of Object.values(caches)) entry.clear();
     },
   };
+}
+
+/**
+ * §A-MEMORY-01 finds the repository from where the command runs.
+ *
+ * The history stage is copied into a project's `tools/`, so a default derived
+ * from the script's own path points outside the project. The caller's explicit
+ * path wins; otherwise the Git root of the working directory, from any nested
+ * directory. `null` outside Git: there is no history to verify there.
+ *
+ * @param {string} start directory to resolve from
+ * @returns {string|null} the Git root, or null
+ */
+export function gitRoot(start) {
+  const result = spawnSync("git", ["-C", resolve(start), "rev-parse", "--show-toplevel"], {
+    encoding: "utf8",
+  });
+  if (result.error || result.status !== 0) return null;
+  return result.stdout.replace(/\n$/u, "");
 }

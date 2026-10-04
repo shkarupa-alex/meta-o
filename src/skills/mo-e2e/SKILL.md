@@ -15,9 +15,14 @@ Read [Обратная связь о методологии](references/methodol
 completely: friction you hit is reported to the caller as one ordinary
 `Methodology-Friction:` message, and this actor writes no Issue itself.
 
-A project missing its `MO-BACKLOG/1` command, papercut document or
-identifier-history gate is a readiness gap: record it and return
-`needs_attention`, and leave running the setup skill to the human.
+Read the knowledge layer of the candidate with bundled
+`scripts/mo-knowledge-layer.mjs --candidate <sha>`. `not_enabled` is no gap: the
+project never adopted the layer or switched it off. `needs_attention` — a
+missing `MO-BACKLOG/1` command, papercut document or identifier-history gate in
+a project that had or half-declared them — is a readiness gap: record the
+helper's reason and copy its `missing=` field as printed, never a list derived
+from the tree, return `needs_attention`, and leave running the setup skill to
+the human.
 
 Act as a separate read-only E2E actor. Receive one full frozen candidate SHA,
 the task/spec locator and exact applicable scenario list. Read the project's E2E
@@ -34,17 +39,24 @@ the recorded provenance proves that rule. Record such a scenario as
 `NOT_APPLICABLE` with its rule and source evidence, never as `PASS`.
 
 Do not edit or commit tracked files. Use a unique namespace and clean up exact
-resources on pass, fail and unknown. Never run a production, destructive,
+resources on pass, fail and unknown. Trust a harness or Orca writes for a
+fixture path into a personal or account configuration — `~/.claude.json`,
+`~/.codex/config.toml`, the Orca Codex account's `config.toml` — is not yours to
+edit while live sessions share that file: list each entry in the cleanup status
+with the exact command that removes it, and the human removes it. Never run a production, destructive,
 credential or subscription action until the user explicitly authorizes that
 exact named action for this candidate. Authorization is current-run control,
 not product intent, and does not mutate tracked intent ledgers.
 
-For every scenario report the candidate, ID, actor/model vendor, environment,
-action, observed result and `PASS`, `FAIL`, `UNKNOWN`, `NOT_RUN` or
-`NOT_APPLICABLE`. Do not include secrets, reasoning or raw artifact dumps. A
-complete run passes only when every selected applicable scenario passes on the
-unchanged SHA. Missing or incomplete evidence is `UNKNOWN`; there is no partial
-pass.
+For every scenario report the full candidate SHA, ID, the exact actor (its Orca
+terminal handle and its route, model and effort), environment, action, observed
+result and `PASS`, `FAIL`, `UNKNOWN`, `NOT_RUN` or `NOT_APPLICABLE`, or
+`blocked:external_capability` where the project's E2E contract itself types that
+scenario's result for a named external capability; that typed result is reported
+as typed and is never `PASS`. Do not include secrets, reasoning or raw artifact
+dumps. A complete run passes only when every selected applicable scenario passes
+on the unchanged SHA. Missing or incomplete evidence is `UNKNOWN`; there is no
+partial pass.
 
 Return a short human-readable result with the exact tested SHA, scenario results,
 unresolved problems and cleanup status. Do not create a receipt, manifest,
@@ -54,7 +66,14 @@ Use one run-wide 300000 ms blocking waiter for active E2E actors. A quiet
 timeout permits one public liveness snapshot and immediate re-arm without
 narration; one repeated transport failure gives `UNKNOWN`. Task bytes wait for
 a proven normal agent prompt and every resource must preserve the initial Orca
-project-registration inventory.
+project-registration inventory. A disposable fixture that Orca has to place is
+registered only on the human's confirmation for this run and removed with
+`orca project setup-delete`, so the inventory after the run equals the one
+before.
+
+An actor whose scenario starts workers, such as a reviewer pair or an executor,
+runs as an ordinary Orca tab. Orca refuses a worker that another worker starts,
+so an actor dispatched as a worker records every such scenario `NOT_RUN`.
 
 ## Meta-O calls
 

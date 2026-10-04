@@ -16,6 +16,15 @@ knowledge_id_changes:
       Settled payload публикуется только create-if-absent и не может заменить
       ранее опубликованные bytes.
     references_updated: true
+  - action: reuse
+    id: §A-RESPONSE-01
+    reason: >-
+      Раздел решения содержит §A-RESPONSE-03, у которого появился второй
+      названный потребитель полного ответа при раннем ремонте.
+    new_boundary: >-
+      Полный ответ ревьюера может быть передан исполнителю до пары как
+      неизменный предпросмотр одного слота; пара по-прежнему передаётся целиком.
+    references_updated: true
 ```
 
 ## Решение
@@ -76,16 +85,26 @@ knowledge_id_change:
 ## §A-RESPONSE-03 — Передача пары атомарна и принадлежит названному потребителю
 
 ```yaml
-knowledge_id_change:
-  action: reuse
-  id: §A-RESPONSE-03
-  reason:
-    Review обнаружил, что ordinary rename может перезаписать уже опубликованный
-    final payload.
-  new_boundary:
-    Publication использует atomic create-if-absent hard link; любой existing
-    final остаётся неизменным и даёт UNKNOWN.
-  references_updated: true
+knowledge_id_changes:
+  - action: reuse
+    id: §A-RESPONSE-03
+    reason:
+      Review обнаружил, что ordinary rename может перезаписать уже
+      опубликованный final payload.
+    new_boundary:
+      Publication использует atomic create-if-absent hard link; любой existing
+      final остаётся неизменным и даёт UNKNOWN.
+    references_updated: true
+  - action: reuse
+    id: §A-RESPONSE-03
+    reason: >-
+      Одобренный владельцем ранний ремонт требует передать исполнителю первый
+      полный отчёт, пока второй ревьюер ещё работает на старом SHA.
+    new_boundary: >-
+      Второй названный потребитель — предпросмотр одного неизменного слота с
+      `Review-Preview-Ack`; это не вердикт пары, и атомарная передача пары с
+      `Review-Handoff-Ack` по-прежнему обязательна до следующего кандидата.
+    references_updated: true
 ```
 
 Вызывающая сторона под `umask 077` создаёт через безопасный `mktemp -d`
@@ -106,6 +125,14 @@ knowledge_id_change:
 символическая ссылка, необычный тип пути, неподдерживаемая жёсткая ссылка,
 усечение или ошибка повторного чтения сразу дают `UNKNOWN` без изменения
 существующего финального файла и без пересборки полезной нагрузки.
+
+Ранний ремонт добавляет второго названного потребителя. Когда владелец его
+одобрил и все условия изоляции доказаны, первый полный валидный отчёт с FINDINGS
+публикуется в своём слоте без изменений и передаётся исполнителю как
+предпросмотр; исполнитель отвечает
+`Review-Preview-Ack: <pair_id> <slot>=<bytes>`, и размер обязан совпасть с
+опубликованным файлом. Это не вердикт пары: после второго отчёта исполнитель
+читает оба и подтверждает `Review-Handoff-Ack` до следующего кандидата.
 
 Решение служит §B-REVIEW-01, §B-REVIEW-05 и §B-SESSION-02. Отмена §A-RESPONSE-03
 делает закрытое пространство имён, атомарную публикацию, повтор подтверждения и

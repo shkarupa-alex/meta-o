@@ -7,6 +7,8 @@ description:
   Node, browser, frontend, worker, and edge work where correctness, contracts, state, effects,
   concurrency, compatibility, security, reuse, runtime alignment, or long-term ownership materially
   matters.
+metadata:
+  source_tree: "bf4ae8edf36f04343a1a4d5ca9e21f1c6da9ac8b"
 ---
 
 # Senior JavaScript and TypeScript engineering

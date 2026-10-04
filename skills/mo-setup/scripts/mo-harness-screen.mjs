@@ -8,7 +8,8 @@
  * refuses, because a guess here delivers work into a shell or a trust dialog.
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 /**
  * The composer Claude Code draws around its own prompt row, and what it holds.
@@ -25,6 +26,17 @@ import { readFileSync } from "node:fs";
  * injected with it. A single match cannot disagree with itself.
  */
 const CLAUDE_COMPOSER = /^─+[ \t]*\n[ \t]*❯[ \t]?(.*)$/mu;
+
+/**
+ * The Codex composer: the `›` row directly above Codex's own footer.
+ *
+ * After a turn the submitted prompt stays in the scrollback as a `›` row of its
+ * own, so the glyph alone names two rows and the frame read as ambiguous. The
+ * footer is the chrome that picks the real one. It is matched up to its context
+ * segment only, in both forms a live pane shows: `Context 2% used` and, once
+ * the row is too wide for the pane, `Context …`.
+ */
+const CODEX_COMPOSER = /^[ \t]*›[ \t]?(.*)\n[ \t]+\S[^\n]*? · Context (?:\d+% used|…)/mu;
 
 /**
  * The recorded frames this classifier is allowed to recognize.
@@ -69,11 +81,14 @@ export const SCREENS = [
     input: CLAUDE_COMPOSER,
   },
   {
-    version: "codex-prompt-2026-09-18",
+    // Anchored on the composer and the footer together since the 2026-09-29
+    // captures: the 2026-09-18 frame still matches, and so do the after-turn
+    // frame with its submitted prompt above and the footer cut at `Context …`.
+    version: "codex-prompt-2026-09-29",
     harness: "codex",
     state: "agent_prompt",
-    anchors: [/^\s*›\s/mu, /Context \d+% used/u],
-    input: /^[ \t]*›[ \t]?(.*)$/mu,
+    anchors: [CODEX_COMPOSER],
+    input: CODEX_COMPOSER,
     placeholder: /^Ask Codex to do anything$/u,
   },
   {
@@ -172,6 +187,60 @@ function composerState(screen, frame) {
   return { ok: false, reason: "composer_not_empty" };
 }
 
+const UNIT = { "": 1, k: 1_000, K: 1_000, M: 1_000_000 };
+const CODEX_CONTEXT =
+  /^[ \t]+\S[^\n]*? · Context (\d+)% used(?: · (\d+(?:\.\d+)?)([KM]) window(?= ·|$))?/mu;
+const CLAUDE_CONTEXT = /Context [░▒▓█]+ (\d+(?:\.\d+)?)([kM]?)\/(\d+(?:\.\d+)?)([kM])(?=\s|$)/mu;
+
+/** Every match of a pattern, which is compiled without the global flag. */
+function allMatches(pattern, text) {
+  return [...text.matchAll(new RegExp(pattern.source, `${pattern.flags}g`))];
+}
+
+/**
+ * The harness chrome below the composer, where the indicator is painted.
+ *
+ * Transcript rows above the composer can quote an indicator verbatim — a
+ * review of this very classifier prints its fixtures — so the first match in
+ * the frame is not the harness's. The composer is the last one on the screen:
+ * a submitted prompt stays in the scrollback above it. Codex paints its meter
+ * on the footer row the composer pattern already anchors on; Claude paints its
+ * status rows after the composer's closing rule.
+ */
+function chromeBelowComposer(frame, harness) {
+  const composer = allMatches(harness === "codex" ? CODEX_COMPOSER : CLAUDE_COMPOSER, frame).at(-1);
+  if (composer === undefined) return null;
+  if (harness === "claude") return frame.slice(composer.index + composer[0].length);
+  return frame.slice(frame.indexOf("\n", composer.index) + 1);
+}
+
+/**
+ * Read the context indicator a harness paints, and nothing it does not paint.
+ *
+ * §A-DELIVERY-01 serves a hot-slot decision here: an older review slot stays
+ * hot only on a proven small context. Codex shows a percentage and, after its
+ * first turn, the window beside it; Claude's status line shows used tokens over
+ * the window. A cut, partial, absent or repeated indicator is `unknown`, never
+ * a guess, and only the chrome below the composer is read.
+ */
+export function contextIndicator(frame, harness) {
+  if (harness !== "codex" && harness !== "claude") return { kind: "unknown" };
+  const chrome = chromeBelowComposer(frame, harness);
+  if (chrome === null) return { kind: "unknown" };
+  const found = allMatches(harness === "codex" ? CODEX_CONTEXT : CLAUDE_CONTEXT, chrome);
+  if (found.length !== 1) return { kind: "unknown" };
+  const [match] = found;
+  if (harness === "codex") {
+    const window = match[2] === undefined ? undefined : Number(match[2]) * UNIT[match[3]];
+    return { kind: "percent", usedPercent: Number(match[1]), window };
+  }
+  return {
+    kind: "absolute",
+    used: Math.round(Number(match[1]) * UNIT[match[2]]),
+    window: Math.round(Number(match[3]) * UNIT[match[4]]),
+  };
+}
+
 /**
  * Decide what one rendered frame is and what it licenses.
  *
@@ -195,9 +264,10 @@ export function classifyScreen(text) {
     return { ...common, ...trustAction(frame), path };
   }
   if (screen.state === "agent_prompt") {
+    const context = contextIndicator(frame, screen.harness);
     const composer = composerState(screen, frame);
-    if (!composer.ok) return { ...common, action: "refuse", reason: composer.reason };
-    return { ...common, action: "inject" };
+    if (!composer.ok) return { ...common, context, action: "refuse", reason: composer.reason };
+    return { ...common, context, action: "inject" };
   }
   return { ...common, action: "refuse", reason: "shell_prompt" };
 }
@@ -314,7 +384,12 @@ export function decideScreen(text, { harness, expectPath, fixturesVersion, draft
   if (verdict.state === "trust_ui") return { ...record, ...trustRecord(verdict, expectPath) };
   if (verdict.state === "busy") return { ...record, action: "wait", reason: "none" };
   const licensed = verdict.state === "agent_prompt" && verdict.action === "inject";
-  return { ...record, action: licensed ? "inject" : "refuse", reason: verdict.reason ?? "none" };
+  return {
+    ...record,
+    ...(verdict.context === undefined ? {} : { context: verdict.context }),
+    action: licensed ? "inject" : "refuse",
+    reason: verdict.reason ?? "none",
+  };
 }
 
 /** §A-DELIVERY-01 licenses a trust answer only on the path the caller named. */
@@ -331,6 +406,14 @@ function trustRecord(verdict, expectPath) {
   };
 }
 
+/** §A-DELIVERY-01 prints the indicator in the form the hot-slot helper takes. */
+function contextFields(context) {
+  const window = `context_window=${context.window ?? "unknown"}`;
+  if (context.kind === "absolute") return [`context=tokens:${context.used}`, window];
+  if (context.kind === "percent") return [`context=percent:${context.usedPercent}`, window];
+  return ["context=unknown", "context_window=unknown"];
+}
+
 /** §A-DELIVERY-01 states one verdict as the line the caller reads without reparsing. */
 export function screenLine(record) {
   const parts = ["MO-HARNESS-SCREEN/1", `state=${record.state}`];
@@ -339,9 +422,35 @@ export function screenLine(record) {
   if (record.selection !== undefined) parts.push(`selection=${record.selection}`);
   if (record.path_match !== undefined) parts.push(`path_match=${record.path_match}`);
   if (record.screen_version !== undefined) parts.push(`screen_version=${record.screen_version}`);
+  if (record.context !== undefined) parts.push(...contextFields(record.context));
   parts.push(`action=${record.action}`);
   return parts.join(" ");
 }
+
+/**
+ * Every input of the one call, printed by `--help`.
+ *
+ * §A-DELIVERY-01 makes this the gate before every task byte, so a caller that
+ * had to read the source to form the call was one guessed flag from refusing a
+ * ready composer or never asking at all.
+ */
+export const USAGE = `usage: orca terminal read --terminal <handle> --screen --json \\
+         | mo-harness-screen.mjs --harness <claude|codex|opencode> --expect-path <abs>
+                                 [--fixtures-version <screen_version>]
+
+  stdin           the JSON envelope of \`orca terminal read --screen --json\`
+  --harness       the harness the caller started in that terminal
+  --expect-path   the absolute worktree path a trust dialog must name
+  --fixtures-version
+                  refuse unless the frame matches this recorded screen version
+
+  answers one line:
+  MO-HARNESS-SCREEN/1 state=<...> [trust_path=<json>] [selection=<yes|no|unknown>]
+                      [path_match=<yes|no>] [screen_version=<id>]
+                      [context=<tokens:<n>|percent:<n>|unknown> context_window=<n|unknown>]
+                      action=<inject|accept_trust|confirm_trust|refuse|wait>
+  exit 0 classified, 2 unreadable input or a call it cannot answer
+`;
 
 /** §A-DELIVERY-01 accepts only the exact call the mechanics document writes. */
 export function readOptions(argv) {
@@ -365,10 +474,28 @@ export function readOptions(argv) {
   return options;
 }
 
-if (process.argv[1] !== undefined && import.meta.url === `file://${process.argv[1]}`) {
+/**
+ * Whether this file is the program Node was asked to run. Both sides go through
+ * realpath: Node resolves the main module through symlinks and percent-encodes
+ * its URL, while argv keeps the path as typed, so a textual comparison fails
+ * silently for a symlinked install or a directory with a space in its name,
+ * and a helper that answers by exit status would read as a yes.
+ */
+function invokedDirectly() {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (invokedDirectly()) {
   const options = readOptions(process.argv.slice(2));
-  if (options.error !== undefined) {
-    process.stderr.write(`mo-harness-screen: ${options.error}\n`);
+  if (process.argv.length === 3 && process.argv[2] === "--help") {
+    process.stdout.write(USAGE);
+    process.exitCode = 0;
+  } else if (options.error !== undefined) {
+    process.stderr.write(`mo-harness-screen: ${options.error}\n${USAGE}`);
     process.exitCode = 2;
   } else {
     const envelope = readEnvelope(readFileSync(0, "utf8"));

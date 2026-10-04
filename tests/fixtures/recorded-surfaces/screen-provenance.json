@@ -49,6 +49,30 @@
       "harness": "shell",
       "how": "bash --norc -i with an explicit PS1, one command run and answered",
       "trimmed": "none"
+    },
+    {
+      "file": "codex-prompt-after-turn.screen",
+      "harness": "codex",
+      "how": "2026-09-29, Codex 0.158.0: orca terminal read --screen on a probe terminal of this project after one one-word turn; the submitted prompt stays above the composer as a second › row",
+      "trimmed": "kept the rows from the submitted prompt down; the banner above is Codex's start screen"
+    },
+    {
+      "file": "codex-prompt-context-cut.screen",
+      "harness": "codex",
+      "how": "derived from codex-prompt-after-turn.screen: its footer cut right after `Context` and ended with `…`, the form issue #33 reported from a narrower pane; not a separate capture",
+      "trimmed": "footer row shortened as described; every other row as captured"
+    },
+    {
+      "file": "claude-prompt-after-turn.screen",
+      "harness": "claude",
+      "how": "2026-09-29, Claude Code 2.1.284: orca terminal read --screen on a probe terminal of this project after one one-word turn; draft was absent",
+      "trimmed": "kept the rows from the submitted prompt down"
+    },
+    {
+      "file": "claude-prompt-suggestion.screen",
+      "harness": "claude",
+      "how": "2026-09-29, Claude Code 2.1.284: the first frame of a fresh probe terminal, nothing sent; the composer row shows the harness's own Try suggestion, which a rendered screen cannot tell from typed text",
+      "trimmed": "dropped the shell line that launched the harness, which named the local account"
     }
   ]
 }

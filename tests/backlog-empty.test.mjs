@@ -97,7 +97,7 @@ test("the AST owner distinguishes empty, entries, and arbitrary content", () => 
   }
 });
 
-test("malformed CLI input is an internal error rather than an ambiguous backlog path", () => {
+test("malformed CLI input is a call error rather than an ambiguous backlog path", () => {
   const result = spawnSync(
     process.execPath,
     ["shared/scripts/mo-backlog.mjs", "--candidate", "bad"],
@@ -107,7 +107,7 @@ test("malformed CLI input is an internal error rather than an ambiguous backlog 
     },
   );
   assert.equal(result.status, 2);
-  assert.match(result.stderr, /reason=internal_error/u);
+  assert.match(result.stderr, /reason=call_error/u);
   assert.doesNotMatch(result.stderr, /reason=path_ambiguous/u);
 });
 
@@ -234,7 +234,10 @@ test("a foreign notebook needs its whole schema, never half of this project's", 
   ]) {
     const result = run(...partial);
     assert.equal(result.status, 2, partial.join(" "));
-    assert.match(result.stderr, /MO-BACKLOG-UNKNOWN version=1 reason=internal_error /u);
+    assert.match(result.stderr, /MO-BACKLOG-UNKNOWN version=1 reason=call_error /u);
+    // The line names the caller's own notebook, or none, never this project's.
+    const named = partial.includes("--path") ? '"notes/backlog.md"' : "null";
+    assert.match(result.stderr, new RegExp(` path=${named}$`, "mu"), partial.join(" "));
   }
   // A complete foreign schema is accepted and answers about that notebook.
   const complete = run(
@@ -249,6 +252,52 @@ test("a foreign notebook needs its whole schema, never half of this project's", 
   );
   assert.equal(complete.status, 2);
   assert.match(complete.stderr, /reason=missing_file .*notes\/backlog\.md/u);
+});
+
+test("every call error answers about the caller's own repository and notebook", () => {
+  // Only a partial schema used to keep the caller's notebook: a bad SHA, an
+  // unknown or repeated flag fell back to this project's path and to the
+  // repository of the working directory, which at a foreign gate is neither.
+  const elsewhere = repositoryFixture();
+  const target = repositoryFixture();
+  writeFileSync(join(target, "untracked.txt"), "makes the caller's repository dirty\n");
+  const schema = ["--path", "notes/backlog.md", "--title", "Backlog", "--open-heading", "Open"];
+  const fields = ["--entry-field", "Reason."];
+  for (const [args, named] of [
+    [[...schema, ...fields, "--expect-head", "abc"], '"notes/backlog.md"'],
+    [[...schema, ...fields, "--remote-head", "xyz"], '"notes/backlog.md"'],
+    [["--bogus", "1", ...schema, ...fields], '"notes/backlog.md"'],
+    [[...schema, ...fields, "--bogus", "1"], '"notes/backlog.md"'],
+    [[...schema, "--title", "Other", ...fields], '"notes/backlog.md"'],
+    [["--title", "Backlog", "--expect-head", "abc"], "null"],
+    [["--path", "a.md", "--path", "b.md", "--title", "Backlog"], "null"],
+    [["--candidate", "bad"], '"docs/backlog.md"'],
+  ]) {
+    const result = spawnSync(process.execPath, [CLI, "--repo", target, ...args], {
+      cwd: elsewhere,
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 2, args.join(" "));
+    assert.match(
+      result.stderr,
+      new RegExp(
+        `^MO-BACKLOG-UNKNOWN version=1 reason=call_error sha=none worktree=dirty path=${named}$`,
+        "mu",
+      ),
+      args.join(" "),
+    );
+  }
+  // Two different repositories name neither, and the working directory's
+  // clean tree must not stand in for the caller's.
+  const twice = spawnSync(process.execPath, [CLI, "--repo", target, "--repo", elsewhere], {
+    cwd: elsewhere,
+    encoding: "utf8",
+  });
+  assert.equal(twice.status, 2);
+  assert.match(
+    twice.stderr,
+    / reason=call_error sha=none worktree=unknown path="docs\/backlog\.md"$/mu,
+  );
 });
 
 test("the frozen line keeps its field order, names and streams", () => {
@@ -297,6 +346,23 @@ test("the named schema validator answers for this notebook and a foreign one", (
   // notebook is one nobody will read when it reports on a broken one.
   assert.deepEqual(backlogSchemaViolations(EMPTY), []);
   assert.deepEqual(backlogSchemaViolations(foreignEmpty, FOREIGN), []);
+  // A closure call that leaves out --intro holds half this notebook's schema,
+  // and the introduction it did not declare makes the notebook unknown.
+  assert.equal(inspectBacklog(foreignEmpty, { ...FOREIGN, intro: [] }).reason, "schema_invalid");
+  // The checker compares rendered text, which is what the schema texts tell an
+  // owner to pass: the Markdown source of a paragraph with inline code is not it.
+  const marked = "# Backlog\n\nKeep `docs/x.md`   short.\n\n## Open\n";
+  const rendered = { ...FOREIGN, intro: ["Keep docs/x.md short."] };
+  assert.equal(inspectBacklog(marked, rendered).kind, "empty");
+  const source = { ...FOREIGN, intro: ["Keep `docs/x.md`   short."] };
+  assert.equal(inspectBacklog(marked, source).reason, "schema_invalid");
+  // A hard line break, by two trailing spaces or a backslash, renders as a break
+  // between words, not as nothing.
+  for (const broken of ["First  \nsecond.", "First\\\nsecond."]) {
+    const document = `# Backlog\n\n${broken}\n\n## Open\n`;
+    const schema = { ...FOREIGN, intro: ["First second."] };
+    assert.equal(inspectBacklog(document, schema).kind, "empty", JSON.stringify(broken));
+  }
 
   // Each document rule names itself rather than collapsing into one verdict.
   assert.deepEqual(backlogSchemaViolations("# Wrong\n\n## Открыто\n"), [

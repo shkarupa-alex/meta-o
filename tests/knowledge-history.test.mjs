@@ -343,7 +343,11 @@ test("a knowledge path that is not a directory is absent, not corruption", () =>
     const cutoff = git(root, ["rev-parse", "HEAD"]).trim();
     writeFileSync(join(root, "unrelated.txt"), "one\n");
     commit(root, "an ordinary commit");
-    assert.deepEqual(verifyHistory(root, cutoff), []);
+    // Readable, and therefore not unavailable: the scope is simply empty, and an
+    // empty declared scope is refused on its own terms.
+    assert.deepEqual(verifyHistory(root, cutoff), [
+      "no_definitions: HEAD defines no identifier in the declared business and architecture scope",
+    ]);
   }
 });
 
@@ -613,7 +617,7 @@ test("the status line reports the run and only measures when asked", () => {
   assert.equal(quiet.stderr, "");
   assert.equal(
     quiet.stdout,
-    `MO-KNOWLEDGE-HISTORY/1 status=ok cutoff=${cutoff} commits=1 edges=1\n`,
+    `MO-KNOWLEDGE-HISTORY/1 status=ok cutoff=${cutoff} commits=1 edges=1 definitions=2\n`,
   );
   const timed = spawnSync(process.execPath, [...argv, "--timing"], { encoding: "utf8" });
   assert.match(timed.stdout, /^MO-KNOWLEDGE-HISTORY\/1 status=ok .* ms=\d+ spawns=\d+ blobs=2\n$/u);

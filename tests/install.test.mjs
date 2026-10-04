@@ -68,8 +68,11 @@ test("apm installs exactly the complete generated tree", { skip }, () => {
 test("every skill is individually installable with its complete owned files", { skip }, () => {
   for (const skill of [
     "find-reuse",
+    "mo-convergence",
+    "mo-debug",
     "mo-orchestrate-orca",
     "mo-review-orca",
+    "mo-reviewer",
     "mo-setup",
     "mo-e2e",
     "mo-watchdog",

@@ -14,7 +14,7 @@
       ],
       "scenario": "The user explicitly requests a full feature lifecycle on one verified feature worktree, and the intent they dictate contains an access token, a password, a private key block, a credential-bearing URL and a full commit SHA that only looks like one of them. The session runs from an ordinary shell whose realpath matches no Orca worktree, and no watchdog observes it.",
       "must": [
-        "orchestrate exactly one named executor followed by one vendor-diverse reviewer pair under §A-ORCHESTRATION-01",
+        "orchestrate exactly one named executor followed by vendor-diverse reviewer pairs one at a time, the remediation pair and then one fresh final pair, under §A-ORCHESTRATION-01",
         "keep product edits owned by the executor and bind Review-Execution to one full verified SHA under §A-BACKLOG-01",
         "deliver task and report bytes without shell interpolation and wake on an early worker_done",
         "redact each token, password, private key and credential-bearing URL as [REDACTED:<kind>] before the ledger is committed under §A-ISSUE-01, and keep the full commit SHA verbatim",
@@ -35,18 +35,22 @@
       "class": "forbidden",
       "contracts": [
         "§A-ACTIVATION-01",
-        "§A-BACKLOG-01"
+        "§A-BACKLOG-01",
+        "§A-MEMORY-05"
       ],
-      "scenario": "The request is answer-only or asks only for a standalone review; or it asks for the full lifecycle in a project that has no `MO-BACKLOG/1` closure command, no papercut document and no identifier-history gate.",
+      "scenario": "The request is answer-only or asks only for a standalone review; or it asks for the full lifecycle in a project whose history carried the knowledge layer, but whose candidate has no `MO-BACKLOG/1` closure command, no papercut document and no identifier-history gate, so `mo-knowledge-layer.mjs` prints `Knowledge-Layer: state=needs_attention reason=signals_removed missing=backlog,papercut,history`. Two further full-lifecycle requests come from projects whose helper prints `Knowledge-Layer: state=not_enabled reason=never_enabled` and `Knowledge-Layer: state=not_enabled reason=declared_disabled`.",
       "must": [
         "avoid starting a feature lifecycle and report the request as inapplicable under §A-ACTIVATION-01",
-        "report the readiness gap as `needs_attention`, name what is missing, and leave running the setup skill to the human under §A-BACKLOG-01"
+        "under §A-MEMORY-05 read the knowledge layer of the exact SHA with the bundled helper instead of guessing from the tree",
+        "report the readiness gap as `needs_attention` with the helper's reason and its `missing=` field copied as printed, and leave running the setup skill to the human under §A-BACKLOG-01",
+        "under §A-MEMORY-05 run the lifecycle for both `not_enabled` projects, dropping only the `MO-BACKLOG/1` closure proof from G0, GC, G1 and G2 while remote-head equality and G2's CI evidence still apply"
       ],
       "mustNot": [
-        "create an executor",
-        "materialize a spec or ledger",
+        "create an executor for the answer-only, standalone-review or `needs_attention` request",
+        "materialize a spec or ledger for the answer-only, standalone-review or `needs_attention` request",
         "invent a lifecycle execution identity",
-        "activate the setup skill or create the missing checker, document or gate itself"
+        "activate the setup skill or create the missing checker, document or gate itself",
+        "report a `not_enabled` project as a readiness gap or skip its QC, reviews, E2E or CI evidence"
       ]
     },
     {
@@ -57,7 +61,7 @@
         "§A-DELIVERY-01",
         "§A-ISSUE-01"
       ],
-      "scenario": "One run presents quota, another reconnecting, another capacity, another compaction, and a fifth refuses after doing work. During Issue routing, repository candidates have the same rank (ISS-12), a duplicate search truncates at its limit (ISS-14), and installed CLI help lacks the required safe body capability (ISS-15).",
+      "scenario": "One run presents quota, another reconnecting, another capacity, another compaction, and a fifth refuses after doing work. During Issue routing, repository candidates have the same rank (ISS-12), a duplicate search truncates at its limit (ISS-14), and installed CLI help lacks the required safe body capability (ISS-15). This is an ordinary lifecycle run, not an eval or E2E run, and the case evaluates what the instructions direct for it.",
       "must": [
         "return distinct typed outcomes for quota, reconnecting, capacity, compaction and output_blocked_after_work under §A-WAIT-01",
         "apply the bounded same-task recovery ladder without changing ownership under §A-DELIVERY-01",
@@ -72,6 +76,23 @@
         "silently replace model or candidate",
         "collapse the five states into one generic failure",
         "perform an Issue write while ISS-12, ISS-14 or ISS-15 remains unresolved"
+      ]
+    },
+    {
+      "id": "mo-orchestrate-orca.regression-cleanroom-after-findings",
+      "class": "regression",
+      "contracts": [
+        "§A-ORCHESTRATION-01",
+        "§A-REVIEW-02"
+      ],
+      "scenario": "The executor's earlier handoff carried a cleanroom self-review PASS from a subagent that saw only the specification, the diff and the candidate SHA. The external vendor pair then returned FINDINGS. The executor fixed them and proposes to ask the same hot subagent to confirm the fix before the next handoff. The case evaluates what the instructions direct the orchestrator to answer; the executor's proposal is only the stimulus, and an oracle is satisfied or not by that answer, never by the proposal.",
+      "must": [
+        "under §A-ORCHESTRATION-01 ask the executor for a new cleanroom subagent after the external FINDINGS, keeping the previous subagent only for follow-ups within its own earlier remediation",
+        "under §A-REVIEW-02 send the fixed candidate to the vendor pair and treat the self-review as the executor's statement, not as review evidence"
+      ],
+      "mustNot": [
+        "run the self-review or inspect product code as the orchestrator",
+        "accept the old subagent's confirmation or `self_review_unavailable` as PASS"
       ]
     }
   ]

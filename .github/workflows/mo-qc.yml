@@ -3,6 +3,12 @@
 # checkout. Triggers and jobs stay literal and unconditional so CI-Coverage/1
 # can prove pull-request and merge-queue reachability; whether these checks are
 # required is a server-side protection decision, not this file's.
+#
+# An agent merge is gated on these jobs having checked out exactly the
+# candidate. A pull-request run checks out a synthetic merge commit by default,
+# so both jobs check out the pull request's own head there and print
+# `git rev-parse HEAD` before QC; a merge-queue run keeps its own commit, which
+# is an integration signal and never QC of the candidate.
 name: mo-qc
 
 on:
@@ -22,6 +28,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - run: git rev-parse HEAD
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -38,6 +46,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - run: git rev-parse HEAD
       - uses: actions/setup-node@v7
         with:
           node-version: 22

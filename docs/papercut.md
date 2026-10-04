@@ -17,11 +17,32 @@
 - Публичная поверхность исполнителя не доказывает фактическую идентичность
   модели: основная внешняя запись —
   [Orca issue #16527](https://github.com/stablyai/orca/issues/16527).
-- Состояние интерфейса доверия Claude, точная очистка резервного терминала и
-  файл тела для `glab issue note`: `unsupported` для новой записи в этом
-  жизненном цикле — `gh` ответил 401, а `glab auth status` не завершился за
-  ограниченную проверку; точного публичного дубликата не найдено. Эти исходы не
-  разрешают пробную запись или выбор другого удалённого репозитория.
+- Диалог доверия Claude останавливал `worker-start --agent claude` до таймаута
+  `agent_readiness` до Orca 1.4.219; она сама доверяет папку, пока включена её
+  настройка «Trust the folder when Orca starts an agent», а процедура доверия
+  остаётся для выключенной настройки и для маршрута, который она не покрывает:
+  основная внешняя запись —
+  [Orca issue #21867](https://github.com/stablyai/orca/issues/21867).
+- Файл тела для `glab issue note`: `unsupported` для новой записи в этом
+  жизненном цикле — `glab auth status` не завершился за ограниченную проверку;
+  точного публичного дубликата не найдено. Этот исход не разрешает пробную
+  запись или выбор другого удалённого репозитория.
+- Вкладка терминала, созданного `worker-start`, сохраняет заголовок
+  `worker-task_<id>` после `terminal rename`: основная внешняя запись —
+  [Orca issue #21917](https://github.com/stablyai/orca/issues/21917).
+- Публичная поверхность исполнителя не называет сессию или тред провайдера:
+  основная внешняя запись —
+  [Orca issue #16485](https://github.com/stablyai/orca/issues/16485).
+- Доверие, которое Orca 1.4.219 записывает при `worker-start --agent`, — Codex в
+  `~/.codex/config.toml` и в `config.toml` своего
+  `~/.config/orca/codex-runtime-home/home`, Claude в `projects` файла
+  `~/.claude.json` — переживает `orca worktree rm`: основная внешняя запись —
+  [Orca issue #24697](https://github.com/stablyai/orca/issues/24697).
+- Закрыть или удалить законченный Run нечем: основная внешняя запись —
+  [Orca issue #24698](https://github.com/stablyai/orca/issues/24698).
+- `run-create` в терминале рабочего делает его Dispatch недостижимым по
+  `dispatch:<ctx>` из обоих Run: основная внешняя запись —
+  [Orca issue #24699](https://github.com/stablyai/orca/issues/24699).
 
 ## Проверки и сборка
 
@@ -60,6 +81,23 @@
   проверку не входит.
 
 ## Окружение
+
+- `CLAUDE.md` из одной строки `@AGENTS.md` не заменяет побайтовую копию. Claude
+  Code 2.1.285, запущенный из вложенного каталога, этот импорт не раскрывает:
+  сначала спрашивает «Allow external CLAUDE.md file imports?», а без согласия
+  контракта не видит — сразу, после `/compact` и после `--continue`; из корня
+  импорт работает. Без `CLAUDE.md` та же версия сама читает `AGENTS.md` во всех
+  шести режимах B70, включая проект сразу после `mo-setup`; баннер называет
+  источником `cc-plugin-agents-md`, происхождение которого не доказано, поэтому
+  копия остаётся (канарейка 2026-09-30).
+
+- `CODEX_HOME` не переопределяют: дом Codex — `~/.codex` по умолчанию. Сессия,
+  унаследовавшая `CODEX_HOME` на каталог аккаунта Orca, которого уже нет,
+  запускает дочерние `codex` и помощники через `env -u CODEX_HOME`, а не
+  подставляет другой каталог.
+- Терминал, который закрыл `worker-release`, `terminal show` на Orca 1.4.219
+  показывает с `exitCause.kind=operator_close`. Это закрытие самой Orca по
+  освобождению, а не след ручного закрытия вкладки человеком.
 
 - macOS без GNU coreutils: команды `timeout` нет. Ограничивать время нужно
   средствами самого агента или фоновым запуском, а не `timeout N ...`.
@@ -149,17 +187,28 @@
   `codex exec --json -m <model> -c model_reasoning_effort=<e> -s read-only -C <clone> -o <file> -`
   и
   `claude -p --model <alias> --effort <e> --output-format stream-json --verbose`.
-  Фактическую модель у Claude берут из события `init`. У Codex публичного
-  источника нет (см. [Возможности бэкенда](backend-capabilities.md)), поэтому
-  действует узкое исключение §A-EVAL-01: только модель и уровень рассуждений,
-  только из `turn_context` в журнале собственного запуска
-  `~/.codex/sessions/.../rollout-*.jsonl`. Чужая сессия и любое другое
-  содержимое журнала остаются под запретом. Сам ответ модели на эти поля не
-  годится.
+  Фактическую модель у Claude берут из события `init`, но уровня рассуждений
+  `claude -p` не печатает: `low` для `required-claude-opus` доказывает только
+  интерактивный запуск той же среды, чей заголовок показывает `with low effort`,
+  а строка состояния — `○ low`. Прогон одним `claude -p` оставляет координату
+  `blocked`. У Codex публичного источника нет (см.
+  [Возможности бэкенда](backend-capabilities.md)), поэтому действует узкое
+  исключение §A-EVAL-01: только модель и уровень рассуждений, только из
+  `turn_context` в журнале собственного запуска
+  `$CODEX_HOME/sessions/.../rollout-*-<thread-id>.jsonl` (без `CODEX_HOME` —
+  `~/.codex`), найденном по идентификатору треда из его же `thread.started`.
+  Чужая сессия и любое другое содержимое журнала остаются под запретом. Сам
+  ответ модели на эти поля не годится.
+- Начиная с Orca 1.4.217 ревьюеров Claude и Codex запускают
+  `orca orchestration worker-start --agent <claude|codex> --model <id> --effort <e>`.
+  Квитанция называет созданный терминал в `effects[kind=terminal].id`, а
+  запрошенные и фактические модель и уровень рассуждений — в `launch`;
+  `worker-release` такого исполнителя отвечает
+  `processAction=closed_agent_terminal`, и терминала больше нет.
 - `orca orchestration worker-start --terminal <handle>` на терминале, который
   создал вызывающий, оставляет ресурс за вызывающим: `worker-release` отвечает
-  `state=retained processAction=none`, и терминал закрывают своим
-  `orca terminal close`.
+  `state=retained` с `reason=external_terminal` или `no_owned_resource`, и
+  терминал закрывают своим `orca terminal close`.
 - Преамбула воркера Orca просит ответить тремя предложениями в теле
   `worker_done`, а протокол ревью требует там же весь канонический отчёт. Текст
   задачи обязан сказать это прямо: оба ревьюера пары следуют задаче, но сообщают
@@ -176,6 +225,21 @@
   `orca orchestration inbox --limit <n> --full --json`. Это и есть способ
   восстановить отчёт после падения ожидателя; `worker-read --source transcript`
   возвращает обрезанные блоки и для отчёта не годится.
+- Рабочий Orca, который сам создаёт Run через `run-create`, становится его
+  координатором: `coordinator_handle` нового Run указывает на терминал рабочего,
+  и `check --terminal <его handle>` дальше читает входящие этого Run, а не канал
+  своего Dispatch. `send` такому рабочему по `dispatch:<ctx>` отвечает сразу
+  `recipient_run_mismatch` и `dispatch_run_mismatch`; доходит `reply` на его
+  сообщение или `send --to <handle терминала>`. Команды удаления Run в Orca нет
+  — такой Run остаётся записью, его задачи закрывают как `failed` с причиной.
+- Регистрацию проекта в Orca снимают через
+  `orca project setup-delete --setup <id>`: у `orca repo` глагола удаления нет.
+  `orca project setup-existing-folder` принимает только идентичность, которую
+  Orca выводит сама: у Git-каталога без `origin` это `repo:<случайный uuid>`,
+  который нельзя назвать заранее. Одноразовой фикстуре дают недостижимый
+  `origin` в домене `.invalid` и получают `git:<хост>/<путь>`; ничего не
+  загружается и не отправляется. После `orca worktree rm` в каталоге проекта
+  остаётся пустой `.orca-worktree-trash`.
 
 ## Поставка
 

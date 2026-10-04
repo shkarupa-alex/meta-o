@@ -30,14 +30,32 @@ transaction/resource-lifetime repair.
 Do not create a backend fixture document in an ordinary target project without
 a named consumer.
 
-Find the project's documented backlog path and closure command. Verify
+Read the knowledge layer first with bundled
+`scripts/mo-knowledge-layer.mjs --candidate <HEAD sha>` and report its line
+verbatim, the one a reviewer brief carries: a project that never had the layer
+answers `Knowledge-Layer: state=not_enabled reason=never_enabled`, and one that
+had it and lost a signal answers `Knowledge-Layer: state=needs_attention` with
+the helper's reason.
+Whether a project has the layer is the human's decision: on their answer write
+`Knowledge-Layer: enabled` or `Knowledge-Layer: disabled` as its own line in
+`AGENTS.md`, and never choose for them. `disabled` is only valid once the
+closure command, the papercut document and the history record are gone.
+
+Find the project's documented backlog path and closure command, and make the
+line that declares it carry the literal `MO-BACKLOG/1`: that literal is how the
+layer helper finds the command. Verify
 `MO-BACKLOG/1` in a disposable fixture: committed-blob identity, empty,
 not-empty, typed unknown, dirty declared path, unrelated dirt, malformed UTF-8/
 schema/mode and non-mutation. Require G0/GC/G1/G2 in the project contract.
 Ordinary QC must test the reader/schema but not assert the current branch empty.
 
 Read [Knowledge id history contract](references/knowledge-id-history.md) and
-check current-tree agreement separately from history. Never guess: take the
+check current-tree agreement separately from history. The current tree is
+checked by bundled `scripts/mo-knowledge.mjs check` with the project's own
+declaration — business document, architecture directory, every declared
+document and first-party root, exact excludes — and its
+`MO-KNOWLEDGE/1 status=…` gives `current_tree`; a project does not need its
+own checker for that portable core. Never guess: take the
 declared stage from a level-two section whose heading contains
 `Knowledge id history`, holding exactly one fenced one-line command, exactly one
 line naming the authoritative QC command, and exactly one `history_cutoff_sha`
@@ -86,14 +104,22 @@ explains a difference to a human and never decides it.
 
 Find the commands-and-papercuts document by content, not only at
 `docs/papercut.md`, and report `Papercut/1 path=<json|none> linked=<yes|no>`
-where `linked` means `AGENTS.md` actually links it. Accepted repair starts from
+where `linked` means `AGENTS.md` actually links it. The layer helper recognizes
+that document by the path `docs/papercut.md` or by `papercut` in the linked file
+name; a document named anything else is declared, on the same human answer
+that writes the marker, by the line `Knowledge-Layer-Papercut: <path>` in
+`AGENTS.md`, or the helper reports a partial set. Accepted repair starts from
 [Commands and papercuts template](references/papercut-template.md).
 
-Accepted repair copies two shipped bundles into the project, each with its
-`tools/licenses/`, and both then belong to the project. `scripts/mo-backlog.mjs`
+Accepted repair copies three shipped bundles into the project, each with its
+`tools/licenses/`, and all three then belong to the project.
+`scripts/mo-knowledge.mjs` goes to `tools/mo-knowledge.mjs`, and a QC stage
+calls its `check` with that project's own declaration. `scripts/mo-backlog.mjs`
 goes to `tools/mo-backlog.mjs`, and the closure command that calls it must name
-that project's own `--path`, `--title`, `--open-heading` and every
-`--entry-field`: without the whole schema the checker would hold a foreign
+that project's own `--path`, `--title`, `--open-heading`, one `--intro` for each
+paragraph between the title and the open section, in order, and every
+`--entry-field`, with the title and each paragraph as rendered text, without
+Markdown markup and with whitespace collapsed: without the whole schema the checker would hold a foreign
 notebook to this project's Russian wording, and a partial schema is a call
 error. `scripts/mo-knowledge-history.mjs` goes to
 `tools/mo-knowledge-history.mjs` with its version line; a stage calling it joins
@@ -155,7 +181,10 @@ or server protection without a separate request.
 If tracked repair is accepted, use a separate `feature/meta-o-setup` branch
 based on current `develop`; never mix setup
 repair into the current feature branch. Preserve unrelated work. Report each missing
-control, companion, capability, credential and policy independently.
+control, companion, capability, credential and policy independently, each with
+one actionable next step the human runs: the exact install, login, trust or
+configuration command, with no secret value in it. Never ask for or collect the
+credential itself.
 
 ## Meta-O calls
 

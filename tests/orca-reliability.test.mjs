@@ -52,27 +52,135 @@ test("context and ownership recovery remain bounded", () => {
   assert.match(mechanics, /32768-token context/);
   assert.match(mechanics, /cap it at 8000 tokens/);
   assert.match(mechanics, /raw 21k\/41k dump/);
-  assert.match(mechanics, /Never close unnamed human tabs/);
+  assert.match(mechanics, /Never close\s+unnamed human tabs/);
   assert.match(mechanics, /bare shell or expired Dispatch cannot\s+settle work/);
+  // Naming the degraded outcomes apart is not enough: each needs the recovery
+  // that keeps its task and owner, or a reader invents a new task for it.
+  assert.match(
+    mechanics.replace(/\s+/gu, " "),
+    /different outcomes\. Each is recovered on the same task and in the same ownership: .* Never a new task, another model or a second owner\./u,
+  );
 });
 
-test("terminal-first is the route, and a composed start needs a sentence that does not exist", () => {
+test("worker-start --agent is the route, and terminal-first only where it cannot pass the model", () => {
   const mechanics = read("orca-mechanics.md");
-  assert.match(mechanics, /Terminal-first is the default route for every agent environment/u);
-  // The permission is written as a condition on upstream text, not as a
-  // preference. A reader who cannot find that sentence has to stay on the
-  // terminal-first route rather than weigh the two.
+  // Before 1.4.217 Orca never saw a Codex fullscreen composer as ready and
+  // could report a closed terminal that kept running, and before 1.4.219 it
+  // trusted a guessed repository root instead of the Codex worktree, so the
+  // route, the release rule and the trust fallback all depend on that floor.
+  assert.match(mechanics, /Orca 1\.4\.219 is the oldest supported version/u);
   assert.match(
     mechanics,
-    /`worker-start --help` or the\s+version-matched `orchestration` guide says in so many words/u,
+    /`worker-start --agent` is the route for every agent environment whose model and\s+effort it passes/u,
   );
-  assert.match(mechanics, /No such sentence is there today/u);
+  assert.match(mechanics, /--agent <claude\|codex> --model <id> --effort <e>/u);
+  assert.match(
+    mechanics,
+    /`launch\.requested == launch\.effective`\s+for agent, model and effort/u,
+  );
   assert.match(mechanics, /orca terminal create --worktree id:<repo>::<path>/u);
   assert.match(
     mechanics,
     /orca orchestration worker-start --task <id> --worktree id:<repo>::<path> --terminal <handle>/u,
   );
-  assert.doesNotMatch(mechanics, /Prefer the composed worker start/u);
+  assert.doesNotMatch(mechanics, /No such sentence is there today/u);
+  assert.doesNotMatch(mechanics, /fallback binding for no_owned_resource/u);
+});
+
+test("every text that states the supported Orca floor states the same one", () => {
+  // A reader takes the floor from whichever text it reads first; two floors
+  // let one reader accept a release whose trust or release defect another
+  // reader's rules assume is gone.
+  const floors = [
+    [read("orca-mechanics.md"), /`orca --version` is (\d+\.\d+\.\d+) or later/u],
+    [read("orca-mechanics.md"), /Orca (\d+\.\d+\.\d+) is the oldest supported version/u],
+    [
+      readFileSync(join(ROOT, "src", "skills", "mo-review-orca", "SKILL.md"), "utf8"),
+      /reviewer on Orca (\d+\.\d+\.\d+) or later/u,
+    ],
+    [
+      readFileSync(join(ROOT, "docs", "backend-capabilities.md"), "utf8"),
+      /Orca (\d+\.\d+\.\d+) — самая старая поддерживаемая версия/u,
+    ],
+  ].map(([text, pattern]) => pattern.exec(text.replace(/\s+/gu, " "))?.[1]);
+  assert.deepEqual(floors, Array(4).fill("1.4.219"));
+});
+
+test("Orca's own folder pre-trust is the normal start and the trust procedure its fallback", () => {
+  const mechanics = read("orca-mechanics.md").replace(/\s+/gu, " ");
+  assert.match(
+    mechanics,
+    /"Trust the folder when Orca starts an agent" \(Settings → Agents, on by default\)/u,
+  );
+  assert.match(mechanics, /That write is the owner's setting acting, not a Meta-O answer/u);
+  // Only the trust procedure and the trust-failure recovery wait on the
+  // setting being off; delivery checks, titles and the codex exec ban hold in
+  // the default configuration too, so the scoped span must end before them.
+  const scoped =
+    /The next two paragraphs, the trust procedure and the trust-failure recovery, apply whenever a start still meets trust UI or a trust failure: the owner has turned that setting off, or the start took a route the setting did not cover\. Every other rule here holds either way\./u;
+  assert.match(mechanics, scoped);
+  assert.doesNotMatch(mechanics, /Everything below in this section/u);
+  const paragraphs = read("orca-mechanics.md")
+    .split(/\n\s*\n/u)
+    .map((paragraph) => paragraph.replace(/\s+/gu, " "));
+  const start = paragraphs.findIndex((paragraph) => scoped.test(paragraph));
+  const [procedure, recovery, after] = paragraphs.slice(start + 1, start + 4);
+  assert.match(procedure, /^The trust procedure answers a trust dialog/u);
+  assert.match(recovery, /fails with `agent-trust-workspace`/u);
+  for (const general of [
+    "codex exec",
+    "is only a transport receipt",
+    "Use the exact returned run",
+    "On the terminal-first route",
+  ]) {
+    assert.ok(!procedure.includes(general) && !recovery.includes(general), general);
+  }
+  assert.match(
+    after,
+    /^Whether or not Orca pre-trusts the folder, `orca terminal create --command "codex exec …"` is never a reviewer/u,
+  );
+  const review = readFileSync(
+    join(ROOT, "src", "skills", "mo-review-orca", "SKILL.md"),
+    "utf8",
+  ).replace(/\s+/gu, " ");
+  // The skill states the same condition as the mechanics it ships, so a
+  // coordinator never reads its recovery as reserved for a disabled setting.
+  assert.match(
+    review,
+    /Whenever a start still meets trust UI or a trust failure — the owner turned that setting off, or the start took a route it did not cover — a Codex start that fails with `agent-trust-workspace`/u,
+  );
+  assert.doesNotMatch(
+    review,
+    /With that setting turned off by the owner|a reviewer start meets no trust UI/u,
+  );
+  for (const document of ["backend-capabilities.md", "papercut.md"]) {
+    const text = readFileSync(join(ROOT, "docs", document), "utf8").replace(/\s+/gu, " ");
+    assert.doesNotMatch(
+      text,
+      /остаётся путём для выключенной настройки\.|остаётся для выключенной:/u,
+      document,
+    );
+    assert.match(text, /который она не покрывает/u, document);
+  }
+});
+
+test("the papercut audit lists no release fallback that Orca 1.4.217 made obsolete", () => {
+  const papercut = readFileSync(join(ROOT, "docs", "papercut.md"), "utf8");
+  const nodes = fromMarkdown(papercut).children;
+  const heading = nodes.findIndex(
+    (node) =>
+      node.type === "heading" &&
+      node.children.map((child) => child.value ?? "").join("") ===
+        "Аудит Issues для обходных решений жизненного цикла",
+  );
+  assert.ok(heading >= 0, "audit section missing");
+  const next = nodes.findIndex((node, index) => index > heading && node.type === "heading");
+  const section = nodes.slice(heading + 1, next === -1 ? undefined : next);
+  const audit = papercut.slice(
+    section[0].position.start.offset,
+    section.at(-1).position.end.offset,
+  );
+  assert.doesNotMatch(audit, /резервного терминала|no_owned_resource/u);
 });
 
 test("the recovery path forbids the two moves that duplicate an executor", () => {
@@ -80,9 +188,9 @@ test("the recovery path forbids the two moves that duplicate an executor", () =>
   assert.match(mechanics, /--retry-of <old>/u);
   assert.match(
     mechanics,
-    /`unknown_effect`, both a second stop and a\s+replacement Dispatch are forbidden/u,
+    /`unknown_effect`, both a\s+second stop and a\s+replacement Dispatch are forbidden/u,
   );
-  assert.match(mechanics, /two executors of one task is worse than none/u);
+  assert.match(mechanics, /two executors of one\s+task is worse than\s+none/u);
   // The handle is useless as an owned resource if it is recorded after the
   // wait that can fail.
   assert.match(mechanics, /record the handle in OwnedResourceSet\/1 at once/u);

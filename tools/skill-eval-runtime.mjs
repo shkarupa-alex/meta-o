@@ -224,11 +224,16 @@ function validateCriticalIdentity(envelope, criticalProfile) {
   validateCriticalHarness(envelope, effective);
 }
 
-function identityRole(tier, route) {
-  return tier === "desired"
-    ? { codex: "testCodexDesired", opencode: "testOpenCodeDesired" }[route]
-    : { claude: "testClaude", codex: "testCodex" }[route];
-}
+// §A-EVAL-01: each matrix profile belongs to exactly one settings role. Two
+// required Codex coordinates share a route, so the route cannot find the role;
+// the profile does, and the role's own route and effort are then held to it.
+const PROFILE_ROLES = {
+  "required-claude-opus": "testClaude",
+  "required-codex-sol": "testCodexSol",
+  "required-codex-luna": "testCodexLuna",
+  "desired-codex": "testCodexDesired",
+  "desired-opencode": "testOpenCodeDesired",
+};
 
 function validateIdentityFields(envelope, unavailable) {
   for (const side of unavailable ? ["requested"] : ["requested", "effective"]) {
@@ -241,8 +246,10 @@ function validateIdentityFields(envelope, unavailable) {
 
 /** §A-EVAL-01 holds one role to both halves of its approved identity. */
 function validateApprovedProfile(envelope, identity, unavailable) {
-  const role = identityRole(envelope.tier, identity.route);
-  if (!role) throw new Error(`${envelope.skill}: unapproved testing route`);
+  const role = Object.hasOwn(PROFILE_ROLES, envelope.matrixProfile)
+    ? PROFILE_ROLES[envelope.matrixProfile]
+    : null;
+  if (!role) throw new Error(`${envelope.skill}: unapproved testing matrix profile`);
   // The settings guard judges what was requested, because that is what a user
   // may legally store; the observed model is judged separately, because an alias
   // is allowed to be stored and is never allowed to have run as anything else.
@@ -252,13 +259,7 @@ function validateApprovedProfile(envelope, identity, unavailable) {
     const drift = testingEffectiveIdentityError(role, envelope.requested.model, identity.model);
     if (drift) throw new Error(`${envelope.skill}: ${drift}`);
   }
-  const expectedProfile = {
-    testClaude: "required-claude",
-    testCodex: "required-codex",
-    testCodexDesired: "desired-codex",
-    testOpenCodeDesired: "desired-opencode",
-  }[role];
-  if (envelope.matrixProfile !== expectedProfile) {
+  if (identity.route !== envelope.requested.route) {
     throw new Error(`${envelope.skill}: matrix profile does not match actor identity`);
   }
 }
