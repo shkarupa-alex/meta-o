@@ -1286,7 +1286,11 @@ test("a Codex trust failure is recovered inside the supported harness, never by 
     assert.match(review, /release the failed Dispatch by its exact id/u, path);
     assert.match(review, /prove trust by the trust procedure/u, path);
     assert.match(review, /start the normal supervised harness again/u, path);
-    assert.match(review, /A terminal running `codex exec` is never a reviewer\./u, path);
+    assert.match(
+      review,
+      /Whatever that setting says, a terminal running `codex exec` is never a reviewer\./u,
+      path,
+    );
   }
   for (const path of [
     "shared/references/orca-mechanics.md",

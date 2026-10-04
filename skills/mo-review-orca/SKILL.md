@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-review-orca or an act
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "e43d2fca92d9262436c75249a5aac07ae0bc6963"
+  source_tree: "33c783717c523d3b5369e1acd1782b07228b9481"
 ---
 
 # Review through Orca
@@ -292,8 +292,10 @@ supported harness: release the failed Dispatch by its exact id, prove trust by
 the trust procedure, and start the normal supervised harness again. A Claude start that times out
 at `agent_readiness` on Claude's folder-trust dialog is recovered the same way:
 answer the dialog in that start's own terminal by the trust procedure, release
-the failed Dispatch and start again with `--retry-of`. A terminal running
-`codex exec` is never a reviewer.
+the failed Dispatch and start again with `--retry-of`.
+
+Whatever that setting says, a terminal running `codex exec` is never a
+reviewer.
 
 A new independent deep pair while this pair has no PASS needs a recorded reason
 that `scripts/mo-review-resource.mjs deep --phase remediation --reason <r>`

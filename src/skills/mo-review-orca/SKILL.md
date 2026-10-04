@@ -291,8 +291,10 @@ supported harness: release the failed Dispatch by its exact id, prove trust by
 the trust procedure, and start the normal supervised harness again. A Claude start that times out
 at `agent_readiness` on Claude's folder-trust dialog is recovered the same way:
 answer the dialog in that start's own terminal by the trust procedure, release
-the failed Dispatch and start again with `--retry-of`. A terminal running
-`codex exec` is never a reviewer.
+the failed Dispatch and start again with `--retry-of`.
+
+Whatever that setting says, a terminal running `codex exec` is never a
+reviewer.
 
 A new independent deep pair while this pair has no PASS needs a recorded reason
 that `scripts/mo-review-resource.mjs deep --phase remediation --reason <r>`

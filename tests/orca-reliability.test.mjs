@@ -113,7 +113,32 @@ test("Orca's own folder pre-trust is the normal start and the trust procedure it
     /"Trust the folder when Orca starts an agent" \(Settings → Agents, on by default\)/u,
   );
   assert.match(mechanics, /That write is the owner's setting acting, not a Meta-O answer/u);
-  assert.match(mechanics, /applies when the owner has turned that setting off/u);
+  // Only the trust procedure and the trust-failure recovery wait on the
+  // setting being off; delivery checks, titles and the codex exec ban hold in
+  // the default configuration too, so the scoped span must end before them.
+  const scoped =
+    /The next two paragraphs, the trust procedure and the trust-failure recovery, apply when the owner has turned that setting off; every other rule here holds either way\./u;
+  assert.match(mechanics, scoped);
+  assert.doesNotMatch(mechanics, /Everything below in this section/u);
+  const paragraphs = read("orca-mechanics.md")
+    .split(/\n\s*\n/u)
+    .map((paragraph) => paragraph.replace(/\s+/gu, " "));
+  const start = paragraphs.findIndex((paragraph) => scoped.test(paragraph));
+  const [procedure, recovery, after] = paragraphs.slice(start + 1, start + 4);
+  assert.match(procedure, /^The trust procedure answers a trust dialog/u);
+  assert.match(recovery, /fails with `agent-trust-workspace`/u);
+  for (const general of [
+    "codex exec",
+    "is only a transport receipt",
+    "Use the exact returned run",
+    "On the terminal-first route",
+  ]) {
+    assert.ok(!procedure.includes(general) && !recovery.includes(general), general);
+  }
+  assert.match(
+    after,
+    /^Whether or not Orca pre-trusts the folder, `orca terminal create --command "codex exec …"` is never a reviewer/u,
+  );
   const review = readFileSync(
     join(ROOT, "src", "skills", "mo-review-orca", "SKILL.md"),
     "utf8",

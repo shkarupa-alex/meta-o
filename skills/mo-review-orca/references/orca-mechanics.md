@@ -156,8 +156,9 @@ on by default) writes the harness's trust for the exact folder of the start
 before the harness launches, so a Claude or Codex start into a run worktree
 meets no trust UI. That write is the owner's setting acting, not a Meta-O
 answer, and Orca leaves it behind after the worktree is gone
-([Orca #24697](https://github.com/stablyai/orca/issues/24697)). Everything below
-in this section applies when the owner has turned that setting off.
+([Orca #24697](https://github.com/stablyai/orca/issues/24697)). The next two
+paragraphs, the trust procedure and the trust-failure recovery, apply when the
+owner has turned that setting off; every other rule here holds either way.
 
 The trust procedure answers a trust dialog only when three ownership conditions
 hold: this run created the terminal and recorded it in OwnedResourceSet/1, the
@@ -179,6 +180,8 @@ delivered). Read that start's own terminal through
 `scripts/mo-harness-screen.mjs`; when it shows the trust UI and the trust
 procedure's conditions hold, answer it there, release the failed Dispatch by its
 exact id and start again with `worker-start --retry-of <id>`.
+
+Whether or not Orca pre-trusts the folder,
 `orca terminal create --command "codex exec …"` is never a reviewer: it has
 neither the harness input nor the mailbox, and its output would have to be
 carried by hand.
