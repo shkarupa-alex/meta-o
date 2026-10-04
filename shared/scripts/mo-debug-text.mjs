@@ -14,11 +14,17 @@ import { excerpt } from "./mo-debug-redact.mjs";
 
 const SOURCE_TREE = /^source_tree:\s*(["']?)([0-9a-f]{40})\1\s*$/u;
 const FRONTMATTER_BLOCK = /(?:^|\n)---\n([\s\S]*?)\n---(?:\n|$)/gu;
-// A helper counts as run only when it is executed: as `node [flags] <script>`
-// or as the first word of a shell command. Reading, grepping or diffing the
-// script's source is not a call and must not look like one.
-const HELPER =
-  /(?:\bnode\s+(?:-[-\w=]*\s+)*|(?:^|[;&|(\n])\s*)["']?(?:[^\s"';&|]*\/)?(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\.mjs\b/gu;
+// A helper counts as run only when it is executed: the script itself, or
+// `node [flags]` in front of it, stands at a command position (the start of
+// the text or after `;`, `&`, `|`, `(` or a newline), behind at most variable
+// assignments and the env/timeout-style wrappers a caller puts in front.
+// Reading, grepping, printing or diffing the script's name makes it an
+// argument of another program, and that is not a call.
+const WRAPPER = String.raw`(?:[A-Za-z_]\w*=\S*\s+)*(?:(?:env|timeout|time|nice|exec|command)(?:\s+(?:-[-\w]*(?:=\S*)?|[A-Za-z_]\w*=\S*|[A-Z_][A-Z0-9_]*|\d+(?:\.\d+)?[smhd]?))*\s+)*`;
+const HELPER = new RegExp(
+  String.raw`(?:^|[;&|(\n])\s*${WRAPPER}(?:node\s+(?:-[-\w=]*\s+)*)?["']?(?:[^\s"';&|]*\/)?(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\.mjs\b`,
+  "gu",
+);
 const SKILL_DIR = /(?:^|[\s/'"=])(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\/(?:scripts|SKILL\.md)\b/u;
 const TYPED_LINE = /^MO-[A-Z0-9-]+(?:\/\d+)?\b.*$/gmu;
 

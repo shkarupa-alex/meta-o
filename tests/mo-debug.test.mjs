@@ -464,6 +464,69 @@ test("both extractors count only an installed SKILL.md read as a skill load", ()
   }
 });
 
+test("a helper named in an argument of another program is not a call", () => {
+  const printed = "printf '%s\\n' 'node scripts/mo-backlog.mjs'";
+  const searched = "rg -n 'node scripts/mo-backlog.mjs' README.md";
+  const ran = "node scripts/mo-backlog.mjs";
+  const empty = "MO-BACKLOG-EMPTY version=1 sha=x worktree=clean entries=0\n";
+  assert.deepEqual(helperNames(printed), []);
+  assert.deepEqual(helperNames(searched), []);
+  assert.deepEqual(helperNames(ran), ["mo-backlog"]);
+  assert.deepEqual(helperNames("env -u CODEX_HOME timeout 60 node ./scripts/mo-backlog.mjs"), [
+    "mo-backlog",
+  ]);
+  const helperEvents = (evidence) =>
+    evidence.events.filter((event) => event.kind.startsWith("helper_")).map((event) => event.kind);
+  const claude = (command, output) => {
+    const { evidence, feed } = createClaudeExtractor(CLAUDE_ID);
+    const base = { sessionId: CLAUDE_ID, cwd: "/repo", timestamp: "2026-09-01T10:00:00.000Z" };
+    const tool = { type: "tool_use", id: "b1", name: "Bash", input: { command } };
+    feed(
+      { ...base, type: "assistant", uuid: "a1", message: { role: "assistant", content: [tool] } },
+      1,
+    );
+    const result = { type: "tool_result", tool_use_id: "b1", content: output };
+    feed({ ...base, type: "user", uuid: "u1", message: { role: "user", content: [result] } }, 2);
+    return helperEvents(evidence);
+  };
+  const codexCall = (command, output) => {
+    const { evidence, feed } = createCodexExtractor(CODEX_ID);
+    const at = "2026-09-01T11:00:00.000Z";
+    const args = JSON.stringify({ cmd: command });
+    const call = { type: "function_call", name: "exec_command", arguments: args, call_id: "c1" };
+    feed({ timestamp: at, type: "response_item", payload: call }, 1);
+    const answer = { type: "function_call_output", call_id: "c1", output };
+    feed({ timestamp: at, type: "response_item", payload: answer }, 2);
+    return helperEvents(evidence);
+  };
+  const codexExecution = (command, output) => {
+    const { evidence, feed } = createCodexExtractor(CODEX_ID);
+    const item = {
+      type: "CommandExecution",
+      id: "exec-1",
+      command: ["/bin/bash", "-lc", command],
+      cwd: "file:///repo",
+      status: "completed",
+      stdout: output,
+      stderr: "",
+      aggregated_output: output,
+      exit_code: 0,
+    };
+    const payload = { type: "item_completed", thread_id: CODEX_ID, turn_id: "t1", item };
+    feed({ timestamp: "2026-09-01T11:00:00.000Z", type: "event_msg", payload }, 1);
+    return helperEvents(evidence);
+  };
+  for (const [name, extract] of [
+    ["claude", claude],
+    ["codex function_call", codexCall],
+    ["codex CommandExecution", codexExecution],
+  ]) {
+    assert.deepEqual(extract(printed, "node scripts/mo-backlog.mjs\n"), [], `${name} printf`);
+    assert.deepEqual(extract(searched, "7:node scripts/mo-backlog.mjs\n"), [], `${name} rg`);
+    assert.deepEqual(extract(ran, empty), ["helper_call", "helper_result"], `${name} node`);
+  }
+});
+
 /** A loaded, complete copy of one committed fixture version, stamp included. */
 function loadOf(version) {
   const text = readFileSync(join(FIXTURES, `skill-v${version}.txt`), "utf8");
