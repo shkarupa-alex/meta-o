@@ -21,11 +21,13 @@ const FRONTMATTER_BLOCK = /(?:^|\n)---\n([\s\S]*?)\n---(?:\n|$)/gu;
 // at one), behind at most variable assignments and the env/timeout-style
 // wrappers a caller puts in front. Reading, grepping, printing or diffing the
 // script's name makes it an argument of another program, and that is not a
-// call.
+// call. The whole word must name the script: `mo-x.mjs.bak`, `mo-x.mjs/child`
+// or a quoted `"mo-x.mjs"suffix` is another file, so the word ends right after
+// `.mjs` and the quote it opened with.
 const RESERVED = String.raw`(?:(?:[!{]|if|then|else|elif|do|while|until)[ \t]+)*`;
 const WRAPPER = String.raw`(?:[A-Za-z_]\w*=\S*[ \t]+)*(?:(?:env|timeout|time|nice|exec|command)(?:[ \t]+(?:-[-\w]*(?:=\S*)?|[A-Za-z_]\w*=\S*|[A-Z_][A-Z0-9_]*|\d+(?:\.\d+)?[smhd]?))*[ \t]+)*`;
 const HELPER = new RegExp(
-  String.raw`(?:^|[;&|(\n])[ \t]*${RESERVED}${WRAPPER}(?:node[ \t]+(?:-[-\w=]*[ \t]+)*)?["']?(?:[^\s"';&|=]*\/)?(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\.mjs\b`,
+  String.raw`(?:^|[;&|(\n])[ \t]*${RESERVED}${WRAPPER}(?:node[ \t]+(?:-[-\w=]*[ \t]+)*)?(?<quote>["']?)(?:[^\s"';&|=]*\/)?(?<name>mo-[a-z0-9]+(?:-[a-z0-9]+)*)\.mjs\k<quote>(?=[\s;&|()<>]|$)`,
   "gu",
 );
 const SKILL_DIR = /(?:^|[\s/'"=])(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\/(?:scripts|SKILL\.md)\b/u;
@@ -156,13 +158,15 @@ export function installedSkillName(path) {
  */
 export function helperNames(command) {
   const text = substitutionsOpened(String(command));
-  return [...new Set([...text.matchAll(HELPER)].map((match) => match[1]))];
+  return [...new Set([...text.matchAll(HELPER)].map((match) => match.groups.name))];
 }
 
 // Commit messages, PR bodies and here-documents quote helpers as text, so the
 // command-position rule reads a copy of the command in which every shell word
 // stays one word and only what the shell itself would run keeps its
-// separators. A blank or separator that is data (quoted, escaped) becomes DATA,
+// separators. A line continuation outside single quotes is removed, as the
+// shell removes it, so it joins the two halves of a word instead of splitting
+// it. A blank or separator that is data (quoted, escaped) becomes DATA,
 // a non-blank stand-in, so `NAME='a b'` or `printf 'x; y'` stays one word; a
 // comment and a here-document body become blanks, and a backtick or `$(`,
 // where it substitutes, opens a command again. This is a bounded reading of
@@ -201,7 +205,7 @@ function opensComment(command, index) {
 function unquotedSpan(command, index, state) {
   const char = command[index];
   if (char === "\\" && !state.single) {
-    if (command[index + 1] === "\n") return { text: " ", next: index + 2 };
+    if (command[index + 1] === "\n") return { text: "", next: index + 2 };
     const pair = command.slice(index, index + 2);
     return { text: pair.replace(/[\s\x60;&|()]/u, DATA), next: index + 2 };
   }

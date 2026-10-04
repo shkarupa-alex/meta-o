@@ -167,7 +167,7 @@ var FRONTMATTER_BLOCK = /(?:^|\n)---\n([\s\S]*?)\n---(?:\n|$)/gu;
 var RESERVED = String.raw`(?:(?:[!{]|if|then|else|elif|do|while|until)[ \t]+)*`;
 var WRAPPER = String.raw`(?:[A-Za-z_]\w*=\S*[ \t]+)*(?:(?:env|timeout|time|nice|exec|command)(?:[ \t]+(?:-[-\w]*(?:=\S*)?|[A-Za-z_]\w*=\S*|[A-Z_][A-Z0-9_]*|\d+(?:\.\d+)?[smhd]?))*[ \t]+)*`;
 var HELPER = new RegExp(
-  String.raw`(?:^|[;&|(\n])[ \t]*${RESERVED}${WRAPPER}(?:node[ \t]+(?:-[-\w=]*[ \t]+)*)?["']?(?:[^\s"';&|=]*\/)?(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\.mjs\b`,
+  String.raw`(?:^|[;&|(\n])[ \t]*${RESERVED}${WRAPPER}(?:node[ \t]+(?:-[-\w=]*[ \t]+)*)?(?<quote>["']?)(?:[^\s"';&|=]*\/)?(?<name>mo-[a-z0-9]+(?:-[a-z0-9]+)*)\.mjs\k<quote>(?=[\s;&|()<>]|$)`,
   "gu"
 );
 var SKILL_DIR = /(?:^|[\s/'"=])(mo-[a-z0-9]+(?:-[a-z0-9]+)*)\/(?:scripts|SKILL\.md)\b/u;
@@ -224,7 +224,7 @@ function installedSkillName(path) {
 }
 function helperNames(command) {
   const text = substitutionsOpened(String(command));
-  return [...new Set([...text.matchAll(HELPER)].map((match) => match[1]))];
+  return [...new Set([...text.matchAll(HELPER)].map((match) => match.groups.name))];
 }
 var HEREDOC = /^<<-?[ \t]*(['"]?)([A-Za-z0-9_.-]+)\1/u;
 var DATA = "";
@@ -250,7 +250,7 @@ function opensComment(command, index) {
 function unquotedSpan(command, index, state) {
   const char = command[index];
   if (char === "\\" && !state.single) {
-    if (command[index + 1] === "\n") return { text: " ", next: index + 2 };
+    if (command[index + 1] === "\n") return { text: "", next: index + 2 };
     const pair = command.slice(index, index + 2);
     return { text: pair.replace(/[\s\x60;&|()]/u, DATA), next: index + 2 };
   }
