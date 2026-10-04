@@ -64,6 +64,13 @@ what the agent did next. Put each deviation into exactly one category:
 `unknown`, and cite the event's locator from the report. A
 deviation you cannot tie to a record is `unknown`.
 
+A helper run is read from the recorded command text, not from a shell: it
+counts where `node` or the script stands at a command position outside quotes,
+comments and quoted here-documents. A helper started from inside `bash -c`,
+`eval`, a script file or a function leaves no `helper_call`, so a missing call
+alone never proves the agent skipped that helper; without its typed line in the
+record the deviation is `unknown`.
+
 A `skill` line gives the loaded version. `version=source_tree:<id>` with a
 commit range means the complete loaded file equals, byte for byte, a committed
 file carrying that build stamp; `body_match` is a byte-exact match of a loaded

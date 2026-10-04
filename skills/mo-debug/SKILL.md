@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-debug; read a bounded
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "bd159deb8b3725985740a71d0de82b60afa462d8"
+  source_tree: "55a6fe2890c4225ee245f2a2087d932c84c38eb4"
 ---
 
 # Diagnose your own agent sessions
@@ -64,6 +64,13 @@ what the agent did next. Put each deviation into exactly one category:
 `skill_text_defect`, `agent_deviation`, `backend_defect`, `harness_defect` or
 `unknown`, and cite the event's locator from the report. A
 deviation you cannot tie to a record is `unknown`.
+
+A helper run is read from the recorded command text, not from a shell: it
+counts where `node` or the script stands at a command position outside quotes,
+comments and quoted here-documents. A helper started from inside `bash -c`,
+`eval`, a script file or a function leaves no `helper_call`, so a missing call
+alone never proves the agent skipped that helper; without its typed line in the
+record the deviation is `unknown`.
 
 A `skill` line gives the loaded version. `version=source_tree:<id>` with a
 commit range means the complete loaded file equals, byte for byte, a committed
