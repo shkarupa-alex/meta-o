@@ -235,7 +235,7 @@ function heredocBody(command, start, pending) {
       let end = command.indexOf("\n", index);
       if (end === -1) end = command.length;
       const line = command.slice(index, end);
-      const body = quoted ? line.replace(/\x60/gu, " ") : line.replace(/\x60/gu, "\n");
+      const body = quoted ? line.replace(/[\x60;&|(]/gu, " ") : line.replace(/[;&|]|(?<!\$)\(/gu, " ").replace(/\x60/gu, "\n");
       out += `${body} `;
       index = end + 1;
       if ((strip ? line.replace(/^\t+/u, "") : line) === delimiter) break;
@@ -250,7 +250,7 @@ function unquotedSpan(command, index, state) {
   const char = command[index];
   if (char === "\\" && !state.single) {
     const pair = command.slice(index, index + 2);
-    return { text: pair.replace(/[\n\x60]/u, " "), next: index + 2 };
+    return { text: pair.replace(/[\n\x60;&|(]/u, " "), next: index + 2 };
   }
   if (state.single || state.double) return null;
   if (char === "#" && opensComment(command, index)) {
@@ -272,6 +272,13 @@ function unquotedSpan(command, index, state) {
   }
   return null;
 }
+function quotedChar(command, index, state) {
+  const char = command[index];
+  if (char === "`" && !state.single) return "\n";
+  if (!state.single && !state.double) return char;
+  if (char === "(" && state.double && command[index - 1] === "$") return char;
+  return /[\n;&|(]/u.test(char) ? " " : char;
+}
 function substitutionsOpened(command) {
   const state = { single: false, double: false, pending: [] };
   let out = "";
@@ -286,8 +293,7 @@ function substitutionsOpened(command) {
     const char = command[index];
     if (char === "'" && !state.double) state.single = !state.single;
     else if (char === '"' && !state.single) state.double = !state.double;
-    if (char === "`" && !state.single) out += "\n";
-    else out += char === "\n" && (state.single || state.double) ? " " : char;
+    out += quotedChar(command, index, state);
     index += 1;
   }
   return out;

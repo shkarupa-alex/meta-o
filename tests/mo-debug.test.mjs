@@ -532,6 +532,9 @@ test("a helper named in an argument of another program is not a call", () => {
     "cat <<EOF\n`node scripts/mo-backlog.mjs`\nEOF",
     "cat <<'EOF' > f\ntext\nEOF\nnode scripts/mo-backlog.mjs",
     "echo a # note\nnode scripts/mo-backlog.mjs",
+    'echo "$(node scripts/mo-backlog.mjs)"',
+    'x="$(node scripts/mo-backlog.mjs)"',
+    "cat <<EOF\n$(node scripts/mo-backlog.mjs)\nEOF",
   ];
   const arguments_ = [printed, searched, "echo do node scripts/mo-backlog.mjs"];
   arguments_.push("printf '%s\\n' 'if node scripts/mo-backlog.mjs'");
@@ -550,6 +553,23 @@ test("a helper named in an argument of another program is not a call", () => {
     "cat <<'EOF'\n`node scripts/mo-backlog.mjs`\nEOF",
     "cat <<'EOF'\nnode scripts/mo-backlog.mjs\nEOF",
     "printf 'a\nnode scripts/mo-backlog.mjs'",
+  );
+  // A separator the shell reads as data, quoted, escaped or in a
+  // here-document body, opens no command position either.
+  arguments_.push(
+    "rg -n 'mo-review-report.mjs|mo-backlog.mjs' shared/",
+    'git grep -nE "helperNames|mo-backlog.mjs"',
+    'git commit -m "fix: drop stale state; mo-backlog.mjs answers empty"',
+    "git commit -m 'docs: run it; node scripts/mo-backlog.mjs before merge'",
+    'gh pr create --body "Closure (mo-backlog.mjs) passed"',
+    'echo "a && node scripts/mo-backlog.mjs"',
+    "echo 'a & mo-backlog.mjs'",
+    "printf '%s\\n' $'a; node scripts/mo-backlog.mjs'",
+    "cat <<'EOF'\nsee (mo-backlog.mjs); then mo-backlog.mjs | x\nEOF",
+    "git commit -F - <<'EOF'\nfix: x (mo-backlog.mjs)\nEOF",
+    "git commit -m \"$(cat <<'EOF'\nfix: let mo-debug read it (mo-backlog.mjs)\nEOF\n)\"",
+    "cat <<EOF\nnote; mo-backlog.mjs answers\nEOF",
+    "grep mo-a.mjs\\|mo-backlog.mjs src",
   );
   // Blank runs and comment lines are read in linear time.
   const started = performance.now();
@@ -1728,7 +1748,7 @@ test("a short or option-form credential is redacted, in both harnesses' records"
     "Secret",
   ];
   const command =
-    'users\' reports: git commit -m "don\'t" && docker login --password s3cr3tValue && mysql -p"correct horse" db && x --password zzpre" correct horse"zzpost && curl -u tenant/user:Tn4ntPw https://h && pwd=PIN12 node ~/.claude/skills/mo-setup/scripts/mo-setup.mjs check';
+    'pwd=PIN12 node ~/.claude/skills/mo-setup/scripts/mo-setup.mjs check; users\' reports: git commit -m "don\'t" && docker login --password s3cr3tValue && mysql -p"correct horse" db && x --password zzpre" correct horse"zzpost && curl -u tenant/user:Tn4ntPw https://h';
   const UUID = "9f8e7d6c-5b4a-4321-8fed-cba987654323";
   const claudeRecord = {
     sessionId: UUID,
@@ -1741,15 +1761,17 @@ test("a short or option-form credential is redacted, in both harnesses' records"
   };
   // An unclosed quote after a phantom one hides everything after it, so each
   // such command gets a record of its own rather than blinding the checks above.
+  // The helper runs first: a helper named inside an open quote is no call, and
+  // the record needs one to carry the command into the report.
   const SETUP = "node ~/.claude/skills/mo-setup/scripts/mo-setup.mjs check";
   const phantoms = [
-    ["toolu_g", `echo the '90s && ${SETUP} --password zzpre' Zq9 Secret`],
-    ["toolu_h", `echo do not eval '90s && ${SETUP} --password zzpre' Zq9 Secret`],
-    ["toolu_i", `bash -lc '${SETUP} --token zzabc' && y api_key: 'Zq9 Secret' tail`],
-    ["toolu_j", `echo note: "90s && ${SETUP} --password zzpre" Zq9 Secret`],
-    ["toolu_k", `[1+, "90s && ${SETUP} --password zzpre" Zq9 Secret`],
+    ["toolu_g", `${SETUP}; echo the '90s && ${SETUP} --password zzpre' Zq9 Secret`],
+    ["toolu_h", `${SETUP}; echo do not eval '90s && ${SETUP} --password zzpre' Zq9 Secret`],
+    ["toolu_i", `${SETUP}; bash -lc '${SETUP} --token zzabc' && y api_key: 'Zq9 Secret' tail`],
+    ["toolu_j", `${SETUP}; echo note: "90s && ${SETUP} --password zzpre" Zq9 Secret`],
+    ["toolu_k", `${SETUP}; [1+, "90s && ${SETUP} --password zzpre" Zq9 Secret`],
     ["toolu_l", `curl -H 'X-Api-Key: Zq9 Secret' https://h && ${SETUP}`],
-    ["toolu_m", `[1,\u00a0"90s && ${SETUP} --password zzpre" Zq9 Secret`],
+    ["toolu_m", `${SETUP}; [1,\u00a0"90s && ${SETUP} --password zzpre" Zq9 Secret`],
     ...DOMAIN_USERS.map((line, index) => [`toolu_n${index}`, `${line} && ${SETUP}`]),
   ].map(([id, command]) => ({
     ...claudeRecord,
