@@ -18,6 +18,7 @@ import {
   constants,
   fchmodSync,
   fsyncSync,
+  ftruncateSync,
   openSync,
   realpathSync,
   writeSync,
@@ -46,14 +47,17 @@ const USAGE = `usage: mo-debug.mjs scan --session <path-or-id> [--session ...] [
   --max-records <n>       parsed records per session (default 5000)
   --history <checkout>    Meta-O Git checkout for version attribution
   --max-history <n>       commits inspected per skill (default 2000)
-  --out <new-file>        also write a Markdown report; the file must not exist
+  --out <new-file>        also write a Markdown report; the file must not exist.
+                          A report that cannot be written whole is emptied and
+                          answers out_write_failed after the scan lines
 
 Only files under ~/.claude/projects/ or ~/.codex/sessions/ that the invoking
 user owns are read; anything else is refused as foreign_path, unread. A set
 CLAUDE_CONFIG_DIR replaces ~/.claude and a set CODEX_HOME replaces ~/.codex;
 each must be an absolute path.
 
-exit: 0 ok or partial | 1 unknown or every session refused | 2 call error
+exit: 0 ok or partial | 1 unknown or every session refused | 2 call error or
+      out_write_failed
 `;
 
 const REFUSALS = new Set(["foreign_path", "session_not_found", "session_ambiguous"]);
@@ -294,6 +298,46 @@ function createReport(path) {
   }
 }
 
+/**
+ * A short write is not an error to `writeSync`, so a disk that fills mid-report
+ * would leave a cut file behind a successful status. The whole buffer is
+ * written or the report fails; a failed report is emptied through its own
+ * descriptor, never unlinked by name, because the name may by then belong to
+ * somebody else's file.
+ */
+function writeReport(fd, text, io) {
+  const bytes = Buffer.from(text, "utf8");
+  try {
+    let offset = 0;
+    while (offset < bytes.length) {
+      const written = io.write(fd, bytes, offset, bytes.length - offset);
+      if (!(written > 0)) throw new Error("no progress");
+      offset += written;
+    }
+    io.fsync(fd);
+    return true;
+  } catch {
+    try {
+      ftruncateSync(fd, 0);
+    } catch {
+      // The typed failure below already tells the user not to trust the file.
+    }
+    return false;
+  }
+}
+
+function scanInto(report, options, history, io) {
+  let result;
+  let written = true;
+  try {
+    result = scan(options, history);
+    if (report) written = writeReport(report.fd, renderReport(result), io);
+  } finally {
+    if (report) closeSync(report.fd);
+  }
+  return { result, written };
+}
+
 function fail(reason) {
   process.stderr.write(`MO-DEBUG/1 status=error reason=${reason}\n`);
   if (reason === "usage") process.stderr.write(USAGE);
@@ -319,9 +363,12 @@ function sessionPlaces(env) {
  * @param {string[]} argv arguments after the script name
  * @param {NodeJS.ProcessEnv} env environment; only `HOME`, `CODEX_HOME` and
  *   `CLAUDE_CONFIG_DIR` are read
- * @returns {number} 0 ok or partial, 1 unknown or refused, 2 call error
+ * @param {{write: Function, fsync: Function}} [io] report writes, replaced only
+ *   by tests of a full or failing disk
+ * @returns {number} 0 ok or partial, 1 unknown or refused, 2 call error or a
+ *   report that could not be written
  */
-export function main(argv, env = process.env) {
+export function main(argv, env = process.env, io = { write: writeSync, fsync: fsyncSync }) {
   const options = parseArguments(argv);
   if (options.help) {
     process.stdout.write(USAGE);
@@ -336,17 +383,9 @@ export function main(argv, env = process.env) {
   if (options.history !== null && history === null) return fail("history_unreadable");
   const report = options.out === null ? null : createReport(resolve(options.out));
   if (report?.error) return fail(report.error);
-  let result;
-  try {
-    result = scan({ ...options, home, places }, history);
-    if (report) {
-      writeSync(report.fd, renderReport(result));
-      fsyncSync(report.fd);
-    }
-  } finally {
-    if (report) closeSync(report.fd);
-  }
+  const { result, written } = scanInto(report, { ...options, home, places }, history, io);
   process.stdout.write(`${result.lines.join("\n")}\n`);
+  if (!written) return fail("out_write_failed");
   return result.status === "ok" || result.status === "partial" ? 0 : 1;
 }
 

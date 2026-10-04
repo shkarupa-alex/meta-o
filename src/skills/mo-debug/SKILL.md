@@ -44,6 +44,9 @@ used for version attribution. The events and their locators are only in the
 report, so always pass `--out` with a path the user names or a new file under
 the system temp directory; it must not exist yet and is created with mode
 `0600`. `out_exists` means the path is somebody's data: pick another.
+`out_write_failed` comes after the scan lines and means the report could not
+be written whole: the file was emptied and left in place, so free space and run
+again with a new `--out` path.
 
 The first line is `MO-DEBUG/1 status=<ok|partial|unknown|refused> …`. `partial`
 means a bound was reached, a session was refused, an id search was incomplete or

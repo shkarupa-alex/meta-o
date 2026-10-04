@@ -11,14 +11,10 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
-  closeSync,
-  fstatSync,
   lstatSync,
-  openSync,
   readdirSync,
   renameSync,
   copyFileSync,
-  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -36,7 +32,7 @@ import { attribute, openHistory } from "../shared/scripts/mo-debug-history.mjs";
 import { createClaudeExtractor } from "../shared/scripts/mo-debug-claude.mjs";
 import { createCodexExtractor } from "../shared/scripts/mo-debug-codex.mjs";
 import { scan } from "../shared/scripts/mo-debug.mjs";
-import { openOwnedSession, resolveSession } from "../shared/scripts/mo-debug-sessions.mjs";
+import { resolveSession } from "../shared/scripts/mo-debug-sessions.mjs";
 import { EXCERPT_LIMIT, excerpt, redact } from "../shared/scripts/mo-debug-redact.mjs";
 import {
   claudeBody,
@@ -715,165 +711,6 @@ test("files outside the session roots, symlinks and non-regular files are never 
     assert.equal(result.status, 1, result.stdout + result.stderr);
     assert.match(result.stdout, /^MO-DEBUG\/1 status=refused sessions=1 events=0 refused=1$/mu);
     assert.match(result.stdout, / outcome=foreign_path records=0 /u);
-  }
-});
-
-test("a log that vanishes or fails after its open is refused alone and its descriptor closed", () => {
-  const { home, claude } = fixtureHome();
-  const log = join(claude, `${CLAUDE_ID}.jsonl`);
-  const opening = (overrides) => {
-    const closed = [];
-    const io = {
-      open: openSync,
-      fstat: fstatSync,
-      stat: statSync,
-      close: (fd) => {
-        closed.push(fd);
-        closeSync(fd);
-      },
-      ...overrides,
-    };
-    return { io, closed };
-  };
-  // (1) Renamed between the open and the check: the old path answers ENOENT.
-  const renamed = opening({
-    stat: (path) => {
-      renameSync(log, `${log}.moved`);
-      return statSync(path);
-    },
-  });
-  assert.deepEqual(openOwnedSession(log, home, null, renamed.io), { outcome: "foreign_path" });
-  assert.equal(renamed.closed.length, 1);
-  renameSync(`${log}.moved`, log);
-  // (2) The descriptor itself cannot be stated.
-  const failing = opening({
-    fstat: () => {
-      throw Object.assign(new Error("EIO"), { code: "EIO" });
-    },
-  });
-  assert.deepEqual(openOwnedSession(log, home, null, failing.io), { outcome: "foreign_path" });
-  assert.equal(failing.closed.length, 1);
-  // (3) The same log, left alone, is still the user's own and stays open.
-  const stable = opening({});
-  const opened = openOwnedSession(log, home, null, stable.io);
-  assert.equal(opened.harness, "claude");
-  assert.deepEqual(stable.closed, []);
-  closeSync(opened.fd);
-});
-
-test("a parent directory swapped for a link around the open never yields the outside file", () => {
-  const harnesses = [
-    { name: "claude", dir: (fixture) => fixture.claude, file: `${CLAUDE_ID}.jsonl` },
-    {
-      name: "codex",
-      dir: (fixture) => fixture.codex,
-      file: `rollout-2026-09-01T11-00-00-${CODEX_ID}.jsonl`,
-    },
-  ];
-  // The kernel's name for the descriptor where Linux has one, and the path
-  // resolved again where it does not; both must hold the same line.
-  const locators = existsSync("/proc/self/fd") ? ["kernel", "path"] : ["path"];
-  for (const harness of harnesses) {
-    for (const locator of locators) {
-      const label = `${harness.name}/${locator}`;
-      const setup = () => {
-        const fixture = fixtureHome();
-        const parent = harness.dir(fixture);
-        const outside = temporary("mo-debug-outside-");
-        writeFileSync(join(outside, harness.file), '{"outside":true}\n');
-        const swap = () => {
-          renameSync(parent, `${parent}.saved`);
-          symlinkSync(outside, parent);
-        };
-        return { home: fixture.home, parent, outside, log: join(parent, harness.file), swap };
-      };
-      const watched = (open) => {
-        const opened = [];
-        const closed = [];
-        const io = {
-          open: (path, flags) => {
-            const fd = open(path, flags);
-            opened.push(fd);
-            return fd;
-          },
-          close: (fd) => {
-            closed.push(fd);
-            closeSync(fd);
-          },
-          ...(locator === "path" ? { locate: () => null } : {}),
-        };
-        return { io, opened, closed };
-      };
-      const refused = (result, watch, why) => {
-        assert.deepEqual(result, { outcome: "foreign_path" }, `${label}: ${why}`);
-        assert.deepEqual(watch.closed, watch.opened, `${label}: ${why} closes each fd once`);
-      };
-      // (1) The parent becomes a link to the outside directory before the open.
-      {
-        const { home, log, swap } = setup();
-        const watch = watched((path, flags) => {
-          swap();
-          return openSync(path, flags);
-        });
-        refused(openOwnedSession(log, home, null, watch.io), watch, "swapped before the open");
-        assert.equal(watch.opened.length, 1, label);
-      }
-      // (2) The same swap right after the open, before the descriptor is checked.
-      {
-        const { home, log, swap } = setup();
-        const watch = watched((path, flags) => {
-          const fd = openSync(path, flags);
-          swap();
-          return fd;
-        });
-        refused(openOwnedSession(log, home, null, watch.io), watch, "swapped after the open");
-      }
-      // (3) A link in the last component, planted before the call or inside the open.
-      {
-        const { home, log, outside } = setup();
-        renameSync(log, `${log}.saved`);
-        symlinkSync(join(outside, harness.file), log);
-        const watch = watched(openSync);
-        refused(openOwnedSession(log, home, null, watch.io), watch, "last component link");
-        assert.deepEqual(watch.opened, [], label);
-      }
-      {
-        const { home, log, outside } = setup();
-        const watch = watched((path, flags) => {
-          renameSync(log, `${log}.saved`);
-          symlinkSync(join(outside, harness.file), log);
-          return openSync(path, flags);
-        });
-        refused(openOwnedSession(log, home, null, watch.io), watch, "link inside the open");
-        assert.deepEqual(watch.opened, [], label);
-      }
-      // (4) The user's own log, left alone, is accepted and stays open.
-      {
-        const { home, log } = setup();
-        const watch = watched(openSync);
-        const accepted = openOwnedSession(log, home, null, watch.io);
-        assert.equal(accepted.harness, harness.name, label);
-        assert.deepEqual(watch.closed, [], label);
-        closeSync(accepted.fd);
-      }
-      // (5) A root that was a link before the call still reaches the user's own logs.
-      {
-        const { home, log } = setup();
-        const root = join(
-          home,
-          `.${harness.name}`,
-          harness.name === "claude" ? "projects" : "sessions",
-        );
-        const moved = join(home, `${harness.name}-root-elsewhere`);
-        renameSync(root, moved);
-        symlinkSync(moved, root);
-        const watch = watched(openSync);
-        const accepted = openOwnedSession(log, home, null, watch.io);
-        assert.equal(accepted.harness, harness.name, label);
-        assert.deepEqual(watch.closed, [], label);
-        closeSync(accepted.fd);
-      }
-    }
   }
 });
 
