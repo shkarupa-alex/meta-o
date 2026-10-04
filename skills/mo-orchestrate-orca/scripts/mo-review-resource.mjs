@@ -179,6 +179,32 @@ const USAGE = `usage: mo-review-resource.mjs <command> …
 
 class UsageError extends Error {}
 
+// Each command takes exactly the flags its usage names: a guessed or
+// misspelled one such as `--age` would otherwise be dropped and the command
+// would still answer a decision on facts nobody gave.
+const FLAGS = {
+  comment: ["pair", "slot", "candidate", "project", "worktree", "feature"],
+  release: [],
+  hot: [
+    "alive",
+    "ready",
+    "composer",
+    "age-ms",
+    "context-tokens",
+    "context-percent",
+    "context-window",
+  ],
+  deep: ["phase", "reason"],
+};
+const PHASES = ["first", "final", "remediation"];
+
+function knownFlags(command, parsed) {
+  if (FLAGS[command] === undefined) return;
+  const unknown = Object.keys(parsed).filter((flag) => !FLAGS[command].includes(flag));
+  if (unknown.length > 0)
+    throw new UsageError(`${command} does not take --${unknown.join(", --")}`);
+}
+
 function options(argv) {
   const parsed = {};
   for (let index = 0; index < argv.length; index += 2) {
@@ -238,6 +264,7 @@ function main(argv) {
     return 0;
   }
   const parsed = options(rest);
+  knownFlags(command, parsed);
   if (command === "comment") {
     requireFlags("comment", parsed, [
       "pair",
@@ -275,6 +302,10 @@ function main(argv) {
     return result.hot ? 0 : 1;
   }
   if (command === "deep") {
+    requireFlags("deep", parsed, ["phase"]);
+    if (!PHASES.includes(parsed.phase)) {
+      throw new UsageError(`deep --phase must be one of ${PHASES.join("|")}`);
+    }
     const result = deepPairDecision(parsed);
     process.stdout.write(
       `MO-REVIEW-DEEP/1 allowed=${result.allowed ? "yes" : "no"} reason=${result.reason}\n`,

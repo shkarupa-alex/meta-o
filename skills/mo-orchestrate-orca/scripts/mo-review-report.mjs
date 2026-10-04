@@ -7719,6 +7719,24 @@ function commandPair(options) {
 `);
   return 0;
 }
+var EXPECTATION_FLAGS = ["dispatch", "candidate", "requested", "effective"];
+var SLOT_FLAGS = ["a", "b"].flatMap(
+  (prefix) => ["vendor", "bytes", "dev", "ino", "sha256"].map((field) => `${prefix}-${field}`)
+);
+var FLAGS = {
+  template: ["verdict", ...EXPECTATION_FLAGS, "unknown-reason"],
+  prepare: ["file", ...EXPECTATION_FLAGS],
+  validate: ["file", ...EXPECTATION_FLAGS, "prepared", "normalization"],
+  stage: ["dir", "slot", "vendor", "file", ...EXPECTATION_FLAGS],
+  pair: ["dir", ...SLOT_FLAGS],
+  preview: ["dir", "slot", ...SLOT_FLAGS],
+  ack: ["line", "kind", "pair-id", "a-bytes", "b-bytes"]
+};
+function knownFlags(name, options) {
+  const unknown = Object.keys(options).filter((flag) => !FLAGS[name].includes(flag));
+  if (unknown.length > 0) throw new Error(`${name} does not take --${unknown.join(", --")}`);
+  return options;
+}
 function main(argv) {
   const commands = {
     template: commandTemplate,
@@ -7743,7 +7761,7 @@ function main(argv) {
       "usage: mo-review-report.mjs <namespace|template|prepare|validate|stage|pair|preview|ack> \u2026"
     );
   }
-  return command(parseArguments(argv.slice(1)));
+  return command(knownFlags(argv[0], parseArguments(argv.slice(1))));
 }
 function invokedDirectly() {
   try {

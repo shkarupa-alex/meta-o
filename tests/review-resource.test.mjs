@@ -315,6 +315,51 @@ test("a comment call missing an identity is refused, never written with undefine
   }
 });
 
+test("every command refuses a flag it does not read, and deep needs a known phase", () => {
+  const copies = [
+    HELPER,
+    ...["mo-review-orca", "mo-orchestrate-orca", "mo-convergence"].map((skill) =>
+      join(ROOT, "skills", skill, "scripts", "mo-review-resource.mjs"),
+    ),
+  ];
+  const hot = ["hot", "--alive", "yes", "--ready", "yes", "--composer", "empty"];
+  const identity = [
+    "--pair",
+    "review-run",
+    "--slot",
+    "A",
+    "--candidate",
+    SHA,
+    "--project",
+    "proj-1",
+    "--worktree",
+    "repo-1::/tmp/slot-a",
+    "--feature",
+    "all-open-issues",
+  ];
+  for (const helper of copies) {
+    const call = (args) => spawnSync(process.execPath, [helper, ...args], { encoding: "utf8" });
+    for (const [args, named] of [
+      [[...hot, "--age", "600000"], /--age\b/u],
+      [[...hot, "--age-ms", "600000", "--context-token", "5000"], /--context-token\b/u],
+      [["deep"], /deep needs --phase/u],
+      [["deep", "--stage", "final"], /--stage\b/u],
+      [["deep", "--phase", "Final"], /--phase must be one of first\|final\|remediation/u],
+      [["comment", ...identity, "--features", "x"], /--features\b/u],
+    ]) {
+      const refused = call(args);
+      assert.equal(refused.status, 2, `${helper} ${args.join(" ")}`);
+      assert.equal(refused.stdout, "", `${helper} ${args.join(" ")}`);
+      assert.match(refused.stderr, named, args.join(" "));
+      assert.match(refused.stderr, /^usage:/mu, args.join(" "));
+    }
+    const young = call([...hot, "--age-ms", "600000", "--context-tokens", "5000"]);
+    assert.match(young.stdout, /^MO-REVIEW-SLOT\/1 hot=yes /u, young.stderr);
+    assert.match(call(["deep", "--phase", "final"]).stdout, /^MO-REVIEW-DEEP\/1 allowed=yes /u);
+    assert.equal(call(["comment", ...identity]).status, 0, helper);
+  }
+});
+
 test("every input the helper reads is printed by --help and stated in the calling skill", () => {
   // The calling skill named the commands but not their inputs, so a coordinator
   // could form the call only from the source, and a guessed key or flag kept an

@@ -269,6 +269,36 @@ test("each structural failure names itself", () => {
   for (const [text, reason] of cases) assert.equal(reasonOf(text), reason, reason);
 });
 
+test("every command refuses a flag it does not read, in every shipped copy", () => {
+  const dir = space();
+  const good = join(dir, "good.md");
+  writeFileSync(good, report());
+  const prepared = join(dir, "prepared.md");
+  writeFileSync(prepared, report());
+  const base = ["validate", "--file", good, "--dispatch", "ctx_fixture", "--candidate", SHA];
+  const expected = [...base, "--requested", "deep", "--effective", "deep"];
+  const copies = [
+    HELPER,
+    ...["mo-reviewer", "mo-review-orca", "mo-orchestrate-orca"].map((skill) =>
+      join(ROOT, "skills", skill, "scripts", "mo-review-report.mjs"),
+    ),
+  ];
+  for (const helper of copies) {
+    const call = (args) => spawnSync(process.execPath, [helper, ...args], { encoding: "utf8" });
+    const typo = call([...expected, "--prepare", prepared]);
+    assert.equal(typo.status, 2, helper);
+    assert.equal(typo.stdout, "", helper);
+    assert.match(typo.stderr, /validate does not take --prepare\b/u, helper);
+    const spelled = call([...expected, "--prepared", prepared, "--normalisation", "final-newline"]);
+    assert.equal(spelled.status, 2, helper);
+    assert.equal(spelled.stdout, "", helper);
+    assert.match(spelled.stderr, /--normalisation/u, helper);
+    const named = call([...expected, "--prepared", prepared, "--normalization", "final-newline"]);
+    assert.equal(named.status, 0, named.stderr);
+    assert.match(named.stdout, /^MO-REVIEW-BODY\/1 prepared_body_identity=identical/mu, helper);
+  }
+});
+
 test("PASS with a body is not an empty verdict", () => {
   const text = report({ findings: "F-001\n[P2] a finding under a PASS.\n" });
   assert.equal(reasonOf(text), "pass_not_empty");
