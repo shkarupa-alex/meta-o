@@ -317,6 +317,97 @@ test("every external-contract row was observed on a supported Orca", () => {
   assert.deepEqual(staleContractRows(stale), ["#29", "#33"]);
 });
 
+/**
+ * Text of the paragraphs under one heading, up to the next heading.
+ *
+ * Read through the Markdown parser, so a table row or a code block in the
+ * section never stands in for the rule its prose states.
+ */
+function sectionProse(document, title) {
+  const tokens = markdown.parse(document, {});
+  const prose = [];
+  let inside = false;
+  tokens.forEach((token, index) => {
+    if (token.type === "heading_open") inside = tokens[index + 1].content === title;
+    else if (inside && token.type === "inline" && tokens[index - 1].type === "paragraph_open") {
+      prose.push(token.content);
+    }
+  });
+  return prose.join("\n\n").replace(/\s+/gu, " ");
+}
+
+/**
+ * Typed scenario results the actor and the evidence rule do not admit.
+ *
+ * A row may only type a result both readers accept: an actor that cannot
+ * report it reports UNKNOWN or FAIL instead, and that silently moves the
+ * feature from external_blocked to verification_blocked.
+ */
+function unadmittedResults(e2e, skill) {
+  const evidence = sectionProse(e2e, "Общие доказательства");
+  const actor = skill.replace(/\s+/gu, " ");
+  const errors = [];
+  for (const [id, ...cells] of markdownTables(e2e).flat()) {
+    if (!/^B\d+$/u.test(id ?? "")) continue;
+    for (const [, typed] of cells.join(" ").matchAll(/`(blocked:[a-z_]+)`/gu)) {
+      if (!evidence.includes(`\`${typed}\``))
+        errors.push(`${id}: ${typed} not in the evidence rule`);
+      if (!actor.includes(`\`${typed}\``)) errors.push(`${id}: ${typed} not in mo-e2e`);
+    }
+  }
+  return errors;
+}
+
+test("every typed scenario result is admitted by the evidence rule and by mo-e2e", () => {
+  const e2e = source("docs/e2e.md");
+  const skill = source("src/skills/mo-e2e/SKILL.md");
+  assert.deepEqual(unadmittedResults(e2e, skill), []);
+  assert.deepEqual(unadmittedResults(e2e, source("skills/mo-e2e/SKILL.md")), []);
+  // The rule that gives the typed result its meaning left with the removed
+  // specification once; it is stated where the scenarios are.
+  const evidence = sectionProse(e2e, "Общие доказательства");
+  assert.match(
+    evidence,
+    /`blocked:external_capability`\. Он допустим только для issue с исходом `external_blocked` в \[Карта приёмки\]\(acceptance\.md\) и строкой внешнего контракта в \[Возможности бэкенда\]\(backend-capabilities\.md\), никогда не считается `PASS`/u,
+  );
+  assert.match(
+    evidence,
+    /Любой другой `blocked`, `FAIL`, `UNKNOWN` или `NOT_RUN` применимого сценария ведёт к `needs_attention\/verification_blocked`\./u,
+  );
+  assert.match(
+    skill.replace(/\s+/gu, " "),
+    /or `blocked:external_capability` where the project's E2E contract itself types that scenario's result for a named external capability; that typed result is reported as typed and is never `PASS`\./u,
+  );
+  // Without the value in the evidence rule the rows that type it are named.
+  const bare = e2e.replace(
+    "может дать и типизированный результат\n`blocked:external_capability`",
+    "может дать и типизированный результат",
+  );
+  assert.notEqual(bare, e2e);
+  assert.deepEqual(
+    unadmittedResults(bare, skill).filter((error) => error.endsWith("evidence rule")),
+    [
+      "B53: blocked:external_capability not in the evidence rule",
+      "B62: blocked:external_capability not in the evidence rule",
+    ],
+  );
+  // An actor whose result set lacks it is named the same way.
+  const narrow = skill.replace(
+    /,\s+or\s+`blocked:external_capability`\s+where[\s\S]*?never `PASS`\./u,
+    ".",
+  );
+  assert.notEqual(narrow, skill);
+  assert.deepEqual(unadmittedResults(e2e, narrow), [
+    "B53: blocked:external_capability not in mo-e2e",
+    "B62: blocked:external_capability not in mo-e2e",
+  ]);
+  // An untyped UNKNOWN stays admitted: the check is about the vocabulary only.
+  const row = "| B99 | Проверка. | Иначе — `UNKNOWN` по #29. |\n";
+  const extra = e2e.replace(/(\| B53 \|)/u, `${row}$1`);
+  assert.notEqual(extra, e2e);
+  assert.deepEqual(unadmittedResults(extra, skill), []);
+});
+
 test("only an external_blocked issue with a named contract types a scenario failure as external", () => {
   const { dispositions, scenarios, contracts } = externalBlockSources();
   assert.deepEqual(externalBlockErrors(dispositions, scenarios, contracts), []);

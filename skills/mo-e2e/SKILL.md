@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-e2e or an active mo-o
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "2010bbe9a4748c39b6bdb51c5b57a6a7c8724610"
+  source_tree: "4408c955bf2fec9d2cababbba53046f8d938cba9"
 ---
 
 # Agent-required end-to-end verification
@@ -51,11 +51,13 @@ not product intent, and does not mutate tracked intent ledgers.
 
 For every scenario report the full candidate SHA, ID, the exact actor (its Orca
 terminal handle and its route, model and effort), environment, action, observed
-result and `PASS`, `FAIL`, `UNKNOWN`, `NOT_RUN` or
-`NOT_APPLICABLE`. Do not include secrets, reasoning or raw artifact dumps. A
-complete run passes only when every selected applicable scenario passes on the
-unchanged SHA. Missing or incomplete evidence is `UNKNOWN`; there is no partial
-pass.
+result and `PASS`, `FAIL`, `UNKNOWN`, `NOT_RUN` or `NOT_APPLICABLE`, or
+`blocked:external_capability` where the project's E2E contract itself types that
+scenario's result for a named external capability; that typed result is reported
+as typed and is never `PASS`. Do not include secrets, reasoning or raw artifact
+dumps. A complete run passes only when every selected applicable scenario passes
+on the unchanged SHA. Missing or incomplete evidence is `UNKNOWN`; there is no
+partial pass.
 
 Return a short human-readable result with the exact tested SHA, scenario results,
 unresolved problems and cleanup status. Do not create a receipt, manifest,
