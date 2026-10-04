@@ -22,7 +22,10 @@ import { basename, dirname, join, resolve } from "node:path";
 import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { fromMarkdown } from "mdast-util-from-markdown";
+
 import {
+  FLAGS,
   businessQuestion,
   linkFailureReason,
   namespace,
@@ -697,4 +700,106 @@ test("the one permitted business question names its slot, its key and where to r
     }).reason,
     "index_line",
   );
+});
+
+// Every `mo-review-report.mjs <command> …` call a document writes, as the
+// tokens after the command name: one entry per call, continuation lines joined.
+function documentedCalls(text) {
+  const calls = [];
+  const visit = (node) => {
+    if (node.type === "code" || node.type === "inlineCode") {
+      const value = node.value
+        .replace(/\\\n/gu, " ")
+        .replace(/\n/gu, node.type === "code" ? "\n" : " ");
+      for (const line of value.split("\n")) {
+        for (const match of line.matchAll(/mo-review-report\.mjs[ \t]+([a-z]+)([^\n]*)/gu)) {
+          calls.push({ command: match[1], words: match[2].split(/[ \t]+/u).filter(Boolean) });
+        }
+      }
+    }
+    for (const child of node.children ?? []) visit(child);
+  };
+  visit(fromMarkdown(text));
+  return calls;
+}
+
+// The flags a call names, or the word that stands for flags it does not name.
+function namedFlags({ words }) {
+  const flags = [];
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index].replace(/^\[|\]$/gu, "");
+    if (word === "<" || word === "|" || word === ">") break;
+    if (!word.startsWith("--")) return { flags, unnamed: word };
+    flags.push(word.slice(2));
+    if (words[index + 1] !== undefined && !words[index + 1].replace(/^\[/u, "").startsWith("--"))
+      index += 1;
+  }
+  return { flags };
+}
+
+// `--b-…` and `--<a|b>-…` name a family of flags; each member must exist.
+function flagAccepted(command, flag) {
+  const accepted = FLAGS[command];
+  const family = /^(?:<([a-z|]+)>|([a-z]+))-…$/u.exec(flag);
+  if (family === null) return accepted.includes(flag);
+  const prefixes = (family[1] ?? family[2]).split("|");
+  return prefixes.every((prefix) => accepted.some((name) => name.startsWith(`${prefix}-`)));
+}
+
+test("every documented helper call names only flags its command takes", () => {
+  const listed = spawnSync("git", ["ls-files", "*.md"], { cwd: ROOT, encoding: "utf8" });
+  const documents = listed.stdout
+    .split("\n")
+    .filter((path) => path !== "" && !/^(?:skills|docs\/references)\//u.test(path));
+  const seen = new Set();
+  for (const path of documents) {
+    for (const call of documentedCalls(readFileSync(join(ROOT, path), "utf8"))) {
+      const where = `${path}: ${call.command} ${call.words.join(" ")}`;
+      if (call.command === "namespace") continue;
+      assert.ok(Object.hasOwn(FLAGS, call.command), `unknown command in ${where}`);
+      const { flags, unnamed } = namedFlags(call);
+      assert.equal(unnamed, undefined, `a placeholder stands for unnamed flags in ${where}`);
+      for (const flag of flags)
+        assert.ok(flagAccepted(call.command, flag), `--${flag} in ${where}`);
+      seen.add(call.command);
+    }
+  }
+  // The skill texts show these calls; a parser that found none would pass vacuously.
+  for (const command of ["template", "prepare", "validate", "stage", "pair", "preview", "ack"]) {
+    assert.ok(seen.has(command), command);
+  }
+  assert.deepEqual(namedFlags({ words: ["--dir", "<ns>", "<validate", "flags>"] }), {
+    flags: ["dir"],
+    unnamed: "<validate",
+  });
+});
+
+test("the stage call the skill documents is accepted, and validate-only flags are refused", () => {
+  const dir = space();
+  const valid = report();
+  const base = ["stage", "--dir", dir, "--slot", "A", "--vendor", "codex"];
+  const expected = [
+    "--dispatch",
+    "ctx_fixture",
+    "--candidate",
+    SHA,
+    "--requested",
+    "deep",
+    "--effective",
+    "deep",
+  ];
+  const extra = ["--prepared", join(dir, "body.md"), "--normalization", "final-newline"];
+  const refused = spawnSync(process.execPath, [HELPER, ...base, ...expected, ...extra], {
+    input: valid,
+    encoding: "utf8",
+  });
+  assert.equal(refused.status, 2);
+  assert.match(refused.stderr, /stage does not take --prepared, --normalization/u);
+  assert.deepEqual(readdirSync(dir), []);
+  const staged = spawnSync(process.execPath, [HELPER, ...base, ...expected], {
+    input: valid,
+    encoding: "utf8",
+  });
+  assert.equal(staged.status, 0, staged.stderr);
+  assert.match(staged.stdout, /^MO-REVIEW-STAGE\/1 slot=A /u);
 });

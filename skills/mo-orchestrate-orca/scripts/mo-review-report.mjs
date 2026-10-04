@@ -7780,6 +7780,7 @@ if (invokedDirectly()) {
   }
 }
 export {
+  FLAGS,
   NORMALIZATIONS,
   bodyIdentity,
   businessQuestion,

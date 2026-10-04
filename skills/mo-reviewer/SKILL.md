@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-reviewer or a reviewe
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "45bb885857cb355e5e2d07b50dc780bea1abef56"
+  source_tree: "fd5b022d06b5813e6260d6ce777d70c9f4736f98"
 ---
 
 # Review one candidate as a terminal reviewer

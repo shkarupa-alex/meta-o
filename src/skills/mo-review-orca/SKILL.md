@@ -438,7 +438,8 @@ hand:
 
 ```text
 scripts/mo-review-report.mjs namespace
-scripts/mo-review-report.mjs stage --dir <ns> --slot <A|B> --vendor <slug> <validate flags>   < report bytes
+scripts/mo-review-report.mjs stage --dir <ns> --slot <A|B> --vendor <slug> \
+  --dispatch <id> --candidate <sha> --requested <mode> --effective <mode>   < report bytes
 scripts/mo-review-report.mjs pair --dir <ns> --a-vendor … --a-bytes … --a-dev … --a-ino … --a-sha256 … --b-…
 ```
 

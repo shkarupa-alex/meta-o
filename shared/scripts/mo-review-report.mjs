@@ -596,7 +596,12 @@ const EXPECTATION_FLAGS = ["dispatch", "candidate", "requested", "effective"];
 const SLOT_FLAGS = ["a", "b"].flatMap((prefix) =>
   ["vendor", "bytes", "dev", "ino", "sha256"].map((field) => `${prefix}-${field}`),
 );
-const FLAGS = {
+/**
+ * The flags each command reads. §A-REVIEW-04 makes a documented helper call
+ * part of the protocol, so the skill texts are checked against this table and a
+ * call copied from them is never refused.
+ */
+export const FLAGS = {
   template: ["verdict", ...EXPECTATION_FLAGS, "unknown-reason"],
   prepare: ["file", ...EXPECTATION_FLAGS],
   validate: ["file", ...EXPECTATION_FLAGS, "prepared", "normalization"],
