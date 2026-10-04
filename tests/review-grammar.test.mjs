@@ -125,6 +125,59 @@ test("a template call that cannot be answered is a call error, not a template", 
   }
 });
 
+test("the template prints exactly the mode pairs its own validator accepts", () => {
+  const modes = ["fast", "deep", "follow_up"];
+  const pair = (requested, effective) => [
+    "--dispatch",
+    "ctx_a",
+    "--candidate",
+    SHA,
+    "--requested",
+    requested,
+    "--effective",
+    effective,
+  ];
+  for (const [verdict, extra] of [
+    ["PASS", []],
+    ["FINDINGS", []],
+    ["UNKNOWN", ["--unknown-reason", "review_incomplete"]],
+  ]) {
+    for (const requested of modes) {
+      for (const effective of modes) {
+        const label = `${verdict} ${requested}/${effective}`;
+        const flagsOf = pair(requested, effective);
+        const printed = call(["template", "--verdict", verdict, ...flagsOf, ...extra]);
+        if (effective === requested || effective === "deep") {
+          assert.equal(printed.status, 0, `${label}: ${printed.stderr}`);
+          const checked = call(["validate", "--file", "-", ...flagsOf], printed.stdout);
+          assert.equal(checked.status, 0, `${label}: ${checked.stdout}`);
+          continue;
+        }
+        assert.equal(printed.status, 2, label);
+        assert.equal(printed.stdout, "", label);
+        assert.notEqual(printed.stderr, "", label);
+        // The same pair written by hand is still refused by the reader.
+        const written = reportTemplate({
+          verdict,
+          dispatch: "ctx_a",
+          candidate: SHA,
+          requested,
+          effective: requested,
+          ...(verdict === "UNKNOWN" ? { reason: "review_incomplete" } : {}),
+        }).text.replace(
+          `Mode: requested=${requested} effective=${requested}`,
+          `Mode: requested=${requested} effective=${effective}`,
+        );
+        assert.equal(
+          validateReport(written, { ...expected(requested), effectiveMode: undefined }).reason,
+          "mode_mismatch",
+          label,
+        );
+      }
+    }
+  }
+});
+
 test("one empty line between service lines is formatting, two are not", () => {
   // The incident body: each service line its own Markdown paragraph.
   assert.equal(

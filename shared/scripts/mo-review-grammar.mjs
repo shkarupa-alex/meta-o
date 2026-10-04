@@ -139,6 +139,14 @@ function readEnvelope(lines, prose) {
   };
 }
 
+// Self-escalation is the only change a reviewer makes to its mode, and it
+// only rises to `deep`. A lower effective mode is coverage nobody asked for,
+// so the reader refuses it even when the caller names no expected effective
+// mode, and the template refuses to print it.
+function modeChangeAllowed(requested, effective) {
+  return effective === requested || effective === "deep";
+}
+
 /**
  * Check the envelope against what this caller asked for.
  *
@@ -152,10 +160,7 @@ function readHeader(lines, prose, expected) {
   if (envelope.execution !== expected.execution) return fail("execution_mismatch", 0);
   if (envelope.candidate !== expected.candidate) return fail("candidate_mismatch", 1);
   if (envelope.requested !== expected.requestedMode) return fail("mode_mismatch", 2);
-  // Self-escalation is the only change a reviewer makes to its mode, and it
-  // only rises to `deep`. A lower effective mode is coverage nobody asked for,
-  // so it fails here even when the caller names no expected effective mode.
-  if (envelope.effective !== envelope.requested && envelope.effective !== "deep") {
+  if (!modeChangeAllowed(envelope.requested, envelope.effective)) {
     return fail("mode_mismatch", 2);
   }
   if (expected.effectiveMode !== undefined && envelope.effective !== expected.effectiveMode) {
@@ -484,6 +489,9 @@ export function reportTemplate({ verdict, dispatch, candidate, requested, effect
   if (!SHA.test(candidate ?? "")) return { error: "--candidate must be a full 40-hex SHA" };
   if (!MODES.has(requested) || !MODES.has(effective)) {
     return { error: "--requested and --effective must be fast, deep or follow_up" };
+  }
+  if (!modeChangeAllowed(requested, effective)) {
+    return { error: "--effective must equal --requested or be deep" };
   }
   if ((verdict === "UNKNOWN") !== (reason !== undefined)) {
     return { error: "--unknown-reason is required for UNKNOWN and only for UNKNOWN" };

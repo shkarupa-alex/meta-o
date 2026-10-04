@@ -7037,13 +7037,16 @@ function readEnvelope(lines, prose) {
     countsRow: rows[5]
   };
 }
+function modeChangeAllowed(requested, effective) {
+  return effective === requested || effective === "deep";
+}
 function readHeader(lines, prose, expected) {
   const envelope = readEnvelope(lines, prose);
   if (envelope.status === "malformed") return envelope;
   if (envelope.execution !== expected.execution) return fail("execution_mismatch", 0);
   if (envelope.candidate !== expected.candidate) return fail("candidate_mismatch", 1);
   if (envelope.requested !== expected.requestedMode) return fail("mode_mismatch", 2);
-  if (envelope.effective !== envelope.requested && envelope.effective !== "deep") {
+  if (!modeChangeAllowed(envelope.requested, envelope.effective)) {
     return fail("mode_mismatch", 2);
   }
   if (expected.effectiveMode !== void 0 && envelope.effective !== expected.effectiveMode) {
@@ -7275,6 +7278,9 @@ function reportTemplate({ verdict, dispatch, candidate, requested, effective, re
   if (!SHA.test(candidate ?? "")) return { error: "--candidate must be a full 40-hex SHA" };
   if (!MODES.has(requested) || !MODES.has(effective)) {
     return { error: "--requested and --effective must be fast, deep or follow_up" };
+  }
+  if (!modeChangeAllowed(requested, effective)) {
+    return { error: "--effective must equal --requested or be deep" };
   }
   if (verdict === "UNKNOWN" !== (reason !== void 0)) {
     return { error: "--unknown-reason is required for UNKNOWN and only for UNKNOWN" };
