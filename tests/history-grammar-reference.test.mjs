@@ -32,11 +32,15 @@ const blocks = fromMarkdown(readFileSync(REFERENCE, "utf8")).children.filter(
   (node) => node.type === "code",
 );
 
-/** The worked examples: each trailer block and the YAML record right after it. */
+/**
+ * The worked examples: each trailer block and the YAML record right after it.
+ * `revise` alone carries no record: Git history is its journal.
+ */
 const examples = new Map(
   blocks.flatMap((node, index) => {
     const match = node.lang === "text" ? TRAILER.exec(node.value) : null;
     if (!match) return [];
+    if (match[1] === "revise") return [[match[1], { trailer: node.value, record: null }]];
     const record = blocks[index + 1];
     assert.equal(record?.lang, "yaml", `${node.value} has no record after it`);
     return [[match[1], { trailer: node.value, record: record.value }]];
@@ -48,7 +52,7 @@ test("the reference quotes the code's expressions verbatim", () => {
   for (const expression of [HEADING_ID, CITATION, TRAILER]) {
     assert.ok(quoted.has(expression.source), `not quoted: ${expression.source}`);
   }
-  assert.deepEqual([...examples.keys()].sort(), ["editorial", "remove", "reuse"]);
+  assert.deepEqual([...examples.keys()].sort(), ["editorial", "remove", "reuse", "revise"]);
 });
 
 function git(root, ...args) {
@@ -62,7 +66,10 @@ const BUSINESS = [
   "",
   "## §B-RUNTIME-01 — Runtime promise",
   "",
+  "<!-- mo:boundary -->",
   "The service answers every request.",
+  "",
+  "No request waits for another.",
   "",
   "## §B-RUNTIME-02 — Restart promise",
   "",
@@ -113,6 +120,12 @@ const EDITS = {
     ),
   },
   remove: { "docs/business.md": BUSINESS.split("## §B-RUNTIME-02")[0].trimEnd() + "\n" },
+  revise: {
+    "docs/business.md": BUSINESS.replace(
+      "No request waits for another.",
+      "One request never waits for another.",
+    ),
+  },
   editorial: {
     "docs/business.md": BUSINESS.replace("— Runtime promise", "— The promise to answer").replace(
       "— Restart promise",
@@ -169,6 +182,25 @@ test("the near misses the reference names are refused", () => {
       EDITS.editorial,
       editorial.replace("§B-RUNTIME-01,§B-RUNTIME-02", "§B-RUNTIME-02,§B-RUNTIME-01"),
       editorialRecord.replace("[§B-RUNTIME-01, §B-RUNTIME-02]", "[§B-RUNTIME-02, §B-RUNTIME-01]"),
+      /semantic reuse §B-RUNTIME-0[12]/u,
+    ],
+    [
+      "revise moving a declared boundary",
+      EDITS.reuse,
+      examples.get("revise").trailer,
+      null,
+      /semantic reuse §B-RUNTIME-01/u,
+    ],
+    [
+      "revise leaving out a changed id",
+      {
+        "docs/business.md": EDITS.revise["docs/business.md"].replace(
+          "The service survives a restart.",
+          "A restart does not stop the service.",
+        ),
+      },
+      examples.get("revise").trailer,
+      null,
       /semantic reuse §B-RUNTIME-0[12]/u,
     ],
   ];

@@ -123,9 +123,13 @@ clone, never by running the project's full quality command and never by touching
 the candidate worktree.
 
 The entry contract also states the authorization grammar the stage enforces: a
-commit trailer with the verbs `remove`, `reuse` or `editorial`, and a matching
-`knowledge_id_change` record in the same commit. A boundary and its commit ids
-belong to the project that owns them and are never copied from the supplier.
+commit trailer with the verbs `remove`, `reuse`, `editorial` or `revise`. The
+first three need a matching `knowledge_id_change` record in the same commit;
+`revise` needs none and passes only where the definition declared a boundary
+(`<!-- mo:boundary -->`) before the commit and that block is unchanged;
+declaring, moving or dropping a boundary is itself a recorded change. A boundary
+and its commit ids belong to the project that owns them and are never copied
+from the supplier.
 
 ## Reference check
 

@@ -77,7 +77,7 @@ The authorization trailer, from `mo-knowledge-history.mjs`, at most one per
 identifier per commit:
 
 ```text
-^Knowledge-ID-Change: (remove|reuse|editorial) (\S+) via (\S+)$
+^Knowledge-ID-Change: (remove|reuse|editorial|revise) (\S+) via (\S+)$
 ```
 
 `via` always names an architecture decision identifier, never a commit SHA. For
@@ -90,6 +90,20 @@ comma-separated without spaces; the record has `action: editorial`, the same
 and neither `id` nor `new_boundary`. `editorial` never deletes and never covers
 a change of meaning: only heading text, link labels and whitespace may differ,
 while ordinary prose, inline and fenced code and citations stay as they were.
+For `revise` the trailer lists identifiers exactly as for `editorial`, and no
+record is needed: it changes a body without moving its boundary — a clearer
+wording, text moved between sections, updated references or literals — and Git
+history is its journal. A definition declares its boundary with a line
+`<!-- mo:boundary -->` right before the block — a paragraph, list, quote, code
+block or table — that states it; a marker with no such block after it makes the
+stage refuse the document. Declaring a first boundary, and changing, moving or
+dropping a declared one, changes the definition: declaring, moving or dropping a
+marker over unchanged text is an `editorial` change with its record, and
+rewording a declared block is a `reuse` with a record. `revise` passes only for
+a definition that declared a boundary before the commit and left that block
+exactly as it was. Records then stay with a moved boundary, a deletion and a
+provable rewording, so the record trail answers when and why a decision's
+boundary moved. `revise` never deletes.
 
 The record is a fenced YAML block with the key `knowledge_id_change` (one
 record) or `knowledge_id_changes` (a list) inside the section of the decision
@@ -103,8 +117,9 @@ architecture directory `docs/architecture/`; a project names its own with
 ## Worked examples
 
 Every example below starts from the same history: the business document
-defines two theses, and one decision in the architecture directory serves the
-first. Each example's record goes into that decision's section.
+defines two theses, the first declaring its boundary with `<!-- mo:boundary -->`
+above its first paragraph, and one decision in the architecture directory
+serves the first. Each example's record goes into that decision's section.
 
 A change of meaning of one thesis:
 
@@ -150,10 +165,18 @@ knowledge_id_change:
   references_updated: true
 ```
 
+Restating the explanation beside the first thesis's declared boundary, with no
+record:
+
+```text
+Knowledge-ID-Change: revise §B-RUNTIME-01 via §A-RUNTIME-01
+```
+
 The same stage refuses `B2`-style headings as an empty scope, a decision
 heading whose identifier is followed by a colon as a deleted definition,
-`via <sha>`, an `editorial` record carrying `new_boundary`, and an `editorial`
-trailer whose identifiers are not sorted.
+`via <sha>`, an `editorial` record carrying `new_boundary`, an `editorial`
+trailer whose identifiers are not sorted, a `revise` trailer that moves a
+declared boundary, and a `revise` trailer that leaves out a changed identifier.
 
 ## Where the gates run
 

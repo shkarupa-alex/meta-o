@@ -24,7 +24,9 @@ import { fileURLToPath } from "node:url";
 
 import {
   authorizationRecordsFromTree,
+  boundaryKept,
   citedIdsFromTree,
+  definitionChanged,
   historyPins,
   stableValue,
 } from "./knowledge-documents.mjs";
@@ -34,8 +36,8 @@ export { authorizationRecords, definitions } from "./knowledge-documents.mjs";
 export { createHistoryReader, git } from "./knowledge-history-reader.mjs";
 
 const NO_DEFINITIONS = "HEAD defines no identifier in the declared business and architecture scope";
-/** §A-MEMORY-01 one authorization trailer; `editorial` lists its ids sorted and comma-joined. */
-export const TRAILER = /^Knowledge-ID-Change: (remove|reuse|editorial) (\S+) via (\S+)$/;
+/** §A-MEMORY-01 one authorization trailer; `editorial` and `revise` list ids sorted, comma-joined. */
+export const TRAILER = /^Knowledge-ID-Change: (remove|reuse|editorial|revise) (\S+) via (\S+)$/;
 const USAGE = `usage: mo-knowledge-history.mjs [--repo <root>] --cutoff <sha> [options]
        mo-knowledge-history.mjs [--repo <root>] --pins-from <markdown> [options]
 
@@ -120,12 +122,12 @@ function sameSortedIds(left, right) {
 
 function coversChange(entry, action, id, editorialIds) {
   if (entry.action === action && entry.ids.length === 1 && entry.ids[0] === id) return true;
-  // Editorial authorization is deliberately all-or-nothing for one parent
+  // A listed authorization is deliberately all-or-nothing for one parent
   // edge after individually authorized reuse ids are removed: accepting a
-  // subset would let an unlisted semantic change ride with a mechanical rewrite.
+  // subset would let an unlisted change of meaning ride with a rewording.
   return (
     action === "reuse" &&
-    entry.action === "editorial" &&
+    (entry.action === "editorial" || entry.action === "revise") &&
     entry.ids.includes(id) &&
     sameSortedIds(entry.ids, editorialIds)
   );
@@ -169,6 +171,9 @@ function authorized(reader, edge, change, snapshots, rules) {
   if (!match || !/^§A-[A-Z][A-Z0-9-]*-\d{2}$/.test(match.via)) return false;
   const owner = current.get(match.via);
   if (!owner || owner.kind !== "A") return false;
+  // `revise` needs no record because it cannot move a boundary: the definition
+  // declared one before this edge, and that declared block is unchanged.
+  if (match.action === "revise") return boundaryKept(previous.get(id), current.get(id));
   const priorOwner = previous.get(match.via);
   const priorFingerprints = new Set(
     (priorOwner ? records(reader, edge.parent, priorOwner.path, match.via) : []).map((record) =>
@@ -253,10 +258,7 @@ function edgeErrors(reader, edge, siblingParents, rules) {
   const sides = mergeSides(reader, edge.parent, siblingParents);
   const siblings = sides.map((side) => side.present);
   const changedIds = [...after]
-    .filter(([id, entry]) => {
-      const prior = before.get(id);
-      return prior && prior.semantic !== entry.semantic;
-    })
+    .filter(([id, entry]) => before.has(id) && definitionChanged(before.get(id), entry))
     .map(([id]) => id)
     .sort();
   const individuallyAuthorizedIds = new Set(
@@ -279,8 +281,8 @@ function edgeErrors(reader, edge, siblingParents, rules) {
   }
   for (const [id, entry] of after) {
     const prior = before.get(id);
-    const sameFromSibling = siblings.some((map) => map.get(id)?.semantic === entry.semantic);
-    if (rules.semantic && prior && prior.semantic !== entry.semantic && !sameFromSibling) {
+    const sameFromSibling = siblings.some((map) => !definitionChanged(map.get(id), entry));
+    if (rules.semantic && prior && definitionChanged(prior, entry) && !sameFromSibling) {
       if (!permits("reuse", id))
         errors.push(`${edge.parent}..${edge.commit}: semantic reuse ${id}`);
     }

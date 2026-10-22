@@ -176,8 +176,11 @@ history_cutoff_sha: 75a95f87efe6cea53167fa3f8d8c3b09a7c7ad96
 `docs/architecture/`; именно эти места читает стадия. Тихое удаление или
 смысловое повторное использование после нижней границы требует в том же коммите
 трейлера
-`Knowledge-ID-Change: <remove|reuse|editorial> <id> via <architecture-id>` и
-записи `knowledge_id_change` в решении, названном этим трейлером.
+`Knowledge-ID-Change: <remove|reuse|editorial|revise> <id> via <architecture-id>`.
+`remove`, `reuse` и `editorial` требуют ещё записи `knowledge_id_change` в
+решении, названном этим трейлером; `revise` записи не требует и проходит, только
+если определение до коммита объявило границу (`<!-- mo:boundary -->`) и она не
+изменилась.
 
 ## Управление версиями
 

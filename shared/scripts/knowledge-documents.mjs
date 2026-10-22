@@ -41,9 +41,50 @@ function isAuthorizationBlock(node) {
   return authorizationPayload(node) !== null;
 }
 
+/** §A-MEMORY-01 marks the block right after it as the decision's declared boundary. */
+export const BOUNDARY_MARKER = /^<!--\s*mo:boundary\s*-->$/u;
+
+function isBoundaryMarker(node) {
+  return node?.type === "html" && BOUNDARY_MARKER.test(node.value.trim());
+}
+
+// A marker stays outside the semantic and editorial fingerprints; what it
+// declares is fingerprinted on its own. Any change of that fingerprint —
+// declaring a first boundary, moving, rewording or dropping one — is a change
+// of the definition, so `revise` can never be what lets a boundary appear.
+// A marker must precede a block that can state a boundary; a marker at the end
+// of a section or before a heading, rule, html or a record would declare
+// nothing, and an empty declaration would make every later `revise` pass.
+const BOUNDARY_BLOCKS = new Set(["paragraph", "list", "blockquote", "code", "table"]);
+
+function boundaryOf(section, path, id) {
+  const declared = section.flatMap((node, index) => {
+    if (!isBoundaryMarker(node)) return [];
+    const block = section[index + 1];
+    if (!BOUNDARY_BLOCKS.has(block?.type) || isAuthorizationBlock(block)) {
+      throw new Error(`${path}: ${id} declares a boundary with no block after its marker`);
+    }
+    return [strictEditorialNode(block)];
+  });
+  return declared.length > 0 ? JSON.stringify(declared) : null;
+}
+
+/** §A-MEMORY-01 a boundary declared before the edge that the edge left exactly as it was. */
+export function boundaryKept(prior, entry) {
+  return typeof prior?.boundary === "string" && prior.boundary === entry?.boundary;
+}
+
+/** §A-MEMORY-01 a definition changed: absent before, its meaning, or its declared boundary. */
+export function definitionChanged(prior, entry) {
+  if (!prior) return true;
+  return prior.semantic !== entry.semantic || prior.boundary !== entry.boundary;
+}
+
 function semanticNode(node) {
   if (Array.isArray(node))
-    return node.filter((item) => !isAuthorizationBlock(item)).map(semanticNode);
+    return node
+      .filter((item) => !isAuthorizationBlock(item) && !isBoundaryMarker(item))
+      .map(semanticNode);
   if (!node || typeof node !== "object") return node;
   return Object.fromEntries(
     Object.entries(node)
@@ -87,7 +128,7 @@ function editorialSurface(nodes) {
 function strictEditorialNode(node, flexibleText = false) {
   if (Array.isArray(node)) {
     return node
-      .filter((item) => !isAuthorizationBlock(item))
+      .filter((item) => !isAuthorizationBlock(item) && !isBoundaryMarker(item))
       .map((item) => strictEditorialNode(item, flexibleText));
   }
   if (!node || typeof node !== "object") return node;
@@ -149,6 +190,7 @@ export function definitionsFromTree(tree, path) {
             editorial: JSON.stringify(editorialSurface(section)),
             strictEditorial: JSON.stringify(strictEditorialNode(section)),
             authorizations: authorizationFingerprints(section),
+            boundary: boundaryOf(section, path, id),
           });
         }
       }
