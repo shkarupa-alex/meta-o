@@ -103,9 +103,19 @@ of state — and otherwise wait for that event through the one waiter, an
 exhausted quota until its next window.
 
 Use one run-wide blocking waiter: 600000 ms for executor-only and 300000 ms when
-reviewer/E2E is active. Demultiplex exact handles, process complete event batches,
-re-arm quiet timeouts without narration, and allow only one same-arm retry after
-transport failure.
+reviewer/E2E is active. Wake on `worker_done,escalation,question`, plus `status`
+only while a report preview or pair handoff you sent has no matching
+`Review-Preview-Ack` or `Review-Handoff-Ack` in the Run's messages. Demultiplex
+exact handles, process complete event batches, and allow only one same-arm retry
+after transport failure. After every quiet timeout, before any status answer to
+the user and before any repeated message to an actor, run the checkpoint of
+[Orca native mechanics](references/orca-mechanics.md): the Run's unread batch
+without `--wait`, `worker-show` for each active Dispatch — a `completed` one is
+processed through its `worker_done` before anyone hears it still works, and
+`stale_status` does not cancel that — an idle input over a running child
+reported as two facts with the instruction queued once in the same terminal, and
+`unknown/unverifiable` instead of a truncated preview. Re-arm without narration
+only after that, and never say you are waiting while no wait is armed.
 
 Run the proof loops in order, never alternating. When the executor settles and
 its deterministic checks pass, E2E comes first, and only if the project has

@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-review-orca or an act
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "8a2eda1209faa2629d837b9bfb1708c74dfcea42"
+  source_tree: "cb57efb3f226d92462d3cf62021e29c39d90693f"
 ---
 
 # Review through Orca
@@ -335,8 +335,12 @@ closure proof. Findings of the fresh pair are remediated in that pair, which
 becomes the hot pair; no further fresh pair starts until it passes.
 
 Wait through one run-wide public waiter on both exact Dispatch handles. Use
-300000 ms arms for reviewers; a quiet timeout permits one public liveness
-snapshot and immediate re-arm without narration or messages. Retry the same arm
+300000 ms arms for reviewers and wake on `worker_done,escalation,question`, plus
+`status` only while a preview or pair handoff you sent has no matching
+acknowledgement in the Run's messages. A quiet timeout runs the checkpoint of
+[Orca native mechanics](references/orca-mechanics.md) — unread batch,
+`worker-show` of each Dispatch, a `completed` reviewer processed through its
+`worker_done` — and then re-arms without narration or messages. Retry the same arm
 once after transport failure; a second consecutive failure is
 `UNKNOWN/needs_attention`. Process every event in a returned batch before
 acknowledgement.

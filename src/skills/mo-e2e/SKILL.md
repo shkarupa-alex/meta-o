@@ -87,8 +87,11 @@ Do not create a receipt, manifest, registry, digest, tracked evidence ledger or
 external sink.
 
 Use one run-wide 300000 ms blocking waiter for active E2E actors. A quiet
-timeout permits one public liveness snapshot and immediate re-arm without
-narration; one repeated transport failure gives `UNKNOWN`. Task bytes wait for
+timeout permits one public reconciliation and re-arm without narration: read
+the Run's unread messages, and for each actor's Dispatch treat `completed` as
+done whatever its liveness says, processing its final message first; a
+truncated terminal preview proves no outcome. One repeated transport failure
+gives `UNKNOWN`. Task bytes wait for
 a proven normal agent prompt and every resource must preserve the initial Orca
 project-registration inventory. A disposable fixture that Orca has to place is
 registered only on the human's confirmation for this run and removed with

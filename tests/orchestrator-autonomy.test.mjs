@@ -99,3 +99,40 @@ test("the recovery ladder runs one way, ends at unknown_effect and restarts only
     assert.match(text, /exhausted quota until its next window/u, path);
   }
 });
+
+test("a quiet wait is reconciled with public Orca before anyone hears an actor still works", () => {
+  // #54: a quiet timeout, then a completed Dispatch the coordinator only saw
+  // when the user asked; the ack of a handoff arrives as a status message.
+  const decision = flat("docs/architecture/blocking-wait-cadence.md");
+  assert.match(decision, /`status`, пока в запуске есть отправленная/u);
+  assert.match(decision, /Постоянный `status` в наборе отклонён/u);
+  assertInOrder(
+    decision,
+    ["непрочитанный пакет", "публичное состояние", "дочерней команде", "`unknown/unverifiable`"],
+    "§A-WAIT-01",
+  );
+  assert.match(decision, /`stale_status` живости завершения не отменяют/u);
+  assert.match(decision, /Ожидание перевооружается только после этой сверки/u);
+  for (const path of MECHANICS) {
+    const text = flat(path);
+    assert.match(text, /`status` joins it only while/u, path);
+    assertInOrder(
+      text,
+      [
+        "orca orchestration check --run <id> --json",
+        "`worker-show` for every active Dispatch",
+        "An agent's turn is not its child process",
+        "`unknown/unverifiable`",
+      ],
+      path,
+    );
+    assert.match(text, /does not cancel the completion/u, path);
+    assert.match(text, /`--source auto` is not used/u, path);
+    assert.match(text, /Re-arm the wait only after this reconciliation/u, path);
+  }
+  for (const path of ["skills/mo-orchestrate-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
+    const text = flat(path);
+    assert.match(text, /plus `status` only while/u, path);
+    assert.match(text, /checkpoint of \[Orca native mechanics\]/u, path);
+  }
+});

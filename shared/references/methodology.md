@@ -203,14 +203,27 @@ agent works. Answer technical, cheap and reversible choices when changing the
 choice later would cost roughly one agent-hour or less. Record every such
 decision for the final report.
 
-Use one run-wide blocking waiter for all active actors. Subscribe only to
-`worker_done`, `escalation` and `question`, demultiplex by exact handle and
-process a returned batch before acknowledgement. Arm at 600000 ms for an
-executor-only set and 300000 ms whenever reviewer/E2E is present. A quiet
-timeout permits one public liveness snapshot and immediate re-arm without
-narration or an actor message. Retry the same arm once after transport failure;
-a second consecutive failure is `UNKNOWN/needs_attention`. Never replace this
-with `sleep`, minute polling or multiple waits for one actor.
+Use one run-wide blocking waiter for all active actors. Subscribe to
+`worker_done`, `escalation` and `question`, plus `status` only while a report
+preview or pair handoff sent to an actor has no matching acknowledgement in the
+Run's observed messages; demultiplex by exact handle and process a returned
+batch before acknowledgement. Arm at 600000 ms for an executor-only set and
+300000 ms whenever reviewer/E2E is present. A quiet timeout permits the public
+reconciliation below and a re-arm without narration or an actor message. Retry
+the same arm once after transport failure; a second consecutive failure is
+`UNKNOWN/needs_attention`. Never replace this with `sleep`, minute polling or
+multiple waits for one actor.
+
+After every quiet timeout, before any status answer to the user and before any
+repeated message to an actor, reconcile with the backend's public state first:
+read the Run's unread batch, then each active Dispatch's own state. A completed
+Dispatch is processed through its final message before anyone hears that the
+actor still works, and liveness that cannot be verified does not cancel a
+completion. An idle input over a still-running child process is two facts,
+reported apart; the instruction waits queued in the same terminal, once. A
+truncated terminal preview proves nothing, and an unestablished state is
+`unknown/unverifiable`. Re-arm only after that reconciliation, and never say
+"waiting" while no wait is armed. The backend's mechanics name the commands.
 
 Do not wait on a derived sign such as a new SHA appearing or a pane counter
 advancing. Re-read state at a sane interval measured in minutes only through the

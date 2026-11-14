@@ -222,6 +222,8 @@ mo-e2e:
 	@echo "Scenarios: B1-B70 — Orca backend, lifecycle, setup and Qwen profile"
 	@echo "           W1-W4 — watchdog target, scan, nudge, suppression"
 	@echo "           LIVE-1 — proof order: task E2E converges before the first review pair"
+	@echo "           LIVE-2 — quiet-timeout checkpoint: a completed reviewer and a status handoff ack"
+	@echo "           LIVE-3 — idle input over a running child: two states, one queued instruction"
 	@echo "           48 embedded cases — positive/forbidden/degraded for 12 skills plus 12 regressions"
 	@echo "           local and authorized remote installation"
 	@echo "Run:       execute the applicable scenarios without changing the frozen candidate"

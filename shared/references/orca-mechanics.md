@@ -350,20 +350,61 @@ run-wide waiter:
 
 ```text
 orca orchestration check --wait --types worker_done,escalation,question --timeout-ms <ms> --json
+  # add ,status only while a sent preview or pair handoff has no matching ack
 orca orchestration reply --id <message-id> --body <answer> --json
 orca orchestration worker-show --dispatch <id> --json
 ```
 
+The wake set is `worker_done,escalation,question`. `status` joins it only while
+the Run holds a report preview or pair handoff sent to an actor without its
+matching `Review-Preview-Ack` or `Review-Handoff-Ack`, because that
+acknowledgement arrives as a `status` message. The phase is read from the Run's
+observed messages — the handoff sent, no matching ack after it — never from the
+coordinator's memory, so it survives compaction. `status` is not kept in the set
+permanently: every progress message would wake the wait. `--types` only decides
+what wakes the wait; a returned delivery is always the whole FIFO batch, other
+types included.
+
 Process a complete delivery batch before acknowledging it. Use 600000 ms arms
 for executor-only sets and 300000 ms when reviewer/E2E remains. A quiet timeout
-allows one public liveness snapshot and immediate re-arm without narration. A
-transport failure gets one identical retry; the second is
-`UNKNOWN/needs_attention`. An early message must wake the wait. A `question` is
-answered through `reply`; `escalation` or a proven failed/lost dispatch is not
-success.
+allows the public checkpoint below and a re-arm without narration. A transport
+failure gets one identical retry; the second is `UNKNOWN/needs_attention`. An
+early message must wake the wait. A `question` is answered through `reply`;
+`escalation` or a proven failed/lost dispatch is not success.
 
 A timeout is a checkpoint, not failure, and the next blocking wait is armed
 before extended work continues.
+
+The checkpoint runs after every quiet timeout, before any status answer to the
+user and before any repeated message to an actor:
+
+1. Read the Run's current unread batch without waiting —
+   `orca orchestration check --run <id> --json`, with neither `--wait` nor
+   `--all` — `status` included. Match each message to its exact Dispatch and
+   process the whole batch before acknowledging it. An acknowledgement already
+   delivered is checked with `mo-review-report.mjs ack`, and no further
+   "continue" is sent.
+2. Run `worker-show` for every active Dispatch. Completion (`dispatch.status`)
+   and liveness are independent facts. At `completed` or `succeeded`, take that
+   Dispatch's `worker_done` from the Run's messages (`check --run <id> --all`
+   when its batch already went by) and process it before answering anyone;
+   liveness `unverifiable` or `stale_status` does not cancel the completion. A
+   completed Dispatch without a `worker_done` body is incomplete evidence, not
+   work still running. `worker-read --source terminal` may show how the session
+   ended as a bounded diagnostic; it never replaces the body, and
+   `--source auto` is not used, because it prefers the hook-reported transcript.
+3. An agent's turn is not its child process. When
+   `scripts/mo-harness-screen.mjs` shows an idle input while a child command
+   still runs under the harness (the pid of `orca terminal show --json` has a
+   live child), the agent reads no message yet. Report the two states
+   separately, and queue a new instruction once in that same terminal or
+   Dispatch by the delivery rules above; do not repeat it, interrupt the child
+   or open another terminal.
+4. A truncated terminal preview proves no outcome. Without an established state
+   the answer is `unknown/unverifiable`.
+
+Re-arm the wait only after this reconciliation. Saying "waiting" while no wait
+is armed is forbidden.
 
 The worker's complete `worker_done` body is the settled final response for
 Meta-O. In every task require the worker to place its full final response in
