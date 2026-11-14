@@ -130,7 +130,7 @@ const HOSTILE_BODY =
   "кириллица, emoji 🙂, tab\tand CRLF\r\n" +
   "\n";
 
-test("the native note route and the API fallback carry the exact body bytes", () => {
+test("the native note route carries the exact body bytes", () => {
   const work = mkdtempSync(join(tmpdir(), "mo-glab-route-"));
   try {
     const body = join(work, "body.md");
@@ -162,18 +162,32 @@ test("the native note route and the API fallback carry the exact body bytes", ()
       "issue\nnote\n42\n-R\ngroup/project\n",
     );
     assert.equal(existsSync(join(work, "PWNED")), false);
-
-    const jq = spawnSync("/bin/sh", ["-c", "command -v jq"], { encoding: "utf8" });
-    if (jq.status !== 0) return;
-    const payload = contractCommand(/`(jq -Rs '\{body: \.\}' < body\.md > note\.json)`/u, {});
-    const built = shell(payload);
-    assert.equal(built.status, 0, built.stderr);
-    assert.equal(JSON.parse(readFileSync(join(work, "note.json"), "utf8")).body, HOSTILE_BODY);
-    assert.equal(existsSync(join(work, "PWNED")), false);
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
 });
+
+// The API fallback is the contract's own `jq` command, so only a real `jq`
+// proves it; without one the test says so instead of passing on nothing.
+const JQ_PRESENT = spawnSync("/bin/sh", ["-c", "command -v jq"]).status === 0;
+
+test(
+  "the API fallback payload carries the exact body bytes",
+  { skip: JQ_PRESENT ? false : "jq missing" },
+  () => {
+    const work = mkdtempSync(join(tmpdir(), "mo-glab-api-"));
+    try {
+      writeFileSync(join(work, "body.md"), HOSTILE_BODY);
+      const payload = contractCommand(/`(jq -Rs '\{body: \.\}' < body\.md > note\.json)`/u, {});
+      const built = spawnSync("/bin/sh", ["-c", payload], { cwd: work, encoding: "utf8" });
+      assert.equal(built.status, 0, built.stderr);
+      assert.equal(JSON.parse(readFileSync(join(work, "note.json"), "utf8")).body, HOSTILE_BODY);
+      assert.equal(existsSync(join(work, "PWNED")), false);
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  },
+);
 
 test("recorded Orca surfaces expose both guides and owned-resource operations", () => {
   const help = recording("orca-installed.fixture");
