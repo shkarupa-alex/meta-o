@@ -62,8 +62,13 @@ const SUPPRESS_FILE = `${SUPPRESS} file`;
 // Temporary and archived areas: a feature's specification is deleted at
 // closure, so a citation into it dangles the day the feature lands.
 const ALWAYS_NON_CANONICAL = ["spec", "docs/specifications"];
-// A Markdown path as source code writes it, optionally in backticks.
-const DOCUMENT_PATH = /(?<![\w.@+/-])(?:\.\/)?[\w.@+-]+(?:\/[\w.@+-]+)*\.md(?![\w-])/giu;
+// A Markdown path as source code writes it: whole inside backticks, where a
+// name may hold spaces, or bare, where any letter or digit of any script may
+// form a name. §A-MEMORY-01 names no alphabet for a canonical document, so an
+// ASCII-only class would turn `docs/решение.md` into "no document" and
+// `docs/my guide.md` into its own tail.
+const DOCUMENT_PATH =
+  /`((?:\.\/)?[^`\n]*?\.md)`|(?<![\p{L}\p{N}_.@+/-])((?:\.\/)?[\p{L}\p{N}_.@+-]+(?:\/[\p{L}\p{N}_.@+-]+)*\.md)(?![\p{L}\p{N}_-])/giu;
 
 const USAGE = `usage: mo-vocabulary.mjs [--root <git-root>] [options]
 
@@ -354,7 +359,8 @@ function blockBefore(lines, index, column) {
 function namedDocument(block) {
   const paths = [...block.matchAll(DOCUMENT_PATH)];
   if (paths.length === 0) return null;
-  return posix.normalize(paths.at(-1)[0].replace(/^\.\//u, ""));
+  const last = paths.at(-1);
+  return posix.normalize((last[1] ?? last[2]).replace(/^\.\//u, ""));
 }
 
 /**

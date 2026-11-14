@@ -343,6 +343,8 @@ const DOCS = {
   "docs/y.md": "# Y\n\n## 9.9 Elsewhere\n\nText.\n",
   "docs/specifications/feature.md": "# Feature\n\n## 1 Scope\n",
   "docs/references/archive.md": "# Archive\n\n## 1 Old\n",
+  "docs/решение.md": "# Решение\n\n## 1 Правило\n",
+  "docs/my guide.md": "# Guide\n\n## 1 Правило\n",
 };
 
 function sourceKinds(path, text, nonCanonical = []) {
@@ -404,6 +406,29 @@ test("the number resolves only in the named document's own headings", () => {
   // A deliberate example says so, on its line or for the whole file.
   assert.deepEqual(sourceKinds("src/a.py", "# §7.5 mo-vocabulary-ok"), []);
   assert.deepEqual(sourceKinds("src/a.py", "# mo-vocabulary-ok file\n\nx = '§7.5'"), []);
+});
+
+test("a canonical document's path resolves whatever script or spaces its name holds", () => {
+  // The whole path names the document: a non-ASCII name is not "no document",
+  // and a name with a space is not its own tail.
+  for (const text of [
+    "// docs/x.md §1.2",
+    "// docs/решение.md §1",
+    "// `docs/решение.md` §1",
+    "// `docs/my guide.md` §1",
+    "// `docs/my guide.md`\n// section §1",
+  ]) {
+    assert.deepEqual(sourceKinds("src/a.mjs", text), [], text);
+  }
+  assert.deepEqual(sourceKinds("src/a.mjs", "// `docs/нет.md` §1"), [
+    "source_section_document_unavailable §1 docs/нет.md",
+  ]);
+  assert.deepEqual(sourceKinds("src/a.mjs", "// `docs/my guide.md` §2"), [
+    "source_section_missing §2 docs/my guide.md",
+  ]);
+  assert.deepEqual(sourceKinds("src/a.mjs", "// docs/specifications/feature.md §1"), [
+    "source_section_document_not_canonical §1 docs/specifications/feature.md",
+  ]);
 });
 
 test("a heading number matches whole, written bare or after the section sign", () => {

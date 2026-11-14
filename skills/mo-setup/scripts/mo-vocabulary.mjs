@@ -15948,7 +15948,7 @@ var STANDARDS = /* @__PURE__ */ new Set(["CVE", "ECMA", "IEC", "IEEE", "ISO", "R
 var SUPPRESS2 = "mo-vocabulary-ok";
 var SUPPRESS_FILE2 = `${SUPPRESS2} file`;
 var ALWAYS_NON_CANONICAL = ["spec", "docs/specifications"];
-var DOCUMENT_PATH = /(?<![\w.@+/-])(?:\.\/)?[\w.@+-]+(?:\/[\w.@+-]+)*\.md(?![\w-])/giu;
+var DOCUMENT_PATH = /`((?:\.\/)?[^`\n]*?\.md)`|(?<![\p{L}\p{N}_.@+/-])((?:\.\/)?[\p{L}\p{N}_.@+-]+(?:\/[\p{L}\p{N}_.@+-]+)*\.md)(?![\p{L}\p{N}_-])/giu;
 var USAGE = `usage: mo-vocabulary.mjs [--root <git-root>] [options]
 
   --root <git-root>            repository to check (default: cwd)
@@ -16112,7 +16112,8 @@ function blockBefore(lines, index2, column) {
 function namedDocument(block2) {
   const paths = [...block2.matchAll(DOCUMENT_PATH)];
   if (paths.length === 0) return null;
-  return posix2.normalize(paths.at(-1)[0].replace(/^\.\//u, ""));
+  const last = paths.at(-1);
+  return posix2.normalize((last[1] ?? last[2]).replace(/^\.\//u, ""));
 }
 function sourceSectionFindings({ path, text: text4, tracked, readDocument, nonCanonical = [] }) {
   if (deliberateFixture(text4, path)) return [];
