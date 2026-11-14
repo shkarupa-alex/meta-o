@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-review-orca or an act
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "f540512b34dd98e12b72b96fd521ecb991aae9c1"
+  source_tree: "84c6514aeae715fbe17488457e16b2f13b4b85c4"
 ---
 
 # Review through Orca
@@ -382,7 +382,10 @@ the handle recorded for it in `OwnedResourceSet/1`, then re-read the resource
 projection. If that handle is absent, close nothing and return
 `needs_attention`.
 
-Wait for both full reports before disposition or handoff.
+Wait for both full reports before disposition or handoff. A valid `UNKNOWN`
+that indexes findings is never a PASS: its findings go to the executor in the
+ordinary handoff like those of a `FINDINGS` report, and its `Unknown-Account`
+names what the next round still has to review.
 
 The brief carries every field of [Review brief](references/review-brief.md) and
 no placeholder. Every grounding source it names must reach the reviewer as exact

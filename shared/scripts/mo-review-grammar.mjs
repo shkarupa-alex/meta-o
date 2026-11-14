@@ -220,7 +220,7 @@ function readIndexLayout(lines, prose, from, to) {
  * with two findings. Nothing else stands in the index: `Unknown-Reason`
  * belongs to the UNKNOWN account, where the template prints it.
  */
-function readIndex(paragraphs, literal, from, to, counts) {
+function readIndex(paragraphs, literal, from, to, { counts, verdict }) {
   const entries = [];
   for (const { line, rows } of paragraphs) {
     // Rows are taken by their own line, not by where their paragraph starts:
@@ -242,6 +242,9 @@ function readIndex(paragraphs, literal, from, to, counts) {
     if (entry.key !== `F-${String(step + 1).padStart(3, "0")}`)
       return fail("index_key_order", entry.line);
   }
+  // A PASS that indexes a finding is not an empty verdict, whatever its counts
+  // say; naming it so tells the reviewer which of the two to correct.
+  if (verdict === "PASS" && entries.length > 0) return fail("pass_not_empty", entries[0].line);
   const severities = [0, 0, 0, 0];
   for (const entry of entries) severities[Number(entry.severity.slice(1))] += 1;
   const total = counts.reduce((sum, count) => sum + count, 0);
@@ -359,13 +362,14 @@ function readEvidence(lines, prose, sections, header, index) {
   const findingsEnd =
     header.verdict === "UNKNOWN" ? sections.found.get("Unknown-Account")[0] : at.get("Unknowns");
   const findingBody = bodyOf(lines, at.get("Findings"), findingsEnd);
-  if (header.verdict !== "FINDINGS") {
-    if (index.keys.length > 0 || findingBody.length > 0) {
-      return fail("pass_not_empty", at.get("Findings"));
-    }
+  // An UNKNOWN may still carry what it did prove: its findings are ordinary
+  // findings with bodies, and only the verdict says the review is incomplete.
+  // Without an index, a PASS or an UNKNOWN leaves `Findings` empty.
+  if (index.keys.length === 0) {
+    if (header.verdict === "FINDINGS") return fail("counts_mismatch", header.countsRow);
+    if (findingBody.length > 0) return fail("pass_not_empty", at.get("Findings"));
     return {};
   }
-  if (index.keys.length === 0) return fail("counts_mismatch", header.countsRow);
   const span = { from: at.get("Findings"), to: findingsEnd };
   return readFindingBodies(lines, prose, span, index.keys);
 }
@@ -405,7 +409,7 @@ export function validateReport(text, expected) {
     literalRows(fromMarkdown(text)),
     header.countsRow,
     sections.evidence,
-    header.counts,
+    header,
   );
   if (index.status === "malformed") return index;
   const evidence = readEvidence(lines, markers, sections, header, index);

@@ -282,7 +282,10 @@ its own markers.
 Index keys start at `F-001`, are report-local and match finding body/severity
 one-to-one. Counts equal authored findings. `PASS` has zero counts and empty
 index/Findings, while grounding, checks, Unknowns and residual risks remain
-explicit and non-empty. A finding also states its post-fix invariant, technical
+explicit and non-empty. `FINDINGS` has at least one finding. `UNKNOWN` keeps the
+findings it did prove: its index, counts and bodies follow the same rules, its
+`Unknown-Account` says what stayed unreviewed, and without an index its Findings
+section is empty. A finding also states its post-fix invariant, technical
 direction and depth `local patch`, `boundary repair` or
 `affected-slice redesign`. Its acceptance proof is named as concrete cases —
 input and state, expected behavior, and where the check belongs — precise enough

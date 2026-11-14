@@ -260,7 +260,7 @@ test("each structural failure names itself", () => {
       }),
       "index_body_mismatch",
     ],
-    [report({ index: "F-001 [P2] PASS may not carry a finding.\n\n" }), "counts_mismatch"],
+    [report({ index: "F-001 [P2] PASS may not carry a finding.\n\n" }), "pass_not_empty"],
     [
       report({
         verdict: "UNKNOWN",
@@ -301,6 +301,39 @@ test("every command refuses a flag it does not read, in every shipped copy", () 
     assert.equal(named.status, 0, named.stderr);
     assert.match(named.stdout, /^MO-REVIEW-BODY\/1 prepared_body_identity=identical/mu, helper);
   }
+});
+
+test("an UNKNOWN keeps the findings it proved, and only a PASS must be empty", () => {
+  const account =
+    "Unknown-Account\nUnknown-Reason: review_incomplete\ncovered scope and the blocking observation\n";
+  const unknown = report({
+    verdict: "UNKNOWN",
+    counts: "P0=0 P1=1 P2=0 P3=0",
+    index: "F-001 [P1] The guard trusts a caller-supplied path.\n\n",
+    findings: "F-001 [P1] confirmed; causal path, impact, location and proof.\n",
+    account,
+  });
+  const valid = validateReport(unknown, context());
+  assert.equal(valid.status, "valid");
+  assert.equal(valid.verdict, "UNKNOWN");
+  assert.deepEqual(valid.counts, [0, 1, 0, 0]);
+  // The census still answers for the index, and the account is still owed.
+  assert.equal(reasonOf(unknown.replace("P1=1", "P1=0")), "counts_mismatch");
+  assert.equal(reasonOf(unknown.replace(account, "")), "unknown_account");
+  // A keyed body the index never announced is still a stray body.
+  assert.equal(
+    reasonOf(unknown.replace("[P1] confirmed;", "[P2] confirmed;")),
+    "index_body_mismatch",
+  );
+  // PASS with an indexed finding is not an empty verdict even when the counts
+  // agree with the index; FINDINGS without one is a census that answers nothing.
+  const pass = report({
+    counts: "P0=0 P1=1 P2=0 P3=0",
+    index: "F-001 [P1] A finding under a PASS.\n\n",
+    findings: "F-001 [P1] confirmed.\n",
+  });
+  assert.equal(reasonOf(pass), "pass_not_empty");
+  assert.equal(reasonOf(report({ verdict: "FINDINGS" })), "counts_mismatch");
 });
 
 test("PASS with a body is not an empty verdict", () => {

@@ -381,7 +381,10 @@ the handle recorded for it in `OwnedResourceSet/1`, then re-read the resource
 projection. If that handle is absent, close nothing and return
 `needs_attention`.
 
-Wait for both full reports before disposition or handoff.
+Wait for both full reports before disposition or handoff. A valid `UNKNOWN`
+that indexes findings is never a PASS: its findings go to the executor in the
+ordinary handoff like those of a `FINDINGS` report, and its `Unknown-Account`
+names what the next round still has to review.
 
 The brief carries every field of [Review brief](references/review-brief.md) and
 no placeholder. Every grounding source it names must reach the reviewer as exact

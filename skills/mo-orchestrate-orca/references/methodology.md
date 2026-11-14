@@ -325,7 +325,9 @@ untouched.
 
 If both pass, continue to verification. If either finds work, wait until both
 are complete, then send one ordinary message to the executor containing both
-temporary-file paths and sizes.
+temporary-file paths and sizes. A valid `UNKNOWN` may carry the findings it did
+prove: they go to the executor the same way, and the round is never counted as a
+PASS.
 
 Do not merge, rank, hash, encode, split, truncate or summarize their responses.
 The executor fully reads both and replies
