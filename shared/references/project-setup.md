@@ -33,10 +33,17 @@ Inspect substance, not file presence. A ready project has:
   links to the knowledge layer;
 - concise, useful, byte-identical `AGENTS.md` and `CLAUDE.md` containing project
   outcomes, boundaries, purpose, knowledge, commands, version-control rules —
-  commit every coherent, verified increment, and push only when the user asks —
-  and a dictation rule: anomalous wording that could materially change scope or
-  outcome is clarified with the user rather than silently corrected, while the
-  confirmed intent remains verbatim.
+  commit every coherent, verified increment, and push only when the user asks.
+
+Setup writes no dictation rule into `AGENTS.md`. Earlier versions of this
+contract required one: anomalous wording that could materially change scope or
+outcome is clarified with the user rather than silently corrected, while the
+confirmed intent remains verbatim. When a project's `AGENTS.md` still carries
+that known rule, in whatever language it was written down, propose an exact
+patch removing it from `AGENTS.md` and `CLAUDE.md` alike, and apply it only on
+the human's acceptance; a rule the project wrote about its own domain is not
+that rule and stays. The verbatim user-intent ledger is not part of the removal:
+it stays a methodology rule and stays with the task or spec, as above.
 
 `CLAUDE.md` stays a byte copy of `AGENTS.md`, never a one-line `@AGENTS.md`
 import: a Claude Code session started in a nested directory does not expand that

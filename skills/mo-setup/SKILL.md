@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-setup; inspect or bri
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "9d1ced108e05c87ade3cbf176fcc13e73459974f"
+  source_tree: "1f224159786869af389eb9a721558f4b69e24d86"
 ---
 
 # Set up a project for Meta-O
@@ -29,7 +29,9 @@ smallest regression test for a confirmed behavioral defect and an invariant
 comment for substantial ownership/concurrency/trust/security/compatibility/
 transaction/resource-lifetime repair.
 Do not create a backend fixture document in an ordinary target project without
-a named consumer.
+a named consumer. Write no dictation rule into `AGENTS.md`; where the former
+template's rule is still there, propose the contract's removal patch and keep
+the verbatim intent ledger.
 
 Read the knowledge layer first with bundled
 `scripts/mo-knowledge-layer.mjs --candidate <HEAD sha>` and report its line

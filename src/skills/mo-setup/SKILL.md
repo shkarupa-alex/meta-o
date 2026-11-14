@@ -28,7 +28,9 @@ smallest regression test for a confirmed behavioral defect and an invariant
 comment for substantial ownership/concurrency/trust/security/compatibility/
 transaction/resource-lifetime repair.
 Do not create a backend fixture document in an ordinary target project without
-a named consumer.
+a named consumer. Write no dictation rule into `AGENTS.md`; where the former
+template's rule is still there, propose the contract's removal patch and keep
+the verbatim intent ledger.
 
 Read the knowledge layer first with bundled
 `scripts/mo-knowledge-layer.mjs --candidate <HEAD sha>` and report its line

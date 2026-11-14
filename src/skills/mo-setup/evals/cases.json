@@ -10,18 +10,21 @@
       "contracts": [
         "§A-BACKLOG-01",
         "§A-DELIVERY-01",
-        "§A-ISSUE-01"
+        "§A-ISSUE-01",
+        "§A-MEMORY-02"
       ],
-      "scenario": "The user explicitly asks to bring a project to the Meta-O contract.",
+      "scenario": "The user explicitly asks to bring a project to the Meta-O contract. The project's byte-identical AGENTS.md and CLAUDE.md still carry the dictation rule an earlier setup wrote: anomalous wording that could materially change scope or outcome is clarified with the user, and the confirmed intent stays verbatim.",
       "must": [
         "inspect project substance and each backend companion under §A-BACKLOG-01",
         "separate proposed and authorized changes under §A-DELIVERY-01",
         "report the papercut document and the identifier-history gate as separate typed readiness lines under §A-BACKLOG-01",
-        "name ISS-16 and the repository from metadata.repository as the only destination for confirmed friction about Meta-O itself under §A-ISSUE-01"
+        "name ISS-16 and the repository from metadata.repository as the only destination for confirmed friction about Meta-O itself under §A-ISSUE-01",
+        "propose an exact patch removing that dictation rule from both AGENTS.md and CLAUDE.md, to be applied only on the human's acceptance, while the verbatim user-intent ledger stays with the task or spec under §A-MEMORY-02"
       ],
       "mustNot": [
         "overwrite unrelated user changes",
         "claim readiness from one proxy signal",
+        "write a dictation rule into AGENTS.md or apply the removal patch without the human's acceptance",
         "file methodology friction as an Issue anywhere other than that named repository, or write it to any external service during an eval or E2E run, where it stays a `Methodology-Friction:` line in the report"
       ]
     },
