@@ -1188,6 +1188,11 @@ test("session, delivery, handoff and waiter invariants remain executable instruc
     assert.match(review, pattern);
   }
   assert.doesNotMatch(review, /git worktree add.*allowed|orca repo add.*fallback/iu);
+  // The orchestrator ships only the mechanics page, not the review skill, so
+  // its checkpoint must name the ack kind itself: the helper refuses a bare
+  // `ack`, and a model read the bare form as an unspecified command.
+  const mechanics = source("shared/references/orca-mechanics.md");
+  assert.match(mechanics, /mo-review-report\.mjs ack --kind Preview`[^.]*`--kind Handoff`/u);
   const setup = source("src/skills/mo-setup/SKILL.md");
   assert.match(setup, /orca-cli/u);
   assert.match(setup, /git check-ignore -v --no-index/u);
