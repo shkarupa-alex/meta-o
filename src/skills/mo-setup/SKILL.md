@@ -142,6 +142,11 @@ provider auth, account freshness, selected-harness launch, normal prompt versus
 trust UI/shell, stable title capability, one owner of unsandboxed posture, and
 supported blocking-wait duration.
 
+Apply the contract's agent proxy section: propose the managed block from
+`assets/make/agent-proxy.mk` with the project's own agent-environment targets,
+and report proxy variables by the names `scripts/mo-posture.sh` prints, never
+by value.
+
 Check `orca`/`orca-cli` separately from the upstream
 `orchestration` companion. Also check mature `jq` and `flock` dependencies.
 

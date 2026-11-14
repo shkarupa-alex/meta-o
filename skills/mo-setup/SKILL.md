@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-setup; inspect or bri
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "853827ad43b086e602a64d9d3aa327bf3e75b878"
+  source_tree: "ea4669c986b63877e24b7ec5436033b6910d33e1"
 ---
 
 # Set up a project for Meta-O
@@ -142,6 +142,11 @@ never install guide copies. Separately prove native status/project identity,
 provider auth, account freshness, selected-harness launch, normal prompt versus
 trust UI/shell, stable title capability, one owner of unsandboxed posture, and
 supported blocking-wait duration.
+
+Apply the contract's agent proxy section: propose the managed block from
+`assets/make/agent-proxy.mk` with the project's own agent-environment targets,
+and report proxy variables by the names `scripts/mo-posture.sh` prints, never
+by value.
 
 Check `orca`/`orca-cli` separately from the upstream
 `orchestration` companion. Also check mature `jq` and `flock` dependencies.

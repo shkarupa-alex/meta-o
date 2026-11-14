@@ -4,7 +4,31 @@
 # authoritative gate, it rewrites nothing, and every gate under it is a mature
 # tool or a plain shell comparison rather than a checker this project wrote.
 
-.PHONY: mo-qc mo-lint mo-test mo-smoke mo-e2e mo-eval-cases mo-knowledge-history mo-live-adapters mo-backlog skills skills-check format contract
+.PHONY: mo-qc mo-lint mo-test mo-smoke mo-smoke-proxy mo-e2e mo-eval-cases mo-knowledge-history mo-live-adapters mo-backlog skills skills-check format contract
+
+# >>> meta-o: agent-environment proxy >>>
+# The same managed block mo-setup writes into a consumer's Makefile
+# (src/skills/mo-setup/assets/make/agent-proxy.mk); a test keeps the code equal.
+#
+# The owner's proxy is for the agent environments' own provider API calls only.
+# The commands agents run do not need it and break on it more often than
+# without it, so every recipe here — QC stages, tests, smoke and a nested
+# $(MAKE) — runs with the six variables removed from its environment.
+MO_PROXY_VARS := HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
+unexport $(MO_PROXY_VARS)
+
+# Targets that start agent environments themselves. Target-specific variables
+# are inherited by prerequisites, so these targets have no QC or test
+# prerequisites.
+MO_AGENT_ENV_TARGETS := mo-live-adapters
+
+# Each listed target gets back only the variables that are set: a
+# target-specific `export VAR := $(VAR)` of an unset one exports an empty
+# string, and an empty lowercase variable makes Python and Node ignore a set
+# uppercase one. `$(value VAR)` keeps the value out of every recipe line, so
+# make never prints it, and does not expand a `$` or `#` inside it.
+$(if $(strip $(MO_AGENT_ENV_TARGETS)),$(foreach var,$(MO_PROXY_VARS),$(if $(value $(var)),$(eval $(MO_AGENT_ENV_TARGETS): export $(var) := $$(value $(var))))))
+# <<< meta-o: agent-environment proxy <<<
 
 # The authoritative gate, in the order it has always run.
 #
@@ -150,7 +174,32 @@ mo-smoke:
 			cp $$bundle $$smoke_dir/bundled-helper.mjs; \
 			(cd $$smoke_dir && HOME=$$smoke_dir node ./bundled-helper.mjs --help > /dev/null); \
 		done
+	@set -e; smoke_dir=$$(mktemp -d); trap 'rm -rf "$$smoke_dir"' 0 HUP INT TERM; \
+		$(MAKE) --no-print-directory mo-smoke-proxy MO_SMOKE_DIR=$$smoke_dir
 	@echo "mo-smoke ok"
+
+# A throwaway project that applied the shipped managed proxy block: its QC and
+# a nested make lose the proxy, its agent target keeps the exact value and gets
+# no empty lowercase twin, the agent target has no prerequisites, and neither
+# make nor the posture probe prints the value. The credential-shaped value is a
+# placeholder and never leaves the comparison.
+MO_SMOKE_PROXY = http://smoke-user:smoke-secret@proxy.invalid:3128
+mo-smoke-proxy:
+	@set -e; project=$(MO_SMOKE_DIR)/proxy-project; mkdir "$$project"; \
+		sed 's/<agent-env-targets>/agent/' skills/mo-setup/assets/make/agent-proxy.mk > "$$project/Makefile"; \
+		cat tests/fixtures/agent-proxy/targets.mk >> "$$project/Makefile"; \
+		output=$$(HTTPS_PROXY='$(MO_SMOKE_PROXY)' MO_SMOKE_EXPECTED_PROXY='$(MO_SMOKE_PROXY)' \
+			$(MAKE) --no-print-directory -C "$$project" qc agent 2>&1); \
+		expected=$$(printf '%s\n' 'qc=[]' 'nested=[]' 'agent=[kept]' 'agent-lowercase=[]'); \
+		[ "$$output" = "$$expected" ] || { echo "mo-smoke: the proxy block leaked or lost the proxy" >&2; exit 1; }; \
+		rule=$$(HTTPS_PROXY='$(MO_SMOKE_PROXY)' $(MAKE) --no-print-directory -C "$$project" -pq agent 2>/dev/null \
+			| grep '^agent:' | grep -v '=' || true); \
+		[ "$$rule" = "agent:" ] || { echo "mo-smoke: the agent target has prerequisites" >&2; exit 1; }; \
+		posture=$$(HTTPS_PROXY='$(MO_SMOKE_PROXY)' HOME=$(MO_SMOKE_DIR) \
+			shared/scripts/mo-posture.sh --shell bash -- claude 2>&1 || true); \
+		case "$$posture" in *smoke-secret*) echo "mo-smoke: posture printed a proxy value" >&2; exit 1;; esac; \
+		printf '%s\n' "$$posture" | grep -qx 'MO_POSTURE_PROXY names=HTTPS_PROXY' \
+			|| { echo "mo-smoke: posture did not name the proxy" >&2; exit 1; }
 
 # Agent-required E2E pretends nothing. It says what a human or an agent must run,
 # and exits 2 so no caller can mistake it for a pass. mo-qc does not depend on it.

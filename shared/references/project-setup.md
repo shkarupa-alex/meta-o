@@ -178,6 +178,31 @@ The shipped `assets/ci/gitlab-ci.yml` answers `rules=reachable` with no hosting
 data at all. A static `covered` never replaces QC actually passing on the exact
 SHA before G2.
 
+## Agent proxy
+
+An owner's proxy serves only the agent environments' own provider API calls. The
+commands those agents run need no proxy and break on one more often than without
+it, so a ready project drops it by default. Accepted repair copies
+`assets/make/agent-proxy.mk` into the project's `Makefile` as one managed block
+between its markers. It unexports `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` and
+their lowercase twins for every recipe, a nested `$(MAKE)` included, and gives
+each variable that is set back, by a target-specific export, only to the targets
+in `MO_AGENT_ENV_TARGETS`: the ones that start an agent environment themselves,
+such as live adapters or a model eval. Those targets have no QC or test
+prerequisites, because a target-specific variable is inherited by every
+prerequisite.
+
+GNU make has no target-specific `unexport`, and passing the value on a recipe's
+command line would print the proxy credentials in make's log; the block avoids
+both. An unset variable is not exported as an empty string, because an empty
+lowercase twin makes common clients ignore the uppercase one that is set. A
+project without a `Makefile` gets no block; report that as a gap.
+
+Report the proxy variable names the posture probe prints as
+`MO_POSTURE_PROXY names=…`, never a value. The papercut document gains the
+one-off recipe
+`env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy <cmd>`.
+
 ## Backend and harness readiness
 
 Detect Orca from its native environment and status surface. Report unsupported
