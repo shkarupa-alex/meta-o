@@ -5,7 +5,8 @@
  */
 
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 import {
   mkdtempSync,
   readFileSync,
@@ -349,7 +350,7 @@ test("the CLI answers with one line and a status a caller can branch on", () => 
   // A call error is neither a valid report nor a malformed one.
   const misuse = spawnSync(process.execPath, [HELPER, "validate", "--file", good]);
   assert.equal(misuse.status, 2);
-  assert.match(misuse.stderr.toString(), /--dispatch is required/u);
+  assert.match(misuse.stderr.toString(), /--dispatch, --candidate, --requested are required/u);
 });
 
 test("a source that is not a plain file is refused rather than followed", () => {
@@ -803,4 +804,77 @@ test("the stage call the skill documents is accepted, and validate-only flags ar
   });
   assert.equal(staged.status, 0, staged.stderr);
   assert.match(staged.stdout, /^MO-REVIEW-STAGE\/1 slot=A /u);
+});
+
+// Run one call in its own empty cwd and TMPDIR with a stdin that never ends:
+// a helper that read stdin or made a directory before refusing would hang here
+// or leave something behind.
+async function isolatedCall(args) {
+  const cwd = space();
+  const temp = space();
+  const child = spawn(process.execPath, [HELPER, ...args], {
+    cwd,
+    env: { ...process.env, TMPDIR: temp },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.on("data", (chunk) => (stdout += chunk));
+  child.stderr.on("data", (chunk) => (stderr += chunk));
+  const timer = setTimeout(() => child.kill("SIGKILL"), 10000);
+  const [status] = await once(child, "close");
+  clearTimeout(timer);
+  return { status, stdout, stderr, left: [...readdirSync(cwd), ...readdirSync(temp)] };
+}
+
+test("every command answers --help with its inputs and an example, and creates nothing", async () => {
+  assert.deepEqual(Object.keys(FLAGS).sort(), [
+    "ack",
+    "namespace",
+    "pair",
+    "prepare",
+    "preview",
+    "stage",
+    "template",
+    "validate",
+  ]);
+  for (const command of Object.keys(FLAGS)) {
+    const help = await isolatedCall([command, "--help"]);
+    assert.equal(help.status, 0, `${command} ${help.stderr}`);
+    assert.match(help.stdout, new RegExp(`^usage: mo-review-report\\.mjs ${command}\\b`, "u"));
+    assert.match(
+      help.stdout,
+      new RegExp(`^example:\\n  node mo-review-report\\.mjs ${command}\\b`, "mu"),
+    );
+    for (const flag of FLAGS[command]) assert.match(help.stdout, new RegExp(`--${flag}\\b`, "u"));
+    assert.deepEqual(help.left, [], command);
+  }
+});
+
+test("an unknown or repeated flag is a call error before stdin or the filesystem", async () => {
+  for (const command of Object.keys(FLAGS)) {
+    const unknown = await isolatedCall([command, "--bogus", "x"]);
+    assert.equal(unknown.status, 2, command);
+    assert.equal(unknown.stdout, "", command);
+    assert.match(unknown.stderr, new RegExp(`${command} does not take --bogus`, "u"));
+    assert.deepEqual(unknown.left, [], command);
+  }
+  for (const args of [
+    ["template", "--verdict", "PASS", "--verdict", "PASS"],
+    ["prepare", "--file", "body.md", "--file", "other.md"],
+    ["validate", "--file", "-", "--dispatch", "a", "--dispatch", "b"],
+    ["stage", "--slot", "A", "--slot", "B"],
+    ["ack", "--kind", "Handoff", "--kind", "Preview"],
+  ]) {
+    const repeated = await isolatedCall(args);
+    assert.equal(repeated.status, 2, args.join(" "));
+    assert.match(repeated.stderr, /is given twice/u, args.join(" "));
+    assert.deepEqual(repeated.left, [], args.join(" "));
+  }
+  // A missing flag is found before the body is read: prepare would otherwise
+  // wait on stdin, and a later refusal would not undo the read.
+  const missing = await isolatedCall(["prepare", "--file", "body.md"]);
+  assert.equal(missing.status, 2);
+  assert.match(missing.stderr, /are required/u);
+  assert.deepEqual(missing.left, []);
 });

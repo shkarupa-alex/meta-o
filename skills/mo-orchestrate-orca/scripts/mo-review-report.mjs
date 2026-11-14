@@ -6,25 +6,18 @@ var __export = (target, all2) => {
 };
 
 // shared/scripts/mo-review-report.mjs
-import { createHash, randomBytes } from "node:crypto";
 import {
-  chmodSync,
-  closeSync,
-  constants,
-  fstatSync,
-  fsyncSync,
-  linkSync,
-  mkdtempSync,
-  openSync,
+  closeSync as closeSync2,
+  constants as constants2,
+  fsyncSync as fsyncSync2,
+  openSync as openSync2,
   readFileSync,
-  readSync,
   realpathSync,
-  unlinkSync,
-  writeSync
+  writeSync as writeSync2
 } from "node:fs";
-import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename as basename2 } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 
 // node_modules/mdast-util-to-string/lib/index.js
 var emptyOptions = {};
@@ -7306,7 +7299,23 @@ function reportTemplate({ verdict, dispatch, candidate, requested, effective, re
 ` };
 }
 
-// shared/scripts/mo-review-report.mjs
+// shared/scripts/mo-review-handoff.mjs
+import { createHash, randomBytes } from "node:crypto";
+import {
+  chmodSync,
+  closeSync,
+  constants,
+  fstatSync,
+  fsyncSync,
+  linkSync,
+  mkdtempSync,
+  openSync,
+  readSync,
+  unlinkSync,
+  writeSync
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 function readReportBytes(path) {
   let fd;
   try {
@@ -7333,46 +7342,6 @@ function decodeReport(buffer) {
   const text3 = buffer.toString("utf8");
   if (!Buffer.from(text3, "utf8").equals(buffer)) return { error: "invalid_utf8" };
   return { text: text3 };
-}
-function prepareBody({ path, buffer, expected }) {
-  const decoded = decodeReport(buffer);
-  if (decoded.error) return { status: "malformed", reason: decoded.error, line: 0 };
-  const verdict = validateReport(decoded.text, expected);
-  if (verdict.status === "malformed") return verdict;
-  let fd;
-  try {
-    fd = openSync(
-      path,
-      constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
-      384
-    );
-  } catch (error) {
-    return { status: "refused", reason: error.code === "EEXIST" ? "exists" : "unwritable" };
-  }
-  try {
-    writeSync(fd, buffer);
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
-  const written = readReportBytes(path);
-  if (written.error || !written.buffer.equals(buffer)) {
-    return { status: "refused", reason: "identity_changed" };
-  }
-  return { status: "prepared", path, bytes: buffer.length, verdict };
-}
-var NORMALIZATIONS = {
-  none: (bytes) => bytes,
-  "final-newline": (bytes) => bytes.at(-1) === 10 ? bytes.subarray(0, -1) : bytes
-};
-function bodyIdentity(received, preparedPath, normalization = "none") {
-  const normalize = NORMALIZATIONS[normalization];
-  if (normalize === void 0) return { identity: "unverified", reason: "normalization" };
-  const prepared = readReportBytes(preparedPath);
-  if (prepared.error) return { identity: "unverified", reason: prepared.error };
-  const left = normalize(received);
-  const right = normalize(prepared.buffer);
-  return { identity: left.equals(right) ? "identical" : "different", reason: normalization };
 }
 var VENDOR = /^[a-z0-9][a-z0-9-]{0,31}$/u;
 var LINK_UNSUPPORTED = /* @__PURE__ */ new Set(["EPERM", "ENOSYS", "EXDEV", "EMLINK"]);
@@ -7507,16 +7476,47 @@ function verifySlots(dir, slots) {
   }
   return parts;
 }
-function parseArguments(argv) {
-  const options = {};
-  for (let index2 = 0; index2 < argv.length; index2 += 2) {
-    const flag = argv[index2];
-    if (!flag.startsWith("--") || argv[index2 + 1] === void 0) {
-      throw new Error(`malformed argument near "${flag}"`);
-    }
-    options[flag.slice(2)] = argv[index2 + 1];
+
+// shared/scripts/mo-review-report.mjs
+function prepareBody({ path, buffer, expected }) {
+  const decoded = decodeReport(buffer);
+  if (decoded.error) return { status: "malformed", reason: decoded.error, line: 0 };
+  const verdict = validateReport(decoded.text, expected);
+  if (verdict.status === "malformed") return verdict;
+  let fd;
+  try {
+    fd = openSync2(
+      path,
+      constants2.O_CREAT | constants2.O_EXCL | constants2.O_WRONLY | constants2.O_NOFOLLOW,
+      384
+    );
+  } catch (error) {
+    return { status: "refused", reason: error.code === "EEXIST" ? "exists" : "unwritable" };
   }
-  return options;
+  try {
+    writeSync2(fd, buffer);
+    fsyncSync2(fd);
+  } finally {
+    closeSync2(fd);
+  }
+  const written = readReportBytes(path);
+  if (written.error || !written.buffer.equals(buffer)) {
+    return { status: "refused", reason: "identity_changed" };
+  }
+  return { status: "prepared", path, bytes: buffer.length, verdict };
+}
+var NORMALIZATIONS = {
+  none: (bytes) => bytes,
+  "final-newline": (bytes) => bytes.at(-1) === 10 ? bytes.subarray(0, -1) : bytes
+};
+function bodyIdentity(received, preparedPath, normalization = "none") {
+  const normalize = NORMALIZATIONS[normalization];
+  if (normalize === void 0) return { identity: "unverified", reason: "normalization" };
+  const prepared = readReportBytes(preparedPath);
+  if (prepared.error) return { identity: "unverified", reason: prepared.error };
+  const left = normalize(received);
+  const right = normalize(prepared.buffer);
+  return { identity: left.equals(right) ? "identical" : "different", reason: normalization };
 }
 function publicSummary({ candidate, verdict, counts }) {
   const summed = [0, 1, 2, 3].map(
@@ -7536,13 +7536,136 @@ Question: ${question}
 Recommended: ${hypothesis}`
   };
 }
-function require_(options, names) {
-  for (const name of names) {
-    if (options[name] === void 0) throw new Error(`--${name} is required`);
+var UsageError = class extends Error {
+};
+var SHA_VALUE = /^[a-f0-9]{40}$/u;
+var MODE_VALUE = /^(?:fast|deep|follow_up)$/u;
+var DECIMAL = /^(?:0|[1-9][0-9]*)$/u;
+var VALUES = {
+  candidate: [SHA_VALUE, "a full 40-hex SHA"],
+  requested: [MODE_VALUE, "fast, deep or follow_up"],
+  effective: [MODE_VALUE, "fast, deep or follow_up"],
+  verdict: [/^(?:PASS|FINDINGS|UNKNOWN)$/u, "PASS, FINDINGS or UNKNOWN"],
+  slot: [/^[AB]$/u, "A or B"],
+  kind: [/^(?:Preview|Handoff)$/u, "Preview or Handoff"],
+  normalization: [/^(?:none|final-newline)$/u, "none or final-newline"],
+  "a-bytes": [DECIMAL, "a decimal size"],
+  "b-bytes": [DECIMAL, "a decimal size"]
+};
+var EXPECTATION = "--dispatch <id> --candidate <40-hex> --requested <fast|deep|follow_up>";
+var SLOT_FLAGS = ["a", "b"].flatMap(
+  (prefix) => ["vendor", "bytes", "dev", "ino", "sha256"].map((field) => `${prefix}-${field}`)
+);
+var COMMANDS = {
+  namespace: {
+    required: [],
+    optional: [],
+    usage: "namespace",
+    about: "creates one private run directory under system temp and prints it",
+    example: "namespace"
+  },
+  template: {
+    required: ["verdict", "dispatch", "candidate", "requested", "effective"],
+    optional: ["unknown-reason"],
+    usage: `template --verdict <PASS|FINDINGS|UNKNOWN> ${EXPECTATION} --effective <mode> [--unknown-reason <reason>]`,
+    about: "prints a complete report body the validator accepts as printed",
+    example: `template --verdict PASS --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep --effective deep`
+  },
+  prepare: {
+    required: ["file", "dispatch", "candidate", "requested"],
+    optional: ["effective"],
+    usage: `prepare --file <Body-File> ${EXPECTATION} [--effective <mode>]   < report bytes on stdin`,
+    about: "validates the stdin bytes, then creates the Body-File once (never overwrites)",
+    example: `prepare --file /tmp/run/slot-a-r1-d1.md --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep < report.md`
+  },
+  validate: {
+    required: ["file", "dispatch", "candidate", "requested"],
+    optional: ["effective", "prepared", "normalization"],
+    usage: `validate --file <path|-> ${EXPECTATION} [--effective <mode>] [--prepared <Body-File> [--normalization none|final-newline]]`,
+    about: "checks one report; with --prepared also compares it byte for byte with the prepared file",
+    example: `validate --file - --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep < report.md`
+  },
+  stage: {
+    required: ["dir", "slot", "vendor", "dispatch", "candidate", "requested"],
+    optional: ["file", "effective"],
+    usage: `stage --dir <run dir> --slot A|B --vendor <slug> ${EXPECTATION} [--effective <mode>] [--file <path|->]`,
+    about: "validates one report and publishes it into its slot create-if-absent",
+    example: `stage --dir /tmp/mo-review-x --slot A --vendor anthropic --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep < report.md`
+  },
+  pair: {
+    required: ["dir", ...SLOT_FLAGS],
+    optional: [],
+    usage: "pair --dir <run dir> --a-vendor <slug> --a-bytes <n> --a-dev <n> --a-ino <n> --a-sha256 <hex> --b-vendor <slug> --b-bytes <n> --b-dev <n> --b-ino <n> --b-sha256 <hex>",
+    about: "proves both staged slots are still the published inodes and prints the pair line",
+    example: "pair --dir /tmp/mo-review-x --a-vendor anthropic --a-bytes 1 --a-dev 1 --a-ino 1 --a-sha256 <hex> --b-vendor openai --b-bytes 1 --b-dev 1 --b-ino 1 --b-sha256 <hex>"
+  },
+  preview: {
+    required: ["dir", "slot"],
+    optional: SLOT_FLAGS,
+    usage: "preview --dir <run dir> --slot A|B, with the five facts of that slot: --a-vendor --a-bytes --a-dev --a-ino --a-sha256 for A, --b-vendor --b-bytes --b-dev --b-ino --b-sha256 for B",
+    about: "proves one staged slot and prints the early preview line",
+    example: "preview --dir /tmp/mo-review-x --slot A --a-vendor anthropic --a-bytes 1 --a-dev 1 --a-ino 1 --a-sha256 <hex>"
+  },
+  ack: {
+    required: ["line", "kind", "pair-id"],
+    optional: ["a-bytes", "b-bytes"],
+    usage: "ack --kind Preview|Handoff --line <ack text> --pair-id <id> [--a-bytes <n>] [--b-bytes <n>]",
+    about: "checks a consumer's acknowledgement against the published sizes",
+    example: "ack --kind Handoff --line 'Review-Handoff-Ack: mo-review-x A=10 B=20' --pair-id mo-review-x --a-bytes 10 --b-bytes 20"
   }
+};
+var FLAGS = Object.fromEntries(
+  Object.entries(COMMANDS).map(([name, spec]) => [name, [...spec.required, ...spec.optional]])
+);
+var PROGRAM = "mo-review-report.mjs";
+var OVERVIEW = `usage: ${PROGRAM} <${Object.keys(COMMANDS).join("|")}> \u2026 | <command> --help
+`;
+function commandHelp(name) {
+  const spec = COMMANDS[name];
+  return `usage: ${PROGRAM} ${spec.usage}
+
+  ${spec.about}
+
+example:
+  node ${PROGRAM} ${spec.example}
+`;
+}
+function parseCommandLine(argv) {
+  const [name, ...rest] = argv;
+  if (name === "--help") return { help: OVERVIEW };
+  const spec = COMMANDS[name];
+  if (spec === void 0) throw new UsageError(OVERVIEW.trimEnd());
+  const options = {
+    ...Object.fromEntries(FLAGS[name].map((flag) => [flag, { type: "string" }])),
+    help: { type: "boolean" }
+  };
+  const names = parseArgs({ args: rest, options, strict: false, tokens: true }).tokens.filter((token) => token.kind === "option").map((token) => token.name);
+  const unknown = [...new Set(names.filter((flag) => !Object.hasOwn(options, flag)))];
+  if (unknown.length > 0) throw new UsageError(`${name} does not take --${unknown.join(", --")}`);
+  let parsed;
+  try {
+    parsed = parseArgs({ args: rest, options, strict: true, allowPositionals: false });
+  } catch (error) {
+    throw new UsageError(`${name}: ${error.message.split("\n")[0]}`);
+  }
+  if (parsed.values.help) return { help: commandHelp(name) };
+  const repeated = names.find((flag, index2) => names.indexOf(flag) !== index2);
+  if (repeated !== void 0) throw new UsageError(`${name}: --${repeated} is given twice`);
+  const values = { ...parsed.values };
+  const missing = spec.required.filter((flag) => values[flag] === void 0);
+  if (missing.length > 0) {
+    const verb = missing.length === 1 ? "is" : "are";
+    throw new UsageError(`${name}: --${missing.join(", --")} ${verb} required`);
+  }
+  for (const [flag, value] of Object.entries(values)) {
+    const rule = VALUES[flag];
+    if (rule !== void 0 && !rule[0].test(value)) {
+      throw new UsageError(`${name}: --${flag} must be ${rule[1]}`);
+    }
+  }
+  return { name, options: values };
 }
 function expectationOf(options) {
-  require_(options, ["dispatch", "candidate", "requested"]);
   return {
     execution: options.dispatch,
     candidate: options.candidate,
@@ -7551,7 +7674,6 @@ function expectationOf(options) {
   };
 }
 function commandValidate(options) {
-  require_(options, ["file"]);
   const bytes = options.file === "-" ? { buffer: readFileSync(0) } : readReportBytes(options.file);
   if (bytes.error) {
     process.stdout.write(`MO-REVIEW-REPORT/1 status=malformed reason=${bytes.error} line=0
@@ -7567,11 +7689,7 @@ function commandValidate(options) {
   process.stdout.write(`${reportLine(result)}
 `);
   if (options.prepared === void 0) return result.status === "valid" ? 0 : 1;
-  const normalization = options.normalization ?? "none";
-  if (NORMALIZATIONS[normalization] === void 0) {
-    throw new Error("--normalization must be none or final-newline");
-  }
-  const identity = bodyIdentity(bytes.buffer, options.prepared, normalization);
+  const identity = bodyIdentity(bytes.buffer, options.prepared, options.normalization ?? "none");
   process.stdout.write(
     `MO-REVIEW-BODY/1 prepared_body_identity=${identity.identity} reason=${identity.reason}
 `
@@ -7579,7 +7697,6 @@ function commandValidate(options) {
   return result.status === "valid" && identity.identity !== "different" ? 0 : 1;
 }
 function commandPrepare(options) {
-  require_(options, ["file"]);
   const result = prepareBody({
     path: options.file,
     buffer: readFileSync(0),
@@ -7604,7 +7721,6 @@ function commandPrepare(options) {
   return 1;
 }
 function commandTemplate(options) {
-  require_(options, ["verdict", "dispatch", "candidate", "requested", "effective"]);
   const template = reportTemplate({
     verdict: options.verdict,
     dispatch: options.dispatch,
@@ -7613,12 +7729,11 @@ function commandTemplate(options) {
     effective: options.effective,
     reason: options["unknown-reason"]
   });
-  if (template.error) throw new Error(template.error);
+  if (template.error) throw new UsageError(`template: ${template.error}`);
   process.stdout.write(template.text);
   return 0;
 }
 function commandStage(options) {
-  require_(options, ["dir", "slot", "vendor"]);
   const source = options.file === void 0 || options.file === "-" ? null : options.file;
   const bytes = source === null ? { buffer: readFileSync(0) } : readReportBytes(source);
   if (bytes.error) {
@@ -7646,13 +7761,8 @@ function commandStage(options) {
 }
 function slotOption(options, slot) {
   const prefix = slot.toLowerCase();
-  require_(options, [
-    `${prefix}-vendor`,
-    `${prefix}-bytes`,
-    `${prefix}-dev`,
-    `${prefix}-ino`,
-    `${prefix}-sha256`
-  ]);
+  const missing = ["vendor", "bytes", "dev", "ino", "sha256"].map((field) => `${prefix}-${field}`).filter((flag) => options[flag] === void 0);
+  if (missing.length > 0) throw new UsageError(`--${missing.join(", --")} is required`);
   return {
     slot,
     vendor: options[`${prefix}-vendor`],
@@ -7663,11 +7773,9 @@ function slotOption(options, slot) {
   };
 }
 function commandPreview(options) {
-  require_(options, ["dir", "slot"]);
-  if (!["A", "B"].includes(options.slot)) throw new Error("--slot must be A or B");
   const result = preview({
     dir: options.dir,
-    pairId: basename(options.dir),
+    pairId: basename2(options.dir),
     slot: slotOption(options, options.slot)
   });
   if (result.status !== "previewed") {
@@ -7682,14 +7790,13 @@ function commandPreview(options) {
   return 0;
 }
 function commandAck(options) {
-  require_(options, ["line", "kind", "pair-id"]);
   const bytes = {};
   for (const slot of ["A", "B"]) {
     const value = options[`${slot.toLowerCase()}-bytes`];
     if (value !== void 0) bytes[slot] = Number(value);
   }
   if (!ackSlotsValid(options.kind, Object.keys(bytes).sort())) {
-    throw new Error(
+    throw new UsageError(
       "--kind Handoff needs --a-bytes and --b-bytes, --kind Preview exactly one of them"
     );
   }
@@ -7705,9 +7812,8 @@ function commandAck(options) {
   return result.status === "matched" ? 0 : 1;
 }
 function commandPair(options) {
-  require_(options, ["dir"]);
   const slots = ["A", "B"].map((slot) => slotOption(options, slot));
-  const result = pair({ dir: options.dir, pairId: basename(options.dir), slots });
+  const result = pair({ dir: options.dir, pairId: basename2(options.dir), slots });
   if (result.status !== "paired") {
     process.stdout.write(
       `MO-REVIEW-PAIR/1 status=unknown reason=${result.reason} slot=${result.slot}
@@ -7719,49 +7825,31 @@ function commandPair(options) {
 `);
   return 0;
 }
-var EXPECTATION_FLAGS = ["dispatch", "candidate", "requested", "effective"];
-var SLOT_FLAGS = ["a", "b"].flatMap(
-  (prefix) => ["vendor", "bytes", "dev", "ino", "sha256"].map((field) => `${prefix}-${field}`)
-);
-var FLAGS = {
-  template: ["verdict", ...EXPECTATION_FLAGS, "unknown-reason"],
-  prepare: ["file", ...EXPECTATION_FLAGS],
-  validate: ["file", ...EXPECTATION_FLAGS, "prepared", "normalization"],
-  stage: ["dir", "slot", "vendor", "file", ...EXPECTATION_FLAGS],
-  pair: ["dir", ...SLOT_FLAGS],
-  preview: ["dir", "slot", ...SLOT_FLAGS],
-  ack: ["line", "kind", "pair-id", "a-bytes", "b-bytes"]
-};
-function knownFlags(name, options) {
-  const unknown = Object.keys(options).filter((flag) => !FLAGS[name].includes(flag));
-  if (unknown.length > 0) throw new Error(`${name} does not take --${unknown.join(", --")}`);
-  return options;
-}
-function main(argv) {
-  const commands = {
-    template: commandTemplate,
-    prepare: commandPrepare,
-    validate: commandValidate,
-    stage: commandStage,
-    pair: commandPair,
-    preview: commandPreview,
-    ack: commandAck
-  };
-  if (argv[0] === "namespace") {
-    const created = namespace();
-    process.stdout.write(
-      `MO-REVIEW-NS/1 dir=${JSON.stringify(created.dir)} pair_id=${created.pairId}
+function commandNamespace() {
+  const created = namespace();
+  process.stdout.write(
+    `MO-REVIEW-NS/1 dir=${JSON.stringify(created.dir)} pair_id=${created.pairId}
 `
-    );
+  );
+  return 0;
+}
+var RUN = {
+  namespace: commandNamespace,
+  template: commandTemplate,
+  prepare: commandPrepare,
+  validate: commandValidate,
+  stage: commandStage,
+  pair: commandPair,
+  preview: commandPreview,
+  ack: commandAck
+};
+function main(argv) {
+  const call = parseCommandLine(argv);
+  if (call.help !== void 0) {
+    process.stdout.write(call.help);
     return 0;
   }
-  const command = commands[argv[0]];
-  if (command === void 0) {
-    throw new Error(
-      "usage: mo-review-report.mjs <namespace|template|prepare|validate|stage|pair|preview|ack> \u2026"
-    );
-  }
-  return command(knownFlags(argv[0], parseArguments(argv.slice(1))));
+  return RUN[call.name](call.options);
 }
 function invokedDirectly() {
   try {
@@ -7780,15 +7868,18 @@ if (invokedDirectly()) {
   }
 }
 export {
+  COMMANDS,
   FLAGS,
   NORMALIZATIONS,
   bodyIdentity,
   businessQuestion,
   checkAck,
+  commandHelp,
   decodeReport,
   linkFailureReason,
   namespace,
   pair,
+  parseCommandLine,
   prepareBody,
   preview,
   publicSummary,
