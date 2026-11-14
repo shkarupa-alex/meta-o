@@ -100,6 +100,35 @@ test("the recovery ladder runs one way, ends at unknown_effect and restarts only
   }
 });
 
+test("a question without a confident answer is criticised by another vendor before the human", () => {
+  // #60: the orchestrator went to the owner first, although the human boundary
+  // asks for another model's critique before that.
+  for (const path of [
+    "shared/references/methodology.md",
+    "skills/mo-orchestrate-orca/references/methodology.md",
+  ]) {
+    const text = flat(path);
+    assertInOrder(
+      text,
+      [
+        "chosen by `launch.<role>.vendor` and never by route",
+        "differs from the orchestrator's",
+        "also differs from the executor's",
+        "otherwise `reviewerA`",
+        "An unknown vendor never counts as a different one",
+        "only reads it",
+        "stopped with a proven stop and released",
+        "A consultation is not a review",
+        "`Критика от <agent>/<model> (vendor=<…>): …`",
+      ],
+      path,
+    );
+  }
+  const skill = flat("skills/mo-orchestrate-orca/SKILL.md");
+  assert.match(skill, /--worktree id:<repo>::<executor worktree>/u);
+  assert.match(skill, /at 300000 ms, then `worker-stop`/u);
+});
+
 test("after compaction each lifecycle skill rereads itself and restores state from Orca first", () => {
   // #61: a compacted agent remembers having read the skill and stops rereading it.
   for (const skill of ["mo-orchestrate-orca", "mo-review-orca", "mo-e2e"]) {

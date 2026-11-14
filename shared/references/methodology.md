@@ -203,6 +203,30 @@ agent works. Answer technical, cheap and reversible choices when changing the
 choice later would cost roughly one agent-hour or less. Record every such
 decision for the final report.
 
+When an actor asks a question the orchestrator cannot answer with confidence,
+and the question is not one of the human boundaries below, get one critique from
+another model before going to the human. The consultant is a one-off Dispatch of
+an already approved reviewer role, `reviewerA` or `reviewerB` of
+`mo-models.mjs --show --json`, chosen by `launch.<role>.vendor` and never by
+route. The orchestrator's own vendor is `launch.orchestrator.vendor` when that
+role is set, otherwise the vendor of the session's own route and model. Choose:
+
+1. a role whose vendor is known and differs from the orchestrator's;
+2. among those, one whose vendor also differs from the executor's;
+3. otherwise `reviewerA`, and the report says that vendor difference is unproven
+   (`vendor=unknown` or the same vendor).
+
+An unknown vendor never counts as a different one. The consultant starts in the
+worktree of the actor the question is about and only reads it: it edits no
+product file, commits nothing and runs no command that changes files. It is a
+resource of the source project, waits in the run's one waiter with the
+reviewer/E2E class, and after its single final message it is stopped with a
+proven stop and released; another consultation is a new Dispatch. A consultation
+is not a review, counts toward no review round and never reaches the final pair.
+After the answer the orchestrator either decides itself and names the decision
+in the final report, or asks the human one question with its hypothesis and the
+line `Критика от <agent>/<model> (vendor=<…>): …`.
+
 Use one run-wide blocking waiter for all active actors. Subscribe to
 `worker_done`, `escalation` and `question`, plus `status` only while a report
 preview or pair handoff sent to an actor has no matching acknowledgement in the

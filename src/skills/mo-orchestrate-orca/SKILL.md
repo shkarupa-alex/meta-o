@@ -126,6 +126,21 @@ the one wait, every `E2E-Evidence` and `E2E-Coverage` line from `mo-e2e`'s
 complete `worker_done` messages, and the `Round` line of the last review brief.
 Until both are done send no task, follow-up or brief and release no resource.
 
+Answer an actor's technical, cheap and reversible question yourself and name
+the decision in the final report. Without a confident answer, and outside the
+human boundaries, consult before asking the human, as
+[Feature lifecycle](references/methodology.md) section 4 says: a one-off
+Dispatch of `reviewerA` or `reviewerB` chosen by `launch.<role>.vendor` — first
+a known vendor other than yours, then one also other than the executor's,
+otherwise `reviewerA` with vendor difference reported unproven; `unknown` is
+never different. Start it read-only in the asking actor's worktree with
+`worker-start --task <id> --worktree id:<repo>::<executor worktree>` and that
+role's `launch` flags, wait for it in the one waiter at 300000 ms, then
+`worker-stop`, prove the stop and release it after its single `worker_done`. It
+edits and commits nothing, is no review and never reaches the final pair. Then
+decide and report the decision, or ask the human one question with your
+hypothesis and `Критика от <agent>/<model> (vendor=<…>): …`.
+
 Run the proof loops in order, never alternating. When the executor settles and
 its deterministic checks pass, E2E comes first, and only if the project has
 scenarios in `docs/e2e.md` or the E2E document `AGENTS.md` names: call `mo-e2e`
