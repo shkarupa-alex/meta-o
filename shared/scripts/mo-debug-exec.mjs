@@ -67,15 +67,43 @@ function objectLiteral(node) {
   return value;
 }
 
-/** `tools.<name>(<literal>?)`, or null for any other expression. */
+/**
+ * The readable part of an argument that is not wholly literal: the object
+ * properties whose static key holds a literal, so `{cmd: "…", n: x}` still
+ * names its command. It never proves the call well-formed, only what it names.
+ */
+function readablePart(node) {
+  if (node?.type !== "ObjectExpression") {
+    const value = literal(node);
+    return value === UNSUPPORTED ? undefined : value;
+  }
+  const value = {};
+  for (const property of node.properties) {
+    if (property.type !== "Property" || property.kind !== "init") continue;
+    if (property.computed || property.method || property.shorthand) continue;
+    const key = property.key.type === "Identifier" ? property.key.name : property.key.value;
+    const nested = literal(property.value);
+    if (typeof key === "string" && nested !== UNSUPPORTED) value[key] = nested;
+  }
+  return value;
+}
+
+/**
+ * `tools.<name>(…)`, or null for any other expression. `argument` is the one
+ * wholly literal argument, or UNSUPPORTED; `found` is what the text names
+ * either way, so a call out of form still shows its command.
+ */
 function toolCall(node) {
   if (node?.type !== "CallExpression" || node.optional) return null;
   const callee = node.callee;
   if (callee.type !== "MemberExpression" || callee.computed || callee.optional) return null;
   if (callee.object.type !== "Identifier" || callee.object.name !== "tools") return null;
-  if (callee.property.type !== "Identifier" || node.arguments.length > 1) return null;
-  const argument = node.arguments.length === 0 ? undefined : literal(node.arguments[0]);
-  return { tool: callee.property.name, argument, start: node.start };
+  if (callee.property.type !== "Identifier") return null;
+  const [first] = node.arguments;
+  const argument =
+    node.arguments.length > 1 ? UNSUPPORTED : first === undefined ? undefined : literal(first);
+  const found = first === undefined ? undefined : readablePart(first);
+  return { tool: callee.property.name, argument, found, start: node.start, object: callee.object };
 }
 
 /** `await tools.<name>(…)` whose argument needs no evaluation, or null. */
@@ -163,39 +191,77 @@ function readStatement(statement, program) {
   return false;
 }
 
-/** Every `tools.<name>(...)` in the tree, in source order, for a program out of form. */
-function anyCalls(node, found = []) {
-  if (node === null || typeof node !== "object") return found;
-  if (Array.isArray(node)) {
-    for (const child of node) anyCalls(child, found);
-    return found;
-  }
-  if (typeof node.type !== "string") return found;
-  const call = toolCall(node);
-  if (call) found.push(call);
-  for (const [key, child] of Object.entries(node)) {
-    if (key !== "type" && child !== null && typeof child === "object") anyCalls(child, found);
-  }
-  return found;
+// A name that only labels a property, `x.tools` or `{tools: 1}`, is no use
+// of the `tools` object.
+function isLabel(node, parent, key) {
+  if (parent?.type === "MemberExpression") return key === "property" && !parent.computed;
+  if (parent?.type === "Property" || parent?.type === "MethodDefinition")
+    return key === "key" && !parent.computed && !parent.shorthand;
+  return false;
+}
+
+/**
+ * Every `tools.<name>(...)` in the tree, for a program out of form, and
+ * whether `tools` is also used another way: `tools["x"](…)`, an alias
+ * `const t = tools`, a spread. Such a use may run any tool unseen, so the
+ * program is `opaque`.
+ */
+function textCalls(tree) {
+  const calls = [];
+  const consumed = new Set();
+  const uses = [];
+  const visit = (node, parent, key) => {
+    if (node === null || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const child of node) visit(child, parent, key);
+      return;
+    }
+    if (typeof node.type !== "string") return;
+    const call = toolCall(node);
+    if (call) {
+      calls.push(call);
+      consumed.add(call.object);
+    }
+    if (node.type === "Identifier" && node.name === "tools" && !isLabel(node, parent, key))
+      uses.push(node);
+    for (const [name, child] of Object.entries(node)) {
+      if (name !== "type" && child !== null && typeof child === "object") visit(child, node, name);
+    }
+  };
+  visit(tree.body, tree, "body");
+  calls.sort((left, right) => left.start - right.start);
+  return { calls, opaque: uses.some((use) => !consumed.has(use)) };
 }
 
 /**
  * §A-DIAGNOSTICS-01 reads which tools one `exec` program calls, unevaluated.
  *
  * A program is `supported` only when every top-level statement is one of the
- * closed forms `await tools.<name>(<literal>)`, `text(await tools.<name>(…))`,
- * `const|let <id> = await tools.<name>(…)` (also wrapped in `text(…)`) and
- * `console.log|text(<id>)` or `(<id>.<property>)`, with literal arguments only.
- * Then the calls ran in source order unless the script failed. Any other
- * statement — a condition, a loop, a function, `try`, `Promise.all`, a
- * computed argument — makes the whole program unsupported, and the calls are
- * only found in its text. `perCall` says every call is shown exactly once, in
- * order, by its own output item, which is what lets items be matched to calls.
+ * closed forms below, where `<call>` is `await tools.<name>()` or
+ * `await tools.<name>(<literal>)` with one wholly literal argument and `<emit>`
+ * is `text` or `console.log` with exactly one argument:
+ *
+ * - `;` and `<call>`;
+ * - `<emit>(<call>)`, `<emit>(<id>)` and `<emit>(<id>.<property>)`, where
+ *   `<id>` was declared by an earlier statement of this list;
+ * - `const|let <id> = <call>` and `const|let <id> = <emit>(<call>)`, one new
+ *   name per declaration.
+ *
+ * A literal is a string, number, negative number, boolean, template without
+ * substitutions, or an array or object of literals with static keys. Then the
+ * calls ran in source order unless the script failed. Any other statement — a
+ * condition, a loop, a function, `try`, `Promise.all`, a computed argument, a
+ * second argument, `tools["x"]` or an alias of `tools` — makes the whole
+ * program unsupported, and the calls are only found in its text, each with
+ * the literal part of its argument. `opaque` says `tools` is used there other
+ * than as `tools.<name>(…)`, so it may call a tool no found call shows.
+ * `perCall` says every call is shown exactly once, in order, by its own output
+ * item, which is what lets items be matched to calls.
  *
  * @param {string} source the program text exactly as recorded
  * @returns {{supported: boolean, calls: {tool: string, argument: unknown}[],
- *   perCall: boolean, shown: boolean[], marked: boolean}} what the program
- *   text proves; `shown[i]` says an output item shows call `i`
+ *   perCall: boolean, shown: boolean[], marked: boolean, opaque: boolean}} what
+ *   the program text proves; `shown[i]` says an output item shows call `i`
  */
 export function readProgram(source) {
   const text = String(source ?? "");
@@ -204,24 +270,25 @@ export function readProgram(source) {
   try {
     tree = parse(text, { ecmaVersion: "latest", sourceType: "module" });
   } catch {
-    return { supported: false, calls: [], perCall: false, shown: [], marked };
+    // A program that does not parse never started, so it ran nothing.
+    return { supported: false, calls: [], perCall: false, shown: [], marked, opaque: false };
   }
   const program = { calls: [], emissions: [], bound: new Map() };
   const supported = tree.body.every((statement) => readStatement(statement, program));
   if (!supported) {
-    const calls = anyCalls(tree.body).sort((left, right) => left.start - right.start);
+    const { calls, opaque } = textCalls(tree);
     const shown = calls.map(() => false);
-    return { supported, calls: calls.map(publicCall), perCall: false, shown, marked };
+    return { supported, calls: calls.map(publicCall), perCall: false, shown, marked, opaque };
   }
   const perCall =
     program.emissions.length === program.calls.length &&
     program.emissions.every((index, order) => index === order);
   const shown = program.calls.map((_, index) => program.emissions.includes(index));
-  return { supported, calls: program.calls.map(publicCall), perCall, shown, marked };
+  return { supported, calls: program.calls.map(publicCall), perCall, shown, marked, opaque: false };
 }
 
-function publicCall({ tool, argument }) {
-  return { tool, argument: argument === UNSUPPORTED ? undefined : argument };
+function publicCall({ tool, found }) {
+  return { tool, argument: found };
 }
 
 function itemText(item) {

@@ -339,8 +339,12 @@ test("a run with an execution record is counted once, from that record", () => {
       ["synthetic:5", "helper_result", undefined],
     ],
   );
-  // Every run there has its record, so a loop hides none and is no gap.
-  assert.equal(session.outcome, "ok");
+  // The loop's command cannot be read, so no record is provably its run, and
+  // what else it ran stays unknown: its gap stays.
+  assert.deepEqual(
+    session.gaps.map((gap) => [gap.number, gap.reason]),
+    [[4, "unsupported_payload"]],
+  );
   // A direct call whose command never got a record stays, unconfirmed.
   const orphan = read([execution(OTHER, "x\n"), call("exec_command", "c", { cmd: HELPER })]);
   assert.deepEqual(
@@ -351,6 +355,159 @@ test("a run with an execution record is counted once, from that record", () => {
       ["helper_call", false],
     ],
   );
+});
+
+const failedScript = (callId) =>
+  execOutput(callId, [
+    { type: "input_text", text: "Script failed\nWall time 0.0 seconds\nOutput:\n" },
+    { type: "input_text", text: "Script error:\nboom" },
+  ]);
+
+test("a cell that failed before its call, then a retry, is one run", () => {
+  const program = `const ready = await tools.exec_command({cmd: "true"});\ntext(await tools.exec_command({cmd:${JSON.stringify(HELPER)}}));`;
+  const session = read([
+    exec("first", program),
+    failedScript("first"),
+    exec("retry", program),
+    execution("true", ""),
+    execution(HELPER, "MO-REVIEW/1 status=ok\n"),
+    execOutput("retry", items("MO-REVIEW/1 status=ok")),
+  ]);
+  // The failed cell's call never ran: it stays found, unconfirmed, and does
+  // not take the retry's execution record.
+  assert.deepEqual(
+    session.events.map((event) => [event.number, event.kind, event.confirmed]),
+    [
+      [1, "helper_call", false],
+      [5, "helper_call", true],
+      [5, "helper_result", undefined],
+    ],
+  );
+  assert.deepEqual(
+    session.gaps.map((gap) => [gap.number, gap.reason]),
+    [[2, "ambiguous_correlation"]],
+  );
+});
+
+test("a skipped branch before the real run is never confirmed by its record", () => {
+  const skipped = `if (false) {\n  text(await tools.exec_command({cmd:${JSON.stringify(HELPER)}}));\n}`;
+  const real = `text(await tools.exec_command({cmd:${JSON.stringify(HELPER)}}));`;
+  const session = read([
+    exec("branch", skipped),
+    execOutput("branch", items()),
+    exec("real", real),
+    execution(HELPER, "MO-REVIEW/1 status=ok\n"),
+    execOutput("real", items("MO-REVIEW/1 status=ok")),
+  ]);
+  assert.deepEqual(
+    session.events.map((event) => [event.number, event.kind, event.confirmed]),
+    [
+      [1, "helper_call", false],
+      [4, "helper_call", true],
+      [4, "helper_result", undefined],
+    ],
+  );
+  assert.deepEqual(session.reasons, ["unsupported_payload"]);
+});
+
+test("an execution record covers a cell's gap only when every call of interest found one", () => {
+  const program = [
+    `text(await tools.exec_command({cmd:${JSON.stringify(HELPER)}}));`,
+    `await tools.exec_command({cmd:${JSON.stringify(OTHER)}});`,
+  ].join("\n");
+  const both = read([
+    exec("outer", program),
+    execution(HELPER, "MO-REVIEW/1 status=ok\n"),
+    execution(OTHER, "MO-REVIEW-REPORT/1 status=valid\n"),
+    execOutput("outer", items("MO-REVIEW/1 status=ok")),
+  ]);
+  assert.deepEqual(
+    both.events.map((event) => [event.number, event.kind, event.confirmed]),
+    [
+      [2, "helper_call", true],
+      [2, "helper_result", undefined],
+      [3, "helper_call", true],
+      [3, "helper_result", undefined],
+    ],
+  );
+  assert.equal(both.outcome, "ok");
+  const one = read([
+    exec("outer", program),
+    execution(HELPER, "MO-REVIEW/1 status=ok\n"),
+    execOutput("outer", items("MO-REVIEW/1 status=ok")),
+  ]);
+  assert.deepEqual(
+    one.events.map((event) => [event.number, event.kind, event.confirmed]),
+    [
+      [1, "helper_call", false],
+      [2, "helper_call", true],
+      [2, "helper_result", undefined],
+    ],
+  );
+  assert.deepEqual(one.reasons, ["ambiguous_correlation"]);
+});
+
+test("an execution record of a command still running pairs with its call", () => {
+  const session = read([
+    call("exec_command", "cmd", { cmd: HELPER }),
+    output("cmd", "Process running with session ID 7"),
+    execution(HELPER, "MO-REVIEW/1 status=ok\n"),
+    call("write_stdin", "poll", { session_id: 7, chars: "" }),
+    output("poll", "Process exited with code 0\nOutput:\nMO-REVIEW/1 status=ok"),
+  ]);
+  assert.deepEqual(
+    session.events.map((event) => [event.number, event.kind]),
+    [
+      [3, "helper_call"],
+      [3, "helper_result"],
+    ],
+  );
+});
+
+test("typed lines past 64 KiB of output are still counted", () => {
+  const text = `${"x".repeat(70_000)}\n${[1, 2, 3, 4, 5].map((n) => `MO-EVIDENCE/1 row=${n}`).join("\n")}`;
+  assert.equal(typedOverflow(text), 1);
+  const session = read([call("exec_command", "cmd", { cmd: HELPER }), output("cmd", text)]);
+  assert.equal(
+    results(session)[0].excerpt,
+    "MO-EVIDENCE/1 row=1 ; MO-EVIDENCE/1 row=2 ; MO-EVIDENCE/1 row=3 ; MO-EVIDENCE/1 row=4",
+  );
+  assert.equal(session.truncated, 1);
+});
+
+test("a call out of the closed forms is a named gap, with its command kept when readable", () => {
+  const cmd = JSON.stringify(HELPER);
+  const opaque = [
+    `text(await tools["exec_command"]({cmd:${cmd}}));`,
+    `const t = tools;\ntext(await t.exec_command({cmd:${cmd}}));`,
+  ];
+  for (const program of opaque) {
+    const session = read([
+      exec("outer", program),
+      execOutput("outer", items("MO-REVIEW/1 status=ok")),
+    ]);
+    assert.deepEqual(session.reasons, ["unsupported_payload"], program);
+    assert.equal(session.outcome, "partial", program);
+  }
+  const visible = [
+    `text(await tools.exec_command({cmd:${cmd}}, {}));`,
+    `const wait = 1000;\ntext(await tools.exec_command({cmd:${cmd}, yield_time_ms: wait}));`,
+  ];
+  for (const program of visible) {
+    const session = read([
+      exec("outer", program),
+      execOutput("outer", items("MO-REVIEW/1 status=ok")),
+    ]);
+    assert.deepEqual(
+      calls(session).map((event) => [event.confirmed, event.skill]),
+      [[false, "mo-review-orca"]],
+      program,
+    );
+    assert.deepEqual(session.reasons, ["unsupported_payload"], program);
+  }
+  // `tools` only as a property name is no use of the tools object.
+  const label = readProgram(`const x = {tools: 1};\nconsole.log(x.tools, ${cmd});`);
+  assert.equal(label.opaque, false);
 });
 
 test("a line too long and an extractor error are named gaps", () => {
@@ -378,6 +535,9 @@ test("only the closed straight-line forms are supported exec programs", () => {
     `const r = await tools.exec_command({cmd:${cmd}});\nconsole.log(r);`,
     `let r = text(await tools.exec_command({cmd:${cmd}}));`,
     `const r = await tools.exec_command({cmd:${cmd}});\ntext(r.output);`,
+    `console.log(await tools.exec_command({cmd:${cmd}}));`,
+    `const r = console.log(await tools.exec_command({cmd:${cmd}}));;`,
+    `const r = await tools.exec_command({cmd:${cmd}});\nconsole.log(r.output);`,
   ];
   for (const source of supported) {
     const program = readProgram(source);

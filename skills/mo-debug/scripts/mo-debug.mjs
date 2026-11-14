@@ -325,15 +325,20 @@ function owningSkill(command) {
   return SKILL_DIR.exec(String(command))?.[1] ?? "-";
 }
 var TYPED_LIMIT = 4;
-function allTypedLines(output) {
-  const text = String(output ?? "").slice(0, 65536);
-  return [...text.matchAll(TYPED_LINE)].map((match) => match[0].trim());
+function scanTyped(output) {
+  const kept = [];
+  let count = 0;
+  for (const match of String(output ?? "").matchAll(TYPED_LINE)) {
+    if (kept.length < TYPED_LIMIT) kept.push(match[0].trim());
+    count += 1;
+  }
+  return { kept, overflow: count - kept.length };
 }
 function typedLines(output) {
-  return allTypedLines(output).slice(0, TYPED_LIMIT);
+  return scanTyped(output).kept;
 }
 function typedOverflow(output) {
-  return Math.max(0, allTypedLines(output).length - TYPED_LIMIT);
+  return scanTyped(output).overflow;
 }
 function typedResult(output) {
   const typed = typedLines(output);
@@ -6245,14 +6250,31 @@ function objectLiteral(node) {
   }
   return value;
 }
+function readablePart(node) {
+  if (node?.type !== "ObjectExpression") {
+    const value2 = literal2(node);
+    return value2 === UNSUPPORTED ? void 0 : value2;
+  }
+  const value = {};
+  for (const property of node.properties) {
+    if (property.type !== "Property" || property.kind !== "init") continue;
+    if (property.computed || property.method || property.shorthand) continue;
+    const key = property.key.type === "Identifier" ? property.key.name : property.key.value;
+    const nested = literal2(property.value);
+    if (typeof key === "string" && nested !== UNSUPPORTED) value[key] = nested;
+  }
+  return value;
+}
 function toolCall(node) {
   if (node?.type !== "CallExpression" || node.optional) return null;
   const callee = node.callee;
   if (callee.type !== "MemberExpression" || callee.computed || callee.optional) return null;
   if (callee.object.type !== "Identifier" || callee.object.name !== "tools") return null;
-  if (callee.property.type !== "Identifier" || node.arguments.length > 1) return null;
-  const argument = node.arguments.length === 0 ? void 0 : literal2(node.arguments[0]);
-  return { tool: callee.property.name, argument, start: node.start };
+  if (callee.property.type !== "Identifier") return null;
+  const [first] = node.arguments;
+  const argument = node.arguments.length > 1 ? UNSUPPORTED : first === void 0 ? void 0 : literal2(first);
+  const found = first === void 0 ? void 0 : readablePart(first);
+  return { tool: callee.property.name, argument, found, start: node.start, object: callee.object };
 }
 function awaitedCall(node) {
   const call = node?.type === "AwaitExpression" ? toolCall(node.argument) : null;
@@ -6314,19 +6336,37 @@ function readStatement(statement, program) {
   if (statement.type === "VariableDeclaration") return readDeclaration(statement, program);
   return false;
 }
-function anyCalls(node, found = []) {
-  if (node === null || typeof node !== "object") return found;
-  if (Array.isArray(node)) {
-    for (const child of node) anyCalls(child, found);
-    return found;
-  }
-  if (typeof node.type !== "string") return found;
-  const call = toolCall(node);
-  if (call) found.push(call);
-  for (const [key, child] of Object.entries(node)) {
-    if (key !== "type" && child !== null && typeof child === "object") anyCalls(child, found);
-  }
-  return found;
+function isLabel(node, parent, key) {
+  if (parent?.type === "MemberExpression") return key === "property" && !parent.computed;
+  if (parent?.type === "Property" || parent?.type === "MethodDefinition")
+    return key === "key" && !parent.computed && !parent.shorthand;
+  return false;
+}
+function textCalls(tree) {
+  const calls = [];
+  const consumed = /* @__PURE__ */ new Set();
+  const uses = [];
+  const visit = (node, parent, key) => {
+    if (node === null || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const child of node) visit(child, parent, key);
+      return;
+    }
+    if (typeof node.type !== "string") return;
+    const call = toolCall(node);
+    if (call) {
+      calls.push(call);
+      consumed.add(call.object);
+    }
+    if (node.type === "Identifier" && node.name === "tools" && !isLabel(node, parent, key))
+      uses.push(node);
+    for (const [name, child] of Object.entries(node)) {
+      if (name !== "type" && child !== null && typeof child === "object") visit(child, node, name);
+    }
+  };
+  visit(tree.body, tree, "body");
+  calls.sort((left, right) => left.start - right.start);
+  return { calls, opaque: uses.some((use) => !consumed.has(use)) };
 }
 function readProgram(source) {
   const text = String(source ?? "");
@@ -6335,21 +6375,21 @@ function readProgram(source) {
   try {
     tree = parse3(text, { ecmaVersion: "latest", sourceType: "module" });
   } catch {
-    return { supported: false, calls: [], perCall: false, shown: [], marked };
+    return { supported: false, calls: [], perCall: false, shown: [], marked, opaque: false };
   }
   const program = { calls: [], emissions: [], bound: /* @__PURE__ */ new Map() };
   const supported = tree.body.every((statement) => readStatement(statement, program));
   if (!supported) {
-    const calls = anyCalls(tree.body).sort((left, right) => left.start - right.start);
+    const { calls, opaque } = textCalls(tree);
     const shown2 = calls.map(() => false);
-    return { supported, calls: calls.map(publicCall), perCall: false, shown: shown2, marked };
+    return { supported, calls: calls.map(publicCall), perCall: false, shown: shown2, marked, opaque };
   }
   const perCall = program.emissions.length === program.calls.length && program.emissions.every((index, order) => index === order);
   const shown = program.calls.map((_, index) => program.emissions.includes(index));
-  return { supported, calls: program.calls.map(publicCall), perCall, shown, marked };
+  return { supported, calls: program.calls.map(publicCall), perCall, shown, marked, opaque: false };
 }
-function publicCall({ tool, argument }) {
-  return { tool, argument: argument === UNSUPPORTED ? void 0 : argument };
+function publicCall({ tool, found }) {
+  return { tool, argument: found };
 }
 function itemText(item) {
   if (typeof item === "string") return item;
@@ -6453,12 +6493,15 @@ function functionOutput(raw) {
 function interesting(command) {
   return helperNames(command).length > 0 || skillReads(command, null).length > 0;
 }
+function pollsInteresting(call) {
+  return Boolean(call.target) && interesting(call.target.command);
+}
 function ofRun(record) {
   return { ...CALL, run: record.run };
 }
-function startCommand(state, command, number) {
+function startCommand(state, command, number, cell2 = null) {
   const record = { run: state.records.length, command, number, time: state.evidence.now() };
-  record.chunks = [];
+  Object.assign(record, { cell: cell2, running: false, settled: false, paired: false, chunks: [] });
   record.event = helperNames(command).length > 0 ? state.evidence.event(number, "helper_call", owningSkill(command), command, {
     ...ofRun(record),
     confirmed: false
@@ -6467,33 +6510,49 @@ function startCommand(state, command, number) {
   return record;
 }
 function settleCommand(state, record, exitCode, number) {
+  record.settled = true;
   const result = { output: record.chunks.join(""), exitCode };
   if (record.event) helperResult(state.evidence, record.command, result, number, ofRun(record));
   commandEvidence(state.evidence, record.command, null, result, number, ofRun(record));
 }
-function preferExecutions(state, executed) {
-  if (executed.length === 0) return;
-  const left = /* @__PURE__ */ new Map();
-  for (const command of executed) left.set(command, (left.get(command) ?? 0) + 1);
-  const twinned = /* @__PURE__ */ new Set();
-  for (const record of state.records) {
-    const count = left.get(record.command) ?? 0;
-    if (count === 0) continue;
-    left.set(record.command, count - 1);
-    twinned.add(record.run);
-  }
-  const kept = (item) => item.origin !== "call" || item.run !== void 0 && !twinned.has(item.run);
+function isOpen(state, record) {
+  if (record.settled) return false;
+  return record.cell === null || record.running || state.open.has(record.cell);
+}
+function pairExecution(state, command) {
+  const record = state.records.findLast(
+    (candidate) => candidate.command === command && !candidate.paired && isOpen(state, candidate)
+  );
+  if (record) record.paired = true;
+}
+function accounted(call) {
+  if (call.record) return call.record.paired || !interesting(call.record.command);
+  if (call.stdin !== void 0) return !pollsInteresting(call) || call.target.paired;
+  return !RUNNERS.has(call.tool);
+}
+function preferExecutions(state) {
+  const paired = new Set(state.records.filter((record) => record.paired).map(({ run }) => run));
+  const covered = new Set(
+    state.cellGaps.filter(({ cell: cell2 }) => !cell2.program.opaque && cell2.calls.every(accounted)).map(({ gap }) => gap)
+  );
+  const kept = (item) => item.origin !== "call" || !paired.has(item.run);
   const { evidence } = state;
   evidence.events = evidence.events.filter(kept);
   evidence.loads = evidence.loads.filter(kept);
-  evidence.gaps = evidence.gaps.filter(kept);
+  evidence.gaps = evidence.gaps.filter((gap) => !covered.has(gap));
+}
+function cellGap(state, cell2, number, reason, details = CALL) {
+  state.evidence.gap(number, reason, details);
+  state.cellGaps.push({ cell: cell2, gap: state.evidence.gaps.at(-1) });
 }
 function commandAnswer(state, record, result, number) {
   if (record.event) record.event.confirmed = true;
   state.evidence.inherit(record.time);
   record.chunks.push(result.output);
-  if (result.session !== null) state.processes.set(result.session, record);
-  else settleCommand(state, record, result.exitCode, number);
+  if (result.session !== null) {
+    record.running = true;
+    state.processes.set(result.session, record);
+  } else settleCommand(state, record, result.exitCode, number);
 }
 function stdinAnswer(state, session, result, number) {
   const record = state.processes.get(session);
@@ -6504,35 +6563,35 @@ function stdinAnswer(state, session, result, number) {
   state.processes.delete(session);
   settleCommand(state, record, result.exitCode, number);
 }
-function foundCall(state, call, number) {
-  const argument = call.argument;
-  if (call.tool === "exec_command" && typeof argument?.cmd === "string") {
-    return { record: startCommand(state, argument.cmd, number) };
+function foundCall(state, call, number, cell2) {
+  const { argument, tool } = call;
+  if (tool === "exec_command" && typeof argument?.cmd === "string") {
+    return { tool, record: startCommand(state, argument.cmd, number, cell2) };
   }
   const session = argument?.session_id;
-  if (call.tool === "write_stdin" && (typeof session === "number" || typeof session === "string")) {
-    return { stdin: String(session) };
+  if (tool === "write_stdin" && (typeof session === "number" || typeof session === "string")) {
+    const stdin = String(session);
+    return { tool, stdin, target: state.processes.get(stdin) ?? null };
   }
-  return {};
+  return { tool };
 }
 var RUNNERS = /* @__PURE__ */ new Set(["exec_command", "write_stdin"]);
-function cellInteresting(state, cell2) {
+function cellInteresting(cell2) {
   const { program } = cell2;
   if (!program.supported)
-    return program.marked && program.calls.some((call) => RUNNERS.has(call.tool));
+    return program.marked && (program.opaque || program.calls.some((call) => RUNNERS.has(call.tool)));
   return cell2.calls.some(
-    (call) => call.record && interesting(call.record.command) || call.stdin && Boolean(state.processes.get(call.stdin))
+    (call) => call.record && interesting(call.record.command) || pollsInteresting(call)
   );
 }
 function startProgram(state, callId, source, number) {
   const program = readProgram(source);
   const cell2 = { number, time: state.evidence.now(), program, items: [] };
-  cell2.calls = program.calls.map((call) => foundCall(state, call, number));
-  cell2.interesting = cellInteresting(state, cell2);
-  if (!program.supported && cell2.interesting)
-    state.evidence.gap(number, "unsupported_payload", CALL);
-  state.calls.set(callId, { cell: cell2 });
   state.open.add(cell2);
+  cell2.calls = program.calls.map((call) => foundCall(state, call, number, cell2));
+  cell2.interesting = cellInteresting(cell2);
+  if (!program.supported && cell2.interesting) cellGap(state, cell2, number, "unsupported_payload");
+  state.calls.set(callId, { cell: cell2 });
 }
 function resolveCall(state, call, text, number) {
   if (call.record && text === null) {
@@ -6553,7 +6612,7 @@ function settleCell(state, cell2, status, number) {
     results = items;
   }
   if (results === null) {
-    if (cell2.interesting) state.evidence.gap(number, "ambiguous_correlation", CALL);
+    if (cell2.interesting) cellGap(state, cell2, number, "ambiguous_correlation");
     return;
   }
   calls.forEach((call, index) => resolveCall(state, call, results[index], number));
@@ -6576,7 +6635,8 @@ function createCallFollower(evidence) {
     processes: /* @__PURE__ */ new Map(),
     cells: /* @__PURE__ */ new Map(),
     open: /* @__PURE__ */ new Set(),
-    records: []
+    records: [],
+    cellGaps: []
   };
   const call = (payload, args, number) => {
     const name = payload.name;
@@ -6605,15 +6665,16 @@ function createCallFollower(evidence) {
     if (entry.record) commandAnswer(state, entry.record, functionOutput(payload.output), number);
     else stdinAnswer(state, entry.stdin, functionOutput(payload.output), number);
   };
-  const finish = (executed = []) => {
+  const execution = (command) => pairExecution(state, command);
+  const finish = () => {
     for (const cell2 of state.open) {
       if (cell2.interesting)
-        evidence.gap(cell2.number, "ambiguous_correlation", { ...CALL, time: cell2.time });
+        cellGap(state, cell2, cell2.number, "ambiguous_correlation", { ...CALL, time: cell2.time });
     }
     state.open.clear();
-    preferExecutions(state, executed);
+    preferExecutions(state);
   };
-  return { call, output, finish };
+  return { call, output, execution, finish };
 }
 function commandArgument(command) {
   if (Array.isArray(command)) return String(command.at(-1) ?? "");
@@ -6706,13 +6767,13 @@ function feedPayload(state, record, number) {
   if (record.type !== "event_msg" || payload.type !== "item_completed") return;
   const item = payload.item;
   if (item?.type === "CommandExecution") {
-    state.executed.push(commandArgument(item.command));
+    state.follower.execution(commandArgument(item.command));
     commandExecution(state.evidence, item, number);
   } else if (item?.type === "UserMessage") userAttachments(state.evidence, item, number);
 }
 function createCodexExtractor(session) {
   const evidence = createEvidence(session, "codex");
-  const state = { evidence, follower: createCallFollower(evidence), executed: [] };
+  const state = { evidence, follower: createCallFollower(evidence) };
   const recognizes = (record) => SHAPES.has(record.type) && record.payload !== null && typeof record.payload === "object";
   const feed = (record, number, time = null) => {
     if (!recognizes(record)) return;
@@ -6721,7 +6782,7 @@ function createCodexExtractor(session) {
     feedPayload(state, record, number);
   };
   const finish = () => {
-    state.follower.finish(state.executed);
+    state.follower.finish();
     return evidence;
   };
   return { evidence, feed, finish };

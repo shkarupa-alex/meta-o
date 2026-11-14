@@ -295,12 +295,20 @@ export function owningSkill(command) {
 }
 
 // How many typed lines one result keeps; the rest is counted, never dropped
-// silently, because the line past the bound is often the verdict.
+// silently, because the line past the bound is often the verdict. The whole
+// output is scanned, however long: a helper prints its verdict last, and a
+// line past any byte bound would vanish without a count. The record itself is
+// already bounded by the reader's line limit.
 const TYPED_LIMIT = 4;
 
-function allTypedLines(output) {
-  const text = String(output ?? "").slice(0, 65536);
-  return [...text.matchAll(TYPED_LINE)].map((match) => match[0].trim());
+function scanTyped(output) {
+  const kept = [];
+  let count = 0;
+  for (const match of String(output ?? "").matchAll(TYPED_LINE)) {
+    if (kept.length < TYPED_LIMIT) kept.push(match[0].trim());
+    count += 1;
+  }
+  return { kept, overflow: count - kept.length };
 }
 
 /**
@@ -310,7 +318,7 @@ function allTypedLines(output) {
  * @returns {string[]} at most four typed lines, in output order
  */
 export function typedLines(output) {
-  return allTypedLines(output).slice(0, TYPED_LIMIT);
+  return scanTyped(output).kept;
 }
 
 /**
@@ -320,7 +328,7 @@ export function typedLines(output) {
  * @returns {number} typed lines past the bound, 0 when all were kept
  */
 export function typedOverflow(output) {
-  return Math.max(0, allTypedLines(output).length - TYPED_LIMIT);
+  return scanTyped(output).overflow;
 }
 
 /**

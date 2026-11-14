@@ -9,8 +9,9 @@
  * and an `item_completed` event holding a `CommandExecution` with the command,
  * its parsed reads, its exit code and its output. The call shapes are followed
  * by `mo-debug-codex-calls.mjs`. A `CommandExecution` is the run itself, so a
- * rollout that writes them tells every run twice; at `finish` a call with an
- * execution record of the same command gives way to it, and each run counts once.
+ * rollout that writes them tells every run twice; the record is handed to the
+ * call follower the moment it appears, so it pairs with the call of that
+ * command still open then, which gives way to it, and each run counts once.
  *
  * A skill attached by the user arrives as a `skill` content item, which is the
  * only structural activation, and then as a user message wrapping the whole
@@ -137,7 +138,7 @@ function feedPayload(state, record, number) {
   if (record.type !== "event_msg" || payload.type !== "item_completed") return;
   const item = payload.item;
   if (item?.type === "CommandExecution") {
-    state.executed.push(commandArgument(item.command));
+    state.follower.execution(commandArgument(item.command));
     commandExecution(state.evidence, item, number);
   } else if (item?.type === "UserMessage") userAttachments(state.evidence, item, number);
 }
@@ -155,7 +156,7 @@ function feedPayload(state, record, number) {
  */
 export function createCodexExtractor(session) {
   const evidence = createEvidence(session, "codex");
-  const state = { evidence, follower: createCallFollower(evidence), executed: [] };
+  const state = { evidence, follower: createCallFollower(evidence) };
   const recognizes = (record) =>
     SHAPES.has(record.type) && record.payload !== null && typeof record.payload === "object";
   const feed = (record, number, time = null) => {
@@ -165,7 +166,7 @@ export function createCodexExtractor(session) {
     feedPayload(state, record, number);
   };
   const finish = () => {
-    state.follower.finish(state.executed);
+    state.follower.finish();
     return evidence;
   };
   return { evidence, feed, finish };

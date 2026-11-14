@@ -179,15 +179,24 @@ function interesting(command) {
   return helperNames(command).length > 0 || skillReads(command, null).length > 0;
 }
 
+/** A `write_stdin` poll of a known run whose command is of interest. */
+function pollsInteresting(call) {
+  return Boolean(call.target) && interesting(call.target.command);
+}
+
 /** Every event of one run names that run, so its execution record can replace it. */
 function ofRun(record) {
   return { ...CALL, run: record.run };
 }
 
-/** A found command: a helper call is recorded now, unconfirmed. */
-function startCommand(state, command, number) {
+/**
+ * A found command: a helper call is recorded now, unconfirmed. It stays open,
+ * and so able to take an execution record, until its final result arrives,
+ * or until its cell ends without leaving it running in a session.
+ */
+function startCommand(state, command, number, cell = null) {
   const record = { run: state.records.length, command, number, time: state.evidence.now() };
-  record.chunks = [];
+  Object.assign(record, { cell, running: false, settled: false, paired: false, chunks: [] });
   record.event =
     helperNames(command).length > 0
       ? state.evidence.event(number, "helper_call", owningSkill(command), command, {
@@ -200,36 +209,68 @@ function startCommand(state, command, number) {
 }
 
 function settleCommand(state, record, exitCode, number) {
+  record.settled = true;
   const result = { output: record.chunks.join(""), exitCode };
   if (record.event) helperResult(state.evidence, record.command, result, number, ofRun(record));
   commandEvidence(state.evidence, record.command, null, result, number, ofRun(record));
 }
 
+function isOpen(state, record) {
+  if (record.settled) return false;
+  return record.cell === null || record.running || state.open.has(record.cell);
+}
+
 /**
  * A rollout that writes `CommandExecution` records tells each run twice: once
- * as the call, once as the execution. A call whose exact command text has an
- * execution record left over is that run, and only the execution is kept; a
- * call without one stays, unconfirmed unless its own result arrived. Every
- * command such a rollout runs gets an execution record, so a program that
- * could not be read hides no run there, and its gap is dropped.
+ * as the call, once as the execution, which Codex writes while that call is
+ * still open. So an execution record is that run of the latest call of the
+ * same command still open when it appears, and only the execution is kept. A
+ * call whose cell already ended — it failed before the call, or a branch was
+ * skipped — never takes a later run's record: it stays, unconfirmed.
  */
-function preferExecutions(state, executed) {
-  if (executed.length === 0) return;
-  const left = new Map();
-  for (const command of executed) left.set(command, (left.get(command) ?? 0) + 1);
-  const twinned = new Set();
-  for (const record of state.records) {
-    const count = left.get(record.command) ?? 0;
-    if (count === 0) continue;
-    left.set(record.command, count - 1);
-    twinned.add(record.run);
-  }
-  const kept = (item) =>
-    item.origin !== "call" || (item.run !== undefined && !twinned.has(item.run));
+function pairExecution(state, command) {
+  const record = state.records.findLast(
+    (candidate) => candidate.command === command && !candidate.paired && isOpen(state, candidate),
+  );
+  if (record) record.paired = true;
+}
+
+/**
+ * Whether one call of a cell is told whole without the cell: a command whose
+ * execution record took its place, a command or poll of nothing of interest,
+ * a poll of a paired run, or a tool that runs nothing. A runner whose command
+ * cannot be read could have run anything.
+ */
+function accounted(call) {
+  if (call.record) return call.record.paired || !interesting(call.record.command);
+  if (call.stdin !== undefined) return !pollsInteresting(call) || call.target.paired;
+  return !RUNNERS.has(call.tool);
+}
+
+/**
+ * Keeps one account of each run: a paired call gives way to its execution
+ * record, and a cell's gap is dropped only when every call in it is told
+ * whole that way; a gap names a cell, and a cell with one unpaired call of
+ * interest still hides what that call did.
+ */
+function preferExecutions(state) {
+  const paired = new Set(state.records.filter((record) => record.paired).map(({ run }) => run));
+  const covered = new Set(
+    state.cellGaps
+      .filter(({ cell }) => !cell.program.opaque && cell.calls.every(accounted))
+      .map(({ gap }) => gap),
+  );
+  const kept = (item) => item.origin !== "call" || !paired.has(item.run);
   const { evidence } = state;
   evidence.events = evidence.events.filter(kept);
   evidence.loads = evidence.loads.filter(kept);
-  evidence.gaps = evidence.gaps.filter(kept);
+  evidence.gaps = evidence.gaps.filter((gap) => !covered.has(gap));
+}
+
+/** A gap of one cell, which an execution record of each of its calls covers. */
+function cellGap(state, cell, number, reason, details = CALL) {
+  state.evidence.gap(number, reason, details);
+  state.cellGaps.push({ cell, gap: state.evidence.gaps.at(-1) });
 }
 
 /** The first answer of a command: final, or the session it keeps running in. */
@@ -237,8 +278,10 @@ function commandAnswer(state, record, result, number) {
   if (record.event) record.event.confirmed = true;
   state.evidence.inherit(record.time);
   record.chunks.push(result.output);
-  if (result.session !== null) state.processes.set(result.session, record);
-  else settleCommand(state, record, result.exitCode, number);
+  if (result.session !== null) {
+    record.running = true;
+    state.processes.set(result.session, record);
+  } else settleCommand(state, record, result.exitCode, number);
 }
 
 /** A poll of a running session: only an answer with an exit code is final. */
@@ -252,34 +295,36 @@ function stdinAnswer(state, session, result, number) {
   settleCommand(state, record, result.exitCode, number);
 }
 
-function foundCall(state, call, number) {
-  const argument = call.argument;
-  if (call.tool === "exec_command" && typeof argument?.cmd === "string") {
-    return { record: startCommand(state, argument.cmd, number) };
+function foundCall(state, call, number, cell) {
+  const { argument, tool } = call;
+  if (tool === "exec_command" && typeof argument?.cmd === "string") {
+    return { tool, record: startCommand(state, argument.cmd, number, cell) };
   }
   const session = argument?.session_id;
-  if (call.tool === "write_stdin" && (typeof session === "number" || typeof session === "string")) {
-    return { stdin: String(session) };
+  if (tool === "write_stdin" && (typeof session === "number" || typeof session === "string")) {
+    const stdin = String(session);
+    return { tool, stdin, target: state.processes.get(stdin) ?? null };
   }
-  return {};
+  return { tool };
 }
 
 const RUNNERS = new Set(["exec_command", "write_stdin"]);
 
 /**
  * Whether the cell can hold evidence of interest. A program out of form may
- * build its command at run time, so it counts when it runs commands at all
- * and names a Meta-O helper or skill directory anywhere; one that only patches
- * a file under `skills/mo-*` runs nothing and hides no run.
+ * build its command at run time, so it counts when it names a Meta-O helper or
+ * skill directory anywhere and either calls a command tool or uses `tools` in
+ * a way no found call shows; one that only patches a file under `skills/mo-*`
+ * runs nothing and hides no run.
  */
-function cellInteresting(state, cell) {
+function cellInteresting(cell) {
   const { program } = cell;
   if (!program.supported)
-    return program.marked && program.calls.some((call) => RUNNERS.has(call.tool));
+    return (
+      program.marked && (program.opaque || program.calls.some((call) => RUNNERS.has(call.tool)))
+    );
   return cell.calls.some(
-    (call) =>
-      (call.record && interesting(call.record.command)) ||
-      (call.stdin && Boolean(state.processes.get(call.stdin))),
+    (call) => (call.record && interesting(call.record.command)) || pollsInteresting(call),
   );
 }
 
@@ -287,12 +332,12 @@ function cellInteresting(state, cell) {
 function startProgram(state, callId, source, number) {
   const program = readProgram(source);
   const cell = { number, time: state.evidence.now(), program, items: [] };
-  cell.calls = program.calls.map((call) => foundCall(state, call, number));
-  cell.interesting = cellInteresting(state, cell);
-  if (!program.supported && cell.interesting)
-    state.evidence.gap(number, "unsupported_payload", CALL);
-  state.calls.set(callId, { cell });
+  // The cell is open before its calls are found, so they are open with it.
   state.open.add(cell);
+  cell.calls = program.calls.map((call) => foundCall(state, call, number, cell));
+  cell.interesting = cellInteresting(cell);
+  if (!program.supported && cell.interesting) cellGap(state, cell, number, "unsupported_payload");
+  state.calls.set(callId, { cell });
 }
 
 function resolveCall(state, call, text, number) {
@@ -320,7 +365,7 @@ function settleCell(state, cell, status, number) {
     results = items;
   }
   if (results === null) {
-    if (cell.interesting) state.evidence.gap(number, "ambiguous_correlation", CALL);
+    if (cell.interesting) cellGap(state, cell, number, "ambiguous_correlation");
     return;
   }
   calls.forEach((call, index) => resolveCall(state, call, results[index], number));
@@ -342,10 +387,11 @@ function cellAnswer(state, cell, output, number) {
  * §A-DIAGNOSTICS-01 creates the call follower of one Codex rollout.
  *
  * @param {object} evidence collector from `createEvidence`
- * @returns {{call: Function, output: Function, finish: Function}} `call` takes
- *   a `function_call` or `custom_tool_call` payload, `output` its answer, and
- *   `finish(executed)` turns every cell still open into a named gap, then
- *   keeps one account of each run given the commands of execution records
+ * @returns {{call: Function, output: Function, execution: Function,
+ *   finish: Function}} `call` takes a `function_call` or `custom_tool_call`
+ *   payload, `output` its answer, `execution(command)` the command of a
+ *   `CommandExecution` record at the moment it appears, and `finish` turns
+ *   every cell still open into a named gap, then keeps one account of each run
  */
 export function createCallFollower(evidence) {
   const state = {
@@ -355,6 +401,7 @@ export function createCallFollower(evidence) {
     cells: new Map(),
     open: new Set(),
     records: [],
+    cellGaps: [],
   };
   const call = (payload, args, number) => {
     const name = payload.name;
@@ -383,15 +430,16 @@ export function createCallFollower(evidence) {
     if (entry.record) commandAnswer(state, entry.record, functionOutput(payload.output), number);
     else stdinAnswer(state, entry.stdin, functionOutput(payload.output), number);
   };
-  const finish = (executed = []) => {
+  const execution = (command) => pairExecution(state, command);
+  const finish = () => {
     for (const cell of state.open) {
       if (cell.interesting)
-        evidence.gap(cell.number, "ambiguous_correlation", { ...CALL, time: cell.time });
+        cellGap(state, cell, cell.number, "ambiguous_correlation", { ...CALL, time: cell.time });
     }
     state.open.clear();
-    preferExecutions(state, executed);
+    preferExecutions(state);
   };
-  return { call, output, finish };
+  return { call, output, execution, finish };
 }
 
 /**
