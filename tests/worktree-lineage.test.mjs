@@ -53,5 +53,5 @@ test("a new actor worktree is a child of the task's working directory", () => {
     /`new-child --from` your handle inside a terminal, `--parent-worktree` outside one/u,
   );
   // The live scenario that proves it is announced, so no agent misses it.
-  assert.match(flat("docs/e2e.md"), /\| LIVE-4 \| ACC-C5 \|/u);
+  assert.match(flat("docs/e2e.md"), /\| LIVE-4 \| #53: /u);
 });
