@@ -16,6 +16,7 @@ Every brief carries all of these, in this order, each on its own line or block:
 | `Intent-Ledger`        | the user's verbatim intent ledger, in the same four forms                 |
 | `Scope`                | the task range `<base>..<Target>`, named sections, what is out of scope   |
 | `Mode`                 | `fast`, `deep` or `follow_up`, and that self-escalation is the reviewer's |
+| `Round`                | `attempt=<n>/<limit> deep_reads=<m> fragment=<id>` the caller counted     |
 | `Placement`            | `isolated` or `shared_checkout`, the exact workspace, where its `HEAD` is |
 | `Environment`          | that no test, linter or QC is run: reading is by SHA, nothing is executed |
 | `Constraints`          | what the reviewer may not do: no writes, no tests, lint, QC or subagents  |
@@ -36,6 +37,22 @@ branch of its own, the start the caller names — in the simplest case the branc
 name, resolved to a full SHA. `Target` is only the upper bound. A `follow_up`
 brief carries the same range together with the delta since the previous
 candidate; the delta says where to look first, not what may be reported.
+
+`Round: attempt=<n>/<limit> deep_reads=<m> fragment=<fragment-id>` carries the
+caller's own counters for this Dispatch, and the reviewer passes the four values
+to the validator as `--attempt`, `--attempt-limit`, `--deep-reads` and
+`--fragment`, which print and check the body's `Round` line; the reviewer never
+copies the line itself. `fragment` is a short id the caller gives the content
+fragment under review, `[a-z0-9-]{1,40}`. Both counters belong to that fragment
+and to the pair, and include this round: a new SHA, a hot continuation and a
+slot replacement reset neither, and only a new fragment starts both again.
+`limit` is 5 or the extension the owner approved; `deep_reads` grows by one for
+the first deep pair of the fragment and for every fresh independent deep pair
+after it, the final one included, while a hot continuation, a slot replacement
+and the one repeat after a malformed Dispatch leave it as it was. The caller
+checks the body's line against its own values when it stages the report and
+again when it pairs both, so a value carried over wrongly is `round_mismatch`
+and the report is not published.
 
 `Review-Execution` in the report is the Dispatch id from Orca's own preamble,
 copied verbatim; the brief says so rather than supplying a guess. No placeholder
@@ -89,10 +106,11 @@ in the grammar of [Portable review protocol](review-protocol.md), and that
 grammar replaces whatever generic completion format the backend's own preamble
 describes — a reviewer that sees two formats and no such sentence has to guess
 which one loses the review. It also carries the `mo-review-report.mjs template`
-command with the brief's candidate and modes, so the service lines are copied
-rather than rebuilt from prose. Its `--dispatch` value is the reviewer's to take
-from Orca's preamble: the Dispatch id exists only after the task is written, and
-naming where a value comes from is not a placeholder.
+command with the brief's candidate, modes and the four `Round` values, so the
+service lines are copied rather than rebuilt from prose. Its `--dispatch` value
+is the reviewer's to take from Orca's preamble: the Dispatch id exists only
+after the task is written, and naming where a value comes from is not a
+placeholder.
 
 `Body-File` names one path, `Body-File: <dir>/slot-<a|b>-r<round>-d<n>.md`, in a
 directory the caller created for this run outside every worktree. The name is

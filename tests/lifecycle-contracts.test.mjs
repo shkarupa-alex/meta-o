@@ -488,7 +488,8 @@ function settleReportAttempts(reports, expected) {
 test("PASS, FINDINGS and UNKNOWN fixtures preserve the canonical review envelope", () => {
   const base = (verdict, counts, index, findings, extra = "", mode = "deep") =>
     `Review-Execution: ctx_fixture\nCandidate: ${"a".repeat(40)}\n` +
-    `Mode: requested=${mode} effective=${mode}\nDelegation: none\nVerdict: ${verdict}\n` +
+    `Mode: requested=${mode} effective=${mode}\nRound: attempt=3/5 deep_reads=1 fragment=f1\n` +
+    `Delegation: none\nVerdict: ${verdict}\n` +
     `Counts: ${counts}\n\n${index}Evidence report\nGrounding\nintent and clean SHA\n` +
     `Scope and checks\nread-only diff and tests\nFindings\n${findings}${extra}` +
     "Unknowns\nnone\nResidual risks\nnone\nEnd-Review: ctx_fixture\n";
@@ -497,6 +498,7 @@ test("PASS, FINDINGS and UNKNOWN fixtures preserve the canonical review envelope
     candidate: "a".repeat(40),
     requestedMode: mode,
     effectiveMode: mode,
+    round: { attempt: 3, limit: 5, deepReads: 1, fragment: "f1" },
   });
   const validateFixture = (report, mode = "deep") => validateReport(report, context(mode));
   // A rejected report now says why, so the negatives below name the reason
@@ -599,6 +601,7 @@ test("PASS, FINDINGS and UNKNOWN fixtures preserve the canonical review envelope
     ["Candidate", `Candidate: ${"b".repeat(40)}`, "candidate_mismatch"],
     ["Review-Execution", "Review-Execution: ctx_stale", "execution_mismatch"],
     ["Mode", "Mode: requested=fast effective=deep", "mode_mismatch"],
+    ["Round", "Round: attempt=3/5 deep_reads=1 fragment=f2", "round_mismatch"],
   ]) {
     const valid = base("PASS", "P0=0 P1=0 P2=0 P3=0", "", "");
     assert.equal(reasonOf(valid.replace(new RegExp(`^${field}:.*`, "mu"), replacement)), reason);
@@ -1224,7 +1227,8 @@ test("the coordinator's validate command binds the effective mode it needs", () 
   // Without the flag the documented call checked the requested mode only, so a
   // closure report that declared a lower coverage was never compared.
   for (const path of ["src/skills/mo-review-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
-    const command = /scripts\/mo-review-report\.mjs validate [^`]*/u.exec(source(path))?.[0] ?? "";
+    const command =
+      /scripts\/mo-review-report\.mjs"? validate [^`]*/u.exec(source(path))?.[0] ?? "";
     assert.match(command, /--requested <mode> --effective <mode>/u, path);
     assert.match(source(path).replace(/\s+/gu, " "), /`deep` for a `deep` request/u, path);
   }

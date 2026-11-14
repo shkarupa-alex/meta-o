@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-convergence; ask the 
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "23d094121d9ac708f21d9704567b21cc1320f1df"
+  source_tree: "4fc89e7062dece73a89377a3a1cf9528c7d41057"
 ---
 
 # Diagnose work that does not converge
@@ -52,10 +52,11 @@ prompt or any other answer sends nothing, and that participant is recorded as
 unavailable with the classifier's line.
 
 Then check the sequence yourself from public evidence only: the candidates in
-order, each round's verdict, `attempt <n>/5` and `deep_reads <m>`, the findings
-that returned after being marked fixed, and the requirements they touch. A
-finding that keeps coming back in a new shape usually names a boundary, not a
-patch.
+order, each round's verdict and its
+`Round: attempt=<n>/<limit> deep_reads=<m> fragment=<fragment-id>` line, the
+findings that returned after being marked fixed, and the requirements they
+touch. A finding that keeps coming back in a new shape usually names a boundary,
+not a patch.
 
 ## Recommend
 

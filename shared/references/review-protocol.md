@@ -203,13 +203,14 @@ does not run it.
 Return one complete textual report. Its first line — the first byte of the body
 — is `Review-Execution:` followed by one space and the bare Dispatch id, nothing
 after it. The validator's own output line `MO-REVIEW-REPORT/1 …` is never part
-of a body. The six service lines come in this order, with at most one empty line
-between two of them and nothing else:
+of a body. The seven service lines come in this order, with at most one empty
+line between two of them and nothing else:
 
 ```text
 Review-Execution: <opaque dispatch id>
 Candidate: <40-hex SHA>
 Mode: requested=<fast|deep|follow_up> effective=<fast|deep|follow_up>
+Round: attempt=<n>/<limit> deep_reads=<m> fragment=<fragment-id>
 Delegation: none
 Verdict: <PASS|FINDINGS|UNKNOWN>
 Counts: P0=<n> P1=<n> P2=<n> P3=<n>
@@ -266,8 +267,13 @@ no declaration asks before sending.
 
 Validate the exact bytes before sending them. The shipped
 `mo-review-report.mjs template` prints a complete body this grammar accepts for
-the brief's own Dispatch, candidate and modes; fill it in rather than rebuild
-it. `mo-review-report.mjs prepare --file <Body-File>` validates the bytes, then
+the brief's own Dispatch, candidate, modes and round; fill it in rather than
+rebuild it. The `Round` line comes from the four values of the brief's `Round`
+field passed as `--attempt`, `--attempt-limit`, `--deep-reads` and `--fragment`
+to `template`, `prepare` and `validate`; a missing line is `round_missing`, a
+misspelled one `round_malformed`, an attempt over its limit
+`round_exceeds_budget`, and a line other than the flags say `round_mismatch`.
+`mo-review-report.mjs prepare --file <Body-File>` validates the bytes, then
 creates the file the brief named exclusively and writes them once; the response
 carries exactly that file's content. Without a `Body-File`,
 `mo-review-report.mjs validate --file -` checks the same bytes from stdin. A

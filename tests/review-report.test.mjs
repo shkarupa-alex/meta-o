@@ -40,6 +40,18 @@ import {
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const HELPER = join(ROOT, "shared", "scripts", "mo-review-report.mjs");
 const SHA = "a".repeat(40);
+const ROUND = { attempt: 1, limit: 5, deepReads: 1, fragment: "f1" };
+const ROUND_LINE = "Round: attempt=1/5 deep_reads=1 fragment=f1";
+const ROUND_ARGS = [
+  "--attempt",
+  "1",
+  "--attempt-limit",
+  "5",
+  "--deep-reads",
+  "1",
+  "--fragment",
+  "f1",
+];
 const spaces = [];
 after(() => {
   for (const path of spaces) rmSync(path, { recursive: true, force: true });
@@ -63,7 +75,8 @@ function report({
 } = {}) {
   return (
     `Review-Execution: ${execution}\nCandidate: ${candidate}\n` +
-    `Mode: requested=${mode} effective=${mode}\nDelegation: none\nVerdict: ${verdict}\n` +
+    `Mode: requested=${mode} effective=${mode}\n${ROUND_LINE}\nDelegation: none\n` +
+    `Verdict: ${verdict}\n` +
     `Counts: ${counts}\n\n${index}Evidence report\nGrounding\nintent and clean SHA\n` +
     `Scope and checks\nread-only diff and tests\nFindings\n${findings}${account}` +
     `Unknowns\nnone\nResidual risks\nnone\nEnd-Review: ${execution}\n`
@@ -75,6 +88,7 @@ const context = (mode = "deep") => ({
   candidate: SHA,
   requestedMode: mode,
   effectiveMode: mode,
+  round: ROUND,
 });
 
 const reasonOf = (text, mode = "deep") => validateReport(text, context(mode)).reason;
@@ -280,7 +294,7 @@ test("every command refuses a flag it does not read, in every shipped copy", () 
   const prepared = join(dir, "prepared.md");
   writeFileSync(prepared, report());
   const base = ["validate", "--file", good, "--dispatch", "ctx_fixture", "--candidate", SHA];
-  const expected = [...base, "--requested", "deep", "--effective", "deep"];
+  const expected = [...base, "--requested", "deep", "--effective", "deep", ...ROUND_ARGS];
   const copies = [
     HELPER,
     ...["mo-reviewer", "mo-review-orca", "mo-orchestrate-orca"].map((skill) =>
@@ -356,6 +370,7 @@ test("the CLI answers with one line and a status a caller can branch on", () => 
     SHA,
     "--requested",
     "deep",
+    ...ROUND_ARGS,
   ]);
   assert.equal(ok.status, 0, ok.stderr.toString());
   assert.equal(
@@ -376,6 +391,7 @@ test("the CLI answers with one line and a status a caller can branch on", () => 
     SHA,
     "--requested",
     "deep",
+    ...ROUND_ARGS,
   ]);
   assert.equal(malformed.status, 1);
   assert.match(malformed.stdout.toString(), /status=malformed reason=footer_mismatch line=\d+/u);
@@ -383,7 +399,10 @@ test("the CLI answers with one line and a status a caller can branch on", () => 
   // A call error is neither a valid report nor a malformed one.
   const misuse = spawnSync(process.execPath, [HELPER, "validate", "--file", good]);
   assert.equal(misuse.status, 2);
-  assert.match(misuse.stderr.toString(), /--dispatch, --candidate, --requested are required/u);
+  assert.match(
+    misuse.stderr.toString(),
+    /--dispatch, --candidate, --requested, --attempt, --attempt-limit, --deep-reads, --fragment are required/u,
+  );
 });
 
 test("a source that is not a plain file is refused rather than followed", () => {
@@ -403,6 +422,7 @@ test("a source that is not a plain file is refused rather than followed", () => 
     SHA,
     "--requested",
     "deep",
+    ...ROUND_ARGS,
   ]);
   assert.equal(followed.status, 1);
   assert.match(followed.stdout.toString(), /reason=symlink/u);
@@ -418,6 +438,7 @@ test("a source that is not a plain file is refused rather than followed", () => 
     SHA,
     "--requested",
     "deep",
+    ...ROUND_ARGS,
   ]);
   assert.equal(directory.status, 1);
   assert.match(directory.stdout.toString(), /reason=not_regular_file/u);
@@ -438,6 +459,7 @@ test("bytes that are not UTF-8 are not a report", () => {
     SHA,
     "--requested",
     "deep",
+    ...ROUND_ARGS,
   ]);
   assert.equal(result.status, 1);
   assert.match(result.stdout.toString(), /reason=invalid_utf8/u);
@@ -647,6 +669,7 @@ test("the CLI stages from stdin byte for byte", () => {
       SHA,
       "--requested",
       "deep",
+      ...ROUND_ARGS,
     ],
     { input: Buffer.from(text, "utf8") },
   );
@@ -747,7 +770,7 @@ function documentedCalls(text) {
         .replace(/\\\n/gu, " ")
         .replace(/\n/gu, node.type === "code" ? "\n" : " ");
       for (const line of value.split("\n")) {
-        for (const match of line.matchAll(/mo-review-report\.mjs[ \t]+([a-z]+)([^\n]*)/gu)) {
+        for (const match of line.matchAll(/mo-review-report\.mjs"?[ \t]+([a-z]+)([^\n]*)/gu)) {
           calls.push({ command: match[1], words: match[2].split(/[ \t]+/u).filter(Boolean) });
         }
       }
@@ -763,7 +786,7 @@ function namedFlags({ words }) {
   const flags = [];
   for (let index = 0; index < words.length; index += 1) {
     const word = words[index].replace(/^\[|\]$/gu, "");
-    if (word === "<" || word === "|" || word === ">") break;
+    if (word === "<" || word === "|" || word === ">" || word.startsWith("<<")) break;
     if (!word.startsWith("--")) return { flags, unnamed: word };
     flags.push(word.slice(2));
     if (words[index + 1] !== undefined && !words[index + 1].replace(/^\[/u, "").startsWith("--"))
@@ -820,6 +843,7 @@ test("the stage call the skill documents is accepted, and validate-only flags ar
     SHA,
     "--requested",
     "deep",
+    ...ROUND_ARGS,
     "--effective",
     "deep",
   ];
@@ -910,4 +934,69 @@ test("an unknown or repeated flag is a call error before stdin or the filesystem
   assert.equal(missing.status, 2);
   assert.match(missing.stderr, /are required/u);
   assert.deepEqual(missing.left, []);
+});
+
+test("the Round line carries the attempt, its limit, the deep reads and the fragment", () => {
+  const at = (line) => report().replace(ROUND_LINE, line);
+  const custom = (line, round) => validateReport(at(line), { ...context(), round });
+  // An owner-approved extension is a larger limit, and it is the flags that say so.
+  const extended = { attempt: 6, limit: 10, deepReads: 2, fragment: "f1" };
+  assert.equal(custom("Round: attempt=6/10 deep_reads=2 fragment=f1", extended).status, "valid");
+  assert.equal(reasonOf(report().replace(`${ROUND_LINE}\n`, "")), "round_missing");
+  assert.equal(reasonOf(at("Round: attempt=6/5 deep_reads=1 fragment=f1")), "round_exceeds_budget");
+  for (const line of [
+    "Round: attempt=1/5",
+    "Round: attempt=0/5 deep_reads=0 fragment=f1",
+    "Round: attempt=01/5 deep_reads=1 fragment=f1",
+    "Round: attempt=1/5 deep_reads=2 fragment=f1",
+    "Round: attempt=1/5 deep_reads=1 fragment=F1",
+    `Round: attempt=1/5 deep_reads=1 fragment=${"f".repeat(41)}`,
+    "Round: attempt=1/5 deep_reads=1 fragment=f1 extra",
+  ]) {
+    assert.equal(reasonOf(at(line)), "round_malformed", line);
+  }
+  // A well-formed line that answers another round is somebody else's report.
+  for (const line of [
+    "Round: attempt=2/5 deep_reads=1 fragment=f1",
+    "Round: attempt=1/6 deep_reads=1 fragment=f1",
+    "Round: attempt=1/5 deep_reads=0 fragment=f1",
+    "Round: attempt=1/5 deep_reads=1 fragment=f2",
+  ]) {
+    assert.equal(reasonOf(at(line)), "round_mismatch", line);
+  }
+  // Out of place is missing at its place: the counters never float in the header.
+  const moved = report()
+    .replace(`${ROUND_LINE}\n`, "")
+    .replace("Delegation: none\n", `Delegation: none\n${ROUND_LINE}\n`);
+  assert.equal(reasonOf(moved), "round_missing");
+});
+
+test("the round flags are the caller's, and a budget they break is a call error", () => {
+  const args = (round) => [
+    "template",
+    "--verdict",
+    "PASS",
+    "--dispatch",
+    "ctx_fixture",
+    "--candidate",
+    SHA,
+    "--requested",
+    "deep",
+    "--effective",
+    "deep",
+    ...round,
+  ];
+  for (const round of [
+    ["--attempt", "6", "--attempt-limit", "5", "--deep-reads", "1", "--fragment", "f1"],
+    ["--attempt", "1", "--attempt-limit", "5", "--deep-reads", "2", "--fragment", "f1"],
+    ["--attempt", "x", "--attempt-limit", "5", "--deep-reads", "1", "--fragment", "f1"],
+    ["--attempt", "1", "--attempt-limit", "5", "--deep-reads", "1", "--fragment", "F 1"],
+  ]) {
+    const refused = spawnSync(process.execPath, [HELPER, ...args(round)], { encoding: "utf8" });
+    assert.equal(refused.status, 2, round.join(" "));
+    assert.equal(refused.stdout, "", round.join(" "));
+  }
+  const printed = spawnSync(process.execPath, [HELPER, ...args(ROUND_ARGS)], { encoding: "utf8" });
+  assert.equal(printed.status, 0, printed.stderr);
+  assert.match(printed.stdout, new RegExp(`^${ROUND_LINE}$`, "mu"));
 });

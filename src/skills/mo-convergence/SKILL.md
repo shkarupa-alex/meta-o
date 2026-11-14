@@ -51,10 +51,11 @@ prompt or any other answer sends nothing, and that participant is recorded as
 unavailable with the classifier's line.
 
 Then check the sequence yourself from public evidence only: the candidates in
-order, each round's verdict, `attempt <n>/5` and `deep_reads <m>`, the findings
-that returned after being marked fixed, and the requirements they touch. A
-finding that keeps coming back in a new shape usually names a boundary, not a
-patch.
+order, each round's verdict and its
+`Round: attempt=<n>/<limit> deep_reads=<m> fragment=<fragment-id>` line, the
+findings that returned after being marked fixed, and the requirements they
+touch. A finding that keeps coming back in a new shape usually names a boundary,
+not a patch.
 
 ## Recommend
 

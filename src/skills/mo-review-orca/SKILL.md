@@ -340,11 +340,24 @@ reviewer.
 A new independent deep pair while this pair has no PASS needs a recorded reason
 that `scripts/mo-review-resource.mjs deep --phase remediation --reason <r>`
 accepts: `state_transfer_impossible`, `hypothesis_stuck`,
-`requirements_conflict` or `owner_request`. Each round's report names
-`attempt <n>/5` and `deep_reads <m>`: a hot `follow_up`, a slot replacement, a
-deep pair and the final fresh pair with its `follow_up` each spend one attempt
-of the substantive slice, a new SHA does not reset the count, and fresh pairs
-are the costly full rereads.
+`requirements_conflict` or `owner_request`.
+
+Every brief carries the round's counters as
+`Round: attempt=<n>/<limit> deep_reads=<m> fragment=<fragment-id>`, and every
+report repeats that line, printed by the reviewer's validator from the four
+values passed as flags. `fragment` is a short id, `[a-z0-9-]{1,40}`, this skill
+gives the substantive fragment under review; both counters belong to it and to
+the pair and include the current round. A hot `follow_up`, a slot replacement, a
+deep pair and the final fresh pair with its `follow_up` each spend one attempt;
+the one repeat Dispatch after a malformed report does not. `limit` is 5 or the
+extension the owner approved. `deep_reads` is 1 for the first deep pair of the
+fragment and grows by one for every fresh independent deep pair after it, the
+final pair included; fresh pairs are the costly full rereads. A new SHA, a hot
+continuation and a slot replacement reset neither counter, and only a new
+fragment starts both again. The same four values go to this skill's own
+`validate`, `stage` and `pair` calls, which compare them with the body's line;
+`round_mismatch` means a value was carried over wrongly and the report is not
+published.
 
 `fast` is explicitly standalone/advisory, and the portable protocol may
 escalate it to `deep`. Only after this pair returned two PASS reports on one
@@ -370,6 +383,8 @@ nothing first. Reread this `SKILL.md` completely and every reference it names,
 then restore the pair from public Orca, never from the summary: the checkpoint
 above, both Dispatches and their `worker_done` bodies, the `E2E-Evidence` lines
 or the one `E2E:` line of the brief, and the `Round` line of the last brief.
+When the next `Round` cannot be derived from those, stop with
+`needs_attention reason=round_unrecoverable` rather than start the count again.
 Until both are done start, message or release nothing. Retry the same arm
 once after transport failure; a second consecutive failure is
 `UNKNOWN/needs_attention`. Process every event in a returned batch before
@@ -419,6 +434,7 @@ path in the candidate checkout:
 node "<the reviewer's mo-reviewer directory>/scripts/mo-review-report.mjs" template \
   --verdict <PASS|FINDINGS|UNKNOWN> \
   --dispatch <id> --candidate <sha> --requested <mode> --effective <mode> \
+  --attempt <n> --attempt-limit <limit> --deep-reads <m> --fragment <fragment-id> \
   [--unknown-reason <reason>]
 ```
 
@@ -452,14 +468,16 @@ who may no longer exist.
 
 Only the body the coordinator received from Orca is authoritative, and only
 after its own validation against caller-owned expected values: exact candidate,
-native Dispatch id, requested mode and observed effective mode. A stale but
+native Dispatch id, requested mode, observed effective mode and the brief's
+`Round`. A stale but
 self-consistent header/footer is `UNKNOWN`. Run the bundled validator rather
 than judging the shape by eye, and compare with the prepared file in the same
 call:
 
 ```text
-scripts/mo-review-report.mjs validate --file <received> --dispatch <id> \
-  --candidate <sha> --requested <mode> --effective <mode> \
+node "<this skill's directory>/scripts/mo-review-report.mjs" validate --file <received> \
+  --dispatch <id> --candidate <sha> --requested <mode> --effective <mode> \
+  --attempt <n> --attempt-limit <limit> --deep-reads <m> --fragment <fragment-id> \
   --prepared <Body-File> --normalization <none|final-newline>
 ```
 
@@ -498,7 +516,8 @@ hand:
 ```text
 scripts/mo-review-report.mjs namespace
 scripts/mo-review-report.mjs stage --dir <ns> --slot <A|B> --vendor <slug> \
-  --dispatch <id> --candidate <sha> --requested <mode> --effective <mode>   < report bytes
+  --dispatch <id> --candidate <sha> --requested <mode> --effective <mode> \
+  --attempt <n> --attempt-limit <limit> --deep-reads <m> --fragment <fragment-id>   < report bytes
 scripts/mo-review-report.mjs pair --dir <ns> --a-vendor … --a-bytes … --a-dev … --a-ino … --a-sha256 … --b-…
 ```
 

@@ -371,19 +371,26 @@ A paired attempt is one round in which both slots returned a valid report or a
 typed `UNKNOWN` for one candidate SHA. A hot `follow_up`, a slot replacement, a
 deep pair, and the final fresh pair with its own `follow_up` each spend one; the
 one repeated Dispatch after a malformed report does not. A substantive slice has
-at most five, and a new SHA does not reset the count. Each round's report names
-`attempt <n>/5` and `deep_reads <m>`, the number of full independent rereads —
-deep pairs and the final fresh pair — as text in the report, not a store.
-Deliver every P3, but do not start a separate round only for P3. Residual risks
-a reviewer records outside findings are a record for the owner, not remediation:
-the executor fixes them only when the owner decides so. When a finding belongs
-to a class with no finite fix — secret recognition, heuristic parsing — and does
-not list the complete set of concrete cases, ask the same hot reviewer for that
-list before fixing; the fix is judged against the list and its regressions, and
-reasonable coverage of most cases is enough unless the owner named more. This
-local budget never replaces two final same-SHA passes. After attempt five,
-complete the active remediation, then move to the next substantive slice or stop
-with `needs_attention` when no progress path remains.
+at most five, or the extension the owner approved, and a new SHA does not reset
+the count. Each brief and each report carry it as
+`Round: attempt=<n>/<limit> deep_reads=<m> fragment=<fragment-id>`, where
+`deep_reads` counts the full independent rereads — deep pairs and the final
+fresh pair — and `fragment` names the substantive slice, whose change alone
+starts both counters again: text in the report, not a store. The reviewer's
+validator prints the line from four flags, and the coordinator's `stage` and
+`pair` compare it with the coordinator's own values, so a wrong carry-over is
+`round_mismatch` rather than a published report. A count that cannot be restored
+after a compaction is `needs_attention reason=round_unrecoverable`, never a
+fresh start. Deliver every P3, but do not start a separate round only for P3.
+Residual risks a reviewer records outside findings are a record for the owner,
+not remediation: the executor fixes them only when the owner decides so. When a
+finding belongs to a class with no finite fix — secret recognition, heuristic
+parsing — and does not list the complete set of concrete cases, ask the same hot
+reviewer for that list before fixing; the fix is judged against the list and its
+regressions, and reasonable coverage of most cases is enough unless the owner
+named more. This local budget never replaces two final same-SHA passes. After
+attempt five, complete the active remediation, then move to the next substantive
+slice or stop with `needs_attention` when no progress path remains.
 
 An `e2e_affected` or `e2e_missing` finding is an ordinary finding: it spends the
 round's budget and goes through the ordinary handoff. After the fix, rerun

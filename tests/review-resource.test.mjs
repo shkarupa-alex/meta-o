@@ -261,7 +261,8 @@ test("the coordinator is told to use these answers, not to reason past them", ()
       /hot\(slot\) = alive_and_ready\(slot\) AND \(age < 1h OR context_proven_small\(slot\)\)/u,
     );
     assert.match(text, /state_transfer_impossible/u);
-    assert.match(text, /`attempt <n>\/5` and `deep_reads <m>`/u);
+    assert.match(text, /`Round: attempt=<n>\/<limit> deep_reads=<m> fragment=<fragment-id>`/u);
+    assert.match(text, /round_mismatch/u);
   }
   assert.match(skill, /scripts\/mo-review-resource\.mjs release/u);
   assert.match(skill, /Never pass `--activate`/u);

@@ -503,7 +503,7 @@ const OBLIGATIONS = [
     "the per-slice attempt budget does not reset and does not replace settlement",
     {
       life: [
-        /A substantive\s+slice has at most five, and a new SHA does not reset the count/,
+        /A substantive\s+slice has\s+at most five,\s+or the extension the owner approved,\s+and a new SHA does not\s+reset\s+the count/,
         /After\s+attempt five, complete the active remediation, then move to the next/,
       ],
     },

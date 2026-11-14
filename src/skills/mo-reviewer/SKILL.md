@@ -32,7 +32,7 @@ node "<this skill's directory>/scripts/mo-review-input.mjs" --help
 ## Before reading the change
 
 Take every field of the brief as given: `Target`, `Intent`, `Spec`,
-`Intent-Ledger`, `Scope`, `Mode`, `Placement`, `Environment`, `Constraints`,
+`Intent-Ledger`, `Scope`, `Mode`, `Round`, `Placement`, `Environment`, `Constraints`,
 `Ownership`, `Acceptance`,
 `Reviewer-Skill`, `Report`, `Body-File`, `Methodology-Friction`, `Cleanup`,
 `Knowledge-Layer`, `Backlog-Gate` and `E2E`. A missing field or a placeholder such as `<sha>` is a
@@ -124,12 +124,16 @@ format of the preamble; if the brief does not say so and the preamble demands
 something else, ask before sending.
 
 Print the literal for this very Dispatch and fill it in instead of rebuilding
-the service lines:
+the service lines. The brief's
+`Round: attempt=<n>/<limit> deep_reads=<m> fragment=<id>` gives four values;
+pass them as flags and let the script print the `Round` line — never copy the
+line into the body by hand:
 
 ```text
 node "<this skill's directory>/scripts/mo-review-report.mjs" template \
   --verdict <PASS|FINDINGS|UNKNOWN> \
   --dispatch <id> --candidate <sha> --requested <mode> --effective <mode> \
+  --attempt <n> --attempt-limit <limit> --deep-reads <m> --fragment <fragment-id> \
   [--unknown-reason <reason>]
 ```
 
@@ -138,18 +142,29 @@ line never goes into the body. A finding body is either the bare key line with
 the next line opening `[P2] …`, or one line `F-001 [P2] …`, both at top level.
 
 With `Body-File: <path>` in the brief, create that file once through the
-validator, which checks the bytes before writing and refuses an existing file:
+validator, which checks the bytes before writing and refuses an existing file.
+`Body-File` is the only file you write: the report goes to the validator on
+stdin through a here-document, never through a draft file beside it. Set the
+eight variables from the brief and Orca's preamble first, each value in single
+quotes; the delimiter in single quotes keeps `$`, backticks and `\` in the
+report exactly as written, and the script path stays in double quotes, which
+also holds for a directory with a space. Add `--effective "$EFFECTIVE"` when the
+brief names the effective mode:
 
-```text
-node "<this skill's directory>/scripts/mo-review-report.mjs" prepare --file <Body-File> \
-  --dispatch <id> --candidate <sha> --requested <mode> --effective <mode>  < report
+```bash
+node "<this skill's directory>/scripts/mo-review-report.mjs" prepare --file "$BODY_FILE" \
+  --dispatch "$DISPATCH_ID" --candidate "$CANDIDATE_SHA" --requested "$MODE" \
+  --attempt "$N" --attempt-limit "$LIMIT" --deep-reads "$M" --fragment "$FRAGMENT" <<'MO_REPORT'
+…the complete report…
+MO_REPORT
 ```
 
 A `status=malformed` line names the reason and line; fix the draft and run it
 again — nothing was written. `status=refused reason=exists` means the path is
 not yours: stop and ask. Then send exactly that file as the body, for example
-`--body "$(cat <Body-File>)"`. With `Body-File: none`, pipe the exact bytes you
-are about to send into `validate --file - …` with the same flags.
+`--body "$(cat <Body-File>)"`. With `Body-File: none`, run the same command as
+`validate --file -` instead of `prepare --file "$BODY_FILE"`, on the exact bytes
+you are about to send.
 
 Right before sending, prove the checkout again: `rev-parse HEAD` still equals
 `Target` and the tree is still clean.

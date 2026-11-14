@@ -6972,11 +6972,26 @@ var HEADER = [
   /^Review-Execution: (\S+)$/u,
   /^Candidate: ([a-f0-9]{40})$/u,
   /^Mode: requested=(\S+) effective=(\S+)$/u,
+  /^Round: (.*)$/u,
   /^Delegation: .*$/u,
   /^Verdict: (\S+)$/u,
   /^Counts: P0=(\d+) P1=(\d+) P2=(\d+) P3=(\d+)$/u
 ];
+var ROUND_STEP = 3;
 var fail = (reason, line) => ({ status: "malformed", reason, line: line + 1 });
+var ROUND = /^attempt=([1-9][0-9]{0,5})\/([1-9][0-9]{0,5}) deep_reads=(0|[1-9][0-9]{0,5}) fragment=([a-z0-9-]{1,40})$/u;
+function parseRound(value) {
+  const match = ROUND.exec(value ?? "");
+  if (match === null) return { error: "round_malformed" };
+  const [attempt, limit, deepReads] = match.slice(1, 4).map(Number);
+  if (deepReads > attempt) return { error: "round_malformed" };
+  if (attempt > limit) return { error: "round_exceeds_budget" };
+  return { round: { attempt, limit, deepReads, fragment: match[4] } };
+}
+function roundLine(round) {
+  if (round === void 0) return void 0;
+  return `Round: attempt=${round.attempt}/${round.limit} deep_reads=${round.deepReads} fragment=${round.fragment}`;
+}
 function topLevelParagraphs(text3) {
   const lines = text3.split("\n");
   return fromMarkdown(text3).children.filter((node2) => node2.type === "paragraph").map((node2) => ({
@@ -7010,24 +7025,30 @@ function readEnvelope(lines, prose) {
   let row = 0;
   for (const [step, pattern] of HEADER.entries()) {
     if (step > 0 && lines[row] === "") row += 1;
-    if (!prose.has(row) || !pattern.test(lines[row] ?? "")) return fail("header_order", row);
+    if (!prose.has(row) || !pattern.test(lines[row] ?? "")) {
+      return fail(step === ROUND_STEP ? "round_missing" : "header_order", row);
+    }
     rows.push(row);
     row += 1;
   }
-  const [execution, candidate, mode, delegation, verdict, counts] = rows.map(
+  const [execution, candidate, mode, round, delegation, verdict, counts] = rows.map(
     (at, step) => HEADER[step].exec(lines[at])
   );
-  if (delegation[0] !== "Delegation: none") return fail("delegation", rows[3]);
   if (!MODES.has(mode[1]) || !MODES.has(mode[2])) return fail("header_order", rows[2]);
-  if (!VERDICTS.includes(verdict[1])) return fail("verdict", rows[4]);
+  const counters = parseRound(round[1]);
+  if (counters.error) return fail(counters.error, rows[ROUND_STEP]);
+  if (delegation[0] !== "Delegation: none") return fail("delegation", rows[4]);
+  if (!VERDICTS.includes(verdict[1])) return fail("verdict", rows[5]);
   return {
     execution: execution[1],
     candidate: candidate[1],
     requested: mode[1],
     effective: mode[2],
+    round: counters.round,
+    roundRow: rows[ROUND_STEP],
     verdict: verdict[1],
     counts: counts.slice(1).map(Number),
-    countsRow: rows[5]
+    countsRow: rows[6]
   };
 }
 function modeChangeAllowed(requested, effective) {
@@ -7044,6 +7065,9 @@ function readHeader(lines, prose, expected) {
   }
   if (expected.effectiveMode !== void 0 && envelope.effective !== expected.effectiveMode) {
     return fail("mode_mismatch", 2);
+  }
+  if (roundLine(envelope.round) !== roundLine(expected.round)) {
+    return fail("round_mismatch", envelope.roundRow);
   }
   const last = lines.length - 1;
   if (lines[last] !== `End-Review: ${envelope.execution}` || !prose.has(last)) {
@@ -7264,27 +7288,35 @@ function templateSections(verdict, unknownReason) {
     "Risks: <pre-existing or out-of-scope risks, or none>."
   ];
 }
-function reportTemplate({ verdict, dispatch, candidate, requested, effective, reason }) {
-  if (!VERDICTS.includes(verdict)) return { error: "--verdict must be PASS, FINDINGS or UNKNOWN" };
-  if (typeof dispatch !== "string" || !/^\S+$/u.test(dispatch)) return { error: "--dispatch" };
-  if (!SHA.test(candidate ?? "")) return { error: "--candidate must be a full 40-hex SHA" };
+function templateError({ verdict, dispatch, candidate, requested, effective, round, reason }) {
+  if (!VERDICTS.includes(verdict)) return "--verdict must be PASS, FINDINGS or UNKNOWN";
+  if (typeof dispatch !== "string" || !/^\S+$/u.test(dispatch)) return "--dispatch";
+  if (!SHA.test(candidate ?? "")) return "--candidate must be a full 40-hex SHA";
   if (!MODES.has(requested) || !MODES.has(effective)) {
-    return { error: "--requested and --effective must be fast, deep or follow_up" };
+    return "--requested and --effective must be fast, deep or follow_up";
   }
   if (!modeChangeAllowed(requested, effective)) {
-    return { error: "--effective must equal --requested or be deep" };
+    return "--effective must equal --requested or be deep";
   }
   if (verdict === "UNKNOWN" !== (reason !== void 0)) {
-    return { error: "--unknown-reason is required for UNKNOWN and only for UNKNOWN" };
+    return "--unknown-reason is required for UNKNOWN and only for UNKNOWN";
   }
   if (reason !== void 0 && !UNKNOWN_REASONS.has(reason)) {
-    return { error: `--unknown-reason must be one of ${[...UNKNOWN_REASONS].join("|")}` };
+    return `--unknown-reason must be one of ${[...UNKNOWN_REASONS].join("|")}`;
   }
+  const counters = parseRound(roundLine(round)?.slice("Round: ".length));
+  return counters.error ? `the round flags give ${counters.error}` : void 0;
+}
+function reportTemplate(inputs) {
+  const error = templateError(inputs);
+  if (error !== void 0) return { error };
+  const { verdict, dispatch, candidate, requested, effective, round, reason } = inputs;
   const p2 = verdict === "FINDINGS" ? 1 : 0;
   const lines = [
     `Review-Execution: ${dispatch}`,
     `Candidate: ${candidate}`,
     `Mode: requested=${requested} effective=${effective}`,
+    roundLine(round),
     "Delegation: none",
     `Verdict: ${verdict}`,
     `Counts: P0=0 P1=0 P2=${p2} P3=0`,
@@ -7552,6 +7584,9 @@ var VALUES = {
   "b-bytes": [DECIMAL, "a decimal size"]
 };
 var EXPECTATION = "--dispatch <id> --candidate <40-hex> --requested <fast|deep|follow_up>";
+var ROUND_FLAGS = ["attempt", "attempt-limit", "deep-reads", "fragment"];
+var ROUND_USAGE = "--attempt <n> --attempt-limit <limit> --deep-reads <m> --fragment <id>";
+var ROUND_EXAMPLE = "--attempt 1 --attempt-limit 5 --deep-reads 1 --fragment f1";
 var SLOT_FLAGS = ["a", "b"].flatMap(
   (prefix) => ["vendor", "bytes", "dev", "ino", "sha256"].map((field) => `${prefix}-${field}`)
 );
@@ -7564,32 +7599,32 @@ var COMMANDS = {
     example: "namespace"
   },
   template: {
-    required: ["verdict", "dispatch", "candidate", "requested", "effective"],
+    required: ["verdict", "dispatch", "candidate", "requested", "effective", ...ROUND_FLAGS],
     optional: ["unknown-reason"],
-    usage: `template --verdict <PASS|FINDINGS|UNKNOWN> ${EXPECTATION} --effective <mode> [--unknown-reason <reason>]`,
-    about: "prints a complete report body the validator accepts as printed",
-    example: `template --verdict PASS --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep --effective deep`
+    usage: `template --verdict <PASS|FINDINGS|UNKNOWN> ${EXPECTATION} --effective <mode> ${ROUND_USAGE} [--unknown-reason <reason>]`,
+    about: "prints a complete report body, Round line included, that the validator accepts as printed",
+    example: `template --verdict PASS --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep --effective deep ${ROUND_EXAMPLE}`
   },
   prepare: {
-    required: ["file", "dispatch", "candidate", "requested"],
+    required: ["file", "dispatch", "candidate", "requested", ...ROUND_FLAGS],
     optional: ["effective"],
-    usage: `prepare --file <Body-File> ${EXPECTATION} [--effective <mode>]   < report bytes on stdin`,
+    usage: `prepare --file <Body-File> ${EXPECTATION} [--effective <mode>] ${ROUND_USAGE}   < report bytes on stdin`,
     about: "validates the stdin bytes, then creates the Body-File once (never overwrites)",
-    example: `prepare --file /tmp/run/slot-a-r1-d1.md --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep < report.md`
+    example: `prepare --file /tmp/run/slot-a-r1-d1.md --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep ${ROUND_EXAMPLE} < report.md`
   },
   validate: {
-    required: ["file", "dispatch", "candidate", "requested"],
+    required: ["file", "dispatch", "candidate", "requested", ...ROUND_FLAGS],
     optional: ["effective", "prepared", "normalization"],
-    usage: `validate --file <path|-> ${EXPECTATION} [--effective <mode>] [--prepared <Body-File> [--normalization none|final-newline]]`,
+    usage: `validate --file <path|-> ${EXPECTATION} [--effective <mode>] ${ROUND_USAGE} [--prepared <Body-File> [--normalization none|final-newline]]`,
     about: "checks one report; with --prepared also compares it byte for byte with the prepared file",
-    example: `validate --file - --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep < report.md`
+    example: `validate --file - --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep ${ROUND_EXAMPLE} < report.md`
   },
   stage: {
-    required: ["dir", "slot", "vendor", "dispatch", "candidate", "requested"],
+    required: ["dir", "slot", "vendor", "dispatch", "candidate", "requested", ...ROUND_FLAGS],
     optional: ["file", "effective"],
-    usage: `stage --dir <run dir> --slot A|B --vendor <slug> ${EXPECTATION} [--effective <mode>] [--file <path|->]`,
+    usage: `stage --dir <run dir> --slot A|B --vendor <slug> ${EXPECTATION} [--effective <mode>] ${ROUND_USAGE} [--file <path|->]`,
     about: "validates one report and publishes it into its slot create-if-absent",
-    example: `stage --dir /tmp/mo-review-x --slot A --vendor anthropic --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep < report.md`
+    example: `stage --dir /tmp/mo-review-x --slot A --vendor anthropic --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep ${ROUND_EXAMPLE} < report.md`
   },
   pair: {
     required: ["dir", ...SLOT_FLAGS],
@@ -7662,6 +7697,13 @@ function parseCommandLine(argv) {
       throw new UsageError(`${name}: --${flag} must be ${rule[1]}`);
     }
   }
+  if (ROUND_FLAGS.every((flag) => values[flag] !== void 0)) {
+    const counters = parseRound(
+      `attempt=${values.attempt}/${values["attempt-limit"]} deep_reads=${values["deep-reads"]} fragment=${values.fragment}`
+    );
+    if (counters.error) throw new UsageError(`${name}: the round flags give ${counters.error}`);
+    values.round = counters.round;
+  }
   return { name, options: values };
 }
 function expectationOf(options) {
@@ -7669,7 +7711,8 @@ function expectationOf(options) {
     execution: options.dispatch,
     candidate: options.candidate,
     requestedMode: options.requested,
-    effectiveMode: options.effective
+    effectiveMode: options.effective,
+    round: options.round
   };
 }
 function commandValidate(options) {
@@ -7726,6 +7769,7 @@ function commandTemplate(options) {
     candidate: options.candidate,
     requested: options.requested,
     effective: options.effective,
+    round: options.round,
     reason: options["unknown-reason"]
   });
   if (template.error) throw new UsageError(`template: ${template.error}`);
@@ -7879,12 +7923,14 @@ export {
   namespace,
   pair,
   parseCommandLine,
+  parseRound,
   prepareBody,
   preview,
   publicSummary,
   readReportBytes,
   reportLine,
   reportTemplate,
+  roundLine,
   stage,
   topLevelParagraphs,
   topLevelProse,

@@ -21,7 +21,8 @@ const SHA = "c".repeat(40);
 function report(execution) {
   return (
     `Review-Execution: ${execution}\nCandidate: ${SHA}\n` +
-    "Mode: requested=deep effective=deep\nDelegation: none\nVerdict: PASS\n" +
+    "Mode: requested=deep effective=deep\nRound: attempt=1/5 deep_reads=1 fragment=f1\n" +
+    "Delegation: none\nVerdict: PASS\n" +
     "Counts: P0=0 P1=0 P2=0 P3=0\n\nEvidence report\nGrounding\nintent and clean SHA\n" +
     "Scope and checks\nread-only diff\nFindings\nUnknowns\nnone\nResidual risks\nnone\n" +
     `End-Review: ${execution}\n`
@@ -44,6 +45,7 @@ function handoffPair(consumer, human = false) {
         candidate: SHA,
         requestedMode: "deep",
         effectiveMode: "deep",
+        round: { attempt: 1, limit: 5, deepReads: 1, fragment: "f1" },
       },
     });
     assert.equal(staged.status, "staged", staged.reason);
@@ -124,6 +126,7 @@ test("an early preview hands over one unchanged slot and is acknowledged by its 
         candidate: SHA,
         requestedMode: "deep",
         effectiveMode: "deep",
+        round: { attempt: 1, limit: 5, deepReads: 1, fragment: "f1" },
       },
     });
     const slot = { ...staged, vendor: "claude" };

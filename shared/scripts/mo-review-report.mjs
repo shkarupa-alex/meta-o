@@ -26,7 +26,7 @@ import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
-import { reportLine, reportTemplate, validateReport } from "./mo-review-grammar.mjs";
+import { parseRound, reportLine, reportTemplate, validateReport } from "./mo-review-grammar.mjs";
 import {
   ackSlotsValid,
   checkAck,
@@ -39,7 +39,9 @@ import {
 } from "./mo-review-handoff.mjs";
 
 export {
+  parseRound,
   reportLine,
+  roundLine,
   reportTemplate,
   topLevelParagraphs,
   topLevelProse,
@@ -188,6 +190,9 @@ const VALUES = {
 };
 
 const EXPECTATION = "--dispatch <id> --candidate <40-hex> --requested <fast|deep|follow_up>";
+const ROUND_FLAGS = ["attempt", "attempt-limit", "deep-reads", "fragment"];
+const ROUND_USAGE = "--attempt <n> --attempt-limit <limit> --deep-reads <m> --fragment <id>";
+const ROUND_EXAMPLE = "--attempt 1 --attempt-limit 5 --deep-reads 1 --fragment f1";
 const SLOT_FLAGS = ["a", "b"].flatMap((prefix) =>
   ["vendor", "bytes", "dev", "ino", "sha256"].map((field) => `${prefix}-${field}`),
 );
@@ -210,33 +215,34 @@ export const COMMANDS = {
     example: "namespace",
   },
   template: {
-    required: ["verdict", "dispatch", "candidate", "requested", "effective"],
+    required: ["verdict", "dispatch", "candidate", "requested", "effective", ...ROUND_FLAGS],
     optional: ["unknown-reason"],
-    usage: `template --verdict <PASS|FINDINGS|UNKNOWN> ${EXPECTATION} --effective <mode> [--unknown-reason <reason>]`,
-    about: "prints a complete report body the validator accepts as printed",
-    example: `template --verdict PASS --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep --effective deep`,
+    usage: `template --verdict <PASS|FINDINGS|UNKNOWN> ${EXPECTATION} --effective <mode> ${ROUND_USAGE} [--unknown-reason <reason>]`,
+    about:
+      "prints a complete report body, Round line included, that the validator accepts as printed",
+    example: `template --verdict PASS --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep --effective deep ${ROUND_EXAMPLE}`,
   },
   prepare: {
-    required: ["file", "dispatch", "candidate", "requested"],
+    required: ["file", "dispatch", "candidate", "requested", ...ROUND_FLAGS],
     optional: ["effective"],
-    usage: `prepare --file <Body-File> ${EXPECTATION} [--effective <mode>]   < report bytes on stdin`,
+    usage: `prepare --file <Body-File> ${EXPECTATION} [--effective <mode>] ${ROUND_USAGE}   < report bytes on stdin`,
     about: "validates the stdin bytes, then creates the Body-File once (never overwrites)",
-    example: `prepare --file /tmp/run/slot-a-r1-d1.md --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep < report.md`,
+    example: `prepare --file /tmp/run/slot-a-r1-d1.md --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep ${ROUND_EXAMPLE} < report.md`,
   },
   validate: {
-    required: ["file", "dispatch", "candidate", "requested"],
+    required: ["file", "dispatch", "candidate", "requested", ...ROUND_FLAGS],
     optional: ["effective", "prepared", "normalization"],
-    usage: `validate --file <path|-> ${EXPECTATION} [--effective <mode>] [--prepared <Body-File> [--normalization none|final-newline]]`,
+    usage: `validate --file <path|-> ${EXPECTATION} [--effective <mode>] ${ROUND_USAGE} [--prepared <Body-File> [--normalization none|final-newline]]`,
     about:
       "checks one report; with --prepared also compares it byte for byte with the prepared file",
-    example: `validate --file - --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep < report.md`,
+    example: `validate --file - --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep ${ROUND_EXAMPLE} < report.md`,
   },
   stage: {
-    required: ["dir", "slot", "vendor", "dispatch", "candidate", "requested"],
+    required: ["dir", "slot", "vendor", "dispatch", "candidate", "requested", ...ROUND_FLAGS],
     optional: ["file", "effective"],
-    usage: `stage --dir <run dir> --slot A|B --vendor <slug> ${EXPECTATION} [--effective <mode>] [--file <path|->]`,
+    usage: `stage --dir <run dir> --slot A|B --vendor <slug> ${EXPECTATION} [--effective <mode>] ${ROUND_USAGE} [--file <path|->]`,
     about: "validates one report and publishes it into its slot create-if-absent",
-    example: `stage --dir /tmp/mo-review-x --slot A --vendor anthropic --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep < report.md`,
+    example: `stage --dir /tmp/mo-review-x --slot A --vendor anthropic --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep ${ROUND_EXAMPLE} < report.md`,
   },
   pair: {
     required: ["dir", ...SLOT_FLAGS],
@@ -326,6 +332,14 @@ export function parseCommandLine(argv) {
       throw new UsageError(`${name}: --${flag} must be ${rule[1]}`);
     }
   }
+  if (ROUND_FLAGS.every((flag) => values[flag] !== undefined)) {
+    const counters = parseRound(
+      `attempt=${values.attempt}/${values["attempt-limit"]} ` +
+        `deep_reads=${values["deep-reads"]} fragment=${values.fragment}`,
+    );
+    if (counters.error) throw new UsageError(`${name}: the round flags give ${counters.error}`);
+    values.round = counters.round;
+  }
   return { name, options: values };
 }
 
@@ -335,6 +349,7 @@ function expectationOf(options) {
     candidate: options.candidate,
     requestedMode: options.requested,
     effectiveMode: options.effective,
+    round: options.round,
   };
 }
 
@@ -387,6 +402,7 @@ function commandTemplate(options) {
     candidate: options.candidate,
     requested: options.requested,
     effective: options.effective,
+    round: options.round,
     reason: options["unknown-reason"],
   });
   if (template.error) throw new UsageError(`template: ${template.error}`);
