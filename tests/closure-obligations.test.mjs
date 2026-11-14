@@ -172,7 +172,7 @@ const OBLIGATIONS = [
     {
       revskill: [
         /description: Use only when the user explicitly requests mo-review-orca/,
-        /Accept only an exact 40-hex `candidate_sha`, intent source, scope, mode, the\s+specification line and two user-approved vendor-diverse selections/,
+        /Accept only an exact 40-hex `candidate_sha`, intent source, scope, mode, the\s+specification and intent-ledger sources and two user-approved vendor-diverse selections/,
       ],
     },
   ],

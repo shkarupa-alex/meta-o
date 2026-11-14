@@ -274,11 +274,12 @@ loop has not converged.
 After the executor settles, validate the branch, clean worktree, commit object
 and full `HEAD`, then freeze that SHA. Start both reviewer sessions concurrently
 and independently. Give them the same task/spec, complete intent ledger and the
-same candidate SHA; the specification travels as one line,
-`Spec: <path|object>`, or `Spec: none` when the work followed none. On the
-post-cleanup candidate of section 7 those artifacts are no longer in the tree:
-give the frozen object ids the deletion recorded, and the durable knowledge that
-replaced them. Do not give either reviewer peer output.
+same candidate SHA; the specification travels as one line, `Spec: <form>`, or
+`Spec: none` when the work followed none, and the ledger as
+`Intent-Ledger: <form>`, each in a form of the review brief. On the post-cleanup
+candidate of section 7 those artifacts are no longer in the tree: give the
+frozen object ids the deletion recorded, and the durable knowledge that replaced
+them. Do not give either reviewer peer output.
 
 Both briefs carry exactly one E2E form. In the orchestrated lifecycle it is the
 current `E2E-Evidence` and `E2E-Coverage` lines of section 8, copied verbatim;

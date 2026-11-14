@@ -82,6 +82,7 @@ mo-lint:
 	node --check shared/scripts/mo-review-report.mjs
 	node --check shared/scripts/mo-review-grammar.mjs
 	node --check shared/scripts/mo-review-resource.mjs
+	node --check shared/scripts/mo-review-input.mjs
 	node --check shared/scripts/skill-source-tree.mjs
 	node --check shared/scripts/mo-knowledge.mjs
 	node --check shared/scripts/knowledge-check.mjs

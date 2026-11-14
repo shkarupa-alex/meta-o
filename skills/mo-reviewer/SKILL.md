@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-reviewer or a reviewe
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "ce944e5d423792d4997f4d7349a722e211548262"
+  source_tree: "fdb50e7ddae6d645f4ff1ae042122e85fd633e8e"
 ---
 
 # Review one candidate as a terminal reviewer
@@ -23,8 +23,9 @@ how one reviewer turns a brief into one report nobody has to buy twice.
 
 ## Before reading the change
 
-Take every field of the brief as given: `Target`, `Intent`, `Spec`, `Scope`,
-`Mode`, `Placement`, `Environment`, `Constraints`, `Ownership`, `Acceptance`,
+Take every field of the brief as given: `Target`, `Intent`, `Spec`,
+`Intent-Ledger`, `Scope`, `Mode`, `Placement`, `Environment`, `Constraints`,
+`Ownership`, `Acceptance`,
 `Reviewer-Skill`, `Report`, `Body-File`, `Methodology-Friction`, `Cleanup`,
 `Knowledge-Layer` and `E2E`. A missing field or a placeholder such as `<sha>` is a
 question to the caller through the backend's ask surface, not something to
@@ -47,10 +48,26 @@ never into a service line.
 
 ## What you read and what you never run
 
+Check the brief's `Spec:` and `Intent-Ledger:` lines before reading either
+source; the check compares a copy's sha256 or proves the Git blob, and writes
+nothing:
+
+```text
+node "<this skill's directory>/scripts/mo-review-input.mjs" check --candidate <Target> \
+  --line '<Spec line>' --line '<Intent-Ledger line>'
+```
+
+Then read exactly those bytes: the copy the `file` form names,
+`git cat-file blob <blob>` for the `git` form, `git show <Target>:<path>` for a
+tracked path. A line answering `external_input_missing`,
+`external_input_integrity` or `external_input_unavailable` makes the report
+`UNKNOWN` with `Unknown-Reason: retrieval_failure` and that line verbatim in
+`Unknown-Account`; never review from a truncation, a retelling or memory.
+
 Read the complete diff first, then what it reaches: callers and callees,
-related tests and configuration, the instructions and the specification the
-brief names. With `Spec: <path|object>` trace each requirement to the code and
-report a requirement the change misses; with `Spec: none` a missing
+related tests and configuration, the instructions and the specification and
+intent ledger the brief names. With a specification trace each requirement to
+the code and report a requirement the change misses; with `Spec: none` a missing
 specification is not a finding. Activate only the risk lenses the change
 touches — security and external effects, concurrency and state, compatibility
 and data, performance and resources, maintainability and test gaps — and apply

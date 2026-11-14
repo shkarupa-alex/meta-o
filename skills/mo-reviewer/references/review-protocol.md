@@ -16,12 +16,30 @@ The candidate SHA is only the upper bound, the state being judged. Every mode
 reviews that whole range.
 
 When the work follows a specification, the brief names it in one line,
-`Spec: <path|object>`, a tracked path or Git object the candidate can reach, and
-the review checks the requirements against the code. Work without one carries
-`Spec: none`; its absence is then not a finding. The caller that starts the
-review — an orchestrator, or an executor that runs a standalone review of its
-own work — passes that line, because only the caller knows which specification
-the work followed.
+`Spec: <form>`, and the user's verbatim intent ledger in another,
+`Intent-Ledger: <form>`, and the review checks the requirements against the
+code. Each line takes exactly one of four forms: a path tracked in the
+candidate's tree; `git <commit>:<path> blob=<40-hex>` for a file closure already
+deleted, held by the tree of the named commit;
+`file <absolute path> sha256=<64-hex>` for a copy the caller placed in the
+reviewer's own slot directory; or `none`. Work without one carries `Spec: none`;
+its absence is then not a finding. The caller that starts the review — an
+orchestrator, or an executor that runs a standalone review of its own work —
+passes both lines, because only the caller knows which specification the work
+followed.
+
+Check both lines before reading either source, with the shipped
+`mo-review-input.mjs check --candidate <sha> --line '<Spec line>' --line '<Intent-Ledger line>'`.
+It compares a copy's sha256 with the line, or proves that
+`git rev-parse <commit>:<path>` equals the blob, and writes nothing. Then read
+exactly those bytes — the copy, `git cat-file blob <blob>` or
+`git show <candidate>:<path>` — and never a truncation or a retelling. A line
+answering `external_input_missing` (no such file or path),
+`external_input_integrity` (the sha256 or blob differs) or
+`external_input_unavailable` (the slot directory is not visible from this
+placement, or a shallow or partial clone lacks the commit or object) makes the
+review `UNKNOWN` with `Unknown-Reason: retrieval_failure`, and its
+`Unknown-Account` carries that line verbatim.
 
 - `fast` is for bounded low-risk work. Read the complete diff, directly
   reachable callers and callees, related tests/configuration and repository
@@ -162,11 +180,12 @@ checkout of that SHA, and to CI before an agent merges.
 
 What stays allowed is read-only inspection bound to the candidate SHA —
 `git show`, `git diff`, `git grep`, `git log`, reading files of the candidate
-checkout — and the report validator the brief names, run on the reviewer's own
-report. `Scope and checks` lists the commands actually used. A reviewer that
-needs an executed check to decide a finding states the check it would need as
-the finding's regression case, or records the gap in Unknowns; it does not run
-it.
+checkout — and two shipped helpers: the input check, run on the brief's own
+`Spec:` and `Intent-Ledger:` lines, and the report validator, run on the
+reviewer's own report. `Scope and checks` lists the commands actually used. A
+reviewer that needs an executed check to decide a finding states the check it
+would need as the finding's regression case, or records the gap in Unknowns; it
+does not run it.
 
 ## Report
 

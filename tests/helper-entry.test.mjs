@@ -25,6 +25,7 @@ after(() => scratch.forEach((path) => rmSync(path, { recursive: true, force: tru
 const CASES = [
   ["mo-review-orca", "mo-review-resource.mjs", ["deep", "--phase", "remediation"]],
   ["mo-review-orca", "mo-review-report.mjs", []],
+  ["mo-reviewer", "mo-review-input.mjs", ["check"]],
   ["mo-review-orca", "mo-harness-screen.mjs", ["--no-such-flag"]],
   ["mo-setup", "mo-backlog.mjs", []],
 ];

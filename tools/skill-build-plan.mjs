@@ -146,12 +146,14 @@ export const SHARED_PLAN = {
     ["scripts/mo-harness-screen.mjs", "scripts/mo-harness-screen.mjs"],
     ["scripts/mo-review-report.mjs", "scripts/mo-review-report.mjs"],
     ["scripts/mo-review-resource.mjs", "scripts/mo-review-resource.mjs"],
+    ["scripts/mo-review-input.mjs", "scripts/mo-review-input.mjs"],
     ["scripts/mo-knowledge-layer.mjs", "scripts/mo-knowledge-layer.mjs"],
   ],
   "mo-reviewer": [
     ["references/review-protocol.md", "references/review-protocol.md"],
     ["references/methodology-feedback.md", "references/methodology-feedback.md"],
     ["scripts/mo-review-report.mjs", "scripts/mo-review-report.mjs"],
+    ["scripts/mo-review-input.mjs", "scripts/mo-review-input.mjs"],
   ],
   "mo-setup": [
     ["references/project-setup.md", "references/project-setup.md"],

@@ -12,7 +12,8 @@ Every brief carries all of these, in this order, each on its own line or block:
 | ---------------------- | ------------------------------------------------------------------------- |
 | `Target`               | the exact 40-hex candidate SHA, never a branch or a moving ref            |
 | `Intent`               | what the change is for, in the requester's words                          |
-| `Spec`                 | `Spec: <path\|object>` the work followed, or `Spec: none`                 |
+| `Spec`                 | the specification the work followed, in one of the four forms below       |
+| `Intent-Ledger`        | the user's verbatim intent ledger, in the same four forms                 |
 | `Scope`                | the task range `<base>..<Target>`, named sections, what is out of scope   |
 | `Mode`                 | `fast`, `deep` or `follow_up`, and that self-escalation is the reviewer's |
 | `Placement`            | `isolated` or `shared_checkout`, the exact workspace, where its `HEAD` is |
@@ -107,30 +108,59 @@ name says so instead of reviewing, and that slot ends with
 the Dispatch from another copy. The reviewer does not start the coordinator's
 review skill; calling its validator is not starting a review.
 
-## Grounding sources are reachable from the candidate
+## Grounding sources reach the reviewer as exact bytes
 
-Every source the brief names as grounding must be readable from the candidate
-itself. A private workspace path is not: `.orca/` is ignored, so a file named
+Every source the brief names as grounding must reach the reviewer as exact
+bytes. A private workspace path does not: `.orca/` is ignored, so a file named
 there exists in no checkout the reviewer can obtain, and the reviewer either
 stops to ask or reasons from an invented section — and a verdict grounded in an
 invented section is indistinguishable from a real one.
 
+`Spec:` and `Intent-Ledger:` each take exactly one of four forms:
+
+```text
+Spec: <tracked repo path>
+Spec: git <commit-40-hex>:<path> blob=<40-hex>
+Spec: file <absolute path> sha256=<64-hex>
+Spec: none
+```
+
 The accepted specification of a feature lives in `docs/specifications/`, which
-is tracked and therefore reachable at the candidate SHA. Name it there. The same
-holds for every other cited document: cite the tracked path, not the copy that
-happened to be open.
+is tracked and therefore reachable at the candidate SHA. Name it there by its
+tracked path. The same holds for every other cited document: cite the tracked
+path, not the copy that happened to be open.
 
 Closure deletes that specification, so the final same-SHA pair reviews a
 candidate whose tree no longer holds it. There the brief names the durable
 knowledge instead — the acceptance map, the architecture decisions, the
 methodology — and cites the specification by the frozen object id the project
-recorded when it removed the file. A blob stays reachable because the tree of
-the commit before the deletion still points at it, so the brief cites that
-commit together with the object id and the reviewer resolves both with
-`git cat-file`. A shallow or partial checkout holds neither, which makes a full
-clone or worktree part of the placement; a path that the candidate does not
-contain is not a citation but a dead reference, and a brief that names one has
-to say so rather than let the reviewer discover it.
+recorded when it removed the file, in the `git` form. A blob stays reachable
+because the tree of the commit before the deletion still points at it, so the
+form names that commit, the path and the object id together; an object id alone
+lasts only until the next `gc` and exists on no other host. A shallow or partial
+checkout may hold neither, which makes a full clone or worktree part of the
+placement; a path that the candidate does not contain is not a citation but a
+dead reference, and a brief that names one has to say so rather than let the
+reviewer discover it.
+
+A standalone review whose specification or ledger is outside Git — never
+committed, or kept in an ignored directory — gets the `file` form. The caller
+reads the exact bytes once, outside the candidate, and copies them into each
+slot's own directory, the one that holds that slot's `Body-File`, with the
+bundled `mo-review-input.mjs copy`; each brief takes the line printed for its
+slot, with the path and sha256 of its own copy. The copy lives as long as that
+directory. Nothing is copied into the candidate's tree, which would make it
+dirty, and nothing travels as base64 in the Dispatch body, which a model
+rewrites. A reviewer on another host cannot see the directory; there the honest
+answer is a full clone with the specification committed to the task branch.
+
+Before reading either source the reviewer runs `mo-review-input.mjs check` on
+the brief's own line. It compares a copy's sha256, or `git rev-parse` of the
+commit and path with the blob, and the reviewer then reads exactly those bytes —
+never a truncation or a retelling. A check answering `external_input_missing`,
+`external_input_integrity` or `external_input_unavailable` makes the review
+`UNKNOWN`. On `external_input_unavailable` the caller recommends a full clone,
+or committing the specification to the task branch.
 
 ## The workspace stands where the brief says it stands
 

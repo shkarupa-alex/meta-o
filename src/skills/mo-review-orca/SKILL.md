@@ -25,14 +25,32 @@ completely. From the same resolved Orca binary also read the version-matched
 `orchestration` and `orca-cli` bundled guides; never install guide copies.
 
 Accept only an exact 40-hex `candidate_sha`, intent source, scope, mode, the
-specification line and two user-approved vendor-diverse selections from bundled
-`scripts/mo-models.mjs --show --json --project <root>`, where diversity is
-`launch.<role>.vendor` and never the route; `vendor=unknown` proves no
-diversity. Never choose fallback model, effort, placement or posture flags. The
-caller passes `Spec: <path|object>` when the work followed a specification and
-`Spec: none` otherwise, and both reviewers receive the same line; an executor
-running this review on its own work is such a caller too, because only it knows
-which specification it followed.
+specification and intent-ledger sources and two user-approved vendor-diverse
+selections from bundled `scripts/mo-models.mjs --show --json --project <root>`,
+where diversity is `launch.<role>.vendor` and never the route;
+`vendor=unknown` proves no diversity. Never choose fallback model, effort,
+placement or posture flags. The caller names the
+specification the work followed, or none, and the verbatim intent ledger; an
+executor running this review on its own work is such a caller too, because only
+it knows which specification it followed.
+
+Each source becomes a `Spec:` or `Intent-Ledger:` line in one of the four forms
+of [Review brief](references/review-brief.md): a path the candidate's tree
+tracks stays a path, a file closure deleted is `git <commit>:<path> blob=<id>`,
+and nothing else is `none`. A source outside Git is copied once the run
+directory exists, before either brief is written, and each brief takes the
+`line=` printed for its own slot:
+
+```text
+scripts/mo-review-input.mjs copy --field <Spec|Intent-Ledger> --source <file> \
+  --slot A=<slot A directory> --slot B=<slot B directory>
+```
+
+One read gives both slots the same bytes; `status=refused` writes no brief and
+is reported with its reason. A reviewer's `external_input_missing` or
+`external_input_integrity` is that slot's `UNKNOWN` and goes to the human with
+the line; for `external_input_unavailable` recommend a full clone, or committing
+the specification to the task branch.
 
 Those two selections form the vendor-diverse pair; neither may be substituted.
 
@@ -347,10 +365,10 @@ projection. If that handle is absent, close nothing and return
 Wait for both full reports before disposition or handoff.
 
 The brief carries every field of [Review brief](references/review-brief.md) and
-no placeholder. Every grounding source it names must be readable from the
-candidate itself: a path under `.orca/` is in no checkout the reviewer can
-obtain, and the accepted specification is tracked under `docs/specifications/`
-until closure removes it. On a post-cleanup candidate the brief grounds the pair
+no placeholder. Every grounding source it names must reach the reviewer as exact
+bytes: a path under `.orca/` is in no checkout the reviewer can obtain, and the
+accepted specification is tracked under `docs/specifications/` until closure
+removes it. On a post-cleanup candidate the brief grounds the pair
 in the durable knowledge and cites the removed specification by its frozen
 object id together with the commit whose tree still holds it, which a full
 clone or worktree resolves with `git cat-file` and a shallow one does not. A reviewer that cannot
