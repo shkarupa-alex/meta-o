@@ -1,0 +1,16 @@
+{
+  "contract": "recorded-cli-help.v2",
+  "binary": "glab",
+  "binaryIdentity": "home-relative:.local/bin/glab",
+  "resolution": "one absolute path with its home prefix redacted",
+  "version": "glab 1.128.0 (519ea19f7)",
+  "observations": [
+    {
+      "invokedBinary": "home-relative:.local/bin/glab",
+      "command": "glab issue note --help",
+      "exitStatus": 0,
+      "provenance": "stdout",
+      "output": "  Without `--message`, opens an editor at a terminal, and otherwise reads the comment from standard input, such as when\n  input is piped or redirected.\n\n  `--attach` uploads a file and references it at the end of the comment. Repeat the flag for more than one file, or pass\n  `-` to read the file from standard input. An attachment is content on its own, so a comment with only `--attach`\n  neither prompts nor reads a body from standard input.\n\n  The `--attach` flag is an experiment. It might be\n  unstable or removed at any time, and is not ready for production use.\n  For more information, see\n  https://docs.gitlab.com/policy/development_stages_support/.\n\n\n  USAGE\n\n    glab issue note <issue-id> [--flags]\n\n  EXAMPLES\n\n    # Comment on issue 123, opening an editor for the message\n    glab issue note 123\n\n    # Comment with the message given inline\n    glab issue note 123 --message \"Looking into this now.\"\n\n    # Create an internal note, visible only to project members\n    glab issue note 123 --message \"Rotating the leaked token now.\" --internal\n\n    # Attach a screenshot alongside the message\n    glab issue note 123 --message \"Here is the repro.\" --attach ./screenshot.png\n\n    # Attach an image piped from the clipboard\n    pngpaste - | glab issue note 123 --attach -\n\n    # Comment with the message read from a file\n    glab issue note 123 < comment.md\n\n  FLAGS\n\n    --attach      (Experimental) Upload a file and reference it at the end of the comment. Use \"-\" to read the file from standard input. Repeat the flag to attach multiple files.\n    -h --help     Show help for this command.\n    --internal    Create the note as an internal note, visible only to project members.\n    -m --message  Message text.\n    -R --repo     Select another repository. You can use either OWNER/REPO or GROUP/NAMESPACE/REPO. The full URL or Git URL is also accepted."
+    }
+  ]
+}

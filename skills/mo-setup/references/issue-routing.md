@@ -90,15 +90,23 @@ comments/creates используют `--body-file`. Cross-repo `gh search issue
 
 GitLab dedup использует
 `glab issue list --all --output json --per-page <n> --page <k>` до короткой
-страницы. Creates используют `--description-file`. `glab issue note` не читает
-body из файла или stdin и без `--message` открывает editor. Поэтому
-многострочная note публикуется через
+страницы. Creates используют `--description-file`.
+
+Маршрут note выбирает справка установленной версии: перечитай
+`glab issue note --help`. Если она документирует чтение комментария из stdin —
+описанием (`reads the comment from standard input`) или примером, который
+перенаправляет файл в `glab issue note`, — note публикуется нативно:
+`glab issue note <iid> -R <repo> < <body-file>`. Рабочий нативный маршрут не
+требует upstream Issue. Если справка stdin не документирует, многострочная note
+публикуется через
 `glab api --hostname <host> --method POST projects/<url-encoded-path>/issues/<iid>/notes --input <prepared-note.json>`,
 где JSON собирается file-safe командой
 `jq -Rs '{body: .}' < body.md > note.json`. Это локальный workaround: рядом с
 инструкцией обязателен canonical upstream Issue URL; пока он не подтверждён,
-route даёт `needs_attention`, а не guessed write. Bodyless command, editor
-invocation и shell substitution запрещены.
+route даёт `needs_attention`, а не guessed write. В обоих маршрутах bodyless
+command, editor invocation и shell substitution запрещены. Сверка после записи
+сравнивает прочитанное тело с подготовленным файлом и допускает удаление ровно
+одного завершающего LF; любое другое расхождение даёт `needs_attention`.
 
 Каждый write body готовится под `umask 077`, передаётся файлом или stdin без
 shell substitution и удаляется только после settled outcome. Версионные и
