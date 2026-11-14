@@ -360,29 +360,27 @@ function blockBefore(lines, index, column) {
 
 const pathOf = (raw) => posix.normalize(raw.replace(/^\.\//u, ""));
 
-// A command word as it opens a shell line: no directory, no extension.
-const COMMAND_WORD = /^[A-Za-z][\w-]*$/u;
+// The commands that only show a file. A closed set, because any word a
+// directory name can start with would otherwise read `my docs/x.md` as a
+// command `my` around docs/x.md.
+const READERS = new Set(["cat", "less", "more", "head", "tail", "bat", "view"]);
 
 /**
  * The document one backtick span names.
  *
- * Backticks usually hold the path alone, but they may hold a command around
- * it, as in `cat docs/x.md`. The span's form alone decides which: a command
- * word followed by a last argument that is a path with a directory. The
- * boundaries are fixed before any tracked file is consulted, because a span
- * cut to whichever tail exists would let a removed `docs/my guide.md` resolve
- * to some tracked guide.md (§A-MEMORY-01). Any other span is one literal path,
- * spaces included, so an ambiguous span fails closed as unavailable.
+ * Backticks usually hold the path alone, but they may hold a command that
+ * shows it, as in `cat docs/x.md`. The span's form alone decides which: one
+ * word of READERS followed by one whole path, and nothing else, is that
+ * command. The boundaries are fixed before any tracked file is consulted,
+ * because a span cut to whichever tail exists would let a removed
+ * `docs/my guide.md` resolve to some tracked guide.md (§A-MEMORY-01). Any
+ * other span is one literal path, spaces included, so a span of an unknown
+ * form fails closed as unavailable rather than naming another document.
  */
 function spanDocument(span) {
   const words = span.trim().split(/\s+/u);
-  const argument = words.at(-1);
-  const command =
-    words.length > 1 &&
-    COMMAND_WORD.test(words[0]) &&
-    argument.includes("/") &&
-    WHOLE_PATH.test(argument);
-  return pathOf(command ? argument : span);
+  const reader = words.length === 2 && READERS.has(words[0]) && WHOLE_PATH.test(words[1]);
+  return pathOf(reader ? words[1] : span);
 }
 
 /** The last Markdown path written before the reference in its block. */

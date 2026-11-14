@@ -437,7 +437,10 @@ test("a missing path is never resolved by a tracked tail or a guessed command", 
   // guide.md is tracked and has a section 1; the named documents are not it.
   const docs = { "guide.md": "# Guide\n\n## 1 Rule\n", "docs/x.md": DOCS["docs/x.md"] };
   const kindsOf = (text, extra = {}) => {
-    const all = { ...docs, ...extra };
+    // An extra entry set to undefined removes that document from the tree.
+    const all = Object.fromEntries(
+      Object.entries({ ...docs, ...extra }).filter(([, body]) => body !== undefined),
+    );
     const tracked = new Set([...Object.keys(all), "src/a.mjs"]);
     const readDocument = (document) =>
       all[document] === undefined ? null : documentSections(all[document]);
@@ -466,6 +469,18 @@ test("a missing path is never resolved by a tracked tail or a guessed command", 
   // A span whose form is no command stays one literal name and fails closed.
   assert.deepEqual(kindsOf("// `my guide.md` §1"), [
     "source_section_document_unavailable §1 my guide.md",
+  ]);
+  // A directory whose name starts with a word is no command around its tail:
+  // `my docs/x.md` names its own sections, with or without docs/x.md.
+  const spaced = { "my docs/x.md": "# Mine\n\n## 2 Own\n" };
+  for (const lead of ["// `my docs/x.md` ", "// `my docs/x.md`\n// section "]) {
+    assert.deepEqual(kindsOf(`${lead}§1`, spaced), ["source_section_missing §1 my docs/x.md"]);
+    assert.deepEqual(kindsOf(`${lead}§2`, spaced), []);
+  }
+  const alone = { "docs/x.md": undefined, ...spaced };
+  assert.deepEqual(kindsOf("// `my docs/x.md` §2", alone), []);
+  assert.deepEqual(kindsOf("// `my docs/x.md` §1"), [
+    "source_section_document_unavailable §1 my docs/x.md",
   ]);
 });
 

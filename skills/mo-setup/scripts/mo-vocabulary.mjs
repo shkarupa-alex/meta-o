@@ -16114,12 +16114,11 @@ function blockBefore(lines, index2, column) {
   return [...lines.slice(start, index2), lines[index2].slice(0, column)].join("\n");
 }
 var pathOf = (raw) => posix2.normalize(raw.replace(/^\.\//u, ""));
-var COMMAND_WORD = /^[A-Za-z][\w-]*$/u;
+var READERS = /* @__PURE__ */ new Set(["cat", "less", "more", "head", "tail", "bat", "view"]);
 function spanDocument(span) {
   const words = span.trim().split(/\s+/u);
-  const argument = words.at(-1);
-  const command = words.length > 1 && COMMAND_WORD.test(words[0]) && argument.includes("/") && WHOLE_PATH.test(argument);
-  return pathOf(command ? argument : span);
+  const reader = words.length === 2 && READERS.has(words[0]) && WHOLE_PATH.test(words[1]);
+  return pathOf(reader ? words[1] : span);
 }
 function namedDocument(block2) {
   const last = [...block2.matchAll(DOCUMENT_PATH)].at(-1);
