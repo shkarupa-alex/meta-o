@@ -205,6 +205,65 @@ test("9: an untimed result borrows its call's time, so --since places it", () =>
   assert.equal(read([claude[1]], "claude").outcome, "ok");
 });
 
+test("results sharing one untimed record each borrow only their own call's time", () => {
+  const EARLY = "2026-10-11T00:00:00Z";
+  const LATE = "2026-10-13T00:00:00Z";
+  const since = Date.parse("2026-10-12T00:00:00Z");
+  const use = (id, timestamp) => ({
+    type: "assistant",
+    sessionId: "synthetic",
+    timestamp,
+    message: { content: [{ type: "tool_use", id, name: "Bash", input: { command: HELPER } }] },
+  });
+  const answer = (id, text = `MO-REVIEW/1 status=${id}`) => ({
+    type: "tool_result",
+    tool_use_id: id,
+    content: text,
+  });
+  const shared = (content, timestamp) => ({
+    type: "user",
+    sessionId: "synthetic",
+    ...(timestamp ? { timestamp } : {}),
+    message: { content },
+  });
+  for (const order of [
+    ["a", "b"],
+    ["b", "a"],
+  ]) {
+    const records = [use("a", EARLY), use("b", LATE), shared(order.map((id) => answer(id)))];
+    const all = read(records, "claude");
+    const byText = new Map(results(all).map((event) => [event.excerpt, event]));
+    assert.equal(byText.get("MO-REVIEW/1 status=a").time, Date.parse(EARLY), order.join());
+    assert.equal(byText.get("MO-REVIEW/1 status=b").time, Date.parse(LATE), order.join());
+    assert.deepEqual(
+      results(read(records, "claude", since)).map((event) => event.excerpt),
+      ["MO-REVIEW/1 status=b"],
+      order.join(),
+    );
+  }
+  // A typed result with no known call stays untimed beside a linked one.
+  for (const content of [
+    [answer("b"), answer("x", "MO-REVIEW/1 status=orphan")],
+    [answer("x", "MO-REVIEW/1 status=orphan"), answer("b")],
+  ]) {
+    const session = read([use("b", LATE), shared(content)], "claude", since);
+    assert.deepEqual(session.reasons, ["untimed_with_since"]);
+    assert.equal(session.outcome, "partial");
+  }
+  // The record's own timestamp outranks every call's time.
+  const stamped = read(
+    [use("a", EARLY), use("b", LATE), shared([answer("a"), answer("b")], LATE)],
+    "claude",
+  );
+  assert.deepEqual(
+    results(stamped).map((event) => [event.time, event.timeSource]),
+    [
+      [Date.parse(LATE), "record"],
+      [Date.parse(LATE), "record"],
+    ],
+  );
+});
+
 test("a call in a branch that did not run is never confirmed", () => {
   const program = `if (false) {\n  text(await tools.exec_command({cmd:${JSON.stringify(HELPER)}}));\n}`;
   const session = read([exec("outer", program), execOutput("outer", items())]);

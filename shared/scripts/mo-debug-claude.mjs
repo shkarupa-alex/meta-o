@@ -164,6 +164,8 @@ function userRecord(state, record, number) {
   }
   if (!Array.isArray(content)) return;
   for (const item of content) {
+    // Every item starts from the record's own time; only its own call may lend one.
+    state.evidence.inherit(null);
     if (item?.type === "text" && typeof item.text === "string") {
       if (item.text.startsWith(LOAD_PREFIX)) skillLoad(state, record, item.text, number);
       else if (COMMAND.test(item.text)) slashCommand(state, item.text, number, false);

@@ -370,12 +370,19 @@ export function typedResult(output) {
  */
 export function createEvidence(session, harness) {
   const evidence = { session, harness, recognized: 0, events: [], loads: [], gaps: [] };
-  let current = { time: null, timeSource: null };
+  // One Claude record carries several tool results, each answering its own
+  // call. The record's time stays apart from the time of the event being
+  // emitted, so one result's borrowed call time never leaks to its neighbour.
+  let record = { time: null, timeSource: null };
+  let current = record;
   evidence.enter = (time) => {
-    current = { time, timeSource: time === null ? null : "record" };
+    record = { time, timeSource: time === null ? null : "record" };
+    current = record;
   };
+  /** The time of the next events: the record's own, else this call's, else none. */
   evidence.inherit = (time) => {
-    if (current.time === null && typeof time === "number") current = { time, timeSource: "call" };
+    current =
+      record.time === null && typeof time === "number" ? { time, timeSource: "call" } : record;
   };
   evidence.now = () => current.time;
   evidence.event = (number, kind, skill, text, details = {}) => {

@@ -347,12 +347,14 @@ function typedResult(output) {
 }
 function createEvidence(session, harness) {
   const evidence = { session, harness, recognized: 0, events: [], loads: [], gaps: [] };
-  let current2 = { time: null, timeSource: null };
+  let record = { time: null, timeSource: null };
+  let current2 = record;
   evidence.enter = (time) => {
-    current2 = { time, timeSource: time === null ? null : "record" };
+    record = { time, timeSource: time === null ? null : "record" };
+    current2 = record;
   };
   evidence.inherit = (time) => {
-    if (current2.time === null && typeof time === "number") current2 = { time, timeSource: "call" };
+    current2 = record.time === null && typeof time === "number" ? { time, timeSource: "call" } : record;
   };
   evidence.now = () => current2.time;
   evidence.event = (number, kind, skill, text, details = {}) => {
@@ -491,6 +493,7 @@ function userRecord(state, record, number) {
   }
   if (!Array.isArray(content)) return;
   for (const item of content) {
+    state.evidence.inherit(null);
     if (item?.type === "text" && typeof item.text === "string") {
       if (item.text.startsWith(LOAD_PREFIX)) skillLoad(state, record, item.text, number);
       else if (COMMAND.test(item.text)) slashCommand(state, item.text, number, false);
