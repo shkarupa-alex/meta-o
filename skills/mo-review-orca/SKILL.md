@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-review-orca or an act
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "6677fe3580d2c5262aa952a3e4720030ea97fa6a"
+  source_tree: "2970c63db9b6e84e22e20b21e768b0f93b2b3391"
 ---
 
 # Review through Orca
@@ -86,6 +86,11 @@ names each of those three the helper found absent, or says `none` or `unknown`,
 so the human knows what to prepare without a second question, and no pair
 starts. Preparing the project is the human's own step; this skill never does it
 and never starts the setup skill for them.
+
+Give both briefs one `Backlog-Gate` line: the gate this candidate stands at and
+the caller's own `MO-BACKLOG/1` result on exactly this SHA, or `not_run` when
+no gate ran on it. Started on its own, without a gate result from its caller,
+write `Backlog-Gate: G0 not_run`; the reviewers never run the gate themselves.
 
 Give both briefs exactly one E2E form. Called by the active orchestration skill,
 copy the `E2E-Evidence` and `E2E-Coverage` lines it holds verbatim, or its one

@@ -166,10 +166,11 @@ a reviewer, and there is no shared E2E SHA.
 
 Call `mo-review-orca` for the first deep pair and remediation follow-ups, and
 give every brief the current E2E lines verbatim, or the one
-`E2E: not_applicable` line. An `e2e_affected` or `e2e_missing` finding is an
-ordinary finding of the round: after its fix rerun through `mo-e2e` only the
-scenarios it lists on the new candidate, replace only their lines, and continue
-the review; a new SHA alone reruns nothing. Give
+`E2E: not_applicable` line, and the `Backlog-Gate` line of that candidate: GC's
+result on the closure candidate, otherwise `G0 not_run`. An `e2e_affected` or
+`e2e_missing` finding is an ordinary finding of the round: after its fix rerun
+through `mo-e2e` only the scenarios it lists on the new candidate, replace only
+their lines, and continue the review; a new SHA alone reruns nothing. Give
 the executor both immutable reports only through its verified
 pair paths/sizes; wait for exact `Review-Handoff-Ack` before cleanup. Keep
 remediation reviewers hot, and use a fresh final same-SHA pair. Public updates

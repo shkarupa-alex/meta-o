@@ -27,6 +27,7 @@ Every brief carries all of these, in this order, each on its own line or block:
 | `Methodology-Friction` | where to report a rule that got in the way rather than a defect           |
 | `Cleanup`              | what to remove, and what to report when removal fails                     |
 | `Knowledge-Layer`      | the helper's literal `state=… reason=…` line on the same SHA              |
+| `Backlog-Gate`         | the caller's own backlog gate on `Target` and its result, or `not_run`    |
 | `E2E`                  | exactly one E2E form: evidence lines, `not_applicable` or `not_evaluated` |
 
 `Scope` names the task, not the last change. `base` is where the task starts:
@@ -44,6 +45,18 @@ brief, and sending one spends a reviewer on a question.
 The `Knowledge-Layer` line is the exact output of
 `mo-knowledge-layer.mjs --candidate <sha>` on the `Target` SHA, pasted, never
 retold: a brief without it leaves the reviewer's deferral lens `unknown`.
+
+`Backlog-Gate: <G0|GC|G1|G2> <EMPTY|NOT-EMPTY|UNKNOWN|not_run>` carries the
+caller's own backlog gate. The gate names where the candidate stands — `G0`
+while the task is worked on, `GC` for the closure candidate, `G1` and `G2` right
+before an agent's MR/PR and merge — and the result is the literal `MO-BACKLOG/1`
+answer of the project's closure command, run by the caller on exactly `Target`.
+A gate the caller did not run on that SHA is `not_run`: every candidate between
+G0 and GC, a standalone review, a project whose knowledge layer is
+`not_enabled`. `not_run` is evidence the caller owns, never a check the reviewer
+skipped. Running a gate stays the caller's; the reviewer inspects the committed
+backlog and registry statically and gains no right to run the gate, QC, a test
+or any other project command.
 
 The `E2E` field takes exactly one of three forms, and the lens it opens belongs
 to [Portable review protocol](review-protocol.md):

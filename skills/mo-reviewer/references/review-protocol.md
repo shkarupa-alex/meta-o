@@ -126,6 +126,17 @@ needs a routed Issue or a stated residual risk. With `needs_attention`, or with
 no such line in the brief, the lens is `unknown`: never assume an ordinary
 project.
 
+Running the backlog gates belongs to the caller; judging what they guard belongs
+to the reviewer. The brief's
+`Backlog-Gate: <G0|GC|G1|G2> <EMPTY|NOT-EMPTY|UNKNOWN|not_run>` line is the
+caller's own result on the candidate. Inspect the committed backlog and the
+registry by SHA and judge them; never run the gate, QC, a test or a linter to
+confirm or fill the line. `not_run` is the caller's evidence that it ran no gate
+on this SHA, never a duty the reviewer missed: record it in Grounding as given.
+On a `GC`, `G1` or `G2` candidate a committed backlog that still holds an entry
+is a finding whatever the line says, and a brief without the line is missing
+grounding like any other field.
+
 A project with no backlog-closure checker at all, while its knowledge layer is
 not `not_enabled`, is a different answer: the absence is a readiness gap
 reported as `needs_attention`, and no review prepares the project or writes the

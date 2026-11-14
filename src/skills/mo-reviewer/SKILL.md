@@ -35,12 +35,15 @@ Take every field of the brief as given: `Target`, `Intent`, `Spec`,
 `Intent-Ledger`, `Scope`, `Mode`, `Placement`, `Environment`, `Constraints`,
 `Ownership`, `Acceptance`,
 `Reviewer-Skill`, `Report`, `Body-File`, `Methodology-Friction`, `Cleanup`,
-`Knowledge-Layer` and `E2E`. A missing field or a placeholder such as `<sha>` is a
+`Knowledge-Layer`, `Backlog-Gate` and `E2E`. A missing field or a placeholder such as `<sha>` is a
 question to the caller through the backend's ask surface, not something to
 reconstruct. The `Knowledge-Layer: state=… reason=…` line decides the deferral
 lens: `enabled` requires the project's knowledge gates, `not_enabled` makes
 them `not_applicable`, and `needs_attention` or a missing line makes the lens
-`unknown` — never assume an ordinary project. The `E2E` field decides the E2E
+`unknown` — never assume an ordinary project. `Backlog-Gate` is the caller's
+own gate result on `Target`: inspect the backlog and registry statically, never
+run the gate yourself, and take `not_run` as the caller's evidence rather than
+a check you owe. The `E2E` field decides the E2E
 lens the protocol describes: with `E2E-Evidence` lines or
 `E2E: not_applicable` the lens is required, and with
 `E2E: not_evaluated reason=standalone` you raise no `e2e_affected` or

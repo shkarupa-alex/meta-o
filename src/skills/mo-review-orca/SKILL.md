@@ -86,6 +86,11 @@ so the human knows what to prepare without a second question, and no pair
 starts. Preparing the project is the human's own step; this skill never does it
 and never starts the setup skill for them.
 
+Give both briefs one `Backlog-Gate` line: the gate this candidate stands at and
+the caller's own `MO-BACKLOG/1` result on exactly this SHA, or `not_run` when
+no gate ran on it. Started on its own, without a gate result from its caller,
+write `Backlog-Gate: G0 not_run`; the reviewers never run the gate themselves.
+
 Give both briefs exactly one E2E form. Called by the active orchestration skill,
 copy the `E2E-Evidence` and `E2E-Coverage` lines it holds verbatim, or its one
 `E2E: not_applicable reason=<…>` line. Started on its own, without a separate
