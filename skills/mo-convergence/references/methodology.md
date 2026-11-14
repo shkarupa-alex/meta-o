@@ -78,9 +78,10 @@ silently on the way to something else.
 
 The executor's first coherent commit materializes a temporary feature bundle:
 the accepted specification, `user-ledger.md` and a short `checklist.md` of
-observable outcomes, tests/knowledge, applicable E2E and two final review
-passes. The checklist is not a task graph. The executor owns and commits these
-files; the orchestrator may read them but never edits product/spec commits.
+observable outcomes, tests/knowledge, the specification's architecture decisions
+moved to live `§A-*` anchors, applicable E2E and two final review passes. The
+checklist is not a task graph. The executor owns and commits these files; the
+orchestrator may read them but never edits product/spec commits.
 
 Before writing the ledger, replace an identified token, password, private key or
 credential-bearing URL with `[REDACTED:<kind>]`. If a value might be a secret
@@ -154,6 +155,14 @@ Before substantive implementation, the executor maps every durable normative
 intent to an existing business id, a new compact thesis, or an explicitly
 approved meaning change. Incidents, commands and temporary workarounds belong in
 architecture, papercuts or tests, not the business framing.
+
+In the same step, still before substantive product code, the executor moves
+every architecture decision the specification introduces into the project's
+architecture directory under its own `§A-*` identifier. Code, tests and comments
+then cite that live anchor, never a section of the specification: the
+specification is temporary and is removed at completion, so a citation of it
+points nowhere, and the reference check turns such a citation in source into an
+error.
 
 The executor owns all product changes. It commits coherent independently
 verifiable increments and returns a clean full candidate SHA. The orchestrator

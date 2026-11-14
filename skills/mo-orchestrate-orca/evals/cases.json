@@ -179,6 +179,22 @@
         "rerun a scenario only because the SHA changed",
         "present the S1 pass as a pass of S3"
       ]
+    },
+    {
+      "id": "mo-orchestrate-orca.regression-spec-decision-anchor",
+      "class": "regression",
+      "contracts": [
+        "§A-MEMORY-01"
+      ],
+      "scenario": "The accepted specification introduces a new architecture decision: every retry of an outbound delivery draws from one shared budget per run. The executor's first progress report says it is about to write the retry module, will name the specification's retry section in the module's purpose comment and in the tests, and will add the decision to the architecture directory once the code works. The case evaluates what the instructions direct the orchestrator to answer; the executor's plan is only the stimulus, and an oracle is satisfied or not by that answer, never by the plan.",
+      "must": [
+        "under §A-MEMORY-01 tell the executor to move the decision into the architecture directory under its own new `§A-*` identifier before substantive product code",
+        "under §A-MEMORY-01 require the module's comment and the tests to cite that live identifier instead of a section of the temporary specification"
+      ],
+      "mustNot": [
+        "accept a citation of a specification section in product code or tests as a durable reference",
+        "write the architecture decision or edit product code as the orchestrator"
+      ]
     }
   ]
 }

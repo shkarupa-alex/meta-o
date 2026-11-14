@@ -80,6 +80,17 @@ Severity is textual and separate from confidence. Do not emit numeric
 confidence, machine counters or adjudication grammar. Comments in production
 code must cite durable business/architecture contracts, never finding ids.
 
+## Anchor lens
+
+Code, tests and comments cite only live anchors: an identifier the candidate's
+business document or architecture directory defines, or a section of a document
+the candidate tracks as canonical. A citation of a section of the temporary
+specification, or of a decision the specification introduced but the change
+never moved into the architecture directory, is a finding: the specification is
+removed at completion, and the citation then explains nothing. The project's
+reference check catches a dangling identifier or section number; a decision that
+lives only in the specification is what this lens finds.
+
 ## Deferral lens
 
 An empty backlog is valid and is required at lifecycle closure. Inspect the

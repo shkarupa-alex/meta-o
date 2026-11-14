@@ -53,7 +53,7 @@ report a requirement the change misses; with `Spec: none` a missing
 specification is not a finding. Activate only the risk lenses the change
 touches — security and external effects, concurrency and state, compatibility
 and data, performance and resources, maintainability and test gaps — and apply
-the deferral and E2E lenses the protocol describes. An `E2E-Evidence` line may
+the deferral, anchor and E2E lenses the protocol describes. An `E2E-Evidence` line may
 name an ancestor of `Target`: judge whether the range from its scenario SHA to
 `Target` touches the behavior its `E2E-Coverage` names, and whether the change
 made a scenario applicable that has no line, including one of an unchanged

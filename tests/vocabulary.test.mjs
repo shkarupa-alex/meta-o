@@ -536,3 +536,33 @@ test("mo-setup rolls the check out in order and never with a baseline", () => {
   // The shipped skill carries the bundle it tells a project to copy.
   assert.ok(readFileSync(BUNDLE, "utf8").length > 0);
 });
+
+test("a specification's architecture decision becomes a live anchor before product code", () => {
+  const flat = (path) => readFileSync(join(ROOT, path), "utf8").replace(/\s+/gu, " ");
+  const methodology = flat("shared/references/methodology.md");
+  assert.match(
+    methodology,
+    /`checklist\.md` of observable outcomes, tests\/knowledge, the specification's architecture decisions moved to live `§A-\*` anchors/u,
+  );
+  assert.match(
+    methodology,
+    /still before substantive product code, the executor moves every architecture decision the specification introduces into the project's architecture directory under its own `§A-\*` identifier/u,
+  );
+  const protocol = flat("shared/references/review-protocol.md");
+  assert.match(protocol, /## Anchor lens Code, tests and comments cite only live anchors/u);
+  assert.match(protocol, /never moved into the architecture directory, is a finding/u);
+  assert.match(
+    flat("src/skills/mo-reviewer/SKILL.md"),
+    /the deferral, anchor and E2E lenses the protocol describes/u,
+  );
+  const cases = JSON.parse(
+    readFileSync(join(ROOT, "src/skills/mo-orchestrate-orca/evals/cases.json"), "utf8"),
+  ).cases;
+  const anchor = cases.find(
+    ({ id }) => id === "mo-orchestrate-orca.regression-spec-decision-anchor",
+  );
+  assert.deepEqual(anchor.contracts, ["§A-MEMORY-01"]);
+  for (const oracle of anchor.must) assert.match(oracle, /^under §A-MEMORY-01 /u);
+  // The scenario names no section number: the case must not depend on the citation it forbids.
+  assert.doesNotMatch(anchor.scenario, /§\d/u);
+});
