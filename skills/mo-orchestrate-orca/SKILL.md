@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-orchestrate-orca; run
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "a1ac9c9068b22cd31f49cb2b0e8f291824b13443"
+  source_tree: "0bba7988bf5493f9f5eaecace308dd90308754ed"
 ---
 
 # Orchestrate a feature through Orca
@@ -167,14 +167,16 @@ return a `fail` or `unknown` to the executor and rerun only those scenarios with
 `scenarios=<id,…>` until every one passes. A `blocked:external_capability` the
 project's E2E contract types, or a `not_run` of an unavailable environment or
 profile that only a human's action restores, is an external block the executor
-cannot fix — an exhausted subscription window or a temporary provider refusal is
-a wait, not a block: never send it back and
-never rerun it while the block stands; tell the human once with the scenario,
-its result and the Issue or missing capability, carry its line verbatim into the
-brief as unproven, start review once every other selected scenario passed, and
-end no better than `needs_attention/external_blocked` or
-`needs_attention/verification_blocked`. Without scenarios the evidence is
-`E2E: not_applicable reason=<…>` and review starts at once. When `mo-e2e`
+cannot fix: never send it back and never rerun it while the block stands; tell
+the human once with the scenario, its result and the Issue or missing
+capability, carry its line verbatim into the brief as unproven, start review
+once every other selected scenario passed, and end no better than
+`needs_attention/external_blocked` or `needs_attention/verification_blocked`. An
+exhausted subscription window or a temporary provider refusal is a wait, not a
+block: wait for the next window or retry through the run's one waiter, then
+rerun only that scenario, tell nobody, and start review only once it passed.
+Without scenarios the evidence is `E2E: not_applicable reason=<…>` and review
+starts at once. When `mo-e2e`
 selects no scenario for the task, its `worker_done` carries one
 `E2E: not_applicable reason=no_task_scenarios sha=… source=… basis=…` line:
 it is the evidence, and review starts at once; never write that line yourself

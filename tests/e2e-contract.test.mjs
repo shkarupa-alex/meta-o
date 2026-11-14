@@ -240,7 +240,10 @@ test("every actor reads the E2E proof order and the per-scenario evidence form",
       "`git merge-base --is-ancestor`",
       externalBlock,
       "never send it back and never rerun it while the block stands",
-      "an exhausted subscription window or a temporary provider refusal is a wait, not a block",
+      // The wait has its own instruction, so the block's "tell the human once"
+      // never reads as applying to a quota pause.
+      "is an external block the executor cannot fix: never send it back",
+      "An exhausted subscription window or a temporary provider refusal is a wait, not a block: wait for the next window or retry through the run's one waiter, then rerun only that scenario, tell nobody,",
     ],
     "src/skills/mo-review-orca/SKILL.md": [
       "write `E2E: not_evaluated reason=standalone`",
