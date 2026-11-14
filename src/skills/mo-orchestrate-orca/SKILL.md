@@ -162,8 +162,15 @@ its deterministic checks pass, E2E comes first, and only if the project has
 scenarios in `docs/e2e.md` or the E2E document `AGENTS.md` names: call `mo-e2e`
 with `scope=task` — it chooses the task's scenarios by the behavior the task
 touches, including unchanged acceptance rows the task restores or depends on —
-return a failure to the executor and rerun only the failed scenarios with
-`scenarios=<id,…>` until every one passes. Without scenarios the evidence is
+return a `fail` or `unknown` to the executor and rerun only those scenarios with
+`scenarios=<id,…>` until every one passes. A `blocked:external_capability` the
+project's E2E contract types, or a `not_run` of an unavailable environment or
+profile, is an external block the executor cannot fix: never send it back and
+never rerun it while the block stands; tell the human once with the scenario,
+its result and the Issue or missing capability, carry its line verbatim into the
+brief as unproven, start review once every other selected scenario passed, and
+end no better than `needs_attention/external_blocked` or
+`needs_attention/verification_blocked`. Without scenarios the evidence is
 `E2E: not_applicable reason=<…>` and review starts at once. When `mo-e2e`
 selects no scenario for the task, its `worker_done` carries one
 `E2E: not_applicable reason=no_task_scenarios sha=… source=… basis=…` line:
@@ -172,8 +179,8 @@ for a project that has scenarios. `scope=full` runs
 only on the user's explicit request. Keep each scenario's `E2E-Evidence` and
 `E2E-Coverage` line exactly as `mo-e2e`'s complete `worker_done` printed it,
 replace only the lines of a rerun scenario, and after compaction reread them
-from Orca's responses; a result other than `pass|not_applicable` never reaches
-a reviewer, and there is no shared E2E SHA.
+from Orca's responses; a `fail` or `unknown` never reaches a reviewer, and
+there is no shared E2E SHA.
 
 Call `mo-review-orca` for the first deep pair and remediation follow-ups, and
 give every brief the current E2E lines verbatim, or the one

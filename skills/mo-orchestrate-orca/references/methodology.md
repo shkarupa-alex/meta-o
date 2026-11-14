@@ -273,8 +273,20 @@ records `E2E: not_applicable reason=<…>` and goes straight to review, and so
 does a task whose behavior no scenario covers, with the one
 `E2E: not_applicable reason=no_task_scenarios …` line of section 8. Only then
 does the review loop below converge with remediation under its own rules. A
-result other than `pass` or `not_applicable` never reaches a reviewer: the first
-loop has not converged.
+`fail` or `unknown` never reaches a reviewer: the first loop has not converged.
+
+A failure is what the executor can fix. A scenario the project's E2E contract
+types `blocked:external_capability`, or one that is `not_run` because its
+environment or a required profile is unavailable, is an external block instead:
+returning it to the executor would loop without converging, because nothing the
+executor changes removes the block. Such a scenario is never sent back for a fix
+and never rerun while the block stands. Tell the human once — the scenario, its
+result and the Issue or missing capability behind it — keep its line as section
+8 says, and let the review start once every other selected scenario has passed.
+The block stops only what depends on it; the feature ends no better than
+`needs_attention/external_blocked` for a typed external capability, or
+`needs_attention/verification_blocked` for a missing environment or profile,
+until the scenario passes.
 
 After the executor settles, validate the branch, clean worktree, commit object
 and full `HEAD`, then freeze that SHA. Start both reviewer sessions concurrently
@@ -596,19 +608,25 @@ E2E-Coverage: <scenario-id> acceptance=<row-id>[,<row-id>…] signals=<observed 
 ```
 
 `mo-e2e` prints the same line with `fail`, `unknown` or another result for a
-scenario that did not pass; such a line is not evidence and never enters a
-brief. The review brief and the final report copy these lines verbatim. A
-partial rerun replaces only the lines of the scenarios it reran. After a context
-compaction, reread the lines from Orca's responses rather than from memory.
-There is no shared E2E SHA: one SHA for every scenario either loses each
-scenario's range or forces a full rerun.
+scenario that did not pass; such a line is not evidence. A `fail` or `unknown`
+line never enters a brief. An external block of section 5 —
+`result=blocked:external_capability` or `result=not_run` — enters the brief
+verbatim as an unproven scenario: it tells the reviewers the scenario is known
+and open, so they raise no `e2e_missing` for it, and it never counts as a pass.
+The review brief and the final report copy these lines verbatim. A partial rerun
+replaces only the lines of the scenarios it reran. After a context compaction,
+reread the lines from Orca's responses rather than from memory. There is no
+shared E2E SHA: one SHA for every scenario either loses each scenario's range or
+forces a full rerun.
 
 A scenario's evidence on an ancestor of the final SHA holds as long as the final
 pair raised no `e2e_affected` or `e2e_missing` finding about it. A historical
 pass is never presented as a pass of the final SHA: the report names the final
 SHA for QC and reviews and the scenario SHA for each scenario. A result other
-than `pass` or `not_applicable` is not evidence; the E2E loop has not converged.
-QC and both reviews always run on the final SHA.
+than `pass` or `not_applicable` is not evidence: a `fail` or `unknown` means the
+E2E loop has not converged, and an external block leaves the feature at
+`needs_attention` until that scenario passes. QC and both reviews always run on
+the final SHA.
 
 When the project has scenarios but `scope=task` selects none, because the task
 touches, restores and depends on no behavior a scenario covers, the complete

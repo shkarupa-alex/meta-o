@@ -201,7 +201,7 @@ test("every installable skill owns three base cases and named regressions", () =
   assert.equal(corpus.size, 12);
   assert.equal(
     [...corpus.values()].reduce((sum, document) => sum + document.cases.length, 0),
-    54,
+    55,
   );
   const regressions = [...corpus.values()].flatMap(({ cases }) =>
     cases.filter((item) => item.class === "regression").map(({ id }) => id),
@@ -211,6 +211,7 @@ test("every installable skill owns three base cases and named regressions", () =
     "mo-orchestrate-orca.regression-compaction-reground",
     "mo-orchestrate-orca.regression-consult-other-vendor",
     "mo-orchestrate-orca.regression-e2e-before-review",
+    "mo-orchestrate-orca.regression-e2e-external-blocked",
     "mo-orchestrate-orca.regression-e2e-missing-scenario",
     "mo-orchestrate-orca.regression-e2e-not-applicable",
     "mo-orchestrate-orca.regression-e2e-partial-rerun",
@@ -277,10 +278,10 @@ test("complete evidence binds every case to candidate, revision and approved ide
   const validated = validateEvidence(ROOT, evidence, HEAD, true, {
     criticalProfile: "opencode/llamacpp/qwen3.8-27b/default",
   });
-  // 54 cases on five profiles, each its own native execution.
-  assert.equal(validated.envelopes, 270);
+  // 55 cases on five profiles, each its own native execution.
+  assert.equal(validated.envelopes, 275);
   assert.deepEqual(validated.nonPass, []);
-  assert.equal(validated.aggregate.length, 54);
+  assert.equal(validated.aggregate.length, 55);
   for (const group of validated.aggregate) {
     assert.deepEqual(
       group.coordinates.map(({ matrixProfile }) => matrixProfile),
@@ -1162,7 +1163,7 @@ test("the CLI materializes and validates a missing desired harness without a mod
   const complete = matrix(FULL_MATRIX, (skill, caseId, matrixProfile) =>
     caseId === "find-reuse.positive" && matrixProfile === "desired-opencode" ? evidence : undefined,
   );
-  assert.equal(validateEvidence(ROOT, complete, HEAD, true).envelopes, 270);
+  assert.equal(validateEvidence(ROOT, complete, HEAD, true).envelopes, 275);
   rmSync(temporary, { recursive: true, force: true });
 });
 

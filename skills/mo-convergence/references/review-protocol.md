@@ -183,9 +183,12 @@ whose text opens with its class literal, as in `F-001 [P2] e2e_affected: …`:
 - `e2e_missing` names the scenario and the basis on which it applies.
 
 A path overlap with no causal link is not a finding. A line whose result is
-neither `pass` nor `not_applicable` means the E2E loop has not converged: the
-review is `UNKNOWN` with `Unknown-Reason: review_incomplete`, and its
-`Unknown-Account` names that line.
+`fail` or `unknown` means the E2E loop has not converged: the review is
+`UNKNOWN` with `Unknown-Reason: review_incomplete`, and its `Unknown-Account`
+names that line. A line with `result=blocked:external_capability` or
+`result=not_run` is an external block the caller already reported: the scenario
+is known and unproven, not missing. Raise no `e2e_missing` for it, review the
+rest as usual, and name it under Residual risks; it never counts as a pass.
 
 ## Diagnostics
 

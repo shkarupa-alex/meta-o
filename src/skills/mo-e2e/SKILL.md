@@ -89,8 +89,12 @@ E2E-Coverage: <scenario-id> acceptance=<row-id>[,<row-id>…] signals=<observed 
 proves, the signs you observed and the key paths of the behavior, so a reviewer
 can judge whether a later change touches it. A scenario that did not pass still
 gets its line, with `result=` naming its lowercase result such as `fail`,
-`unknown` or `not_run`; only `pass` and `not_applicable` are evidence, and the
-caller starts no review while any other result stands.
+`unknown`, `not_run` or `blocked:external_capability`; only `pass` and
+`not_applicable` are evidence. The caller starts no review while a `fail` or
+`unknown` stands. A `not_run` or `blocked:external_capability` is an external
+block the executor cannot fix, so say beside it which environment, profile or
+named capability was missing: the caller carries that line into the review as
+unproven rather than looping on it.
 
 When the project has scenarios and `scope=task` selects none, because the task
 touches, restores and depends on no behavior a scenario covers, the complete

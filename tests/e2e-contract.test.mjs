@@ -182,6 +182,9 @@ test("every actor reads the E2E proof order and the per-scenario evidence form",
   // spent UNKNOWN round or a project-wide `not_applicable` that is false.
   const noTaskScenarios =
     "E2E: not_applicable reason=no_task_scenarios sha=<40-hex> source=<dispatch-id> basis=";
+  // A scenario the executor cannot fix used to bounce back to it forever and
+  // keep the review from starting; only `fail` and `unknown` hold review now.
+  const externalBlock = "is an external block";
   const expectations = {
     "shared/references/methodology.md": [
       "The two proof loops run in order and never alternate.",
@@ -192,6 +195,8 @@ test("every actor reads the E2E proof order and the per-scenario evidence form",
       "a new SHA alone reruns nothing",
       noTaskScenarios,
       "`git merge-base --is-ancestor <sha> <candidate>`",
+      "A `fail` or `unknown` never reaches a reviewer",
+      externalBlock,
     ],
     "shared/references/review-brief.md": [
       evidence,
@@ -206,18 +211,23 @@ test("every actor reads the E2E proof order and the per-scenario evidence form",
       "With `not_evaluated` this lens is off",
       "Overlapping paths are a hint, not a verdict",
       "A `reason=no_task_scenarios` line is checked like an evidence line",
+      "is an external block the caller already reported",
     ],
     "src/skills/mo-e2e/SKILL.md": [
       evidence,
       coverage,
       "`scope=task` or `scope=full`",
       noTaskScenarios,
+      "The caller starts no review while a `fail` or `unknown` stands.",
+      externalBlock,
     ],
     "src/skills/mo-orchestrate-orca/SKILL.md": [
       "Run the proof loops in order, never alternating.",
       "a new SHA alone reruns nothing",
       "never write that line yourself for a project that has scenarios",
       "`git merge-base --is-ancestor`",
+      externalBlock,
+      "never send it back and never rerun it while the block stands",
     ],
     "src/skills/mo-review-orca/SKILL.md": ["write `E2E: not_evaluated reason=standalone`"],
     "src/skills/mo-reviewer/SKILL.md": ["`E2E: not_evaluated reason=standalone` you raise no"],

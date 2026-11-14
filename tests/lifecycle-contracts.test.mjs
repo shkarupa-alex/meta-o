@@ -392,10 +392,10 @@ test("every typed scenario result is admitted by the evidence rule and by mo-e2e
     ],
   );
   // An actor whose result set lacks it is named the same way.
-  const narrow = skill.replace(
-    /,\s+or\s+`blocked:external_capability`\s+where[\s\S]*?never `PASS`\./u,
-    ".",
-  );
+  // The evidence-line paragraph names the value too, so every mention goes.
+  const narrow = skill
+    .replace(/,\s+or\s+`blocked:external_capability`\s+where[\s\S]*?never `PASS`\./u, ".")
+    .replaceAll("`blocked:external_capability`", "`blocked`");
   assert.notEqual(narrow, skill);
   assert.deepEqual(unadmittedResults(e2e, narrow), [
     "B53: blocked:external_capability not in mo-e2e",
