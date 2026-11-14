@@ -589,7 +589,7 @@ const OBLIGATIONS = [
     {
       life: [
         /A paired attempt is one round in which both slots returned a valid report/,
-        /Any executable or instruction change creates a new SHA and invalidates all\s+gates/,
+        /Any executable or instruction change creates a new SHA and invalidates QC and\s+every review/,
       ],
     },
   ],

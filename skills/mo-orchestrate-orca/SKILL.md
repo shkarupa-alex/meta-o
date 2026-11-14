@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-orchestrate-orca; run
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "6d79a51a762f1a7758c142b57da67f7e8d40d767"
+  source_tree: "b6049f8b187accfaa0f51c328c29d33a1219924b"
 ---
 
 # Orchestrate a feature through Orca
@@ -88,7 +88,26 @@ reviewer/E2E is active. Demultiplex exact handles, process complete event batche
 re-arm quiet timeouts without narration, and allow only one same-arm retry after
 transport failure.
 
-Call `mo-review-orca` for the first deep pair and remediation follow-ups. Give
+Run the proof loops in order, never alternating. When the executor settles and
+its deterministic checks pass, E2E comes first, and only if the project has
+scenarios in `docs/e2e.md` or the E2E document `AGENTS.md` names: call `mo-e2e`
+with `scope=task` — it chooses the task's scenarios by the behavior the task
+touches, including unchanged acceptance rows the task restores or depends on —
+return a failure to the executor and rerun only the failed scenarios with
+`scenarios=<id,…>` until every one passes. Without scenarios the evidence is
+`E2E: not_applicable reason=<…>` and review starts at once. `scope=full` runs
+only on the user's explicit request. Keep each scenario's `E2E-Evidence` and
+`E2E-Coverage` line exactly as `mo-e2e`'s complete `worker_done` printed it,
+replace only the lines of a rerun scenario, and after compaction reread them
+from Orca's responses; a result other than `pass|not_applicable` never reaches
+a reviewer, and there is no shared E2E SHA.
+
+Call `mo-review-orca` for the first deep pair and remediation follow-ups, and
+give every brief the current E2E lines verbatim, or the one
+`E2E: not_applicable` line. An `e2e_affected` or `e2e_missing` finding is an
+ordinary finding of the round: after its fix rerun through `mo-e2e` only the
+scenarios it lists on the new candidate, replace only their lines, and continue
+the review; a new SHA alone reruns nothing. Give
 the executor both immutable reports only through its verified
 pair paths/sizes; wait for exact `Review-Handoff-Ack` before cleanup. Keep
 remediation reviewers hot, and use a fresh final same-SHA pair. Public updates
@@ -113,8 +132,8 @@ unknown effects and watchdog remain human boundaries. Never retry an unknown
 write effect.
 
 Run the project's declared QC in the foreground in a clean checkout of exactly
-the candidate, naming the command and its exit code, and call `mo-e2e` for
-applicable scenarios; reviewers never run tests, linters or QC. After knowledge
+the candidate, naming the command and its exit code; reviewers never run tests,
+linters or QC. After knowledge
 harvest and removal of the implemented spec, require GC on the exact candidate.
 Immediately before any agent-owned MR/PR create run G1 and verify remote source
 head equality. Immediately before merge run G2: the closure proof, the remote
@@ -126,7 +145,11 @@ another checkout SHA or unsupported integration candidate proof is
 merged by the agent without that CI evidence.
 
 Return only when one unchanged full SHA has QC, two fresh vendor-diverse PASS
-reports, applicable E2E and, with the knowledge layer `enabled`, an empty GC. Otherwise return honest
+reports and, with the knowledge layer `enabled`, an empty GC, and every
+applicable scenario has E2E evidence on that SHA or an ancestor with no
+`e2e_affected` or `e2e_missing` from the final pair. The final report names the final SHA for QC
+and reviews and copies every `E2E-Evidence` line with its own scenario SHA;
+never present an earlier scenario pass as a pass of the final SHA. Otherwise return honest
 `needs_attention`. Never finish with unacknowledged reports, unresolved backlog,
 foreign cleanup or a required question.
 

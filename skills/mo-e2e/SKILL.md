@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-e2e or an active mo-o
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "41c4f2b1aa356f65e8ac78a66d0e1ed77208074e"
+  source_tree: "dc644bd3aaaebf8416911fe1a44c23035b8ac3a0"
 ---
 
 # Agent-required end-to-end verification
@@ -26,18 +26,25 @@ from the tree, return `needs_attention`, and leave running the setup skill to
 the human.
 
 Act as a separate read-only E2E actor. Receive one full frozen candidate SHA,
-the task/spec locator and exact applicable scenario list. Read the project's E2E
-contract and acceptance-to-proof mapping. Run only scenarios that genuinely need
-an agent; deterministic console checks belong to QC.
+the task/spec locator and `scope=task` or `scope=full`, optionally with
+`scenarios=<id,…>` for a partial rerun. Read the project's E2E contract and
+acceptance-to-proof mapping. Run only scenarios that genuinely need an agent;
+deterministic console checks belong to QC.
+
+With `scope=task` you choose the task's scenarios by the behavior the task
+touches, not by which acceptance rows its diff edits: the scenarios of the rows
+the specification changes or adds, and the scenarios of unchanged rows whose
+behavior the task touches, restores or depends on — a regression fix restores
+an existing requirement without changing its row. With `scenarios=<id,…>` run
+exactly those, and only those. `scope=full` runs every scenario and only when
+the caller says the user asked for it; never widen `task` to `full` on your own.
 
 Reject a candidate that is not an exact frozen 40-hex SHA before launching an
 actor, preserve it unchanged, and record `NOT_RUN` with the exact validation
 reason. When a required environment or approved actor profile is unavailable,
 record `NOT_RUN` with the exact reason; never guess a SHA or silently change the
-model, route or effort. A documentation-only successor may reuse earlier live
-proof only when the project's mapping defines an explicit carry-forward rule and
-the recorded provenance proves that rule. Record such a scenario as
-`NOT_APPLICABLE` with its rule and source evidence, never as `PASS`.
+model, route or effort. A pass on an earlier SHA is that SHA's evidence: never
+report it as a pass of the candidate.
 
 Do not edit or commit tracked files. Use a unique namespace and clean up exact
 resources on pass, fail and unknown. Trust a harness or Orca writes for a
@@ -60,8 +67,25 @@ on the unchanged SHA. Missing or incomplete evidence is `UNKNOWN`; there is no
 partial pass.
 
 Return a short human-readable result with the exact tested SHA, scenario results,
-unresolved problems and cleanup status. Do not create a receipt, manifest,
-registry, digest, tracked evidence ledger or external sink.
+unresolved problems and cleanup status. Every selected scenario also gets one
+evidence line and one coverage trace in the complete `worker_done`, which the
+caller copies verbatim into the review brief and the final report:
+
+```text
+E2E-Evidence: <scenario-id> sha=<40-hex> result=<pass|not_applicable> source=<dispatch-id>
+E2E-Coverage: <scenario-id> acceptance=<row-id>[,<row-id>…] signals=<observed signs> paths=<key paths>
+```
+
+`sha` is the candidate you ran on and `source` is your own Dispatch id.
+`E2E-Coverage` is the basis of applicability: the acceptance rows the scenario
+proves, the signs you observed and the key paths of the behavior, so a reviewer
+can judge whether a later change touches it. A scenario that did not pass still
+gets its line, with `result=` naming its lowercase result such as `fail`,
+`unknown` or `not_run`; only `pass` and `not_applicable` are evidence, and the
+caller starts no review while any other result stands.
+
+Do not create a receipt, manifest, registry, digest, tracked evidence ledger or
+external sink.
 
 Use one run-wide 300000 ms blocking waiter for active E2E actors. A quiet
 timeout permits one public liveness snapshot and immediate re-arm without

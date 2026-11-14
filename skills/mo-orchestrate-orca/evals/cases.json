@@ -94,6 +94,91 @@
         "run the self-review or inspect product code as the orchestrator",
         "accept the old subagent's confirmation or `self_review_unavailable` as PASS"
       ]
+    },
+    {
+      "id": "mo-orchestrate-orca.regression-e2e-before-review",
+      "class": "regression",
+      "contracts": [
+        "§A-ORCHESTRATION-03",
+        "§A-REVIEW-02"
+      ],
+      "scenario": "The project defines scenarios in `docs/e2e.md`. The executor settled candidate S1 and its deterministic checks pass. `mo-e2e scope=task` returns a complete `worker_done` whose line for the task's scenario T1 is `E2E-Evidence: T1 sha=<S1> result=fail source=<dispatch>`. The executor then fixes the failure and commits S2. The case evaluates what the instructions direct the orchestrator to do with the failure and on S2, and when the first review pair starts.",
+      "must": [
+        "under §A-ORCHESTRATION-03 return the failure to the executor and on S2 rerun only T1 through `mo-e2e` with `scenarios=T1`, repeating until T1 passes",
+        "under §A-REVIEW-02 start the first deep pair only after every task scenario has a `result=pass` line, and give both briefs those `E2E-Evidence` and `E2E-Coverage` lines verbatim"
+      ],
+      "mustNot": [
+        "start a review pair while a task scenario's result is not pass",
+        "run `mo-e2e scope=full` without an explicit user request",
+        "alternate review and E2E until one version passes both loops"
+      ]
+    },
+    {
+      "id": "mo-orchestrate-orca.regression-e2e-not-applicable",
+      "class": "regression",
+      "contracts": [
+        "§A-ORCHESTRATION-03"
+      ],
+      "scenario": "The project has no `docs/e2e.md`, and its `AGENTS.md` names no other E2E document. The executor settled a candidate and its deterministic checks pass. The case evaluates what the instructions direct the orchestrator to record about E2E and what happens next.",
+      "must": [
+        "under §A-ORCHESTRATION-03 record `E2E: not_applicable reason=<…>` with the reason, give both briefs that one line and start the first review pair right after the deterministic checks"
+      ],
+      "mustNot": [
+        "call `mo-e2e` or invent a scenario",
+        "report E2E as passed",
+        "stop with needs_attention only because the project has no E2E scenarios"
+      ]
+    },
+    {
+      "id": "mo-orchestrate-orca.regression-e2e-partial-rerun",
+      "class": "regression",
+      "contracts": [
+        "§A-ORCHESTRATION-03",
+        "§A-REVIEW-02"
+      ],
+      "scenario": "Scenarios A and B passed on S1, so the orchestrator holds `E2E-Evidence: A sha=<S1> result=pass …` and `E2E-Evidence: B sha=<S1> result=pass …` with their `E2E-Coverage` lines. The review pair on S2 returns FINDINGS, one of them an `e2e_affected` finding that names a change, the behavior of A it touches and A as the scenario to rerun. The executor fixes the findings and commits S3. The case evaluates which scenarios run again, which E2E lines the next brief carries and where S3 goes.",
+      "must": [
+        "under §A-ORCHESTRATION-03 rerun only A through `mo-e2e scenarios=A` on S3 and replace only A's lines, so the next brief carries A with `sha=<S3>` and B with `sha=<S1>`, verbatim",
+        "under §A-REVIEW-02 send S3 to the same hot pair as `follow_up`, spending one round of the slice's budget"
+      ],
+      "mustNot": [
+        "rerun B",
+        "rewrite B's line with S3 or introduce one shared E2E SHA",
+        "start a new independent deep pair because of the E2E finding"
+      ]
+    },
+    {
+      "id": "mo-orchestrate-orca.regression-e2e-missing-scenario",
+      "class": "regression",
+      "contracts": [
+        "§A-ORCHESTRATION-03",
+        "§A-REVIEW-02"
+      ],
+      "scenario": "Scenarios A and B have pass lines on S1. The fresh final pair on S4 returns one FINDINGS report with an `e2e_missing` finding: the final version made scenario C applicable, the finding names the basis of applicability, and the brief carries no line for C. The case evaluates what the instructions direct the orchestrator to do before completion.",
+      "must": [
+        "under §A-ORCHESTRATION-03 treat the finding as an ordinary finding, run C through `mo-e2e scenarios=C` on the current candidate after the executor's disposition, and add C's `E2E-Evidence` and `E2E-Coverage` lines to the next brief",
+        "under §A-REVIEW-02 remediate in that final pair, which becomes the hot pair, until it passes"
+      ],
+      "mustNot": [
+        "declare completion while C has no `E2E-Evidence` line",
+        "rerun A or B",
+        "run the full scenario set"
+      ]
+    },
+    {
+      "id": "mo-orchestrate-orca.regression-e2e-unaffected-no-rerun",
+      "class": "regression",
+      "contracts": [
+        "§A-ORCHESTRATION-03"
+      ],
+      "scenario": "Scenarios A and B passed on S1. Review remediation then commits S2 and S3, each changing only code outside the behavior the `E2E-Coverage` lines name. The hot pair and then the fresh final pair on S3 return PASS with no `e2e_affected` or `e2e_missing` finding. The case evaluates whether E2E runs again and what the final report names.",
+      "must": [
+        "under §A-ORCHESTRATION-03 run no scenario again, and name the final SHA S3 for QC and both reviews and S1 on each copied `E2E-Evidence` line"
+      ],
+      "mustNot": [
+        "rerun a scenario only because the SHA changed",
+        "present the S1 pass as a pass of S3"
+      ]
     }
   ]
 }

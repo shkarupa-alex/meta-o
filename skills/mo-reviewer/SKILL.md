@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-reviewer or a reviewe
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "5af3c7a982c97173291132d0e1ccf4070307270b"
+  source_tree: "be34daf2d4909e211c10fcdc66dd85776b828c0f"
 ---
 
 # Review one candidate as a terminal reviewer
@@ -25,13 +25,17 @@ how one reviewer turns a brief into one report nobody has to buy twice.
 
 Take every field of the brief as given: `Target`, `Intent`, `Spec`, `Scope`,
 `Mode`, `Placement`, `Environment`, `Constraints`, `Ownership`, `Acceptance`,
-`Reviewer-Skill`, `Report`, `Body-File`, `Methodology-Friction`, `Cleanup` and
-`Knowledge-Layer`. A missing field or a placeholder such as `<sha>` is a
+`Reviewer-Skill`, `Report`, `Body-File`, `Methodology-Friction`, `Cleanup`,
+`Knowledge-Layer` and `E2E`. A missing field or a placeholder such as `<sha>` is a
 question to the caller through the backend's ask surface, not something to
 reconstruct. The `Knowledge-Layer: state=… reason=…` line decides the deferral
 lens: `enabled` requires the project's knowledge gates, `not_enabled` makes
 them `not_applicable`, and `needs_attention` or a missing line makes the lens
-`unknown` — never assume an ordinary project.
+`unknown` — never assume an ordinary project. The `E2E` field decides the E2E
+lens the protocol describes: with `E2E-Evidence` lines or
+`E2E: not_applicable` the lens is required, and with
+`E2E: not_evaluated reason=standalone` you raise no `e2e_affected` or
+`e2e_missing` and never ask for E2E to be run.
 
 `Review-Execution` is the Dispatch id from the backend's own preamble, copied
 verbatim. Prove the checkout in the directory you work in: `git rev-parse HEAD`
@@ -50,7 +54,11 @@ report a requirement the change misses; with `Spec: none` a missing
 specification is not a finding. Activate only the risk lenses the change
 touches — security and external effects, concurrency and state, compatibility
 and data, performance and resources, maintainability and test gaps — and apply
-the deferral lens the protocol describes.
+the deferral and E2E lenses the protocol describes. An `E2E-Evidence` line may
+name an ancestor of `Target`: judge whether the range from its scenario SHA to
+`Target` touches the behavior its `E2E-Coverage` names, and whether the change
+made a scenario applicable that has no line, including one of an unchanged
+acceptance row whose requirement the task restores.
 
 Read by SHA and never execute the project: no tests, not even a pointed one, no
 linter, formatter, type checker or QC gate. The executor or coordinator runs QC

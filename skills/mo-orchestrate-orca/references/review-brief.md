@@ -26,6 +26,7 @@ Every brief carries all of these, in this order, each on its own line or block:
 | `Methodology-Friction` | where to report a rule that got in the way rather than a defect           |
 | `Cleanup`              | what to remove, and what to report when removal fails                     |
 | `Knowledge-Layer`      | the helper's literal `state=… reason=…` line on the same SHA              |
+| `E2E`                  | exactly one E2E form: evidence lines, `not_applicable` or `not_evaluated` |
 
 `Scope` names the task, not the last change. `base` is where the task starts:
 the point the task branch left the branch it came from, or, when the work has no
@@ -42,6 +43,24 @@ brief, and sending one spends a reviewer on a question.
 The `Knowledge-Layer` line is the exact output of
 `mo-knowledge-layer.mjs --candidate <sha>` on the `Target` SHA, pasted, never
 retold: a brief without it leaves the reviewer's deferral lens `unknown`.
+
+The `E2E` field takes exactly one of three forms, and the lens it opens belongs
+to [Portable review protocol](review-protocol.md):
+
+```text
+E2E-Evidence: <scenario-id> sha=<40-hex> result=<pass|not_applicable> source=<dispatch-id>
+E2E-Coverage: <scenario-id> acceptance=<row-id>[,<row-id>…] signals=<observed signs> paths=<key paths>
+E2E: not_applicable reason=<why the project has no scenarios>
+E2E: not_evaluated reason=standalone
+```
+
+In the orchestrated lifecycle it is one `E2E-Evidence` and one `E2E-Coverage`
+line per scenario, copied verbatim from the complete `worker_done` of `mo-e2e`
+and never retold; after a partial rerun only the rerun scenarios' lines change,
+so the other lines keep their earlier scenario SHA. A project without scenarios
+gets `E2E: not_applicable` with its reason. A standalone review without a
+separate E2E request gets `E2E: not_evaluated reason=standalone`, which switches
+the E2E lens off.
 
 Every SHA in the brief is pasted from the output of `git rev-parse <ref>` and
 proved with `git cat-file -t <sha>` before the brief is sent. An abbreviation

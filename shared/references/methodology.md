@@ -34,9 +34,10 @@ repository. The orchestrator may read the task/spec before activation, pass its
 accessible path to agents, and use Git metadata needed to validate a branch and
 full SHA.
 
-One verified result is one full Git object ID. Any commit invalidates QC,
-reviews and E2E for the old candidate, except the narrow documentation-only E2E
-carry-forward in section 8.
+One verified result is one full Git object ID. Any commit invalidates QC and
+reviews for the old candidate. The one exception is E2E evidence, which is held
+per scenario on the SHA that scenario passed on, an ancestor of the final SHA,
+under section 8.
 
 ## 2. Project and task readiness
 
@@ -201,6 +202,15 @@ No universal question classes, correlation IDs or option grammar are required.
 
 ## 5. Candidate and reviews
 
+The two proof loops run in order and never alternate. First the implementation
+converges with E2E, and only when the project has E2E scenarios: section 6
+selects the task's scenarios, `mo-e2e` runs them, the executor fixes a failure
+and the failed scenarios run again until they pass. A project without scenarios
+records `E2E: not_applicable reason=<…>` and goes straight to review. Only then
+does the review loop below converge with remediation under its own rules. A
+result other than `pass` or `not_applicable` never reaches a reviewer: the first
+loop has not converged.
+
 After the executor settles, validate the branch, clean worktree, commit object
 and full `HEAD`, then freeze that SHA. Start both reviewer sessions concurrently
 and independently. Give them the same task/spec, complete intent ledger and the
@@ -209,6 +219,11 @@ same candidate SHA; the specification travels as one line,
 post-cleanup candidate of section 7 those artifacts are no longer in the tree:
 give the frozen object ids the deletion recorded, and the durable knowledge that
 replaced them. Do not give either reviewer peer output.
+
+Both briefs carry exactly one E2E form. In the orchestrated lifecycle it is the
+current `E2E-Evidence` and `E2E-Coverage` lines of section 8, copied verbatim;
+for a project without scenarios it is `E2E: not_applicable reason=<…>`; for a
+standalone review it is `E2E: not_evaluated reason=standalone`.
 
 Each reviewer is a native interactive Codex, Claude Code or OpenCode instance
 started inside a terminal, pane or session by the selected backend's native
@@ -307,6 +322,13 @@ local budget never replaces two final same-SHA passes. After attempt five,
 complete the active remediation, then move to the next substantive slice or stop
 with `needs_attention` when no progress path remains.
 
+An `e2e_affected` or `e2e_missing` finding is an ordinary finding: it spends the
+round's budget and goes through the ordinary handoff. After the fix, rerun
+through `mo-e2e` only the scenarios the finding lists, on the new candidate,
+replace only their lines and continue the review; a new SHA alone reruns
+nothing. Such a finding from the final fresh pair is fixed in that pair, which
+becomes the hot pair, as for any other finding.
+
 Early repair after the first complete valid FINDINGS report is allowed only when
 the owner approved it and every property is proven: the executor works in its
 own worktree, each reviewer has its own tree detached at the old full SHA, the
@@ -324,8 +346,9 @@ not enough. One failed delivery permits one repeat of the same paths, then
 both reports before repairing.
 
 Standalone `mo-review-<backend>` follows the same review barrier on the current
-candidate, creates only the two reviewer sessions, never uses `/goal`, and
-reports E2E as not evaluated unless separately requested.
+candidate, creates only the two reviewer sessions, never uses `/goal`, and,
+unless E2E was separately requested, puts `E2E: not_evaluated reason=standalone`
+into both briefs and reports E2E as not evaluated.
 
 Before any pair, prove that the Orca project/repository registration inventory
 will not change and that selected isolated worktrees belong to the original
@@ -367,11 +390,21 @@ another checkout SHA, or a missing or failed run blocks the agent merge with
 `needs_attention` naming the gap. Review and delivery of a locally proven
 candidate proceed without CI; integrating without CI is a human decision.
 
-Read the project's E2E and acceptance-to-proof documents. Run applicable
-agent-required scenarios through `mo-e2e`. Production, destructive, credential
-or subscription boundaries require the user's explicit authorization for the
-exact named action. An unreadable or incomplete gate is `unknown` and is
-repeated; there is no partial pass.
+Read the project's E2E and acceptance-to-proof documents. E2E is applicable when
+`docs/e2e.md`, or the document `AGENTS.md` names as the project's E2E document,
+defines scenarios; otherwise the evidence is `E2E: not_applicable reason=<…>`.
+The task's scenarios are chosen by the behavior the task touches, not by which
+acceptance rows its diff edits: the scenarios of the rows the specification
+changes or adds, and the scenarios of unchanged rows whose behavior the task
+touches, restores or depends on — a regression fix restores an existing
+requirement without changing its row. `mo-e2e` decides applicability and records
+the basis in `E2E-Coverage`; the orchestrator never reads product code to decide
+it. Run them through `mo-e2e scope=task`, and a partial rerun through
+`mo-e2e scope=task scenarios=<id,…>`. `scope=full` runs only on the user's
+explicit request. Production, destructive, credential or subscription boundaries
+require the user's explicit authorization for the exact named action. An
+unreadable or incomplete gate is `unknown` and is repeated; there is no partial
+pass.
 <!-- mo:source-anchor §A-EVAL-01 -->
 
 When a named scenario genuinely needs a model actor, deterministic proof remains
@@ -396,9 +429,9 @@ record exists, repetition stays at one and the skill text is what changes, never
 the profile: an unrecorded raise is profile-shopping for a green result, and the
 proof is bound to the profile it ran on.
 
-Any executable or instruction change creates a new SHA and invalidates all
-gates. Return failures to the executor as ordinary messages and restart from the
-new candidate.
+Any executable or instruction change creates a new SHA and invalidates QC and
+every review; E2E evidence follows section 8. Return failures to the executor as
+ordinary messages and restart from the new candidate.
 
 ## 7. Completion and cleanup
 
@@ -415,15 +448,17 @@ pair review it. Only after that pair has returned two PASS reports on one SHA,
 release its owned resources and create two fresh independent reviewers with no
 prior reports on that same SHA for the final proof. Findings of the fresh pair
 are remediated in that pair, which becomes the hot pair; no further fresh pair
-starts until it passes. Repeat only E2E that cannot carry forward under
-section 8.
+starts until it passes. Rerun E2E only under section 8.
 
 Before success, prove that the same full candidate SHA has:
 
 - a clean worktree;
 - passing deterministic QC;
 - two complete independent review passes with required vendor diversity;
-- passing applicable E2E, or a valid documentation-only carry-forward;
+- for every applicable scenario, an `E2E-Evidence` line with
+  `result=pass|not_applicable` on that SHA or one of its ancestors and no
+  `e2e_affected` or `e2e_missing` finding from the final pair, or
+  `E2E: not_applicable` for a project without scenarios;
 - no unresolved problems hidden by an incomplete backend response.
 
 Clean up only sessions and temporary files whose ownership is certain and whose
@@ -441,23 +476,42 @@ cleanup is reported rather than broadened destructively.
 
 Immediately before an agent-owned MR/PR create, rerun the same closure proof as
 G1 and read the hosting provider's source head; both must equal the expected
-SHA. Immediately before an agent-owned merge, repeat G2 — the closure proof, the
-remote head and the CI evidence of section 6 for exactly that SHA — and bind the
-write to the observed head with a provider compare-and-set/required policy. A
-hosting-provided integration candidate is proved only in its exact checkout.
-Human-created MRs do not waive G2; server-side CI/protection changes remain a
-separate human decision.
+SHA, and every `E2E-Evidence` line names an ancestor of it. Immediately before
+an agent-owned merge, repeat G2 — the closure proof, the remote head, the
+`E2E-Evidence` ancestry and the CI evidence of section 6 for exactly that SHA —
+and bind the write to the observed head with a provider compare-and-set/required
+policy. A hosting-provided integration candidate is proved only in its exact
+checkout. Human-created MRs do not waive G2; server-side CI/protection changes
+remain a separate human decision.
 
 The human-readable final report contains the full candidate SHA, QC result, both
-review results and model vendors, E2E result and tested SHA, any safe
-carry-forward explanation, unresolved problems, and decisions made on the user's
-behalf. Do not require JSON or create a persisted run record.
+review results and model vendors, every `E2E-Evidence` line verbatim — each
+naming its own scenario SHA — or the one `E2E:` line, unresolved problems, and
+decisions made on the user's behalf. Do not require JSON or create a persisted
+run record.
 
-## 8. Documentation-only E2E carry-forward
+## 8. E2E evidence per scenario
 
-E2E may carry forward over a later documentation-only commit only when both
-final-SHA reviewers explicitly confirm that the change cannot affect executable
-behavior, skill or agent instructions, acceptance, or the E2E contract. Name the
-tested SHA and explain why its result applies to the final SHA. There is no
-projection hash, provenance schema or fixed path allowlist. Any doubt reruns
-E2E. QC and both reviews always run on the final SHA.
+E2E evidence belongs to a scenario, not to the final SHA. The authoritative
+source is the complete public `worker_done` of `mo-e2e`, which gives every
+scenario one evidence line and one coverage trace:
+
+```text
+E2E-Evidence: <scenario-id> sha=<40-hex> result=<pass|not_applicable> source=<dispatch-id>
+E2E-Coverage: <scenario-id> acceptance=<row-id>[,<row-id>…] signals=<observed signs> paths=<key paths>
+```
+
+`mo-e2e` prints the same line with `fail`, `unknown` or another result for a
+scenario that did not pass; such a line is not evidence and never enters a
+brief. The review brief and the final report copy these lines verbatim. A
+partial rerun replaces only the lines of the scenarios it reran. After a context
+compaction, reread the lines from Orca's responses rather than from memory.
+There is no shared E2E SHA: one SHA for every scenario either loses each
+scenario's range or forces a full rerun.
+
+A scenario's evidence on an ancestor of the final SHA holds as long as the final
+pair raised no `e2e_affected` or `e2e_missing` finding about it. A historical
+pass is never presented as a pass of the final SHA: the report names the final
+SHA for QC and reviews and the scenario SHA for each scenario. A result other
+than `pass` or `not_applicable` is not evidence; the E2E loop has not converged.
+QC and both reviews always run on the final SHA.

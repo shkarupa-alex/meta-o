@@ -102,6 +102,43 @@ not `not_enabled`, is a different answer: the absence is a readiness gap
 reported as `needs_attention`, and no review prepares the project or writes the
 missing checker in passing.
 
+## E2E lens
+
+The caller sets the E2E mode in the brief, in exactly one of three forms:
+
+- `E2E-Evidence` and `E2E-Coverage` lines, one pair per scenario — the
+  orchestrated lifecycle;
+- `E2E: not_applicable reason=<…>` — the project has no E2E scenarios;
+- `E2E: not_evaluated reason=standalone` — a standalone review with no separate
+  E2E request.
+
+With `not_evaluated` this lens is off: never raise `e2e_affected` or
+`e2e_missing`, and never ask for E2E to be run. A brief with no E2E form, or
+with more than one, is missing grounding.
+
+In the other two forms the lens is required. An `E2E-Evidence` line names the
+SHA its scenario passed on, which may be an ancestor of the candidate. For each
+line ask whether the range `<scenario sha>..<candidate>` touches the behavior
+its `E2E-Coverage` line names. Overlapping paths are a hint, not a verdict: the
+question is whether the covered behavior can now behave differently. Then ask
+whether the candidate made a scenario applicable that has no line — including a
+scenario of an unchanged acceptance row whose behavior the task touches,
+restores or depends on, as when a regression fix restores an existing
+requirement without changing its row — and whether an earlier `not_applicable`
+still holds.
+
+Two findings answer these questions. Each is an ordinary finding with a severity
+whose text opens with its class literal, as in `F-001 [P2] e2e_affected: …`:
+
+- `e2e_affected` names the change, the covered behavior it touches, the causal
+  link and every scenario to rerun;
+- `e2e_missing` names the scenario and the basis on which it applies.
+
+A path overlap with no causal link is not a finding. A line whose result is
+neither `pass` nor `not_applicable` means the E2E loop has not converged: the
+review is `UNKNOWN` with `Unknown-Reason: review_incomplete`, and its
+`Unknown-Account` names that line.
+
 ## Diagnostics
 
 A reviewer reads; it does not execute the project. Tests, linters, formatters,

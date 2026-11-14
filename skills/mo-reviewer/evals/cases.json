@@ -56,6 +56,22 @@
         "move HEAD, stash or reset the checkout to reach the candidate",
         "assume an ordinary project with knowledge gates when the Knowledge-Layer line is missing"
       ]
+    },
+    {
+      "id": "mo-reviewer.regression-e2e-missing-unchanged-row",
+      "class": "regression",
+      "contracts": [
+        "§A-ORCHESTRATION-03"
+      ],
+      "scenario": "The brief carries `E2E-Evidence` and `E2E-Coverage` lines for scenario F only. The task range fixes a regression and restores the requirement of acceptance row R without changing R's text; the project's E2E document maps R to scenario E. The case evaluates which E2E finding the instructions direct the reviewer to report.",
+      "must": [
+        "under §A-ORCHESTRATION-03 report an `e2e_missing` finding that names scenario E and the restored requirement of row R as its basis of applicability"
+      ],
+      "mustNot": [
+        "accept F's line as evidence for E",
+        "run E or any test itself",
+        "treat an unchanged acceptance row as proof that no scenario applies"
+      ]
     }
   ]
 }
