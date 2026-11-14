@@ -164,6 +164,15 @@ announced, G1 right before an agent creates a merge request and G2 right before
 an agent merges. A project whose knowledge layer is `not_enabled` runs none of
 them for the layer.
 
+The authoritative QC walks the project's full history exactly once. The tool's
+own self-checks — deletion, reuse, editorial, merge and wiring errors — run on
+small synthetic Git histories built in a temporary directory, and an old
+exemption is checked on a fixed finite range; a test never reruns the full
+history or the QC itself. Every extra full pass multiplies the cost of the one
+check that grows with the project, while proving nothing the authoritative pass
+did not. `--timing` on the stage shows what one pass costs. The fix is never a
+cutoff moved towards `HEAD`, a disabled stage or a persistent cache.
+
 ## What proves the stage is present
 
 The behavior of the declared stage, never the full QC, and only in a disposable

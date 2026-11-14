@@ -509,3 +509,30 @@ test("the shipped bundle judges a consumer project with the recipe's flags", () 
   assert.doesNotMatch(vendored.stdout, /source_section/u);
   assert.match(vendored.stdout, /error undefined_id §A-GHOST-01/u);
 });
+
+test("mo-setup rolls the check out in order and never with a baseline", () => {
+  const flat = (path) => readFileSync(join(ROOT, path), "utf8").replace(/\s+/gu, " ");
+  const contract = flat("shared/references/project-setup.md");
+  const setup = flat("src/skills/mo-setup/SKILL.md");
+  for (const phrase of [
+    "`--first-party-root <prefix>`",
+    "`--non-canonical <prefix>`",
+    "There is no configuration file",
+    "source_section_document_not_canonical",
+    "Run it once on its own",
+    "without inventing its norm",
+    "report `needs_attention` with the unresolved list and leave the stage out of QC",
+    "After a clean run, connect the stage",
+    "never disconnected",
+    "no baseline, no warn-only mode",
+  ]) {
+    assert.ok(contract.includes(phrase), phrase);
+  }
+  assert.match(
+    setup,
+    /`scripts\/mo-vocabulary\.mjs` goes to `tools\/mo-vocabulary\.mjs` behind a QC target/u,
+  );
+  assert.match(setup, /the QC stage only after a clean run/u);
+  // The shipped skill carries the bundle it tells a project to copy.
+  assert.ok(readFileSync(BUNDLE, "utf8").length > 0);
+});

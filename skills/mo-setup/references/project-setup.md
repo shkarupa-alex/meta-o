@@ -127,6 +127,42 @@ commit trailer with the verbs `remove`, `reuse` or `editorial`, and a matching
 `knowledge_id_change` record in the same commit. A boundary and its commit ids
 belong to the project that owns them and are never copied from the supplier.
 
+## Reference check
+
+A citation nobody can open reads like a citation all the same, so a reviewer
+reasons from a section that is not there. The shipped
+`scripts/mo-vocabulary.mjs` is the portable reference check, the same core the
+supplier runs on itself. Accepted repair copies it to `tools/mo-vocabulary.mjs`
+with its `tools/licenses/`, and the project's `Makefile` gains a `mo-vocabulary`
+target whose recipe is the whole declaration: `--first-party-root <prefix>` for
+each root of the project's own code (without it every tracked file counts),
+`--exclude <prefix>` for areas left out, and `--non-canonical <prefix>` for
+temporary or archived areas beyond the always non-canonical `spec/` and
+`docs/specifications/`. There is no configuration file.
+
+A section number in first-party code is an error unless the same block of text
+names, before it, the path of a live tracked canonical Markdown document whose
+own headings have that section: `source_section_document_missing`,
+`source_section_document_unavailable`, `source_section_document_not_canonical`
+or `source_section_missing`. An undefined `§A-*` or `§B-*` is an error too; a
+coined label and a bare number in Markdown prose are warnings.
+
+Roll it out in this order:
+
+1. Run it once on its own with the recipe's flags; nothing is connected yet.
+2. Propose one migration patch: correct a path that is provable — the citation
+   names its document by an alias or a file name that resolves to exactly one
+   tracked document, and that document's headings have the section; remove a
+   citation of a deleted document that has no live source, without inventing its
+   norm; mark deliberate fixtures with `mo-vocabulary-ok`; and list every
+   citation of an unknown source as an explicit unresolved item.
+3. While a run is not clean, report `needs_attention` with the unresolved list
+   and leave the stage out of QC.
+4. After a clean run, connect the stage to the authoritative QC.
+5. A repeat is idempotent, and a stage already connected is never disconnected.
+   There is no baseline, no warn-only mode and no "inherited reference" marker:
+   each would hide exactly the violations a baseline hides.
+
 ## Tooling and purpose
 
 Read `package.json`, `pyproject.toml`, task runners and existing config before

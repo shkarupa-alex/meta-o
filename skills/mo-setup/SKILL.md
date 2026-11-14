@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-setup; inspect or bri
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "e9f5243e417eab45ce27f774319ac9557b6b41ff"
+  source_tree: "6eaf72de2840becaf584c0b86c0aee1aa567d981"
 ---
 
 # Set up a project for Meta-O
@@ -93,6 +93,17 @@ and `git clean -xdff`, then change a literal with a correct trailer and a matchi
 Strictness without tolerance and tolerance without strictness each prove only half.
 Delete the clone in a `finally`; its path is machine-local and never reported.
 
+Count the real full history traversals the declared QC performs, from tracked
+files and never by running it: the declared stage is one, and every run of the
+history checker that a test or script reached from the QC command points at the
+project's own repository, rather than at a small history it builds itself, is
+another. More than one is a finding with an exact patch: the declared stage
+stays the single authoritative full pass, and each extra run moves onto
+synthetic histories — deletion, reuse, editorial, merge and wiring errors — or
+onto a fixed finite range for an old exemption. Give the cost of one pass from
+the baseline stage run with `--timing`. Never move the cutoff, disable the stage
+or add a persistent cache to make QC cheaper.
+
 Report one record, with `qc` as JSON or `none` and no local paths:
 
 ```text
@@ -117,8 +128,17 @@ that writes the marker, by the line `Knowledge-Layer-Papercut: <path>` in
 `AGENTS.md`, or the helper reports a partial set. Accepted repair starts from
 [Commands and papercuts template](references/papercut-template.md).
 
-Accepted repair copies three shipped bundles into the project, each with its
-`tools/licenses/`, and all three then belong to the project.
+Roll out the shipped reference check `scripts/mo-vocabulary.mjs` exactly as the
+setup contract's reference check orders: one separate run with the recipe's
+`--first-party-root`, `--exclude` and `--non-canonical` flags, one migration
+patch, `needs_attention` with the explicit unresolved list while a run is not
+clean, and the QC stage only after a clean run; never a baseline, a warn-only
+mode or an "inherited reference" marker, and never disconnect a connected stage.
+
+Accepted repair copies four shipped bundles into the project, each with its
+`tools/licenses/`, and all four then belong to the project.
+`scripts/mo-vocabulary.mjs` goes to `tools/mo-vocabulary.mjs` behind a QC
+target whose recipe declares the roots and areas.
 `scripts/mo-knowledge.mjs` goes to `tools/mo-knowledge.mjs`, and a QC stage
 calls its `check` with that project's own declaration. `scripts/mo-backlog.mjs`
 goes to `tools/mo-backlog.mjs`, and the closure command that calls it must name
