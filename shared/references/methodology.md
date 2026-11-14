@@ -421,15 +421,16 @@ own worktree, each reviewer has its own tree detached at the old full SHA, the
 brief forbids reading the executor's mutable refs, and HEAD and a clean tree are
 rechecked right before `worker_done`. The first body is then published unchanged
 in its slot through `stage` and `preview`; the executor reads it and replies
-`Review-Preview-Ack: <pair_id> <slot>=<bytes>`, which `mo-review-report.mjs ack`
-checks against the published size. That is not a pair verdict. The other
-reviewer continues on the old SHA; after its report the executor reads both
-complete reports and acknowledges `Review-Handoff-Ack` before the next
-candidate, and each of the second reviewer's findings gets a disposition checked
-against the new candidate — "already fixed" from memory of the early repair is
-not enough. One failed delivery permits one repeat of the same paths, then
-`UNKNOWN` with the directories preserved. With any property unproven, wait for
-both reports before repairing.
+`Review-Preview-Ack: <pair_id> <slot>=<bytes>`, which
+`mo-review-report.mjs ack --kind Preview` checks against the published size.
+That is not a pair verdict. The other reviewer continues on the old SHA; after
+its report the executor reads both complete reports and acknowledges
+`Review-Handoff-Ack` before the next candidate, and each of the second
+reviewer's findings gets a disposition checked against the new candidate —
+"already fixed" from memory of the early repair is not enough. One failed
+delivery permits one repeat of the same paths, then `UNKNOWN` with the
+directories preserved. With any property unproven, wait for both reports before
+repairing.
 
 Standalone `mo-review-<backend>` follows the same review barrier on the current
 candidate, creates only the two reviewer sessions and, unless E2E was separately

@@ -420,9 +420,17 @@ user and before any repeated message to an actor:
    `orca orchestration check --run <id> --json`, with neither `--wait` nor
    `--all` — `status` included. Match each message to its exact Dispatch and
    process the whole batch before acknowledging it. An acknowledgement already
-   delivered is checked with `mo-review-report.mjs ack --kind Preview` for a
-   `Review-Preview-Ack` or `--kind Handoff` for a `Review-Handoff-Ack`, and no
-   further "continue" is sent.
+   delivered is checked against the sizes the handoff named, and no further
+   "continue" is sent. A pair handoff names both sizes; a preview names exactly
+   the previewed slot's size, `--a-bytes` for slot A or `--b-bytes` for slot B:
+
+   ```text
+   mo-review-report.mjs ack --kind Handoff --line '<ack text>' --pair-id <id> \
+     --a-bytes <n> --b-bytes <n>
+   mo-review-report.mjs ack --kind Preview --line '<ack text>' --pair-id <id> \
+     --a-bytes <n>
+   ```
+
 2. Run `worker-show` for every active Dispatch. Completion (`dispatch.status`)
    and liveness are independent facts. At `completed` or `succeeded`, take that
    Dispatch's `worker_done` from the Run's messages (`check --run <id> --all`
