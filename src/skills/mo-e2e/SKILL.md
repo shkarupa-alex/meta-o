@@ -91,10 +91,12 @@ can judge whether a later change touches it. A scenario that did not pass still
 gets its line, with `result=` naming its lowercase result such as `fail`,
 `unknown`, `not_run` or `blocked:external_capability`; only `pass` and
 `not_applicable` are evidence. The caller starts no review while a `fail` or
-`unknown` stands. A `not_run` or `blocked:external_capability` is an external
-block the executor cannot fix, so say beside it which environment, profile or
-named capability was missing: the caller carries that line into the review as
-unproven rather than looping on it.
+`unknown` stands. A `blocked:external_capability`, or a `not_run` because a
+required environment or approved profile is unavailable, is an external block
+the executor cannot fix, so say beside it which environment, profile or named
+capability was missing: the caller carries that line into the review as
+unproven rather than looping on it. A `not_run` for a rejected candidate or a
+wrong placement is the caller's own error, never an external block.
 
 When the project has scenarios and `scope=task` selects none, because the task
 touches, restores and depends on no behavior a scenario covers, the complete

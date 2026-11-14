@@ -199,7 +199,10 @@ test("every actor reads the E2E proof order and the per-scenario evidence form",
       externalBlock,
     ],
     "shared/references/review-brief.md": [
-      evidence,
+      // The brief also carries an external block as a known, unproven scenario.
+      "E2E-Evidence: <scenario-id> sha=<40-hex> result=<pass|not_applicable|blocked:external_capability|not_run> source=<dispatch-id>",
+      externalBlock,
+      "never enters a brief",
       coverage,
       "E2E: not_applicable reason=",
       noTaskScenarios,
@@ -220,6 +223,7 @@ test("every actor reads the E2E proof order and the per-scenario evidence form",
       noTaskScenarios,
       "The caller starts no review while a `fail` or `unknown` stands.",
       externalBlock,
+      "is the caller's own error, never an external block",
     ],
     "src/skills/mo-orchestrate-orca/SKILL.md": [
       "Run the proof loops in order, never alternating.",
@@ -229,7 +233,10 @@ test("every actor reads the E2E proof order and the per-scenario evidence form",
       externalBlock,
       "never send it back and never rerun it while the block stands",
     ],
-    "src/skills/mo-review-orca/SKILL.md": ["write `E2E: not_evaluated reason=standalone`"],
+    "src/skills/mo-review-orca/SKILL.md": [
+      "write `E2E: not_evaluated reason=standalone`",
+      "it is a known, unproven scenario, not a malformed form",
+    ],
     "src/skills/mo-reviewer/SKILL.md": ["`E2E: not_evaluated reason=standalone` you raise no"],
   };
   for (const [path, phrases] of Object.entries(expectations)) {

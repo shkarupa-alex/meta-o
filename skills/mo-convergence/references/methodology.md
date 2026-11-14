@@ -608,9 +608,10 @@ E2E-Coverage: <scenario-id> acceptance=<row-id>[,<row-id>…] signals=<observed 
 ```
 
 `mo-e2e` prints the same line with `fail`, `unknown` or another result for a
-scenario that did not pass; such a line is not evidence. A `fail` or `unknown`
-line never enters a brief. An external block of section 5 —
-`result=blocked:external_capability` or `result=not_run` — enters the brief
+scenario that did not pass; such a line is not evidence. A `fail`, an `unknown`
+or a `not_run` for a rejected candidate or a wrong placement never enters a
+brief. An external block of section 5 — `result=blocked:external_capability`, or
+`result=not_run` for an unavailable environment or profile — enters the brief
 verbatim as an unproven scenario: it tells the reviewers the scenario is known
 and open, so they raise no `e2e_missing` for it, and it never counts as a pass.
 The review brief and the final report copy these lines verbatim. A partial rerun

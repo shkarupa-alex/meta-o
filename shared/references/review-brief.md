@@ -79,7 +79,7 @@ The `E2E` field takes exactly one of three forms, and the lens it opens belongs
 to [Portable review protocol](review-protocol.md):
 
 ```text
-E2E-Evidence: <scenario-id> sha=<40-hex> result=<pass|not_applicable> source=<dispatch-id>
+E2E-Evidence: <scenario-id> sha=<40-hex> result=<pass|not_applicable|blocked:external_capability|not_run> source=<dispatch-id>
 E2E-Coverage: <scenario-id> acceptance=<row-id>[,<row-id>…] signals=<observed signs> paths=<key paths>
 E2E: not_applicable reason=no_task_scenarios sha=<40-hex> source=<dispatch-id> basis=<why no scenario covers the touched behavior>
 E2E: not_applicable reason=<why the project has no scenarios>
@@ -89,8 +89,14 @@ E2E: not_evaluated reason=standalone
 In the orchestrated lifecycle it is one `E2E-Evidence` and one `E2E-Coverage`
 line per scenario, copied verbatim from the complete `worker_done` of `mo-e2e`
 and never retold; after a partial rerun only the rerun scenarios' lines change,
-so the other lines keep their earlier scenario SHA. When the project has
-scenarios but `mo-e2e` selected none for the task, the field is the one
+so the other lines keep their earlier scenario SHA. Only `pass` and
+`not_applicable` are evidence. A `blocked:external_capability` the project's E2E
+contract types, or a `not_run` whose stated reason is an unavailable environment
+or profile, is an external block: its line is copied the same way as a known,
+unproven scenario, so the reviewers raise no `e2e_missing` for it. A `fail`, an
+`unknown`, or a `not_run` for any other reason — a rejected candidate, a wrong
+placement — never enters a brief. When the project has scenarios but `mo-e2e`
+selected none for the task, the field is the one
 `E2E: not_applicable reason=no_task_scenarios` line that `mo-e2e` printed,
 copied the same way; it is never written by the caller. A project without
 scenarios gets `E2E: not_applicable` with its reason. A standalone review
