@@ -67,8 +67,9 @@ const ALWAYS_NON_CANONICAL = ["spec", "docs/specifications"];
 // form a name. §A-MEMORY-01 names no alphabet for a canonical document, so an
 // ASCII-only class would turn `docs/решение.md` into "no document" and
 // `docs/my guide.md` into its own tail.
-const DOCUMENT_PATH =
-  /`((?:\.\/)?[^`\n]*?\.md)`|(?<![\p{L}\p{N}_.@+/-])((?:\.\/)?[\p{L}\p{N}_.@+-]+(?:\/[\p{L}\p{N}_.@+-]+)*\.md)(?![\p{L}\p{N}_-])/giu;
+const BARE_PATH =
+  /(?<![\p{L}\p{N}_.@+/-])((?:\.\/)?[\p{L}\p{N}_.@+-]+(?:\/[\p{L}\p{N}_.@+-]+)*\.md)(?![\p{L}\p{N}_-])/giu;
+const DOCUMENT_PATH = new RegExp(`\`((?:\\.\\/)?[^\`\\n]*?\\.md)\`|${BARE_PATH.source}`, "giu");
 
 const USAGE = `usage: mo-vocabulary.mjs [--root <git-root>] [options]
 
@@ -355,12 +356,24 @@ function blockBefore(lines, index, column) {
   return [...lines.slice(start, index), lines[index].slice(0, column)].join("\n");
 }
 
-/** The last Markdown path written before the reference in its block. */
-function namedDocument(block) {
+const pathOf = (raw) => posix.normalize(raw.replace(/^\.\//u, ""));
+
+/**
+ * The last Markdown path written before the reference in its block.
+ *
+ * Backticks usually hold the path alone, but they may hold a command around
+ * it, as in `cat docs/x.md`: when the whole span is no tracked file, the last
+ * bare path inside it that is tracked names the document.
+ */
+function namedDocument(block, tracked) {
   const paths = [...block.matchAll(DOCUMENT_PATH)];
   if (paths.length === 0) return null;
   const last = paths.at(-1);
-  return posix.normalize((last[1] ?? last[2]).replace(/^\.\//u, ""));
+  if (last[1] === undefined) return pathOf(last[2]);
+  const whole = pathOf(last[1]);
+  if (tracked.has(whole)) return whole;
+  const inner = [...last[1].matchAll(BARE_PATH)].map((match) => pathOf(match[1]));
+  return inner.findLast((path) => tracked.has(path)) ?? whole;
 }
 
 /**
@@ -385,7 +398,7 @@ export function sourceSectionFindings({ path, text, tracked, readDocument, nonCa
     BARE_SECTION.lastIndex = 0;
     for (const match of line.matchAll(BARE_SECTION)) {
       const number = match[0].slice(1);
-      const document = namedDocument(blockBefore(lines, index, match.index));
+      const document = namedDocument(blockBefore(lines, index, match.index), tracked);
       const at = { token: match[0], mentions: 1, first: `${path}:${index + 1}` };
       const kind = sectionVerdict(number, document, { tracked, readDocument, areas });
       if (kind === null) continue;

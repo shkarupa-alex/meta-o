@@ -15948,7 +15948,8 @@ var STANDARDS = /* @__PURE__ */ new Set(["CVE", "ECMA", "IEC", "IEEE", "ISO", "R
 var SUPPRESS2 = "mo-vocabulary-ok";
 var SUPPRESS_FILE2 = `${SUPPRESS2} file`;
 var ALWAYS_NON_CANONICAL = ["spec", "docs/specifications"];
-var DOCUMENT_PATH = /`((?:\.\/)?[^`\n]*?\.md)`|(?<![\p{L}\p{N}_.@+/-])((?:\.\/)?[\p{L}\p{N}_.@+-]+(?:\/[\p{L}\p{N}_.@+-]+)*\.md)(?![\p{L}\p{N}_-])/giu;
+var BARE_PATH = /(?<![\p{L}\p{N}_.@+/-])((?:\.\/)?[\p{L}\p{N}_.@+-]+(?:\/[\p{L}\p{N}_.@+-]+)*\.md)(?![\p{L}\p{N}_-])/giu;
+var DOCUMENT_PATH = new RegExp(`\`((?:\\.\\/)?[^\`\\n]*?\\.md)\`|${BARE_PATH.source}`, "giu");
 var USAGE = `usage: mo-vocabulary.mjs [--root <git-root>] [options]
 
   --root <git-root>            repository to check (default: cwd)
@@ -16109,11 +16110,16 @@ function blockBefore(lines, index2, column) {
   while (start > 0 && lines[start - 1].trim() !== "") start -= 1;
   return [...lines.slice(start, index2), lines[index2].slice(0, column)].join("\n");
 }
-function namedDocument(block2) {
+var pathOf = (raw) => posix2.normalize(raw.replace(/^\.\//u, ""));
+function namedDocument(block2, tracked) {
   const paths = [...block2.matchAll(DOCUMENT_PATH)];
   if (paths.length === 0) return null;
   const last = paths.at(-1);
-  return posix2.normalize((last[1] ?? last[2]).replace(/^\.\//u, ""));
+  if (last[1] === void 0) return pathOf(last[2]);
+  const whole = pathOf(last[1]);
+  if (tracked.has(whole)) return whole;
+  const inner = [...last[1].matchAll(BARE_PATH)].map((match2) => pathOf(match2[1]));
+  return inner.findLast((path) => tracked.has(path)) ?? whole;
 }
 function sourceSectionFindings({ path, text: text4, tracked, readDocument, nonCanonical = [] }) {
   if (deliberateFixture(text4, path)) return [];
@@ -16125,7 +16131,7 @@ function sourceSectionFindings({ path, text: text4, tracked, readDocument, nonCa
     BARE_SECTION.lastIndex = 0;
     for (const match2 of line.matchAll(BARE_SECTION)) {
       const number = match2[0].slice(1);
-      const document3 = namedDocument(blockBefore(lines, index2, match2.index));
+      const document3 = namedDocument(blockBefore(lines, index2, match2.index), tracked);
       const at = { token: match2[0], mentions: 1, first: `${path}:${index2 + 1}` };
       const kind = sectionVerdict(number, document3, { tracked, readDocument, areas });
       if (kind === null) continue;

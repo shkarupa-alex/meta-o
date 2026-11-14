@@ -417,6 +417,8 @@ test("a canonical document's path resolves whatever script or spaces its name ho
     "// `docs/решение.md` §1",
     "// `docs/my guide.md` §1",
     "// `docs/my guide.md`\n// section §1",
+    // A command around the path in backticks still names the tracked file.
+    "// `cat docs/x.md` §1.2",
   ]) {
     assert.deepEqual(sourceKinds("src/a.mjs", text), [], text);
   }
