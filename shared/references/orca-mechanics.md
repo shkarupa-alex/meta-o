@@ -19,7 +19,9 @@ Run focused, bounded probes rather than one large agent-context dump:
 5. read the approved selection from bundled `mo-models.mjs`;
 6. use the first real role Dispatch as the live launch probe when possible;
 7. prove the real harness process consumed the task and
-   `launch.requested == launch.effective` for model and effort;
+   `launch.requested == launch.effective` for model and effort, and that the
+   provider accepted the model and the first turn began — equal fields alone
+   prove no launch;
 8. retain exact run/task/dispatch/terminal locators in current reasoning.
 
 If fresh native auth is newer than cached `missing-credentials|unavailable`, use
@@ -65,15 +67,28 @@ before the injection.
 
 ```text
 orca orchestration worker-start --task <id> --worktree id:<repo>::<path> \
-  --agent <claude|codex> --model <id> --effort <e> --timeout-ms 240000 --json
+  --agent <launch.<role>.agent> --model <launch.<role>.model> \
+  --effort <launch.<role>.effort> --timeout-ms 240000 --json
   # the posture flag is not passed: the user's own setting for new agent tabs owns it
 → record the dispatch id and the created terminal of `effects[kind=terminal].id`
   in OwnedResourceSet/1 at once
 ```
 
+The three flags come from `launch.<role>` of `mo-models.mjs --show --json`,
+never from splitting the `route/model/effort` string by hand:
+`claude/opus[1m]/high` is `--agent claude --model 'opus[1m]' --effort high`, and
+the whole literal in `--model` is a model no provider has.
+
 The receipt carries what was launched: `launch.requested == launch.effective`
 for agent, model and effort, and `turnStart: observed`. A mismatch is a failed
-start of that exact Dispatch, never a model to accept.
+start of that exact Dispatch, never a model to accept. A match is Orca's record
+of the request, not the provider's acceptance: a provider may still refuse the
+model on the worker's terminal before any turn. The role is started only when
+the harness shows the model accepted and its first turn begun. A refusal is not
+retried with the same model and never replaced silently: read
+`mo-models.mjs --catalog --route <agent>`, apply the model recommendation rule,
+and ask the human one question with the recommended replacement and the
+alternatives. An incomplete catalog does not prove the model absent.
 
 Orca refuses a worker that another worker starts: `nested_worker_depth_exceeded`
 at the default nested depth of one, and that default stays. A role that starts

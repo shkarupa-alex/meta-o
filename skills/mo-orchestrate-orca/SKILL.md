@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-orchestrate-orca; run
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "59d2cb8c5e95b980c59f45de23e0f310ca089642"
+  source_tree: "c5e565a5547d31bb56f573a33dd0ca07f0d54a70"
 ---
 
 # Orchestrate a feature through Orca
@@ -28,10 +28,19 @@ model this session should use; `--force` and another model generation stay
 forbidden. Keep a role's terminal hot while its proven idle stays under the
 methodology's threshold, and prefer a fresh session past it.
 
-Read role selections with bundled `scripts/mo-models.mjs --show --project
-<root>`; require exact user-approved values and never select a model, effort,
-placement or posture fallback. Prove provider-native auth, account freshness and
-one real launch with requested/effective identity equal. Task bytes wait for a
+Read role selections with bundled `scripts/mo-models.mjs --show --json
+--project <root>`; require exact user-approved values and never select a model,
+effort, placement or posture fallback. Launch every role from its
+`launch.<role> = {agent, model, effort, vendor}` as three separate flags
+`--agent`, `--model`, `--effort`, never the whole `route/model/effort` in
+`--model`; every vendor-diversity rule reads `vendor`, not the route, and
+`unknown` is never a different vendor. Prove provider-native auth, account
+freshness and one real launch: requested/effective identity equal, the provider
+accepted the model and the first turn observed to begin. When a provider
+refuses the model, run `scripts/mo-models.mjs --catalog --route <agent>` and ask
+the human one question with the recommended replacement and the alternatives;
+never substitute silently, never report a refusal without a proposal, and never
+read an incomplete catalog as proof the model is absent. Task bytes wait for a
 publicly proven normal agent prompt, never trust UI or shell.
 
 Use titles `<feature>:orchestrator`, `<feature>:executor`,

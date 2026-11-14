@@ -74,7 +74,7 @@ test("worker-start --agent is the route, and terminal-first only where it cannot
     mechanics,
     /`worker-start --agent` is the route for every agent environment whose model and\s+effort it passes/u,
   );
-  assert.match(mechanics, /--agent <claude\|codex> --model <id> --effort <e>/u);
+  assert.match(mechanics, /--agent <launch\.<role>\.agent> --model <launch\.<role>\.model>/u);
   assert.match(
     mechanics,
     /`launch\.requested == launch\.effective`\s+for agent, model and effort/u,

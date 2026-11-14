@@ -373,7 +373,9 @@ const OBLIGATIONS = [
     "O-RR-018",
     "the bundled model helper is a named preflight dependency of the entry skill",
     {
-      orcskill: [/Read role selections with bundled `scripts\/mo-models\.mjs --show --project/],
+      orcskill: [
+        /Read role selections with bundled `scripts\/mo-models\.mjs --show --json\s+--project/,
+      ],
       life: [/`mo-models\.mjs --show --project <root>`/],
     },
   ],

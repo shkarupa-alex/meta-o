@@ -1,0 +1,68 @@
+/**
+ * Pin the orchestrator's launch, recovery and observation rules where agents read them.
+ *
+ * Launching a role, deciding a restart and reconciling a quiet wait are agent
+ * judgment, not a script: §A-ORCHESTRATION-01 forbids a process engine. The
+ * deterministic proof is therefore the text of the decisions, of the Orca
+ * mechanics and of the built skills, and the behaviour is proven by eval cases
+ * under §A-EVAL-01.
+ *
+ * Protects §A-MODELS-01, §A-DELIVERY-01 and §A-WAIT-01.
+ */
+
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { test } from "node:test";
+
+const ROOT = resolve(import.meta.dirname, "..");
+
+/** Prose wraps anywhere, so rules are matched with whitespace collapsed. */
+function flat(path) {
+  return readFileSync(join(ROOT, path), "utf8").replace(/\s+/gu, " ");
+}
+
+const MECHANICS = [
+  "shared/references/orca-mechanics.md",
+  "skills/mo-orchestrate-orca/references/orca-mechanics.md",
+  "skills/mo-review-orca/references/orca-mechanics.md",
+];
+const LAUNCHERS = [
+  ...MECHANICS,
+  "shared/references/methodology.md",
+  "skills/mo-orchestrate-orca/SKILL.md",
+  "skills/mo-review-orca/SKILL.md",
+];
+
+test("worker-start is assembled from launch.<role>, never from a route/model/effort literal", () => {
+  for (const path of LAUNCHERS) {
+    const text = flat(path);
+    assert.match(text, /launch\.<role>/u, path);
+    // #65: the whole selection passed to --model launched nothing on either provider.
+    for (const [, value] of text.matchAll(/--model (\S+)/gu)) {
+      assert.doesNotMatch(value, /route|selection|<id>/u, `${path}: --model ${value}`);
+      assert.doesNotMatch(value, /^'?[a-z]+\/[^/\s]+\/[a-z]+'?$/u, `${path}: --model ${value}`);
+    }
+  }
+  for (const path of MECHANICS) {
+    const text = flat(path);
+    assert.match(text, /--agent <launch\.<role>\.agent> --model <launch\.<role>\.model>/u, path);
+    assert.match(text, /`--agent claude --model 'opus\[1m\]' --effort high`/u, path);
+  }
+});
+
+test("equal requested and effective identity is not a launch, and a refusal asks one question", () => {
+  for (const path of [...MECHANICS, "shared/references/methodology.md"]) {
+    const text = flat(path);
+    assert.match(text, /first turn/u, path);
+    assert.match(text, /--catalog --route/u, path);
+    assert.match(text, /recommended replacement/u, path);
+    assert.match(text, /incomplete catalog does not prove the model absent/u, path);
+  }
+  for (const path of ["skills/mo-orchestrate-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
+    const text = flat(path);
+    assert.match(text, /first turn/u, path);
+    assert.match(text, /scripts\/mo-models\.mjs --catalog --route <agent>/u, path);
+    assert.match(text, /never by a silent substitute|never substitute silently/u, path);
+  }
+});

@@ -120,7 +120,10 @@ readiness failure; do not choose a fallback harness, model or effort. Agree the
 roles with the user. Recommend an executor from a different model vendor than
 the orchestrator by default; vendor diversity improves the chance that the
 orchestrator can help when an executor misses a premise. Reviewers use different
-vendors, and at least one reviewer vendor differs from the executor.
+vendors, and at least one reviewer vendor differs from the executor. A vendor is
+the role's `launch.<role>.vendor` from `mo-models.mjs --show --json`, who made
+the model, never its route: `opencode/openai/…` and `codex/…` are one vendor on
+two routes, and `vendor=unknown` never counts as a different vendor.
 
 The session in which the user invoked the orchestration skill is the
 orchestrator. An unset `orchestrator` role blocks nothing and is not a reason to
@@ -145,6 +148,21 @@ model tomorrow. Resolve the configured id against the route catalogue with
 `mo-models.mjs --catalog --route <route>`, and treat the role as approved only
 once a real launch reports `launch.requested == launch.effective` for model and
 effort.
+
+Launch every role from `launch.<role> = {agent, model, effort, vendor}` of
+`mo-models.mjs --show --json`, passing three separate flags
+`--agent <agent> --model <model> --effort <effort>`: `claude/opus[1m]/high` is
+`--agent claude --model 'opus[1m]' --effort high`. The whole
+`route/model/effort` literal in `--model` launches nothing. Equal
+`launch.requested` and `launch.effective` record what Orca asked for, not what
+the provider accepted: a role is started only once its harness accepted the
+model and the first turn is observed to begin. When the provider refuses the
+model, do not retry it and do not substitute: read
+`mo-models.mjs --catalog --route <route>`, apply the recommendation rule of the
+model decision, and ask the human one question that names the refusal, a
+recommended replacement and the alternatives. A refusal reported without a
+proposal is not an answer, and an incomplete catalog does not prove the model
+absent.
 
 Give the executor a short task, normally two to five sentences. For a large
 task, include the accessible path to the specification; it need not be

@@ -26,12 +26,13 @@ completely. From the same resolved Orca binary also read the version-matched
 
 Accept only an exact 40-hex `candidate_sha`, intent source, scope, mode, the
 specification line and two user-approved vendor-diverse selections from bundled
-`scripts/mo-models.mjs --show --project <root>`. Never choose fallback model,
-effort, placement or posture flags. The caller passes `Spec: <path|object>`
-when the work followed a specification and `Spec: none` otherwise, and both
-reviewers receive the same line; an executor running this review on its own
-work is such a caller too, because only it knows which specification it
-followed.
+`scripts/mo-models.mjs --show --json --project <root>`, where diversity is
+`launch.<role>.vendor` and never the route; `vendor=unknown` proves no
+diversity. Never choose fallback model, effort, placement or posture flags. The
+caller passes `Spec: <path|object>` when the work followed a specification and
+`Spec: none` otherwise, and both reviewers receive the same line; an executor
+running this review on its own work is such a caller too, because only it knows
+which specification it followed.
 
 Those two selections form the vendor-diverse pair; neither may be substituted.
 
@@ -244,12 +245,19 @@ Start each Claude or Codex reviewer on Orca 1.4.219 or later with:
 
 ```text
 orca orchestration worker-start --task <id> --worktree id:<repo>::<path> \
-  --agent <claude|codex> --model <id> --effort <e> --json
+  --agent <launch.<role>.agent> --model <launch.<role>.model> \
+  --effort <launch.<role>.effort> --json
 ```
 
-Orca injects the task only once the harness shows its normal agent prompt, and
-its receipt must show `launch.requested` equal to `launch.effective` and
-`turnStart: observed`. Record the Dispatch and the
+The three flags come from the reviewer role's `launch.<role>`, never from the
+whole `route/model/effort` literal in `--model`. Orca injects the task only
+once the harness shows its normal agent prompt, and its receipt must show
+`launch.requested` equal to `launch.effective` and `turnStart: observed`; that
+match is not the provider's acceptance, so the reviewer counts as started only
+once its harness accepted the model and the first turn began. A provider refusal
+is answered by `scripts/mo-models.mjs --catalog --route <agent>` and one
+question to the caller or human with the recommended replacement, never by a
+silent substitute. Record the Dispatch and the
 terminal of `effects[kind=terminal].id` at once. A harness whose model
 `worker-start` cannot pass starts terminal-first by the recipe in
 [Orca native mechanics](references/orca-mechanics.md). The user's setting for
