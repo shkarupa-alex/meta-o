@@ -222,7 +222,9 @@ trains are enabled, through authenticated `glab api`, and pass each as
 - `rules=reachable` without the requirement → `config_present` with
   `unresolved=required_policy_absent`;
 - `rules=reachable` with the requirement proven → `covered`;
-- no CI entry file → `no_ci_surface`.
+- nothing tracked at the CI entry path → `no_ci_surface`; a symbolic link, a
+  directory or a submodule there, or at an included path, is `rules=unsupported`
+  with `unresolved=ci_file_not_regular`, so `unknown`.
 
 The shipped `assets/ci/gitlab-ci.yml` answers `rules=reachable` with no hosting
 data at all. A static `covered` never replaces QC actually passing on the exact

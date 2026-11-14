@@ -149,7 +149,14 @@ export function coverageLine(repository, record) {
 
 const decoder = new TextDecoder("utf-8", { fatal: true });
 
-/** One tracked regular file at the candidate, or `null`; a link or a tree is not a CI file. */
+/**
+ * One tracked regular file at the candidate, or `null` when nothing is tracked
+ * at the path.
+ *
+ * A symbolic link, a tree or a submodule at a CI path is a CI surface this
+ * helper does not evaluate: whether GitLab follows the link or fails the
+ * pipeline is a hosting fact, so it is `unknown`, never `no_ci_surface`.
+ */
 function gitReader(root, candidate) {
   return (path) => {
     const normalized = posix.normalize(path);
@@ -157,7 +164,8 @@ function gitReader(root, candidate) {
     const listed = spawnSync("git", ["-C", root, "ls-tree", "-z", candidate, "--", normalized]);
     if (listed.error || listed.status !== 0) throw new Error("git ls-tree failed");
     const row = listed.stdout.toString("utf8").split("\0")[0];
-    if (!/^100(?:644|755) blob /u.test(row)) return null;
+    if (row === "") return null;
+    if (!/^100(?:644|755) blob /u.test(row)) throw new Unsupported("ci_file_not_regular");
     const shown = spawnSync("git", ["-C", root, "cat-file", "blob", `${candidate}:${normalized}`], {
       maxBuffer: 16 * 1024 * 1024,
     });

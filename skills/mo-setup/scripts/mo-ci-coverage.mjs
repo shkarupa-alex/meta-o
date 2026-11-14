@@ -3495,7 +3495,8 @@ function gitReader(root, candidate) {
     const listed = spawnSync("git", ["-C", root, "ls-tree", "-z", candidate, "--", normalized]);
     if (listed.error || listed.status !== 0) throw new Error("git ls-tree failed");
     const row = listed.stdout.toString("utf8").split("\0")[0];
-    if (!/^100(?:644|755) blob /u.test(row)) return null;
+    if (row === "") return null;
+    if (!/^100(?:644|755) blob /u.test(row)) throw new Unsupported("ci_file_not_regular");
     const shown = spawnSync("git", ["-C", root, "cat-file", "blob", `${candidate}:${normalized}`], {
       maxBuffer: 16 * 1024 * 1024
     });

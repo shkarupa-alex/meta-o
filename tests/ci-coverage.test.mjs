@@ -10,7 +10,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { after, test } from "node:test";
@@ -310,4 +310,34 @@ test("the helper reads only the candidate's tracked files", () => {
     "enabled",
   );
   assert.equal(misspelled.status, 2);
+});
+
+test("a CI entry that is a symbolic link is unknown, never no_ci_surface", () => {
+  const repo = mkdtempSync(join(tmpdir(), "mo-ci-coverage-link-"));
+  temporary.push(repo);
+  const run = (...args) => {
+    const result = spawnSync("git", ["-C", repo, ...args], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  run("init", "-q");
+  run("config", "user.email", "fixture@example.invalid");
+  run("config", "user.name", "Fixture");
+  writeFileSync(join(repo, "ci.yml"), SHIPPED);
+  symlinkSync("ci.yml", join(repo, ".gitlab-ci.yml"));
+  run("add", "ci.yml", ".gitlab-ci.yml");
+  run("commit", "-q", "-m", "linked ci");
+  const helper = join(ROOT, "shared", "scripts", "mo-ci-coverage.mjs");
+  const flags = ["--repository", "group/project", "--job", "qc", "--required-policy", "enabled"];
+  const result = spawnSync(
+    process.execPath,
+    [helper, "--repo", repo, "--candidate", run("rev-parse", "HEAD"), ...flags],
+    { encoding: "utf8" },
+  );
+  // Whether GitLab follows the link is a hosting fact this helper cannot read.
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(
+    result.stdout,
+    / rules=unsupported .* outcome=unknown unresolved=ci_file_not_regular /u,
+  );
 });
