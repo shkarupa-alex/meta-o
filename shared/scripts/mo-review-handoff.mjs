@@ -22,6 +22,7 @@ import {
   fstatSync,
   fsyncSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   openSync,
   readSync,
@@ -33,6 +34,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 
 import { parseRound, roundLine, validateReport } from "./mo-review-grammar.mjs";
+import { PAIR_ID, pairDirName, slotDirName, slotDirPrefix } from "./mo-review-slot.mjs";
 
 /** The two reviewer slots of a pair, in the order a pair names them. */
 export const SLOTS = ["A", "B"];
@@ -41,8 +43,6 @@ export const FACTS_FILE = "stage.json";
 /** §A-RESPONSE-03 the name `stage` gives received bytes it publishes itself. */
 export const RECEIVED_FILE = "worker-done.md";
 
-const PAIR_ID = /^[a-f0-9]{12}$/u;
-const SLOT_DIR = /^mo-review-([a-f0-9]{12})-([AB])-[A-Za-z0-9]{6}$/u;
 const VENDOR = /^[a-z0-9][a-z0-9-]{0,31}$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const DECIMAL = /^(?:0|[1-9][0-9]*)$/u;
@@ -115,7 +115,7 @@ export function namespace() {
   try {
     const pairId = randomBytes(6).toString("hex");
     for (const slot of SLOTS) {
-      const dir = mkdtempSync(join(tmpdir(), `mo-review-${pairId}-${slot}-`));
+      const dir = mkdtempSync(join(tmpdir(), slotDirPrefix(pairId, slot)));
       created.push(dir);
       chmodSync(dir, 0o700);
     }
@@ -137,14 +137,14 @@ export function namespace() {
  * name says.
  */
 export function slotIdentity(dir) {
-  const match = SLOT_DIR.exec(basename(resolve(dir)));
-  if (match === null) return null;
+  const identity = slotDirName(basename(resolve(dir)));
+  if (identity === null) return null;
   try {
     if (!lstatSync(dir).isDirectory()) return null;
   } catch {
     return null;
   }
-  return { pairId: match[1], slot: match[2] };
+  return identity;
 }
 
 /** §A-RESPONSE-03 flushes the directory entry; a refusal here is diagnostic only. */
@@ -451,10 +451,11 @@ function copyInto(dir, slot, vendor, buffer, facts) {
  * two `stage.json` records decide that: slots A and B of one pair id, the
  * expected candidate and `Round`, two different Dispatches and two known,
  * different model vendors (§A-REVIEW-02 makes vendor diversity the point of
- * the pair, and `unknown` proves none). Only then is a pair directory created
- * under system temp with `mkdtemp`, mode `0700`, and both reports are copied
- * into it exclusively from the bytes just observed, with size and sha256 of
- * each copy checked against the facts.
+ * the pair, and `unknown` proves none). Only then is the pair directory created
+ * beside the slots, mode `0700`, under the one name its pair id allows, and
+ * both reports are copied into it exclusively from the bytes just observed,
+ * with size and sha256 of each copy checked against the facts. A pair already
+ * published is `final_exists`, and nothing is written.
  */
 export function pair({ slotA, slotB, expect }) {
   const dirs = { A: slotA, B: slotB };
@@ -475,11 +476,18 @@ export function pair({ slotA, slotB, expect }) {
     observed[slot] = observeReport(dirs[slot], facts[slot]);
     if (observed[slot].status !== "observed") return { ...observed[slot], slot };
   }
+  // The pair directory has one fixed name per pair id, beside slot A, and
+  // `mkdir` creates it or fails: a repeated `pair` of the same slots finds it
+  // and refuses before writing, and two concurrent calls cannot both win. A
+  // name taken by anything else, a symbolic link included, is refused the same
+  // way, so nothing here ever writes through a directory it did not create.
+  const dir = join(dirname(resolve(slotA)), pairDirName(expect.pairId));
   const previous = process.umask(0o077);
-  let dir;
   try {
-    dir = mkdtempSync(join(tmpdir(), `mo-review-${expect.pairId}-pair-`));
+    mkdirSync(dir, 0o700);
     chmodSync(dir, 0o700);
+  } catch (error) {
+    return { status: "unknown", reason: error.code === "EEXIST" ? "final_exists" : "permission" };
   } finally {
     process.umask(previous);
   }

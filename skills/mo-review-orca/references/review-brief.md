@@ -192,10 +192,16 @@ dirty, and nothing travels as base64 in the Dispatch body, which a model
 rewrites. A reviewer on another host cannot see the directory; there the honest
 answer is a full clone with the specification committed to the task branch.
 
+`copy` refuses a directory whose name carries another slot letter, or another
+pair id than the second slot's, with `slot_mismatch`, so a slot's line can only
+ever name its own directory.
+
 Before reading either source the reviewer runs `mo-review-input.mjs check` on
-the brief's own line. It compares a copy's sha256, or `git rev-parse` of the
-commit and path with the blob, and the reviewer then reads exactly those bytes —
-never a truncation or a retelling. A check answering `external_input_missing`,
+the brief's own line with the brief's own `Body-File` as `--body-file`; a copy
+outside that file's directory is `external_input_integrity`, whatever its
+sha256. It compares a copy's sha256, or `git rev-parse` of the commit and path
+with the blob, and the reviewer then reads exactly those bytes — never a
+truncation or a retelling. A check answering `external_input_missing`,
 `external_input_integrity` or `external_input_unavailable` makes the review
 `UNKNOWN`. On `external_input_unavailable` the caller recommends a full clone,
 or committing the specification to the task branch.

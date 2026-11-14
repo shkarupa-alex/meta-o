@@ -267,7 +267,7 @@ export const COMMANDS = {
     usage:
       "pair --slot-a <slot A dir> --slot-b <slot B dir> --expect-pair-id <id> --expect-candidate <40-hex> --expect-round '<Round line>'",
     about:
-      "checks both stage.json records against the expectation, observes both reports again and copies them into a new pair directory",
+      "checks both stage.json records against the expectation, observes both reports again and copies them into the pair directory mo-review-<pair_id>-pair beside the slots; once that directory exists a repeated pair is final_exists and writes nothing",
     example: `pair --slot-a /tmp/mo-review-0a1b2c3d4e5f-A-Xy12Ab --slot-b /tmp/mo-review-0a1b2c3d4e5f-B-Qw34Cd --expect-pair-id 0a1b2c3d4e5f --expect-candidate ${"a".repeat(40)} --expect-round 'Round: attempt=1/5 deep_reads=1 fragment=f1'`,
   },
   preview: {

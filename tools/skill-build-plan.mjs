@@ -67,6 +67,12 @@ export const BUNDLES = {
     baselineBytes: 200_550,
     roots: MARKDOWN_ROOTS,
   },
+  // The input helper shares only the slot directory names with the handoff
+  // helper and pulls no package.
+  "scripts/mo-review-input.mjs": {
+    baselineBytes: 15_696,
+    roots: [],
+  },
   "scripts/mo-knowledge.mjs": {
     baselineBytes: 304_054,
     roots: [...MARKDOWN_ROOTS, "js-yaml"],

@@ -1,23 +1,6 @@
 #!/usr/bin/env node
-/**
- * Deliver a reviewer's specification and intent ledger as exact bytes, and
- * check them before the reviewer reads a word.
- *
- * §A-REVIEW-05 gives the brief's `Spec:` and `Intent-Ledger:` lines four
- * closed forms. A file outside Git reaches a reviewer only as a copy in its own
- * slot directory named by path and sha256; a file closure already deleted is
- * named by the commit whose tree still holds it, its path and its blob. Both
- * values are printed here and checked here, because a value carried by hand is
- * the same class of error as a hand-typed report header: it looks right and
- * names other bytes.
- *
- * `copy` is the caller's half: one read of the source, so both slots receive
- * the same bytes, and an exclusive create, so an existing copy is never
- * replaced. `check` is the reviewer's half: it reads, and writes nothing. It
- * forbids Git's lazy fetch, so a partial clone answers that the object is
- * absent rather than quietly reaching the network from the reviewer's checkout.
- */
 
+// shared/scripts/mo-review-input.mjs
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -29,71 +12,68 @@ import {
   readFileSync,
   realpathSync,
   statSync,
-  writeSync,
+  writeSync
 } from "node:fs";
-import { dirname, extname, isAbsolute, join } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
-/** §A-REVIEW-05 the first token of every line this helper prints. */
-export const INPUT_PREFIX = "MO-REVIEW-INPUT/1";
+// shared/scripts/mo-review-slot.mjs
+var SLOT_DIR = /^mo-review-([a-f0-9]{12})-([AB])-[A-Za-z0-9]{6}$/u;
+function slotDirName(name) {
+  const match = SLOT_DIR.exec(name);
+  return match === null ? null : { pairId: match[1], slot: match[2] };
+}
 
-/** §A-REVIEW-05 the brief fields whose value may name bytes outside the candidate. */
-export const INPUT_FIELDS = Object.freeze(["Spec", "Intent-Ledger"]);
-
-/** §A-REVIEW-05 the closed outcomes of a reviewer's input check besides `ok`. */
-export const INPUT_FAILURES = Object.freeze([
+// shared/scripts/mo-review-input.mjs
+var INPUT_PREFIX = "MO-REVIEW-INPUT/1";
+var INPUT_FIELDS = Object.freeze(["Spec", "Intent-Ledger"]);
+var INPUT_FAILURES = Object.freeze([
   "external_input_missing",
   "external_input_integrity",
-  "external_input_unavailable",
+  "external_input_unavailable"
 ]);
-
-const SHA1 = /^[0-9a-f]{40}$/u;
-const FILE_STEM = { Spec: "spec", "Intent-Ledger": "intent-ledger" };
-
-const USAGE = `usage: mo-review-input.mjs copy --field <Spec|Intent-Ledger> --source <file> \\
+var SHA1 = /^[0-9a-f]{40}$/u;
+var REGULAR_FILE = /* @__PURE__ */ new Set(["100644", "100755"]);
+var FILE_STEM = { Spec: "spec", "Intent-Ledger": "intent-ledger" };
+var USAGE = `usage: mo-review-input.mjs copy --field <Spec|Intent-Ledger> --source <file> \\
          --slot A=<absolute slot dir> [--slot B=<absolute slot dir>]
        mo-review-input.mjs check --candidate <40-hex> --line '<Spec|Intent-Ledger>: <value>' \\
-         [--line …] [--repo <git root>]
+         [--line \u2026] [--body-file <the brief's Body-File|none>] [--repo <git root>]
        mo-review-input.mjs --help
 
   copy   reads the source once and creates <dir>/slot-<a|b>-<spec|intent-ledger><ext>
-         in each slot directory exclusively, mode 0600; an existing file is refused.
+         in each slot directory exclusively, mode 0600; an existing file is refused,
+         and so is a directory whose name mo-review-<pair_id>-<slot>-<random> carries
+         another slot letter or, for two slots, another pair id (slot_mismatch).
          One line per slot; everything after line= is that slot's brief line:
          ${INPUT_PREFIX} status=copied field=<F> slot=<A|B> bytes=<n> sha256=<hex> line=<F>: file <path> sha256=<hex>
   check  verifies each brief line before its bytes are read, writing nothing:
            <tracked repo path>                      a file of the candidate's tree
            git <commit>:<path> blob=<40-hex>        rev-parse <commit>:<path> equals blob
-           file <absolute path> sha256=<64-hex>     the copy's sha256 equals the value
+           file <absolute path> sha256=<64-hex>     the copy lies in the directory of
+                                                    --body-file and its sha256 equals
+                                                    the value; a file line needs
+                                                    --body-file, and none says this
+                                                    placement has no slot directory
            none
          ${INPUT_PREFIX} status=<ok|${INPUT_FAILURES.join("|")}> field=<F> form=<tracked|git|file|none> detail=<code>
 
 example:
   node "<this skill's directory>/scripts/mo-review-input.mjs" check \\
     --candidate "$CANDIDATE_SHA" --line "Spec: docs/specifications/feature.md"
+  node "<this skill's directory>/scripts/mo-review-input.mjs" check \\
+    --candidate "$CANDIDATE_SHA" \\
+    --line "Spec: file /tmp/mo-review-0a1b2c3d4e5f-B-Qw34Cd/slot-b-spec.md sha256=<64-hex>" \\
+    --body-file /tmp/mo-review-0a1b2c3d4e5f-B-Qw34Cd/slot-b-r1-d1.md
 
 exit: 0 copied or every line ok | 1 refused or a check failed | 2 call error
 `;
-
-class UsageError extends Error {}
-
-const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
-
-// A repository path names a file inside the tree: never absolute, never
-// climbing out, and with no byte that would split the brief line.
-const repoPath = (path) =>
-  path.length > 0 &&
-  !isAbsolute(path) &&
-  !/[\n\r\0]/u.test(path) &&
-  !path.split("/").some((part) => part === ".." || part === "");
-
-/**
- * §A-REVIEW-05 reads one brief line into its form, or names why it has none.
- *
- * `file` takes an absolute path only: a relative one would resolve against the
- * reviewer's checkout, which is exactly the directory the copy is not in.
- */
-export function parseInputLine(line) {
+var UsageError = class extends Error {
+};
+var sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+var repoPath = (path) => path.length > 0 && !isAbsolute(path) && !/[\n\r\0]/u.test(path) && !path.split("/").some((part) => part === ".." || part === "");
+function parseInputLine(line) {
   const match = /^(Spec|Intent-Ledger): (.+)$/u.exec(line);
   if (match === null) return { error: "expected <Spec|Intent-Ledger>: <value>" };
   const [, field, value] = match;
@@ -115,47 +95,42 @@ export function parseInputLine(line) {
   if (!repoPath(value)) return { error: `${field}: a tracked path is relative to the tree` };
   return { field, form: "tracked", path: value };
 }
-
-/**
- * Run Git read-only in the reviewer's repository.
- *
- * `GIT_NO_LAZY_FETCH` keeps a partial clone from fetching a missing object on
- * demand: the check must answer what this placement holds, and a fetch would
- * both write into the repository and hide the gap it is asked to report.
- */
 function git(repo, args) {
   const result = spawnSync("git", ["-C", repo, ...args], {
     encoding: "utf8",
-    env: { ...process.env, GIT_NO_LAZY_FETCH: "1", GIT_TERMINAL_PROMPT: "0" },
+    env: { ...process.env, GIT_NO_LAZY_FETCH: "1", GIT_TERMINAL_PROMPT: "0" }
   });
   return { ok: result.status === 0, out: (result.stdout ?? "").trim() };
 }
-
-const present = (repo, object) => git(repo, ["cat-file", "-e", object]).ok;
-
+var present = (repo, object) => git(repo, ["cat-file", "-e", object]).ok;
 function verdict(parsed, status, detail, extra = "") {
   return {
     status,
-    line: `${INPUT_PREFIX} status=${status} field=${parsed.field} form=${parsed.form} detail=${detail}${extra}`,
+    line: `${INPUT_PREFIX} status=${status} field=${parsed.field} form=${parsed.form} detail=${detail}${extra}`
   };
 }
-
-function checkFile(parsed) {
-  let directory;
+var directoryAt = (path) => {
   try {
-    directory = statSync(dirname(parsed.path));
+    const stat = statSync(path);
+    return stat.isDirectory() ? stat : null;
   } catch {
-    return verdict(parsed, "external_input_unavailable", "directory_absent");
+    return null;
   }
-  if (!directory.isDirectory())
-    return verdict(parsed, "external_input_unavailable", "directory_absent");
+};
+function checkFile(parsed, slotDir) {
+  if (slotDir === null || slotDir === void 0)
+    return verdict(parsed, "external_input_unavailable", "no_slot_dir");
+  const directory = directoryAt(dirname(parsed.path));
+  if (directory === null) return verdict(parsed, "external_input_unavailable", "directory_absent");
+  const own = directoryAt(slotDir);
+  if (own === null) return verdict(parsed, "external_input_unavailable", "slot_dir_absent");
+  if (own.dev !== directory.dev || own.ino !== directory.ino)
+    return verdict(parsed, "external_input_integrity", "slot_mismatch");
   let entry;
   try {
     entry = statSync(parsed.path);
   } catch (error) {
-    return error.code === "ENOENT"
-      ? verdict(parsed, "external_input_missing", "file_absent")
-      : verdict(parsed, "external_input_unavailable", "unreadable");
+    return error.code === "ENOENT" ? verdict(parsed, "external_input_missing", "file_absent") : verdict(parsed, "external_input_unavailable", "unreadable");
   }
   if (!entry.isFile()) return verdict(parsed, "external_input_missing", "not_a_file");
   let bytes;
@@ -168,34 +143,54 @@ function checkFile(parsed) {
     return verdict(parsed, "external_input_integrity", "sha256_mismatch");
   return verdict(parsed, "ok", "none", ` bytes=${bytes.length}`);
 }
-
-// The blob behind a tree entry: the id comes from the tree, which even a
-// partial clone holds, and only then is the object itself looked for.
-function blobAt(repo, parsed, commit) {
-  const id = git(repo, ["rev-parse", "--verify", "--quiet", `${commit}:${parsed.path}`]);
-  if (!id.ok || !SHA1.test(id.out))
-    return { result: verdict(parsed, "external_input_missing", "path_absent") };
-  return { id: id.out };
+function treeEntry(repo, tree, name) {
+  const listed = spawnSync("git", ["-C", repo, "ls-tree", "-z", tree], {
+    env: { ...process.env, GIT_NO_LAZY_FETCH: "1", GIT_TERMINAL_PROMPT: "0" }
+  });
+  if (listed.status !== 0) return { error: true };
+  for (const row of listed.stdout.toString("utf8").split("\0")) {
+    const match = /^(\d{6}) (\w+) ([0-9a-f]{40})\t(.*)$/su.exec(row);
+    if (match !== null && match[4] === name)
+      return { mode: match[1], type: match[2], id: match[3] };
+  }
+  return null;
 }
-
+function blobAt(repo, parsed, commit) {
+  const header = git(repo, ["cat-file", "commit", commit]);
+  const root = /^tree ([0-9a-f]{40})$/mu.exec(header.out);
+  if (!header.ok || root === null)
+    return { result: verdict(parsed, "external_input_unavailable", "commit_absent") };
+  let tree = root[1];
+  const parts = parsed.path.split("/");
+  for (const [index, name] of parts.entries()) {
+    if (!present(repo, tree))
+      return { result: verdict(parsed, "external_input_unavailable", "tree_absent") };
+    const entry = treeEntry(repo, tree, name);
+    if (entry?.error)
+      return { result: verdict(parsed, "external_input_unavailable", "unreadable") };
+    if (entry === null) return { result: verdict(parsed, "external_input_missing", "path_absent") };
+    if (index === parts.length - 1) {
+      if (entry.type !== "blob" || !REGULAR_FILE.has(entry.mode))
+        return { result: verdict(parsed, "external_input_missing", "not_a_file") };
+      return { id: entry.id };
+    }
+    if (entry.type !== "tree")
+      return { result: verdict(parsed, "external_input_missing", "path_absent") };
+    tree = entry.id;
+  }
+  return { result: verdict(parsed, "external_input_missing", "path_absent") };
+}
 function readableBlob(repo, parsed, id) {
   if (!present(repo, id)) return verdict(parsed, "external_input_unavailable", "object_absent");
-  if (git(repo, ["cat-file", "-t", id]).out !== "blob")
-    return verdict(parsed, "external_input_missing", "not_a_file");
   const size = git(repo, ["cat-file", "-s", id]).out;
   return verdict(parsed, "ok", "none", ` blob=${id} bytes=${size}`);
 }
-
 function checkTracked(repo, parsed, candidate) {
   if (!present(repo, `${candidate}^{commit}`))
     return verdict(parsed, "external_input_unavailable", "commit_absent");
   const found = blobAt(repo, parsed, candidate);
   return found.result ?? readableBlob(repo, parsed, found.id);
 }
-
-// A commit this repository does not hold cannot be told apart from one it
-// never fetched, so its absence is `unavailable` with the recommendation of a
-// full clone; only a path the commit's own tree lacks is `missing`.
 function checkGit(repo, parsed) {
   if (!present(repo, `${parsed.commit}^{commit}`)) {
     const shallow = git(repo, ["rev-parse", "--is-shallow-repository"]).out === "true";
@@ -203,7 +198,7 @@ function checkGit(repo, parsed) {
       parsed,
       "external_input_unavailable",
       "commit_absent",
-      ` shallow=${shallow ? "yes" : "no"}`,
+      ` shallow=${shallow ? "yes" : "no"}`
     );
   }
   const found = blobAt(repo, parsed, parsed.commit);
@@ -211,15 +206,12 @@ function checkGit(repo, parsed) {
   if (found.id !== parsed.blob) return verdict(parsed, "external_input_integrity", "blob_mismatch");
   return readableBlob(repo, parsed, found.id);
 }
-
-/** §A-REVIEW-05 checks one parsed brief line on this placement and reads nothing else. */
-export function checkInput(parsed, { repo, candidate }) {
+function checkInput(parsed, { repo, candidate, slotDir = null }) {
   if (parsed.form === "none") return verdict(parsed, "ok", "none");
-  if (parsed.form === "file") return checkFile(parsed);
+  if (parsed.form === "file") return checkFile(parsed, slotDir);
   if (parsed.form === "git") return checkGit(repo, parsed);
   return checkTracked(repo, parsed, candidate);
 }
-
 function slotTarget(spec) {
   const match = /^(A|B)=(.+)$/u.exec(spec);
   if (match === null || !isAbsolute(match[2]) || /[\n\r\0]/u.test(match[2])) {
@@ -227,14 +219,11 @@ function slotTarget(spec) {
   }
   return { slot: match[1], dir: match[2] };
 }
-
 function writeExclusive(path, bytes) {
-  // O_EXCL refuses an existing name, a symlink included, so a copy never
-  // replaces bytes a reviewer may already have checked.
   const fd = openSync(
     path,
     constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
-    0o600,
+    384
   );
   try {
     let offset = 0;
@@ -244,15 +233,12 @@ function writeExclusive(path, bytes) {
     closeSync(fd);
   }
 }
-
-/**
- * §A-REVIEW-05 copies one source into every named slot directory.
- *
- * The source is read once and every slot receives that buffer, so the two
- * reviewers of a pair can never be handed two versions of one specification.
- * Every target is checked before the first byte is written.
- */
-export function copyInput({ field, source, slots }) {
+function slotMismatch(slots) {
+  const identities = slots.map(({ dir }) => slotDirName(basename(resolve(dir))));
+  if (identities.some((identity, index) => identity?.slot !== slots[index].slot)) return true;
+  return new Set(identities.map(({ pairId }) => pairId)).size > 1;
+}
+function copyInput({ field, source, slots }) {
   let bytes;
   try {
     if (!statSync(source).isFile()) return { refused: "source_not_file" };
@@ -260,15 +246,16 @@ export function copyInput({ field, source, slots }) {
   } catch {
     return { refused: "source_unreadable" };
   }
+  if (slotMismatch(slots)) return { refused: "slot_mismatch" };
   const digest = sha256(bytes);
   const targets = slots.map(({ slot, dir }) => ({
     slot,
     path: join(dir, `slot-${slot.toLowerCase()}-${FILE_STEM[field]}${extname(source)}`),
-    dir,
+    dir
   }));
   for (const { dir, path } of targets) {
     try {
-      if (!statSync(dir).isDirectory()) return { refused: "directory_absent" };
+      if (!lstatSync(dir).isDirectory()) return { refused: "directory_absent" };
     } catch {
       return { refused: "directory_absent" };
     }
@@ -276,7 +263,6 @@ export function copyInput({ field, source, slots }) {
       lstatSync(path);
       return { refused: "exists" };
     } catch {
-      // absent, as required
     }
   }
   const lines = [];
@@ -288,14 +274,11 @@ export function copyInput({ field, source, slots }) {
       return { refused: "write_failed", lines };
     }
     lines.push(
-      `${INPUT_PREFIX} status=copied field=${field} slot=${slot} bytes=${bytes.length} sha256=${digest} line=${field}: file ${path} sha256=${digest}`,
+      `${INPUT_PREFIX} status=copied field=${field} slot=${slot} bytes=${bytes.length} sha256=${digest} line=${field}: file ${path} sha256=${digest}`
     );
   }
   return { lines };
 }
-
-// Every flag but a repeatable one appears once: a second value would be read
-// as the last one wins, and the caller would never learn which one it was.
 function parse(args, options) {
   let parsed;
   try {
@@ -305,23 +288,21 @@ function parse(args, options) {
   }
   for (const [name, option] of Object.entries(options)) {
     const count = parsed.tokens.filter(
-      (token) => token.kind === "option" && token.name === name,
+      (token) => token.kind === "option" && token.name === name
     ).length;
     if (!option.multiple && count > 1) throw new UsageError(`--${name} given more than once`);
   }
   return parsed.values;
 }
-
 function requireValues(command, values, names) {
-  const missing = names.filter((name) => values[name] === undefined);
+  const missing = names.filter((name) => values[name] === void 0);
   if (missing.length > 0) throw new UsageError(`${command} needs --${missing.join(", --")}`);
 }
-
 function copyCommand(rest) {
   const values = parse(rest, {
     field: { type: "string" },
     source: { type: "string" },
-    slot: { type: "string", multiple: true },
+    slot: { type: "string", multiple: true }
   });
   requireValues("copy", values, ["field", "source", "slot"]);
   if (!INPUT_FIELDS.includes(values.field))
@@ -330,31 +311,39 @@ function copyCommand(rest) {
   if (new Set(slots.map(({ slot }) => slot)).size !== slots.length)
     throw new UsageError("each slot is named once");
   const result = copyInput({ field: values.field, source: values.source, slots });
-  for (const line of result.lines ?? []) process.stdout.write(`${line}\n`);
+  for (const line of result.lines ?? []) process.stdout.write(`${line}
+`);
   if (!result.refused) return 0;
-  process.stdout.write(`${INPUT_PREFIX} status=refused reason=${result.refused}\n`);
+  process.stdout.write(`${INPUT_PREFIX} status=refused reason=${result.refused}
+`);
   return 1;
 }
-
 function checkCommand(rest) {
   const values = parse(rest, {
     candidate: { type: "string" },
     line: { type: "string", multiple: true },
     repo: { type: "string" },
+    "body-file": { type: "string" }
   });
   requireValues("check", values, ["candidate", "line"]);
   if (!SHA1.test(values.candidate)) throw new UsageError("--candidate must be a full 40-hex SHA");
-  // Every line is parsed before any is checked, so a malformed one is a call
-  // error with nothing printed rather than half an answer.
   const parsed = values.line.map(parseInputLine);
   const bad = parsed.find((entry) => entry.error);
   if (bad) throw new UsageError(bad.error);
+  const bodyFile = values["body-file"];
+  if (bodyFile === void 0 && parsed.some((entry) => entry.form === "file"))
+    throw new UsageError("a file line needs --body-file <the brief's Body-File|none>");
+  if (bodyFile !== void 0 && bodyFile !== "none" && !isAbsolute(bodyFile))
+    throw new UsageError("--body-file takes the brief's absolute Body-File or none");
+  const slotDir = bodyFile === void 0 || bodyFile === "none" ? null : dirname(bodyFile);
   const repo = values.repo ?? process.cwd();
-  const results = parsed.map((entry) => checkInput(entry, { repo, candidate: values.candidate }));
-  for (const result of results) process.stdout.write(`${result.line}\n`);
+  const results = parsed.map(
+    (entry) => checkInput(entry, { repo, candidate: values.candidate, slotDir })
+  );
+  for (const result of results) process.stdout.write(`${result.line}
+`);
   return results.every((result) => result.status === "ok") ? 0 : 1;
 }
-
 function main(argv) {
   const [command, ...rest] = argv;
   if (command === "--help" || rest.includes("--help")) {
@@ -364,16 +353,9 @@ function main(argv) {
   if (command === "copy") return copyCommand(rest);
   if (command === "check") return checkCommand(rest);
   throw new UsageError(
-    command === undefined ? "a command is required" : `unknown command ${command}`,
+    command === void 0 ? "a command is required" : `unknown command ${command}`
   );
 }
-
-/**
- * Whether this file is the program Node was asked to run. Both sides go through
- * realpath: Node resolves the main module through symlinks and percent-encodes
- * its URL, while argv keeps the path as typed, so a textual comparison fails
- * silently for a symlinked install or a directory with a space in its name.
- */
 function invokedDirectly() {
   try {
     return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
@@ -381,13 +363,21 @@ function invokedDirectly() {
     return false;
   }
 }
-
 if (invokedDirectly()) {
   try {
     process.exitCode = main(process.argv.slice(2));
   } catch (error) {
-    process.stderr.write(`${error.message}\n`);
+    process.stderr.write(`${error.message}
+`);
     if (error instanceof UsageError) process.stderr.write(USAGE);
     process.exitCode = 2;
   }
 }
+export {
+  INPUT_FAILURES,
+  INPUT_FIELDS,
+  INPUT_PREFIX,
+  checkInput,
+  copyInput,
+  parseInputLine
+};

@@ -29,17 +29,19 @@ passes both lines, because only the caller knows which specification the work
 followed.
 
 Check both lines before reading either source, with the shipped
-`mo-review-input.mjs check --candidate <sha> --line '<Spec line>' --line '<Intent-Ledger line>'`.
-It compares a copy's sha256 with the line, or proves that
-`git rev-parse <commit>:<path>` equals the blob, and writes nothing. Then read
-exactly those bytes — the copy, `git cat-file blob <blob>` or
+`mo-review-input.mjs check --candidate <sha> --line '<Spec line>' --line '<Intent-Ledger line>'`
+and the brief's own `Body-File` as `--body-file '<Body-File>'`. It compares a
+copy's sha256 with the line, accepting a copy only in that file's directory, or
+proves that `git rev-parse <commit>:<path>` equals the blob, and writes nothing.
+Then read exactly those bytes — the copy, `git cat-file blob <blob>` or
 `git show <candidate>:<path>` — and never a truncation or a retelling. A line
 answering `external_input_missing` (no such file or path),
-`external_input_integrity` (the sha256 or blob differs) or
-`external_input_unavailable` (the slot directory is not visible from this
-placement, or a shallow or partial clone lacks the commit or object) makes the
-review `UNKNOWN` with `Unknown-Reason: retrieval_failure`, and its
-`Unknown-Account` carries that line verbatim.
+`external_input_integrity` (the sha256 or blob differs, or the copy lies in
+another slot's directory) or `external_input_unavailable` (the slot directory is
+not visible from this placement, or a shallow or partial clone lacks the commit,
+a tree or the object) makes the review `UNKNOWN` with
+`Unknown-Reason: retrieval_failure`, and its `Unknown-Account` carries that line
+verbatim.
 
 - `fast` is for bounded low-risk work. Read the complete diff, directly
   reachable callers and callees, related tests/configuration and repository

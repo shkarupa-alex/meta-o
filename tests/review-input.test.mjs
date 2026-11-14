@@ -17,6 +17,7 @@ import {
   readdirSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -60,6 +61,23 @@ function git(cwd, ...args) {
   return result.stdout.trim();
 }
 
+// A slot directory under the name `namespace` gives it, inside a parent whose
+// path holds a space.
+function slotDirs(pairId = "0a1b2c3d4e5f") {
+  const run = join(temp("mo-input-run-"), "run dir");
+  mkdirSync(run);
+  const dirs = Object.fromEntries(
+    ["A", "B"].map((slot) => {
+      const dir = join(run, `mo-review-${pairId}-${slot}-Xy12Ab`);
+      mkdirSync(dir, { mode: 0o700 });
+      return [slot, dir];
+    }),
+  );
+  return { run, ...dirs };
+}
+
+const bodyFile = (dir, slot) => join(dir, `slot-${slot.toLowerCase()}-r1-d1.md`);
+
 function helper(args, cwd) {
   const result = spawnSync(process.execPath, [HELPER, ...args], { cwd, encoding: "utf8" });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
@@ -93,12 +111,7 @@ test("a standalone review copies one buffer into both slot directories with its 
   const outside = temp("mo-input-src-");
   const source = join(outside, "feature spec.md");
   writeFileSync(source, SPEC);
-  const run = temp("mo-input-run-");
-  const [slotA, slotB] = ["A", "B"].map((slot) => {
-    const dir = join(run, `slot ${slot}`);
-    mkdirSync(dir, { mode: 0o700 });
-    return dir;
-  });
+  const { run, A: slotA, B: slotB } = slotDirs();
   const copied = helper([
     "copy",
     "--field",
@@ -124,14 +137,17 @@ test("a standalone review copies one buffer into both slot directories with its 
   assert.equal(brief[0].includes(slotA), true);
   assert.equal(brief[1].includes(slotB), true);
   assert.equal(brief[0].includes(slotB), false);
-  for (const [dir, line] of [
-    [slotA, brief[0]],
-    [slotB, brief[1]],
+  for (const [slot, dir, line] of [
+    ["A", slotA, brief[0]],
+    ["B", slotB, brief[1]],
   ]) {
     const [copy] = readdirSync(dir);
     assert.equal(readFileSync(join(dir, copy), "utf8"), SPEC);
     assert.equal(statSync(join(dir, copy)).mode & 0o777, 0o600);
-    const checked = helper(["check", "--candidate", "a".repeat(40), "--line", line], run);
+    const checked = helper(
+      ["check", "--candidate", "a".repeat(40), "--line", line, "--body-file", bodyFile(dir, slot)],
+      run,
+    );
     assert.equal(checked.status, 0, checked.stdout);
     assert.match(
       checked.stdout,
@@ -144,10 +160,65 @@ test("a standalone review copies one buffer into both slot directories with its 
   assert.match(again.stdout, /status=refused reason=exists/u);
 });
 
+test("a copy never crosses the slot barrier, at copy or at check", () => {
+  const outside = temp("mo-input-src-");
+  const source = join(outside, "spec.md");
+  writeFileSync(source, SPEC);
+  const { A: slotA, B: slotB } = slotDirs();
+  const other = slotDirs("ffffffffffff");
+  // `copy` takes the slot letter from the caller and the directory's own name
+  // must carry it: slot A's bytes never land in slot B's directory, and two
+  // slots of different pairs are not one copy.
+  for (const slots of [
+    [{ slot: "A", dir: slotB }],
+    [
+      { slot: "A", dir: slotA },
+      { slot: "B", dir: other.B },
+    ],
+    [{ slot: "A", dir: outside }],
+  ]) {
+    assert.deepEqual(copyInput({ field: "Spec", source, slots }), { refused: "slot_mismatch" });
+  }
+  assert.deepEqual(readdirSync(slotA), []);
+  assert.deepEqual(readdirSync(slotB), []);
+  const copied = helper(["copy", "--field", "Spec", "--source", source, "--slot", `A=${slotB}`]);
+  assert.equal(copied.status, 1);
+  assert.equal(copied.stdout, "MO-REVIEW-INPUT/1 status=refused reason=slot_mismatch\n");
+
+  // Slot A's line carried into slot B's brief names the same bytes under the
+  // same sha256; only the directory tells them apart, and `check` refuses it.
+  const result = copyInput({
+    field: "Spec",
+    source,
+    slots: [
+      { slot: "A", dir: slotA },
+      { slot: "B", dir: slotB },
+    ],
+  });
+  const lineA = result.lines[0].slice(result.lines[0].indexOf("line=") + 5);
+  const base = ["check", "--candidate", "a".repeat(40), "--line", lineA];
+  const crossed = helper([...base, "--body-file", bodyFile(slotB, "B")]);
+  assert.equal(crossed.status, 1);
+  assert.equal(
+    crossed.stdout,
+    "MO-REVIEW-INPUT/1 status=external_input_integrity field=Spec form=file detail=slot_mismatch\n",
+  );
+  assert.equal(helper([...base, "--body-file", bodyFile(slotA, "A")]).status, 0);
+  // A reviewer that cannot name its slot cannot pass a copy: without the flag
+  // the call is refused, and `Body-File: none` has no slot directory to see.
+  const unnamed = helper(base);
+  assert.equal(unnamed.status, 2);
+  assert.equal(unnamed.stdout, "");
+  const remote = helper([...base, "--body-file", "none"]);
+  assert.equal(remote.status, 1);
+  assert.match(remote.stdout, /status=external_input_unavailable .* detail=no_slot_dir\n$/u);
+  assert.equal(helper([...base, "--body-file", "relative.md"]).status, 2);
+});
+
 test("a changed copy is external_input_integrity and an unreachable slot is external_input_unavailable", () => {
   const outside = temp("mo-input-src-");
   writeFileSync(join(outside, "spec.md"), SPEC);
-  const slot = temp("mo-input-slot-");
+  const { A: slot } = slotDirs();
   const result = copyInput({
     field: "Intent-Ledger",
     source: join(outside, "spec.md"),
@@ -157,13 +228,15 @@ test("a changed copy is external_input_integrity and an unreachable slot is exte
   assert.match(line, /^Intent-Ledger: file .*slot-a-intent-ledger\.md sha256=/u);
   const parsed = parseInputLine(line);
   writeFileSync(parsed.path, `${SPEC}tampered\n`);
-  assert.equal(checkInput(parsed, {}).status, "external_input_integrity");
+  assert.equal(checkInput(parsed, { slotDir: slot }).status, "external_input_integrity");
   rmSync(parsed.path);
-  assert.equal(checkInput(parsed, {}).status, "external_input_missing");
+  assert.equal(checkInput(parsed, { slotDir: slot }).status, "external_input_missing");
+  // A reviewer without a slot directory (`Body-File: none`) cannot see a copy.
+  assert.equal(checkInput(parsed, { slotDir: null }).line.endsWith("detail=no_slot_dir"), true);
   // The slot directory itself is not visible from this placement: another
   // host, or a directory already released.
   rmSync(slot, { recursive: true });
-  assert.equal(checkInput(parsed, {}).status, "external_input_unavailable");
+  assert.equal(checkInput(parsed, { slotDir: slot }).status, "external_input_unavailable");
 });
 
 test("the fresh final pair reads closure's deleted specification as exact bytes", () => {
@@ -228,6 +301,39 @@ test("a partial clone missing the blob answers unavailable without fetching it",
   assert.notEqual(still.status, 0);
 });
 
+test("a tree-less partial clone answers unavailable, never that the path is absent", () => {
+  const { repo, source, blob, candidate } = closedRepository();
+  git(repo, "config", "uploadpack.allowFilter", "true");
+  const partial = join(temp("mo-input-treeless-"), "clone");
+  git(tmpdir(), "clone", "-q", "--filter=tree:0", `file://${repo}`, partial);
+  // The clone holds the closure source commit but not the trees it names, so
+  // `rev-parse <commit>:<path>` fails here exactly as it would for a path the
+  // commit never had; the walk tells the two apart.
+  const line = `Spec: git ${source}:docs/specifications/feature.md blob=${blob}`;
+  const checked = helper(["check", "--candidate", candidate, "--line", line], partial);
+  assert.equal(checked.status, 1);
+  assert.equal(
+    checked.stdout,
+    "MO-REVIEW-INPUT/1 status=external_input_unavailable field=Spec form=git detail=tree_absent\n",
+  );
+  // The candidate's own tree was checked out, so a path it lacks stays missing.
+  const tracked = parseInputLine("Spec: docs/specifications/feature.md");
+  const result = checkInput(tracked, { repo: partial, candidate });
+  assert.equal(result.line.endsWith("detail=path_absent"), true, result.line);
+});
+
+test("a tracked symbolic link is not a specification file", () => {
+  const { repo, candidate } = closedRepository();
+  symlinkSync("app.txt", join(repo, "link.md"));
+  git(repo, "add", "link.md");
+  git(repo, "commit", "-q", "-m", "link");
+  const head = git(repo, "rev-parse", "HEAD");
+  assert.notEqual(head, candidate);
+  const result = checkInput(parseInputLine("Spec: link.md"), { repo, candidate: head });
+  assert.equal(result.status, "external_input_missing");
+  assert.equal(result.line.endsWith("detail=not_a_file"), true, result.line);
+});
+
 test("the check writes nothing and refuses a call it cannot answer", () => {
   const { repo, candidate } = closedRepository();
   const before = git(repo, "count-objects", "-v");
@@ -268,12 +374,12 @@ test(
   "an unreadable copy is unavailable rather than a pass",
   { skip: process.getuid?.() === 0 },
   () => {
-    const slot = temp("mo-input-slot-");
+    const { A: slot } = slotDirs();
     const file = join(slot, "slot-a-spec.md");
     writeFileSync(file, SPEC);
     chmodSync(file, 0o000);
     const parsed = parseInputLine(`Spec: file ${file} sha256=${"0".repeat(64)}`);
-    assert.equal(checkInput(parsed, {}).status, "external_input_unavailable");
+    assert.equal(checkInput(parsed, { slotDir: slot }).status, "external_input_unavailable");
     chmodSync(file, 0o600);
   },
 );

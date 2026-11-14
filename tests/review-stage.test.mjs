@@ -105,7 +105,7 @@ function run(args, input) {
 }
 
 const pairDirs = (pairId) =>
-  readdirSync(TMP).filter((name) => name.startsWith(`mo-review-${pairId}-pair-`));
+  readdirSync(TMP).filter((name) => name.startsWith(`mo-review-${pairId}-pair`));
 
 test("namespace makes two private slot directories that name their pair and nothing else", () => {
   const created = namespace();
@@ -217,6 +217,26 @@ test("namespace, stage, preview and pair carry no requisite but the coordinator'
     line,
     new RegExp(`^Review-Pair: ${pairId} A=".+" A_bytes=${ok[3]} B=".+" B_bytes=${ok[4]}$`, "u"),
   );
+  // A second `pair` of the same slots finds the pair already published: it
+  // mints no second pair directory and leaves the first one's copies as they were.
+  const again = run([
+    "pair",
+    "--slot-a",
+    slots.A,
+    "--slot-b",
+    slots.B,
+    "--expect-pair-id",
+    pairId,
+    "--expect-candidate",
+    SHA,
+    "--expect-round",
+    ROUND_LINE,
+  ]);
+  assert.equal(again.status, 1, again.stderr);
+  assert.equal(again.stdout, "MO-REVIEW-PAIR/1 status=unknown reason=final_exists\n");
+  assert.deepEqual(pairDirs(pairId), [basename(dir)]);
+  assert.deepEqual(readdirSync(dir).sort(), ["A-anthropic.md", "B-openai.md"]);
+  assert.equal(readFileSync(join(dir, "A-anthropic.md"), "utf8"), report("ctx_a"));
 });
 
 test("a report changed after stage is caught by both consumers", () => {
@@ -512,7 +532,7 @@ test("slot B learns no path of slot A or of the pair before its own report is st
   const shownB = preview({ slotDir: created.slots.B, slot: "B" });
   for (const output of [JSON.stringify(stagedB), shownB.line]) {
     assert.equal(output.includes(slotA), false, output);
-    assert.equal(output.includes("-pair-"), false, output);
+    assert.equal(output.includes(`${created.pairId}-pair`), false, output);
   }
   const brief = readFileSync(join(ROOT, "shared", "references", "review-brief.md"), "utf8");
   const skill = readFileSync(join(ROOT, "src", "skills", "mo-review-orca", "SKILL.md"), "utf8");

@@ -558,9 +558,11 @@ second `stage` of the slot is `stage_exists`: nothing is rewritten.
 the expected pair id), `candidate_mismatch`, `round_mismatch`,
 `dispatch_reused`, `vendor_unproven` (a vendor is `unknown`, as for a reviewer
 behind a gateway) and `vendor_not_diverse`. It observes both reports again, and
-only then creates a new `0700` pair directory under system temp and copies both
-reports into it create-if-absent, checking each copy's size and sha256; no file
-is ever moved by an overwrite-capable rename. It prints
+only then creates the pair's one `0700` directory, `mo-review-<pair_id>-pair`
+beside the slots, and copies both reports into it create-if-absent, checking
+each copy's size and sha256; no file is ever moved by an overwrite-capable
+rename. A pair whose directory already exists is `final_exists` with nothing
+written, so a repeated `pair` never mints a second pair from the same slots. It prints
 `MO-REVIEW-PAIR/1 status=ok pair_id=<id> dir="<dir>" a_bytes=<n> b_bytes=<n>`
 and a `Review-Pair:` line with both paths and sizes. `identity_changed`,
 `stage_missing`, `facts_malformed`, `final_exists`, `permission`, `symlink`,

@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-reviewer or a reviewe
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "fbcf76db6025b4b24c155e2a33809e3417489ca2"
+  source_tree: "86fbc355f978b87754ac5617827b684ad1848dac"
 ---
 
 # Review one candidate as a terminal reviewer
@@ -64,11 +64,13 @@ never into a service line.
 
 Check the brief's `Spec:` and `Intent-Ledger:` lines before reading either
 source; the check compares a copy's sha256 or proves the Git blob, and writes
-nothing:
+nothing. `--body-file` is the brief's own `Body-File`, path or `none`, verbatim:
+a `file` copy counts only in that file's directory, so a line meant for the
+other slot is refused, and a `file` line without the flag is a call error:
 
 ```text
 node "<this skill's directory>/scripts/mo-review-input.mjs" check --candidate <Target> \
-  --line '<Spec line>' --line '<Intent-Ledger line>'
+  --line '<Spec line>' --line '<Intent-Ledger line>' --body-file '<Body-File>'
 ```
 
 Then read exactly those bytes: the copy the `file` form names,

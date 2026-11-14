@@ -7338,6 +7338,7 @@ import {
   fstatSync,
   fsyncSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   openSync,
   readSync,
@@ -7347,11 +7348,21 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
+
+// shared/scripts/mo-review-slot.mjs
+var PAIR_ID = /^[a-f0-9]{12}$/u;
+var SLOT_DIR = /^mo-review-([a-f0-9]{12})-([AB])-[A-Za-z0-9]{6}$/u;
+var slotDirPrefix = (pairId, slot) => `mo-review-${pairId}-${slot}-`;
+var pairDirName = (pairId) => `mo-review-${pairId}-pair`;
+function slotDirName(name) {
+  const match = SLOT_DIR.exec(name);
+  return match === null ? null : { pairId: match[1], slot: match[2] };
+}
+
+// shared/scripts/mo-review-handoff.mjs
 var SLOTS = ["A", "B"];
 var FACTS_FILE = "stage.json";
 var RECEIVED_FILE = "worker-done.md";
-var PAIR_ID = /^[a-f0-9]{12}$/u;
-var SLOT_DIR = /^mo-review-([a-f0-9]{12})-([AB])-[A-Za-z0-9]{6}$/u;
 var VENDOR = /^[a-z0-9][a-z0-9-]{0,31}$/u;
 var SHA256 = /^[a-f0-9]{64}$/u;
 var DECIMAL = /^(?:0|[1-9][0-9]*)$/u;
@@ -7396,7 +7407,7 @@ function namespace() {
   try {
     const pairId = randomBytes(6).toString("hex");
     for (const slot of SLOTS) {
-      const dir = mkdtempSync(join(tmpdir(), `mo-review-${pairId}-${slot}-`));
+      const dir = mkdtempSync(join(tmpdir(), slotDirPrefix(pairId, slot)));
       created.push(dir);
       chmodSync(dir, 448);
     }
@@ -7409,14 +7420,14 @@ function namespace() {
   }
 }
 function slotIdentity(dir) {
-  const match = SLOT_DIR.exec(basename(resolve(dir)));
-  if (match === null) return null;
+  const identity = slotDirName(basename(resolve(dir)));
+  if (identity === null) return null;
   try {
     if (!lstatSync(dir).isDirectory()) return null;
   } catch {
     return null;
   }
-  return { pairId: match[1], slot: match[2] };
+  return identity;
 }
 function syncDirectory(dir) {
   let dfd;
@@ -7654,11 +7665,13 @@ function pair({ slotA, slotB, expect }) {
     observed[slot] = observeReport(dirs[slot], facts[slot]);
     if (observed[slot].status !== "observed") return { ...observed[slot], slot };
   }
+  const dir = join(dirname(resolve(slotA)), pairDirName(expect.pairId));
   const previous2 = process.umask(63);
-  let dir;
   try {
-    dir = mkdtempSync(join(tmpdir(), `mo-review-${expect.pairId}-pair-`));
+    mkdirSync(dir, 448);
     chmodSync(dir, 448);
+  } catch (error) {
+    return { status: "unknown", reason: error.code === "EEXIST" ? "final_exists" : "permission" };
   } finally {
     process.umask(previous2);
   }
@@ -7849,7 +7862,7 @@ var COMMANDS = {
     required: ["slot-a", "slot-b", "expect-pair-id", "expect-candidate", "expect-round"],
     optional: [],
     usage: "pair --slot-a <slot A dir> --slot-b <slot B dir> --expect-pair-id <id> --expect-candidate <40-hex> --expect-round '<Round line>'",
-    about: "checks both stage.json records against the expectation, observes both reports again and copies them into a new pair directory",
+    about: "checks both stage.json records against the expectation, observes both reports again and copies them into the pair directory mo-review-<pair_id>-pair beside the slots; once that directory exists a repeated pair is final_exists and writes nothing",
     example: `pair --slot-a /tmp/mo-review-0a1b2c3d4e5f-A-Xy12Ab --slot-b /tmp/mo-review-0a1b2c3d4e5f-B-Qw34Cd --expect-pair-id 0a1b2c3d4e5f --expect-candidate ${"a".repeat(40)} --expect-round 'Round: attempt=1/5 deep_reads=1 fragment=f1'`
   },
   preview: {
