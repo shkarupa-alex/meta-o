@@ -66,3 +66,36 @@ test("equal requested and effective identity is not a launch, and a refusal asks
     assert.match(text, /never by a silent substitute|never substitute silently/u, path);
   }
 });
+
+/** Each needle must appear, and in this order, so a reordered ladder fails. */
+function assertInOrder(text, needles, label) {
+  let from = 0;
+  for (const needle of needles) {
+    const at = text.indexOf(needle, from);
+    assert.notEqual(at, -1, `${label}: "${needle}" missing or out of order`);
+    from = at + needle.length;
+  }
+}
+
+test("the recovery ladder runs one way, ends at unknown_effect and restarts only on a new basis", () => {
+  // #47: the eval oracle demanded a bounded ladder that no decision defined.
+  const decision = flat("docs/architecture/trust-safe-delivery.md");
+  assertInOrder(
+    decision,
+    ["`worker-stop`", "доказанная остановка", "`worker-start --retry-of`", "`unknown_effect`"],
+    "§A-DELIVERY-01",
+  );
+  assert.match(decision, /Числовых лимитов у лестницы нет/u);
+  assert.match(decision, /только при новом основании ожидать другой результат/u);
+  assert.match(decision, /исчерпанная квота — следующего окна/u);
+  for (const path of [...MECHANICS, "skills/mo-orchestrate-orca/SKILL.md"]) {
+    const text = flat(path);
+    assertInOrder(
+      text,
+      ["`worker-stop`", "a proven stop", "`worker-start --retry-of`", "`unknown_effect`"],
+      path,
+    );
+    assert.match(text, /new basis to expect a different result/u, path);
+    assert.match(text, /exhausted quota until its next window/u, path);
+  }
+});

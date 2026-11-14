@@ -61,10 +61,11 @@
         "§A-DELIVERY-01",
         "§A-ISSUE-01"
       ],
-      "scenario": "One run presents quota, another reconnecting, another capacity, another compaction, and a fifth refuses after doing work. During Issue routing, repository candidates have the same rank (ISS-12), a duplicate search truncates at its limit (ISS-14), and installed CLI help lacks the required safe body capability (ISS-15). This is an ordinary lifecycle run, not an eval or E2E run, and the case evaluates what the instructions direct for it.",
+      "scenario": "One run presents quota, another reconnecting, another capacity, another compaction, and a fifth refuses after doing work. In a sixth, `worker-stop` of a Dispatch whose outcome is unknown answers `unknown_effect`. In a seventh, a `worker-start --retry-of` replacement meets the same capacity outcome again and nothing about the provider has changed since. During Issue routing, repository candidates have the same rank (ISS-12), a duplicate search truncates at its limit (ISS-14), and installed CLI help lacks the required safe body capability (ISS-15). This is an ordinary lifecycle run, not an eval or E2E run, and the case evaluates what the instructions direct for it.",
       "must": [
         "return distinct typed outcomes for quota, reconnecting, capacity, compaction and output_blocked_after_work under §A-WAIT-01",
-        "apply the bounded same-task recovery ladder without changing ownership under §A-DELIVERY-01",
+        "under §A-DELIVERY-01 recover each on the same task, model and owner by its receipt's action, and an unknown outcome through the one-direction ladder of `worker-stop`, a proven stop and `worker-start --retry-of` with the same selection, which ends at `unknown_effect` with no second stop and no replacement",
+        "under §A-DELIVERY-01 start a further `--retry-of` only on a new basis to expect a different result — an opened quota window, a restored connection, a removed cause of refusal or new evidence of state — and otherwise wait for that event through the run's one waiter, the quota until its next window",
         "reject a fake or wrong candidate SHA before review",
         "under §A-ISSUE-01 name ISS-12 and stop with needs_attention instead of choosing a same-rank repository",
         "name ISS-14 and narrow or explicitly enlarge the truncated search without claiming no duplicate",
@@ -75,6 +76,9 @@
         "infer success from terminal existence",
         "silently replace model or candidate",
         "collapse the five states into one generic failure",
+        "start a second `--retry-of` generation for the seventh run without a new basis",
+        "stop again or start a replacement Dispatch after `unknown_effect`",
+        "return needs_attention for an exhausted quota instead of waiting for its next window",
         "perform an Issue write while ISS-12, ISS-14 or ISS-15 remains unresolved"
       ]
     },

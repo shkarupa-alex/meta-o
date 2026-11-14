@@ -91,6 +91,17 @@ hot subagent for its own findings, and a new one after findings from you or the
 reviewers. Accept the executor's `self_review_unavailable` as its harness's
 typed answer and never as PASS; do not run the self-review yourself.
 
+Quota, capacity, reconnecting, compaction, refusal after work, a lost process
+and credentials are distinct outcomes, each recovered on the same task, model
+and owner by its receipt's action. An unknown outcome climbs one ladder in one
+direction: `worker-stop`, a proven stop, then `worker-start --retry-of` with the
+same selection; a `worker-stop` answering `unknown_effect` ends it with no
+second stop and no replacement. There is no numeric limit: start another
+`--retry-of` only on a new basis to expect a different result — the quota window
+opened, the connection came back, the cause of refusal was removed, new evidence
+of state — and otherwise wait for that event through the one waiter, an
+exhausted quota until its next window.
+
 Use one run-wide blocking waiter: 600000 ms for executor-only and 300000 ms when
 reviewer/E2E is active. Demultiplex exact handles, process complete event batches,
 re-arm quiet timeouts without narration, and allow only one same-arm retry after

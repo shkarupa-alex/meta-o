@@ -377,10 +377,19 @@ Treat quota, capacity, reconnecting, compaction, refusal, lost process and
 credentials as different outcomes. Each is recovered on the same task and in the
 same ownership: follow the exact recovery action in that Dispatch's public
 receipt, and when the outcome is unknown or its turn start unobserved, use the
-one-direction stop-then-`--retry-of` ladder above with the same selection, which
-ends at a `worker-stop` answering `unknown_effect`. Work done before a refusal
-stays `output_blocked_after_work`. Never a new task, another model or a second
-owner.
+one-direction ladder above — `worker-stop`, a proven stop, then
+`worker-start --retry-of` with the same selection — which ends at a
+`worker-stop` answering `unknown_effect`. Work done before a refusal stays
+`output_blocked_after_work`. Never a new task, another model or a second owner.
+
+The ladder has no numeric limit, and none replaces this rule: a further restart
+needs a new basis to expect a different result — the quota window opened, the
+connection came back, the cause of a refusal was removed, or new evidence of
+state arrived. With the cause unchanged the worker is not restarted; it waits
+for that event through the run's one waiter, an exhausted quota until its next
+window. An executor's compaction is its expected mode, not a failure: it
+continues in the same session. Whether a basis is new is the coordinator's
+judgment of what it observed; no script counts or decides restarts.
 
 After compaction or approximately 75% of a 32768-token context, start a fresh
 orchestrator turn/session and re-ground from the Git spec/checklist plus public
