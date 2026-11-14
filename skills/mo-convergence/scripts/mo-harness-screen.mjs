@@ -39,20 +39,42 @@ const CLAUDE_COMPOSER = /^─+[ \t]*\n[ \t]*❯[ \t]?(.*)$/mu;
 const CODEX_COMPOSER = /^[ \t]*›[ \t]?(.*)\n[ \t]+\S[^\n]*? · Context (?:\d+% used|…)/mu;
 
 /**
- * The status row Codex paints above its composer while a turn is running.
+ * The status row Codex paints above its composer while a turn is running, read
+ * only where Codex paints it.
  *
  * Codex keeps its composer editable during a turn, so an empty `›` row over a
  * whole footer is exactly what an active session shows too: issue #73 saw
  * `• Working (13m 44s • esc to interrupt)` above such a composer while the
- * Dispatch was still working. The row is an optional activity glyph, a header
- * (`Working` until a reasoning summary renames it), the elapsed time in Codex's
- * own compact form and the interrupt hint, whose key the user may remap; a
- * narrow pane cuts it with `…`. Unlike the composer anchors this one is kept
- * wide on purpose: a frame it misses falls through to the composer and is
- * handed bytes, while a frame it over-matches only waits.
+ * Dispatch was still working. The row starts at the first column with an
+ * optional activity glyph, then a header (`Working` until a reasoning summary
+ * renames it), the elapsed time in Codex's own compact form and the interrupt
+ * hint, whose key the user may remap; a narrow pane cuts it with `…`.
+ *
+ * The same text anywhere else is a quote, not activity. Matched anywhere on the
+ * screen, a transcript line quoting it made an idle Claude frame ambiguous —
+ * refused, so the slot needed attention — and an idle Codex frame wait until
+ * the quote scrolled away. So the row counts only as part of Codex's bottom
+ * pane: between it and the composer lie only rows Codex's own
+ * `bottom_pane/mod.rs` and `status_indicator_widget.rs` put there (blank
+ * separators, details under `  └ `, queued input under `  ↳ ` with their
+ * four-space continuations, and that preview's own headers), and below the
+ * composer row every row to the end of the frame is indented — a draft's
+ * continuation and the footer, at least one row of which is the footer's ` · `
+ * segments. A transcript row never has the composer and the footer directly
+ * under it at the bottom of the screen.
+ *
+ * Both mistakes cost something: a frame this misses falls through to the
+ * composer and is handed bytes mid-turn, and a frame it over-matches waits for
+ * a turn that is not running. The bottom-pane forms beyond the recorded ones
+ * come from that source, not from a capture.
  */
-const CODEX_ACTIVE =
-  /^[ \t]*(?:[•◦] )?[^\s(][^\n(]*? \((?:\d+h \d{2}m \d{2}s|\d+m \d{2}s|\d+s)(?: • [^\n()]*? to interrupt\)| • [^\n()]*…$)/mu;
+const CODEX_ACTIVE_ROW = String.raw`(?:[•◦] )?[^\s(][^\n(]*? \((?:\d+h \d{2}m \d{2}s|\d+m \d{2}s|\d+s)(?: • [^\n()]*? to interrupt\)[^\n]*| • [^\n()]*…)`;
+const CODEX_PANE_GAP = String.raw`(?:\n(?: {2}[└↳] [^\n]*| {4}[^\n]*|• (?:Queued follow-up inputs|Messages to be submitted )[^\n]*)?)*?`;
+const CODEX_PANE_BOTTOM = String.raw`\n[ \t]*›[^\n]*(?:\n(?:[ \t][^\n]*)?)*?\n[ \t]+\S[^\n]*? · [^\n]*(?:\n(?:[ \t][^\n]*)?)*$`;
+const CODEX_WORKING = new RegExp(
+  `(?:^|\\n)${CODEX_ACTIVE_ROW}${CODEX_PANE_GAP}${CODEX_PANE_BOTTOM}`,
+  "u",
+);
 
 /**
  * The recorded frames this classifier is allowed to recognize.
@@ -109,11 +131,12 @@ export const SCREENS = [
   },
   {
     // Transcribed from the public screen issue #73 reported on 2026-11-11, not
-    // captured here. It outranks the Codex composer it is painted above.
+    // captured here. It outranks the Codex composer it is painted above, and
+    // only that composer: the anchor is the row in its place, not its text.
     version: "codex-working-2026-11-11",
     harness: "codex",
     state: "busy",
-    anchors: [CODEX_ACTIVE],
+    anchors: [CODEX_WORKING],
   },
   {
     version: "opencode-prompt-2026-09-18",
@@ -274,7 +297,10 @@ export function contextIndicator(frame, harness) {
  *
  * The one precedence is a harness's active-work row over that same harness's
  * composer. A running turn paints both, and the composer alone read as a
- * proven idle prompt; anything else that matches twice stays ambiguous.
+ * proven idle prompt; anything else that matches twice stays ambiguous. The
+ * row is recognized only in its place above that composer, so a transcript
+ * quoting it neither outranks an idle composer nor collides with another
+ * harness's frame.
  */
 export function classifyScreen(text) {
   const frame = normalizeScreen(text);

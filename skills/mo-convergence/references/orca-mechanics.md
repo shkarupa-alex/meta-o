@@ -162,7 +162,9 @@ above it — `• Working (13m 44s • esc to interrupt)`, whatever header, glyp
 interrupt key it shows — outranks the composer: the answer is
 `state=busy action=wait` over an empty composer, a whole footer or any draft. A
 busy session is neither idle nor refused; only a frame without that row proves
-idle.
+idle. The row counts only in its place in Codex's bottom pane, directly above
+its composer and footer at the bottom of the frame; the same text quoted in the
+output above is not activity and neither makes a frame busy nor ambiguous.
 
 Sending `worker_done` completes the Dispatch, but the agent session behind it
 stays hot. A new Dispatch binds to that same session with

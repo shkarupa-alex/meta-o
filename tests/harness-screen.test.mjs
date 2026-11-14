@@ -656,6 +656,17 @@ test("an active Codex turn waits even over an empty composer and a whole footer"
     working.replace("Working (13m 44s", "Planning the fix (1h 02m 03s"),
     working.replace(/\(13m 44s • esc to interrupt\)[^\n]*/u, "(7s • esc to…"),
     `${frame("codex-prompt-after-turn.screen").split("\n").slice(0, 3).join("\n")}\n${working}`,
+    // What Codex's own bottom pane may put between the row and the composer,
+    // and below the composer: a separator, status details, queued input under
+    // its header, a draft over two rows and a hint row under the footer.
+    working.replace("running\n", "running\n\n"),
+    working.replace("running\n", "running\n  └ npm test\n"),
+    working.replace(
+      "running\n",
+      "running\n\n• Queued follow-up inputs\n  ↳ also check the docs\n    ⇧ + ← edit last queued message\n",
+    ),
+    working.replace("› Ask Codex to do anything", "› first line\n  second line"),
+    `${working}\n  ? for shortcuts`,
   ];
   for (const text of variants) {
     for (const draft of [undefined, "", "unsent"]) {
@@ -674,6 +685,31 @@ test("an active Codex turn waits even over an empty composer and a whole footer"
   assert.deepEqual([drafted.action, drafted.reason], ["refuse", "composer_draft_present"]);
   // A caller that started another harness gets no wait from a Codex screen.
   assert.equal(decideScreen(working, { ...options, harness: "claude" }).action, "refuse");
+});
+
+test("a quoted active-work row in the transcript is not an active turn", () => {
+  // Matched anywhere on the screen, a transcript line quoting the row made an
+  // idle Claude frame ambiguous — a refusal the review slot turns into
+  // needs_attention — and an idle Codex frame wait until the quote scrolled
+  // away. Only the row in its place above Codex's composer is activity.
+  const quoted = [
+    ["claude-prompt-after-turn.screen", "The issue quoted: • Working (13m 44s • esc to interrupt)"],
+    ["claude-prompt-after-turn.screen", "• Working (13m 44s • esc to interrupt)"],
+    ["opencode-prompt.screen", "• Working (13m 44s • esc to interrupt)"],
+    ["codex-prompt-after-turn.screen", "• Ran tests (3s • esc to interrupt)"],
+  ];
+  for (const [name, quote] of quoted) {
+    const harness = name.split("-")[0];
+    const decided = decideScreen(`${quote}\n${frame(name)}`, { harness });
+    assert.deepEqual([decided.state, decided.action], ["agent_prompt", "inject"], name);
+  }
+  // Codex's own answer quoting the row, a turn above its finished composer.
+  const answered = frame("codex-prompt-after-turn.screen").replace(
+    "• OK",
+    "• Ran tests (3s • esc to interrupt)",
+  );
+  const decided = decideScreen(answered, { harness: "codex" });
+  assert.deepEqual([decided.state, decided.action], ["agent_prompt", "inject"]);
 });
 
 test("the shipped CLI answers wait for an active Codex turn whatever its draft", () => {
