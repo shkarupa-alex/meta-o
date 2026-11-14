@@ -55,7 +55,11 @@ Use titles `<feature>:orchestrator`, `<feature>:executor`,
 `<feature>:review:<vendor>` and `<feature>:e2e:<n>`. Preserve exact
 Run/task/Dispatch/terminal identities in reasoning, not a state store. Before
 actors, record project registrations/resources; every actor must remain in the
-same Orca project and cleanup may touch only exact-owned delta.
+same Orca project and cleanup may touch only exact-owned delta. An actor's new
+worktree is a child of the task's working directory by the lineage recipe of
+[Orca native mechanics](references/orca-mechanics.md): `new-child --from` your
+handle inside a terminal, `--parent-worktree` outside one, the Git base set
+separately, and `parentWorktreeId` as the proof.
 
 This lifecycle also runs from an ordinary shell. One predicate decides
 placement, the terminal's own handle: `ORCA_TERMINAL_HANDLE` present and

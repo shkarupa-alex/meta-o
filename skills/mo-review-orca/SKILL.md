@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-review-orca or an act
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "2970c63db9b6e84e22e20b21e768b0f93b2b3391"
+  source_tree: "38ed7e37082e3ac429fa07262b9b4e8ec26ca84a"
 ---
 
 # Review through Orca
@@ -108,7 +108,12 @@ option among equals:
 
 1. `isolated` — two proven clean isolated worktrees of the current project, or
    attributed Orca `new-child` worktrees of a Git project, each standing at the
-   exact SHA.
+   exact SHA. A new one is a child of the caller's working directory: created
+   with `orca worktree create --parent-worktree path:<checkout>|worktree:<id>`
+   and `--base-branch <exact sha>`, then marked and started with
+   `worker-start --worktree id:<repo>::<path>`; `parentWorktreeId` from
+   `orca worktree show --json` proves the parent, and the Git base is set only
+   by `--base-branch`.
 2. `shared_checkout` — both reviewers start in the exact existing workspace
    (`--worktree id:<repo>::<path>`); creation flags are rejected there.
 3. `REVIEW-START … reason=placement_unsupported` — only when not even an exact

@@ -287,6 +287,34 @@ A coordinator that Orca itself started has a worktree, so `current` and `active`
 resolve to it, `run-create --from <handle>` binds the Run to that terminal, and
 the coordinator tab carries the `<feature>:orchestrator` title.
 
+Every actor that needs a new worktree — the executor, a reviewer, an E2E actor —
+is created as a child of the task's working directory, so Orca shows it under
+that worktree rather than beside it. From the coordinator's own terminal:
+
+```text
+orca orchestration worker-start --task <id> --worktree new-child --from <coordinator handle> \
+  --name <name> --base-branch <ref> --agent <launch.<role>.agent> \
+  --model <launch.<role>.model> --effort <launch.<role>.effort> --json
+```
+
+Where the worktree has to exist before the worker — a review slot is marked
+first — or the coordinator stands outside a terminal, create it with an explicit
+parent and start the worker on it:
+
+```text
+orca worktree create --name <name> --parent-worktree path:<checkout>|worktree:<id> \
+  --base-branch <ref> --json
+orca orchestration worker-start --task <id> --worktree id:<repo>::<path> …
+```
+
+Lineage and the Git base are separate decisions: the parent only groups the
+worktree in Orca, and `--base-branch` alone says where Git starts. Orca's answer
+proves the parent, never the call:
+`orca worktree show --worktree id:<new> --json` reports `parentWorktreeId` equal
+to the id of the task's worktree. A worktree Orca recorded elsewhere is told to
+the human with the start line and is not a reason to stop. The project
+registration inventory does not change.
+
 ## Coordinator outside an Orca terminal
 
 The same lifecycle runs from an ordinary shell. Nothing about the backend is
@@ -329,7 +357,9 @@ Outside, a relative selector names nothing: a worktree selector is
 without `--from`, the wait is `orca orchestration check --run <id> --wait`
 instead of a terminal-bound check, and no coordinator title is set, because
 there is no tab to title. Workers are unaffected: each one still gets its exact
-worktree selector and terminal handle.
+worktree selector and terminal handle. A new worktree has no caller terminal to
+inherit a parent from, so it is created with `--parent-worktree` naming the
+task's checkout, by the recipe of the section above.
 
 The watchdog is not a precondition. At start the coordinator establishes whether
 a watchdog sees it; if none does, it says once that the limit is accepted — work
