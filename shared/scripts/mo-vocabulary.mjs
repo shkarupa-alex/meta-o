@@ -67,8 +67,10 @@ const ALWAYS_NON_CANONICAL = ["spec", "docs/specifications"];
 // form a name. §A-MEMORY-01 names no alphabet for a canonical document, so an
 // ASCII-only class would turn `docs/решение.md` into "no document" and
 // `docs/my guide.md` into its own tail.
-const BARE_PATH =
-  /(?<![\p{L}\p{N}_.@+/-])((?:\.\/)?[\p{L}\p{N}_.@+-]+(?:\/[\p{L}\p{N}_.@+-]+)*\.md)(?![\p{L}\p{N}_-])/giu;
+const NAME = "[\\p{L}\\p{N}_.@+-]+";
+const PATH_BODY = `(?:\\.\\/)?${NAME}(?:\\/${NAME})*\\.md`;
+const BARE_PATH = new RegExp(`(?<![\\p{L}\\p{N}_.@+/-])(${PATH_BODY})(?![\\p{L}\\p{N}_-])`, "giu");
+const WHOLE_PATH = new RegExp(`^${PATH_BODY}$`, "u");
 const DOCUMENT_PATH = new RegExp(`\`((?:\\.\\/)?[^\`\\n]*?\\.md)\`|${BARE_PATH.source}`, "giu");
 
 const USAGE = `usage: mo-vocabulary.mjs [--root <git-root>] [options]
@@ -358,22 +360,36 @@ function blockBefore(lines, index, column) {
 
 const pathOf = (raw) => posix.normalize(raw.replace(/^\.\//u, ""));
 
+// A command word as it opens a shell line: no directory, no extension.
+const COMMAND_WORD = /^[A-Za-z][\w-]*$/u;
+
 /**
- * The last Markdown path written before the reference in its block.
+ * The document one backtick span names.
  *
  * Backticks usually hold the path alone, but they may hold a command around
- * it, as in `cat docs/x.md`: when the whole span is no tracked file, the last
- * bare path inside it that is tracked names the document.
+ * it, as in `cat docs/x.md`. The span's form alone decides which: a command
+ * word followed by a last argument that is a path with a directory. The
+ * boundaries are fixed before any tracked file is consulted, because a span
+ * cut to whichever tail exists would let a removed `docs/my guide.md` resolve
+ * to some tracked guide.md (§A-MEMORY-01). Any other span is one literal path,
+ * spaces included, so an ambiguous span fails closed as unavailable.
  */
-function namedDocument(block, tracked) {
-  const paths = [...block.matchAll(DOCUMENT_PATH)];
-  if (paths.length === 0) return null;
-  const last = paths.at(-1);
-  if (last[1] === undefined) return pathOf(last[2]);
-  const whole = pathOf(last[1]);
-  if (tracked.has(whole)) return whole;
-  const inner = [...last[1].matchAll(BARE_PATH)].map((match) => pathOf(match[1]));
-  return inner.findLast((path) => tracked.has(path)) ?? whole;
+function spanDocument(span) {
+  const words = span.trim().split(/\s+/u);
+  const argument = words.at(-1);
+  const command =
+    words.length > 1 &&
+    COMMAND_WORD.test(words[0]) &&
+    argument.includes("/") &&
+    WHOLE_PATH.test(argument);
+  return pathOf(command ? argument : span);
+}
+
+/** The last Markdown path written before the reference in its block. */
+function namedDocument(block) {
+  const last = [...block.matchAll(DOCUMENT_PATH)].at(-1);
+  if (last === undefined) return null;
+  return last[1] === undefined ? pathOf(last[2]) : spanDocument(last[1]);
 }
 
 /**
@@ -398,7 +414,7 @@ export function sourceSectionFindings({ path, text, tracked, readDocument, nonCa
     BARE_SECTION.lastIndex = 0;
     for (const match of line.matchAll(BARE_SECTION)) {
       const number = match[0].slice(1);
-      const document = namedDocument(blockBefore(lines, index, match.index), tracked);
+      const document = namedDocument(blockBefore(lines, index, match.index));
       const at = { token: match[0], mentions: 1, first: `${path}:${index + 1}` };
       const kind = sectionVerdict(number, document, { tracked, readDocument, areas });
       if (kind === null) continue;

@@ -433,6 +433,42 @@ test("a canonical document's path resolves whatever script or spaces its name ho
   ]);
 });
 
+test("a missing path is never resolved by a tracked tail or a guessed command", () => {
+  // guide.md is tracked and has a section 1; the named documents are not it.
+  const docs = { "guide.md": "# Guide\n\n## 1 Rule\n", "docs/x.md": DOCS["docs/x.md"] };
+  const kindsOf = (text, extra = {}) => {
+    const all = { ...docs, ...extra };
+    const tracked = new Set([...Object.keys(all), "src/a.mjs"]);
+    const readDocument = (document) =>
+      all[document] === undefined ? null : documentSections(all[document]);
+    return sourceSectionFindings({ path: "src/a.mjs", text, tracked, readDocument }).map(
+      ({ kind, token, document }) => `${kind} ${token} ${document}`,
+    );
+  };
+  for (const text of ["// `docs/my guide.md` §1", "// `docs/my guide.md`\n// section §1"]) {
+    assert.deepEqual(kindsOf(text), ["source_section_document_unavailable §1 docs/my guide.md"]);
+  }
+  const mine = { "docs/my guide.md": "# Mine\n\n## 2 Own\n" };
+  assert.deepEqual(kindsOf("// `docs/my guide.md` §1", mine), [
+    "source_section_missing §1 docs/my guide.md",
+  ]);
+  assert.deepEqual(kindsOf("// `docs/my guide.md` §2", mine), []);
+  const archived = { "docs/specifications/my guide.md": "# Spec\n\n## 1 Rule\n" };
+  assert.deepEqual(kindsOf("// `docs/specifications/my guide.md` §1", archived), [
+    "source_section_document_not_canonical §1 docs/specifications/my guide.md",
+  ]);
+  // A command is recognized by its form, so its argument names the document
+  // whether or not that document exists.
+  assert.deepEqual(kindsOf("// `cat docs/x.md` §1.2"), []);
+  assert.deepEqual(kindsOf("// `cat docs/gone.md` §1.2"), [
+    "source_section_document_unavailable §1.2 docs/gone.md",
+  ]);
+  // A span whose form is no command stays one literal name and fails closed.
+  assert.deepEqual(kindsOf("// `my guide.md` §1"), [
+    "source_section_document_unavailable §1 my guide.md",
+  ]);
+});
+
 test("a heading number matches whole, written bare or after the section sign", () => {
   const sections = documentSections(
     "# T\n\n## 2. Blocks\n\n### 2.8 Dirty tree\n\n## §4.1 Limits\n\n## 2.81 Other\n\n" +

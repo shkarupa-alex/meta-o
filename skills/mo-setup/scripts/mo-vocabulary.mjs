@@ -15948,7 +15948,10 @@ var STANDARDS = /* @__PURE__ */ new Set(["CVE", "ECMA", "IEC", "IEEE", "ISO", "R
 var SUPPRESS2 = "mo-vocabulary-ok";
 var SUPPRESS_FILE2 = `${SUPPRESS2} file`;
 var ALWAYS_NON_CANONICAL = ["spec", "docs/specifications"];
-var BARE_PATH = /(?<![\p{L}\p{N}_.@+/-])((?:\.\/)?[\p{L}\p{N}_.@+-]+(?:\/[\p{L}\p{N}_.@+-]+)*\.md)(?![\p{L}\p{N}_-])/giu;
+var NAME = "[\\p{L}\\p{N}_.@+-]+";
+var PATH_BODY = `(?:\\.\\/)?${NAME}(?:\\/${NAME})*\\.md`;
+var BARE_PATH = new RegExp(`(?<![\\p{L}\\p{N}_.@+/-])(${PATH_BODY})(?![\\p{L}\\p{N}_-])`, "giu");
+var WHOLE_PATH = new RegExp(`^${PATH_BODY}$`, "u");
 var DOCUMENT_PATH = new RegExp(`\`((?:\\.\\/)?[^\`\\n]*?\\.md)\`|${BARE_PATH.source}`, "giu");
 var USAGE = `usage: mo-vocabulary.mjs [--root <git-root>] [options]
 
@@ -16111,15 +16114,17 @@ function blockBefore(lines, index2, column) {
   return [...lines.slice(start, index2), lines[index2].slice(0, column)].join("\n");
 }
 var pathOf = (raw) => posix2.normalize(raw.replace(/^\.\//u, ""));
-function namedDocument(block2, tracked) {
-  const paths = [...block2.matchAll(DOCUMENT_PATH)];
-  if (paths.length === 0) return null;
-  const last = paths.at(-1);
-  if (last[1] === void 0) return pathOf(last[2]);
-  const whole = pathOf(last[1]);
-  if (tracked.has(whole)) return whole;
-  const inner = [...last[1].matchAll(BARE_PATH)].map((match2) => pathOf(match2[1]));
-  return inner.findLast((path) => tracked.has(path)) ?? whole;
+var COMMAND_WORD = /^[A-Za-z][\w-]*$/u;
+function spanDocument(span) {
+  const words = span.trim().split(/\s+/u);
+  const argument = words.at(-1);
+  const command = words.length > 1 && COMMAND_WORD.test(words[0]) && argument.includes("/") && WHOLE_PATH.test(argument);
+  return pathOf(command ? argument : span);
+}
+function namedDocument(block2) {
+  const last = [...block2.matchAll(DOCUMENT_PATH)].at(-1);
+  if (last === void 0) return null;
+  return last[1] === void 0 ? pathOf(last[2]) : spanDocument(last[1]);
 }
 function sourceSectionFindings({ path, text: text4, tracked, readDocument, nonCanonical = [] }) {
   if (deliberateFixture(text4, path)) return [];
@@ -16131,7 +16136,7 @@ function sourceSectionFindings({ path, text: text4, tracked, readDocument, nonCa
     BARE_SECTION.lastIndex = 0;
     for (const match2 of line.matchAll(BARE_SECTION)) {
       const number = match2[0].slice(1);
-      const document3 = namedDocument(blockBefore(lines, index2, match2.index), tracked);
+      const document3 = namedDocument(blockBefore(lines, index2, match2.index));
       const at = { token: match2[0], mentions: 1, first: `${path}:${index2 + 1}` };
       const kind = sectionVerdict(number, document3, { tracked, readDocument, areas });
       if (kind === null) continue;
