@@ -75,11 +75,11 @@ export const BUNDLES = {
     baselineBytes: 188_819,
     roots: MARKDOWN_ROOTS,
   },
-  // No third-party root: the bundle exists to merge the helper's own modules
-  // into the one file a standalone skill can run.
+  // The helper's own modules plus `acorn`, which reads the JavaScript program
+  // of a Codex `exec` call without running it.
   "scripts/mo-debug.mjs": {
-    baselineBytes: 48_783,
-    roots: [],
+    baselineBytes: 271_624,
+    roots: ["acorn"],
   },
 };
 

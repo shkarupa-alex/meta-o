@@ -49,11 +49,26 @@ be written whole: the file was emptied and left in place, so free space and run
 again with a new `--out` path.
 
 The first line is `MO-DEBUG/1 status=<ok|partial|unknown|refused> …`. `partial`
-means a bound was reached, a session was refused, an id search was incomplete or
-a read failed next to a readable session, or history was incomplete — a shallow
-clone, or `history=unreadable` when a Git read failed; `unknown` means no
-requested session could be read, because none had a recognized format, its id
-search was incomplete or its read failed. Say which, and never present a partial read as complete.
+means a session was refused, an id search was incomplete or a read failed next
+to a readable session, history was incomplete — a shallow clone, or
+`history=unreadable` when a Git read failed — or a session itself is partial;
+`unknown` means no requested session could be read, because none had a
+recognized format, its id search was incomplete or its read failed. Say which,
+and never present a partial read as complete.
+
+A partial session line names its reasons, and a `gap` line names each record:
+`max_records` (the bound was reached), `invalid_json`, `line_too_long` and
+`extractor_error` (a record could not be read), `unsupported_payload` (a Codex
+`exec` program outside the supported straight-line forms that runs commands and
+names a Meta-O helper or installed skill, so a run may hide there),
+`ambiguous_correlation` (found calls could not be tied to their own results)
+and `untimed_with_since` (an event without a time `--since` could not place).
+Evidence near a gap record is incomplete: a missing event there is `unknown`,
+never proof the agent skipped something. `--since` filters what is shown;
+earlier records are still read, so a result inside the window keeps its call.
+`inherited_time` counts results that took their call's time
+(`time_source=call`), and `truncated` counts typed lines a result had past the
+four kept.
 
 ## Classify
 
@@ -64,12 +79,21 @@ what the agent did next. Put each deviation into exactly one category:
 `unknown`, and cite the event's locator from the report. A
 deviation you cannot tie to a record is `unknown`.
 
+Only `skill_invocation` is an activation: a `Skill` call, a slash command or a
+Codex skill attachment. `skill_loaded` is a read of the skill text, and
+`skill_mention` is the name in the user's words — "do not invoke mo-x" names it
+too — so a mention alone never proves the skill was requested or run.
+
 A helper run is read from the recorded command text, not from a shell: it
 counts where `node` or the script stands at a command position outside quotes,
 comments and quoted here-documents. A helper started from inside `bash -c`,
 `eval`, a script file or a function leaves no `helper_call`, so a missing call
 alone never proves the agent skipped that helper; without its typed line in the
-record the deviation is `unknown`.
+record the deviation is `unknown`. `helper_call confirmed=true` is tied to its
+own result; `confirmed=false` was found in the text — a call in an `exec`
+program, a skipped branch, a call whose result never came — and is not proof
+the helper ran. A run Codex recorded as `CommandExecution` is listed once, from
+that record.
 
 A `skill` line gives the loaded version. `version=source_tree:<id>` with a
 commit range means the complete loaded file equals, byte for byte, a committed

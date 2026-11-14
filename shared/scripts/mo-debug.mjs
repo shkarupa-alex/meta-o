@@ -43,7 +43,8 @@ const USAGE = `usage: mo-debug.mjs scan --session <path-or-id> [--session ...] [
 
   --session <path-or-id>  a session JSONL path, a Claude session UUID or a
                           Codex thread id; repeatable, at least one
-  --since <ISO-8601>      skip records with an earlier timestamp
+  --since <ISO-8601>      show only evidence from this time on; earlier records
+                          are still read to link calls to their results
   --max-records <n>       parsed records per session (default 5000)
   --history <checkout>    Meta-O Git checkout for version attribution
   --max-history <n>       commits inspected per skill (default 2000)
@@ -126,8 +127,7 @@ export function parseArguments(argv) {
   };
 }
 
-function refusedSession(spec, outcome) {
-  const id = spec.includes("/") || spec.endsWith(".jsonl") ? sessionIdOf(spec) : spec;
+function emptySession(id, outcome) {
   return {
     id,
     harness: "-",
@@ -136,9 +136,18 @@ function refusedSession(spec, outcome) {
     unparsed: 0,
     untimed: 0,
     skipped: 0,
+    inheritedTime: 0,
+    truncated: 0,
+    reasons: [],
+    gaps: [],
     events: [],
     loads: [],
   };
+}
+
+function refusedSession(spec, outcome) {
+  const id = spec.includes("/") || spec.endsWith(".jsonl") ? sessionIdOf(spec) : spec;
+  return emptySession(id, outcome);
 }
 
 function parsedRecord(text) {
@@ -150,61 +159,108 @@ function parsedRecord(text) {
   }
 }
 
+/**
+ * Every record is fed whatever `--since` says, because a call before the
+ * window is what links a result inside it, and whether the format is
+ * recognized must not depend on the window either. A record that could not be
+ * read at all is a gap with its own reason and line number, never a quiet
+ * count next to `status=ok`.
+ */
 function consume(extractor, text, number, counts, since) {
   const record = text === null ? null : parsedRecord(text);
   if (record === null) {
     counts.unparsed += 1;
+    counts.gaps.push({
+      number,
+      reason: text === null ? "line_too_long" : "invalid_json",
+      time: null,
+    });
     return;
   }
-  const time = Date.parse(record.timestamp);
-  if (Number.isNaN(time)) counts.untimed += 1;
-  else if (since !== null && time < since) {
-    // Whether the format is recognized must not depend on the window: a
-    // session whose every record precedes --since is an empty window, not an
-    // unknown format.
-    counts.skipped += 1;
-    extractor.skip(record);
-    return;
-  }
+  const parsed = Date.parse(record.timestamp);
+  const time = Number.isNaN(parsed) ? null : parsed;
+  if (time === null) counts.untimed += 1;
+  else if (since !== null && time < since) counts.skipped += 1;
   try {
-    extractor.feed(record, number);
+    extractor.feed(record, number, time);
   } catch {
     counts.unparsed += 1;
+    counts.gaps.push({ number, reason: "extractor_error", time });
   }
 }
 
 /**
- * Read at most `maxRecords` non-empty lines. Hitting the cap with more lines
- * left marks the session partial; a garbled line counts as unparsed and is
- * never fatal, and a line the extractor chokes on is counted the same way.
- * A record without a readable timestamp is kept and counted as untimed.
+ * `--since` filters what is shown, not what is read. An item before the
+ * window is dropped; an item whose time is unknown even after inheriting its
+ * call's cannot be placed, so it is dropped as well and named as a gap.
  */
-function readSession(opened, options) {
+function windowed(evidence, readerGaps, since) {
+  const inside = (item) => since === null || (item.time !== null && item.time >= since);
+  const gaps = [...readerGaps, ...evidence.gaps].filter(
+    (gap) => since === null || gap.time === null || gap.time >= since,
+  );
+  if (since !== null) {
+    for (const event of evidence.events) {
+      if (event.time === null) gaps.push({ number: event.number, reason: "untimed_with_since" });
+    }
+  }
+  gaps.sort((left, right) => left.number - right.number);
+  return { events: evidence.events.filter(inside), loads: evidence.loads.filter(inside), gaps };
+}
+
+function sessionReasons(gaps, capped) {
+  const reasons = [...new Set(gaps.map((gap) => gap.reason))];
+  return capped ? ["max_records", ...reasons] : reasons;
+}
+
+/**
+ * §A-DIAGNOSTICS-01 reads one opened session into its settled evidence.
+ *
+ * At most `maxRecords` non-empty lines are read; hitting the cap with more
+ * left, or any gap — an unreadable line, an extractor error, a tool payload
+ * whose calls could not be read or tied to a result, an event `--since` could
+ * not place — makes the session `partial` with the reasons named. A correct
+ * record without evidence of interest never lowers completeness.
+ *
+ * @param {{id: string, harness: string, fd: number}} opened the owned log
+ * @param {{maxRecords: number, since: number|null, read?: Function}} options
+ *   bounds, and the read function tests replace
+ * @returns {object} the session: outcome, counters, reasons, gaps, events, loads
+ */
+export function readSession(opened, options) {
   const extractor =
     opened.harness === "claude"
       ? createClaudeExtractor(opened.id)
       : createCodexExtractor(opened.id);
-  const counts = { records: 0, unparsed: 0, untimed: 0, skipped: 0 };
-  let partial = false;
+  const counts = { records: 0, unparsed: 0, untimed: 0, skipped: 0, gaps: [] };
+  let capped = false;
   for (const { number, text } of sessionLines(opened.fd, options.read)) {
     if (text !== null && text.trim() === "") continue;
     if (counts.records >= options.maxRecords) {
-      partial = true;
+      capped = true;
       break;
     }
     counts.records += 1;
     consume(extractor, text, number, counts, options.since);
   }
-  const { evidence } = extractor;
-  const outcome = evidence.recognized === 0 ? "unknown" : partial ? "partial" : "ok";
-  const recognized = outcome !== "unknown";
+  const evidence = extractor.finish();
+  const { gaps: readerGaps, ...counters } = counts;
+  if (evidence.recognized === 0) {
+    return { ...emptySession(opened.id, "unknown"), harness: opened.harness, ...counters };
+  }
+  const { events, loads, gaps } = windowed(evidence, readerGaps, options.since);
+  const reasons = sessionReasons(gaps, capped);
   return {
     id: opened.id,
     harness: opened.harness,
-    outcome,
-    ...counts,
-    events: recognized ? evidence.events : [],
-    loads: recognized ? evidence.loads : [],
+    outcome: reasons.length > 0 ? "partial" : "ok",
+    ...counters,
+    inheritedTime: events.filter((event) => event.timeSource === "call").length,
+    truncated: events.reduce((sum, event) => sum + (event.truncated ?? 0), 0),
+    reasons,
+    gaps,
+    events,
+    loads,
   };
 }
 
@@ -252,6 +308,27 @@ function overallStatus(sessions, attributed) {
   return degraded ? "partial" : "ok";
 }
 
+// Gap lines a session prints before the rest is only counted; the report holds
+// the same lines, so a long tail of one reason never floods the answer.
+const GAP_LINES = 20;
+
+function sessionLinesOf(session) {
+  const id = token(session.id);
+  const reason = session.reasons.length > 0 ? ` reason=${session.reasons.join(",")}` : "";
+  const lines = [
+    `session id=${id} harness=${session.harness} outcome=${session.outcome} ` +
+      `records=${session.records} unparsed=${session.unparsed} untimed=${session.untimed} ` +
+      `skipped_since=${session.skipped} inherited_time=${session.inheritedTime} ` +
+      `truncated=${session.truncated}${reason}`,
+    ...session.gaps
+      .slice(0, GAP_LINES)
+      .map((gap) => `gap session=${id} record=${gap.number} reason=${gap.reason}`),
+  ];
+  const omitted = session.gaps.length - GAP_LINES;
+  if (omitted > 0) lines.push(`gap session=${id} omitted=${omitted}`);
+  return lines;
+}
+
 /**
  * §A-DIAGNOSTICS-01 scans the requested sessions and settles the typed result.
  *
@@ -268,12 +345,7 @@ export function scan(options, history = null) {
   const refused = sessions.filter((session) => REFUSALS.has(session.outcome)).length;
   const lines = [
     `MO-DEBUG/1 status=${status} sessions=${sessions.length} events=${events.length} refused=${refused}`,
-    ...sessions.map(
-      (session) =>
-        `session id=${token(session.id)} harness=${session.harness} outcome=${session.outcome} ` +
-        `records=${session.records} unparsed=${session.unparsed} untimed=${session.untimed} ` +
-        `skipped_since=${session.skipped}`,
-    ),
+    ...sessions.flatMap(sessionLinesOf),
     ...attributed.map(
       (item) =>
         `skill name=${item.name} session=${token(item.session)} version=${item.version} ` +
