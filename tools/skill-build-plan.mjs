@@ -75,6 +75,11 @@ export const BUNDLES = {
     baselineBytes: 188_819,
     roots: MARKDOWN_ROOTS,
   },
+  // The static GitLab rules evaluator reads YAML and nothing else.
+  "scripts/mo-ci-coverage.mjs": {
+    baselineBytes: 124_347,
+    roots: ["js-yaml"],
+  },
   // The helper's own modules plus `acorn`, which reads the JavaScript program
   // of a Codex `exec` call without running it.
   "scripts/mo-debug.mjs": {
@@ -142,6 +147,7 @@ export const SHARED_PLAN = {
     ["scripts/mo-knowledge-history.mjs", "scripts/mo-knowledge-history.mjs"],
     ["scripts/mo-knowledge.mjs", "scripts/mo-knowledge.mjs"],
     ["scripts/mo-knowledge-layer.mjs", "scripts/mo-knowledge-layer.mjs"],
+    ["scripts/mo-ci-coverage.mjs", "scripts/mo-ci-coverage.mjs"],
     ["references/backend-contract.md", "references/backend-contract.md"],
     ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
     ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],

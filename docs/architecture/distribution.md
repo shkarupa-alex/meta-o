@@ -59,6 +59,16 @@ knowledge_id_changes:
       `mo-knowledge-layer.mjs` — состоянием слоя знаний кандидата; оба
       поставляются бандлами.
     references_updated: true
+  - action: reuse
+    id: §A-DISTRIBUTION-01
+    reason: >-
+      Статический разбор правил GitLab для `CI-Coverage/1` стал поставляемым
+      помощником `mo-setup`, которого в списке владельцев не было.
+    new_boundary: >-
+      `mo-ci-coverage.mjs` вместе с `gitlab-ci-rules.mjs` владеет статическим
+      ответом о покрытии GitLab CI и поставляется бандлом с одним корнем
+      `js-yaml`.
+    references_updated: true
 ```
 
 - `shared/references/` владеет канонической общей прозой;
@@ -70,6 +80,8 @@ knowledge_id_changes:
 - `shared/scripts/mo-knowledge.mjs` владеет переносимой проверкой текущего
   дерева знаний, а `shared/scripts/mo-knowledge-layer.mjs` — состоянием слоя
   знаний кандидата;
+- `shared/scripts/mo-ci-coverage.mjs` вместе с `gitlab-ci-rules.mjs` владеет
+  статическим ответом о покрытии GitLab CI;
 - `shared/scripts/mo-review-report.mjs` владеет формой авторитетного отчёта
   ревью;
 - `shared/scripts/mo-harness-screen.mjs` владеет распознаванием экрана harness;

@@ -174,7 +174,12 @@ unresolved, plus `history=<full|shallow|unknown>` and
 `backlog_job=<yes|no|unknown>`: a shallow clone turns the history stage into a
 silent skip, and closure needs a job separate from ordinary QC. Outcomes are
 `covered|config_present|no_ci_surface|unknown`; dynamic/remote constructs and
-unreadable settings cannot yield covered. Compare against the shipped examples in
+unreadable settings cannot yield covered. For GitLab, take the record from
+bundled `scripts/mo-ci-coverage.mjs --candidate <HEAD sha> --repository <path> --job <qc-job>`
+with `--backlog-job`, `--default-branch`, `--required-policy` and
+`--merge-trains` from what you read, and report its line verbatim: it adds
+`rules=reachable|unreachable|unsupported` and decides the outcome by the
+contract's mapping. Compare against the shipped examples in
 `assets/ci/` and show an exact proposed YAML patch, but never change tracked CI
 or server protection without a separate request.
 

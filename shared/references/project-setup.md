@@ -136,9 +136,47 @@ tracked local YAML and literal local includes/reusable workflows with `js-yaml`.
 Return a bounded `CI-Coverage/1` outcome: `covered`, `config_present`,
 `no_ci_surface` or `unknown`. `covered` requires candidate/MR and applicable
 merge-group/train reachability, non-optional execution and proven required
-policy. Dynamic/remote includes, expressions or unreadable settings are
-`unknown`. Show an exact proposed patch but never modify CI YAML or server-side
-protection without a separate request.
+policy. For GitHub Actions, dynamic/remote includes, expressions or unreadable
+settings are `unknown`. Show an exact proposed patch but never modify CI YAML or
+server-side protection without a separate request.
+
+GitLab rules are evaluated statically by the bundled
+`scripts/mo-ci-coverage.mjs`, which prints the whole record at the exact
+candidate and adds one intermediate field,
+`rules=reachable|unreachable|unsupported`. The outcomes and the other fields
+stay as above; the parse never adds an outcome. The subset it evaluates:
+
+- literal local `include` and local `extends`;
+- first-match `workflow:rules` and `rules`;
+- `==` and `!=` between string literals and `$CI_PIPELINE_SOURCE`,
+  `$CI_MERGE_REQUEST_EVENT_TYPE`, `$CI_COMMIT_BRANCH`, `$CI_DEFAULT_BRANCH` and
+  `$CI_COMMIT_TAG`, variable against variable included, joined by `&&` and `||`.
+
+It checks a merge request as both `detached` and `merged_result` — each must run
+QC — and a merge train as `merge_train` where trains are enabled. In all three
+`CI_PIPELINE_SOURCE` is `merge_request_event`, while the branch and the tag are
+unset and compare as empty strings, as in GitLab. `CI_DEFAULT_BRANCH` comes from
+hosting metadata through `--default-branch`; without it, a rule that actually
+has to read it is `rules=unsupported`, and a rule decided before it, or by the
+other side of `&&` or `||`, is not. Remote includes, `!reference`, regex `=~`,
+any other variable or substitution, `changes`, `exists` and `only`/`except` are
+`rules=unsupported`. `when: never`, an optional manual job and
+`allow_failure: true` do not prove a required QC.
+
+Read whether a successful pipeline is required to merge, and whether merge
+trains are enabled, through authenticated `glab api`, and pass each as
+`enabled`, `disabled` or `unreadable`. The helper maps:
+
+- `rules=unsupported` or an unreadable policy → `unknown`;
+- `rules=unreachable` → `config_present` with `unresolved=qc_not_reachable`;
+- `rules=reachable` without the requirement → `config_present` with
+  `unresolved=required_policy_absent`;
+- `rules=reachable` with the requirement proven → `covered`;
+- no CI entry file → `no_ci_surface`.
+
+The shipped `assets/ci/gitlab-ci.yml` answers `rules=reachable` with no hosting
+data at all. A static `covered` never replaces QC actually passing on the exact
+SHA before G2.
 
 ## Backend and harness readiness
 

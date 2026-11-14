@@ -61,6 +61,8 @@ mo-lint:
 	node --check shared/scripts/skill-source-tree.mjs
 	node --check shared/scripts/mo-knowledge.mjs
 	node --check shared/scripts/mo-knowledge-layer.mjs
+	node --check shared/scripts/gitlab-ci-rules.mjs
+	node --check shared/scripts/mo-ci-coverage.mjs
 	for module in shared/scripts/mo-debug*.mjs; do node --check "$$module" || exit 1; done
 	node tools/adapter-contract.mjs --validate
 	bash -n shared/scripts/mo-posture.sh
@@ -143,7 +145,8 @@ mo-smoke:
 			(cd $$smoke_dir && HOME=$$smoke_dir node ./$$backend.mjs --show > /dev/null); \
 		done; \
 		for bundle in $$(git ls-files 'skills/*/scripts/mo-backlog.mjs' \
-				'skills/*/scripts/mo-knowledge-history.mjs' 'skills/*/scripts/mo-debug.mjs'); do \
+				'skills/*/scripts/mo-knowledge-history.mjs' 'skills/*/scripts/mo-debug.mjs' \
+				'skills/*/scripts/mo-ci-coverage.mjs'); do \
 			cp $$bundle $$smoke_dir/bundled-helper.mjs; \
 			(cd $$smoke_dir && HOME=$$smoke_dir node ./bundled-helper.mjs --help > /dev/null); \
 		done
