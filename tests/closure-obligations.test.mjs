@@ -512,7 +512,10 @@ const OBLIGATIONS = [
     "O-RR-032",
     "compaction is observable and forces a re-ground from durable state",
     {
-      mech: [/After compaction or approximately 75% of a\s+32768-token context/],
+      mech: [
+        /acts on nothing before it re-grounds/,
+        /Approaching about 75% of a\s+32768-token context/,
+      ],
       bcon: [/compacted \| refused/],
     },
   ],

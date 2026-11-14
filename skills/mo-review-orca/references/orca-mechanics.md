@@ -432,10 +432,20 @@ window. An executor's compaction is its expected mode, not a failure: it
 continues in the same session. Whether a basis is new is the coordinator's
 judgment of what it observed; no script counts or decides restarts.
 
-After compaction or approximately 75% of a 32768-token context, start a fresh
-orchestrator turn/session and re-ground from the Git spec/checklist plus public
-Orca state. Sanitize each structured observation and cap it at 8000 tokens;
-never inject a raw 21k/41k dump.
+A coordinator that finds a compaction sign at the start of its context — Claude
+Code's continuation summary of the earlier conversation, Codex's notice that the
+context was compacted, or, where neither sign is recognizable, a summary of
+earlier work in place of the original messages at the start of a turn — acts on
+nothing before it re-grounds. First it rereads its own `SKILL.md` completely and
+every reference that file names; then it restores the run from public Orca,
+never from the summary: the checkpoint above, every `E2E-Evidence` and
+`E2E-Coverage` line from `mo-e2e`'s complete `worker_done` messages, and the
+`Round` line of the last review brief. Until both are done it sends no task,
+follow-up or brief and releases no resource. No provider hook does this; the
+rule is the instruction. Approaching about 75% of a 32768-token context, start a
+fresh orchestrator turn/session and re-ground the same way from the Git
+spec/checklist plus public Orca state. Sanitize each structured observation and
+cap it at 8000 tokens; never inject a raw 21k/41k dump.
 
 Public capability belongs to the exact Dispatch/turn/process and expires on exit
 or replacement. `worker_done` from a bare shell or expired Dispatch cannot

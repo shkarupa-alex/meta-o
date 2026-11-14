@@ -100,6 +100,28 @@ test("the recovery ladder runs one way, ends at unknown_effect and restarts only
   }
 });
 
+test("after compaction each lifecycle skill rereads itself and restores state from Orca first", () => {
+  // #61: a compacted agent remembers having read the skill and stops rereading it.
+  for (const skill of ["mo-orchestrate-orca", "mo-review-orca", "mo-e2e"]) {
+    const path = `skills/${skill}/SKILL.md`;
+    const text = flat(path);
+    assertInOrder(
+      text,
+      [
+        "After a compaction",
+        "Reread this `SKILL.md` completely and every reference it names",
+        "restore",
+        "never from the summary",
+      ],
+      path,
+    );
+    assert.match(text, /`E2E-Evidence`/u, path);
+  }
+  for (const skill of ["mo-orchestrate-orca", "mo-review-orca"]) {
+    assert.match(flat(`skills/${skill}/SKILL.md`), /the `Round` line of the last/u, skill);
+  }
+});
+
 test("a quiet wait is reconciled with public Orca before anyone hears an actor still works", () => {
   // #54: a quiet timeout, then a completed Dispatch the coordinator only saw
   // when the user asked; the ack of a handoff arrives as a status message.

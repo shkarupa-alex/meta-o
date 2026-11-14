@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-e2e or an active mo-o
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "3cf959389e9f71eef737fe2ffbbe864adf927028"
+  source_tree: "3cfd5318a6bdec29d2281429d1ca0248edf811f4"
 ---
 
 # Agent-required end-to-end verification
@@ -92,7 +92,16 @@ timeout permits one public reconciliation and re-arm without narration: read
 the Run's unread messages, and for each actor's Dispatch treat `completed` as
 done whatever its liveness says, processing its final message first; a
 truncated terminal preview proves no outcome. One repeated transport failure
-gives `UNKNOWN`. Task bytes wait for
+gives `UNKNOWN`.
+
+After a compaction — Claude Code's continuation summary at the start of the
+context, Codex's compaction notice, or, where neither is recognizable, a summary
+of earlier work instead of the original messages at the start of a turn — act on
+nothing first. Reread this `SKILL.md` completely and every reference it names,
+then restore the run from public Orca, never from the summary: each actor's
+Dispatch state and complete final message, and the `E2E-Evidence` lines of the
+scenarios already finished. Until both are done start, message or release
+nothing, and never report a scenario result the summary alone remembers. Task bytes wait for
 a proven normal agent prompt and every resource must preserve the initial Orca
 project-registration inventory. A disposable fixture that Orca has to place is
 registered only on the human's confirmation for this run and removed with

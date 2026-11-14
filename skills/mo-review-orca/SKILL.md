@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-review-orca or an act
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "cb57efb3f226d92462d3cf62021e29c39d90693f"
+  source_tree: "e05620b61a6b78af984cc87f4158be7edb57fba7"
 ---
 
 # Review through Orca
@@ -340,7 +340,16 @@ Wait through one run-wide public waiter on both exact Dispatch handles. Use
 acknowledgement in the Run's messages. A quiet timeout runs the checkpoint of
 [Orca native mechanics](references/orca-mechanics.md) — unread batch,
 `worker-show` of each Dispatch, a `completed` reviewer processed through its
-`worker_done` — and then re-arms without narration or messages. Retry the same arm
+`worker_done` — and then re-arms without narration or messages.
+
+After a compaction — Claude Code's continuation summary at the start of the
+context, Codex's compaction notice, or, where neither is recognizable, a summary
+of earlier work instead of the original messages at the start of a turn — act on
+nothing first. Reread this `SKILL.md` completely and every reference it names,
+then restore the pair from public Orca, never from the summary: the checkpoint
+above, both Dispatches and their `worker_done` bodies, the `E2E-Evidence` lines
+or the one `E2E:` line of the brief, and the `Round` line of the last brief.
+Until both are done start, message or release nothing. Retry the same arm
 once after transport failure; a second consecutive failure is
 `UNKNOWN/needs_attention`. Process every event in a returned batch before
 acknowledgement.

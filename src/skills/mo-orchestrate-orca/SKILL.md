@@ -117,6 +117,15 @@ reported as two facts with the instruction queued once in the same terminal, and
 `unknown/unverifiable` instead of a truncated preview. Re-arm without narration
 only after that, and never say you are waiting while no wait is armed.
 
+After a compaction — Claude Code's continuation summary at the start of the
+context, Codex's compaction notice, or, where neither is recognizable, a summary
+of earlier work instead of the original messages at the start of a turn — act on
+nothing first. Reread this `SKILL.md` completely and every reference it names,
+then restore the run from public Orca, never from the summary: the checkpoint of
+the one wait, every `E2E-Evidence` and `E2E-Coverage` line from `mo-e2e`'s
+complete `worker_done` messages, and the `Round` line of the last review brief.
+Until both are done send no task, follow-up or brief and release no resource.
+
 Run the proof loops in order, never alternating. When the executor settles and
 its deterministic checks pass, E2E comes first, and only if the project has
 scenarios in `docs/e2e.md` or the E2E document `AGENTS.md` names: call `mo-e2e`
