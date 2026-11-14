@@ -1192,11 +1192,13 @@ test("session, delivery, handoff and waiter invariants remain executable instruc
   // its checkpoint must name the ack kind itself: the helper refuses a bare
   // `ack`, and a model read the bare form as an unspecified command.
   const mechanics = source("shared/references/orca-mechanics.md");
+  // The call is written as the skill-directory path in quotes, like every
+  // other helper call, so a verbatim copy runs from any working directory.
   for (const kind of ["Handoff", "Preview"]) {
     assert.match(
       mechanics,
       new RegExp(
-        `mo-review-report\\.mjs ack --kind ${kind} --line '<ack text>' --pair-id <id>`,
+        `node "<this skill's directory>/scripts/mo-review-report\\.mjs" ack --kind ${kind} \\\\\\n\\s+--line '<ack text>' --pair-id <id>`,
         "u",
       ),
     );

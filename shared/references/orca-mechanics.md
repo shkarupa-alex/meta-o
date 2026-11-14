@@ -425,10 +425,10 @@ user and before any repeated message to an actor:
    the previewed slot's size, `--a-bytes` for slot A or `--b-bytes` for slot B:
 
    ```text
-   mo-review-report.mjs ack --kind Handoff --line '<ack text>' --pair-id <id> \
-     --a-bytes <n> --b-bytes <n>
-   mo-review-report.mjs ack --kind Preview --line '<ack text>' --pair-id <id> \
-     --a-bytes <n>
+   node "<this skill's directory>/scripts/mo-review-report.mjs" ack --kind Handoff \
+     --line '<ack text>' --pair-id <id> --a-bytes <n> --b-bytes <n>
+   node "<this skill's directory>/scripts/mo-review-report.mjs" ack --kind Preview \
+     --line '<ack text>' --pair-id <id> --a-bytes <n>
    ```
 
 2. Run `worker-show` for every active Dispatch. Completion (`dispatch.status`)
