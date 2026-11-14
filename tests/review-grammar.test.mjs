@@ -97,6 +97,7 @@ test("every template validates unchanged with the same expected flags", () => {
     effective: "deep",
   }).text;
   assert.match(findings, /^Counts: P0=0 P1=0 P2=1 P3=0$/mu);
+  // mo-vocabulary-ok: a report-local finding key is fixture data, not a work item.
   assert.match(findings, /^F-001 \[P2\] /mu);
   const unknown = reportTemplate({
     verdict: "UNKNOWN",
@@ -214,7 +215,9 @@ test("both finding bodies are accepted and nothing else is", () => {
   const blank = findingsReport({ body: "F-001\n\n[P2] causal path after a blank line.\n" });
   assert.equal(validateReport(blank, expected()).status, "valid");
   for (const body of [
+    // mo-vocabulary-ok: a report-local finding key is fixture data, not a work item.
     "- F-001 [P2] inside a list.\n\n",
+    // mo-vocabulary-ok
     "> F-001 [P2] inside a quote.\n\n",
     "F-001 [P3] severity differs from the index.\n",
     "F-001\n[P1] severity differs from the index.\n",
@@ -512,6 +515,7 @@ test("a key quoted on a closing code row neither answers the index nor opens a s
     ["`", "`"],
     ["`` a ` tick", "``"],
   ]) {
+    // mo-vocabulary-ok: a report-local finding key is fixture data, not a work item.
     const quoteOnly = `Example literal: ${open} opening row\nF-001 [P2] quoted text${close}.\n`;
     assert.equal(judged(findingsReport({ body: quoteOnly }), "quote only"), "index_body_mismatch");
     for (const severity of ["P0", "P1", "P2", "P3"]) {
@@ -520,6 +524,7 @@ test("a key quoted on a closing code row neither answers the index nor opens a s
     }
     const early = `F-001 [P2] path ${open} a\nF-002 [P2] quoted text${close}.\n`;
     assert.equal(judged(two(early), "early"), "index_body_mismatch");
+    // mo-vocabulary-ok: a report-local finding key is fixture data, not a work item.
     assert.equal(judged(two(`${early}F-002 [P2] the real body.\n`), "both"), "valid");
   }
   const opened = "F-001 [P2] causal path `a\nplain text` continues.\n";

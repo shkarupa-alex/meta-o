@@ -84,9 +84,11 @@ mo-lint:
 	node --check shared/scripts/mo-review-resource.mjs
 	node --check shared/scripts/skill-source-tree.mjs
 	node --check shared/scripts/mo-knowledge.mjs
+	node --check shared/scripts/knowledge-check.mjs
 	node --check shared/scripts/mo-knowledge-layer.mjs
 	node --check shared/scripts/gitlab-ci-rules.mjs
 	node --check shared/scripts/mo-ci-coverage.mjs
+	node --check shared/scripts/mo-vocabulary.mjs
 	for module in shared/scripts/mo-debug*.mjs; do node --check "$$module" || exit 1; done
 	node tools/adapter-contract.mjs --validate
 	bash -n shared/scripts/mo-posture.sh
@@ -130,18 +132,27 @@ mo-knowledge-history:
 # A feature's accepted specification is a declared document while it is
 # tracked; closure deletes it, and the list then expands to nothing.
 # Source skills link into references that exist only after the build, so the
-# built tree is the declared one.
+# built tree is the declared one and the sources are skipped by exact path.
+# The whole repository is first-party: a section number anywhere in its code,
+# `.gitignore` included, has to name the live document it opens.
 MO_KNOWLEDGE_PLAN = --business docs/business.md --architecture docs/architecture \
 	--docs docs/business.md --docs docs/architecture --docs docs/acceptance.md \
 	--docs docs/e2e.md --docs docs/glossary.md --docs docs/papercut.md \
 	--docs docs/backlog.md --docs docs/backend-capabilities.md --docs README.md \
 	--docs AGENTS.md --docs CLAUDE.md --docs shared/references --docs skills \
-	--first-party-root docs --first-party-root shared --first-party-root skills \
+	--first-party-root . \
 	$(foreach path,$(shell git ls-files 'docs/specifications/*.md'),--docs $(path)) \
-	$(foreach path,$(shell git ls-files 'docs/references/*.md' 'docs/research/*.md'),--knowledge-exclude $(path))
+	$(foreach path,$(shell git ls-files 'docs/references/*.md' 'docs/research/*.md' 'src/skills/*.md'),--knowledge-exclude $(path))
+
+# The same portable core mo-setup ships to other projects, with this project's
+# areas as flags: the recipe is the declaration. The bundled model SDK is
+# third-party code, not this project's vocabulary.
+MO_VOCABULARY_AREAS = --exclude docs/references \
+	$(foreach path,$(shell git ls-files 'skills/*/scripts/mo-models.mjs'),--exclude $(path)) \
+	--non-canonical docs/references --non-canonical docs/research
 
 mo-vocabulary:
-	node tools/mo-vocabulary.mjs --root . --exclude docs/references $(MO_KNOWLEDGE_PLAN)
+	node shared/scripts/mo-vocabulary.mjs --root . $(MO_VOCABULARY_AREAS) $(MO_KNOWLEDGE_PLAN)
 
 mo-test:
 	@command -v zsh >/dev/null 2>&1 || { echo "mo-test blocked: zsh is required for the cross-shell contract" >&2; exit 1; }
@@ -170,7 +181,8 @@ mo-smoke:
 		done; \
 		for bundle in $$(git ls-files 'skills/*/scripts/mo-backlog.mjs' \
 				'skills/*/scripts/mo-knowledge-history.mjs' 'skills/*/scripts/mo-debug.mjs' \
-				'skills/*/scripts/mo-ci-coverage.mjs'); do \
+				'skills/*/scripts/mo-ci-coverage.mjs' 'skills/*/scripts/mo-vocabulary.mjs' \
+				'skills/*/scripts/mo-knowledge.mjs'); do \
 			cp $$bundle $$smoke_dir/bundled-helper.mjs; \
 			(cd $$smoke_dir && HOME=$$smoke_dir node ./bundled-helper.mjs --help > /dev/null); \
 		done

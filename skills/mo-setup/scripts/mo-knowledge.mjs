@@ -6,11 +6,15 @@ var __export = (target, all2) => {
 };
 
 // shared/scripts/mo-knowledge.mjs
+import { realpathSync as realpathSync2 } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
+
+// shared/scripts/knowledge-check.mjs
 import { spawnSync } from "node:child_process";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { posix } from "node:path";
-import { fileURLToPath } from "node:url";
-import { parseArgs, TextDecoder as TextDecoder2 } from "node:util";
+import { TextDecoder as TextDecoder2 } from "node:util";
 
 // node_modules/mdast-util-to-string/lib/index.js
 var emptyOptions = {};
@@ -10010,34 +10014,12 @@ function parseDocument(markdown) {
   return fromMarkdown(markdown);
 }
 
-// shared/scripts/mo-knowledge.mjs
+// shared/scripts/knowledge-check.mjs
 var LIMIT = 50;
 var MARKDOWN = /\.md$/iu;
 var SCHEME = /^[a-z][a-z0-9+.-]*:/iu;
 var SUPPRESS = "mo-vocabulary-ok";
 var SUPPRESS_FILE = `${SUPPRESS} file`;
-var USAGE = `usage: mo-knowledge.mjs check [--repo <git-root>] --business <path>
-         --architecture <dir> --docs <path> [--docs <path> ...]
-         --first-party-root <dir> [--first-party-root <dir> ...]
-         [--exclude <tracked-path> ...]
-       mo-knowledge.mjs --help
-
-  --repo <git-root>          repository to check (default: Git root of the cwd)
-  --business <path>          business document; the only home of \xA7B-* ids
-  --architecture <dir>       decision directory; the only home of \xA7A-* ids
-  --docs <path>              declared knowledge: a tracked .md file or a
-                             directory of them (repeatable)
-  --first-party-root <dir>   every tracked .md under it must be declared or
-                             excluded (repeatable; "." is the whole repository)
-  --exclude <tracked-path>   exact tracked file left out of the check, echoed
-                             in the output (repeatable; no wildcards)
-  --help                     print this grammar and exit
-
-Paths other than --repo are relative to the Git root.
-
-output: MO-KNOWLEDGE/1 status=<ok|violations|unknown> files=<n> definitions=<n> uncovered=<n>
-exit: 0 ok | 1 violations | 2 unknown or call error
-`;
 function jsonString(value) {
   return JSON.stringify(String(value)).replace(
     /[\u0080-\u009f\u2028\u2029]/gu,
@@ -10418,6 +10400,30 @@ function resolveRoot(repo, cwd = process.cwd()) {
   if (result.error || result.status !== 0) return null;
   return result.stdout.replace(/\n$/u, "");
 }
+
+// shared/scripts/mo-knowledge.mjs
+var USAGE = `usage: mo-knowledge.mjs check [--repo <git-root>] --business <path>
+         --architecture <dir> --docs <path> [--docs <path> ...]
+         --first-party-root <dir> [--first-party-root <dir> ...]
+         [--exclude <tracked-path> ...]
+       mo-knowledge.mjs --help
+
+  --repo <git-root>          repository to check (default: Git root of the cwd)
+  --business <path>          business document; the only home of \xA7B-* ids
+  --architecture <dir>       decision directory; the only home of \xA7A-* ids
+  --docs <path>              declared knowledge: a tracked .md file or a
+                             directory of them (repeatable)
+  --first-party-root <dir>   every tracked .md under it must be declared or
+                             excluded (repeatable; "." is the whole repository)
+  --exclude <tracked-path>   exact tracked file left out of the check, echoed
+                             in the output (repeatable; no wildcards)
+  --help                     print this grammar and exit
+
+Paths other than --repo are relative to the Git root.
+
+output: MO-KNOWLEDGE/1 status=<ok|violations|unknown> files=<n> definitions=<n> uncovered=<n>
+exit: 0 ok | 1 violations | 2 unknown or call error
+`;
 function parseArguments(argv) {
   const multiple = { type: "string", multiple: true };
   const { values, positionals } = parseArgs({
@@ -10479,7 +10485,7 @@ ${USAGE}`);
 }
 function invokedDirectly() {
   try {
-    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+    return realpathSync2(process.argv[1]) === realpathSync2(fileURLToPath(import.meta.url));
   } catch {
     return false;
   }

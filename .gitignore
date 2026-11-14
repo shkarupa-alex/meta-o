@@ -7,7 +7,8 @@ node_modules
 
 # Build output of the retired TypeScript implementation and Python bytecode from
 # the templates on other branches. A candidate checkout must stay clean, because
-# §2.8 of the review contract turns a dirty worktree into `unknown`.
+# the review contract, `shared/references/review-protocol.md`, turns a dirty
+# worktree into `unknown`.
 dist/
 __pycache__/
 *.pyc

@@ -128,8 +128,14 @@ function stripGeneratedAnchors(skillRoot, name) {
  */
 export const STAMPED = new Set(["scripts/mo-knowledge-history.mjs"]);
 
-/** A root under other terms breaks generation exactly as an unexpected root does. */
-export const LICENSE_ALLOWLIST = new Set(["MIT"]);
+/**
+ * A root under other terms breaks generation exactly as an unexpected root does.
+ *
+ * BSD-2-Clause entered with the vocabulary bundle, whose table parser decodes
+ * entities through the `entities` package: like MIT it only asks that the
+ * notice travel with the code, and the build already ships every notice.
+ */
+export const LICENSE_ALLOWLIST = new Set(["MIT", "BSD-2-Clause"]);
 
 /**
  * Roots whose `license` field is not an SPDX id, bound to their exact text.
@@ -147,6 +153,8 @@ const LICENSE_FILES = [
   "LICENSE",
   "LICENSE.md",
   "LICENSE.txt",
+  // punycode.js names its notice after the licence it grants.
+  "LICENSE-MIT.txt",
   "LICENCE",
   "LICENCE.md",
   "license",

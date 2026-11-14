@@ -685,6 +685,7 @@ test("the one permitted business question names its slot, its key and where to r
     hypothesis: "the stated guarantee, and the window is the defect",
   });
   assert.equal(asked.status, "asked");
+  // mo-vocabulary-ok: a report-local finding key is fixture data, not a work item.
   assert.match(asked.text, /^A:F-002 \(claude\) F-002 \[P2\] /u);
   assert.match(asked.text, /Full report: \/tmp\/mo-review-x\/A-claude\.md$/mu);
   // A line that is not an index line cannot be projected: there is nothing to
