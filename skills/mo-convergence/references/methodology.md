@@ -266,7 +266,9 @@ The two proof loops run in order and never alternate. First the implementation
 converges with E2E, and only when the project has E2E scenarios: section 6
 selects the task's scenarios, `mo-e2e` runs them, the executor fixes a failure
 and the failed scenarios run again until they pass. A project without scenarios
-records `E2E: not_applicable reason=<…>` and goes straight to review. Only then
+records `E2E: not_applicable reason=<…>` and goes straight to review, and so
+does a task whose behavior no scenario covers, with the one
+`E2E: not_applicable reason=no_task_scenarios …` line of section 8. Only then
 does the review loop below converge with remediation under its own rules. A
 result other than `pass` or `not_applicable` never reaches a reviewer: the first
 loop has not converged.
@@ -282,9 +284,11 @@ frozen object ids the deletion recorded, and the durable knowledge that replaced
 them. Do not give either reviewer peer output.
 
 Both briefs carry exactly one E2E form. In the orchestrated lifecycle it is the
-current `E2E-Evidence` and `E2E-Coverage` lines of section 8, copied verbatim;
-for a project without scenarios it is `E2E: not_applicable reason=<…>`; for a
-standalone review it is `E2E: not_evaluated reason=standalone`.
+current `E2E-Evidence` and `E2E-Coverage` lines of section 8, copied verbatim,
+or, when `mo-e2e` selected no scenario for the task, its one
+`E2E: not_applicable reason=no_task_scenarios …` line; for a project without
+scenarios it is `E2E: not_applicable reason=<…>`; for a standalone review it is
+`E2E: not_evaluated reason=standalone`.
 
 Each reviewer is a native interactive Codex, Claude Code or OpenCode instance
 started inside a terminal, pane or session by the selected backend's native
@@ -456,18 +460,21 @@ or another detached form whose immediate `0` is not a suite result. A repeated
 run is independent proof only once the previous run's descendants are gone.
 
 CI is the gate that guarantees QC before an agent merges. G1, the agent-owned
-MR/PR create, needs the local QC result and the hosting provider's source head
-equal to the candidate. G2, the agent-owned merge, additionally needs
-`CI-Coverage/1 covered` for the candidate from the setup contract and an
-observed successful run of every covering QC job that checked out exactly the
-candidate: the job prints `git rev-parse HEAD` before QC, and that value, the
-pull request's head SHA and the observed remote head all equal the candidate. A
-workflow run's own head SHA is not enough, because a pull-request run may belong
-to a synthetic merge commit; a merge-queue commit is an integration signal of
-its own and never stands in for QC of the candidate. Any other coverage outcome,
-another checkout SHA, or a missing or failed run blocks the agent merge with
-`needs_attention` naming the gap. Review and delivery of a locally proven
-candidate proceed without CI; integrating without CI is a human decision.
+MR/PR create, needs the local QC result, the hosting provider's source head
+equal to the candidate, and the `sha` of every `E2E-Evidence` line, or of the
+one `E2E: not_applicable reason=no_task_scenarios` line, equal to the candidate
+or one of its ancestors, as `git merge-base --is-ancestor <sha> <candidate>`
+proves. G2, the agent-owned merge, additionally needs `CI-Coverage/1 covered`
+for the candidate from the setup contract and an observed successful run of
+every covering QC job that checked out exactly the candidate: the job prints
+`git rev-parse HEAD` before QC, and that value, the pull request's head SHA and
+the observed remote head all equal the candidate. A workflow run's own head SHA
+is not enough, because a pull-request run may belong to a synthetic merge
+commit; a merge-queue commit is an integration signal of its own and never
+stands in for QC of the candidate. Any other coverage outcome, another checkout
+SHA, or a missing or failed run blocks the agent merge with `needs_attention`
+naming the gap. Review and delivery of a locally proven candidate proceed
+without CI; integrating without CI is a human decision.
 
 Read the project's E2E and acceptance-to-proof documents. E2E is applicable when
 `docs/e2e.md`, or the document `AGENTS.md` names as the project's E2E document,
@@ -479,11 +486,14 @@ touches, restores or depends on — a regression fix restores an existing
 requirement without changing its row. `mo-e2e` decides applicability and records
 the basis in `E2E-Coverage`; the orchestrator never reads product code to decide
 it. Run them through `mo-e2e scope=task`, and a partial rerun through
-`mo-e2e scope=task scenarios=<id,…>`. `scope=full` runs only on the user's
-explicit request. Production, destructive, credential or subscription boundaries
-require the user's explicit authorization for the exact named action. An
-unreadable or incomplete gate is `unknown` and is repeated; there is no partial
-pass.
+`mo-e2e scope=task scenarios=<id,…>`. A task whose behavior no scenario covers
+gets no scenario at all: its evidence is the one
+`E2E: not_applicable reason=no_task_scenarios …` line of section 8 that `mo-e2e`
+prints, never a line the orchestrator writes. `scope=full` runs only on the
+user's explicit request. Production, destructive, credential or subscription
+boundaries require the user's explicit authorization for the exact named action.
+An unreadable or incomplete gate is `unknown` and is repeated; there is no
+partial pass.
 
 
 When a named scenario genuinely needs a model actor, deterministic proof remains
@@ -536,8 +546,9 @@ Before success, prove that the same full candidate SHA has:
 - two complete independent review passes with required vendor diversity;
 - for every applicable scenario, an `E2E-Evidence` line with
   `result=pass|not_applicable` on that SHA or one of its ancestors and no
-  `e2e_affected` or `e2e_missing` finding from the final pair, or
-  `E2E: not_applicable` for a project without scenarios;
+  `e2e_affected` or `e2e_missing` finding from the final pair, or the one
+  `E2E: not_applicable` line for a project without scenarios or a task that no
+  scenario covers, with no `e2e_missing` finding from the final pair;
 - no unresolved problems hidden by an incomplete backend response.
 
 Clean up only sessions and temporary files whose ownership is certain and whose
@@ -555,13 +566,13 @@ incomplete cleanup is reported rather than broadened destructively.
 
 Immediately before an agent-owned MR/PR create, rerun the same closure proof as
 G1 and read the hosting provider's source head; both must equal the expected
-SHA, and every `E2E-Evidence` line names an ancestor of it. Immediately before
-an agent-owned merge, repeat G2 — the closure proof, the remote head, the
-`E2E-Evidence` ancestry and the CI evidence of section 6 for exactly that SHA —
-and bind the write to the observed head with a provider compare-and-set/required
-policy. A hosting-provided integration candidate is proved only in its exact
-checkout. Human-created MRs do not waive G2; server-side CI/protection changes
-remain a separate human decision.
+SHA, and the E2E evidence of section 6 names it or an ancestor of it.
+Immediately before an agent-owned merge, repeat G2 — the closure proof, the
+remote head, that E2E ancestry and the CI evidence of section 6 for exactly that
+SHA — and bind the write to the observed head with a provider
+compare-and-set/required policy. A hosting-provided integration candidate is
+proved only in its exact checkout. Human-created MRs do not waive G2;
+server-side CI/protection changes remain a separate human decision.
 
 The human-readable final report contains the full candidate SHA, QC result, both
 review results and model vendors, every `E2E-Evidence` line verbatim — each
@@ -594,3 +605,16 @@ pass is never presented as a pass of the final SHA: the report names the final
 SHA for QC and reviews and the scenario SHA for each scenario. A result other
 than `pass` or `not_applicable` is not evidence; the E2E loop has not converged.
 QC and both reviews always run on the final SHA.
+
+When the project has scenarios but `scope=task` selects none, because the task
+touches, restores and depends on no behavior a scenario covers, the complete
+`worker_done` of `mo-e2e` carries one line instead of the scenario lines:
+
+```text
+E2E: not_applicable reason=no_task_scenarios sha=<40-hex> source=<dispatch-id> basis=<why no scenario covers the touched behavior>
+```
+
+It is held like a scenario line: on an ancestor of the final SHA it stands as
+long as the final pair raised no `e2e_missing` finding. Such a finding names a
+scenario; after its fix `mo-e2e` runs that scenario, and its `E2E-Evidence` and
+`E2E-Coverage` lines replace this one.

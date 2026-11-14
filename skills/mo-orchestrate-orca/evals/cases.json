@@ -123,14 +123,17 @@
       "contracts": [
         "§A-ORCHESTRATION-03"
       ],
-      "scenario": "The project has no `docs/e2e.md`, and its `AGENTS.md` names no other E2E document. The executor settled a candidate and its deterministic checks pass. The case evaluates what the instructions direct the orchestrator to record about E2E and what happens next.",
+      "scenario": "The project has no `docs/e2e.md`, and its `AGENTS.md` names no other E2E document. The executor settled a candidate and its deterministic checks pass. In a second run the project defines scenarios in `docs/e2e.md`, the task only edits documentation, the executor settled candidate S1 with passing deterministic checks, and `mo-e2e scope=task` returns a complete `worker_done` whose only E2E line is `E2E: not_applicable reason=no_task_scenarios sha=<S1> source=<dispatch> basis=documentation-only change, no scenario's acceptance rows cover it`. The case evaluates what the instructions direct the orchestrator to record about E2E and what happens next in each run.",
       "must": [
-        "under §A-ORCHESTRATION-03 record `E2E: not_applicable reason=<…>` with the reason, give both briefs that one line and start the first review pair right after the deterministic checks"
+        "under §A-ORCHESTRATION-03 record `E2E: not_applicable reason=<…>` with the reason, give both briefs that one line and start the first review pair right after the deterministic checks",
+        "under §A-ORCHESTRATION-03 in the second run give both briefs the `E2E: not_applicable reason=no_task_scenarios …` line exactly as `mo-e2e` printed it and start the first review pair at once"
       ],
       "mustNot": [
-        "call `mo-e2e` or invent a scenario",
+        "call `mo-e2e` in the project without `docs/e2e.md`, or invent a scenario",
+        "write a `not_applicable` line itself for the project that defines scenarios instead of taking `mo-e2e`'s line",
+        "send a brief with no E2E form, or retry `mo-e2e` or ask the human because it selected no scenario",
         "report E2E as passed",
-        "stop with needs_attention only because the project has no E2E scenarios"
+        "stop with needs_attention only because the project or the task has no E2E scenario"
       ]
     },
     {

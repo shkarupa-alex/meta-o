@@ -45,7 +45,9 @@ own gate result on `Target`: inspect the backlog and registry statically, never
 run the gate yourself, and take `not_run` as the caller's evidence rather than
 a check you owe. The `E2E` field decides the E2E
 lens the protocol describes: with `E2E-Evidence` lines or
-`E2E: not_applicable` the lens is required, and with
+`E2E: not_applicable` of either reason the lens is required — a
+`reason=no_task_scenarios` line is checked for a scenario the task now needs —
+and with
 `E2E: not_evaluated reason=standalone` you raise no `e2e_affected` or
 `e2e_missing` and never ask for E2E to be run.
 

@@ -161,7 +161,11 @@ with `scope=task` — it chooses the task's scenarios by the behavior the task
 touches, including unchanged acceptance rows the task restores or depends on —
 return a failure to the executor and rerun only the failed scenarios with
 `scenarios=<id,…>` until every one passes. Without scenarios the evidence is
-`E2E: not_applicable reason=<…>` and review starts at once. `scope=full` runs
+`E2E: not_applicable reason=<…>` and review starts at once. When `mo-e2e`
+selects no scenario for the task, its `worker_done` carries one
+`E2E: not_applicable reason=no_task_scenarios sha=… source=… basis=…` line:
+it is the evidence, and review starts at once; never write that line yourself
+for a project that has scenarios. `scope=full` runs
 only on the user's explicit request. Keep each scenario's `E2E-Evidence` and
 `E2E-Coverage` line exactly as `mo-e2e`'s complete `worker_done` printed it,
 replace only the lines of a rerun scenario, and after compaction reread them
@@ -174,7 +178,8 @@ give every brief the current E2E lines verbatim, or the one
 result on the closure candidate, otherwise `G0 not_run`. An `e2e_affected` or
 `e2e_missing` finding is an ordinary finding of the round: after its fix rerun
 through `mo-e2e` only the scenarios it lists on the new candidate, replace only
-their lines, and continue the review; a new SHA alone reruns nothing. Give
+their lines — an `e2e_missing` scenario's lines replace a `no_task_scenarios`
+line — and continue the review; a new SHA alone reruns nothing. Give
 the executor both immutable reports only through its verified
 pair paths/sizes; wait for exact `Review-Handoff-Ack` before cleanup. Keep
 remediation reviewers hot, and use a fresh final same-SHA pair. Public updates
@@ -203,8 +208,11 @@ the candidate, naming the command and its exit code; reviewers never run tests,
 linters or QC. After knowledge
 harvest and removal of the implemented spec, require GC on the exact candidate.
 Immediately before any agent-owned MR/PR create run G1 and verify remote source
-head equality. Immediately before merge run G2: the closure proof, the remote
-head, `CI-Coverage/1 covered` and a successful run of every covering CI QC job
+head equality and that the `sha` of every `E2E-Evidence` line, or of the
+`no_task_scenarios` line, is the candidate or its ancestor
+(`git merge-base --is-ancestor`). Immediately before merge run G2: the closure
+proof, the remote head, that E2E ancestry, `CI-Coverage/1 covered` and a
+successful run of every covering CI QC job
 whose printed checkout SHA equals the candidate, then bind the provider write to
 that head/required policy. Any other coverage outcome, a missing or failed run,
 another checkout SHA or unsupported integration candidate proof is

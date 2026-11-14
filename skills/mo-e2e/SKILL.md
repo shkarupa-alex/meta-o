@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-e2e or an active mo-o
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "bd9045f1ddb3ea39ec635fc1994d3cdb0dc04fe4"
+  source_tree: "c662d4260c9dff5ff63c215360ad5e22b69834ff"
 ---
 
 # Agent-required end-to-end verification
@@ -92,6 +92,19 @@ can judge whether a later change touches it. A scenario that did not pass still
 gets its line, with `result=` naming its lowercase result such as `fail`,
 `unknown` or `not_run`; only `pass` and `not_applicable` are evidence, and the
 caller starts no review while any other result stands.
+
+When the project has scenarios and `scope=task` selects none, because the task
+touches, restores and depends on no behavior a scenario covers, the complete
+`worker_done` carries instead exactly one line, which the caller copies
+verbatim into the brief:
+
+```text
+E2E: not_applicable reason=no_task_scenarios sha=<40-hex> source=<dispatch-id> basis=<why no scenario covers the touched behavior>
+```
+
+`basis` names the behavior the task touches and why no scenario's acceptance
+rows cover it, so a reviewer can judge whether that still holds. An empty
+selection without this line is incomplete evidence, never a pass.
 
 Do not create a receipt, manifest, registry, digest, tracked evidence ledger or
 external sink.

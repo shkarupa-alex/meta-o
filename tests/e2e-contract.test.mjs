@@ -177,6 +177,11 @@ test("every actor reads the E2E proof order and the per-scenario evidence form",
   const evidence =
     "E2E-Evidence: <scenario-id> sha=<40-hex> result=<pass|not_applicable> source=<dispatch-id>";
   const coverage = "E2E-Coverage: <scenario-id> acceptance=<row-id>[,<row-id>…]";
+  // A project with scenarios whose task touches none of them still owes the
+  // brief exactly one E2E form; without this line the only choices were a
+  // spent UNKNOWN round or a project-wide `not_applicable` that is false.
+  const noTaskScenarios =
+    "E2E: not_applicable reason=no_task_scenarios sha=<40-hex> source=<dispatch-id> basis=";
   const expectations = {
     "shared/references/methodology.md": [
       "The two proof loops run in order and never alternate.",
@@ -185,11 +190,14 @@ test("every actor reads the E2E proof order and the per-scenario evidence form",
       "`scope=full` runs only on the user's explicit request.",
       "`E2E: not_evaluated reason=standalone`",
       "a new SHA alone reruns nothing",
+      noTaskScenarios,
+      "`git merge-base --is-ancestor <sha> <candidate>`",
     ],
     "shared/references/review-brief.md": [
       evidence,
       coverage,
       "E2E: not_applicable reason=",
+      noTaskScenarios,
       "E2E: not_evaluated reason=standalone",
     ],
     "shared/references/review-protocol.md": [
@@ -197,11 +205,19 @@ test("every actor reads the E2E proof order and the per-scenario evidence form",
       "`e2e_missing` names the scenario",
       "With `not_evaluated` this lens is off",
       "Overlapping paths are a hint, not a verdict",
+      "A `reason=no_task_scenarios` line is checked like an evidence line",
     ],
-    "src/skills/mo-e2e/SKILL.md": [evidence, coverage, "`scope=task` or `scope=full`"],
+    "src/skills/mo-e2e/SKILL.md": [
+      evidence,
+      coverage,
+      "`scope=task` or `scope=full`",
+      noTaskScenarios,
+    ],
     "src/skills/mo-orchestrate-orca/SKILL.md": [
       "Run the proof loops in order, never alternating.",
       "a new SHA alone reruns nothing",
+      "never write that line yourself for a project that has scenarios",
+      "`git merge-base --is-ancestor`",
     ],
     "src/skills/mo-review-orca/SKILL.md": ["write `E2E: not_evaluated reason=standalone`"],
     "src/skills/mo-reviewer/SKILL.md": ["`E2E: not_evaluated reason=standalone` you raise no"],

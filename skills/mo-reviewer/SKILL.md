@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-reviewer or a reviewe
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "518788bfe2fe3f79d44956de8d8ee007ecb8ab32"
+  source_tree: "fbcf76db6025b4b24c155e2a33809e3417489ca2"
 ---
 
 # Review one candidate as a terminal reviewer
@@ -46,7 +46,9 @@ own gate result on `Target`: inspect the backlog and registry statically, never
 run the gate yourself, and take `not_run` as the caller's evidence rather than
 a check you owe. The `E2E` field decides the E2E
 lens the protocol describes: with `E2E-Evidence` lines or
-`E2E: not_applicable` the lens is required, and with
+`E2E: not_applicable` of either reason the lens is required — a
+`reason=no_task_scenarios` line is checked for a scenario the task now needs —
+and with
 `E2E: not_evaluated reason=standalone` you raise no `e2e_affected` or
 `e2e_missing` and never ask for E2E to be run.
 

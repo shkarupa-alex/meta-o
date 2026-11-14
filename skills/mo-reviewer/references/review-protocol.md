@@ -148,7 +148,9 @@ The caller sets the E2E mode in the brief, in exactly one of three forms:
 
 - `E2E-Evidence` and `E2E-Coverage` lines, one pair per scenario — the
   orchestrated lifecycle;
-- `E2E: not_applicable reason=<…>` — the project has no E2E scenarios;
+- `E2E: not_applicable reason=no_task_scenarios sha=<40-hex> source=<dispatch-id> basis=<…>`
+  — the project has scenarios and `mo-e2e` selected none for the task, or
+  `E2E: not_applicable reason=<…>` — the project has no E2E scenarios;
 - `E2E: not_evaluated reason=standalone` — a standalone review with no separate
   E2E request.
 
@@ -165,7 +167,11 @@ whether the candidate made a scenario applicable that has no line — including 
 scenario of an unchanged acceptance row whose behavior the task touches,
 restores or depends on, as when a regression fix restores an existing
 requirement without changing its row — and whether an earlier `not_applicable`
-still holds.
+still holds. A `reason=no_task_scenarios` line is checked like an evidence line
+whose coverage is empty: if the task or the range `<its sha>..<candidate>`
+touches, restores or depends on behavior a scenario covers, that scenario is
+missing; a project-wide `not_applicable` no longer holds once the candidate
+defines scenarios.
 
 Two findings answer these questions. Each is an ordinary finding with a severity
 whose text opens with its class literal, as in `F-001 [P2] e2e_affected: …`:

@@ -94,7 +94,8 @@ write `Backlog-Gate: G0 not_run`; the reviewers never run the gate themselves.
 
 Give both briefs exactly one E2E form. Called by the active orchestration skill,
 copy the `E2E-Evidence` and `E2E-Coverage` lines it holds verbatim, or its one
-`E2E: not_applicable reason=<…>` line. Started on its own, without a separate
+`E2E: not_applicable reason=<…>` line, `reason=no_task_scenarios` included.
+Started on its own, without a separate
 E2E request, write `E2E: not_evaluated reason=standalone`: no E2E runs, the
 reviewers raise no `e2e_affected` or `e2e_missing`, and the report to the human
 says E2E was not evaluated.
