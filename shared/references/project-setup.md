@@ -302,6 +302,11 @@ the tab title: prove a stable title under `visualLayouts[].root.tabs[].title`
 from `terminal list --include-visual-layouts --json`, not from
 `terminals[].title`, which a running harness repaints.
 
+OpenCode is the exception to the three flags: Orca refuses `--effort` for it,
+and its own command line takes a model but no effort, so the effort of an
+OpenCode role reaches no launch and is reported as not passed rather than
+proven.
+
 Inspect `ProjectRegistrationSet/1` and `OwnedResourceSet/1`. A folder/no-project
 context without existing same-project isolated worktrees is a typed placement
 gap; setup may recommend a Git-capable project, but project/repository

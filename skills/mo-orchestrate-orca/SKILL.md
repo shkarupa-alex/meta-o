@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-orchestrate-orca; run
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "8b3a6024519a51a26cf4a5662cc60e1f044bf72e"
+  source_tree: "15ed128e13a720f8ac5feea735c3cef7a81048c4"
 ---
 
 # Orchestrate a feature through Orca
@@ -42,7 +42,10 @@ Read role selections with bundled `scripts/mo-models.mjs --show --json
 effort, placement or posture fallback. Launch every role from its
 `launch.<role> = {agent, model, effort, vendor}` as three separate flags
 `--agent`, `--model`, `--effort`, never the whole `route/model/effort` in
-`--model`; every vendor-diversity rule reads `vendor`, not the route, and
+`--model`. OpenCode is the exception: Orca refuses `--effort` for it, so its
+role starts terminal-first with the model alone and its effort is reported as
+not passed, as [Orca native mechanics](references/orca-mechanics.md) says.
+Every vendor-diversity rule reads `vendor`, not the route, and
 `unknown` is never a different vendor. Prove provider-native auth, account
 freshness and one real launch: requested/effective identity equal, the provider
 accepted the model and the first turn observed to begin. When a provider

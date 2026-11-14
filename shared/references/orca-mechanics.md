@@ -77,7 +77,8 @@ orca orchestration worker-start --task <id> --worktree id:<repo>::<path> \
 The three flags come from `launch.<role>` of `mo-models.mjs --show --json`,
 never from splitting the `route/model/effort` string by hand:
 `claude/opus[1m]/high` is `--agent claude --model 'opus[1m]' --effort high`, and
-the whole literal in `--model` is a model no provider has.
+the whole literal in `--model` is a model no provider has. OpenCode never takes
+this route; it starts terminal-first, below.
 
 The receipt carries what was launched: `launch.requested == launch.effective`
 for agent, model and effort, and `turnStart: observed`. A mismatch is a failed
@@ -100,9 +101,14 @@ receipt does not name. Find it with `orca terminal list` on that worktree and
 record its handle in OwnedResourceSet/1 with the worktree, so that release
 closes it first rather than leaving a tab nobody owns.
 
-A harness whose model `worker-start` cannot pass, such as OpenCode, starts
-terminal-first, and so does a start whose readiness the installed version does
-not observe:
+A harness that `worker-start` cannot launch with the role's model and effort
+starts terminal-first, and so does a start whose readiness the installed version
+does not observe. OpenCode is such a harness: Orca 1.4.227 refuses `--effort`
+for it and passes its `--model` only into an existing worktree, never
+`new-child`, and OpenCode 1.19.5 takes `--model <provider/model>` on its command
+line but no effort. The `effort` of an OpenCode `launch.<role>` therefore
+reaches no launch: the launch proof compares agent and model only, and the
+effort is reported as not passed, never as equal to the selection:
 
 ```text
 orca terminal create --worktree id:<repo>::<path> --title <title> --command "<agent argv>" --json
@@ -121,7 +127,7 @@ orca terminal read --terminal <handle> --screen --json \
   # trust_ui → the trust procedure; action=inject → continue;
   # state=busy action=wait → send nothing, wait for tui-idle once more and read again;
   # anything else, or busy again → close that exact handle and return needs_attention
-ps -o args= -p <pid from orca terminal show --json>   # argv carries the requested model and effort
+ps -o args= -p <pid from orca terminal show --json>   # argv carries the requested model, and the effort where the harness takes one
 orca orchestration worker-start --task <id> --worktree id:<repo>::<path> --terminal <handle> --json
 ```
 

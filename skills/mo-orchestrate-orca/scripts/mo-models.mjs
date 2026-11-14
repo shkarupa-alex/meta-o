@@ -20547,7 +20547,9 @@ var USAGE = `mo-models \u2014 read and edit ~/.meta-o/models.json
   --json             machine-readable output
 
 --show --json also publishes launch.<role> = {agent, model, effort, vendor}:
-the three launch flags, and the model's vendor apart from its route. claude is
+the three launch flags, and the model's vendor apart from its route. OpenCode
+takes no effort at launch: Orca refuses --effort for it, so its effort is
+reported as not passed. claude is
 anthropic, codex is openai, opencode is read from the model's provider prefix
 through a closed table; a gateway or an unlisted prefix is unknown, and unknown
 never proves two vendors differ.

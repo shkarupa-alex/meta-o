@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-review-orca or an act
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "ff56df855f26c35e06a97b36e9da458f97166210"
+  source_tree: "4f5dd28991dc0cf726f8d4eaaf098629ee6b5c4e"
 ---
 
 # Review through Orca
@@ -283,9 +283,11 @@ once its harness accepted the model and the first turn began. A provider refusal
 is answered by `scripts/mo-models.mjs --catalog --route <agent>` and one
 question to the caller or human with the recommended replacement, never by a
 silent substitute. Record the Dispatch and the
-terminal of `effects[kind=terminal].id` at once. A harness whose model
-`worker-start` cannot pass starts terminal-first by the recipe in
-[Orca native mechanics](references/orca-mechanics.md). The user's setting for
+terminal of `effects[kind=terminal].id` at once. A harness that `worker-start`
+cannot launch with the role's model and effort, such as OpenCode, starts
+terminal-first by the recipe in
+[Orca native mechanics](references/orca-mechanics.md), which also says how its
+effort is reported. The user's setting for
 new agent tabs owns unsandboxed posture; never duplicate its flags.
 
 The first lifecycle pair uses `deep`. A Dispatch, the provider session, its PTY

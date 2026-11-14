@@ -282,9 +282,11 @@ once its harness accepted the model and the first turn began. A provider refusal
 is answered by `scripts/mo-models.mjs --catalog --route <agent>` and one
 question to the caller or human with the recommended replacement, never by a
 silent substitute. Record the Dispatch and the
-terminal of `effects[kind=terminal].id` at once. A harness whose model
-`worker-start` cannot pass starts terminal-first by the recipe in
-[Orca native mechanics](references/orca-mechanics.md). The user's setting for
+terminal of `effects[kind=terminal].id` at once. A harness that `worker-start`
+cannot launch with the role's model and effort, such as OpenCode, starts
+terminal-first by the recipe in
+[Orca native mechanics](references/orca-mechanics.md), which also says how its
+effort is reported. The user's setting for
 new agent tabs owns unsandboxed posture; never duplicate its flags.
 
 The first lifecycle pair uses `deep`. A Dispatch, the provider session, its PTY

@@ -153,7 +153,10 @@ Launch every role from `launch.<role> = {agent, model, effort, vendor}` of
 `mo-models.mjs --show --json`, passing three separate flags
 `--agent <agent> --model <model> --effort <effort>`: `claude/opus[1m]/high` is
 `--agent claude --model 'opus[1m]' --effort high`. The whole
-`route/model/effort` literal in `--model` launches nothing. Equal
+`route/model/effort` literal in `--model` launches nothing. OpenCode takes no
+effort at launch — Orca refuses `--effort` for it and its own command line has
+no such flag — so an OpenCode role is launched with its model alone, its launch
+proof compares agent and model, and its effort is reported as not passed. Equal
 `launch.requested` and `launch.effective` record what Orca asked for, not what
 the provider accepted: a role is started only once its harness accepted the
 model and the first turn is observed to begin. When the provider refuses the

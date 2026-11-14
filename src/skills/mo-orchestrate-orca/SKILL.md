@@ -41,7 +41,10 @@ Read role selections with bundled `scripts/mo-models.mjs --show --json
 effort, placement or posture fallback. Launch every role from its
 `launch.<role> = {agent, model, effort, vendor}` as three separate flags
 `--agent`, `--model`, `--effort`, never the whole `route/model/effort` in
-`--model`; every vendor-diversity rule reads `vendor`, not the route, and
+`--model`. OpenCode is the exception: Orca refuses `--effort` for it, so its
+role starts terminal-first with the model alone and its effort is reported as
+not passed, as [Orca native mechanics](references/orca-mechanics.md) says.
+Every vendor-diversity rule reads `vendor`, not the route, and
 `unknown` is never a different vendor. Prove provider-native auth, account
 freshness and one real launch: requested/effective identity equal, the provider
 accepted the model and the first turn observed to begin. When a provider
