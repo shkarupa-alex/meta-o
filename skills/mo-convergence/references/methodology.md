@@ -290,10 +290,10 @@ started inside a terminal, pane or session by the selected backend's native
 surface. Deliver the review brief through the backend's ordinary prompt, input,
 task-injection or message field, either as inline text or an accessible file
 path. Never create or execute a shell script to invoke the reviewer harness. The
-brief names the reviewer skill of the same installation and the report literal
-for that Dispatch. Reviewers read by SHA and never run the project's tests,
-linters or QC gate: QC of the candidate is owned by the executor, the
-orchestrator and CI.
+brief names the reviewer skill by its name alone, never by a path or a version,
+and the report literal for that Dispatch. Reviewers read by SHA and never run
+the project's tests, linters or QC gate: QC of the candidate is owned by the
+executor, the orchestrator and CI.
 
 The first required pair uses `deep`. Remediation uses `follow_up`, giving each
 reviewer only its own prior report and finding dispositions; peer bytes remain

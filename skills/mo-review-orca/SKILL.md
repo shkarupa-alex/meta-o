@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-review-orca or an act
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "e05620b61a6b78af984cc87f4158be7edb57fba7"
+  source_tree: "4aea5e2000d5061cee5afa00c35937dc022707ac"
 ---
 
 # Review through Orca
@@ -219,28 +219,13 @@ Create both tasks before launching either worker. The skill creates only two
 reviewers, never an executor/fixer/verifier/subagent. Use stable visible titles
 `<feature>:review:<vendor>`; title is a label and exact handles own cleanup.
 
-Every reviewer Dispatch names `mo-reviewer` under `Reviewer-Skill` together with
-the absolute path of its `SKILL.md` in the installation this skill runs from —
-the sibling directory of this skill — and the installed version, as
-`mo-reviewer <path> source_tree=<40-hex>` followed by
-`skill=<id> protocol=<id> validator=<id>`. `source_tree` is that file's build
-stamp; it names authored inputs only, not the bundled third-party bytes, and
-survives a local edit. So immediately before the Dispatch, take
-`git hash-object` of the installed `SKILL.md`, `references/review-protocol.md`
-and `scripts/mo-review-report.mjs`: those three ids are the bytes that judge the
-report. The round report repeats the whole value next to
-`prepared_body_identity`. Before either Dispatch, read that file; when it is
-absent, unreadable from the reviewer's workspace, carries no stamp, lacks one of
-the three files, or is not the same build as this skill, no Dispatch starts and
-the result is `needs_attention/skill_unavailable`. Same build means that its
-`protocol` and `validator` ids equal `git hash-object` of this skill's own
-`references/review-protocol.md` and `scripts/mo-review-report.mjs`: one build
-ships those two files byte for byte in both skills. The two `source_tree`
-stamps are not compared, because each hashes its own skill's inputs and they
-differ by design. Never paste reviewer
-instructions from a copy of unknown origin. The recorded value is not proved
-against Meta-O history: an installation does not know its source commit, and the
-project under review usually has no Meta-O history at all.
+Every reviewer Dispatch names the reviewer skill `mo-reviewer` by name only,
+`Reviewer-Skill: mo-reviewer`: no path, no build stamp, no hash and no
+comparison of installed copies. Meta-O skills are installed in every agent
+environment that takes part, and the reviewer uses the one its own environment
+has under that name. A reviewer that reports no skill of that name ends its slot
+with `needs_attention/skill_unavailable`; never paste reviewer instructions into
+the Dispatch from this or any other copy.
 
 Start each Claude or Codex reviewer on Orca 1.4.219 or later with:
 

@@ -20,7 +20,7 @@ Every brief carries all of these, in this order, each on its own line or block:
 | `Constraints`          | what the reviewer may not do: no writes, no tests, lint, QC or subagents  |
 | `Ownership`            | which resources are the reviewer's and which are not                      |
 | `Acceptance`           | what a finding must state to be actionable                                |
-| `Reviewer-Skill`       | `mo-reviewer`, the path of its installed `SKILL.md` and its version ids   |
+| `Reviewer-Skill`       | `mo-reviewer` by name only: no path, no version, no hash                  |
 | `Report`               | the authoritative response, the grammar that replaces the generic one     |
 | `Body-File`            | the one path the reviewer creates, validates and sends, or `none`         |
 | `Methodology-Friction` | where to report a rule that got in the way rather than a defect           |
@@ -95,34 +95,17 @@ directory, the field says `Body-File: none` and the reviewer validates the same
 bytes on stdin instead; the caller then accepts the received body on its
 structure alone and says that the prepared bytes were not compared.
 
-`Reviewer-Skill` names `mo-reviewer` and the absolute path of its `SKILL.md` in
-the same installation this caller runs from. The reviewer reads it from there —
-it carries the risk lenses, the no-execution rule and the validator — and never
-from a copy of unknown origin. The reviewer does not start the coordinator's
+`Reviewer-Skill: mo-reviewer` names the reviewer skill and nothing else: no
+path, no build stamp, no hash and no comparison of copies. Meta-O skills are
+installed in every agent environment that takes part, and the reviewer uses the
+skill its own environment has under that name — it carries the risk lenses, the
+no-execution rule and the validator. A path from the caller's installation names
+a file of another environment, and two environments' copies compared by hand are
+a review nobody asked for. A reviewer whose environment has no skill of that
+name says so instead of reviewing, and that slot ends with
+`needs_attention/skill_unavailable`; no reviewer instructions are pasted into
+the Dispatch from another copy. The reviewer does not start the coordinator's
 review skill; calling its validator is not starting a review.
-
-The field also carries the installed version, in the form
-`Reviewer-Skill: mo-reviewer <path> source_tree=<40-hex> skill=<id> protocol=<id> validator=<id>`.
-`source_tree` is the file's build stamp: the authored inputs behind the skill,
-its protocol and its validator. It does not cover the bytes of the bundled
-third-party packages, and an edited installation keeps it unchanged, so it
-cannot name the bytes that judged a report on its own. The three ids can: each
-is `git hash-object` of the installed `SKILL.md`,
-`references/review-protocol.md` and `scripts/mo-review-report.mjs`, computed
-immediately before the Dispatch. An unmodified installation resolves each id to
-the committed generated file with `git log --find-object=<id>`, and an edited
-one yields an id that no commit holds. The body has no version header on
-purpose; the Dispatch context holds the version instead, which is what lets a
-report accepted today be judged again by the grammar that accepted it after the
-installation has moved on. A `SKILL.md` without a readable stamp, or a missing
-or unreadable file among the three, is not a reviewer skill of known origin, and
-no Dispatch starts from it.
-
-These values are a record, not a proof of provenance, and the caller does not
-try to prove that they belong to one Meta-O commit. An installation does not
-know the commit it came from, and a project that uses the methodology holds no
-Meta-O history to search, so such a check would refuse every review there.
-Whoever later needs the source commit resolves the ids where that history is.
 
 ## Grounding sources are reachable from the candidate
 

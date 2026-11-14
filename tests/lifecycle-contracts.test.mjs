@@ -6,7 +6,7 @@
  */
 
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 
@@ -1417,39 +1417,48 @@ test("the Body-File name uses only what the caller holds before sending", () => 
   }
 });
 
-test("every reviewer Dispatch records the installed reviewer version", () => {
-  // The body carries no version header by design, so the Dispatch context is
-  // the only place that can say which grammar accepted a report once the
-  // installation moves on.
+test("a reviewer Dispatch names the reviewer skill by name alone", () => {
+  // Meta-O skills are installed in every agent environment that takes part. A
+  // path from the coordinator's installation names a file of another
+  // environment, and comparing two environments' copies by hash made the
+  // reviewer audit installations instead of the candidate.
   const brief = source("shared/references/review-brief.md").replace(/\s+/gu, " ");
-  const form = "mo-reviewer <path> source_tree=<40-hex> skill=<id> protocol=<id> validator=<id>";
-  assert.equal(brief.includes(`\`Reviewer-Skill: ${form}\``), true);
-  assert.match(brief, /no Dispatch starts from it/u);
-  // The stamp names authored inputs only: bundled package bytes and a local
-  // edit leave it unchanged, so the installed bytes are named by object id.
-  assert.match(brief, /does not cover the bytes of the bundled third-party packages/u);
-  assert.match(brief, /`git log --find-object=<id>`/u);
-  // A record, not a provenance proof: the project under review has no Meta-O
-  // history, so a proof there would refuse every review.
-  assert.match(brief, /a record, not a proof of provenance/u);
+  assert.equal(
+    brief.includes("`Reviewer-Skill: mo-reviewer` names the reviewer skill and nothing else"),
+    true,
+  );
+  const surfaces = [
+    "shared/references/review-brief.md",
+    "shared/references/methodology.md",
+    "shared/references/orca-mechanics.md",
+    "src/skills/mo-review-orca/SKILL.md",
+    "skills/mo-review-orca/SKILL.md",
+    "skills/mo-orchestrate-orca/references/review-brief.md",
+    "src/skills/mo-reviewer/SKILL.md",
+    "docs/architecture/skill-activation.md",
+  ];
+  for (const path of surfaces) {
+    const text = source(path).replace(/\s+/gu, " ");
+    // No path, build stamp, object id or comparison step travels with the name.
+    assert.doesNotMatch(text, /Reviewer-Skill: mo-reviewer [</~]/u, path);
+    assert.doesNotMatch(text, /source_tree=|skill=<id>|protocol=<id>|validator=<id>/u, path);
+    assert.doesNotMatch(text, /git hash-object|same build|same installation/u, path);
+  }
   for (const path of ["src/skills/mo-review-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
     const review = source(path).replace(/\s+/gu, " ");
-    const [stamp, ids] = [
-      "mo-reviewer <path> source_tree=<40-hex>",
-      "skill=<id> protocol=<id> validator=<id>",
-    ];
-    assert.equal(review.includes(`\`${stamp}\` followed by \`${ids}\``), true, path);
-    assert.match(review, /immediately before the Dispatch, take `git hash-object`/u, path);
-    assert.match(review, /carries no stamp, lacks one of the three files/u, path);
-    // "Same build" is decidable from the record and this skill's own files.
-    assert.match(review, /Same build means that its `protocol` and `validator` ids equal/u, path);
-    assert.match(review, /The two `source_tree` stamps are not compared/u, path);
-    assert.match(review, /repeats the whole value next to `prepared_body_identity`/u, path);
+    assert.equal(review.includes("`Reviewer-Skill: mo-reviewer`: no path"), true, path);
+    // A reviewer without the skill still stops the slot rather than reviewing
+    // from instructions pasted out of another copy.
+    assert.match(
+      review,
+      /`needs_attention\/skill_unavailable`; never paste reviewer instructions/u,
+      path,
+    );
   }
-  // The stamp can name all three only while the skill bundles the other two.
-  for (const bundled of ["references/review-protocol.md", "scripts/mo-review-report.mjs"]) {
-    assert.equal(existsSync(join(ROOT, "skills", "mo-reviewer", bundled)), true, bundled);
-  }
+  const activation = source("docs/architecture/skill-activation.md").replace(/\s+/gu, " ");
+  assert.match(activation, /установленный под этим именем в его собственной среде/u);
+  assert.match(activation, /`needs_attention\/skill_unavailable`/u);
+  // The build stamp stays for its one remaining consumer, mo-debug.
   assert.match(source("skills/mo-reviewer/SKILL.md"), /^ {2}source_tree: "[0-9a-f]{40}"$/mu);
 });
 
