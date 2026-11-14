@@ -201,18 +201,24 @@ test("every installable skill owns three base cases and named regressions", () =
   assert.equal(corpus.size, 12);
   assert.equal(
     [...corpus.values()].reduce((sum, document) => sum + document.cases.length, 0),
-    48,
+    54,
   );
   const regressions = [...corpus.values()].flatMap(({ cases }) =>
     cases.filter((item) => item.class === "regression").map(({ id }) => id),
   );
   assert.deepEqual(regressions.sort(), [
     "mo-orchestrate-orca.regression-cleanroom-after-findings",
+    "mo-orchestrate-orca.regression-compaction-reground",
+    "mo-orchestrate-orca.regression-consult-other-vendor",
     "mo-orchestrate-orca.regression-e2e-before-review",
     "mo-orchestrate-orca.regression-e2e-missing-scenario",
     "mo-orchestrate-orca.regression-e2e-not-applicable",
     "mo-orchestrate-orca.regression-e2e-partial-rerun",
     "mo-orchestrate-orca.regression-e2e-unaffected-no-rerun",
+    "mo-orchestrate-orca.regression-handoff-ack-status",
+    "mo-orchestrate-orca.regression-idle-input-running-child",
+    "mo-orchestrate-orca.regression-model-refused",
+    "mo-orchestrate-orca.regression-quiet-timeout-completed",
     "mo-orchestrate-orca.regression-spec-decision-anchor",
     "mo-review-orca.regression-hot-follow-up",
     "mo-review-orca.regression-idle-composer",
@@ -271,10 +277,10 @@ test("complete evidence binds every case to candidate, revision and approved ide
   const validated = validateEvidence(ROOT, evidence, HEAD, true, {
     criticalProfile: "opencode/llamacpp/qwen3.8-27b/default",
   });
-  // 48 cases on five profiles, each its own native execution.
-  assert.equal(validated.envelopes, 240);
+  // 54 cases on five profiles, each its own native execution.
+  assert.equal(validated.envelopes, 270);
   assert.deepEqual(validated.nonPass, []);
-  assert.equal(validated.aggregate.length, 48);
+  assert.equal(validated.aggregate.length, 54);
   for (const group of validated.aggregate) {
     assert.deepEqual(
       group.coordinates.map(({ matrixProfile }) => matrixProfile),
@@ -1156,7 +1162,7 @@ test("the CLI materializes and validates a missing desired harness without a mod
   const complete = matrix(FULL_MATRIX, (skill, caseId, matrixProfile) =>
     caseId === "find-reuse.positive" && matrixProfile === "desired-opencode" ? evidence : undefined,
   );
-  assert.equal(validateEvidence(ROOT, complete, HEAD, true).envelopes, 240);
+  assert.equal(validateEvidence(ROOT, complete, HEAD, true).envelopes, 270);
   rmSync(temporary, { recursive: true, force: true });
 });
 
