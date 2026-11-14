@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-review-orca or an act
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "395f6b4df99b94b7624a9a301eab249cbc787906"
+  source_tree: "6677fe3580d2c5262aa952a3e4720030ea97fa6a"
 ---
 
 # Review through Orca
@@ -24,6 +24,15 @@ Read [Portable review protocol](references/review-protocol.md),
 [Purpose and architecture contract](references/purpose-and-architecture.md)
 completely. From the same resolved Orca binary also read the version-matched
 `orchestration` and `orca-cli` bundled guides; never install guide copies.
+
+This skill ships its own scripts in `scripts/` beside this `SKILL.md`. Every
+`scripts/<name>` this skill and its references name is that file, never a path
+in the project checkout, and it runs from this skill's directory with the full
+path in double quotes, which also holds for a path with a space:
+
+```text
+node "<this skill's directory>/scripts/mo-review-resource.mjs" --help
+```
 
 Accept only an exact 40-hex `candidate_sha`, intent source, scope, mode, the
 specification and intent-ledger sources and two user-approved vendor-diverse
@@ -389,10 +398,14 @@ the task-specific body that replaces the generic completion format of Orca's
 injected preamble, and carries this command with every value the caller holds.
 The Dispatch id does not exist when the task is written and reaches only the
 reviewer, in Orca's preamble, so `--dispatch` is the one argument the brief
-says to take from there:
+says to take from there. The script is the reviewer's own: the brief names it in
+the directory of the reviewer's installed `mo-reviewer`, quoted, and never by
+this installation's absolute path or as a bare `scripts/…`, which reads as a
+path in the candidate checkout:
 
 ```text
-scripts/mo-review-report.mjs template --verdict <PASS|FINDINGS|UNKNOWN> \
+node "<the reviewer's mo-reviewer directory>/scripts/mo-review-report.mjs" template \
+  --verdict <PASS|FINDINGS|UNKNOWN> \
   --dispatch <id> --candidate <sha> --requested <mode> --effective <mode> \
   [--unknown-reason <reason>]
 ```

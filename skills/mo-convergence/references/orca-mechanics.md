@@ -109,7 +109,7 @@ orca terminal create --worktree id:<repo>::<path> --title <title> --command "<ag
 → record the handle in OwnedResourceSet/1 at once: the caller created it, so the caller closes it
 orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 120000 --json
 orca terminal read --terminal <handle> --screen --json \
-  | node scripts/mo-harness-screen.mjs --harness <claude|codex|opencode> --expect-path <abs>
+  | node "<this skill's directory>/scripts/mo-harness-screen.mjs" --harness <claude|codex|opencode> --expect-path <abs>
   # reads the envelope, requires source=screen, refuses while `draft` holds any
   # composer bytes the frame does not show — a space or a newline is such a byte —
   # and answers one line:

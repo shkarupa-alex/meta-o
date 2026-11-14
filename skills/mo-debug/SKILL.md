@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-debug; read a bounded
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "bf658ea60804a9a0c26442afa8297bd67d8231d5"
+  source_tree: "c87d8b88d2497f2aecc67904e6f5f793f38e1658"
 ---
 
 # Diagnose your own agent sessions
@@ -17,6 +17,15 @@ Read [Обратная связь о методологии](references/methodol
 completely: friction you hit goes to the user in your answer, and this skill
 writes no Issue.
 
+This skill ships its own scripts in `scripts/` beside this `SKILL.md`. Every
+`scripts/<name>` this skill and its references name is that file, never a path
+in the project checkout, and it runs from this skill's directory with the full
+path in double quotes, which also holds for a path with a space:
+
+```text
+node "<this skill's directory>/scripts/mo-debug.mjs" --help
+```
+
 ## What you may read
 
 Take from the user explicit session paths or ids — a Claude session UUID or a
@@ -26,7 +35,7 @@ and never open a session log with any other tool. Only the bundled helper reads
 them:
 
 ```text
-node scripts/mo-debug.mjs scan --session <path-or-id> [--session …] \
+node "<this skill's directory>/scripts/mo-debug.mjs" scan --session <path-or-id> [--session …] \
   [--since <ISO-8601>] [--max-records <n>] \
   [--history <meta-o-checkout>] [--max-history <n>] [--out <new-file>]
 ```

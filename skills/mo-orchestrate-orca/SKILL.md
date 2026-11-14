@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-orchestrate-orca; run
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "bf2b31f3cfafee026a2674c0f3bb87a1a16bfff9"
+  source_tree: "43d6c5032e7784924d726ae580f2411df78661ec"
 ---
 
 # Orchestrate a feature through Orca
@@ -21,6 +21,15 @@ Read [Feature lifecycle](references/methodology.md),
 [Purpose and architecture contract](references/purpose-and-architecture.md)
 completely. Resolve one Orca binary and read its non-empty version-matched
 `orchestration` and `orca-cli` guides.
+
+This skill ships its own scripts in `scripts/` beside this `SKILL.md`. Every
+`scripts/<name>` this skill and its references name is that file, never a path
+in the project checkout, and it runs from this skill's directory with the full
+path in double quotes, which also holds for a path with a space:
+
+```text
+node "<this skill's directory>/scripts/mo-models.mjs" --help
+```
 
 The session the user asked to orchestrate is the orchestrator. An unset
 `orchestrator` role does not block the start and is not a reason to ask which

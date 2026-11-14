@@ -17,6 +17,15 @@ Read [Feature lifecycle](references/methodology.md) and
 friction you hit goes to the user in your answer, and this skill writes no
 Issue.
 
+This skill ships its own scripts in `scripts/` beside this `SKILL.md`. Every
+`scripts/<name>` this skill and its references name is that file, never a path
+in the project checkout, and it runs from this skill's directory with the full
+path in double quotes, which also holds for a path with a space:
+
+```text
+node "<this skill's directory>/scripts/mo-review-resource.mjs" --help
+```
+
 ## Gather positions
 
 Ask the agent doing the work, and every reviewer whose slot is still hot, one

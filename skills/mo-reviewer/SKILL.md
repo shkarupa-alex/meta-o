@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-reviewer or a reviewe
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "fdb50e7ddae6d645f4ff1ae042122e85fd633e8e"
+  source_tree: "2770c5a4bc39830019758b185015d320c8d4998a"
 ---
 
 # Review one candidate as a terminal reviewer
@@ -20,6 +20,15 @@ Read [Portable review protocol](references/review-protocol.md) and
 [Обратная связь о методологии](references/methodology-feedback.md) completely.
 The protocol owns the stages, severities and the report grammar; this page says
 how one reviewer turns a brief into one report nobody has to buy twice.
+
+This skill ships its own scripts in `scripts/` beside this `SKILL.md`. Every
+`scripts/<name>` this skill and its references name is that file, never a path
+in the project checkout, and it runs from this skill's directory with the full
+path in double quotes, which also holds for a path with a space:
+
+```text
+node "<this skill's directory>/scripts/mo-review-input.mjs" --help
+```
 
 ## Before reading the change
 
@@ -116,7 +125,8 @@ Print the literal for this very Dispatch and fill it in instead of rebuilding
 the service lines:
 
 ```text
-node scripts/mo-review-report.mjs template --verdict <PASS|FINDINGS|UNKNOWN> \
+node "<this skill's directory>/scripts/mo-review-report.mjs" template \
+  --verdict <PASS|FINDINGS|UNKNOWN> \
   --dispatch <id> --candidate <sha> --requested <mode> --effective <mode> \
   [--unknown-reason <reason>]
 ```
@@ -129,8 +139,8 @@ With `Body-File: <path>` in the brief, create that file once through the
 validator, which checks the bytes before writing and refuses an existing file:
 
 ```text
-node scripts/mo-review-report.mjs prepare --file <Body-File> --dispatch <id> \
-  --candidate <sha> --requested <mode> --effective <mode>  < report
+node "<this skill's directory>/scripts/mo-review-report.mjs" prepare --file <Body-File> \
+  --dispatch <id> --candidate <sha> --requested <mode> --effective <mode>  < report
 ```
 
 A `status=malformed` line names the reason and line; fix the draft and run it

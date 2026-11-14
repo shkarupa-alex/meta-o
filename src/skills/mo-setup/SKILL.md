@@ -21,6 +21,15 @@ JavaScript/TypeScript read
 [TypeScript QC profile](references/qc-typescript.md). Read both for a mixed
 project.
 
+This skill ships its own scripts in `scripts/` beside this `SKILL.md`. Every
+`scripts/<name>` this skill and its references name is that file, never a path
+in the project checkout, and it runs from this skill's directory with the full
+path in double quotes, which also holds for a path with a space:
+
+```text
+node "<this skill's directory>/scripts/mo-backlog.mjs" --help
+```
+
 Inspect substance: business/architecture ids, glossary, README, byte-identical
 agent contracts, temporary feature backlog, acceptance/E2E, purpose, mature
 language gates and one deterministic non-mutating aggregate QC. Require the

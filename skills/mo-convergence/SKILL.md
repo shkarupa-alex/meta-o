@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-convergence; ask the 
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "4f616d83777473ff76406131c39363ccc3663e79"
+  source_tree: "e6729f04c624e4aeb704ac4d969e0ee6af6a1ce4"
 ---
 
 # Diagnose work that does not converge
@@ -17,6 +17,15 @@ Read [Feature lifecycle](references/methodology.md) and
 [Обратная связь о методологии](references/methodology-feedback.md) completely:
 friction you hit goes to the user in your answer, and this skill writes no
 Issue.
+
+This skill ships its own scripts in `scripts/` beside this `SKILL.md`. Every
+`scripts/<name>` this skill and its references name is that file, never a path
+in the project checkout, and it runs from this skill's directory with the full
+path in double quotes, which also holds for a path with a space:
+
+```text
+node "<this skill's directory>/scripts/mo-review-resource.mjs" --help
+```
 
 ## Gather positions
 

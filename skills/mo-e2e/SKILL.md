@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-e2e or an active mo-o
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "3cfd5318a6bdec29d2281429d1ca0248edf811f4"
+  source_tree: "bd9045f1ddb3ea39ec635fc1994d3cdb0dc04fe4"
 ---
 
 # Agent-required end-to-end verification
@@ -15,6 +15,15 @@ it. A generic request to run tests does not activate this agent lifecycle.
 Read [Обратная связь о методологии](references/methodology-feedback.md)
 completely: friction you hit is reported to the caller as one ordinary
 `Methodology-Friction:` message, and this actor writes no Issue itself.
+
+This skill ships its own scripts in `scripts/` beside this `SKILL.md`. Every
+`scripts/<name>` this skill and its references name is that file, never a path
+in the project checkout, and it runs from this skill's directory with the full
+path in double quotes, which also holds for a path with a space:
+
+```text
+node "<this skill's directory>/scripts/mo-knowledge-layer.mjs" --help
+```
 
 Read the knowledge layer of the candidate with bundled
 `scripts/mo-knowledge-layer.mjs --candidate <sha>`. `not_enabled` is no gap: the

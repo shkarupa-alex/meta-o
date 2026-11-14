@@ -21,6 +21,15 @@ Read [Feature lifecycle](references/methodology.md),
 completely. Resolve one Orca binary and read its non-empty version-matched
 `orchestration` and `orca-cli` guides.
 
+This skill ships its own scripts in `scripts/` beside this `SKILL.md`. Every
+`scripts/<name>` this skill and its references name is that file, never a path
+in the project checkout, and it runs from this skill's directory with the full
+path in double quotes, which also holds for a path with a space:
+
+```text
+node "<this skill's directory>/scripts/mo-models.mjs" --help
+```
+
 The session the user asked to orchestrate is the orchestrator. An unset
 `orchestrator` role does not block the start and is not a reason to ask which
 model this session should use; `--force` and another model generation stay

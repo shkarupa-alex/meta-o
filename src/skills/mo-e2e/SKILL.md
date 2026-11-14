@@ -15,6 +15,15 @@ Read [Обратная связь о методологии](references/methodol
 completely: friction you hit is reported to the caller as one ordinary
 `Methodology-Friction:` message, and this actor writes no Issue itself.
 
+This skill ships its own scripts in `scripts/` beside this `SKILL.md`. Every
+`scripts/<name>` this skill and its references name is that file, never a path
+in the project checkout, and it runs from this skill's directory with the full
+path in double quotes, which also holds for a path with a space:
+
+```text
+node "<this skill's directory>/scripts/mo-knowledge-layer.mjs" --help
+```
+
 Read the knowledge layer of the candidate with bundled
 `scripts/mo-knowledge-layer.mjs --candidate <sha>`. `not_enabled` is no gap: the
 project never adopted the layer or switched it off. `needs_attention` — a

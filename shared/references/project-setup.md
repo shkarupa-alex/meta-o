@@ -272,8 +272,8 @@ Run the bundled posture helper for Codex, Claude Code and OpenCode in applicable
 launch-parent shells:
 
 ```text
-scripts/mo-posture.sh --self-check --shell all
-scripts/mo-posture.sh --shell <zsh|bash|all> -- codex claude opencode
+"<this skill's directory>/scripts/mo-posture.sh" --self-check --shell all
+"<this skill's directory>/scripts/mo-posture.sh" --shell <zsh|bash|all> -- codex claude opencode
 ```
 
 Missing, divergent or unreadable posture is not support. Check workspace trust,

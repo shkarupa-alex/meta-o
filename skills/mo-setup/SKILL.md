@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-setup; inspect or bri
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "6eaf72de2840becaf584c0b86c0aee1aa567d981"
+  source_tree: "a77f7c615b1a21b1bf58c84de0627bfa6dd89c1f"
 ---
 
 # Set up a project for Meta-O
@@ -21,6 +21,15 @@ completely. For Python read [Python QC profile](references/qc-python.md); for
 JavaScript/TypeScript read
 [TypeScript QC profile](references/qc-typescript.md). Read both for a mixed
 project.
+
+This skill ships its own scripts in `scripts/` beside this `SKILL.md`. Every
+`scripts/<name>` this skill and its references name is that file, never a path
+in the project checkout, and it runs from this skill's directory with the full
+path in double quotes, which also holds for a path with a space:
+
+```text
+node "<this skill's directory>/scripts/mo-backlog.mjs" --help
+```
 
 Inspect substance: business/architecture ids, glossary, README, byte-identical
 agent contracts, temporary feature backlog, acceptance/E2E, purpose, mature
