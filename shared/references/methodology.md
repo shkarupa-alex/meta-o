@@ -279,14 +279,18 @@ A failure is what the executor can fix. A scenario the project's E2E contract
 types `blocked:external_capability`, or one that is `not_run` because its
 environment or a required profile is unavailable, is an external block instead:
 returning it to the executor would loop without converging, because nothing the
-executor changes removes the block. Such a scenario is never sent back for a fix
-and never rerun while the block stands. Tell the human once — the scenario, its
-result and the Issue or missing capability behind it — keep its line as section
-8 says, and let the review start once every other selected scenario has passed.
-The block stops only what depends on it; the feature ends no better than
-`needs_attention/external_blocked` for a typed external capability, or
-`needs_attention/verification_blocked` for a missing environment or profile,
-until the scenario passes.
+executor changes removes the block. Unavailable means that only a human's action
+restores it — the profile is not approved or not installed, access is missing,
+the environment is broken. An exhausted subscription window or a temporary
+provider refusal is no external block: it is a wait for the next window or a
+retry through the shared waiter, and nobody is woken for it. Such a scenario is
+never sent back for a fix and never rerun while the block stands. Tell the human
+once — the scenario, its result and the Issue or missing capability behind it —
+keep its line as section 8 says, and let the review start once every other
+selected scenario has passed. The block stops only what depends on it; the
+feature ends no better than `needs_attention/external_blocked` for a typed
+external capability, or `needs_attention/verification_blocked` for a missing
+environment or profile, until the scenario passes.
 
 After the executor settles, validate the branch, clean worktree, commit object
 and full `HEAD`, then freeze that SHA. Start both reviewer sessions concurrently
@@ -608,17 +612,21 @@ E2E-Coverage: <scenario-id> acceptance=<row-id>[,<row-id>…] signals=<observed 
 ```
 
 `mo-e2e` prints the same line with `fail`, `unknown` or another result for a
-scenario that did not pass; such a line is not evidence. A `fail`, an `unknown`
-or a `not_run` for a rejected candidate or a wrong placement never enters a
-brief. An external block of section 5 — `result=blocked:external_capability`, or
-`result=not_run` for an unavailable environment or profile — enters the brief
-verbatim as an unproven scenario: it tells the reviewers the scenario is known
-and open, so they raise no `e2e_missing` for it, and it never counts as a pass.
-The review brief and the final report copy these lines verbatim. A partial rerun
-replaces only the lines of the scenarios it reran. After a context compaction,
-reread the lines from Orca's responses rather than from memory. There is no
-shared E2E SHA: one SHA for every scenario either loses each scenario's range or
-forces a full rerun.
+scenario that did not pass; such a line is not evidence. A line with
+`result=blocked:external_capability` or `result=not_run` ends with
+`cause=<capability|environment|profile>:<name>`, the block in the line itself,
+so a reader of the brief can tell an external block from a caller's error. A
+`fail`, an `unknown` or a `not_run` for a rejected candidate or a wrong
+placement never enters a brief. An external block of section 5 —
+`result=blocked:external_capability`, or `result=not_run` with
+`cause=environment:…` or `cause=profile:…` — enters the brief verbatim as an
+unproven scenario: it tells the reviewers the scenario is known and open, so
+they raise no `e2e_missing` for it, and it never counts as a pass. The review
+brief and the final report copy these lines verbatim. A partial rerun replaces
+only the lines of the scenarios it reran. After a context compaction, reread the
+lines from Orca's responses rather than from memory. There is no shared E2E SHA:
+one SHA for every scenario either loses each scenario's range or forces a full
+rerun.
 
 A scenario's evidence on an ancestor of the final SHA holds as long as the final
 pair raised no `e2e_affected` or `e2e_missing` finding about it. A historical

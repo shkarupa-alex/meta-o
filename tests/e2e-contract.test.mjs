@@ -185,6 +185,10 @@ test("every actor reads the E2E proof order and the per-scenario evidence form",
   // A scenario the executor cannot fix used to bounce back to it forever and
   // keep the review from starting; only `fail` and `unknown` hold review now.
   const externalBlock = "is an external block";
+  // The block travels in the line itself, so a reviewer can tell it from a
+  // caller's error without a note only the orchestrator saw.
+  const blockedEvidence =
+    "E2E-Evidence: <scenario-id> sha=<40-hex> result=<blocked:external_capability|not_run> source=<dispatch-id> cause=<capability|environment|profile>:<name>";
   const expectations = {
     "shared/references/methodology.md": [
       "The two proof loops run in order and never alternate.",
@@ -197,10 +201,12 @@ test("every actor reads the E2E proof order and the per-scenario evidence form",
       "`git merge-base --is-ancestor <sha> <candidate>`",
       "A `fail` or `unknown` never reaches a reviewer",
       externalBlock,
+      "An exhausted subscription window or a temporary provider refusal is no external block",
     ],
     "shared/references/review-brief.md": [
       // The brief also carries an external block as a known, unproven scenario.
-      "E2E-Evidence: <scenario-id> sha=<40-hex> result=<pass|not_applicable|blocked:external_capability|not_run> source=<dispatch-id>",
+      evidence,
+      blockedEvidence,
       externalBlock,
       "never enters a brief",
       coverage,
@@ -215,6 +221,7 @@ test("every actor reads the E2E proof order and the per-scenario evidence form",
       "Overlapping paths are a hint, not a verdict",
       "A `reason=no_task_scenarios` line is checked like an evidence line",
       "is an external block the caller already reported",
+      "such a line without that `cause=` is the same `UNKNOWN`",
     ],
     "src/skills/mo-e2e/SKILL.md": [
       evidence,
@@ -222,6 +229,7 @@ test("every actor reads the E2E proof order and the per-scenario evidence form",
       "`scope=task` or `scope=full`",
       noTaskScenarios,
       "The caller starts no review while a `fail` or `unknown` stands.",
+      blockedEvidence,
       externalBlock,
       "is the caller's own error, never an external block",
     ],
@@ -232,6 +240,7 @@ test("every actor reads the E2E proof order and the per-scenario evidence form",
       "`git merge-base --is-ancestor`",
       externalBlock,
       "never send it back and never rerun it while the block stands",
+      "an exhausted subscription window or a temporary provider refusal is a wait, not a block",
     ],
     "src/skills/mo-review-orca/SKILL.md": [
       "write `E2E: not_evaluated reason=standalone`",

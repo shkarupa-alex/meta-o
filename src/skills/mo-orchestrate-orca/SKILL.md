@@ -165,7 +165,9 @@ touches, including unchanged acceptance rows the task restores or depends on —
 return a `fail` or `unknown` to the executor and rerun only those scenarios with
 `scenarios=<id,…>` until every one passes. A `blocked:external_capability` the
 project's E2E contract types, or a `not_run` of an unavailable environment or
-profile, is an external block the executor cannot fix: never send it back and
+profile that only a human's action restores, is an external block the executor
+cannot fix — an exhausted subscription window or a temporary provider refusal is
+a wait, not a block: never send it back and
 never rerun it while the block stands; tell the human once with the scenario,
 its result and the Issue or missing capability, carry its line verbatim into the
 brief as unproven, start review once every other selected scenario passed, and

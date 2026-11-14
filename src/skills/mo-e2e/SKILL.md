@@ -81,6 +81,7 @@ caller copies verbatim into the review brief and the final report:
 
 ```text
 E2E-Evidence: <scenario-id> sha=<40-hex> result=<pass|not_applicable> source=<dispatch-id>
+E2E-Evidence: <scenario-id> sha=<40-hex> result=<blocked:external_capability|not_run> source=<dispatch-id> cause=<capability|environment|profile>:<name>
 E2E-Coverage: <scenario-id> acceptance=<row-id>[,<row-id>…] signals=<observed signs> paths=<key paths>
 ```
 
@@ -92,11 +93,14 @@ gets its line, with `result=` naming its lowercase result such as `fail`,
 `unknown`, `not_run` or `blocked:external_capability`; only `pass` and
 `not_applicable` are evidence. The caller starts no review while a `fail` or
 `unknown` stands. A `blocked:external_capability`, or a `not_run` because a
-required environment or approved profile is unavailable, is an external block
-the executor cannot fix, so say beside it which environment, profile or named
-capability was missing: the caller carries that line into the review as
-unproven rather than looping on it. A `not_run` for a rejected candidate or a
-wrong placement is the caller's own error, never an external block.
+required environment or approved profile is unavailable and only a human's
+action restores it, is an external block the executor cannot fix, so its line
+ends with `cause=` naming the missing capability, environment or profile: the
+caller carries that line into the review as unproven rather than looping on it.
+An exhausted subscription window or a temporary provider refusal is no such
+block: wait for the window or retry, and report the scenario once it ran. A
+`not_run` for a rejected candidate or a wrong placement is the caller's own
+error, never an external block.
 
 When the project has scenarios and `scope=task` selects none, because the task
 touches, restores and depends on no behavior a scenario covers, the complete
