@@ -1409,7 +1409,7 @@ test("the Body-File name uses only what the caller holds before sending", () => 
   // placeholder that no sent brief can fill.
   // The Dispatch ordinal keeps the one repeat Dispatch of a round off the
   // earlier body, which `prepare` would refuse as existing.
-  const form = "`Body-File: <dir>/slot-<a|b>-r<round>-d<n>.md`";
+  const form = "`Body-File: <slot dir>/slot-<a|b>-r<round>-d<n>.md`";
   for (const path of [
     "shared/references/review-brief.md",
     "src/skills/mo-review-orca/SKILL.md",
@@ -1518,9 +1518,11 @@ test("shipped handoff and live-eval instructions match their fail-closed callers
   const methodology = source("shared/references/methodology.md");
   const response = source("docs/architecture/settled-final-response.md");
   for (const document of [review, methodology, response]) {
-    assert.match(document, /hard[- ]link/u);
     assert.match(document, /create-if-absent/u);
-    assert.match(document, /overwrite-capable rename|Переименование с возможностью перезаписи/iu);
+    assert.match(
+      document,
+      /overwrite-capable\s+rename|Переименование\s+с\s+возможностью\s+перезаписи/iu,
+    );
   }
   assert.match(
     source("docs/e2e.md"),

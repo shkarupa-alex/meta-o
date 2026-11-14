@@ -15,7 +15,6 @@ import {
   realpathSync,
   writeSync as writeSync2
 } from "node:fs";
-import { basename as basename2 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -2589,10 +2588,10 @@ function resolveAll(constructs2, events, context) {
   const called = [];
   let index2 = -1;
   while (++index2 < constructs2.length) {
-    const resolve = constructs2[index2].resolveAll;
-    if (resolve && !called.includes(resolve)) {
-      events = resolve(events, context);
-      called.push(resolve);
+    const resolve2 = constructs2[index2].resolveAll;
+    if (resolve2 && !called.includes(resolve2)) {
+      events = resolve2(events, context);
+      called.push(resolve2);
     }
   }
   return events;
@@ -7338,15 +7337,26 @@ import {
   constants,
   fstatSync,
   fsyncSync,
-  linkSync,
+  lstatSync,
   mkdtempSync,
   openSync,
   readSync,
+  rmdirSync,
   unlinkSync,
   writeSync
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
+var SLOTS = ["A", "B"];
+var FACTS_FILE = "stage.json";
+var RECEIVED_FILE = "worker-done.md";
+var PAIR_ID = /^[a-f0-9]{12}$/u;
+var SLOT_DIR = /^mo-review-([a-f0-9]{12})-([AB])-[A-Za-z0-9]{6}$/u;
+var VENDOR = /^[a-z0-9][a-z0-9-]{0,31}$/u;
+var SHA256 = /^[a-f0-9]{64}$/u;
+var DECIMAL = /^(?:0|[1-9][0-9]*)$/u;
+var CREATE = constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW;
+var IDENTITY_REASONS = /* @__PURE__ */ new Set(["execution_mismatch", "candidate_mismatch", "mode_mismatch"]);
 function readReportBytes(path) {
   let fd;
   try {
@@ -7355,16 +7365,21 @@ function readReportBytes(path) {
     return { error: error.code === "ELOOP" ? "symlink" : "unreadable" };
   }
   try {
-    const stat = fstatSync(fd);
+    const stat = fstatSync(fd, { bigint: true });
     if (!stat.isFile()) return { error: "not_regular_file" };
-    const buffer = Buffer.alloc(stat.size);
+    const size = Number(stat.size);
+    const buffer = Buffer.alloc(size);
     let read = 0;
-    while (read < stat.size) {
-      const chunk = readSync(fd, buffer, read, stat.size - read, read);
+    while (read < size) {
+      const chunk = readSync(fd, buffer, read, size - read, read);
       if (chunk === 0) break;
       read += chunk;
     }
-    return { buffer: buffer.subarray(0, read) };
+    return {
+      buffer: buffer.subarray(0, read),
+      dev: stat.dev.toString(),
+      ino: stat.ino.toString()
+    };
   } finally {
     closeSync(fd);
   }
@@ -7374,22 +7389,34 @@ function decodeReport(buffer) {
   if (!Buffer.from(text3, "utf8").equals(buffer)) return { error: "invalid_utf8" };
   return { text: text3 };
 }
-var VENDOR = /^[a-z0-9][a-z0-9-]{0,31}$/u;
-var LINK_UNSUPPORTED = /* @__PURE__ */ new Set(["EPERM", "ENOSYS", "EXDEV", "EMLINK"]);
-function linkFailureReason(code) {
-  if (code === "EEXIST") return "final_exists";
-  if (LINK_UNSUPPORTED.has(code)) return "link_unsupported";
-  return "permission";
-}
+var sha256 = (buffer) => createHash("sha256").update(buffer).digest("hex");
 function namespace() {
   const previous2 = process.umask(63);
+  const created = [];
   try {
-    const dir = mkdtempSync(join(tmpdir(), `mo-review-${randomBytes(6).toString("hex")}-`));
-    chmodSync(dir, 448);
-    return { dir, pairId: basename(dir) };
+    const pairId = randomBytes(6).toString("hex");
+    for (const slot of SLOTS) {
+      const dir = mkdtempSync(join(tmpdir(), `mo-review-${pairId}-${slot}-`));
+      created.push(dir);
+      chmodSync(dir, 448);
+    }
+    return { pairId, slots: { A: created[0], B: created[1] } };
+  } catch (error) {
+    for (const dir of created) rmdirSync(dir);
+    throw error;
   } finally {
     process.umask(previous2);
   }
+}
+function slotIdentity(dir) {
+  const match = SLOT_DIR.exec(basename(resolve(dir)));
+  if (match === null) return null;
+  try {
+    if (!lstatSync(dir).isDirectory()) return null;
+  } catch {
+    return null;
+  }
+  return { pairId: match[1], slot: match[2] };
 }
 function syncDirectory(dir) {
   let dfd;
@@ -7401,67 +7428,269 @@ function syncDirectory(dir) {
     if (dfd !== void 0) closeSync(dfd);
   }
 }
-function linkIntoPlace(fd, sibling, final, buffer) {
-  const first = fstatSync(fd);
-  if (first.size !== buffer.length || first.nlink !== 1) {
-    return { status: "unknown", reason: "identity_changed" };
-  }
-  try {
-    linkSync(sibling, final);
-  } catch (error) {
-    return { status: "unknown", reason: linkFailureReason(error.code) };
-  }
-  const second = fstatSync(fd);
-  if (second.dev !== first.dev || second.ino !== first.ino || second.nlink !== 2) {
-    return { status: "unknown", reason: "identity_changed" };
-  }
-  return { status: "staged", dev: first.dev, ino: first.ino };
+function writeAll(fd, buffer) {
+  let written = 0;
+  while (written < buffer.length) written += writeSync(fd, buffer, written);
+  fsyncSync(fd);
 }
-function stage({ dir, slot, vendor, buffer, expected }) {
-  if (!["A", "B"].includes(slot)) return { status: "unknown", reason: "slot" };
-  if (!VENDOR.test(vendor)) return { status: "unknown", reason: "vendor" };
-  const decoded = decodeReport(buffer);
-  if (decoded.error) return { status: "unknown", reason: decoded.error };
-  const verdict = validateReport(decoded.text, expected);
-  if (verdict.status === "malformed") return { status: "unknown", reason: "malformed", verdict };
-  const sibling = join(dir, `.stage-${randomBytes(8).toString("hex")}`);
-  const final = join(dir, `${slot}-${vendor}.md`);
-  const flags = constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW;
-  const fd = openSync(sibling, flags, 384);
+function stagedSource(slotDir, file, buffer) {
+  if (buffer !== void 0) return { buffer };
+  if (resolve(dirname(file)) !== resolve(slotDir) || basename(file) === FACTS_FILE) {
+    return { error: "report_outside_slot" };
+  }
+  return readReportBytes(file);
+}
+function refusal(verdict) {
+  if (verdict.reason === "round_mismatch") return { reason: "round_mismatch", verdict };
+  if (IDENTITY_REASONS.has(verdict.reason)) {
+    return { reason: "report_identity_mismatch", verdict };
+  }
+  return { reason: "malformed", verdict };
+}
+function publishReceived(slotDir, buffer) {
+  const path = join(slotDir, RECEIVED_FILE);
+  let fd;
   try {
-    writeSync(fd, buffer);
-    fsyncSync(fd);
-    const placed = linkIntoPlace(fd, sibling, final, buffer);
-    if (placed.status !== "staged") return placed;
+    fd = openSync(path, CREATE, 384);
+  } catch (error) {
+    return { error: error.code === "EEXIST" ? "final_exists" : "permission" };
+  }
+  try {
+    writeAll(fd, buffer);
+    const stat = fstatSync(fd, { bigint: true });
+    return { path, buffer, dev: stat.dev.toString(), ino: stat.ino.toString() };
+  } finally {
+    closeSync(fd);
+  }
+}
+function stage({ slotDir, slot, pairId, dispatch, vendor, file, buffer, expected }) {
+  const identity = slotIdentity(slotDir);
+  if (identity === null || identity.pairId !== pairId || identity.slot !== slot) {
+    return { status: "unknown", reason: "slot_identity_mismatch" };
+  }
+  if (!VENDOR.test(vendor ?? "")) return { status: "unknown", reason: "vendor" };
+  const source = stagedSource(slotDir, file, buffer);
+  if (source.error) return { status: "unknown", reason: source.error };
+  const decoded = decodeReport(source.buffer);
+  if (decoded.error) return { status: "unknown", reason: decoded.error };
+  const verdict = validateReport(decoded.text, { ...expected, execution: dispatch });
+  if (verdict.status === "malformed") return { status: "unknown", ...refusal(verdict) };
+  const factsPath = join(slotDir, FACTS_FILE);
+  let fd;
+  try {
+    fd = openSync(factsPath, CREATE, 384);
+  } catch (error) {
+    return { status: "unknown", reason: error.code === "EEXIST" ? "stage_exists" : "permission" };
+  }
+  try {
+    const published = buffer === void 0 ? { ...source, path: file } : null;
+    const report = published ?? publishReceived(slotDir, source.buffer);
+    if (report.error) {
+      unlinkSync(factsPath);
+      return { status: "unknown", reason: report.error };
+    }
+    const facts = {
+      schema_version: 1,
+      pair_id: pairId,
+      slot,
+      dispatch,
+      vendor,
+      candidate: expected.candidate,
+      execution: dispatch,
+      round: { ...expected.round },
+      report: {
+        basename: basename(report.path),
+        bytes: source.buffer.length,
+        dev: report.dev,
+        ino: report.ino,
+        sha256: sha256(source.buffer)
+      }
+    };
+    writeAll(fd, Buffer.from(`${JSON.stringify(facts, null, 2)}
+`, "utf8"));
     return {
       status: "staged",
       slot,
-      path: final,
-      bytes: buffer.length,
-      dev: placed.dev,
-      ino: placed.ino,
-      sha256: createHash("sha256").update(buffer).digest("hex")
+      path: join(slotDir, facts.report.basename),
+      bytes: facts.report.bytes,
+      sha256: facts.report.sha256,
+      verdict
     };
   } finally {
     closeSync(fd);
-    unlinkSync(sibling);
-    syncDirectory(dir);
+    syncDirectory(slotDir);
   }
 }
-function pair({ dir, pairId, slots }) {
-  const parts = verifySlots(dir, slots);
-  if (!Array.isArray(parts)) return parts;
-  return { status: "paired", line: `Review-Pair: ${pairId} ${parts.join(" ")}` };
+function roundShaped(round) {
+  const fields = [round?.attempt, round?.limit, round?.deepReads];
+  if (!fields.every(Number.isSafeInteger)) return false;
+  const line = roundLine(round);
+  return roundLine(parseRound(line.slice("Round: ".length)).round) === line;
 }
-function preview({ dir, pairId, slot }) {
-  const parts = verifySlots(dir, [slot]);
-  if (!Array.isArray(parts)) return parts;
-  return { status: "previewed", line: `Review-Preview: ${pairId} ${parts[0]}` };
+var matches = (pattern) => (value) => typeof value === "string" && pattern.test(value);
+var FACT_FIELDS = {
+  schema_version: (value) => value === 1,
+  pair_id: matches(PAIR_ID),
+  slot: (value) => SLOTS.includes(value),
+  dispatch: matches(/^\S+$/u),
+  vendor: matches(VENDOR),
+  candidate: matches(/^[a-f0-9]{40}$/u),
+  execution: matches(/^\S+$/u),
+  round: roundShaped,
+  report: (report) => fieldsShaped(report, REPORT_FIELDS)
+};
+var REPORT_FIELDS = {
+  basename: (value) => typeof value === "string" && value === basename(value) && value !== FACTS_FILE,
+  bytes: Number.isSafeInteger,
+  dev: matches(DECIMAL),
+  ino: matches(DECIMAL),
+  sha256: matches(SHA256)
+};
+function fieldsShaped(object, schema) {
+  if (object === null || typeof object !== "object") return false;
+  const keys = Object.keys(object);
+  const names = Object.keys(schema);
+  return keys.length === names.length && names.every((name) => Object.hasOwn(object, name) && schema[name](object[name]));
+}
+function factsShaped(facts) {
+  return fieldsShaped(facts, FACT_FIELDS) && facts.execution === facts.dispatch;
+}
+function readFacts(slotDir) {
+  const identity = slotIdentity(slotDir);
+  if (identity === null) return { status: "unknown", reason: "slot_identity_mismatch" };
+  const read = readReportBytes(join(slotDir, FACTS_FILE));
+  if (read.error === "unreadable") return { status: "unknown", reason: "stage_missing" };
+  if (read.error) return { status: "unknown", reason: "facts_malformed" };
+  let facts;
+  try {
+    facts = JSON.parse(read.buffer.toString("utf8"));
+  } catch {
+    return { status: "unknown", reason: "facts_malformed" };
+  }
+  if (!factsShaped(facts) || facts.pair_id !== identity.pairId || facts.slot !== identity.slot) {
+    return { status: "unknown", reason: "facts_malformed" };
+  }
+  return { status: "read", facts };
+}
+function observeReport(slotDir, facts) {
+  const path = join(slotDir, facts.report.basename);
+  const read = readReportBytes(path);
+  if (read.error || read.dev !== facts.report.dev || read.ino !== facts.report.ino || read.buffer.length !== facts.report.bytes || sha256(read.buffer) !== facts.report.sha256) {
+    return { status: "unknown", reason: "identity_changed" };
+  }
+  return { status: "observed", path, buffer: read.buffer };
+}
+function preview({ slotDir, slot }) {
+  const identity = slotIdentity(slotDir);
+  if (identity === null || identity.slot !== slot) {
+    return { status: "unknown", reason: "slot_identity_mismatch", slot };
+  }
+  const read = readFacts(slotDir);
+  if (read.status !== "read") return { ...read, slot };
+  const observed = observeReport(slotDir, read.facts);
+  if (observed.status !== "observed") return { ...observed, slot };
+  return {
+    status: "previewed",
+    bytes: read.facts.report.bytes,
+    line: `Review-Preview: ${read.facts.pair_id} ${slot}=${JSON.stringify(observed.path)} ${slot}_bytes=${read.facts.report.bytes}`
+  };
+}
+function pairMismatch(identities, facts, expect) {
+  for (const slot of SLOTS) {
+    if (identities[slot].pairId !== expect.pairId || facts[slot].pair_id !== expect.pairId) {
+      return { reason: "pair_mismatch", slot };
+    }
+  }
+  for (const slot of SLOTS) {
+    if (facts[slot].candidate !== expect.candidate) return { reason: "candidate_mismatch", slot };
+  }
+  for (const slot of SLOTS) {
+    if (roundLine(facts[slot].round) !== roundLine(expect.round)) {
+      return { reason: "round_mismatch", slot };
+    }
+  }
+  if (facts.A.dispatch === facts.B.dispatch) return { reason: "dispatch_reused" };
+  if (facts.A.vendor === "unknown" || facts.B.vendor === "unknown") {
+    return { reason: "vendor_unproven" };
+  }
+  if (facts.A.vendor === facts.B.vendor) return { reason: "vendor_not_diverse" };
+  return null;
+}
+function copyInto(dir, slot, vendor, buffer, facts) {
+  const path = join(dir, `${slot}-${vendor}.md`);
+  let fd;
+  try {
+    fd = openSync(path, CREATE, 384);
+  } catch (error) {
+    return { reason: error.code === "EEXIST" ? "final_exists" : "permission", slot };
+  }
+  try {
+    writeAll(fd, buffer);
+  } finally {
+    closeSync(fd);
+  }
+  const copy = readReportBytes(path);
+  if (copy.error || copy.buffer.length !== facts.bytes || sha256(copy.buffer) !== facts.sha256) {
+    return { reason: "identity_changed", slot };
+  }
+  return { path };
+}
+function pair({ slotA, slotB, expect }) {
+  const dirs = { A: slotA, B: slotB };
+  const identities = { A: slotIdentity(slotA), B: slotIdentity(slotB) };
+  if (identities.A?.slot !== "A" || identities.B?.slot !== "B") {
+    return { status: "unknown", reason: "pair_mismatch" };
+  }
+  const facts = {};
+  for (const slot of SLOTS) {
+    const read = readFacts(dirs[slot]);
+    if (read.status !== "read") return { ...read, slot };
+    facts[slot] = read.facts;
+  }
+  const mismatch = pairMismatch(identities, facts, expect);
+  if (mismatch !== null) return { status: "unknown", ...mismatch };
+  const observed = {};
+  for (const slot of SLOTS) {
+    observed[slot] = observeReport(dirs[slot], facts[slot]);
+    if (observed[slot].status !== "observed") return { ...observed[slot], slot };
+  }
+  const previous2 = process.umask(63);
+  let dir;
+  try {
+    dir = mkdtempSync(join(tmpdir(), `mo-review-${expect.pairId}-pair-`));
+    chmodSync(dir, 448);
+  } finally {
+    process.umask(previous2);
+  }
+  const copies = {};
+  for (const slot of SLOTS) {
+    const copied = copyInto(
+      dir,
+      slot,
+      facts[slot].vendor,
+      observed[slot].buffer,
+      facts[slot].report
+    );
+    if (copied.reason) return { status: "unknown", ...copied, dir };
+    copies[slot] = { path: copied.path, bytes: facts[slot].report.bytes };
+  }
+  syncDirectory(dir);
+  const parts = SLOTS.map(
+    (slot) => `${slot}=${JSON.stringify(copies[slot].path)} ${slot}_bytes=${copies[slot].bytes}`
+  );
+  return {
+    status: "ok",
+    pairId: expect.pairId,
+    dir,
+    a: copies.A,
+    b: copies.B,
+    line: `Review-Pair: ${expect.pairId} ${parts.join(" ")}`
+  };
 }
 var ACK = /^Review-(Preview|Handoff)-Ack: (\S+)((?: [AB]=\d+)+)$/u;
 function ackSlotsValid(kind, slots) {
   if (kind === "Handoff") return slots.length === 2 && slots.includes("A") && slots.includes("B");
-  if (kind === "Preview") return slots.length === 1 && ["A", "B"].includes(slots[0]);
+  if (kind === "Preview") return slots.length === 1 && SLOTS.includes(slots[0]);
   return false;
 }
 function checkAck(line, { kind, pairId, bytes }) {
@@ -7481,31 +7710,6 @@ function checkAck(line, { kind, pairId, bytes }) {
       return { status: "mismatched", reason: "bytes" };
   }
   return { status: "matched" };
-}
-function verifySlots(dir, slots) {
-  const parts = [];
-  for (const expected of slots) {
-    const path = join(dir, `${expected.slot}-${expected.vendor}.md`);
-    let fd;
-    try {
-      fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-    } catch {
-      return { status: "unknown", reason: "identity_changed", slot: expected.slot };
-    }
-    try {
-      const stat = fstatSync(fd);
-      const buffer = Buffer.alloc(stat.size);
-      readSync(fd, buffer, 0, stat.size, 0);
-      const sha256 = createHash("sha256").update(buffer).digest("hex");
-      if (stat.dev !== expected.dev || stat.ino !== expected.ino || stat.size !== expected.bytes || sha256 !== expected.sha256) {
-        return { status: "unknown", reason: "identity_changed", slot: expected.slot };
-      }
-    } finally {
-      closeSync(fd);
-    }
-    parts.push(`${expected.slot}=${JSON.stringify(path)} ${expected.slot}_bytes=${expected.bytes}`);
-  }
-  return parts;
 }
 
 // shared/scripts/mo-review-report.mjs
@@ -7571,7 +7775,7 @@ var UsageError = class extends Error {
 };
 var SHA_VALUE = /^[a-f0-9]{40}$/u;
 var MODE_VALUE = /^(?:fast|deep|follow_up)$/u;
-var DECIMAL = /^(?:0|[1-9][0-9]*)$/u;
+var DECIMAL2 = /^(?:0|[1-9][0-9]*)$/u;
 var VALUES = {
   candidate: [SHA_VALUE, "a full 40-hex SHA"],
   requested: [MODE_VALUE, "fast, deep or follow_up"],
@@ -7580,23 +7784,28 @@ var VALUES = {
   slot: [/^[AB]$/u, "A or B"],
   kind: [/^(?:Preview|Handoff)$/u, "Preview or Handoff"],
   normalization: [/^(?:none|final-newline)$/u, "none or final-newline"],
-  "a-bytes": [DECIMAL, "a decimal size"],
-  "b-bytes": [DECIMAL, "a decimal size"]
+  slots: [/^A,B$/u, "A,B"],
+  "expect-pair-id": [/^[a-f0-9]{12}$/u, "the 12-hex pair id namespace printed"],
+  "expect-candidate": [SHA_VALUE, "a full 40-hex SHA"],
+  "expect-round": [/^Round: /u, "a whole `Round: attempt=\u2026 deep_reads=\u2026 fragment=\u2026` line"],
+  vendor: [
+    /^[a-z0-9][a-z0-9-]{0,31}$/u,
+    "launch.<role>.vendor, such as anthropic, openai or unknown"
+  ],
+  "a-bytes": [DECIMAL2, "a decimal size"],
+  "b-bytes": [DECIMAL2, "a decimal size"]
 };
 var EXPECTATION = "--dispatch <id> --candidate <40-hex> --requested <fast|deep|follow_up>";
 var ROUND_FLAGS = ["attempt", "attempt-limit", "deep-reads", "fragment"];
 var ROUND_USAGE = "--attempt <n> --attempt-limit <limit> --deep-reads <m> --fragment <id>";
 var ROUND_EXAMPLE = "--attempt 1 --attempt-limit 5 --deep-reads 1 --fragment f1";
-var SLOT_FLAGS = ["a", "b"].flatMap(
-  (prefix) => ["vendor", "bytes", "dev", "ino", "sha256"].map((field) => `${prefix}-${field}`)
-);
 var COMMANDS = {
   namespace: {
-    required: [],
+    required: ["slots"],
     optional: [],
-    usage: "namespace",
-    about: "creates one private run directory under system temp and prints it",
-    example: "namespace"
+    usage: "namespace --slots A,B",
+    about: "creates one private 0700 directory per slot under system temp, named mo-review-<pair_id>-<slot>-<random>, and no pair directory",
+    example: "namespace --slots A,B"
   },
   template: {
     required: ["verdict", "dispatch", "candidate", "requested", "effective", ...ROUND_FLAGS],
@@ -7620,32 +7829,42 @@ var COMMANDS = {
     example: `validate --file - --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep ${ROUND_EXAMPLE} < report.md`
   },
   stage: {
-    required: ["dir", "slot", "vendor", "dispatch", "candidate", "requested", ...ROUND_FLAGS],
-    optional: ["file", "effective"],
-    usage: `stage --dir <run dir> --slot A|B --vendor <slug> ${EXPECTATION} [--effective <mode>] ${ROUND_USAGE} [--file <path|->]`,
-    about: "validates one report and publishes it into its slot create-if-absent",
-    example: `stage --dir /tmp/mo-review-x --slot A --vendor anthropic --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep ${ROUND_EXAMPLE} < report.md`
+    required: [
+      "slot-dir",
+      "slot",
+      "pair-id",
+      "dispatch",
+      "candidate",
+      "vendor",
+      "requested",
+      ...ROUND_FLAGS,
+      "file"
+    ],
+    optional: ["effective"],
+    usage: `stage --slot-dir <slot dir> --slot A|B --pair-id <id> ${EXPECTATION} [--effective <mode>] --vendor <launch.<role>.vendor> ${ROUND_USAGE} --file <Body-File|->`,
+    about: "validates one report of the slot and records it in <slot dir>/stage.json once; --file - publishes stdin bytes into the slot first",
+    example: `stage --slot-dir /tmp/mo-review-0a1b2c3d4e5f-A-Xy12Ab --slot A --pair-id 0a1b2c3d4e5f --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep --vendor anthropic ${ROUND_EXAMPLE} --file /tmp/mo-review-0a1b2c3d4e5f-A-Xy12Ab/slot-a-r1-d1.md`
   },
   pair: {
-    required: ["dir", ...SLOT_FLAGS],
+    required: ["slot-a", "slot-b", "expect-pair-id", "expect-candidate", "expect-round"],
     optional: [],
-    usage: "pair --dir <run dir> --a-vendor <slug> --a-bytes <n> --a-dev <n> --a-ino <n> --a-sha256 <hex> --b-vendor <slug> --b-bytes <n> --b-dev <n> --b-ino <n> --b-sha256 <hex>",
-    about: "proves both staged slots are still the published inodes and prints the pair line",
-    example: "pair --dir /tmp/mo-review-x --a-vendor anthropic --a-bytes 1 --a-dev 1 --a-ino 1 --a-sha256 <hex> --b-vendor openai --b-bytes 1 --b-dev 1 --b-ino 1 --b-sha256 <hex>"
+    usage: "pair --slot-a <slot A dir> --slot-b <slot B dir> --expect-pair-id <id> --expect-candidate <40-hex> --expect-round '<Round line>'",
+    about: "checks both stage.json records against the expectation, observes both reports again and copies them into a new pair directory",
+    example: `pair --slot-a /tmp/mo-review-0a1b2c3d4e5f-A-Xy12Ab --slot-b /tmp/mo-review-0a1b2c3d4e5f-B-Qw34Cd --expect-pair-id 0a1b2c3d4e5f --expect-candidate ${"a".repeat(40)} --expect-round 'Round: attempt=1/5 deep_reads=1 fragment=f1'`
   },
   preview: {
-    required: ["dir", "slot"],
-    optional: SLOT_FLAGS,
-    usage: "preview --dir <run dir> --slot A|B, with the five facts of that slot: --a-vendor --a-bytes --a-dev --a-ino --a-sha256 for A, --b-vendor --b-bytes --b-dev --b-ino --b-sha256 for B",
-    about: "proves one staged slot and prints the early preview line",
-    example: "preview --dir /tmp/mo-review-x --slot A --a-vendor anthropic --a-bytes 1 --a-dev 1 --a-ino 1 --a-sha256 <hex>"
+    required: ["slot-dir", "slot"],
+    optional: [],
+    usage: "preview --slot-dir <slot dir> --slot A|B",
+    about: "observes one staged report again and prints the early preview line naming it in its own slot",
+    example: "preview --slot-dir /tmp/mo-review-0a1b2c3d4e5f-A-Xy12Ab --slot A"
   },
   ack: {
     required: ["line", "kind", "pair-id"],
     optional: ["a-bytes", "b-bytes"],
     usage: "ack --kind Preview|Handoff --line <ack text> --pair-id <id> [--a-bytes <n>] [--b-bytes <n>]",
     about: "checks a consumer's acknowledgement against the published sizes",
-    example: "ack --kind Handoff --line 'Review-Handoff-Ack: mo-review-x A=10 B=20' --pair-id mo-review-x --a-bytes 10 --b-bytes 20"
+    example: "ack --kind Handoff --line 'Review-Handoff-Ack: 0a1b2c3d4e5f A=10 B=20' --pair-id 0a1b2c3d4e5f --a-bytes 10 --b-bytes 20"
   }
 };
 var FLAGS = Object.fromEntries(
@@ -7777,50 +7996,34 @@ function commandTemplate(options) {
   return 0;
 }
 function commandStage(options) {
-  const source = options.file === void 0 || options.file === "-" ? null : options.file;
-  const bytes = source === null ? { buffer: readFileSync(0) } : readReportBytes(source);
-  if (bytes.error) {
-    process.stdout.write(`MO-REVIEW-STAGE/1 status=unknown reason=${bytes.error}
-`);
-    return 1;
-  }
+  const fromStdin = options.file === "-";
   const result = stage({
-    dir: options.dir,
+    slotDir: options["slot-dir"],
     slot: options.slot,
+    pairId: options["pair-id"],
+    dispatch: options.dispatch,
     vendor: options.vendor,
-    buffer: bytes.buffer,
+    file: fromStdin ? void 0 : options.file,
+    buffer: fromStdin ? readFileSync(0) : void 0,
     expected: expectationOf(options)
   });
+  if (result.verdict !== void 0 && result.status !== "staged") {
+    process.stdout.write(`${reportLine(result.verdict)}
+`);
+  }
   if (result.status !== "staged") {
     process.stdout.write(`MO-REVIEW-STAGE/1 status=unknown reason=${result.reason}
 `);
     return 1;
   }
   process.stdout.write(
-    `MO-REVIEW-STAGE/1 slot=${result.slot} path=${JSON.stringify(result.path)} bytes=${result.bytes} dev=${result.dev} ino=${result.ino} sha256=${result.sha256}
+    `MO-REVIEW-STAGE/1 status=staged slot=${result.slot} sha256=${result.sha256} bytes=${result.bytes}
 `
   );
   return 0;
 }
-function slotOption(options, slot) {
-  const prefix = slot.toLowerCase();
-  const missing = ["vendor", "bytes", "dev", "ino", "sha256"].map((field) => `${prefix}-${field}`).filter((flag) => options[flag] === void 0);
-  if (missing.length > 0) throw new UsageError(`--${missing.join(", --")} is required`);
-  return {
-    slot,
-    vendor: options[`${prefix}-vendor`],
-    bytes: Number(options[`${prefix}-bytes`]),
-    dev: Number(options[`${prefix}-dev`]),
-    ino: Number(options[`${prefix}-ino`]),
-    sha256: options[`${prefix}-sha256`]
-  };
-}
 function commandPreview(options) {
-  const result = preview({
-    dir: options.dir,
-    pairId: basename2(options.dir),
-    slot: slotOption(options, options.slot)
-  });
+  const result = preview({ slotDir: options["slot-dir"], slot: options.slot });
   if (result.status !== "previewed") {
     process.stdout.write(
       `MO-REVIEW-PAIR/1 status=unknown reason=${result.reason} slot=${result.slot}
@@ -7855,23 +8058,35 @@ function commandAck(options) {
   return result.status === "matched" ? 0 : 1;
 }
 function commandPair(options) {
-  const slots = ["A", "B"].map((slot) => slotOption(options, slot));
-  const result = pair({ dir: options.dir, pairId: basename2(options.dir), slots });
-  if (result.status !== "paired") {
-    process.stdout.write(
-      `MO-REVIEW-PAIR/1 status=unknown reason=${result.reason} slot=${result.slot}
-`
-    );
+  const round = parseRound(options["expect-round"].slice("Round: ".length));
+  if (round.error) throw new UsageError(`pair: --expect-round gives ${round.error}`);
+  const result = pair({
+    slotA: options["slot-a"],
+    slotB: options["slot-b"],
+    expect: {
+      pairId: options["expect-pair-id"],
+      candidate: options["expect-candidate"],
+      round: round.round
+    }
+  });
+  if (result.status !== "ok") {
+    const slot = result.slot === void 0 ? "" : ` slot=${result.slot}`;
+    const dir = result.dir === void 0 ? "" : ` dir=${JSON.stringify(result.dir)}`;
+    process.stdout.write(`MO-REVIEW-PAIR/1 status=unknown reason=${result.reason}${slot}${dir}
+`);
     return 1;
   }
-  process.stdout.write(`${result.line}
-`);
+  process.stdout.write(
+    `MO-REVIEW-PAIR/1 status=ok pair_id=${result.pairId} dir=${JSON.stringify(result.dir)} a_bytes=${result.a.bytes} b_bytes=${result.b.bytes}
+${result.line}
+`
+  );
   return 0;
 }
 function commandNamespace() {
   const created = namespace();
   process.stdout.write(
-    `MO-REVIEW-NS/1 dir=${JSON.stringify(created.dir)} pair_id=${created.pairId}
+    `MO-REVIEW-NS/1 pair_id=${created.pairId} slot_a=${JSON.stringify(created.slots.A)} slot_b=${JSON.stringify(created.slots.B)}
 `
   );
   return 0;
@@ -7919,7 +8134,6 @@ export {
   checkAck,
   commandHelp,
   decodeReport,
-  linkFailureReason,
   namespace,
   pair,
   parseCommandLine,
@@ -7927,10 +8141,12 @@ export {
   prepareBody,
   preview,
   publicSummary,
+  readFacts,
   readReportBytes,
   reportLine,
   reportTemplate,
   roundLine,
+  slotIdentity,
   stage,
   topLevelParagraphs,
   topLevelProse,

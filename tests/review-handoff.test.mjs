@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -29,42 +29,51 @@ function report(execution) {
   );
 }
 
+const ROUND = { attempt: 1, limit: 5, deepReads: 1, fragment: "f1" };
+const EXPECTED = { candidate: SHA, requestedMode: "deep", effectiveMode: "deep", round: ROUND };
+
+/** Stage one slot's report from its own Body-File, as the coordinator does. */
+function stageSlot(created, slot, vendor, execution) {
+  const file = join(created.slots[slot], `slot-${slot.toLowerCase()}-r1-d1.md`);
+  writeFileSync(file, report(execution), { mode: 0o600, flag: "wx" });
+  const staged = stage({
+    slotDir: created.slots[slot],
+    slot,
+    pairId: created.pairId,
+    dispatch: execution,
+    vendor,
+    file,
+    expected: EXPECTED,
+  });
+  assert.equal(staged.status, "staged", staged.reason);
+  return staged;
+}
+
+const removeAll = (...dirs) => dirs.forEach((dir) => rmSync(dir, { recursive: true, force: true }));
+
 function handoffPair(consumer, human = false) {
   const created = namespace();
-  const slots = [
-    { slot: "A", vendor: "claude", execution: "ctx_a" },
-    { slot: "B", vendor: "codex", execution: "ctx_b" },
-  ].map(({ slot, vendor, execution }) => {
-    const staged = stage({
-      dir: created.dir,
-      slot,
-      vendor,
-      buffer: Buffer.from(report(execution), "utf8"),
-      expected: {
-        execution,
-        candidate: SHA,
-        requestedMode: "deep",
-        effectiveMode: "deep",
-        round: { attempt: 1, limit: 5, deepReads: 1, fragment: "f1" },
-      },
-    });
-    assert.equal(staged.status, "staged", staged.reason);
-    return { ...staged, vendor };
-  });
+  stageSlot(created, "A", "anthropic", "ctx_a");
+  stageSlot(created, "B", "openai", "ctx_b");
   // The pair is proven before anything is handed over: a consumer that reads a
   // path we never verified is reading whatever is at that name now.
-  const verified = pair({ dir: created.dir, pairId: created.pairId, slots });
-  assert.equal(verified.status, "paired", verified.reason);
-  const [a, b] = slots;
+  const verified = pair({
+    slotA: created.slots.A,
+    slotB: created.slots.B,
+    expect: { pairId: created.pairId, candidate: SHA, round: ROUND },
+  });
+  assert.equal(verified.status, "ok", verified.reason);
+  const { a, b, dir } = verified;
+  const directories = [created.slots.A, created.slots.B, dir];
   const expected = `Review-Handoff-Ack: ${created.pairId} A=${a.bytes} B=${b.bytes}`;
-  if (human) return { status: "delivered", directory: created.dir, attempts: 0, a, b };
+  if (human) return { status: "delivered", directories, attempts: 0, a, b };
   for (let attempts = 1; attempts <= 2; attempts += 1) {
     if (consumer({ pairId: created.pairId, a, b }) === expected) {
-      rmSync(created.dir, { recursive: true });
-      return { status: "delivered", directory: created.dir, attempts };
+      removeAll(...directories);
+      return { status: "delivered", directories, attempts };
     }
   }
-  return { status: "UNKNOWN", directory: created.dir, attempts: 2 };
+  return { status: "UNKNOWN", directories, attempts: 2 };
 }
 
 const acknowledge = ({ pairId, a, b }) => `Review-Handoff-Ack: ${pairId} A=${a.bytes} B=${b.bytes}`;
@@ -77,7 +86,7 @@ test("machine handoff cleans only after exact acknowledgement", () => {
   });
   assert.equal(result.status, "delivered");
   assert.equal(result.attempts, 2);
-  assert.equal(existsSync(result.directory), false);
+  for (const dir of result.directories) assert.equal(existsSync(dir), false);
 });
 
 test("a second acknowledgement failure is UNKNOWN and preserves evidence", () => {
@@ -85,9 +94,9 @@ test("a second acknowledgement failure is UNKNOWN and preserves evidence", () =>
   try {
     assert.equal(result.status, "UNKNOWN");
     assert.equal(result.attempts, 2);
-    assert.equal(existsSync(result.directory), true);
+    for (const dir of result.directories) assert.equal(existsSync(dir), true);
   } finally {
-    rmSync(result.directory, { recursive: true });
+    removeAll(...result.directories);
   }
 });
 
@@ -98,7 +107,7 @@ test("an acknowledgement for the wrong sizes is not an acknowledgement", () => {
   try {
     assert.equal(result.status, "UNKNOWN");
   } finally {
-    rmSync(result.directory, { recursive: true });
+    removeAll(...result.directories);
   }
 });
 
@@ -109,28 +118,15 @@ test("human caller receives paths and never triggers automatic cleanup", () => {
     assert.ok(existsSync(result.a.path));
     assert.ok(existsSync(result.b.path));
   } finally {
-    rmSync(result.directory, { recursive: true });
+    removeAll(...result.directories);
   }
 });
 
 test("an early preview hands over one unchanged slot and is acknowledged by its size", () => {
   const created = namespace();
   try {
-    const staged = stage({
-      dir: created.dir,
-      slot: "A",
-      vendor: "claude",
-      buffer: Buffer.from(report("ctx_a"), "utf8"),
-      expected: {
-        execution: "ctx_a",
-        candidate: SHA,
-        requestedMode: "deep",
-        effectiveMode: "deep",
-        round: { attempt: 1, limit: 5, deepReads: 1, fragment: "f1" },
-      },
-    });
-    const slot = { ...staged, vendor: "claude" };
-    const shown = preview({ dir: created.dir, pairId: created.pairId, slot });
+    const staged = stageSlot(created, "A", "anthropic", "ctx_a");
+    const shown = preview({ slotDir: created.slots.A, slot: "A" });
     assert.equal(shown.status, "previewed");
     assert.match(
       shown.line,
@@ -168,9 +164,9 @@ test("an early preview hands over one unchanged slot and is acknowledged by its 
     );
     // A preview of a slot whose file changed after staging is refused.
     rmSync(staged.path);
-    assert.equal(preview({ dir: created.dir, pairId: created.pairId, slot }).status, "unknown");
+    assert.equal(preview({ slotDir: created.slots.A, slot: "A" }).status, "unknown");
   } finally {
-    rmSync(created.dir, { recursive: true, force: true });
+    removeAll(created.slots.A, created.slots.B);
   }
 });
 

@@ -112,20 +112,23 @@ is the reviewer's to take from Orca's preamble: the Dispatch id exists only
 after the task is written, and naming where a value comes from is not a
 placeholder.
 
-`Body-File` names one path, `Body-File: <dir>/slot-<a|b>-r<round>-d<n>.md`, in a
-directory the caller created for this run outside every worktree. The name is
-built from what the caller holds before sending: the Dispatch id reaches only
-the reviewer, in Orca's preamble, so it lives inside the body as
-`Review-Execution` and never in the file name. `<n>` counts the Dispatches to
-that slot within the round, so the one repeat Dispatch after a malformed report
-gets a new file and the earlier body stays as the evidence of that round. The
-reviewer creates that file exclusively with `mo-review-report.mjs prepare`,
-which validates the bytes first and refuses an existing file, and sends exactly
-the file's content. The caller then compares what it received with the file byte
-for byte. Where the reviewer runs on another host and cannot reach the caller's
-directory, the field says `Body-File: none` and the reviewer validates the same
-bytes on stdin instead; the caller then accepts the received body on its
-structure alone and says that the prepared bytes were not compared.
+`Body-File` names one path, `Body-File: <slot dir>/slot-<a|b>-r<round>-d<n>.md`,
+in the directory `mo-review-report.mjs namespace` created for this slot and
+round outside every worktree. A brief names only its own slot's directory: until
+slot B's report is accepted, its brief never names slot A's directory or the
+pair directory, and a new Dispatch gets a new path. The name is built from what
+the caller holds before sending: the Dispatch id reaches only the reviewer, in
+Orca's preamble, so it lives inside the body as `Review-Execution` and never in
+the file name. `<n>` counts the Dispatches to that slot within the round, so the
+one repeat Dispatch after a malformed report gets a new file and the earlier
+body stays as the evidence of that round. The reviewer creates that file
+exclusively with `mo-review-report.mjs prepare`, which validates the bytes first
+and refuses an existing file, and sends exactly the file's content. The caller
+then compares what it received with the file byte for byte. Where the reviewer
+runs on another host and cannot reach the caller's directory, the field says
+`Body-File: none` and the reviewer validates the same bytes on stdin instead;
+the caller then accepts the received body on its structure alone and says that
+the prepared bytes were not compared.
 
 `Reviewer-Skill: mo-reviewer` names the reviewer skill and nothing else: no
 path, no build stamp, no hash and no comparison of copies. Meta-O skills are

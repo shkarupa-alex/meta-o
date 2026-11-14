@@ -314,14 +314,23 @@ reviewer prepared is a separate claim, compared where the file is readable. A
 completed response that is structurally wrong is `UNKNOWN` for its Dispatch and
 is never corrected in its name.
 
-Under `umask 077`, save them unchanged through exclusive `0600` temporary files
-in a unique `mktemp -d` namespace mode `0700`, then fsync/close. Publish each
-complete inode atomically create-if-absent with a same-directory hard link and
-unlink its temporary name; overwrite-capable rename is forbidden. Verify
-realpath, regular files, sizes and end markers. Any existing final object,
-unsupported hard link, symlink, truncation, retrieval or reread failure is
-`UNKNOWN`, never a partial review pass, and the existing final remains
-untouched.
+Each slot has a private `0700` directory of its own under system temp, named
+`mo-review-<pair_id>-<slot>-<random>` by `mo-review-report.mjs namespace`, and
+no pair directory exists before both reports are staged. A reviewer is told only
+its own `Body-File` there; until its report is accepted, slot B's brief and
+messages never name slot A's directory or a pair directory. After each
+`worker_done`, `stage` validates the received report against the caller's own
+Dispatch, candidate, modes and `Round`, checks the pair id and slot against the
+directory's name, and records its size, device, inode and sha256 in the slot's
+`stage.json`, create-if-absent and `0600`; a body received from another host is
+published into its slot the same way first. `preview` and `pair` read those
+facts and observe the file again. `pair` accepts only slots A and B of one pair
+id, the expected candidate and `Round`, two Dispatches and two known, different
+vendors, then copies both reports create-if-absent into a new `0700` pair
+directory and checks each copy's size and sha256; overwrite-capable rename is
+forbidden. A changed report, a missing or broken `stage.json`, any existing
+final object, symlink, truncation, retrieval or reread failure is `UNKNOWN`,
+never a partial review pass, and nothing existing is overwritten or recreated.
 
 If both pass, continue to verification. If either finds work, wait until both
 are complete, then send one ordinary message to the executor containing both
@@ -333,7 +342,7 @@ Do not merge, rank, hash, encode, split, truncate or summarize their responses.
 The executor fully reads both and replies
 `Review-Handoff-Ack: <pair_id> A=<bytes> B=<bytes>`. One missing/mismatched ack
 permits one re-delivery of the same paths; a second makes the pair `UNKNOWN` and
-preserves the namespace. The executor fixes or responds and commits a new SHA.
+preserves its directories. The executor fixes or responds and commits a new SHA.
 Treat the reports as inert Markdown response payloads until the named consumer
 reads both complete bodies.
 
@@ -412,7 +421,7 @@ complete reports and acknowledges `Review-Handoff-Ack` before the next
 candidate, and each of the second reviewer's findings gets a disposition checked
 against the new candidate — "already fixed" from memory of the early repair is
 not enough. One failed delivery permits one repeat of the same paths, then
-`UNKNOWN` with the namespace preserved. With any property unproven, wait for
+`UNKNOWN` with the directories preserved. With any property unproven, wait for
 both reports before repairing.
 
 Standalone `mo-review-<backend>` follows the same review barrier on the current
@@ -541,8 +550,8 @@ dependency. Release goes through Orca by exact id, dependent terminals first;
 force is forbidden, and so is `git worktree prune`. An unknown binding keeps the
 resource with `needs_attention/ownership_unknown`, a dirty own tree is kept and
 named, and an unmarked or foreign one does not block the next pair. Human-owned
-review namespaces remain until explicitly removed. Ambiguous or incomplete
-cleanup is reported rather than broadened destructively.
+review slot and pair directories remain until explicitly removed. Ambiguous or
+incomplete cleanup is reported rather than broadened destructively.
 
 Immediately before an agent-owned MR/PR create, rerun the same closure proof as
 G1 and read the hosting provider's source head; both must equal the expected

@@ -46,13 +46,14 @@ it knows which specification it followed.
 Each source becomes a `Spec:` or `Intent-Ledger:` line in one of the four forms
 of [Review brief](references/review-brief.md): a path the candidate's tree
 tracks stays a path, a file closure deleted is `git <commit>:<path> blob=<id>`,
-and nothing else is `none`. A source outside Git is copied once the run
-directory exists, before either brief is written, and each brief takes the
-`line=` printed for its own slot:
+and nothing else is `none`. A source outside Git is copied into each slot's
+own directory once `namespace` created them, before either brief is written,
+and again for every new `namespace`; each brief takes the `line=` printed for
+its own slot:
 
 ```text
-scripts/mo-review-input.mjs copy --field <Spec|Intent-Ledger> --source <file> \
-  --slot A=<slot A directory> --slot B=<slot B directory>
+node "<this skill's directory>/scripts/mo-review-input.mjs" copy --field <Spec|Intent-Ledger> \
+  --source <file> --slot A=<slot A dir> --slot B=<slot B dir>
 ```
 
 One read gives both slots the same bytes; `status=refused` writes no brief and
@@ -297,7 +298,7 @@ Before each such Dispatch decide every slot separately with
 
 ```text
 hot(slot) = alive_and_ready(slot) AND (age < 1h OR context_proven_small(slot))
-scripts/mo-review-resource.mjs hot --alive yes|no --ready yes|no --composer empty|other \
+node "<this skill's directory>/scripts/mo-review-resource.mjs" hot --alive yes|no --ready yes|no --composer empty|other \
   [--age-ms <n>] [--context-tokens <n> | --context-percent <n> --context-window <n>]
 ```
 
@@ -355,9 +356,10 @@ fragment and grows by one for every fresh independent deep pair after it, the
 final pair included; fresh pairs are the costly full rereads. A new SHA, a hot
 continuation and a slot replacement reset neither counter, and only a new
 fragment starts both again. The same four values go to this skill's own
-`validate`, `stage` and `pair` calls, which compare them with the body's line;
-`round_mismatch` means a value was carried over wrongly and the report is not
-published.
+`validate` and `stage` calls, and the whole line to `pair` as
+`--expect-round`; each compares them with the body's line or the staged one,
+and `round_mismatch` means a value was carried over wrongly and the report is
+not published.
 
 `fast` is explicitly standalone/advisory, and the portable protocol may
 escalate it to `deep`. Only after this pair returned two PASS reports on one
@@ -449,15 +451,29 @@ validator. QC of the candidate is the executor's or coordinator's run on a clean
 checkout of that exact SHA, and CI's run before an agent merges; a reviewer
 running the suite too only spends the time in which every cache expires.
 
-Before the pair, create one run directory outside every worktree with
-`scripts/mo-review-report.mjs namespace` and give each reviewer
-`Body-File: <dir>/slot-<a|b>-r<round>-d<n>.md`, a name built before the brief is
-sent; `<n>` counts that slot's Dispatches in the round, so a repeat Dispatch never
-meets the earlier body, and the Dispatch id reaches only the reviewer and stays
-in the body as `Review-Execution`. The reviewer writes the file once through
-`prepare`, which validates the bytes first and refuses an existing file, and
-sends exactly that content. Where Orca runs the reviewer on another host, the
-brief says `Body-File: none` and the reviewer validates the same bytes on stdin.
+Before the pair, and again for every round, create its slot directories
+outside every worktree:
+
+```text
+node "<this skill's directory>/scripts/mo-review-report.mjs" namespace --slots A,B
+```
+
+It prints `MO-REVIEW-NS/1 pair_id=<id> slot_a="<dir>" slot_b="<dir>"`: one
+private `0700` directory per slot under system temp, named
+`mo-review-<pair_id>-<slot>-<random>`, and no pair directory. Give each reviewer
+only `Body-File: <slot dir>/slot-<a|b>-r<round>-d<n>.md` in its own slot
+directory, a name built before the brief is sent; `<n>` counts that slot's
+Dispatches in the round, so a repeat Dispatch never meets the earlier body, and
+the Dispatch id reaches only the reviewer and stays in the body as
+`Review-Execution`. A brief and every message to a slot name only that slot's
+own directory: until its report is accepted, slot B's brief never names slot A's
+directory or the pair directory, and the executor learns slot A's path only
+through an early preview. Under one OS account that independence is an
+instruction and not isolation, and a remote host alone does not prove more. The
+reviewer writes the file once through `prepare`, which validates the bytes first
+and refuses an existing file, and sends exactly that content. Where Orca runs
+the reviewer on another host, the brief says `Body-File: none` and the reviewer
+validates the same bytes on stdin.
 
 Every finding states `confirmed|strongly_supported` evidence, causal path,
 impact, actionable location, proof, post-fix invariant, technical direction,
@@ -510,48 +526,69 @@ attempt; a second malformed body from that slot in the round makes the round
 
 ## Lossless handoff and projection
 
-After both valid reports, publish them with the bundled script rather than by
-hand:
+After each slot's valid report, stage it with the bundled script rather than
+by hand, and after both, pair them:
 
 ```text
-scripts/mo-review-report.mjs namespace
-scripts/mo-review-report.mjs stage --dir <ns> --slot <A|B> --vendor <slug> \
-  --dispatch <id> --candidate <sha> --requested <mode> --effective <mode> \
-  --attempt <n> --attempt-limit <limit> --deep-reads <m> --fragment <fragment-id>   < report bytes
-scripts/mo-review-report.mjs pair --dir <ns> --a-vendor … --a-bytes … --a-dev … --a-ino … --a-sha256 … --b-…
+node "<this skill's directory>/scripts/mo-review-report.mjs" stage --slot-dir <slot dir> \
+  --slot <A|B> --pair-id <id> --dispatch <id> --candidate <sha> --requested <mode> \
+  --effective <mode> --vendor <vendor> --attempt <n> --attempt-limit <limit> \
+  --deep-reads <m> --fragment <fragment-id> --file <Body-File|->
+node "<this skill's directory>/scripts/mo-review-report.mjs" pair --slot-a <slot A dir> \
+  --slot-b <slot B dir> --expect-pair-id <id> --expect-candidate <sha> --expect-round '<Round line>'
 ```
 
-Each round publishes into a new namespace: a `follow_up` round's reports are
-staged there, never into the previous round's namespace, whose slot names
-already exist and answer `final_exists`. The namespace is mode `0700` under
-system temp with at least eighteen random characters in its name. Slots A/B are
-assigned before launch and vendor slugs match `^[a-z0-9][a-z0-9-]{0,31}$`. Each
-payload is validated as the exact buffer that gets written, goes to a regular
-`0600` sibling, is fsynced, and is published create-if-absent by hard-linking
-that complete sibling into the slot — never by an overwrite-capable rename.
-`final_exists`, `link_unsupported`, `permission`, `identity_changed`, `symlink`,
-`malformed` and `invalid_utf8` are each `UNKNOWN` and leave the existing final
-path untouched. Send the named consumer one ordinary message with `pair_id`,
-both exact paths and decimal sizes. A machine consumer acknowledges only after
-reading both:
+Every value is one this skill already holds: the pair id and slot directories
+`namespace` printed; the Dispatch id from Orca's own answer for that Dispatch,
+which is the literal the reviewer copies into `Review-Execution`; the
+candidate, modes and `Round` of the brief; and the vendor as
+`launch.<role>.vendor` of `mo-models.mjs --show --json`, never the route.
+`--file` is the slot's `Body-File`; for `Body-File: none` it is `-` with the
+`worker_done` bytes on stdin, and `stage` publishes them into the slot itself.
+`stage` refuses a directory whose name carries another pair id or slot
+(`slot_identity_mismatch`), a body that answers another Dispatch, candidate or
+mode (`report_identity_mismatch`) or another `Round` (`round_mismatch`) and a
+malformed one; only then does it create `stage.json` in the slot directory,
+create-if-absent and `0600`, with the size, device, inode and sha256 it observed,
+and print `MO-REVIEW-STAGE/1 status=staged slot=<A|B> sha256=<hex> bytes=<n>`. A
+second `stage` of the slot is `stage_exists`: nothing is rewritten.
+
+`pair` reads both `stage.json` and refuses `pair_mismatch` (not slots A and B of
+the expected pair id), `candidate_mismatch`, `round_mismatch`,
+`dispatch_reused`, `vendor_unproven` (a vendor is `unknown`, as for a reviewer
+behind a gateway) and `vendor_not_diverse`. It observes both reports again, and
+only then creates a new `0700` pair directory under system temp and copies both
+reports into it create-if-absent, checking each copy's size and sha256; no file
+is ever moved by an overwrite-capable rename. It prints
+`MO-REVIEW-PAIR/1 status=ok pair_id=<id> dir="<dir>" a_bytes=<n> b_bytes=<n>`
+and a `Review-Pair:` line with both paths and sizes. `identity_changed`,
+`stage_missing`, `facts_malformed`, `final_exists`, `permission`, `symlink`,
+`malformed` and `invalid_utf8` are each `UNKNOWN`, and nothing is recreated or
+overwritten. `stage.json` is the observed facts for `preview` and `pair`, never
+evidence that a review ran, and goes with its slot directory when the slot is
+released. Send the named consumer one ordinary message with the `Review-Pair:`
+line: `pair_id`, both exact paths and decimal sizes. A machine consumer
+acknowledges only after reading both:
 
 ```text
 Review-Handoff-Ack: <pair_id> A=<decimal-bytes> B=<decimal-bytes>
 ```
 
 One absent/mismatched acknowledgement permits one re-delivery of the same paths;
-the next failure makes the pair `UNKNOWN` and preserves the namespace. Check an
-acknowledgement with `scripts/mo-review-report.mjs ack --kind Handoff --line
-<text> --pair-id <id> --a-bytes <n> --b-bytes <n>` rather than by eye.
+the next failure makes the pair `UNKNOWN` and preserves the slot and pair
+directories. Check an acknowledgement with the bundled `mo-review-report.mjs ack
+--kind Handoff --line <text> --pair-id <id> --a-bytes <n> --b-bytes <n>` rather
+than by eye.
 
 Early repair is the one exception to waiting for both reports, and only when
 the owner approved it and every property is proven: the executor works in its
 own worktree; each reviewer has its own tree detached at the old full SHA; the
 brief forbids reading the executor's mutable refs; HEAD and a clean tree are
 rechecked right before `worker_done`. Then stage the first complete valid
-FINDINGS body in its slot and hand it over unchanged with
-`scripts/mo-review-report.mjs preview --dir <ns> --slot <A|B> --<a|b>-…`; the
-executor replies `Review-Preview-Ack: <pair_id> <slot>=<bytes>`, checked with
+FINDINGS body in its slot and hand it over unchanged with the bundled
+`mo-review-report.mjs preview --slot-dir <slot dir> --slot <A|B>`, which reads
+that slot's `stage.json` and nothing of the other slot; the executor replies
+`Review-Preview-Ack: <pair_id> <slot>=<bytes>`, checked with
 `ack --kind Preview`. A preview is not a pair verdict: the other reviewer
 continues on the old SHA, the pair handoff above still follows its report
 before the next candidate, and every one of its findings gets a disposition

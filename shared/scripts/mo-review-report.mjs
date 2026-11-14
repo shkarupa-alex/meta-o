@@ -22,7 +22,6 @@ import {
   realpathSync,
   writeSync,
 } from "node:fs";
-import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -50,11 +49,12 @@ export {
 export {
   checkAck,
   decodeReport,
-  linkFailureReason,
   namespace,
   pair,
   preview,
+  readFacts,
   readReportBytes,
+  slotIdentity,
   stage,
 } from "./mo-review-handoff.mjs";
 
@@ -185,6 +185,14 @@ const VALUES = {
   slot: [/^[AB]$/u, "A or B"],
   kind: [/^(?:Preview|Handoff)$/u, "Preview or Handoff"],
   normalization: [/^(?:none|final-newline)$/u, "none or final-newline"],
+  slots: [/^A,B$/u, "A,B"],
+  "expect-pair-id": [/^[a-f0-9]{12}$/u, "the 12-hex pair id namespace printed"],
+  "expect-candidate": [SHA_VALUE, "a full 40-hex SHA"],
+  "expect-round": [/^Round: /u, "a whole `Round: attempt=… deep_reads=… fragment=…` line"],
+  vendor: [
+    /^[a-z0-9][a-z0-9-]{0,31}$/u,
+    "launch.<role>.vendor, such as anthropic, openai or unknown",
+  ],
   "a-bytes": [DECIMAL, "a decimal size"],
   "b-bytes": [DECIMAL, "a decimal size"],
 };
@@ -193,9 +201,6 @@ const EXPECTATION = "--dispatch <id> --candidate <40-hex> --requested <fast|deep
 const ROUND_FLAGS = ["attempt", "attempt-limit", "deep-reads", "fragment"];
 const ROUND_USAGE = "--attempt <n> --attempt-limit <limit> --deep-reads <m> --fragment <id>";
 const ROUND_EXAMPLE = "--attempt 1 --attempt-limit 5 --deep-reads 1 --fragment f1";
-const SLOT_FLAGS = ["a", "b"].flatMap((prefix) =>
-  ["vendor", "bytes", "dev", "ino", "sha256"].map((field) => `${prefix}-${field}`),
-);
 
 /**
  * Every command, the flags it takes and how it is called.
@@ -208,11 +213,12 @@ const SLOT_FLAGS = ["a", "b"].flatMap((prefix) =>
  */
 export const COMMANDS = {
   namespace: {
-    required: [],
+    required: ["slots"],
     optional: [],
-    usage: "namespace",
-    about: "creates one private run directory under system temp and prints it",
-    example: "namespace",
+    usage: "namespace --slots A,B",
+    about:
+      "creates one private 0700 directory per slot under system temp, named mo-review-<pair_id>-<slot>-<random>, and no pair directory",
+    example: "namespace --slots A,B",
   },
   template: {
     required: ["verdict", "dispatch", "candidate", "requested", "effective", ...ROUND_FLAGS],
@@ -238,29 +244,39 @@ export const COMMANDS = {
     example: `validate --file - --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep ${ROUND_EXAMPLE} < report.md`,
   },
   stage: {
-    required: ["dir", "slot", "vendor", "dispatch", "candidate", "requested", ...ROUND_FLAGS],
-    optional: ["file", "effective"],
-    usage: `stage --dir <run dir> --slot A|B --vendor <slug> ${EXPECTATION} [--effective <mode>] ${ROUND_USAGE} [--file <path|->]`,
-    about: "validates one report and publishes it into its slot create-if-absent",
-    example: `stage --dir /tmp/mo-review-x --slot A --vendor anthropic --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep ${ROUND_EXAMPLE} < report.md`,
+    required: [
+      "slot-dir",
+      "slot",
+      "pair-id",
+      "dispatch",
+      "candidate",
+      "vendor",
+      "requested",
+      ...ROUND_FLAGS,
+      "file",
+    ],
+    optional: ["effective"],
+    usage: `stage --slot-dir <slot dir> --slot A|B --pair-id <id> ${EXPECTATION} [--effective <mode>] --vendor <launch.<role>.vendor> ${ROUND_USAGE} --file <Body-File|->`,
+    about:
+      "validates one report of the slot and records it in <slot dir>/stage.json once; --file - publishes stdin bytes into the slot first",
+    example: `stage --slot-dir /tmp/mo-review-0a1b2c3d4e5f-A-Xy12Ab --slot A --pair-id 0a1b2c3d4e5f --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep --vendor anthropic ${ROUND_EXAMPLE} --file /tmp/mo-review-0a1b2c3d4e5f-A-Xy12Ab/slot-a-r1-d1.md`,
   },
   pair: {
-    required: ["dir", ...SLOT_FLAGS],
+    required: ["slot-a", "slot-b", "expect-pair-id", "expect-candidate", "expect-round"],
     optional: [],
     usage:
-      "pair --dir <run dir> --a-vendor <slug> --a-bytes <n> --a-dev <n> --a-ino <n> --a-sha256 <hex> --b-vendor <slug> --b-bytes <n> --b-dev <n> --b-ino <n> --b-sha256 <hex>",
-    about: "proves both staged slots are still the published inodes and prints the pair line",
-    example:
-      "pair --dir /tmp/mo-review-x --a-vendor anthropic --a-bytes 1 --a-dev 1 --a-ino 1 --a-sha256 <hex> --b-vendor openai --b-bytes 1 --b-dev 1 --b-ino 1 --b-sha256 <hex>",
+      "pair --slot-a <slot A dir> --slot-b <slot B dir> --expect-pair-id <id> --expect-candidate <40-hex> --expect-round '<Round line>'",
+    about:
+      "checks both stage.json records against the expectation, observes both reports again and copies them into a new pair directory",
+    example: `pair --slot-a /tmp/mo-review-0a1b2c3d4e5f-A-Xy12Ab --slot-b /tmp/mo-review-0a1b2c3d4e5f-B-Qw34Cd --expect-pair-id 0a1b2c3d4e5f --expect-candidate ${"a".repeat(40)} --expect-round 'Round: attempt=1/5 deep_reads=1 fragment=f1'`,
   },
   preview: {
-    required: ["dir", "slot"],
-    optional: SLOT_FLAGS,
-    usage:
-      "preview --dir <run dir> --slot A|B, with the five facts of that slot: --a-vendor --a-bytes --a-dev --a-ino --a-sha256 for A, --b-vendor --b-bytes --b-dev --b-ino --b-sha256 for B",
-    about: "proves one staged slot and prints the early preview line",
-    example:
-      "preview --dir /tmp/mo-review-x --slot A --a-vendor anthropic --a-bytes 1 --a-dev 1 --a-ino 1 --a-sha256 <hex>",
+    required: ["slot-dir", "slot"],
+    optional: [],
+    usage: "preview --slot-dir <slot dir> --slot A|B",
+    about:
+      "observes one staged report again and prints the early preview line naming it in its own slot",
+    example: "preview --slot-dir /tmp/mo-review-0a1b2c3d4e5f-A-Xy12Ab --slot A",
   },
   ack: {
     required: ["line", "kind", "pair-id"],
@@ -269,7 +285,7 @@ export const COMMANDS = {
       "ack --kind Preview|Handoff --line <ack text> --pair-id <id> [--a-bytes <n>] [--b-bytes <n>]",
     about: "checks a consumer's acknowledgement against the published sizes",
     example:
-      "ack --kind Handoff --line 'Review-Handoff-Ack: mo-review-x A=10 B=20' --pair-id mo-review-x --a-bytes 10 --b-bytes 20",
+      "ack --kind Handoff --line 'Review-Handoff-Ack: 0a1b2c3d4e5f A=10 B=20' --pair-id 0a1b2c3d4e5f --a-bytes 10 --b-bytes 20",
   },
 };
 
@@ -411,52 +427,32 @@ function commandTemplate(options) {
 }
 
 function commandStage(options) {
-  const source = options.file === undefined || options.file === "-" ? null : options.file;
-  const bytes = source === null ? { buffer: readFileSync(0) } : readReportBytes(source);
-  if (bytes.error) {
-    process.stdout.write(`MO-REVIEW-STAGE/1 status=unknown reason=${bytes.error}\n`);
-    return 1;
-  }
+  const fromStdin = options.file === "-";
   const result = stage({
-    dir: options.dir,
+    slotDir: options["slot-dir"],
     slot: options.slot,
+    pairId: options["pair-id"],
+    dispatch: options.dispatch,
     vendor: options.vendor,
-    buffer: bytes.buffer,
+    file: fromStdin ? undefined : options.file,
+    buffer: fromStdin ? readFileSync(0) : undefined,
     expected: expectationOf(options),
   });
+  if (result.verdict !== undefined && result.status !== "staged") {
+    process.stdout.write(`${reportLine(result.verdict)}\n`);
+  }
   if (result.status !== "staged") {
     process.stdout.write(`MO-REVIEW-STAGE/1 status=unknown reason=${result.reason}\n`);
     return 1;
   }
   process.stdout.write(
-    `MO-REVIEW-STAGE/1 slot=${result.slot} path=${JSON.stringify(result.path)} ` +
-      `bytes=${result.bytes} dev=${result.dev} ino=${result.ino} sha256=${result.sha256}\n`,
+    `MO-REVIEW-STAGE/1 status=staged slot=${result.slot} sha256=${result.sha256} bytes=${result.bytes}\n`,
   );
   return 0;
 }
 
-function slotOption(options, slot) {
-  const prefix = slot.toLowerCase();
-  const missing = ["vendor", "bytes", "dev", "ino", "sha256"]
-    .map((field) => `${prefix}-${field}`)
-    .filter((flag) => options[flag] === undefined);
-  if (missing.length > 0) throw new UsageError(`--${missing.join(", --")} is required`);
-  return {
-    slot,
-    vendor: options[`${prefix}-vendor`],
-    bytes: Number(options[`${prefix}-bytes`]),
-    dev: Number(options[`${prefix}-dev`]),
-    ino: Number(options[`${prefix}-ino`]),
-    sha256: options[`${prefix}-sha256`],
-  };
-}
-
 function commandPreview(options) {
-  const result = preview({
-    dir: options.dir,
-    pairId: basename(options.dir),
-    slot: slotOption(options, options.slot),
-  });
+  const result = preview({ slotDir: options["slot-dir"], slot: options.slot });
   if (result.status !== "previewed") {
     process.stdout.write(
       `MO-REVIEW-PAIR/1 status=unknown reason=${result.reason} slot=${result.slot}\n`,
@@ -490,22 +486,35 @@ function commandAck(options) {
 }
 
 function commandPair(options) {
-  const slots = ["A", "B"].map((slot) => slotOption(options, slot));
-  const result = pair({ dir: options.dir, pairId: basename(options.dir), slots });
-  if (result.status !== "paired") {
-    process.stdout.write(
-      `MO-REVIEW-PAIR/1 status=unknown reason=${result.reason} slot=${result.slot}\n`,
-    );
+  const round = parseRound(options["expect-round"].slice("Round: ".length));
+  if (round.error) throw new UsageError(`pair: --expect-round gives ${round.error}`);
+  const result = pair({
+    slotA: options["slot-a"],
+    slotB: options["slot-b"],
+    expect: {
+      pairId: options["expect-pair-id"],
+      candidate: options["expect-candidate"],
+      round: round.round,
+    },
+  });
+  if (result.status !== "ok") {
+    const slot = result.slot === undefined ? "" : ` slot=${result.slot}`;
+    const dir = result.dir === undefined ? "" : ` dir=${JSON.stringify(result.dir)}`;
+    process.stdout.write(`MO-REVIEW-PAIR/1 status=unknown reason=${result.reason}${slot}${dir}\n`);
     return 1;
   }
-  process.stdout.write(`${result.line}\n`);
+  process.stdout.write(
+    `MO-REVIEW-PAIR/1 status=ok pair_id=${result.pairId} dir=${JSON.stringify(result.dir)} ` +
+      `a_bytes=${result.a.bytes} b_bytes=${result.b.bytes}\n${result.line}\n`,
+  );
   return 0;
 }
 
 function commandNamespace() {
   const created = namespace();
   process.stdout.write(
-    `MO-REVIEW-NS/1 dir=${JSON.stringify(created.dir)} pair_id=${created.pairId}\n`,
+    `MO-REVIEW-NS/1 pair_id=${created.pairId} slot_a=${JSON.stringify(created.slots.A)} ` +
+      `slot_b=${JSON.stringify(created.slots.B)}\n`,
   );
   return 0;
 }
