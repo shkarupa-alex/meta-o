@@ -198,10 +198,10 @@ function validateEvidence(root, evidence, candidate, requireAll = false, options
 
 test("every installable skill owns three base cases and named regressions", () => {
   const corpus = loadCorpus(ROOT);
-  assert.equal(corpus.size, 11);
+  assert.equal(corpus.size, 12);
   assert.equal(
     [...corpus.values()].reduce((sum, document) => sum + document.cases.length, 0),
-    37,
+    40,
   );
   const regressions = [...corpus.values()].flatMap(({ cases }) =>
     cases.filter((item) => item.class === "regression").map(({ id }) => id),
@@ -263,10 +263,10 @@ test("complete evidence binds every case to candidate, revision and approved ide
   const validated = validateEvidence(ROOT, evidence, HEAD, true, {
     criticalProfile: "opencode/llamacpp/qwen3.8-27b/default",
   });
-  // 37 cases on five profiles, each its own native execution.
-  assert.equal(validated.envelopes, 185);
+  // 40 cases on five profiles, each its own native execution.
+  assert.equal(validated.envelopes, 200);
   assert.deepEqual(validated.nonPass, []);
-  assert.equal(validated.aggregate.length, 37);
+  assert.equal(validated.aggregate.length, 40);
   for (const group of validated.aggregate) {
     assert.deepEqual(
       group.coordinates.map(({ matrixProfile }) => matrixProfile),
@@ -1148,7 +1148,7 @@ test("the CLI materializes and validates a missing desired harness without a mod
   const complete = matrix(FULL_MATRIX, (skill, caseId, matrixProfile) =>
     caseId === "find-reuse.positive" && matrixProfile === "desired-opencode" ? evidence : undefined,
   );
-  assert.equal(validateEvidence(ROOT, complete, HEAD, true).envelopes, 185);
+  assert.equal(validateEvidence(ROOT, complete, HEAD, true).envelopes, 200);
   rmSync(temporary, { recursive: true, force: true });
 });
 

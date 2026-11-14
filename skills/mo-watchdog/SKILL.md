@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-watchdog or Meta-O wa
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "d126fa3b40691477444c271aa0d9d2c1bd8d43e8"
+  source_tree: "3f7bd2c2df8c814287583b2f720e527af18b2b12"
 ---
 
 # Watch backend sessions

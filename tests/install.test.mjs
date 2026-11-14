@@ -71,6 +71,7 @@ test("every skill is individually installable with its complete owned files", { 
     "mo-convergence",
     "mo-debug",
     "mo-orchestrate-orca",
+    "mo-quiz",
     "mo-review-orca",
     "mo-reviewer",
     "mo-setup",
