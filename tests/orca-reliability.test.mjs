@@ -10,6 +10,7 @@ import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import MarkdownIt from "markdown-it";
 import { fromMarkdown } from "mdast-util-from-markdown";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -206,14 +207,117 @@ test("references are read with --json, and discarding stderr is forbidden", () =
   );
   assert.match(mechanics, /`2>\/dev\/null` is forbidden/u);
   assert.match(mechanics, /exits 5/u);
-  for (const reference of [
-    "coordinator-loop",
-    "placement-and-remote",
-    "recovery-and-cleanup",
-    "worker-contract",
-  ]) {
-    assert.match(mechanics, new RegExp(`\`${reference}\``, "u"), `${reference} is not required`);
+});
+
+/**
+ * The rule → reference map in the mechanics document, read as parser tokens.
+ *
+ * Each cell keeps only its inline code spans: those are the reference names a
+ * coordinator looks up in the installed list, and the prose around them is for
+ * the reader.
+ */
+function referenceMap() {
+  const tokens = new MarkdownIt().parse(read("orca-mechanics.md"), {});
+  const tables = [];
+  let rows = null;
+  let row = null;
+  for (const token of tokens) {
+    if (token.type === "table_open") rows = [];
+    if (token.type === "tr_open") row = [];
+    if (token.type === "inline" && row) {
+      const names = (token.children ?? [])
+        .filter((child) => child.type === "code_inline")
+        .map((child) => child.content);
+      row.push({ text: token.content.trim(), names });
+    }
+    if (token.type === "tr_close") rows.push(row);
+    if (token.type === "table_close") tables.push(rows);
   }
+  const map = tables.filter(([header]) => header[0].text === "Required rule");
+  assert.equal(map.length, 1, "exactly one rule → reference map");
+  const [header, ...body] = map[0];
+  assert.deepEqual(
+    header.map(({ text }) => text),
+    ["Required rule", "Source", "Fallback when the source is not listed"],
+  );
+  return body.map(([rule, source, fallback]) => ({
+    rule: rule.text.split(":")[0],
+    source: source.names,
+    fallback: fallback.text === "none" ? [] : fallback.names,
+  }));
+}
+
+/** What the map decides for one installed list: ready, or the uncovered rules. */
+function coverage(map, listed) {
+  const has = (names) => names.length > 0 && names.every((name) => listed.includes(name));
+  const uncovered = map
+    .filter(({ source, fallback }) => !has(source) && !has(fallback))
+    .map(({ rule }) => rule);
+  return uncovered.length === 0 ? { state: "ready" } : { state: "unknown", uncovered };
+}
+
+const referenceList = (version) =>
+  JSON.parse(
+    readFileSync(
+      join(ROOT, "tests", "fixtures", "orca-reference-lists", `orca-${version}.json`),
+      "utf8",
+    ),
+  );
+
+test("each required rule is covered from the installed version's own references", () => {
+  // Issue #68: Orca 1.4.246 dropped `worker-contract`, and a list of four file
+  // names stopped every run before its pair although the worker rules still
+  // ship in `messaging-and-gates` and the compact guide.
+  const map = referenceMap();
+  assert.deepEqual(
+    map.map(({ rule, source, fallback }) => [rule, source, fallback]),
+    [
+      ["Worker obligations", ["worker-contract"], ["messaging-and-gates"]],
+      ["Coordinator loop", ["coordinator-loop"], []],
+      ["Placement", ["placement-and-remote"], []],
+      ["Recovery", ["recovery-and-cleanup"], []],
+    ],
+  );
+  const older = referenceList("1.4.227");
+  const newer = referenceList("1.4.246");
+  assert.equal(older.version, "1.4.227");
+  assert.equal(newer.version, "1.4.246");
+  assert.ok(older.references.includes("worker-contract"));
+  assert.ok(!newer.references.includes("worker-contract"));
+  assert.equal(newer.refused["worker-contract"], "invalid_argument");
+  for (const { version, references } of [older, newer]) {
+    assert.deepEqual(coverage(map, references), { state: "ready" }, version);
+    // A required source missing from the list is `unknown`, never a smaller
+    // set of rules to work from.
+    assert.deepEqual(
+      coverage(
+        map,
+        references.filter((name) => name !== "coordinator-loop"),
+      ),
+      { state: "unknown", uncovered: ["Coordinator loop"] },
+      version,
+    );
+  }
+  // The fallback is a source of its own: without it the rule is uncovered.
+  assert.deepEqual(
+    coverage(
+      map,
+      newer.references.filter((name) => name !== "messaging-and-gates"),
+    ),
+    { state: "unknown", uncovered: ["Worker obligations"] },
+  );
+  // Where the primary source is listed the fallback is not needed.
+  assert.deepEqual(
+    coverage(
+      map,
+      older.references.filter((name) => name !== "messaging-and-gates"),
+    ),
+    { state: "ready" },
+  );
+  const mechanics = read("orca-mechanics.md").replace(/\s+/gu, " ");
+  assert.match(mechanics, /A file name is not a capability/u);
+  assert.match(mechanics, /covers is `unknown`, not a smaller set of rules to work from/u);
+  assert.doesNotMatch(mechanics, /require four of them/u);
 });
 
 test("no shipped recipe ever hides a backend's stderr", () => {

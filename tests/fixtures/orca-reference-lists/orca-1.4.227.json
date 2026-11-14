@@ -1,0 +1,15 @@
+{
+  "version": "1.4.227",
+  "provenance": "recorded 2026-11-14 from the local Orca 1.4.227 with `orca skills get orchestration --references --json | jq -c '{name,references}'`",
+  "name": "orchestration",
+  "references": [
+    "coordinator-loop",
+    "legacy-contract-migration",
+    "low-level-topology",
+    "messaging-and-gates",
+    "placement-and-remote",
+    "recovery-and-cleanup",
+    "worker-contract"
+  ],
+  "refused": {}
+}

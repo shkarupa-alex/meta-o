@@ -235,10 +235,28 @@ empty guide. A reference name may be given bare (`recovery-and-cleanup`) or as
 the guide spells it (`references/recovery-and-cleanup.md`); both resolve to the
 bare name.
 
-`mo-review-orca` and `mo-orchestrate-orca` require four of them before they act:
-`coordinator-loop`, `placement-and-remote`, `recovery-and-cleanup` and
-`worker-contract`. A missing name in the list, an empty body or a non-zero exit
-for any of the four is `unknown`, not a smaller set of rules to work from.
+`mo-review-orca` and `mo-orchestrate-orca` act only when every rule they need is
+covered by the installed version. A source covers its rule when its name is in
+this binary's `--references` list and it reads with a non-empty body; a rule
+whose source is not listed is covered by its fallback under the same test. The
+compact guide is read anyway, so it never leaves a fallback uncovered.
+
+| Required rule                                                                                                                                    | Source                 | Fallback when the source is not listed      |
+| ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------- | ------------------------------------------- |
+| Worker obligations: `ask` and its resume, heartbeat cadence, follow-ups read with `check --terminal`, one `worker_done` with an explicit outcome | `worker-contract`      | `messaging-and-gates` and the compact guide |
+| Coordinator loop: waves, launch model and effort, same-terminal reuse, review ownership                                                          | `coordinator-loop`     | none                                        |
+| Placement: a new worktree or an exact workspace                                                                                                  | `placement-and-remote` | none                                        |
+| Recovery: a failed, stopped or unknown attempt, retry, stop, abandon, retain, an uncertain release                                               | `recovery-and-cleanup` | none                                        |
+
+A rule that neither its source nor its fallback covers is `unknown`, not a
+smaller set of rules to work from, and so is an empty body or a non-zero exit
+for any reference a rule is read from. A file name is not a capability: an old
+name missing from a newer list removes nothing its fallback still covers, and a
+name only the guide's own table or an older version mentions covers nothing.
+Only listed names are requested. Orca 1.4.227 lists `worker-contract`; 1.4.246
+lists no such reference, answers `--reference worker-contract` with
+`invalid_argument`, and its compact guide sends a worker to the injected
+preamble for its commands.
 
 ## Coordinator inside an Orca terminal
 
