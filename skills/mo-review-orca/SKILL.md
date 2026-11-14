@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-review-orca or an act
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "364bb9cfd7f35f62eace7bd7c71c343f6d7cce3f"
+  source_tree: "e3b41da0d9c92652590b47f8b20e3e33fc5233f6"
 ---
 
 # Review through Orca
@@ -500,7 +500,7 @@ without a P3-only round. One substantive slice permits no more than
 five paired review/fix attempts and still requires two fresh independent `PASS` reports on
 one final SHA.
 
-Never use `/goal`, edit/commit, run QC as a reviewer, close foreign tabs or
+Never edit/commit, run QC as a reviewer, close foreign tabs or
 retry `unknown_effect`. Report E2E as not evaluated unless separately requested,
 matching the brief's `E2E: not_evaluated reason=standalone`.
 

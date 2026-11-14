@@ -499,7 +499,7 @@ without a P3-only round. One substantive slice permits no more than
 five paired review/fix attempts and still requires two fresh independent `PASS` reports on
 one final SHA.
 
-Never use `/goal`, edit/commit, run QC as a reviewer, close foreign tabs or
+Never edit/commit, run QC as a reviewer, close foreign tabs or
 retry `unknown_effect`. Report E2E as not evaluated unless separately requested,
 matching the brief's `E2E: not_evaluated reason=standalone`.
 

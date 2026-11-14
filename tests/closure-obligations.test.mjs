@@ -388,13 +388,20 @@ const OBLIGATIONS = [
     },
   ],
   [
+    // The incident was a replacement executor that missed the slash goal
+    // prefix. The owner retired that command (#67), so the first running
+    // executor gets the same ordinary short task as any other, and the family
+    // is closed by proving the prefix is gone. The literal is assembled from
+    // parts so this file does not name it.
     "O-RR-020",
-    "the first actually running executor gets the initial goal prefix",
+    "the first actually running executor gets an ordinary task without the retired goal prefix",
     {
-      life: [
-        /Prefix only the initial executor task with `\/goal`/,
-        /Do not detect or emulate `\/goal`/,
-      ],
+      life: [/Give the executor a short task, normally two to five sentences/],
+    },
+    () => {
+      const retired = ["/", "goal"].join("");
+      for (const key of ["life", "orcskill", "revskill"])
+        assert.ok(!DOCS[key].includes(retired), `O-RR-020: ${key} names ${retired}`);
     },
   ],
 

@@ -149,11 +149,6 @@ task, include the accessible path to the specification; it need not be
 repository-relative or tracked. Include the complete user-intent ledger by path
 or in the task, and say it is normative.
 
-Prefix only the initial executor task with `/goal`. A harness that implements
-the command may apply native goal behavior; another harness may treat the whole
-message as ordinary task text. Do not detect or emulate `/goal`. Follow-ups,
-review findings and standalone review prompts are ordinary messages.
-
 Before substantive implementation, the executor maps every durable normative
 intent to an existing business id, a new compact thesis, or an explicitly
 approved meaning change. Incidents, commands and temporary workarounds belong in
@@ -346,9 +341,9 @@ not enough. One failed delivery permits one repeat of the same paths, then
 both reports before repairing.
 
 Standalone `mo-review-<backend>` follows the same review barrier on the current
-candidate, creates only the two reviewer sessions, never uses `/goal`, and,
-unless E2E was separately requested, puts `E2E: not_evaluated reason=standalone`
-into both briefs and reports E2E as not evaluated.
+candidate, creates only the two reviewer sessions and, unless E2E was separately
+requested, puts `E2E: not_evaluated reason=standalone` into both briefs and
+reports E2E as not evaluated.
 
 Before any pair, prove that the Orca project/repository registration inventory
 will not change and that selected isolated worktrees belong to the original
