@@ -227,6 +227,15 @@ test("every installable skill owns three base cases and named regressions", () =
     "mo-reviewer.regression-e2e-missing-unchanged-row",
     "mo-setup.regression-knowledge-layer-absence",
   ]);
+  // `make mo-e2e` prints the corpus size to the agent that runs the scenarios,
+  // so a case added without that line fails here rather than drifting.
+  const cases = [...corpus.values()].reduce((sum, document) => sum + document.cases.length, 0);
+  assert.ok(
+    readFileSync(join(ROOT, "Makefile"), "utf8").includes(
+      `${cases} embedded cases — positive/forbidden/degraded for ${corpus.size} skills plus ${regressions.length} regressions`,
+    ),
+    "the mo-e2e recipe states the corpus size",
+  );
   assert.equal(corpus.get("mo-orchestrate-orca").policy, "critical");
   const issueRouting = corpus
     .get("mo-orchestrate-orca")

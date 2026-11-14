@@ -46,12 +46,17 @@ const SCHEMA = yaml.DEFAULT_SCHEMA.extend([
 ]);
 
 const UNKNOWN = Symbol("unknown");
+// GitLab evaluates an undefined variable to nil, which equals no string, the
+// empty one included, and only another undefined variable. Reading it as ""
+// would match `$CI_COMMIT_TAG == ""` in a merge request where GitLab does not,
+// and so prove a QC job GitLab never adds.
+const UNSET = Symbol("unset");
 
 /**
  * The variables an expression may read. In both checked contexts a merge
- * request pipeline has no branch and no tag, and GitLab compares an unset
- * variable as an empty string; only the default branch comes from hosting
- * metadata, and without it the comparison has no value at all.
+ * request pipeline has no branch and no tag, so both are UNSET; only the
+ * default branch comes from hosting metadata, and without it the comparison
+ * has no value at all.
  */
 const PREDEFINED = new Set([
   "CI_PIPELINE_SOURCE",
@@ -292,7 +297,7 @@ function evaluate(node, values) {
   }
   if (node.type === "present") {
     const present = value(node.operand, values);
-    return present === UNKNOWN ? UNKNOWN : present !== "";
+    return present === UNKNOWN ? UNKNOWN : present !== "" && present !== UNSET;
   }
   const decisive = node.type === "or";
   let unknown = false;
@@ -358,7 +363,19 @@ function jobRuns(job, values) {
   if (job.trigger !== undefined) throw new Unsupported("trigger");
   if (job.rules === undefined) return false;
   const rule = firstMatch(job.rules, values);
-  return rule !== null && matchedRuleRuns(job, rule);
+  if (rule === null) return false;
+  // A job that needs another inherits that job's chance to stay skipped: QC
+  // after an optional manual gate never runs while the gate is not played.
+  // Whether a dependency always runs is not evaluated, so any needs is
+  // unsupported rather than proof. A matched rule's needs replaces the job's.
+  if (hasNeeds(rule.needs ?? job.needs)) throw new Unsupported("needs_dependency");
+  return matchedRuleRuns(job, rule);
+}
+
+function hasNeeds(needs) {
+  if (needs === undefined) return false;
+  if (!Array.isArray(needs)) throw new Unsupported("yaml_unreadable");
+  return needs.length > 0;
 }
 
 function matchedRuleRuns(job, rule) {
@@ -382,8 +399,8 @@ function contextValues(context, defaultBranch) {
   return {
     CI_PIPELINE_SOURCE: "merge_request_event",
     CI_MERGE_REQUEST_EVENT_TYPE: context.eventType,
-    CI_COMMIT_BRANCH: "",
-    CI_COMMIT_TAG: "",
+    CI_COMMIT_BRANCH: UNSET,
+    CI_COMMIT_TAG: UNSET,
     CI_DEFAULT_BRANCH: defaultBranch ?? UNKNOWN,
   };
 }
@@ -429,6 +446,15 @@ export function gitlabHistory(config, jobName) {
   try {
     job = gitlabJob(config, jobName);
   } catch {
+    return "unknown";
+  }
+  // A matched workflow or job rule's variables override both the job's and the
+  // global GIT_DEPTH. Which rule matches is not resolved here, so any rule that
+  // sets the depth leaves the effective clone unknown rather than full.
+  const rules = [config.workflow?.rules, job?.rules].flatMap((list) =>
+    Array.isArray(list) ? list : [],
+  );
+  if (rules.some((rule) => isPlainObject(rule?.variables) && "GIT_DEPTH" in rule.variables)) {
     return "unknown";
   }
   const own = isPlainObject(job?.variables) ? job.variables.GIT_DEPTH : undefined;

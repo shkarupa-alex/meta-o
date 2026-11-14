@@ -205,13 +205,18 @@ stay as above; the parse never adds an outcome. The subset it evaluates:
 It checks a merge request as both `detached` and `merged_result` — each must run
 QC — and a merge train as `merge_train` where trains are enabled. In all three
 `CI_PIPELINE_SOURCE` is `merge_request_event`, while the branch and the tag are
-unset and compare as empty strings, as in GitLab. `CI_DEFAULT_BRANCH` comes from
-hosting metadata through `--default-branch`; without it, a rule that actually
-has to read it is `rules=unsupported`, and a rule decided before it, or by the
-other side of `&&` or `||`, is not. Remote includes, `!reference`, regex `=~`,
-any other variable or substitution, `changes`, `exists` and `only`/`except` are
-`rules=unsupported`. `when: never`, an optional manual job and
-`allow_failure: true` do not prove a required QC.
+unset: as in GitLab, an unset variable equals no string, the empty one included,
+only another unset variable, and is false as a bare presence test.
+`CI_DEFAULT_BRANCH` comes from hosting metadata through `--default-branch`;
+without it, a rule that actually has to read it is `rules=unsupported`, and a
+rule decided before it, or by the other side of `&&` or `||`, is not. Remote
+includes, `!reference`, regex `=~`, any other variable or substitution,
+`changes`, `exists`, `only`/`except` and a non-empty `needs` of QC or of its
+matched rule are `rules=unsupported`: a job that needs an optional manual gate
+stays skipped while the gate is not played. `when: never`, an optional manual
+job and `allow_failure: true` do not prove a required QC. `history=full` needs a
+`GIT_DEPTH` of `0` that no workflow or job rule overrides: a rule that sets
+`GIT_DEPTH` makes the history `unknown`.
 
 Read whether a successful pipeline is required to merge, and whether merge
 trains are enabled, through authenticated `glab api`, and pass each as

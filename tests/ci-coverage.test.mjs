@@ -98,8 +98,8 @@ test("the default branch is read from hosting metadata and only where a rule nee
   assert.equal(without.rules, "unsupported");
   assert.equal(without.outcome, "unknown");
   assert.deepEqual(without.unresolved, ["default_branch_unknown"]);
-  // In a merge request the branch is unset, an empty string, so it never
-  // equals the default branch and the second rule decides.
+  // In a merge request the branch is unset, so it never equals the default
+  // branch and the second rule decides.
   const withBranch = coverage(files, { ...policy, defaultBranch: "main" });
   assert.equal(withBranch.rules, "reachable");
   assert.equal(withBranch.outcome, "covered");
@@ -114,17 +114,124 @@ test("the default branch is read from hosting metadata and only where a rule nee
     policy,
   );
   assert.equal(decidedFirst.outcome, "covered");
-  // Short-circuit: a false side decides `&&` without the missing value.
+  // Short-circuit: a false side decides `&&` without the missing value. An
+  // unset tag is not the empty string, so `== ""` is that false side.
   const shortCircuit = coverage(
     {
       ".gitlab-ci.yml": qc([
-        'if: $CI_COMMIT_TAG != "" && $CI_DEFAULT_BRANCH == "main"\n      when: never',
+        'if: $CI_COMMIT_TAG == "" && $CI_DEFAULT_BRANCH == "main"\n      when: never',
         "when: on_success",
       ]),
     },
     policy,
   );
   assert.equal(shortCircuit.outcome, "covered");
+  // `!= ""` is true for an unset tag, so the default branch has to be read.
+  const needsBranch = {
+    ".gitlab-ci.yml": qc([
+      'if: $CI_COMMIT_TAG != "" && $CI_DEFAULT_BRANCH == "main"\n      when: never',
+      "when: on_success",
+    ]),
+  };
+  const unread = coverage(needsBranch, policy);
+  assert.equal(unread.outcome, "unknown");
+  assert.deepEqual(unread.unresolved, ["default_branch_unknown"]);
+  assert.equal(coverage(needsBranch, { ...policy, defaultBranch: "main" }).rules, "unreachable");
+});
+
+test("an unset branch or tag equals no string, as GitLab's nil does", () => {
+  const policy = { requiredPolicy: "enabled", mergeTrains: "enabled" };
+  const rules = (list) => coverage({ ".gitlab-ci.yml": qc(list) }, policy);
+  // GitLab adds no QC to a merge request for `$CI_COMMIT_TAG == ""`.
+  const empty = rules(['if: $CI_COMMIT_TAG == ""']);
+  assert.equal(empty.rules, "unreachable");
+  assert.equal(empty.outcome, "config_present");
+  assert.deepEqual(empty.unresolved, ["qc_not_reachable"]);
+  // `!= ""` matches an unset branch, so `when: never` blocks QC.
+  assert.equal(
+    rules(['if: $CI_COMMIT_BRANCH != ""\n      when: never', "when: on_success"]).rules,
+    "unreachable",
+  );
+  assert.equal(rules(['if: $CI_COMMIT_TAG != ""']).rules, "reachable");
+  // A bare presence test of an unset variable stays false.
+  assert.equal(
+    rules(["if: $CI_COMMIT_TAG\n      when: never", "when: on_success"]).rules,
+    "reachable",
+  );
+  // Two unset variables equal each other.
+  assert.equal(rules(["if: $CI_COMMIT_BRANCH == $CI_COMMIT_TAG"]).rules, "reachable");
+  assert.equal(coverage({ ".gitlab-ci.yml": SHIPPED }).rules, "reachable");
+});
+
+test("QC that needs another job is no proof of a required QC", () => {
+  const policy = { requiredPolicy: "enabled", mergeTrains: "disabled" };
+  const pipeline = (qcBody) =>
+    [
+      "workflow:",
+      "  rules:",
+      '    - if: $CI_PIPELINE_SOURCE == "merge_request_event"',
+      "stages: [prepare, test]",
+      "gate:",
+      "  stage: prepare",
+      "  script: [echo ready]",
+      "  rules:",
+      "    - when: manual",
+      "      allow_failure: true",
+      "qc:",
+      "  stage: test",
+      "  script: [make qc]",
+      qcBody,
+    ].join("\n");
+  // An optional manual gate that is never played leaves QC skipped.
+  const jobNeeds = coverage(
+    { ".gitlab-ci.yml": pipeline("  needs: [gate]\n  rules: [{when: on_success}]\n") },
+    policy,
+  );
+  assert.equal(jobNeeds.rules, "unsupported");
+  assert.equal(jobNeeds.outcome, "unknown");
+  assert.deepEqual(jobNeeds.unresolved, ["needs_dependency"]);
+  const ruleNeeds = coverage(
+    { ".gitlab-ci.yml": pipeline("  rules: [{when: on_success, needs: [gate]}]\n") },
+    policy,
+  );
+  assert.deepEqual(ruleNeeds.unresolved, ["needs_dependency"]);
+  for (const body of [
+    "  rules: [{when: on_success}]\n",
+    "  needs: []\n  rules: [{when: on_success}]\n",
+  ]) {
+    assert.equal(coverage({ ".gitlab-ci.yml": pipeline(body) }, policy).outcome, "covered", body);
+  }
+});
+
+test("a rule that sets GIT_DEPTH leaves the clone depth unknown, never full", () => {
+  const policy = { requiredPolicy: "enabled", mergeTrains: "enabled" };
+  const jobRule = coverage(
+    {
+      ".gitlab-ci.yml":
+        'variables:\n  GIT_DEPTH: "0"\n' +
+        qc([
+          'if: $CI_PIPELINE_SOURCE == "merge_request_event"\n      variables:\n        GIT_DEPTH: "1"',
+        ]),
+    },
+    policy,
+  );
+  assert.equal(jobRule.history, "unknown");
+  assert.match(coverageLine("group/project", jobRule), / history=unknown /u);
+  const workflowRule = coverage(
+    {
+      ".gitlab-ci.yml":
+        'variables:\n  GIT_DEPTH: "0"\nworkflow:\n  rules:\n' +
+        '    - if: $CI_PIPELINE_SOURCE == "merge_request_event"\n      variables:\n        GIT_DEPTH: "1"\n' +
+        qc(["when: on_success"]),
+    },
+    policy,
+  );
+  assert.equal(workflowRule.history, "unknown");
+  const plain = coverage(
+    { ".gitlab-ci.yml": 'variables:\n  GIT_DEPTH: "0"\n' + qc(["when: on_success"]) },
+    policy,
+  );
+  assert.equal(plain.history, "full");
 });
 
 test("the context table: tags, branches and event types take their GitLab values", () => {

@@ -226,7 +226,7 @@ mo-e2e:
 	@echo "           LIVE-2 — quiet-timeout checkpoint: a completed reviewer and a status handoff ack"
 	@echo "           LIVE-3 — idle input over a running child: two states, one queued instruction"
 	@echo "           LIVE-4 — worktree lineage: actors start as children of the task's worktree"
-	@echo "           54 embedded cases — positive/forbidden/degraded for 12 skills plus 18 regressions"
+	@echo "           55 embedded cases — positive/forbidden/degraded for 12 skills plus 19 regressions"
 	@echo "           local and authorized remote installation"
 	@echo "Run:       execute the applicable scenarios without changing the frozen candidate"
 	@echo "Evidence:  keep exact SHA and per-scenario actor/provider facts in the current run/final result"

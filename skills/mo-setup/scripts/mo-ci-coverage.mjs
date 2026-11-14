@@ -3088,6 +3088,7 @@ var SCHEMA = yaml.DEFAULT_SCHEMA.extend([
   })
 ]);
 var UNKNOWN = Symbol("unknown");
+var UNSET = Symbol("unset");
 var PREDEFINED = /* @__PURE__ */ new Set([
   "CI_PIPELINE_SOURCE",
   "CI_MERGE_REQUEST_EVENT_TYPE",
@@ -3274,7 +3275,7 @@ function evaluate(node, values) {
   }
   if (node.type === "present") {
     const present = value(node.operand, values);
-    return present === UNKNOWN ? UNKNOWN : present !== "";
+    return present === UNKNOWN ? UNKNOWN : present !== "" && present !== UNSET;
   }
   const decisive = node.type === "or";
   let unknown = false;
@@ -3325,7 +3326,14 @@ function jobRuns(job, values) {
   if (job.trigger !== void 0) throw new Unsupported("trigger");
   if (job.rules === void 0) return false;
   const rule = firstMatch(job.rules, values);
-  return rule !== null && matchedRuleRuns(job, rule);
+  if (rule === null) return false;
+  if (hasNeeds(rule.needs ?? job.needs)) throw new Unsupported("needs_dependency");
+  return matchedRuleRuns(job, rule);
+}
+function hasNeeds(needs) {
+  if (needs === void 0) return false;
+  if (!Array.isArray(needs)) throw new Unsupported("yaml_unreadable");
+  return needs.length > 0;
 }
 function matchedRuleRuns(job, rule) {
   if (rule.when === void 0 && job.when !== void 0 && job.when !== "on_success") {
@@ -3343,8 +3351,8 @@ function contextValues(context, defaultBranch) {
   return {
     CI_PIPELINE_SOURCE: "merge_request_event",
     CI_MERGE_REQUEST_EVENT_TYPE: context.eventType,
-    CI_COMMIT_BRANCH: "",
-    CI_COMMIT_TAG: "",
+    CI_COMMIT_BRANCH: UNSET,
+    CI_COMMIT_TAG: UNSET,
     CI_DEFAULT_BRANCH: defaultBranch ?? UNKNOWN
   };
 }
@@ -3378,6 +3386,12 @@ function gitlabHistory(config, jobName) {
   try {
     job = gitlabJob(config, jobName);
   } catch {
+    return "unknown";
+  }
+  const rules = [config.workflow?.rules, job?.rules].flatMap(
+    (list) => Array.isArray(list) ? list : []
+  );
+  if (rules.some((rule) => isPlainObject(rule?.variables) && "GIT_DEPTH" in rule.variables)) {
     return "unknown";
   }
   const own = isPlainObject(job?.variables) ? job.variables.GIT_DEPTH : void 0;
