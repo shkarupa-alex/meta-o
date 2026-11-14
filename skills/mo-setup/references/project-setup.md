@@ -69,13 +69,14 @@ glossary agreement and foreign notation stay project-local rules.
 
 The knowledge layer is a capability the project declares, and the human decides
 it. The declared closure command carries the literal `MO-BACKLOG/1`, `AGENTS.md`
-records `history_cutoff_sha:` and links the papercut document — named for it, or
-declared by a `Knowledge-Layer-Papercut: <path>` line — and on the human's
-answer `AGENTS.md` holds `Knowledge-Layer: enabled` or
-`Knowledge-Layer: disabled` on its own line. A project that never had these is
-`not_enabled` and owes no closure proof at G0, GC, G1 or G2, while remote-head
-equality and CI evidence still bind an agent's MR/PR and merge; a project that
-had them and lost one is a gap.
+declares the identifier history — in the form below, there or in the one quality
+document it links — and links the papercut document — named for it, or declared
+by a `Knowledge-Layer-Papercut: <path>` line — and on the human's answer
+`AGENTS.md` holds `Knowledge-Layer: enabled` or `Knowledge-Layer: disabled` on
+its own line. A project that never had these is `not_enabled` and owes no
+closure proof at G0, GC, G1 or G2, while remote-head equality and CI evidence
+still bind an agent's MR/PR and merge; a project that had them and lost one is a
+gap.
 
 ## Knowledge id history
 
@@ -89,18 +90,24 @@ than "probably none". A ready project declares the stage in `AGENTS.md`, or in
 the document `AGENTS.md` names as its quality contract, as a level-two section
 whose heading contains `Knowledge id history` and which holds:
 
-- exactly one fenced block containing exactly one command line — the history
-  stage;
+- exactly one fenced block other than `yaml` containing exactly one command line
+  — the history stage;
 - exactly one line naming the project's authoritative quality command;
-- exactly one YAML record with the key `history_cutoff_sha`, the project's lower
-  boundary;
+- exactly one fenced `yaml` block holding exactly one record,
+  `history_cutoff_sha: <40-hex>` — the project's lower boundary. A cutoff
+  written inside a sentence or outside the section is not a record;
 - the locations identifiers live in: the business document and the architecture
   directory the stage reads.
 
 Parse that section with a real Markdown AST, never with a regular expression
 over the document. If the section is missing, if any of those counts is not
 exactly one, or if the locations are unnamed, ambiguous or contradictory, the
-result is `history=unknown` with `cutoff=none` and no guess. Locations are read
+result is `history=unknown` with `cutoff=none` and no guess. The bundled
+`scripts/mo-knowledge-layer.mjs` reads the same section the same way, and a
+section that is present but not in this form answers
+`reason=malformed_declaration signal=history` — or `ambiguous_declaration` for
+two blocks of one kind or two sections — rather than `missing=history`, because
+the gate may well work and only the declaration needs repair. Locations are read
 rather than assumed for the same reason as the rest: one project's layout is its
 own convention, and a probe that supplies the missing half either certifies
 documents the stage never reads or edits whichever file matched the shape.

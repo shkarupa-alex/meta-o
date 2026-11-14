@@ -61,8 +61,11 @@ own checker for that portable core. Never guess: take the
 declared stage from a level-two section whose heading contains
 `Knowledge id history`, holding exactly one fenced one-line command, exactly one
 line naming the authoritative QC command, and exactly one `history_cutoff_sha`
-record. Parse it with a Markdown AST. Any other count is `history=unknown` with
-`cutoff=none`. The same contract must name where identifiers live: the business
+record — a fenced `yaml` block holding only `history_cutoff_sha: <40-hex>`.
+Parse it with a Markdown AST. Any other count is `history=unknown` with
+`cutoff=none`; the layer helper reports such a section as
+`reason=malformed_declaration signal=history` or `ambiguous_declaration`, and
+repair writes exactly this form. The same contract must name where identifiers live: the business
 document and the architecture directory the stage reads. Unnamed, ambiguous or
 contradictory locations are `history=unknown cutoff=none` and no fixture is
 written at all — a fixture built on a guessed location certifies documents

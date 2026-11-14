@@ -72,8 +72,8 @@ export const BUNDLES = {
     roots: [...MARKDOWN_ROOTS, "js-yaml"],
   },
   "scripts/mo-knowledge-layer.mjs": {
-    baselineBytes: 188_819,
-    roots: MARKDOWN_ROOTS,
+    baselineBytes: 300_822,
+    roots: [...MARKDOWN_ROOTS, "js-yaml"],
   },
   // The static GitLab rules evaluator reads YAML and nothing else.
   "scripts/mo-ci-coverage.mjs": {
