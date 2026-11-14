@@ -282,7 +282,9 @@ answering `action=inject`, and its `context=`/`context_window=` fields are
 what the context flags take. A refused screen on an idle session is
 `session_unavailable` recorded with that line: that slot returns
 `needs_attention`, its composer text is left as it is, nothing else is closed,
-and it is never by itself a reason for a new deep pair.
+and it is never by itself a reason for a new deep pair. `action=wait` is a
+session still at work: nothing is sent, the slot is not recorded unavailable,
+and its screen is read again at the next checkpoint of the run's one wait.
 
 Orca's own folder pre-trust, on by default, trusts the start's worktree before
 the harness launches, so a reviewer start normally meets no trust UI. Whenever a

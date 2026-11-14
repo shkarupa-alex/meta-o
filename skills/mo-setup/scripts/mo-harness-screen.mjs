@@ -39,6 +39,22 @@ const CLAUDE_COMPOSER = /^─+[ \t]*\n[ \t]*❯[ \t]?(.*)$/mu;
 const CODEX_COMPOSER = /^[ \t]*›[ \t]?(.*)\n[ \t]+\S[^\n]*? · Context (?:\d+% used|…)/mu;
 
 /**
+ * The status row Codex paints above its composer while a turn is running.
+ *
+ * Codex keeps its composer editable during a turn, so an empty `›` row over a
+ * whole footer is exactly what an active session shows too: issue #73 saw
+ * `• Working (13m 44s • esc to interrupt)` above such a composer while the
+ * Dispatch was still working. The row is an optional activity glyph, a header
+ * (`Working` until a reasoning summary renames it), the elapsed time in Codex's
+ * own compact form and the interrupt hint, whose key the user may remap; a
+ * narrow pane cuts it with `…`. Unlike the composer anchors this one is kept
+ * wide on purpose: a frame it misses falls through to the composer and is
+ * handed bytes, while a frame it over-matches only waits.
+ */
+const CODEX_ACTIVE =
+  /^[ \t]*(?:[•◦] )?[^\s(][^\n(]*? \((?:\d+h \d{2}m \d{2}s|\d+m \d{2}s|\d+s)(?: • [^\n()]*? to interrupt\)| • [^\n()]*…$)/mu;
+
+/**
  * The recorded frames this classifier is allowed to recognize.
  *
  * Every entry was captured from a live harness, not written from memory, and
@@ -90,6 +106,14 @@ export const SCREENS = [
     anchors: [CODEX_COMPOSER],
     input: CODEX_COMPOSER,
     placeholder: /^Ask Codex to do anything$/u,
+  },
+  {
+    // Transcribed from the public screen issue #73 reported on 2026-11-11, not
+    // captured here. It outranks the Codex composer it is painted above.
+    version: "codex-working-2026-11-11",
+    harness: "codex",
+    state: "busy",
+    anchors: [CODEX_ACTIVE],
   },
   {
     version: "opencode-prompt-2026-09-18",
@@ -247,10 +271,22 @@ export function contextIndicator(frame, harness) {
  * §A-DELIVERY-01 makes this the only gate before delivery, so two recorded
  * screens matching the same frame is itself a failure: an ambiguous frame is
  * `unknown`, exactly like an unseen one, and neither receives bytes.
+ *
+ * The one precedence is a harness's active-work row over that same harness's
+ * composer. A running turn paints both, and the composer alone read as a
+ * proven idle prompt; anything else that matches twice stays ambiguous.
  */
 export function classifyScreen(text) {
   const frame = normalizeScreen(text);
-  const matched = SCREENS.filter((screen) => screen.anchors.every((anchor) => anchor.test(frame)));
+  const recognized = SCREENS.filter((screen) =>
+    screen.anchors.every((anchor) => anchor.test(frame)),
+  );
+  const working = new Set(
+    recognized.filter((screen) => screen.state === "busy").map((screen) => screen.harness),
+  );
+  const matched = recognized.filter(
+    (screen) => !(screen.state === "agent_prompt" && working.has(screen.harness)),
+  );
   if (matched.length !== 1) {
     const reason = matched.length === 0 ? "screen_unrecognized" : "screen_ambiguous";
     return { state: "unknown", action: "refuse", harness: "unknown", version: "none", reason };
@@ -269,6 +305,7 @@ export function classifyScreen(text) {
     if (!composer.ok) return { ...common, context, action: "refuse", reason: composer.reason };
     return { ...common, context, action: "inject" };
   }
+  if (screen.state === "busy") return { ...common, action: "wait" };
   return { ...common, action: "refuse", reason: "shell_prompt" };
 }
 
@@ -358,6 +395,20 @@ function selectionOf(verdict) {
 }
 
 /**
+ * Whether a draft beside the frame stops delivery before the frame is judged.
+ *
+ * §A-DELIVERY-01: a waiting draft is invisible in the frame by construction, so
+ * no amount of agreement about the frame can license delivery while one exists.
+ * Whitespace is bytes too: Orca never promises the composer is empty when it
+ * trims empty, and a newline decides how appended input is framed. Active work
+ * outranks the draft as it outranks the composer: a busy frame licenses nothing
+ * anyway, and the draft is read again once the turn has ended.
+ */
+function draftBlocks(draft, verdict) {
+  return draft !== undefined && draft !== "" && verdict.state !== "busy";
+}
+
+/**
  * Decide what one frame licenses for this caller, harness and path.
  *
  * §A-DELIVERY-01 keeps ownership with the caller, so this answers only what the
@@ -367,11 +418,7 @@ function selectionOf(verdict) {
 export function decideScreen(text, { harness, expectPath, fixturesVersion, draft } = {}) {
   const verdict = classifyScreen(text);
   const record = { state: verdict.state, screen_version: verdict.version, action: "refuse" };
-  // A waiting draft is invisible in the frame by construction, so no amount of
-  // agreement about the frame can license delivery while one exists. Whitespace
-  // is bytes too: Orca never promises the composer is empty when it trims empty,
-  // and a newline decides how appended input is framed.
-  if (draft !== undefined && draft !== "") {
+  if (draftBlocks(draft, verdict)) {
     return { ...record, reason: "composer_draft_present" };
   }
   if (fixturesVersion !== undefined && verdict.version !== fixturesVersion) {

@@ -55,6 +55,8 @@ test("every recorded frame classifies as the surface it was captured from", () =
     "codex-prompt-after-turn.screen agent_prompt inject codex",
     "codex-prompt-context-cut.screen agent_prompt inject codex",
     "codex-prompt.screen agent_prompt inject codex",
+    "codex-working-footer-cut.screen busy wait codex",
+    "codex-working.screen busy wait codex",
     "opencode-prompt.screen agent_prompt inject opencode",
     "shell-prompt.screen shell_prompt refuse shell",
   ]);
@@ -625,4 +627,78 @@ test("every input of the screen gate is printed by --help", () => {
   const missing = spawnSync(process.execPath, [script], { encoding: "utf8", input: "" });
   assert.equal(missing.status, 2);
   assert.match(missing.stderr, /--harness is required\nusage: /u);
+});
+
+test("an active Codex turn waits even over an empty composer and a whole footer", () => {
+  // Issue #73: a Codex Dispatch still working showed its `Working (… esc to
+  // interrupt)` row above an empty composer and a complete context footer, and
+  // the classifier answered `action=inject` from the composer alone.
+  const working = frame("codex-working.screen");
+  const options = { harness: "codex", expectPath: "/tmp/mo-owned-worktree" };
+  assert.equal(
+    screenLine(decideScreen(working, options)),
+    "MO-HARNESS-SCREEN/1 state=busy screen_version=codex-working-2026-11-11 action=wait",
+  );
+  // Without the row the same frame is the idle prompt it always was.
+  const idle = working.replace(/^• Working [^\n]*\n/u, "");
+  const idleDecided = decideScreen(idle, options);
+  assert.deepEqual([idleDecided.state, idleDecided.action], ["agent_prompt", "inject"]);
+  // A cut footer, a draft in the frame or beside it, and every form Codex
+  // paints the row in — remapped key, no glyph, the blinking glyph, a renamed
+  // header, a pane narrow enough to cut it, scrollback above — license no
+  // bytes either.
+  const variants = [
+    frame("codex-working-footer-cut.screen"),
+    working.replace("› Ask Codex to do anything", "› rm -rf /tmp/project"),
+    working.replace("esc to interrupt", "f12 to interrupt"),
+    working.replace("• Working", "Working"),
+    working.replace("• Working", "◦ Working"),
+    working.replace("Working (13m 44s", "Planning the fix (1h 02m 03s"),
+    working.replace(/\(13m 44s • esc to interrupt\)[^\n]*/u, "(7s • esc to…"),
+    `${frame("codex-prompt-after-turn.screen").split("\n").slice(0, 3).join("\n")}\n${working}`,
+  ];
+  for (const text of variants) {
+    for (const draft of [undefined, "", "unsent"]) {
+      const decided = decideScreen(text, { ...options, draft });
+      assert.deepEqual([decided.state, decided.action], ["busy", "wait"], text);
+    }
+  }
+  // The cut footer alone is still the unrecognized frame issue #33 tracks.
+  const cutIdle = frame("codex-working-footer-cut.screen").replace(/^• Working [^\n]*\n/u, "");
+  assert.equal(decideScreen(cutIdle, options).action, "refuse");
+  // A genuine idle frame keeps the finished-turn separator, which is not an
+  // active row, and a draft beside it still refuses.
+  assert.match(frame("codex-prompt.screen"), /Worked for 4m 32s/u);
+  assert.equal(decideScreen(frame("codex-prompt.screen"), options).action, "inject");
+  const drafted = decideScreen(frame("codex-prompt.screen"), { ...options, draft: "unsent" });
+  assert.deepEqual([drafted.action, drafted.reason], ["refuse", "composer_draft_present"]);
+  // A caller that started another harness gets no wait from a Codex screen.
+  assert.equal(decideScreen(working, { ...options, harness: "claude" }).action, "refuse");
+});
+
+test("the shipped CLI answers wait for an active Codex turn whatever its draft", () => {
+  const script = join(ROOT, "shared", "scripts", "mo-harness-screen.mjs");
+  for (const draft of [undefined, "unsent"]) {
+    const envelope = JSON.stringify({
+      ok: true,
+      result: {
+        terminal: {
+          handle: "term_x",
+          source: "screen",
+          tail: frame("codex-working.screen").split("\n"),
+          ...(draft === undefined ? {} : { draft }),
+        },
+      },
+    });
+    const run = spawnSync(
+      process.execPath,
+      [script, "--harness", "codex", "--expect-path", "/tmp/mo-owned-worktree"],
+      { input: envelope, encoding: "utf8" },
+    );
+    assert.equal(run.status, 0);
+    assert.equal(
+      run.stdout,
+      "MO-HARNESS-SCREEN/1 state=busy screen_version=codex-working-2026-11-11 action=wait\n",
+    );
+  }
 });

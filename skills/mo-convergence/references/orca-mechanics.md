@@ -104,7 +104,8 @@ orca terminal read --terminal <handle> --screen --json \
   #                     action=<inject|accept_trust|confirm_trust|refuse|wait>
   # exit 0 classified, 2 unreadable input or a call it cannot answer
   # trust_ui → the trust procedure; action=inject → continue;
-  # anything else → close that exact handle and return needs_attention
+  # state=busy action=wait → send nothing, wait for tui-idle once more and read again;
+  # anything else, or busy again → close that exact handle and return needs_attention
 ps -o args= -p <pid from orca terminal show --json>   # argv carries the requested model and effort
 orca orchestration worker-start --task <id> --worktree id:<repo>::<path> --terminal <handle> --json
 ```
@@ -140,6 +141,13 @@ and Orca reports no origin for composer text, so it refuses like typed text and
 is never erased to make room. Claude Code paints that suggestion only sometimes
 (2.1.287 painted none on a fresh session), so live evidence of a refusal may
 come from a real draft instead.
+
+Codex keeps that composer editable while a turn runs, so its active-work row
+above it — `• Working (13m 44s • esc to interrupt)`, whatever header, glyph or
+interrupt key it shows — outranks the composer: the answer is
+`state=busy action=wait` over an empty composer, a whole footer or any draft. A
+busy session is neither idle nor refused; only a frame without that row proves
+idle.
 
 Sending `worker_done` completes the Dispatch, but the agent session behind it
 stays hot. A new Dispatch binds to that same session with
