@@ -281,16 +281,19 @@ environment or a required profile is unavailable, is an external block instead:
 returning it to the executor would loop without converging, because nothing the
 executor changes removes the block. Unavailable means that only a human's action
 restores it — the profile is not approved or not installed, access is missing,
-the environment is broken. An exhausted subscription window or a temporary
-provider refusal is no external block: it is a wait for the next window or a
-retry through the shared waiter, and nobody is woken for it. Such a scenario is
-never sent back for a fix and never rerun while the block stands. Tell the human
-once — the scenario, its result and the Issue or missing capability behind it —
-keep its line as section 8 says, and let the review start once every other
-selected scenario has passed. The block stops only what depends on it; the
-feature ends no better than `needs_attention/external_blocked` for a typed
-external capability, or `needs_attention/verification_blocked` for a missing
-environment or profile, until the scenario passes.
+the environment is broken. A blocked scenario is never sent back for a fix and
+never rerun while the block stands. Tell the human once — the scenario, its
+result and the Issue or missing capability behind it — keep its line as section
+8 says, and let the review start once every other selected scenario has passed.
+The block stops only what depends on it; the feature ends no better than
+`needs_attention/external_blocked` for a typed external capability, or
+`needs_attention/verification_blocked` for a missing environment or profile,
+until the scenario passes.
+
+An exhausted subscription window or a temporary provider refusal is a wait, not
+a block, and none of that applies to it: wait for the next window or retry
+through the shared waiter, then rerun only that scenario, wake nobody, and start
+the review only once it has passed.
 
 After the executor settles, validate the branch, clean worktree, commit object
 and full `HEAD`, then freeze that SHA. Start both reviewer sessions concurrently

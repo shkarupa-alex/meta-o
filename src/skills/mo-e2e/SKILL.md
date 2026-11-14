@@ -95,7 +95,9 @@ gets its line, with `result=` naming its lowercase result such as `fail`,
 `unknown` stands. A `blocked:external_capability`, or a `not_run` because a
 required environment or approved profile is unavailable and only a human's
 action restores it, is an external block the executor cannot fix, so its line
-ends with `cause=` naming the missing capability, environment or profile: the
+ends with `cause=` naming what is missing — `capability:<name>` for
+`blocked:external_capability`, `environment:<name>` or `profile:<name>` for
+`not_run`, never another pairing: the
 caller carries that line into the review as unproven rather than looping on it.
 An exhausted subscription window or a temporary provider refusal is no such
 block: wait for the window or retry, and report the scenario once it ran. A

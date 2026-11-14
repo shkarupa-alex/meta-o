@@ -201,7 +201,8 @@ test("every actor reads the E2E proof order and the per-scenario evidence form",
       "`git merge-base --is-ancestor <sha> <candidate>`",
       "A `fail` or `unknown` never reaches a reviewer",
       externalBlock,
-      "An exhausted subscription window or a temporary provider refusal is no external block",
+      // The wait is its own paragraph, so the block's instructions never attach to it.
+      "An exhausted subscription window or a temporary provider refusal is a wait, not a block, and none of that applies to it",
     ],
     "shared/references/review-brief.md": [
       // The brief also carries an external block as a known, unproven scenario.
