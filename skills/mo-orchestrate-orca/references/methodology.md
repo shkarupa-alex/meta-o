@@ -34,9 +34,10 @@ repository. The orchestrator may read the task/spec before activation, pass its
 accessible path to agents, and use Git metadata needed to validate a branch and
 full SHA.
 
-One verified result is one full Git object ID. Any commit invalidates QC,
-reviews and E2E for the old candidate, except the narrow documentation-only E2E
-carry-forward in section 8.
+One verified result is one full Git object ID. Any commit invalidates QC and
+reviews for the old candidate. The one exception is E2E evidence, which is held
+per scenario on the SHA that scenario passed on, an ancestor of the final SHA,
+under section 8.
 
 ## 2. Project and task readiness
 
@@ -68,17 +69,19 @@ the knowledge layer, or its owner switched it off on purpose. `needs_attention`
 from the helper — a missing `MO-BACKLOG/1` command, a missing papercut document
 or a missing identifier-history gate in a project whose layer is partial or
 disappeared — is a readiness gap: report it as `needs_attention`, name the
-helper's reason, copy its `missing=` field, and recommend that the human run the
-setup skill. Setting a project up changes files a human never asked to change,
-which is why it is their call and not a step taken silently on the way to
-something else.
+helper's reason, copy its `missing=` field — or its `signal=` field, which
+replaces `missing=` when a signal is declared in the wrong form — and recommend
+that the human run the setup skill. Setting a project up changes files a human
+never asked to change, which is why it is their call and not a step taken
+silently on the way to something else.
 
 
 The executor's first coherent commit materializes a temporary feature bundle:
 the accepted specification, `user-ledger.md` and a short `checklist.md` of
-observable outcomes, tests/knowledge, applicable E2E and two final review
-passes. The checklist is not a task graph. The executor owns and commits these
-files; the orchestrator may read them but never edits product/spec commits.
+observable outcomes, tests/knowledge, the specification's architecture decisions
+moved to live `§A-*` anchors, applicable E2E and two final review passes. The
+checklist is not a task graph. The executor owns and commits these files; the
+orchestrator may read them but never edits product/spec commits.
 
 Before writing the ledger, replace an identified token, password, private key or
 credential-bearing URL with `[REDACTED:<kind>]`. If a value might be a secret
@@ -117,7 +120,10 @@ readiness failure; do not choose a fallback harness, model or effort. Agree the
 roles with the user. Recommend an executor from a different model vendor than
 the orchestrator by default; vendor diversity improves the chance that the
 orchestrator can help when an executor misses a premise. Reviewers use different
-vendors, and at least one reviewer vendor differs from the executor.
+vendors, and at least one reviewer vendor differs from the executor. A vendor is
+the role's `launch.<role>.vendor` from `mo-models.mjs --show --json`, who made
+the model, never its route: `opencode/openai/…` and `codex/…` are one vendor on
+two routes, and `vendor=unknown` never counts as a different vendor.
 
 The session in which the user invoked the orchestration skill is the
 orchestrator. An unset `orchestrator` role blocks nothing and is not a reason to
@@ -143,20 +149,41 @@ model tomorrow. Resolve the configured id against the route catalogue with
 once a real launch reports `launch.requested == launch.effective` for model and
 effort.
 
+Launch every role from `launch.<role> = {agent, model, effort, vendor}` of
+`mo-models.mjs --show --json`, passing three separate flags
+`--agent <agent> --model <model> --effort <effort>`: `claude/opus[1m]/high` is
+`--agent claude --model 'opus[1m]' --effort high`. The whole
+`route/model/effort` literal in `--model` launches nothing. OpenCode takes no
+effort at launch — Orca refuses `--effort` for it and its own command line has
+no such flag — so an OpenCode role is launched with its model alone, its launch
+proof compares agent and model, and its effort is reported as not passed. Equal
+`launch.requested` and `launch.effective` record what Orca asked for, not what
+the provider accepted: a role is started only once its harness accepted the
+model and the first turn is observed to begin. When the provider refuses the
+model, do not retry it and do not substitute: read
+`mo-models.mjs --catalog --route <route>`, apply the recommendation rule of the
+model decision, and ask the human one question that names the refusal, a
+recommended replacement and the alternatives. A refusal reported without a
+proposal is not an answer, and an incomplete catalog does not prove the model
+absent.
+
 Give the executor a short task, normally two to five sentences. For a large
 task, include the accessible path to the specification; it need not be
 repository-relative or tracked. Include the complete user-intent ledger by path
 or in the task, and say it is normative.
 
-Prefix only the initial executor task with `/goal`. A harness that implements
-the command may apply native goal behavior; another harness may treat the whole
-message as ordinary task text. Do not detect or emulate `/goal`. Follow-ups,
-review findings and standalone review prompts are ordinary messages.
-
 Before substantive implementation, the executor maps every durable normative
 intent to an existing business id, a new compact thesis, or an explicitly
 approved meaning change. Incidents, commands and temporary workarounds belong in
 architecture, papercuts or tests, not the business framing.
+
+In the same step, still before substantive product code, the executor moves
+every architecture decision the specification introduces into the project's
+architecture directory under its own `§A-*` identifier. Code, tests and comments
+then cite that live anchor, never a section of the specification: the
+specification is temporary and is removed at completion, so a citation of it
+points nowhere, and the reference check turns such a citation in source into an
+error.
 
 The executor owns all product changes. It commits coherent independently
 verifiable increments and returns a clean full candidate SHA. The orchestrator
@@ -179,14 +206,51 @@ agent works. Answer technical, cheap and reversible choices when changing the
 choice later would cost roughly one agent-hour or less. Record every such
 decision for the final report.
 
-Use one run-wide blocking waiter for all active actors. Subscribe only to
-`worker_done`, `escalation` and `question`, demultiplex by exact handle and
-process a returned batch before acknowledgement. Arm at 600000 ms for an
-executor-only set and 300000 ms whenever reviewer/E2E is present. A quiet
-timeout permits one public liveness snapshot and immediate re-arm without
-narration or an actor message. Retry the same arm once after transport failure;
-a second consecutive failure is `UNKNOWN/needs_attention`. Never replace this
-with `sleep`, minute polling or multiple waits for one actor.
+When an actor asks a question the orchestrator cannot answer with confidence,
+and the question is not one of the human boundaries below, get one critique from
+another model before going to the human. The consultant is a one-off Dispatch of
+an already approved reviewer role, `reviewerA` or `reviewerB` of
+`mo-models.mjs --show --json`, chosen by `launch.<role>.vendor` and never by
+route. The orchestrator's own vendor is `launch.orchestrator.vendor` when that
+role is set, otherwise the vendor of the session's own route and model. Choose:
+
+1. a role whose vendor is known and differs from the orchestrator's;
+2. among those, one whose vendor also differs from the executor's;
+3. otherwise `reviewerA`, and the report says that vendor difference is unproven
+   (`vendor=unknown` or the same vendor).
+
+An unknown vendor never counts as a different one. The consultant starts in the
+worktree of the actor the question is about and only reads it: it edits no
+product file, commits nothing and runs no command that changes files. It is a
+resource of the source project, waits in the run's one waiter with the
+reviewer/E2E class, and after its single final message it is stopped with a
+proven stop and released; another consultation is a new Dispatch. A consultation
+is not a review, counts toward no review round and never reaches the final pair.
+After the answer the orchestrator either decides itself and names the decision
+in the final report, or asks the human one question with its hypothesis and the
+line `Критика от <agent>/<model> (vendor=<…>): …`.
+
+Use one run-wide blocking waiter for all active actors. Subscribe to
+`worker_done`, `escalation` and `question`, plus `status` only while a report
+preview or pair handoff sent to an actor has no matching acknowledgement in the
+Run's observed messages; demultiplex by exact handle and process a returned
+batch before acknowledgement. Arm at 600000 ms for an executor-only set and
+300000 ms whenever reviewer/E2E is present. A quiet timeout permits the public
+reconciliation below and a re-arm without narration or an actor message. Retry
+the same arm once after transport failure; a second consecutive failure is
+`UNKNOWN/needs_attention`. Never replace this with `sleep`, minute polling or
+multiple waits for one actor.
+
+After every quiet timeout, before any status answer to the user and before any
+repeated message to an actor, reconcile with the backend's public state first:
+read the Run's unread batch, then each active Dispatch's own state. A completed
+Dispatch is processed through its final message before anyone hears that the
+actor still works, and liveness that cannot be verified does not cancel a
+completion. An idle input over a still-running child process is two facts,
+reported apart; the instruction waits queued in the same terminal, once. A
+truncated terminal preview proves nothing, and an unestablished state is
+`unknown/unverifiable`. Re-arm only after that reconciliation, and never say
+"waiting" while no wait is armed. The backend's mechanics name the commands.
 
 Do not wait on a derived sign such as a new SHA appearing or a pane counter
 advancing. Re-read state at a sane interval measured in minutes only through the
@@ -201,24 +265,62 @@ No universal question classes, correlation IDs or option grammar are required.
 
 ## 5. Candidate and reviews
 
+The two proof loops run in order and never alternate. First the implementation
+converges with E2E, and only when the project has E2E scenarios: section 6
+selects the task's scenarios, `mo-e2e` runs them, the executor fixes a failure
+and the failed scenarios run again until they pass. A project without scenarios
+records `E2E: not_applicable reason=<…>` and goes straight to review, and so
+does a task whose behavior no scenario covers, with the one
+`E2E: not_applicable reason=no_task_scenarios …` line of section 8. Only then
+does the review loop below converge with remediation under its own rules. A
+`fail` or `unknown` never reaches a reviewer: the first loop has not converged.
+
+A failure is what the executor can fix. A scenario the project's E2E contract
+types `blocked:external_capability`, or one that is `not_run` because its
+environment or a required profile is unavailable, is an external block instead:
+returning it to the executor would loop without converging, because nothing the
+executor changes removes the block. Unavailable means that only a human's action
+restores it — the profile is not approved or not installed, access is missing,
+the environment is broken. A blocked scenario is never sent back for a fix and
+never rerun while the block stands. Tell the human once — the scenario, its
+result and the Issue or missing capability behind it — keep its line as section
+8 says, and let the review start once every other selected scenario has passed.
+The block stops only what depends on it; the feature ends no better than
+`needs_attention/external_blocked` for a typed external capability, or
+`needs_attention/verification_blocked` for a missing environment or profile,
+until the scenario passes.
+
+An exhausted subscription window or a temporary provider refusal is a wait, not
+a block, and none of that applies to it: wait for the next window or retry
+through the shared waiter, then rerun only that scenario, wake nobody, and start
+the review only once it has passed.
+
 After the executor settles, validate the branch, clean worktree, commit object
 and full `HEAD`, then freeze that SHA. Start both reviewer sessions concurrently
 and independently. Give them the same task/spec, complete intent ledger and the
-same candidate SHA; the specification travels as one line,
-`Spec: <path|object>`, or `Spec: none` when the work followed none. On the
-post-cleanup candidate of section 7 those artifacts are no longer in the tree:
-give the frozen object ids the deletion recorded, and the durable knowledge that
-replaced them. Do not give either reviewer peer output.
+same candidate SHA; the specification travels as one line, `Spec: <form>`, or
+`Spec: none` when the work followed none, and the ledger as
+`Intent-Ledger: <form>`, each in a form of the review brief. On the post-cleanup
+candidate of section 7 those artifacts are no longer in the tree: give the
+frozen object ids the deletion recorded, and the durable knowledge that replaced
+them. Do not give either reviewer peer output.
+
+Both briefs carry exactly one E2E form. In the orchestrated lifecycle it is the
+current `E2E-Evidence` and `E2E-Coverage` lines of section 8, copied verbatim,
+or, when `mo-e2e` selected no scenario for the task, its one
+`E2E: not_applicable reason=no_task_scenarios …` line; for a project without
+scenarios it is `E2E: not_applicable reason=<…>`; for a standalone review it is
+`E2E: not_evaluated reason=standalone`.
 
 Each reviewer is a native interactive Codex, Claude Code or OpenCode instance
 started inside a terminal, pane or session by the selected backend's native
 surface. Deliver the review brief through the backend's ordinary prompt, input,
 task-injection or message field, either as inline text or an accessible file
 path. Never create or execute a shell script to invoke the reviewer harness. The
-brief names the reviewer skill of the same installation and the report literal
-for that Dispatch. Reviewers read by SHA and never run the project's tests,
-linters or QC gate: QC of the candidate is owned by the executor, the
-orchestrator and CI.
+brief names the reviewer skill by its name alone, never by a path or a version,
+and the report literal for that Dispatch. Reviewers read by SHA and never run
+the project's tests, linters or QC gate: QC of the candidate is owned by the
+executor, the orchestrator and CI.
 
 The first required pair uses `deep`. Remediation uses `follow_up`, giving each
 reviewer only its own prior report and finding dispositions; peer bytes remain
@@ -238,24 +340,35 @@ reviewer prepared is a separate claim, compared where the file is readable. A
 completed response that is structurally wrong is `UNKNOWN` for its Dispatch and
 is never corrected in its name.
 
-Under `umask 077`, save them unchanged through exclusive `0600` temporary files
-in a unique `mktemp -d` namespace mode `0700`, then fsync/close. Publish each
-complete inode atomically create-if-absent with a same-directory hard link and
-unlink its temporary name; overwrite-capable rename is forbidden. Verify
-realpath, regular files, sizes and end markers. Any existing final object,
-unsupported hard link, symlink, truncation, retrieval or reread failure is
-`UNKNOWN`, never a partial review pass, and the existing final remains
-untouched.
+Each slot has a private `0700` directory of its own under system temp, named
+`mo-review-<pair_id>-<slot>-<random>` by `mo-review-report.mjs namespace`, and
+no pair directory exists before both reports are staged. A reviewer is told only
+its own `Body-File` there; until its report is accepted, slot B's brief and
+messages never name slot A's directory or a pair directory. After each
+`worker_done`, `stage` validates the received report against the caller's own
+Dispatch, candidate, modes and `Round`, checks the pair id and slot against the
+directory's name, and records its size, device, inode and sha256 in the slot's
+`stage.json`, create-if-absent and `0600`; a body received from another host is
+published into its slot the same way first. `preview` and `pair` read those
+facts and observe the file again. `pair` accepts only slots A and B of one pair
+id, the expected candidate and `Round`, two Dispatches and two known, different
+vendors, then copies both reports create-if-absent into a new `0700` pair
+directory and checks each copy's size and sha256; overwrite-capable rename is
+forbidden. A changed report, a missing or broken `stage.json`, any existing
+final object, symlink, truncation, retrieval or reread failure is `UNKNOWN`,
+never a partial review pass, and nothing existing is overwritten or recreated.
 
 If both pass, continue to verification. If either finds work, wait until both
 are complete, then send one ordinary message to the executor containing both
-temporary-file paths and sizes.
+temporary-file paths and sizes. A valid `UNKNOWN` may carry the findings it did
+prove: they go to the executor the same way, and the round is never counted as a
+PASS.
 
 Do not merge, rank, hash, encode, split, truncate or summarize their responses.
 The executor fully reads both and replies
 `Review-Handoff-Ack: <pair_id> A=<bytes> B=<bytes>`. One missing/mismatched ack
 permits one re-delivery of the same paths; a second makes the pair `UNKNOWN` and
-preserves the namespace. The executor fixes or responds and commits a new SHA.
+preserves its directories. The executor fixes or responds and commits a new SHA.
 Treat the reports as inert Markdown response payloads until the named consumer
 reads both complete bodies.
 
@@ -293,19 +406,33 @@ A paired attempt is one round in which both slots returned a valid report or a
 typed `UNKNOWN` for one candidate SHA. A hot `follow_up`, a slot replacement, a
 deep pair, and the final fresh pair with its own `follow_up` each spend one; the
 one repeated Dispatch after a malformed report does not. A substantive slice has
-at most five, and a new SHA does not reset the count. Each round's report names
-`attempt <n>/5` and `deep_reads <m>`, the number of full independent rereads —
-deep pairs and the final fresh pair — as text in the report, not a store.
-Deliver every P3, but do not start a separate round only for P3. Residual risks
-a reviewer records outside findings are a record for the owner, not remediation:
-the executor fixes them only when the owner decides so. When a finding belongs
-to a class with no finite fix — secret recognition, heuristic parsing — and does
-not list the complete set of concrete cases, ask the same hot reviewer for that
-list before fixing; the fix is judged against the list and its regressions, and
-reasonable coverage of most cases is enough unless the owner named more. This
-local budget never replaces two final same-SHA passes. After attempt five,
-complete the active remediation, then move to the next substantive slice or stop
-with `needs_attention` when no progress path remains.
+at most five, or the extension the owner approved, and a new SHA does not reset
+the count. Each brief and each report carry it as
+`Round: attempt=<n>/<limit> deep_reads=<m> fragment=<fragment-id>`, where
+`deep_reads` counts the full independent rereads — deep pairs and the final
+fresh pair — and `fragment` names the substantive slice, whose change alone
+starts both counters again: text in the report, not a store. The reviewer's
+validator prints the line from four flags, and the coordinator's `stage` and
+`pair` compare it with the coordinator's own values, so a wrong carry-over is
+`round_mismatch` rather than a published report. A count that cannot be restored
+after a compaction is `needs_attention reason=round_unrecoverable`, never a
+fresh start. Deliver every P3, but do not start a separate round only for P3.
+Residual risks a reviewer records outside findings are a record for the owner,
+not remediation: the executor fixes them only when the owner decides so. When a
+finding belongs to a class with no finite fix — secret recognition, heuristic
+parsing — and does not list the complete set of concrete cases, ask the same hot
+reviewer for that list before fixing; the fix is judged against the list and its
+regressions, and reasonable coverage of most cases is enough unless the owner
+named more. This local budget never replaces two final same-SHA passes. After
+attempt five, complete the active remediation, then move to the next substantive
+slice or stop with `needs_attention` when no progress path remains.
+
+An `e2e_affected` or `e2e_missing` finding is an ordinary finding: it spends the
+round's budget and goes through the ordinary handoff. After the fix, rerun
+through `mo-e2e` only the scenarios the finding lists, on the new candidate,
+replace only their lines and continue the review; a new SHA alone reruns
+nothing. Such a finding from the final fresh pair is fixed in that pair, which
+becomes the hot pair, as for any other finding.
 
 Early repair after the first complete valid FINDINGS report is allowed only when
 the owner approved it and every property is proven: the executor works in its
@@ -313,19 +440,21 @@ own worktree, each reviewer has its own tree detached at the old full SHA, the
 brief forbids reading the executor's mutable refs, and HEAD and a clean tree are
 rechecked right before `worker_done`. The first body is then published unchanged
 in its slot through `stage` and `preview`; the executor reads it and replies
-`Review-Preview-Ack: <pair_id> <slot>=<bytes>`, which `mo-review-report.mjs ack`
-checks against the published size. That is not a pair verdict. The other
-reviewer continues on the old SHA; after its report the executor reads both
-complete reports and acknowledges `Review-Handoff-Ack` before the next
-candidate, and each of the second reviewer's findings gets a disposition checked
-against the new candidate — "already fixed" from memory of the early repair is
-not enough. One failed delivery permits one repeat of the same paths, then
-`UNKNOWN` with the namespace preserved. With any property unproven, wait for
-both reports before repairing.
+`Review-Preview-Ack: <pair_id> <slot>=<bytes>`, which
+`mo-review-report.mjs ack --kind Preview` checks against the published size.
+That is not a pair verdict. The other reviewer continues on the old SHA; after
+its report the executor reads both complete reports and acknowledges
+`Review-Handoff-Ack` before the next candidate, and each of the second
+reviewer's findings gets a disposition checked against the new candidate —
+"already fixed" from memory of the early repair is not enough. One failed
+delivery permits one repeat of the same paths, then `UNKNOWN` with the
+directories preserved. With any property unproven, wait for both reports before
+repairing.
 
 Standalone `mo-review-<backend>` follows the same review barrier on the current
-candidate, creates only the two reviewer sessions, never uses `/goal`, and
-reports E2E as not evaluated unless separately requested.
+candidate, creates only the two reviewer sessions and, unless E2E was separately
+requested, puts `E2E: not_evaluated reason=standalone` into both briefs and
+reports E2E as not evaluated.
 
 Before any pair, prove that the Orca project/repository registration inventory
 will not change and that selected isolated worktrees belong to the original
@@ -354,24 +483,40 @@ or another detached form whose immediate `0` is not a suite result. A repeated
 run is independent proof only once the previous run's descendants are gone.
 
 CI is the gate that guarantees QC before an agent merges. G1, the agent-owned
-MR/PR create, needs the local QC result and the hosting provider's source head
-equal to the candidate. G2, the agent-owned merge, additionally needs
-`CI-Coverage/1 covered` for the candidate from the setup contract and an
-observed successful run of every covering QC job that checked out exactly the
-candidate: the job prints `git rev-parse HEAD` before QC, and that value, the
-pull request's head SHA and the observed remote head all equal the candidate. A
-workflow run's own head SHA is not enough, because a pull-request run may belong
-to a synthetic merge commit; a merge-queue commit is an integration signal of
-its own and never stands in for QC of the candidate. Any other coverage outcome,
-another checkout SHA, or a missing or failed run blocks the agent merge with
-`needs_attention` naming the gap. Review and delivery of a locally proven
-candidate proceed without CI; integrating without CI is a human decision.
+MR/PR create, needs the local QC result, the hosting provider's source head
+equal to the candidate, and the `sha` of every `E2E-Evidence` line, or of the
+one `E2E: not_applicable reason=no_task_scenarios` line, equal to the candidate
+or one of its ancestors, as `git merge-base --is-ancestor <sha> <candidate>`
+proves. G2, the agent-owned merge, additionally needs `CI-Coverage/1 covered`
+for the candidate from the setup contract and an observed successful run of
+every covering QC job that checked out exactly the candidate: the job prints
+`git rev-parse HEAD` before QC, and that value, the pull request's head SHA and
+the observed remote head all equal the candidate. A workflow run's own head SHA
+is not enough, because a pull-request run may belong to a synthetic merge
+commit; a merge-queue commit is an integration signal of its own and never
+stands in for QC of the candidate. Any other coverage outcome, another checkout
+SHA, or a missing or failed run blocks the agent merge with `needs_attention`
+naming the gap. Review and delivery of a locally proven candidate proceed
+without CI; integrating without CI is a human decision.
 
-Read the project's E2E and acceptance-to-proof documents. Run applicable
-agent-required scenarios through `mo-e2e`. Production, destructive, credential
-or subscription boundaries require the user's explicit authorization for the
-exact named action. An unreadable or incomplete gate is `unknown` and is
-repeated; there is no partial pass.
+Read the project's E2E and acceptance-to-proof documents. E2E is applicable when
+`docs/e2e.md`, or the document `AGENTS.md` names as the project's E2E document,
+defines scenarios; otherwise the evidence is `E2E: not_applicable reason=<…>`.
+The task's scenarios are chosen by the behavior the task touches, not by which
+acceptance rows its diff edits: the scenarios of the rows the specification
+changes or adds, and the scenarios of unchanged rows whose behavior the task
+touches, restores or depends on — a regression fix restores an existing
+requirement without changing its row. `mo-e2e` decides applicability and records
+the basis in `E2E-Coverage`; the orchestrator never reads product code to decide
+it. Run them through `mo-e2e scope=task`, and a partial rerun through
+`mo-e2e scope=task scenarios=<id,…>`. A task whose behavior no scenario covers
+gets no scenario at all: its evidence is the one
+`E2E: not_applicable reason=no_task_scenarios …` line of section 8 that `mo-e2e`
+prints, never a line the orchestrator writes. `scope=full` runs only on the
+user's explicit request. Production, destructive, credential or subscription
+boundaries require the user's explicit authorization for the exact named action.
+An unreadable or incomplete gate is `unknown` and is repeated; there is no
+partial pass.
 
 
 When a named scenario genuinely needs a model actor, deterministic proof remains
@@ -396,9 +541,9 @@ record exists, repetition stays at one and the skill text is what changes, never
 the profile: an unrecorded raise is profile-shopping for a green result, and the
 proof is bound to the profile it ran on.
 
-Any executable or instruction change creates a new SHA and invalidates all
-gates. Return failures to the executor as ordinary messages and restart from the
-new candidate.
+Any executable or instruction change creates a new SHA and invalidates QC and
+every review; E2E evidence follows section 8. Return failures to the executor as
+ordinary messages and restart from the new candidate.
 
 ## 7. Completion and cleanup
 
@@ -415,15 +560,18 @@ pair review it. Only after that pair has returned two PASS reports on one SHA,
 release its owned resources and create two fresh independent reviewers with no
 prior reports on that same SHA for the final proof. Findings of the fresh pair
 are remediated in that pair, which becomes the hot pair; no further fresh pair
-starts until it passes. Repeat only E2E that cannot carry forward under
-section 8.
+starts until it passes. Rerun E2E only under section 8.
 
 Before success, prove that the same full candidate SHA has:
 
 - a clean worktree;
 - passing deterministic QC;
 - two complete independent review passes with required vendor diversity;
-- passing applicable E2E, or a valid documentation-only carry-forward;
+- for every applicable scenario, an `E2E-Evidence` line with
+  `result=pass|not_applicable` on that SHA or one of its ancestors and no
+  `e2e_affected` or `e2e_missing` finding from the final pair, or the one
+  `E2E: not_applicable` line for a project without scenarios or a task that no
+  scenario covers, with no `e2e_missing` finding from the final pair;
 - no unresolved problems hidden by an incomplete backend response.
 
 Clean up only sessions and temporary files whose ownership is certain and whose
@@ -436,28 +584,71 @@ dependency. Release goes through Orca by exact id, dependent terminals first;
 force is forbidden, and so is `git worktree prune`. An unknown binding keeps the
 resource with `needs_attention/ownership_unknown`, a dirty own tree is kept and
 named, and an unmarked or foreign one does not block the next pair. Human-owned
-review namespaces remain until explicitly removed. Ambiguous or incomplete
-cleanup is reported rather than broadened destructively.
+review slot and pair directories remain until explicitly removed. Ambiguous or
+incomplete cleanup is reported rather than broadened destructively.
 
 Immediately before an agent-owned MR/PR create, rerun the same closure proof as
 G1 and read the hosting provider's source head; both must equal the expected
-SHA. Immediately before an agent-owned merge, repeat G2 — the closure proof, the
-remote head and the CI evidence of section 6 for exactly that SHA — and bind the
-write to the observed head with a provider compare-and-set/required policy. A
-hosting-provided integration candidate is proved only in its exact checkout.
-Human-created MRs do not waive G2; server-side CI/protection changes remain a
-separate human decision.
+SHA, and the E2E evidence of section 6 names it or an ancestor of it.
+Immediately before an agent-owned merge, repeat G2 — the closure proof, the
+remote head, that E2E ancestry and the CI evidence of section 6 for exactly that
+SHA — and bind the write to the observed head with a provider
+compare-and-set/required policy. A hosting-provided integration candidate is
+proved only in its exact checkout. Human-created MRs do not waive G2;
+server-side CI/protection changes remain a separate human decision.
 
 The human-readable final report contains the full candidate SHA, QC result, both
-review results and model vendors, E2E result and tested SHA, any safe
-carry-forward explanation, unresolved problems, and decisions made on the user's
-behalf. Do not require JSON or create a persisted run record.
+review results and model vendors, every `E2E-Evidence` line verbatim — each
+naming its own scenario SHA — or the one `E2E:` line, unresolved problems, and
+decisions made on the user's behalf. Do not require JSON or create a persisted
+run record.
 
-## 8. Documentation-only E2E carry-forward
+## 8. E2E evidence per scenario
 
-E2E may carry forward over a later documentation-only commit only when both
-final-SHA reviewers explicitly confirm that the change cannot affect executable
-behavior, skill or agent instructions, acceptance, or the E2E contract. Name the
-tested SHA and explain why its result applies to the final SHA. There is no
-projection hash, provenance schema or fixed path allowlist. Any doubt reruns
-E2E. QC and both reviews always run on the final SHA.
+E2E evidence belongs to a scenario, not to the final SHA. The authoritative
+source is the complete public `worker_done` of `mo-e2e`, which gives every
+scenario one evidence line and one coverage trace:
+
+```text
+E2E-Evidence: <scenario-id> sha=<40-hex> result=<pass|not_applicable> source=<dispatch-id>
+E2E-Coverage: <scenario-id> acceptance=<row-id>[,<row-id>…] signals=<observed signs> paths=<key paths>
+```
+
+`mo-e2e` prints the same line with `fail`, `unknown` or another result for a
+scenario that did not pass; such a line is not evidence. A line with
+`result=blocked:external_capability` or `result=not_run` ends with
+`cause=<capability|environment|profile>:<name>`, the block in the line itself,
+so a reader of the brief can tell an external block from a caller's error. A
+`fail`, an `unknown` or a `not_run` for a rejected candidate or a wrong
+placement never enters a brief. An external block of section 5 —
+`result=blocked:external_capability`, or `result=not_run` with
+`cause=environment:…` or `cause=profile:…` — enters the brief verbatim as an
+unproven scenario: it tells the reviewers the scenario is known and open, so
+they raise no `e2e_missing` for it, and it never counts as a pass. The review
+brief and the final report copy these lines verbatim. A partial rerun replaces
+only the lines of the scenarios it reran. After a context compaction, reread the
+lines from Orca's responses rather than from memory. There is no shared E2E SHA:
+one SHA for every scenario either loses each scenario's range or forces a full
+rerun.
+
+A scenario's evidence on an ancestor of the final SHA holds as long as the final
+pair raised no `e2e_affected` or `e2e_missing` finding about it. A historical
+pass is never presented as a pass of the final SHA: the report names the final
+SHA for QC and reviews and the scenario SHA for each scenario. A result other
+than `pass` or `not_applicable` is not evidence: a `fail` or `unknown` means the
+E2E loop has not converged, and an external block leaves the feature at
+`needs_attention` until that scenario passes. QC and both reviews always run on
+the final SHA.
+
+When the project has scenarios but `scope=task` selects none, because the task
+touches, restores and depends on no behavior a scenario covers, the complete
+`worker_done` of `mo-e2e` carries one line instead of the scenario lines:
+
+```text
+E2E: not_applicable reason=no_task_scenarios sha=<40-hex> source=<dispatch-id> basis=<why no scenario covers the touched behavior>
+```
+
+It is held like a scenario line: on an ancestor of the final SHA it stands as
+long as the final pair raised no `e2e_missing` finding. Such a finding names a
+scenario; after its fix `mo-e2e` runs that scenario, and its `E2E-Evidence` and
+`E2E-Coverage` lines replace this one.

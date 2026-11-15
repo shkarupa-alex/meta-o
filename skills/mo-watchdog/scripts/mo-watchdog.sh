@@ -376,6 +376,11 @@ if [ "$#" -lt 1 ]; then
   exit 64
 fi
 
+if [ "$#" -eq 1 ] && [ "$1" = --help ]; then
+  usage
+  exit 0
+fi
+
 if ! command -v jq >/dev/null 2>&1; then
   /usr/bin/printf '%s\n' 'watchdog requires jq to parse native backend JSON safely' >&2
   exit 69

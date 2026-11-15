@@ -6,6 +6,7 @@
  */
 
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
@@ -19,7 +20,6 @@ test("lifecycle keeps the orchestrator out of product code and binds every gate 
   const source = shared("methodology.md");
   assert.match(source, /does not inspect, judge\s+or edit product code/);
   assert.match(source, /One verified result is one full Git object ID/);
-  assert.match(source, /Prefix only the initial executor task with `\/goal`/);
   assert.match(source, /two to five sentences/);
   assert.match(source, /need not be\s+repository-relative or tracked/);
   assert.match(source, /start both reviewer sessions concurrently/i);
@@ -34,6 +34,23 @@ test("lifecycle keeps the orchestrator out of product code and binds every gate 
   assert.match(source, /Do not merge, rank, hash, encode, split,\s+truncate or\s+summarize/);
   assert.match(source, /inert Markdown response payloads/);
   assert.doesNotMatch(source, /MO_[A-Z0-9_]+/);
+});
+
+// The owner retired the slash goal command from the method (#67): no task,
+// reviewer brief or note may ask for it again. The literal is assembled from
+// parts so this test does not name it, and the temporary feature specification
+// that quotes it until closure is the only excluded path.
+const RETIRED_GOAL_COMMAND = ["/", "goal"].join("");
+
+test("no tracked file outside the feature specification names the retired goal command", () => {
+  const found = spawnSync(
+    "git",
+    ["grep", "-n", "-F", RETIRED_GOAL_COMMAND, "--", ".", ":!docs/specifications"],
+    { cwd: ROOT, encoding: "utf8" },
+  );
+  // git grep answers 1 for no match and 0 for a match; anything else is a
+  // failed search, which must not pass as absence.
+  assert.equal(found.status, 1, found.stdout || found.stderr);
 });
 
 test("the architecture says how a real-run incident family is regressed", () => {
@@ -108,7 +125,6 @@ test("Orca entries consume the shared contracts and native mechanics", () => {
     assert.match(orchestrator, new RegExp(`references/${backend}-mechanics\\.md`));
     assert.match(review, /references\/review-protocol\.md/);
     assert.match(review, new RegExp(`references/${backend}-mechanics\\.md`));
-    assert.match(review, /never use `\/goal`|Never use `\/goal`/);
   }
 });
 

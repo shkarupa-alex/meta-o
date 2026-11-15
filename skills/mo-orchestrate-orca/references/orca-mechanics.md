@@ -19,7 +19,9 @@ Run focused, bounded probes rather than one large agent-context dump:
 5. read the approved selection from bundled `mo-models.mjs`;
 6. use the first real role Dispatch as the live launch probe when possible;
 7. prove the real harness process consumed the task and
-   `launch.requested == launch.effective` for model and effort;
+   `launch.requested == launch.effective` for model and effort, and that the
+   provider accepted the model and the first turn began — equal fields alone
+   prove no launch;
 8. retain exact run/task/dispatch/terminal locators in current reasoning.
 
 If fresh native auth is newer than cached `missing-credentials|unavailable`, use
@@ -65,15 +67,29 @@ before the injection.
 
 ```text
 orca orchestration worker-start --task <id> --worktree id:<repo>::<path> \
-  --agent <claude|codex> --model <id> --effort <e> --timeout-ms 240000 --json
+  --agent <launch.<role>.agent> --model <launch.<role>.model> \
+  --effort <launch.<role>.effort> --timeout-ms 240000 --json
   # the posture flag is not passed: the user's own setting for new agent tabs owns it
 → record the dispatch id and the created terminal of `effects[kind=terminal].id`
   in OwnedResourceSet/1 at once
 ```
 
+The three flags come from `launch.<role>` of `mo-models.mjs --show --json`,
+never from splitting the `route/model/effort` string by hand:
+`claude/opus[1m]/high` is `--agent claude --model 'opus[1m]' --effort high`, and
+the whole literal in `--model` is a model no provider has. OpenCode never takes
+this route; it starts terminal-first, below.
+
 The receipt carries what was launched: `launch.requested == launch.effective`
 for agent, model and effort, and `turnStart: observed`. A mismatch is a failed
-start of that exact Dispatch, never a model to accept.
+start of that exact Dispatch, never a model to accept. A match is Orca's record
+of the request, not the provider's acceptance: a provider may still refuse the
+model on the worker's terminal before any turn. The role is started only when
+the harness shows the model accepted and its first turn begun. A refusal is not
+retried with the same model and never replaced silently: read
+`mo-models.mjs --catalog --route <agent>`, apply the model recommendation rule,
+and ask the human one question with the recommended replacement and the
+alternatives. An incomplete catalog does not prove the model absent.
 
 Orca refuses a worker that another worker starts: `nested_worker_depth_exceeded`
 at the default nested depth of one, and that default stays. A role that starts
@@ -85,16 +101,21 @@ receipt does not name. Find it with `orca terminal list` on that worktree and
 record its handle in OwnedResourceSet/1 with the worktree, so that release
 closes it first rather than leaving a tab nobody owns.
 
-A harness whose model `worker-start` cannot pass, such as OpenCode, starts
-terminal-first, and so does a start whose readiness the installed version does
-not observe:
+A harness that `worker-start` cannot launch with the role's model and effort
+starts terminal-first, and so does a start whose readiness the installed version
+does not observe. OpenCode is such a harness: Orca 1.4.227 refuses `--effort`
+for it and passes its `--model` only into an existing worktree, never
+`new-child`, and OpenCode 1.19.5 takes `--model <provider/model>` on its command
+line but no effort. The `effort` of an OpenCode `launch.<role>` therefore
+reaches no launch: the launch proof compares agent and model only, and the
+effort is reported as not passed, never as equal to the selection:
 
 ```text
 orca terminal create --worktree id:<repo>::<path> --title <title> --command "<agent argv>" --json
 → record the handle in OwnedResourceSet/1 at once: the caller created it, so the caller closes it
 orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 120000 --json
 orca terminal read --terminal <handle> --screen --json \
-  | node scripts/mo-harness-screen.mjs --harness <claude|codex|opencode> --expect-path <abs>
+  | node "<this skill's directory>/scripts/mo-harness-screen.mjs" --harness <claude|codex|opencode> --expect-path <abs>
   # reads the envelope, requires source=screen, refuses while `draft` holds any
   # composer bytes the frame does not show — a space or a newline is such a byte —
   # and answers one line:
@@ -104,8 +125,9 @@ orca terminal read --terminal <handle> --screen --json \
   #                     action=<inject|accept_trust|confirm_trust|refuse|wait>
   # exit 0 classified, 2 unreadable input or a call it cannot answer
   # trust_ui → the trust procedure; action=inject → continue;
-  # anything else → close that exact handle and return needs_attention
-ps -o args= -p <pid from orca terminal show --json>   # argv carries the requested model and effort
+  # state=busy action=wait → send nothing, wait for tui-idle once more and read again;
+  # anything else, or busy again → close that exact handle and return needs_attention
+ps -o args= -p <pid from orca terminal show --json>   # argv carries the requested model, and the effort where the harness takes one
 orca orchestration worker-start --task <id> --worktree id:<repo>::<path> --terminal <handle> --json
 ```
 
@@ -140,6 +162,15 @@ and Orca reports no origin for composer text, so it refuses like typed text and
 is never erased to make room. Claude Code paints that suggestion only sometimes
 (2.1.287 painted none on a fresh session), so live evidence of a refusal may
 come from a real draft instead.
+
+Codex keeps that composer editable while a turn runs, so its active-work row
+above it — `• Working (13m 44s • esc to interrupt)`, whatever header, glyph or
+interrupt key it shows — outranks the composer: the answer is
+`state=busy action=wait` over an empty composer, a whole footer or any draft. A
+busy session is neither idle nor refused; only a frame without that row proves
+idle. The row counts only in its place in Codex's bottom pane, directly above
+its composer and footer at the bottom of the frame; the same text quoted in the
+output above is not activity and neither makes a frame busy nor ambiguous.
 
 Sending `worker_done` completes the Dispatch, but the agent session behind it
 stays hot. A new Dispatch binds to that same session with
@@ -235,16 +266,62 @@ empty guide. A reference name may be given bare (`recovery-and-cleanup`) or as
 the guide spells it (`references/recovery-and-cleanup.md`); both resolve to the
 bare name.
 
-`mo-review-orca` and `mo-orchestrate-orca` require four of them before they act:
-`coordinator-loop`, `placement-and-remote`, `recovery-and-cleanup` and
-`worker-contract`. A missing name in the list, an empty body or a non-zero exit
-for any of the four is `unknown`, not a smaller set of rules to work from.
+`mo-review-orca` and `mo-orchestrate-orca` act only when every rule they need is
+covered by the installed version. A source covers its rule when its name is in
+this binary's `--references` list and it reads with a non-empty body; a rule
+whose source is not listed is covered by its fallback under the same test. The
+compact guide is read anyway, so it never leaves a fallback uncovered.
+
+| Required rule                                                                                                                                    | Source                 | Fallback when the source is not listed      |
+| ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------- | ------------------------------------------- |
+| Worker obligations: `ask` and its resume, heartbeat cadence, follow-ups read with `check --terminal`, one `worker_done` with an explicit outcome | `worker-contract`      | `messaging-and-gates` and the compact guide |
+| Coordinator loop: waves, launch model and effort, same-terminal reuse, review ownership                                                          | `coordinator-loop`     | none                                        |
+| Placement: a new worktree or an exact workspace                                                                                                  | `placement-and-remote` | none                                        |
+| Recovery: a failed, stopped or unknown attempt, retry, stop, abandon, retain, an uncertain release                                               | `recovery-and-cleanup` | none                                        |
+
+A rule that neither its source nor its fallback covers is `unknown`, not a
+smaller set of rules to work from, and so is an empty body or a non-zero exit
+for any reference a rule is read from. A file name is not a capability: an old
+name missing from a newer list removes nothing its fallback still covers, and a
+name only the guide's own table or an older version mentions covers nothing.
+Only listed names are requested. Orca 1.4.227 lists `worker-contract`; 1.4.246
+lists no such reference, answers `--reference worker-contract` with
+`invalid_argument`, and its compact guide sends a worker to the injected
+preamble for its commands.
 
 ## Coordinator inside an Orca terminal
 
 A coordinator that Orca itself started has a worktree, so `current` and `active`
 resolve to it, `run-create --from <handle>` binds the Run to that terminal, and
 the coordinator tab carries the `<feature>:orchestrator` title.
+
+Every actor that needs a new worktree — the executor, a reviewer, an E2E actor —
+is created as a child of the task's working directory, so Orca shows it under
+that worktree rather than beside it. From the coordinator's own terminal:
+
+```text
+orca orchestration worker-start --task <id> --worktree new-child --from <coordinator handle> \
+  --name <name> --base-branch <ref> --agent <launch.<role>.agent> \
+  --model <launch.<role>.model> --effort <launch.<role>.effort> --json
+```
+
+Where the worktree has to exist before the worker — a review slot is marked
+first — or the coordinator stands outside a terminal, create it with an explicit
+parent and start the worker on it:
+
+```text
+orca worktree create --name <name> --parent-worktree path:<checkout>|worktree:<id> \
+  --base-branch <ref> --json
+orca orchestration worker-start --task <id> --worktree id:<repo>::<path> …
+```
+
+Lineage and the Git base are separate decisions: the parent only groups the
+worktree in Orca, and `--base-branch` alone says where Git starts. Orca's answer
+proves the parent, never the call:
+`orca worktree show --worktree id:<new> --json` reports `parentWorktreeId` equal
+to the id of the task's worktree. A worktree Orca recorded elsewhere is told to
+the human with the start line and is not a reason to stop. The project
+registration inventory does not change.
 
 ## Coordinator outside an Orca terminal
 
@@ -288,7 +365,9 @@ Outside, a relative selector names nothing: a worktree selector is
 without `--from`, the wait is `orca orchestration check --run <id> --wait`
 instead of a terminal-bound check, and no coordinator title is set, because
 there is no tab to title. Workers are unaffected: each one still gets its exact
-worktree selector and terminal handle.
+worktree selector and terminal handle. A new worktree has no caller terminal to
+inherit a parent from, so it is created with `--parent-worktree` naming the
+task's checkout, by the recipe of the section above.
 
 The watchdog is not a precondition. At start the coordinator establishes whether
 a watchdog sees it; if none does, it says once that the limit is accepted — work
@@ -309,20 +388,70 @@ run-wide waiter:
 
 ```text
 orca orchestration check --wait --types worker_done,escalation,question --timeout-ms <ms> --json
+  # add ,status only while a sent preview or pair handoff has no matching ack
 orca orchestration reply --id <message-id> --body <answer> --json
 orca orchestration worker-show --dispatch <id> --json
 ```
 
+The wake set is `worker_done,escalation,question`. `status` joins it only while
+the Run holds a report preview or pair handoff sent to an actor without its
+matching `Review-Preview-Ack` or `Review-Handoff-Ack`, because that
+acknowledgement arrives as a `status` message. The phase is read from the Run's
+observed messages — the handoff sent, no matching ack after it — never from the
+coordinator's memory, so it survives compaction. `status` is not kept in the set
+permanently: every progress message would wake the wait. `--types` only decides
+what wakes the wait; a returned delivery is always the whole FIFO batch, other
+types included.
+
 Process a complete delivery batch before acknowledging it. Use 600000 ms arms
 for executor-only sets and 300000 ms when reviewer/E2E remains. A quiet timeout
-allows one public liveness snapshot and immediate re-arm without narration. A
-transport failure gets one identical retry; the second is
-`UNKNOWN/needs_attention`. An early message must wake the wait. A `question` is
-answered through `reply`; `escalation` or a proven failed/lost dispatch is not
-success.
+allows the public checkpoint below and a re-arm without narration. A transport
+failure gets one identical retry; the second is `UNKNOWN/needs_attention`. An
+early message must wake the wait. A `question` is answered through `reply`;
+`escalation` or a proven failed/lost dispatch is not success.
 
 A timeout is a checkpoint, not failure, and the next blocking wait is armed
 before extended work continues.
+
+The checkpoint runs after every quiet timeout, before any status answer to the
+user and before any repeated message to an actor:
+
+1. Read the Run's current unread batch without waiting —
+   `orca orchestration check --run <id> --json`, with neither `--wait` nor
+   `--all` — `status` included. Match each message to its exact Dispatch and
+   process the whole batch before acknowledging it. An acknowledgement already
+   delivered is checked against the sizes the handoff named, and no further
+   "continue" is sent. A pair handoff names both sizes; a preview names exactly
+   the previewed slot's size, `--a-bytes` for slot A or `--b-bytes` for slot B:
+
+   ```text
+   node "<this skill's directory>/scripts/mo-review-report.mjs" ack --kind Handoff \
+     --line '<ack text>' --pair-id <id> --a-bytes <n> --b-bytes <n>
+   node "<this skill's directory>/scripts/mo-review-report.mjs" ack --kind Preview \
+     --line '<ack text>' --pair-id <id> --a-bytes <n>
+   ```
+
+2. Run `worker-show` for every active Dispatch. Completion (`dispatch.status`)
+   and liveness are independent facts. At `completed` or `succeeded`, take that
+   Dispatch's `worker_done` from the Run's messages (`check --run <id> --all`
+   when its batch already went by) and process it before answering anyone;
+   liveness `unverifiable` or `stale_status` does not cancel the completion. A
+   completed Dispatch without a `worker_done` body is incomplete evidence, not
+   work still running. `worker-read --source terminal` may show how the session
+   ended as a bounded diagnostic; it never replaces the body, and
+   `--source auto` is not used, because it prefers the hook-reported transcript.
+3. An agent's turn is not its child process. When
+   `scripts/mo-harness-screen.mjs` shows an idle input while a child command
+   still runs under the harness (the pid of `orca terminal show --json` has a
+   live child), the agent reads no message yet. Report the two states
+   separately, and queue a new instruction once in that same terminal or
+   Dispatch by the delivery rules above; do not repeat it, interrupt the child
+   or open another terminal.
+4. A truncated terminal preview proves no outcome. Without an established state
+   the answer is `unknown/unverifiable`.
+
+Re-arm the wait only after this reconciliation. Saying "waiting" while no wait
+is armed is forbidden.
 
 The worker's complete `worker_done` body is the settled final response for
 Meta-O. In every task require the worker to place its full final response in
@@ -336,15 +465,34 @@ Treat quota, capacity, reconnecting, compaction, refusal, lost process and
 credentials as different outcomes. Each is recovered on the same task and in the
 same ownership: follow the exact recovery action in that Dispatch's public
 receipt, and when the outcome is unknown or its turn start unobserved, use the
-one-direction stop-then-`--retry-of` ladder above with the same selection, which
-ends at a `worker-stop` answering `unknown_effect`. Work done before a refusal
-stays `output_blocked_after_work`. Never a new task, another model or a second
-owner.
+one-direction ladder above — `worker-stop`, a proven stop, then
+`worker-start --retry-of` with the same selection — which ends at a
+`worker-stop` answering `unknown_effect`. Work done before a refusal stays
+`output_blocked_after_work`. Never a new task, another model or a second owner.
 
-After compaction or approximately 75% of a 32768-token context, start a fresh
-orchestrator turn/session and re-ground from the Git spec/checklist plus public
-Orca state. Sanitize each structured observation and cap it at 8000 tokens;
-never inject a raw 21k/41k dump.
+The ladder has no numeric limit, and none replaces this rule: a further restart
+needs a new basis to expect a different result — the quota window opened, the
+connection came back, the cause of a refusal was removed, or new evidence of
+state arrived. With the cause unchanged the worker is not restarted; it waits
+for that event through the run's one waiter, an exhausted quota until its next
+window. An executor's compaction is its expected mode, not a failure: it
+continues in the same session. Whether a basis is new is the coordinator's
+judgment of what it observed; no script counts or decides restarts.
+
+A coordinator that finds a compaction sign at the start of its context — Claude
+Code's continuation summary of the earlier conversation, Codex's notice that the
+context was compacted, or, where neither sign is recognizable, a summary of
+earlier work in place of the original messages at the start of a turn — acts on
+nothing before it re-grounds. First it rereads its own `SKILL.md` completely and
+every reference that file names; then it restores the run from public Orca,
+never from the summary: the checkpoint above, every `E2E-Evidence` and
+`E2E-Coverage` line from `mo-e2e`'s complete `worker_done` messages, and the
+`Round` line of the last review brief. Until both are done it sends no task,
+follow-up or brief and releases no resource. No provider hook does this; the
+rule is the instruction. Approaching about 75% of a 32768-token context, start a
+fresh orchestrator turn/session and re-ground the same way from the Git
+spec/checklist plus public Orca state. Sanitize each structured observation and
+cap it at 8000 tokens; never inject a raw 21k/41k dump.
 
 Public capability belongs to the exact Dispatch/turn/process and expires on exit
 or replacement. `worker_done` from a bare shell or expired Dispatch cannot

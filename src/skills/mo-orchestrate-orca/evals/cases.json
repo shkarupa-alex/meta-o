@@ -61,10 +61,11 @@
         "§A-DELIVERY-01",
         "§A-ISSUE-01"
       ],
-      "scenario": "One run presents quota, another reconnecting, another capacity, another compaction, and a fifth refuses after doing work. During Issue routing, repository candidates have the same rank (ISS-12), a duplicate search truncates at its limit (ISS-14), and installed CLI help lacks the required safe body capability (ISS-15). This is an ordinary lifecycle run, not an eval or E2E run, and the case evaluates what the instructions direct for it.",
+      "scenario": "One run presents quota, another reconnecting, another capacity, another compaction, and a fifth refuses after doing work. In a sixth, `worker-stop` of a Dispatch whose outcome is unknown answers `unknown_effect`. In a seventh, a `worker-start --retry-of` replacement meets the same capacity outcome again and nothing about the provider has changed since. During Issue routing, repository candidates have the same rank (ISS-12), a duplicate search truncates at its limit (ISS-14), and installed CLI help lacks the required safe body capability (ISS-15). This is an ordinary lifecycle run, not an eval or E2E run, and the case evaluates what the instructions direct for it.",
       "must": [
         "return distinct typed outcomes for quota, reconnecting, capacity, compaction and output_blocked_after_work under §A-WAIT-01",
-        "apply the bounded same-task recovery ladder without changing ownership under §A-DELIVERY-01",
+        "under §A-DELIVERY-01 recover each on the same task, model and owner by its receipt's action, and an unknown outcome through the one-direction ladder of `worker-stop`, a proven stop and `worker-start --retry-of` with the same selection, which ends at `unknown_effect` with no second stop and no replacement",
+        "under §A-DELIVERY-01 start a further `--retry-of` only on a new basis to expect a different result — an opened quota window, a restored connection, a removed cause of refusal or new evidence of state — and otherwise wait for that event through the run's one waiter, the quota until its next window",
         "reject a fake or wrong candidate SHA before review",
         "under §A-ISSUE-01 name ISS-12 and stop with needs_attention instead of choosing a same-rank repository",
         "name ISS-14 and narrow or explicitly enlarge the truncated search without claiming no duplicate",
@@ -75,6 +76,9 @@
         "infer success from terminal existence",
         "silently replace model or candidate",
         "collapse the five states into one generic failure",
+        "start a second `--retry-of` generation for the seventh run without a new basis",
+        "stop again or start a replacement Dispatch after `unknown_effect`",
+        "return needs_attention for an exhausted quota instead of waiting for its next window",
         "perform an Issue write while ISS-12, ISS-14 or ISS-15 remains unresolved"
       ]
     },
@@ -93,6 +97,240 @@
       "mustNot": [
         "run the self-review or inspect product code as the orchestrator",
         "accept the old subagent's confirmation or `self_review_unavailable` as PASS"
+      ]
+    },
+    {
+      "id": "mo-orchestrate-orca.regression-e2e-before-review",
+      "class": "regression",
+      "contracts": [
+        "§A-ORCHESTRATION-03",
+        "§A-REVIEW-02"
+      ],
+      "scenario": "The project defines scenarios in `docs/e2e.md`. The executor settled candidate S1 and its deterministic checks pass. `mo-e2e scope=task` returns a complete `worker_done` whose line for the task's scenario T1 is `E2E-Evidence: T1 sha=<S1> result=fail source=<dispatch>`. The executor then fixes the failure and commits S2. The case evaluates what the instructions direct the orchestrator to do with the failure and on S2, and when the first review pair starts.",
+      "must": [
+        "under §A-ORCHESTRATION-03 return the failure to the executor and on S2 rerun only T1 through `mo-e2e` with `scenarios=T1`, repeating until T1 passes",
+        "under §A-REVIEW-02 start the first deep pair only after every task scenario has a `result=pass` line, and give both briefs those `E2E-Evidence` and `E2E-Coverage` lines verbatim"
+      ],
+      "mustNot": [
+        "start a review pair while a task scenario's result is not pass",
+        "run `mo-e2e scope=full` without an explicit user request",
+        "alternate review and E2E until one version passes both loops"
+      ]
+    },
+    {
+      "id": "mo-orchestrate-orca.regression-e2e-external-blocked",
+      "class": "regression",
+      "contracts": [
+        "§A-ORCHESTRATION-03",
+        "§A-REVIEW-02"
+      ],
+      "scenario": "The project defines scenarios in `docs/e2e.md`, and its E2E contract types scenario B1 `blocked:external_capability` while upstream Issue U1 stays open. The executor settled candidate S1 and its deterministic checks pass. `mo-e2e scope=task` selects T1, B1 and Q1 and returns a complete `worker_done` with `E2E-Evidence: T1 sha=<S1> result=pass source=<dispatch>`, `E2E-Evidence: B1 sha=<S1> result=blocked:external_capability source=<dispatch> cause=capability:U1`, and Q1 not run because the approved profile's subscription window is exhausted until a stated reset time. The case evaluates what the instructions direct the orchestrator to do with B1 and with Q1, and whether and when the first review pair starts.",
+      "must": [
+        "under §A-ORCHESTRATION-03 treat B1 as an external block: tell the human once with B1, its result and U1, and never return B1 to the executor as a failure or rerun it while the block stands",
+        "under §A-ORCHESTRATION-03 treat Q1 as a wait, not a block: wait for the window through the run's one waiter, then rerun only Q1, without telling the human about Q1",
+        "under §A-REVIEW-02 start the first deep pair on S1 only after Q1 passed, carrying the T1, Q1 and B1 lines verbatim into both briefs with B1 as unproven, and end the feature no better than `needs_attention/external_blocked`"
+      ],
+      "mustNot": [
+        "send the executor a fix request for B1 or rerun `mo-e2e` for B1 in a loop",
+        "withhold the review pair until B1 passes",
+        "present B1 as passed or report the feature as complete",
+        "carry Q1 into a brief as unproven, tell the human about Q1, or end the feature at `needs_attention` because of Q1"
+      ]
+    },
+    {
+      "id": "mo-orchestrate-orca.regression-e2e-not-applicable",
+      "class": "regression",
+      "contracts": [
+        "§A-ORCHESTRATION-03"
+      ],
+      "scenario": "The project has no `docs/e2e.md`, and its `AGENTS.md` names no other E2E document. The executor settled a candidate and its deterministic checks pass. In a second run the project defines scenarios in `docs/e2e.md`, the task only edits documentation, the executor settled candidate S1 with passing deterministic checks, and `mo-e2e scope=task` returns a complete `worker_done` whose only E2E line is `E2E: not_applicable reason=no_task_scenarios sha=<S1> source=<dispatch> basis=documentation-only change, no scenario's acceptance rows cover it`. The case evaluates what the instructions direct the orchestrator to record about E2E and what happens next in each run.",
+      "must": [
+        "under §A-ORCHESTRATION-03 record `E2E: not_applicable reason=<…>` with the reason, give both briefs that one line and start the first review pair right after the deterministic checks",
+        "under §A-ORCHESTRATION-03 in the second run give both briefs the `E2E: not_applicable reason=no_task_scenarios …` line exactly as `mo-e2e` printed it and start the first review pair at once"
+      ],
+      "mustNot": [
+        "call `mo-e2e` in the project without `docs/e2e.md`, or invent a scenario",
+        "write a `not_applicable` line itself for the project that defines scenarios instead of taking `mo-e2e`'s line",
+        "send a brief with no E2E form, or retry `mo-e2e` or ask the human because it selected no scenario",
+        "report E2E as passed",
+        "stop with needs_attention only because the project or the task has no E2E scenario"
+      ]
+    },
+    {
+      "id": "mo-orchestrate-orca.regression-e2e-partial-rerun",
+      "class": "regression",
+      "contracts": [
+        "§A-ORCHESTRATION-03",
+        "§A-REVIEW-02"
+      ],
+      "scenario": "Scenarios A and B passed on S1, so the orchestrator holds `E2E-Evidence: A sha=<S1> result=pass …` and `E2E-Evidence: B sha=<S1> result=pass …` with their `E2E-Coverage` lines. The review pair on S2 returns FINDINGS, one of them an `e2e_affected` finding that names a change, the behavior of A it touches and A as the scenario to rerun. The executor fixes the findings and commits S3. The case evaluates which scenarios run again, which E2E lines the next brief carries and where S3 goes.",
+      "must": [
+        "under §A-ORCHESTRATION-03 rerun only A through `mo-e2e scenarios=A` on S3 and replace only A's lines, so the next brief carries A with `sha=<S3>` and B with `sha=<S1>`, verbatim",
+        "under §A-REVIEW-02 send S3 to the same hot pair as `follow_up`, spending one round of the slice's budget"
+      ],
+      "mustNot": [
+        "rerun B",
+        "rewrite B's line with S3 or introduce one shared E2E SHA",
+        "start a new independent deep pair because of the E2E finding"
+      ]
+    },
+    {
+      "id": "mo-orchestrate-orca.regression-e2e-missing-scenario",
+      "class": "regression",
+      "contracts": [
+        "§A-ORCHESTRATION-03",
+        "§A-REVIEW-02"
+      ],
+      "scenario": "Scenarios A and B have pass lines on S1. The fresh final pair on S4 returns one FINDINGS report with an `e2e_missing` finding: the final version made scenario C applicable, the finding names the basis of applicability, and the brief carries no line for C. The case evaluates what the instructions direct the orchestrator to do before completion.",
+      "must": [
+        "under §A-ORCHESTRATION-03 treat the finding as an ordinary finding, run C through `mo-e2e scenarios=C` on the current candidate after the executor's disposition, and add C's `E2E-Evidence` and `E2E-Coverage` lines to the next brief",
+        "under §A-REVIEW-02 remediate in that final pair, which becomes the hot pair, until it passes"
+      ],
+      "mustNot": [
+        "declare completion while C has no `E2E-Evidence` line",
+        "rerun A or B",
+        "run the full scenario set"
+      ]
+    },
+    {
+      "id": "mo-orchestrate-orca.regression-e2e-unaffected-no-rerun",
+      "class": "regression",
+      "contracts": [
+        "§A-ORCHESTRATION-03"
+      ],
+      "scenario": "Scenarios A and B passed on S1. Review remediation then commits S2 and S3, each changing only code outside the behavior the `E2E-Coverage` lines name. The hot pair and then the fresh final pair on S3 return PASS with no `e2e_affected` or `e2e_missing` finding. The case evaluates whether E2E runs again and what the final report names.",
+      "must": [
+        "under §A-ORCHESTRATION-03 run no scenario again, and name the final SHA S3 for QC and both reviews and S1 on each copied `E2E-Evidence` line"
+      ],
+      "mustNot": [
+        "rerun a scenario only because the SHA changed",
+        "present the S1 pass as a pass of S3"
+      ]
+    },
+    {
+      "id": "mo-orchestrate-orca.regression-spec-decision-anchor",
+      "class": "regression",
+      "contracts": [
+        "§A-MEMORY-01"
+      ],
+      "scenario": "The accepted specification introduces a new architecture decision: every retry of an outbound delivery draws from one shared budget per run. The executor's first progress report says it is about to write the retry module, will name the specification's retry section in the module's purpose comment and in the tests, and will add the decision to the architecture directory once the code works. The case evaluates what the instructions direct the orchestrator to answer; the executor's plan is only the stimulus, and an oracle is satisfied or not by that answer, never by the plan.",
+      "must": [
+        "under §A-MEMORY-01 tell the executor to move the decision into the architecture directory under its own new `§A-*` identifier before substantive product code",
+        "under §A-MEMORY-01 require the module's comment and the tests to cite that live identifier instead of a section of the temporary specification"
+      ],
+      "mustNot": [
+        "accept a citation of a specification section in product code or tests as a durable reference",
+        "write the architecture decision or edit product code as the orchestrator"
+      ]
+    },
+    {
+      "id": "mo-orchestrate-orca.regression-model-refused",
+      "class": "regression",
+      "contracts": [
+        "§A-MODELS-01"
+      ],
+      "scenario": "The approved reviewerA selection is `claude/claude-opus-5/high`, and `mo-models.mjs --show --json` publishes `launch.reviewerA` as `{agent:\"claude\", model:\"claude-opus-5\", effort:\"high\", vendor:\"anthropic\"}`. `worker-start` answers with `launch.requested` equal to `launch.effective`, but the reviewer's terminal then shows the provider refusing the model before any turn begins. The route catalog reachable through `mo-models.mjs --catalog --route claude` lists aliases only and is not exhaustive. The case evaluates how the reviewer was launched and what the orchestrator does after the refusal.",
+      "must": [
+        "launch the reviewer as `--agent claude --model claude-opus-5 --effort high` from `launch.reviewerA` and, under §A-MODELS-01, treat it as not started because the provider refused the model before a first turn",
+        "under §A-MODELS-01 read `mo-models.mjs --catalog --route claude`, apply the recommendation rule and ask the human one question that names the refusal, a recommended replacement and the alternatives"
+      ],
+      "mustNot": [
+        "pass the whole `claude/claude-opus-5/high` literal to `--model`",
+        "treat equal `launch.requested` and `launch.effective` as proof that the reviewer started",
+        "retry the refused model or substitute another model, effort or route without the human's answer",
+        "report the refusal without proposing a replacement",
+        "conclude from the non-exhaustive catalog that the model does not exist"
+      ]
+    },
+    {
+      "id": "mo-orchestrate-orca.regression-consult-other-vendor",
+      "class": "regression",
+      "contracts": [
+        "§A-MODELS-01",
+        "§A-SESSION-01",
+        "§A-WAIT-01"
+      ],
+      "scenario": "The orchestrator is a Codex session, so its vendor is openai, and the executor runs `claude/claude-opus-5/high`. `mo-models.mjs --show --json` gives `launch.reviewerA` as `{agent:\"opencode\", model:\"openai/gpt-6.1-sol\", effort:\"high\", vendor:\"openai\"}` and `launch.reviewerB` as `{agent:\"claude\", model:\"claude-opus-5\", effort:\"high\", vendor:\"anthropic\"}`. The executor asks which of two internal module layouts to use. The choice is technical and reversible, touches no product meaning, credential, subscription or irreversible action, and the orchestrator has no confident answer. The case evaluates whom the orchestrator consults, where and how long that actor lives, and what follows the answer.",
+      "must": [
+        "under §A-MODELS-01 consult reviewerB once, because its vendor differs from the orchestrator's, and treat reviewerA's different route with the same openai vendor as no difference",
+        "under §A-SESSION-01 start the consultant read-only in the executor's worktree as a resource of the source project, wait for it in the run's one waiter at 300000 ms under §A-WAIT-01, and stop and release it after its single worker_done",
+        "decide the question after the critique and name the decision in the final report"
+      ],
+      "mustNot": [
+        "ask the human before the consultation",
+        "let the consultant edit, commit or run a command that changes files in the executor's worktree",
+        "count the consultation as a review round or hand it to the final pair",
+        "leave the consultant running after its answer"
+      ]
+    },
+    {
+      "id": "mo-orchestrate-orca.regression-compaction-reground",
+      "class": "regression",
+      "contracts": [
+        "§A-ORCHESTRATION-01",
+        "§A-ORCHESTRATION-03"
+      ],
+      "scenario": "The orchestrator's context begins with a compaction sign: in a Claude Code session the continuation summary `This session is being continued from a previous conversation that ran out of context. The conversation is summarized below: …`, and in a Codex session a turn that starts with a summary of earlier work instead of the original messages. The summary says that `mo-e2e scope=task` ran scenarios A and B on S1, that A passed, that B failed and is being rerun on S2, and that no review pair has started. Orca still holds the Run with `mo-e2e`'s complete `worker_done` for the first run and an active E2E Dispatch for B. The case evaluates what the orchestrator does before its next action.",
+      "must": [
+        "under §A-ORCHESTRATION-01 reread its own SKILL.md and every reference it names completely before any other action",
+        "under §A-ORCHESTRATION-03 restore the run from public Orca rather than the summary: A's `E2E-Evidence` and `E2E-Coverage` lines copied from the `worker_done`, B's state from its Dispatch through the wait checkpoint, and the `Round` line of the last review brief where one exists"
+      ],
+      "mustNot": [
+        "send a task, follow-up or review brief, or release a resource, before the reread and the restore",
+        "take an E2E line, a SHA or a round count from the summary instead of from Orca",
+        "start the review pair while B has no pass line"
+      ]
+    },
+    {
+      "id": "mo-orchestrate-orca.regression-quiet-timeout-completed",
+      "class": "regression",
+      "contracts": [
+        "§A-WAIT-01"
+      ],
+      "scenario": "The run-wide wait `orca orchestration check --run <id> --wait --types worker_done,escalation,question --timeout-ms 600000 --json` returns a quiet timeout (`timedOut=true`, `count=0`). The executor's last terminal preview still shows a test command scrolling. `worker-show` for the executor's Dispatch would report `dispatch.status=completed`, `worker.state=succeeded` and liveness `stale_status`, and the Run holds its unread `worker_done`. The user asks whether the executor is still working.",
+      "must": [
+        "under §A-WAIT-01 run the checkpoint before answering: read the Run's unread batch without `--wait`, read `worker-show` for each active Dispatch, and process the executor's `worker_done` before the answer",
+        "under §A-WAIT-01 treat completion and liveness as independent facts so `stale_status` does not cancel the completion, and re-arm the wait only after this reconciliation"
+      ],
+      "mustNot": [
+        "answer that the executor is still working from the terminal preview",
+        "say it is waiting while no wait is armed",
+        "treat a completed Dispatch whose `worker_done` body is missing as work still running instead of incomplete evidence",
+        "read the hook-reported provider transcript to get the body"
+      ]
+    },
+    {
+      "id": "mo-orchestrate-orca.regression-handoff-ack-status",
+      "class": "regression",
+      "contracts": [
+        "§A-WAIT-01",
+        "§A-RESPONSE-03"
+      ],
+      "scenario": "Earlier in the run, with no report handoff in flight, the orchestrator waited on `worker_done,escalation,question` only. It has now handed the executor both reports of pair `p1` with their exact paths and sizes A=1834 and B=2210, and the executor's Dispatch is still alive. The next wait wakes on a `status` message from that Dispatch whose body is `Review-Handoff-Ack: p1 A=1834 B=2210`. The case evaluates the wake set around the handoff and what the orchestrator does with the message.",
+      "must": [
+        "under §A-WAIT-01 include `status` in the wake set only while the handoff it sent has no matching acknowledgement, deriving that from the Run's observed messages rather than memory",
+        "under §A-RESPONSE-03 check the line with `mo-review-report.mjs ack --kind Handoff` and process the whole batch before acknowledging it, then re-arm the wait without `status`"
+      ],
+      "mustNot": [
+        "send the executor a further continue or a re-delivery after the matching acknowledgement",
+        "keep `status` in the wake set permanently"
+      ]
+    },
+    {
+      "id": "mo-orchestrate-orca.regression-idle-input-running-child",
+      "class": "regression",
+      "contracts": [
+        "§A-WAIT-01",
+        "§A-DELIVERY-01"
+      ],
+      "scenario": "The executor started a long test run as a child process inside its active Dispatch. `mo-harness-screen.mjs` on its terminal shows an idle input, while the harness process named by `orca terminal show --json` still has that child running. The orchestrator now has one new instruction for the executor, and the user asks what the executor is doing.",
+      "must": [
+        "under §A-WAIT-01 report two separate facts, an idle input and a child process still running, so the agent is not reading messages yet",
+        "under §A-DELIVERY-01 deliver the instruction once into the same Dispatch or terminal, where it waits until the child ends"
+      ],
+      "mustNot": [
+        "report the executor as idle or finished from the idle input alone",
+        "repeat the instruction, interrupt the child or open a new terminal or Dispatch for it"
       ]
     }
   ]

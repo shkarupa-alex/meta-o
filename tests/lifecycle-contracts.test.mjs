@@ -6,7 +6,7 @@
  */
 
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 
@@ -392,10 +392,10 @@ test("every typed scenario result is admitted by the evidence rule and by mo-e2e
     ],
   );
   // An actor whose result set lacks it is named the same way.
-  const narrow = skill.replace(
-    /,\s+or\s+`blocked:external_capability`\s+where[\s\S]*?never `PASS`\./u,
-    ".",
-  );
+  // The evidence-line paragraph names the value too, so every mention goes.
+  const narrow = skill
+    .replace(/,\s+or\s+`blocked:external_capability`\s+where[\s\S]*?never `PASS`\./u, ".")
+    .replaceAll("`blocked:external_capability`", "`blocked`");
   assert.notEqual(narrow, skill);
   assert.deepEqual(unadmittedResults(e2e, narrow), [
     "B53: blocked:external_capability not in mo-e2e",
@@ -488,7 +488,8 @@ function settleReportAttempts(reports, expected) {
 test("PASS, FINDINGS and UNKNOWN fixtures preserve the canonical review envelope", () => {
   const base = (verdict, counts, index, findings, extra = "", mode = "deep") =>
     `Review-Execution: ctx_fixture\nCandidate: ${"a".repeat(40)}\n` +
-    `Mode: requested=${mode} effective=${mode}\nDelegation: none\nVerdict: ${verdict}\n` +
+    `Mode: requested=${mode} effective=${mode}\nRound: attempt=3/5 deep_reads=1 fragment=f1\n` +
+    `Delegation: none\nVerdict: ${verdict}\n` +
     `Counts: ${counts}\n\n${index}Evidence report\nGrounding\nintent and clean SHA\n` +
     `Scope and checks\nread-only diff and tests\nFindings\n${findings}${extra}` +
     "Unknowns\nnone\nResidual risks\nnone\nEnd-Review: ctx_fixture\n";
@@ -497,6 +498,7 @@ test("PASS, FINDINGS and UNKNOWN fixtures preserve the canonical review envelope
     candidate: "a".repeat(40),
     requestedMode: mode,
     effectiveMode: mode,
+    round: { attempt: 3, limit: 5, deepReads: 1, fragment: "f1" },
   });
   const validateFixture = (report, mode = "deep") => validateReport(report, context(mode));
   // A rejected report now says why, so the negatives below name the reason
@@ -599,6 +601,7 @@ test("PASS, FINDINGS and UNKNOWN fixtures preserve the canonical review envelope
     ["Candidate", `Candidate: ${"b".repeat(40)}`, "candidate_mismatch"],
     ["Review-Execution", "Review-Execution: ctx_stale", "execution_mismatch"],
     ["Mode", "Mode: requested=fast effective=deep", "mode_mismatch"],
+    ["Round", "Round: attempt=3/5 deep_reads=1 fragment=f2", "round_mismatch"],
   ]) {
     const valid = base("PASS", "P0=0 P1=0 P2=0 P3=0", "", "");
     assert.equal(reasonOf(valid.replace(new RegExp(`^${field}:.*`, "mu"), replacement)), reason);
@@ -1185,6 +1188,22 @@ test("session, delivery, handoff and waiter invariants remain executable instruc
     assert.match(review, pattern);
   }
   assert.doesNotMatch(review, /git worktree add.*allowed|orca repo add.*fallback/iu);
+  // The orchestrator ships only the mechanics page, not the review skill, so
+  // its checkpoint must name the ack kind itself: the helper refuses a bare
+  // `ack`, and a model read the bare form as an unspecified command.
+  const mechanics = source("shared/references/orca-mechanics.md");
+  // The call is written as the skill-directory path in quotes, like every
+  // other helper call, so a verbatim copy runs from any working directory.
+  for (const kind of ["Handoff", "Preview"]) {
+    assert.match(
+      mechanics,
+      new RegExp(
+        `node "<this skill's directory>/scripts/mo-review-report\\.mjs" ack --kind ${kind} \\\\\\n\\s+--line '<ack text>' --pair-id <id>`,
+        "u",
+      ),
+    );
+  }
+  assert.match(mechanics, /--a-bytes <n> --b-bytes <n>/u);
   const setup = source("src/skills/mo-setup/SKILL.md");
   assert.match(setup, /orca-cli/u);
   assert.match(setup, /git check-ignore -v --no-index/u);
@@ -1224,7 +1243,8 @@ test("the coordinator's validate command binds the effective mode it needs", () 
   // Without the flag the documented call checked the requested mode only, so a
   // closure report that declared a lower coverage was never compared.
   for (const path of ["src/skills/mo-review-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
-    const command = /scripts\/mo-review-report\.mjs validate [^`]*/u.exec(source(path))?.[0] ?? "";
+    const command =
+      /scripts\/mo-review-report\.mjs"? validate [^`]*/u.exec(source(path))?.[0] ?? "";
     assert.match(command, /--requested <mode> --effective <mode>/u, path);
     assert.match(source(path).replace(/\s+/gu, " "), /`deep` for a `deep` request/u, path);
   }
@@ -1405,7 +1425,7 @@ test("the Body-File name uses only what the caller holds before sending", () => 
   // placeholder that no sent brief can fill.
   // The Dispatch ordinal keeps the one repeat Dispatch of a round off the
   // earlier body, which `prepare` would refuse as existing.
-  const form = "`Body-File: <dir>/slot-<a|b>-r<round>-d<n>.md`";
+  const form = "`Body-File: <slot dir>/slot-<a|b>-r<round>-d<n>.md`";
   for (const path of [
     "shared/references/review-brief.md",
     "src/skills/mo-review-orca/SKILL.md",
@@ -1417,39 +1437,48 @@ test("the Body-File name uses only what the caller holds before sending", () => 
   }
 });
 
-test("every reviewer Dispatch records the installed reviewer version", () => {
-  // The body carries no version header by design, so the Dispatch context is
-  // the only place that can say which grammar accepted a report once the
-  // installation moves on.
+test("a reviewer Dispatch names the reviewer skill by name alone", () => {
+  // Meta-O skills are installed in every agent environment that takes part. A
+  // path from the coordinator's installation names a file of another
+  // environment, and comparing two environments' copies by hash made the
+  // reviewer audit installations instead of the candidate.
   const brief = source("shared/references/review-brief.md").replace(/\s+/gu, " ");
-  const form = "mo-reviewer <path> source_tree=<40-hex> skill=<id> protocol=<id> validator=<id>";
-  assert.equal(brief.includes(`\`Reviewer-Skill: ${form}\``), true);
-  assert.match(brief, /no Dispatch starts from it/u);
-  // The stamp names authored inputs only: bundled package bytes and a local
-  // edit leave it unchanged, so the installed bytes are named by object id.
-  assert.match(brief, /does not cover the bytes of the bundled third-party packages/u);
-  assert.match(brief, /`git log --find-object=<id>`/u);
-  // A record, not a provenance proof: the project under review has no Meta-O
-  // history, so a proof there would refuse every review.
-  assert.match(brief, /a record, not a proof of provenance/u);
+  assert.equal(
+    brief.includes("`Reviewer-Skill: mo-reviewer` names the reviewer skill and nothing else"),
+    true,
+  );
+  const surfaces = [
+    "shared/references/review-brief.md",
+    "shared/references/methodology.md",
+    "shared/references/orca-mechanics.md",
+    "src/skills/mo-review-orca/SKILL.md",
+    "skills/mo-review-orca/SKILL.md",
+    "skills/mo-orchestrate-orca/references/review-brief.md",
+    "src/skills/mo-reviewer/SKILL.md",
+    "docs/architecture/skill-activation.md",
+  ];
+  for (const path of surfaces) {
+    const text = source(path).replace(/\s+/gu, " ");
+    // No path, build stamp, object id or comparison step travels with the name.
+    assert.doesNotMatch(text, /Reviewer-Skill: mo-reviewer [</~]/u, path);
+    assert.doesNotMatch(text, /source_tree=|skill=<id>|protocol=<id>|validator=<id>/u, path);
+    assert.doesNotMatch(text, /git hash-object|same build|same installation/u, path);
+  }
   for (const path of ["src/skills/mo-review-orca/SKILL.md", "skills/mo-review-orca/SKILL.md"]) {
     const review = source(path).replace(/\s+/gu, " ");
-    const [stamp, ids] = [
-      "mo-reviewer <path> source_tree=<40-hex>",
-      "skill=<id> protocol=<id> validator=<id>",
-    ];
-    assert.equal(review.includes(`\`${stamp}\` followed by \`${ids}\``), true, path);
-    assert.match(review, /immediately before the Dispatch, take `git hash-object`/u, path);
-    assert.match(review, /carries no stamp, lacks one of the three files/u, path);
-    // "Same build" is decidable from the record and this skill's own files.
-    assert.match(review, /Same build means that its `protocol` and `validator` ids equal/u, path);
-    assert.match(review, /The two `source_tree` stamps are not compared/u, path);
-    assert.match(review, /repeats the whole value next to `prepared_body_identity`/u, path);
+    assert.equal(review.includes("`Reviewer-Skill: mo-reviewer`: no path"), true, path);
+    // A reviewer without the skill still stops the slot rather than reviewing
+    // from instructions pasted out of another copy.
+    assert.match(
+      review,
+      /`needs_attention\/skill_unavailable`; never paste reviewer instructions/u,
+      path,
+    );
   }
-  // The stamp can name all three only while the skill bundles the other two.
-  for (const bundled of ["references/review-protocol.md", "scripts/mo-review-report.mjs"]) {
-    assert.equal(existsSync(join(ROOT, "skills", "mo-reviewer", bundled)), true, bundled);
-  }
+  const activation = source("docs/architecture/skill-activation.md").replace(/\s+/gu, " ");
+  assert.match(activation, /установленный под этим именем в его собственной среде/u);
+  assert.match(activation, /`needs_attention\/skill_unavailable`/u);
+  // The build stamp stays for its one remaining consumer, mo-debug.
   assert.match(source("skills/mo-reviewer/SKILL.md"), /^ {2}source_tree: "[0-9a-f]{40}"$/mu);
 });
 
@@ -1505,9 +1534,11 @@ test("shipped handoff and live-eval instructions match their fail-closed callers
   const methodology = source("shared/references/methodology.md");
   const response = source("docs/architecture/settled-final-response.md");
   for (const document of [review, methodology, response]) {
-    assert.match(document, /hard[- ]link/u);
     assert.match(document, /create-if-absent/u);
-    assert.match(document, /overwrite-capable rename|Переименование с возможностью перезаписи/iu);
+    assert.match(
+      document,
+      /overwrite-capable\s+rename|Переименование\s+с\s+возможностью\s+перезаписи/iu,
+    );
   }
   assert.match(
     source("docs/e2e.md"),

@@ -184,6 +184,48 @@ export function parseSelection(value) {
 }
 
 /**
+ * OpenCode provider prefixes whose models come from exactly one vendor.
+ *
+ * The table is closed on purpose: a route that hosts many vendors' models proves
+ * vendor diversity only through a prefix someone checked. Gateways — `opencode`
+ * (Zen), `huggingface`, `openrouter`, a local `llamacpp` or `ollama` server —
+ * serve models of several vendors under one prefix, so they are absent and
+ * answer `unknown`, exactly like a prefix nobody has added yet. The initial
+ * rows are the direct-vendor providers of `opencode models` plus the three
+ * vendors the other routes already name; widening it is an explicit edit.
+ */
+const OPENCODE_PROVIDER_VENDORS = new Map([
+  ["anthropic", "anthropic"],
+  ["openai", "openai"],
+  ["google", "google"],
+  ["zai", "zai"],
+  ["zai-coding-plan", "zai"],
+]);
+
+/** Routes that run one vendor's models only. */
+const ROUTE_VENDORS = new Map([
+  ["claude", "anthropic"],
+  ["codex", "openai"],
+]);
+
+/**
+ * §A-MODELS-01 names who made a model, separately from the route that launches it.
+ *
+ * The route is the agent environment; the vendor is what reviewer diversity, the
+ * consultant choice and the review pair check are about. They differ on OpenCode,
+ * which launches `openai/gpt-…` as readily as `zai-coding-plan/glm-…`, so a
+ * check that compared routes would call `opencode/openai/…` and `codex/…`
+ * diverse. `unknown` is an answer, not an error, and never counts as different.
+ */
+export function modelVendor(route, model) {
+  if (ROUTE_VENDORS.has(route)) return ROUTE_VENDORS.get(route);
+  if (route !== "opencode" || typeof model !== "string") return "unknown";
+  const slash = model.indexOf("/");
+  if (slash <= 0) return "unknown";
+  return OPENCODE_PROVIDER_VENDORS.get(model.slice(0, slash)) ?? "unknown";
+}
+
+/**
  * §A-EVAL-01 keeps one entry point for both halves of an approved identity.
  *
  * Callers already import the settings guard from here; splitting the observed
@@ -866,19 +908,21 @@ export function findUpgrade(current, availableModels) {
 // ---------------------------------------------------------------------------
 
 /**
- * How one stored selection is spelled on a launch command line.
+ * §A-MODELS-01 spells one stored selection as a launch command line and a vendor.
  *
  * `route/model/effort` is one string for a human and three flags for a harness.
  * Every caller that split it itself eventually passed the whole literal to
  * `--model`, which launches nothing and reads like an unavailable model, so the
  * split is published here instead of being re-derived at each call site.
+ * `vendor` rides along because a caller comparing `agent` values would compare
+ * routes, not vendors (§A-MODELS-01).
  */
-function launchProjection(roles) {
+export function launchProjection(roles) {
   const launch = {};
   for (const [role, value] of Object.entries(roles)) {
     if (value === undefined) continue;
     const { route, model, effort } = parseSelection(value);
-    launch[role] = { agent: route, model, effort };
+    launch[role] = { agent: route, model, effort, vendor: modelVendor(route, model) };
   }
   return launch;
 }
@@ -1150,6 +1194,14 @@ const USAGE = `mo-models — read and edit ~/.meta-o/models.json
   --global           write to defaults instead of this project
   --force            store a selection without consulting the route's catalog
   --json             machine-readable output
+
+--show --json also publishes launch.<role> = {agent, model, effort, vendor}:
+the three launch flags, and the model's vendor apart from its route. OpenCode
+takes no effort at launch: Orca refuses --effort for it, so its effort is
+reported as not passed. claude is
+anthropic, codex is openai, opencode is read from the model's provider prefix
+through a closed table; a gateway or an unlisted prefix is unknown, and unknown
+never proves two vendors differ.
 
 A --set is checked against the route's own catalog: an unknown model, or an
 effort the model does not offer, is refused before anything is written. Where the

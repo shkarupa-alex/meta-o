@@ -26,6 +26,7 @@ import {
   knowledgeLayerLine,
   missingSignals,
 } from "../shared/scripts/mo-knowledge-layer.mjs";
+import { readHistoryDeclaration } from "../shared/scripts/knowledge-documents.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const HELPER = join(ROOT, "shared", "scripts", "mo-knowledge-layer.mjs");
@@ -62,10 +63,15 @@ function commit(root, files) {
   return git(root, "rev-parse", "HEAD");
 }
 
+const CUTOFF = "0000000000000000000000000000000000000000";
+const STAGE = "```bash\nmake mo-knowledge-history\n```\n";
+const RECORD = `\`\`\`yaml\nhistory_cutoff_sha: ${CUTOFF}\n\`\`\`\n`;
+const SECTION = `## Knowledge id history\n\n${STAGE}\n${RECORD}`;
+
 const LAYER = {
   Makefile: "closure:\n\tnode tools/mo-backlog.mjs  # MO-BACKLOG/1\n",
-  "AGENTS.md":
-    "# Project\n\n```yaml\nhistory_cutoff_sha: 0000000000000000000000000000000000000000\n```\n",
+  // Appended fixture text lands under its own heading, outside the declaration.
+  "AGENTS.md": `# Project\n\n${SECTION}\n## Notes\n`,
   "docs/papercut.md": "# Papercuts\n",
 };
 
@@ -460,4 +466,91 @@ test("the corpus guard compares against the helper's ordered missing= mapping", 
   assert.equal(missingSignals("signals_removed", {}), "backlog,papercut,history");
   assert.equal(missingSignals("conflicting_marker", {}), "none");
   assert.equal(missingSignals("shallow_clone", {}), "unknown");
+});
+
+test("the history signal is the declaration section read by AST, in its declared form", () => {
+  const root = repository();
+  const layer = (agents, extra = {}) =>
+    answer(root, commit(root, { ...LAYER, ...extra, "AGENTS.md": agents }));
+  const malformed = {
+    state: "needs_attention",
+    reason: "malformed_declaration",
+    signal: "history",
+  };
+  // The reported case: the cutoff inside a sentence of a section that works.
+  const phrase =
+    `# Project\n\n## Knowledge id history\n\n${STAGE}\n` +
+    `Рубеж: \`history_cutoff_sha: ${CUTOFF}\` — корневой коммит.\n`;
+  assert.deepEqual(layer(phrase), malformed);
+  // A bare record outside the section declares nothing: no section, no signal.
+  const outside = `# Project\n\nhistory_cutoff_sha: ${CUTOFF}\n\n${RECORD}`;
+  assert.deepEqual(layer(outside), {
+    state: "needs_attention",
+    reason: "partial_signals",
+    missing: "history",
+  });
+  // Two yaml blocks, or two command blocks, cannot be one declaration.
+  assert.deepEqual(layer(`# Project\n\n${SECTION}\n${RECORD}`), {
+    ...malformed,
+    reason: "ambiguous_declaration",
+  });
+  assert.deepEqual(layer(`# Project\n\n${SECTION}\n${STAGE}`), {
+    ...malformed,
+    reason: "ambiguous_declaration",
+  });
+  // A record with another key, a short SHA or a two-line command is malformed.
+  for (const record of [
+    `\`\`\`yaml\nhistory_cutoff: ${CUTOFF}\n\`\`\`\n`,
+    "```yaml\nhistory_cutoff_sha: 0000000\n```\n",
+    `\`\`\`yaml\nhistory_cutoff_sha: ${CUTOFF}\nother: 1\n\`\`\`\n`,
+  ]) {
+    const agents = `# Project\n\n## Knowledge id history\n\n${STAGE}\n${record}`;
+    assert.deepEqual(layer(agents), malformed, record);
+  }
+  const twoLines = `# Project\n\n## Knowledge id history\n\n\`\`\`bash\nmake a\nmake b\n\`\`\`\n\n${RECORD}`;
+  assert.deepEqual(layer(twoLines), malformed);
+  // The quality document AGENTS.md links holds the declaration as well.
+  const linked = "# Project\n\nQuality contract: [Quality](docs/quality.md).\n";
+  assert.deepEqual(layer(linked, { "docs/quality.md": `# Quality\n\n${SECTION}` }), {
+    state: "enabled",
+    reason: "signals_present",
+  });
+  // Declared twice — in AGENTS.md and in the linked document — is ambiguous.
+  assert.deepEqual(
+    layer(`${linked}\n${SECTION}`, { "docs/quality.md": `# Quality\n\n${SECTION}` }),
+    { ...malformed, reason: "ambiguous_declaration" },
+  );
+});
+
+test("the declaration reader names its outcome and where it read it", () => {
+  const files = {
+    "AGENTS.md": `# P\n\nSee [Q](docs/q.md).\n`,
+    "docs/q.md": `# Q\n\n${SECTION}`,
+  };
+  const readAt = (_candidate, path) => ({ text: files[path] ?? null });
+  assert.deepEqual(readHistoryDeclaration(readAt, "HEAD"), {
+    state: "declared",
+    document: "docs/q.md",
+    stageCommand: "make mo-knowledge-history",
+    cutoff: CUTOFF,
+  });
+  assert.deepEqual(
+    readHistoryDeclaration(() => ({ text: "# P\n" }), "HEAD"),
+    {
+      state: "absent",
+      reason: "section_missing",
+    },
+  );
+  const broken = (_candidate, path) =>
+    path === "AGENTS.md" ? { text: files[path] } : { error: "unreadable" };
+  assert.equal(readHistoryDeclaration(broken, "HEAD").reason, "contract_unreadable");
+  // The line a brief carries names the signal instead of calling it missing.
+  assert.equal(
+    knowledgeLayerLine({
+      state: "needs_attention",
+      reason: "malformed_declaration",
+      signal: "history",
+    }),
+    "Knowledge-Layer: state=needs_attention reason=malformed_declaration signal=history",
+  );
 });

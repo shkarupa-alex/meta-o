@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-convergence; ask the 
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "d606908e94ddc1ae2f4cfa1c47d8795af90c7f75"
+  source_tree: "856e783d808afd59aedc58ab29d01ca5d7ea6389"
 ---
 
 # Diagnose work that does not converge
@@ -17,6 +17,15 @@ Read [Feature lifecycle](references/methodology.md) and
 [Обратная связь о методологии](references/methodology-feedback.md) completely:
 friction you hit goes to the user in your answer, and this skill writes no
 Issue.
+
+This skill ships its own scripts in `scripts/` beside this `SKILL.md`. Every
+`scripts/<name>` this skill and its references name is that file, never a path
+in the project checkout, and it runs from this skill's directory with the full
+path in double quotes, which also holds for a path with a space:
+
+```text
+node "<this skill's directory>/scripts/mo-review-resource.mjs" --help
+```
 
 ## Gather positions
 
@@ -43,10 +52,11 @@ prompt or any other answer sends nothing, and that participant is recorded as
 unavailable with the classifier's line.
 
 Then check the sequence yourself from public evidence only: the candidates in
-order, each round's verdict, `attempt <n>/5` and `deep_reads <m>`, the findings
-that returned after being marked fixed, and the requirements they touch. A
-finding that keeps coming back in a new shape usually names a boundary, not a
-patch.
+order, each round's verdict and its
+`Round: attempt=<n>/<limit> deep_reads=<m> fragment=<fragment-id>` line, the
+findings that returned after being marked fixed, and the requirements they
+touch. A finding that keeps coming back in a new shape usually names a boundary,
+not a patch.
 
 ## Recommend
 

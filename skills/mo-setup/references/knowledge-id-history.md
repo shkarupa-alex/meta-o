@@ -13,15 +13,38 @@ The project's `AGENTS.md`, or a document `AGENTS.md` names as its quality
 contract, must hold a level-two section whose heading contains
 `Knowledge id history`, and inside it:
 
-- exactly one fenced block holding exactly one command line — the history stage;
+- exactly one fenced block other than `yaml` holding exactly one command line —
+  the history stage;
 - exactly one line naming the project's authoritative QC command;
-- exactly one YAML record with key `history_cutoff_sha` — the project's floor;
+- exactly one fenced `yaml` block holding only `history_cutoff_sha: <40-hex>` —
+  the project's floor. A cutoff inside a sentence, or a record outside the
+  section, is not a declaration;
 - the locations identifiers live in: the business document and the architecture
   directory the stage reads.
 
 A missing section, or any other count of blocks or lines, is `history=unknown`
 with `cutoff=none`. Parse it with a real AST library, never with a regular
-expression over the document. Locations are read, never assumed: this project's
+expression over the document. The layer helper `scripts/mo-knowledge-layer.mjs`
+reads the section the same way and answers a present section in another form
+with `reason=malformed_declaration signal=history`, or `ambiguous_declaration`
+for two blocks of one kind or two sections, never with `missing=history`. A
+repair writes the form above and nothing else, for example:
+
+````markdown
+## Knowledge id history
+
+```bash
+make knowledge-history
+```
+
+`make qc` runs it as a stage of the authoritative check.
+
+```yaml
+history_cutoff_sha: 0123456789abcdef0123456789abcdef01234567
+```
+````
+
+Locations are read, never assumed: this project's
 own `docs/business.md` and `docs/architecture/` are its convention, not a
 default anyone else agreed to, and a probe that guesses them either certifies
 documents the gate never reads or rewrites whichever file happened to match.
@@ -140,6 +163,15 @@ SHA: G0 after intake and before substantive work, GC before completion is
 announced, G1 right before an agent creates a merge request and G2 right before
 an agent merges. A project whose knowledge layer is `not_enabled` runs none of
 them for the layer.
+
+The authoritative QC walks the project's full history exactly once. The tool's
+own self-checks — deletion, reuse, editorial, merge and wiring errors — run on
+small synthetic Git histories built in a temporary directory, and an old
+exemption is checked on a fixed finite range; a test never reruns the full
+history or the QC itself. Every extra full pass multiplies the cost of the one
+check that grows with the project, while proving nothing the authoritative pass
+did not. `--timing` on the stage shows what one pass costs. The fix is never a
+cutoff moved towards `HEAD`, a disabled stage or a persistent cache.
 
 ## What proves the stage is present
 

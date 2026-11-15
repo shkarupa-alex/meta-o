@@ -25,6 +25,7 @@ usage() {
     '' \
     'Providers default to: claude codex opencode' \
     'Output paths use Bash %q encoding, so whitespace and newlines remain one field.' \
+    'MO_POSTURE_PROXY names the inherited proxy variables, never their values.' \
     'Profile stdout/stderr is never reproduced; its presence is summarized on stderr.' \
     'Run this file directly; do not prefix it with bash, which bypasses the privileged' \
     'shebang and can load caller state before the script isolates profile output.' \
@@ -494,6 +495,19 @@ run_matrix() {
 
   return "$matrix_status"
 }
+
+# Name the proxy variables this run inherited, and only their names: a proxy
+# URL can carry credentials, so no part of a value is ever printed. These are
+# the variables every command an agent runs would inherit, which a project's
+# managed Makefile block removes for its recipes. Diagnostic only: they never
+# change the exit status.
+proxy_names=
+for proxy_variable in HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy; do
+  if [[ -n "${!proxy_variable-}" ]]; then
+    proxy_names=${proxy_names:+$proxy_names,}$proxy_variable
+  fi
+done
+printf 'MO_POSTURE_PROXY names=%s\n' "${proxy_names:-none}"
 
 overall_status=0
 if [[ "$requested_shell" == zsh || "$requested_shell" == all ]]; then

@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-orchestrate-orca; run
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "218e867fc57e44169563d98c9332cfd2186eeb2c"
+  source_tree: "281a798ea1b207c7af3c38ef0fcd9d8db960241e"
 ---
 
 # Orchestrate a feature through Orca
@@ -22,23 +22,48 @@ Read [Feature lifecycle](references/methodology.md),
 completely. Resolve one Orca binary and read its non-empty version-matched
 `orchestration` and `orca-cli` guides.
 
+This skill ships its own scripts in `scripts/` beside this `SKILL.md`. Every
+`scripts/<name>` this skill and its references name is that file, never a path
+in the project checkout, and it runs from this skill's directory with the full
+path in double quotes, which also holds for a path with a space:
+
+```text
+node "<this skill's directory>/scripts/mo-models.mjs" --help
+```
+
 The session the user asked to orchestrate is the orchestrator. An unset
 `orchestrator` role does not block the start and is not a reason to ask which
 model this session should use; `--force` and another model generation stay
 forbidden. Keep a role's terminal hot while its proven idle stays under the
 methodology's threshold, and prefer a fresh session past it.
 
-Read role selections with bundled `scripts/mo-models.mjs --show --project
-<root>`; require exact user-approved values and never select a model, effort,
-placement or posture fallback. Prove provider-native auth, account freshness and
-one real launch with requested/effective identity equal. Task bytes wait for a
+Read role selections with bundled `scripts/mo-models.mjs --show --json
+--project <root>`; require exact user-approved values and never select a model,
+effort, placement or posture fallback. Launch every role from its
+`launch.<role> = {agent, model, effort, vendor}` as three separate flags
+`--agent`, `--model`, `--effort`, never the whole `route/model/effort` in
+`--model`. OpenCode is the exception: Orca refuses `--effort` for it, so its
+role starts terminal-first with the model alone and its effort is reported as
+not passed, as [Orca native mechanics](references/orca-mechanics.md) says.
+Every vendor-diversity rule reads `vendor`, not the route, and
+`unknown` is never a different vendor. Prove provider-native auth, account
+freshness and one real launch: requested/effective identity equal, the provider
+accepted the model and the first turn observed to begin. When a provider
+refuses the model, run `scripts/mo-models.mjs --catalog --route <agent>` and ask
+the human one question with the recommended replacement and the alternatives;
+never substitute silently, never report a refusal without a proposal, and never
+read an incomplete catalog as proof the model is absent. Task bytes wait for a
 publicly proven normal agent prompt, never trust UI or shell.
 
 Use titles `<feature>:orchestrator`, `<feature>:executor`,
 `<feature>:review:<vendor>` and `<feature>:e2e:<n>`. Preserve exact
 Run/task/Dispatch/terminal identities in reasoning, not a state store. Before
 actors, record project registrations/resources; every actor must remain in the
-same Orca project and cleanup may touch only exact-owned delta.
+same Orca project and cleanup may touch only exact-owned delta. An actor's new
+worktree is a child of the task's working directory by the lineage recipe of
+[Orca native mechanics](references/orca-mechanics.md): `new-child --from` your
+handle inside a terminal, `--parent-worktree` outside one, the Git base set
+separately, and `parentWorktreeId` as the proof.
 
 This lifecycle also runs from an ordinary shell. One predicate decides
 placement, the terminal's own handle: `ORCA_TERMINAL_HANDLE` present and
@@ -83,12 +108,93 @@ hot subagent for its own findings, and a new one after findings from you or the
 reviewers. Accept the executor's `self_review_unavailable` as its harness's
 typed answer and never as PASS; do not run the self-review yourself.
 
-Use one run-wide blocking waiter: 600000 ms for executor-only and 300000 ms when
-reviewer/E2E is active. Demultiplex exact handles, process complete event batches,
-re-arm quiet timeouts without narration, and allow only one same-arm retry after
-transport failure.
+Quota, capacity, reconnecting, compaction, refusal after work, a lost process
+and credentials are distinct outcomes, each recovered on the same task, model
+and owner by its receipt's action. An unknown outcome climbs one ladder in one
+direction: `worker-stop`, a proven stop, then `worker-start --retry-of` with the
+same selection; a `worker-stop` answering `unknown_effect` ends it with no
+second stop and no replacement. There is no numeric limit: start another
+`--retry-of` only on a new basis to expect a different result — the quota window
+opened, the connection came back, the cause of refusal was removed, new evidence
+of state — and otherwise wait for that event through the one waiter, an
+exhausted quota until its next window.
 
-Call `mo-review-orca` for the first deep pair and remediation follow-ups. Give
+Use one run-wide blocking waiter: 600000 ms for executor-only and 300000 ms when
+reviewer/E2E is active. Wake on `worker_done,escalation,question`, plus `status`
+only while a report preview or pair handoff you sent has no matching
+`Review-Preview-Ack` or `Review-Handoff-Ack` in the Run's messages. Demultiplex
+exact handles, process complete event batches, and allow only one same-arm retry
+after transport failure. After every quiet timeout, before any status answer to
+the user and before any repeated message to an actor, run the checkpoint of
+[Orca native mechanics](references/orca-mechanics.md): the Run's unread batch
+without `--wait`, `worker-show` for each active Dispatch — a `completed` one is
+processed through its `worker_done` before anyone hears it still works, and
+`stale_status` does not cancel that — an idle input over a running child
+reported as two facts with the instruction queued once in the same terminal, and
+`unknown/unverifiable` instead of a truncated preview. Re-arm without narration
+only after that, and never say you are waiting while no wait is armed.
+
+After a compaction — Claude Code's continuation summary at the start of the
+context, Codex's compaction notice, or, where neither is recognizable, a summary
+of earlier work instead of the original messages at the start of a turn — act on
+nothing first. Reread this `SKILL.md` completely and every reference it names,
+then restore the run from public Orca, never from the summary: the checkpoint of
+the one wait, every `E2E-Evidence` and `E2E-Coverage` line from `mo-e2e`'s
+complete `worker_done` messages, and the `Round` line of the last review brief.
+Until both are done send no task, follow-up or brief and release no resource.
+
+Answer an actor's technical, cheap and reversible question yourself and name
+the decision in the final report. Without a confident answer, and outside the
+human boundaries, consult before asking the human, as
+[Feature lifecycle](references/methodology.md) section 4 says: a one-off
+Dispatch of `reviewerA` or `reviewerB` chosen by `launch.<role>.vendor` — first
+a known vendor other than yours, then one also other than the executor's,
+otherwise `reviewerA` with vendor difference reported unproven; `unknown` is
+never different. Start it read-only in the asking actor's worktree with
+`worker-start --task <id> --worktree id:<repo>::<executor worktree>` and that
+role's `launch` flags, wait for it in the one waiter at 300000 ms, then
+`worker-stop`, prove the stop and release it after its single `worker_done`. It
+edits and commits nothing, is no review and never reaches the final pair. Then
+decide and report the decision, or ask the human one question with your
+hypothesis and `Критика от <agent>/<model> (vendor=<…>): …`.
+
+Run the proof loops in order, never alternating. When the executor settles and
+its deterministic checks pass, E2E comes first, and only if the project has
+scenarios in `docs/e2e.md` or the E2E document `AGENTS.md` names: call `mo-e2e`
+with `scope=task` — it chooses the task's scenarios by the behavior the task
+touches, including unchanged acceptance rows the task restores or depends on —
+return a `fail` or `unknown` to the executor and rerun only those scenarios with
+`scenarios=<id,…>` until every one passes. A `blocked:external_capability` the
+project's E2E contract types, or a `not_run` of an unavailable environment or
+profile that only a human's action restores, is an external block the executor
+cannot fix: never send it back and never rerun it while the block stands; tell
+the human once with the scenario, its result and the Issue or missing
+capability, carry its line verbatim into the brief as unproven, start review
+once every other selected scenario passed, and end no better than
+`needs_attention/external_blocked` or `needs_attention/verification_blocked`. An
+exhausted subscription window or a temporary provider refusal is a wait, not a
+block: wait for the next window or retry through the run's one waiter, then
+rerun only that scenario, tell nobody, and start review only once it passed.
+Without scenarios the evidence is `E2E: not_applicable reason=<…>` and review
+starts at once. When `mo-e2e`
+selects no scenario for the task, its `worker_done` carries one
+`E2E: not_applicable reason=no_task_scenarios sha=… source=… basis=…` line:
+it is the evidence, and review starts at once; never write that line yourself
+for a project that has scenarios. `scope=full` runs
+only on the user's explicit request. Keep each scenario's `E2E-Evidence` and
+`E2E-Coverage` line exactly as `mo-e2e`'s complete `worker_done` printed it,
+replace only the lines of a rerun scenario, and after compaction reread them
+from Orca's responses; a `fail` or `unknown` never reaches a reviewer, and
+there is no shared E2E SHA.
+
+Call `mo-review-orca` for the first deep pair and remediation follow-ups, and
+give every brief the current E2E lines verbatim, or the one
+`E2E: not_applicable` line, and the `Backlog-Gate` line of that candidate: GC's
+result on the closure candidate, otherwise `G0 not_run`. An `e2e_affected` or
+`e2e_missing` finding is an ordinary finding of the round: after its fix rerun
+through `mo-e2e` only the scenarios it lists on the new candidate, replace only
+their lines — an `e2e_missing` scenario's lines replace a `no_task_scenarios`
+line — and continue the review; a new SHA alone reruns nothing. Give
 the executor both immutable reports only through its verified
 pair paths/sizes; wait for exact `Review-Handoff-Ack` before cleanup. Keep
 remediation reviewers hot, and use a fresh final same-SHA pair. Public updates
@@ -113,12 +219,15 @@ unknown effects and watchdog remain human boundaries. Never retry an unknown
 write effect.
 
 Run the project's declared QC in the foreground in a clean checkout of exactly
-the candidate, naming the command and its exit code, and call `mo-e2e` for
-applicable scenarios; reviewers never run tests, linters or QC. After knowledge
+the candidate, naming the command and its exit code; reviewers never run tests,
+linters or QC. After knowledge
 harvest and removal of the implemented spec, require GC on the exact candidate.
 Immediately before any agent-owned MR/PR create run G1 and verify remote source
-head equality. Immediately before merge run G2: the closure proof, the remote
-head, `CI-Coverage/1 covered` and a successful run of every covering CI QC job
+head equality and that the `sha` of every `E2E-Evidence` line, or of the
+`no_task_scenarios` line, is the candidate or its ancestor
+(`git merge-base --is-ancestor`). Immediately before merge run G2: the closure
+proof, the remote head, that E2E ancestry, `CI-Coverage/1 covered` and a
+successful run of every covering CI QC job
 whose printed checkout SHA equals the candidate, then bind the provider write to
 that head/required policy. Any other coverage outcome, a missing or failed run,
 another checkout SHA or unsupported integration candidate proof is
@@ -126,7 +235,11 @@ another checkout SHA or unsupported integration candidate proof is
 merged by the agent without that CI evidence.
 
 Return only when one unchanged full SHA has QC, two fresh vendor-diverse PASS
-reports, applicable E2E and, with the knowledge layer `enabled`, an empty GC. Otherwise return honest
+reports and, with the knowledge layer `enabled`, an empty GC, and every
+applicable scenario has E2E evidence on that SHA or an ancestor with no
+`e2e_affected` or `e2e_missing` from the final pair. The final report names the final SHA for QC
+and reviews and copies every `E2E-Evidence` line with its own scenario SHA;
+never present an earlier scenario pass as a pass of the final SHA. Otherwise return honest
 `needs_attention`. Never finish with unacknowledged reports, unresolved backlog,
 foreign cleanup or a required question.
 

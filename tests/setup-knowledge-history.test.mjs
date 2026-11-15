@@ -6,7 +6,7 @@
 
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
@@ -310,4 +310,127 @@ test("the membership check fails on a runner that only mentions the stage", () =
     runnerCarries(unwalked, "mo-qc", "mo-knowledge-history"),
     "recipe_ignores_stage_list",
   );
+});
+
+/**
+ * The pass count mo-setup is told to take, executed instead of paraphrased.
+ *
+ * A QC performs one full history traversal per stage whose recipe runs the
+ * history checker, plus one per checker run in a test file the QC reaches that
+ * points the checker at the project's own repository instead of a synthetic
+ * history the test builds itself. Read from tracked files only: running the
+ * QC to count would cost exactly what the count is meant to expose.
+ */
+function fullPasses(makefile, tests, command, checker) {
+  const lines = makefile.split("\n");
+  const recipes = new Map();
+  let target = null;
+  for (const line of lines) {
+    const header = /^([A-Za-z0-9_.-]+):(?!=)(.*)$/u.exec(line);
+    if (header) {
+      target = header[1];
+      recipes.set(target, { deps: header[2].trim().split(/\s+/u).filter(Boolean), body: [] });
+    } else if (line.startsWith("\t") && target) recipes.get(target).body.push(line);
+    else if (line.trim() !== "") target = null;
+  }
+  const assignments = new Map();
+  for (const line of lines) {
+    const parsed = /^([A-Za-z0-9_]+)\s*=\s*(.*)$/u.exec(line);
+    if (parsed) assignments.set(parsed[1], parsed[2].trim().split(/\s+/u));
+  }
+  const reached = new Set();
+  const visit = (name) => {
+    if (reached.has(name) || !recipes.has(name)) return;
+    reached.add(name);
+    const { deps, body } = recipes.get(name);
+    const walked = [...body.join(" ").matchAll(/\$\(([A-Za-z0-9_]+)\)/gu)].flatMap(
+      (match) => assignments.get(match[1]) ?? [],
+    );
+    [...deps, ...walked].forEach(visit);
+  };
+  visit(command);
+  const recipeText = [...reached].map((name) => recipes.get(name).body.join("\n"));
+  // A run of the checker, not a syntax check, a help screen or a file list.
+  const invocation = new RegExp(
+    `node \\S*${checker.replaceAll(".", "\\.")}(?!\\S)(?!.*--help)`,
+    "u",
+  );
+  const stages = recipeText
+    .flatMap((body) => body.split("\n"))
+    .filter((line) => invocation.test(line)).length;
+  const runsTests = recipeText.some((body) => /\b(?:pytest|node --test)\b/u.test(body));
+  const real = runsTests
+    ? Object.values(tests).flatMap((source) =>
+        source
+          .split("\n")
+          .filter(
+            (line) => line.includes(checker) && /--repo["', ]+(?:ROOT|REPO_ROOT|\.)\b/u.test(line),
+          ),
+      ).length
+    : 0;
+  return stages + real;
+}
+
+const CONSUMER_MAKEFILE = [
+  "QC_STAGES = lint knowledge-history unit",
+  "",
+  "qc:",
+  "\t@for stage in $(QC_STAGES); do $(MAKE) $$stage || exit 1; done",
+  "",
+  "lint:",
+  "\truff check .",
+  "",
+  "knowledge-history:",
+  "\tnode tools/mo-knowledge-history.mjs --cutoff abc",
+  "",
+  "unit:",
+  "\tuv run pytest tests",
+].join("\n");
+
+// The reported shape: three gate tests rerun the real history four times.
+const CONSUMER_TESTS = {
+  "tests/test_history_gate.py": [
+    "def test_cutoff_passes_and_parent_fails():",
+    '    ok = run(["node", "tools/mo-knowledge-history.mjs", "--repo", ROOT, "--cutoff", CUTOFF])',
+    '    bad = run(["node", "tools/mo-knowledge-history.mjs", "--repo", ROOT, "--cutoff", PARENT])',
+    "def test_real_exemptions():",
+    '    run(["node", "tools/mo-knowledge-history.mjs", "--repo", ROOT, "--audit-exemptions"])',
+    "def test_raised_cutoff():",
+    '    run(["node", "tools/mo-knowledge-history.mjs", "--repo", ROOT, "--cutoff", RAISED])',
+  ].join("\n"),
+};
+
+// The patch the finding proposes: the same rules on small synthetic histories.
+const PATCHED_TESTS = {
+  "tests/test_history_gate.py": [
+    "def test_silent_deletion_fails(tmp_path):",
+    "    repo = synthetic_history(tmp_path, delete=True)",
+    '    run(["node", "tools/mo-knowledge-history.mjs", "--repo", repo, "--cutoff", repo.root])',
+  ].join("\n"),
+};
+
+test("a QC that reruns the real history is a finding with a synthetic-history patch", () => {
+  const checker = "mo-knowledge-history.mjs";
+  assert.equal(fullPasses(CONSUMER_MAKEFILE, CONSUMER_TESTS, "qc", checker), 5);
+  assert.equal(fullPasses(CONSUMER_MAKEFILE, PATCHED_TESTS, "qc", checker), 1);
+  // This project eats the rule: one authoritative pass, and its own tests of
+  // the checker build their histories in temporary repositories. This file
+  // holds the consumer fixture above as data, so it is not one of them.
+  const own = Object.fromEntries(
+    readdirSync(join(ROOT, "tests"))
+      .filter((name) => name.endsWith(".test.mjs") && name !== "setup-knowledge-history.test.mjs")
+      .map((name) => [name, readFileSync(join(ROOT, "tests", name), "utf8")]),
+  );
+  const makefile = readFileSync(join(ROOT, "Makefile"), "utf8");
+  assert.equal(fullPasses(makefile, own, "mo-qc", checker), 1);
+  // The instruction says the same in words a setup run can follow.
+  for (const phrase of [
+    "real full history traversals",
+    "`--timing`",
+    "synthetic histories",
+    "never by running it",
+    "Never move the cutoff",
+  ]) {
+    assert.ok(prose.includes(phrase), phrase);
+  }
 });

@@ -24,6 +24,18 @@ import {
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const HELPER = join(ROOT, "shared", "scripts", "mo-review-report.mjs");
 const SHA = "b".repeat(40);
+const ROUND = { attempt: 2, limit: 5, deepReads: 1, fragment: "grammar" };
+const ROUND_LINE = "Round: attempt=2/5 deep_reads=1 fragment=grammar";
+const ROUND_ARGS = [
+  "--attempt",
+  "2",
+  "--attempt-limit",
+  "5",
+  "--deep-reads",
+  "1",
+  "--fragment",
+  "grammar",
+];
 const spaces = [];
 after(() => {
   for (const path of spaces) rmSync(path, { recursive: true, force: true });
@@ -40,6 +52,7 @@ const expected = (mode = "deep") => ({
   candidate: SHA,
   requestedMode: mode,
   effectiveMode: mode,
+  round: ROUND,
 });
 
 const call = (args, input) =>
@@ -54,12 +67,14 @@ const flags = (mode = "deep") => [
   mode,
   "--effective",
   mode,
+  ...ROUND_ARGS,
 ];
 
 const header = [
   "Review-Execution: ctx_a",
   `Candidate: ${SHA}`,
   "Mode: requested=deep effective=deep",
+  ROUND_LINE,
   "Delegation: none",
   "Verdict: FINDINGS",
   "Counts: P0=0 P1=0 P2=1 P3=0",
@@ -90,6 +105,7 @@ test("every template validates unchanged with the same expected flags", () => {
     }
   }
   const findings = reportTemplate({
+    round: ROUND,
     verdict: "FINDINGS",
     dispatch: "ctx_a",
     candidate: SHA,
@@ -97,8 +113,10 @@ test("every template validates unchanged with the same expected flags", () => {
     effective: "deep",
   }).text;
   assert.match(findings, /^Counts: P0=0 P1=0 P2=1 P3=0$/mu);
+  // mo-vocabulary-ok: a report-local finding key is fixture data, not a work item.
   assert.match(findings, /^F-001 \[P2\] /mu);
   const unknown = reportTemplate({
+    round: ROUND,
     verdict: "UNKNOWN",
     dispatch: "ctx_a",
     candidate: SHA,
@@ -136,6 +154,7 @@ test("the template prints exactly the mode pairs its own validator accepts", () 
     requested,
     "--effective",
     effective,
+    ...ROUND_ARGS,
   ];
   for (const [verdict, extra] of [
     ["PASS", []],
@@ -158,6 +177,7 @@ test("the template prints exactly the mode pairs its own validator accepts", () 
         assert.notEqual(printed.stderr, "", label);
         // The same pair written by hand is still refused by the reader.
         const written = reportTemplate({
+          round: ROUND,
           verdict,
           dispatch: "ctx_a",
           candidate: SHA,
@@ -214,7 +234,9 @@ test("both finding bodies are accepted and nothing else is", () => {
   const blank = findingsReport({ body: "F-001\n\n[P2] causal path after a blank line.\n" });
   assert.equal(validateReport(blank, expected()).status, "valid");
   for (const body of [
+    // mo-vocabulary-ok: a report-local finding key is fixture data, not a work item.
     "- F-001 [P2] inside a list.\n\n",
+    // mo-vocabulary-ok
     "> F-001 [P2] inside a quote.\n\n",
     "F-001 [P3] severity differs from the index.\n",
     "F-001\n[P1] severity differs from the index.\n",
@@ -236,6 +258,7 @@ test("both finding bodies are accepted and nothing else is", () => {
 
 test("a marker inside a multi-line inline literal is quoted text, not structure", () => {
   const pass = reportTemplate({
+    round: ROUND,
     verdict: "PASS",
     dispatch: "ctx_a",
     candidate: SHA,
@@ -274,6 +297,7 @@ test("the footer is the last line, with at most one line feed after it", () => {
 
 test("UNKNOWN without its account is malformed", () => {
   const text = reportTemplate({
+    round: ROUND,
     verdict: "UNKNOWN",
     dispatch: "ctx_a",
     candidate: SHA,
@@ -287,6 +311,7 @@ test("UNKNOWN without its account is malformed", () => {
 
 test("the Unknown-Reason stands inside the account it types", () => {
   const text = reportTemplate({
+    round: ROUND,
     verdict: "UNKNOWN",
     dispatch: "ctx_a",
     candidate: SHA,
@@ -449,6 +474,7 @@ test("a key quoted inside a multi-line code span in the index is summary text", 
 test("the closing row of a multi-line code span is quoted text for every prefix reader", () => {
   const template = (verdict, extra = {}) =>
     reportTemplate({
+      round: ROUND,
       verdict,
       dispatch: "ctx_a",
       candidate: SHA,
@@ -512,6 +538,7 @@ test("a key quoted on a closing code row neither answers the index nor opens a s
     ["`", "`"],
     ["`` a ` tick", "``"],
   ]) {
+    // mo-vocabulary-ok: a report-local finding key is fixture data, not a work item.
     const quoteOnly = `Example literal: ${open} opening row\nF-001 [P2] quoted text${close}.\n`;
     assert.equal(judged(findingsReport({ body: quoteOnly }), "quote only"), "index_body_mismatch");
     for (const severity of ["P0", "P1", "P2", "P3"]) {
@@ -520,6 +547,7 @@ test("a key quoted on a closing code row neither answers the index nor opens a s
     }
     const early = `F-001 [P2] path ${open} a\nF-002 [P2] quoted text${close}.\n`;
     assert.equal(judged(two(early), "early"), "index_body_mismatch");
+    // mo-vocabulary-ok: a report-local finding key is fixture data, not a work item.
     assert.equal(judged(two(`${early}F-002 [P2] the real body.\n`), "both"), "valid");
   }
   const opened = "F-001 [P2] causal path `a\nplain text` continues.\n";

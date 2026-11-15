@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-setup; inspect or bri
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "89afb32b059890d837ac88437ad2c66a57d49a90"
+  source_tree: "1ff44d3671be8b08eb837096c3e5cc8979c64c70"
 ---
 
 # Set up a project for Meta-O
@@ -22,6 +22,15 @@ JavaScript/TypeScript read
 [TypeScript QC profile](references/qc-typescript.md). Read both for a mixed
 project.
 
+This skill ships its own scripts in `scripts/` beside this `SKILL.md`. Every
+`scripts/<name>` this skill and its references name is that file, never a path
+in the project checkout, and it runs from this skill's directory with the full
+path in double quotes, which also holds for a path with a space:
+
+```text
+node "<this skill's directory>/scripts/mo-backlog.mjs" --help
+```
+
 Inspect substance: business/architecture ids, glossary, README, byte-identical
 agent contracts, temporary feature backlog, acceptance/E2E, purpose, mature
 language gates and one deterministic non-mutating aggregate QC. Require the
@@ -29,7 +38,9 @@ smallest regression test for a confirmed behavioral defect and an invariant
 comment for substantial ownership/concurrency/trust/security/compatibility/
 transaction/resource-lifetime repair.
 Do not create a backend fixture document in an ordinary target project without
-a named consumer.
+a named consumer. Write no dictation rule into `AGENTS.md`; where the former
+template's rule is still there, propose the contract's removal patch and keep
+the verbatim intent ledger.
 
 Read the knowledge layer first with bundled
 `scripts/mo-knowledge-layer.mjs --candidate <HEAD sha>` and report its line
@@ -60,8 +71,11 @@ own checker for that portable core. Never guess: take the
 declared stage from a level-two section whose heading contains
 `Knowledge id history`, holding exactly one fenced one-line command, exactly one
 line naming the authoritative QC command, and exactly one `history_cutoff_sha`
-record. Parse it with a Markdown AST. Any other count is `history=unknown` with
-`cutoff=none`. The same contract must name where identifiers live: the business
+record — a fenced `yaml` block holding only `history_cutoff_sha: <40-hex>`.
+Parse it with a Markdown AST. Any other count is `history=unknown` with
+`cutoff=none`; the layer helper reports such a section as
+`reason=malformed_declaration signal=history` or `ambiguous_declaration`, and
+repair writes exactly this form. The same contract must name where identifiers live: the business
 document and the architecture directory the stage reads. Unnamed, ambiguous or
 contradictory locations are `history=unknown cutoff=none` and no fixture is
 written at all — a fixture built on a guessed location certifies documents
@@ -88,6 +102,17 @@ and `git clean -xdff`, then change a literal with a correct trailer and a matchi
 Strictness without tolerance and tolerance without strictness each prove only half.
 Delete the clone in a `finally`; its path is machine-local and never reported.
 
+Count the real full history traversals the declared QC performs, from tracked
+files and never by running it: the declared stage is one, and every run of the
+history checker that a test or script reached from the QC command points at the
+project's own repository, rather than at a small history it builds itself, is
+another. More than one is a finding with an exact patch: the declared stage
+stays the single authoritative full pass, and each extra run moves onto
+synthetic histories — deletion, reuse, editorial, merge and wiring errors — or
+onto a fixed finite range for an old exemption. Give the cost of one pass from
+the baseline stage run with `--timing`. Never move the cutoff, disable the stage
+or add a persistent cache to make QC cheaper.
+
 Report one record, with `qc` as JSON or `none` and no local paths:
 
 ```text
@@ -112,8 +137,17 @@ that writes the marker, by the line `Knowledge-Layer-Papercut: <path>` in
 `AGENTS.md`, or the helper reports a partial set. Accepted repair starts from
 [Commands and papercuts template](references/papercut-template.md).
 
-Accepted repair copies three shipped bundles into the project, each with its
-`tools/licenses/`, and all three then belong to the project.
+Roll out the shipped reference check `scripts/mo-vocabulary.mjs` exactly as the
+setup contract's reference check orders: one separate run with the recipe's
+`--first-party-root`, `--exclude` and `--non-canonical` flags, one migration
+patch, `needs_attention` with the explicit unresolved list while a run is not
+clean, and the QC stage only after a clean run; never a baseline, a warn-only
+mode or an "inherited reference" marker, and never disconnect a connected stage.
+
+Accepted repair copies four shipped bundles into the project, each with its
+`tools/licenses/`, and all four then belong to the project.
+`scripts/mo-vocabulary.mjs` goes to `tools/mo-vocabulary.mjs` behind a QC
+target whose recipe declares the roots and areas.
 `scripts/mo-knowledge.mjs` goes to `tools/mo-knowledge.mjs`, and a QC stage
 calls its `check` with that project's own declaration. `scripts/mo-backlog.mjs`
 goes to `tools/mo-backlog.mjs`, and the closure command that calls it must name
@@ -142,6 +176,11 @@ never install guide copies. Separately prove native status/project identity,
 provider auth, account freshness, selected-harness launch, normal prompt versus
 trust UI/shell, stable title capability, one owner of unsandboxed posture, and
 supported blocking-wait duration.
+
+Apply the contract's agent proxy section: propose the managed block from
+`assets/make/agent-proxy.mk` with the project's own agent-environment targets,
+and report proxy variables by the names `scripts/mo-posture.sh` prints, never
+by value.
 
 Check `orca`/`orca-cli` separately from the upstream
 `orchestration` companion. Also check mature `jq` and `flock` dependencies.
@@ -175,7 +214,12 @@ unresolved, plus `history=<full|shallow|unknown>` and
 `backlog_job=<yes|no|unknown>`: a shallow clone turns the history stage into a
 silent skip, and closure needs a job separate from ordinary QC. Outcomes are
 `covered|config_present|no_ci_surface|unknown`; dynamic/remote constructs and
-unreadable settings cannot yield covered. Compare against the shipped examples in
+unreadable settings cannot yield covered. For GitLab, take the record from
+bundled `scripts/mo-ci-coverage.mjs --candidate <HEAD sha> --repository <path> --job <qc-job>`
+with `--backlog-job`, `--default-branch`, `--required-policy` and
+`--merge-trains` from what you read, and report its line verbatim: it adds
+`rules=reachable|unreachable|unsupported` and decides the outcome by the
+contract's mapping. Compare against the shipped examples in
 `assets/ci/` and show an exact proposed YAML patch, but never change tracked CI
 or server protection without a separate request.
 

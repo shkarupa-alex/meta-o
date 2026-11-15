@@ -20,6 +20,7 @@ import {
   owningSkill,
   sourceTreeIn,
   typedLines,
+  typedOverflow,
   typedResult,
 } from "./mo-debug-text.mjs";
 
@@ -55,18 +56,19 @@ function assistantItem(state, item, number) {
       item.input.skill,
       `Skill ${item.input.skill} ${args}`,
     );
-    state.skillCalls.set(item.id, { skill: item.input.skill, args });
+    state.skillCalls.set(item.id, { skill: item.input.skill, args, time: evidence.now() });
     return;
   }
   const command = item.input.command;
   if (item.name === "Bash" && typeof command === "string" && helperNames(command).length > 0) {
     const skill = owningSkill(command);
-    evidence.event(number, "helper_call", skill, command);
-    state.helperCalls.set(item.id, skill);
+    // Found, not yet run: only its own tool_result confirms the call.
+    const event = evidence.event(number, "helper_call", skill, command, { confirmed: false });
+    state.helperCalls.set(item.id, { skill, event, time: evidence.now() });
     return;
   }
   const read = item.name === "Read" ? installedSkillName(String(item.input.file_path ?? "")) : null;
-  if (read) state.readCalls.set(item.id, read);
+  if (read) state.readCalls.set(item.id, { name: read, time: evidence.now() });
 }
 
 /**
@@ -82,11 +84,11 @@ function skillLoad(state, record, text, number) {
   const shown = text.slice(lineEnd + 1).replace(/^\n/u, "");
   // A load answers either its own Skill call or the slash command typed just
   // before it; anything else has no recorded arguments to strip.
-  const slash = state.slashCall?.skill === name ? state.slashCall.args : null;
+  const slash = state.slashCall?.skill === name ? state.slashCall : null;
   state.slashCall = null;
-  const args = record.sourceToolUseID
-    ? (state.skillCalls.get(record.sourceToolUseID)?.args ?? null)
-    : slash;
+  const call = record.sourceToolUseID ? state.skillCalls.get(record.sourceToolUseID) : slash;
+  const args = call?.args ?? null;
+  state.evidence.inherit(call?.time);
   state.evidence.event(number, "skill_loaded", name, text);
   state.evidence.load(number, {
     name,
@@ -119,13 +121,25 @@ function readResult(state, name, text, number) {
 function toolResult(state, item, number) {
   const text = resultText(item);
   const suffix = item.is_error === true ? " [error]" : "";
-  if (state.helperCalls.has(item.tool_use_id)) {
-    const skill = state.helperCalls.get(item.tool_use_id);
-    state.evidence.event(number, "helper_result", skill, `${typedResult(text)}${suffix}`);
-  } else if (state.readCalls.has(item.tool_use_id)) {
-    readResult(state, state.readCalls.get(item.tool_use_id), text, number);
+  const details = { truncated: typedOverflow(text) };
+  const helper = state.helperCalls.get(item.tool_use_id);
+  const read = state.readCalls.get(item.tool_use_id);
+  if (helper) {
+    // The result answers this very tool_use id, so the call is linked to it.
+    helper.event.confirmed = true;
+    state.evidence.inherit(helper.time);
+    state.evidence.event(
+      number,
+      "helper_result",
+      helper.skill,
+      `${typedResult(text)}${suffix}`,
+      details,
+    );
+  } else if (read) {
+    state.evidence.inherit(read.time);
+    readResult(state, read.name, text, number);
   } else if (typedLines(text).length > 0) {
-    state.evidence.event(number, "helper_result", "-", `${typedResult(text)}${suffix}`);
+    state.evidence.event(number, "helper_result", "-", `${typedResult(text)}${suffix}`, details);
   }
 }
 
@@ -136,7 +150,10 @@ function slashCommand(state, text, number, plain) {
   const args = COMMAND_ARGS.exec(text)?.[1];
   const shown = plain ? `/${name} ${args ?? ""}` : `/${name}`;
   state.evidence.event(number, "skill_invocation", name, shown);
-  state.slashCall = args === undefined && !plain ? null : { skill: name, args: args ?? "" };
+  state.slashCall =
+    args === undefined && !plain
+      ? null
+      : { skill: name, args: args ?? "", time: state.evidence.now() };
 }
 
 function userRecord(state, record, number) {
@@ -147,6 +164,8 @@ function userRecord(state, record, number) {
   }
   if (!Array.isArray(content)) return;
   for (const item of content) {
+    // Every item starts from the record's own time; only its own call may lend one.
+    state.evidence.inherit(null);
     if (item?.type === "text" && typeof item.text === "string") {
       if (item.text.startsWith(LOAD_PREFIX)) skillLoad(state, record, item.text, number);
       else if (COMMAND.test(item.text)) slashCommand(state, item.text, number, false);
@@ -158,10 +177,11 @@ function userRecord(state, record, number) {
  * §A-DIAGNOSTICS-01 creates the extractor for one Claude Code transcript.
  *
  * @param {string} session session id used in locators
- * @returns {{evidence: object, feed: (record: object, number: number) => void,
- *   skip: (record: object) => void}}
- *   `feed` takes one parsed JSONL record and its 1-based line number; `skip`
- *   takes a record outside the requested window, which still proves the format
+ * @returns {{evidence: object, finish: () => object,
+ *   feed: (record: object, number: number, time?: number|null) => void}}
+ *   `feed` takes every parsed JSONL record, its 1-based line number and its
+ *   timestamp in ms or null, whatever `--since` says: an earlier call still
+ *   links a later result. `finish` returns the settled evidence.
  */
 export function createClaudeExtractor(session) {
   const state = {
@@ -171,9 +191,10 @@ export function createClaudeExtractor(session) {
     helperCalls: new Map(),
     readCalls: new Map(),
   };
-  const feed = (record, number) => {
+  const feed = (record, number, time = null) => {
     if (!isClaudeRecord(record)) return;
     state.evidence.recognized += 1;
+    state.evidence.enter(time);
     const content = record.message?.content;
     if (record.type === "assistant") {
       // Claude shows a slash command's skill before the model answers, so an
@@ -182,8 +203,5 @@ export function createClaudeExtractor(session) {
       if (Array.isArray(content)) for (const item of content) assistantItem(state, item, number);
     } else if (record.type === "user") userRecord(state, record, number);
   };
-  const skip = (record) => {
-    if (isClaudeRecord(record)) state.evidence.recognized += 1;
-  };
-  return { evidence: state.evidence, feed, skip };
+  return { evidence: state.evidence, feed, finish: () => state.evidence };
 }

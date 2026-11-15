@@ -133,7 +133,7 @@ test("Claude extraction finds invocations, loads and typed helper results", () =
   assert.equal(lines[0], "MO-DEBUG/1 status=ok sessions=1 events=7 refused=0");
   assert.equal(
     lines[1],
-    `session id=${CLAUDE_ID} harness=claude outcome=ok records=10 unparsed=1 untimed=1 skipped_since=0`,
+    `session id=${CLAUDE_ID} harness=claude outcome=ok records=10 unparsed=0 untimed=1 skipped_since=0 inherited_time=0 truncated=0`,
   );
   const rows = eventRows(report);
   const kinds = rows.map((row) => row.split(" | ").slice(0, 3).join(" | "));
@@ -167,11 +167,11 @@ test("Codex extraction covers attached skills, whole-file reads and both command
   assert.match(result.stdout, /^MO-DEBUG\/1 status=ok sessions=1 events=\d+ refused=0$/mu);
   assert.match(
     result.stdout,
-    new RegExp(`^session id=${CODEX_ID} harness=codex outcome=ok records=11 unparsed=1 `, "mu"),
+    new RegExp(`^session id=${CODEX_ID} harness=codex outcome=ok records=11 unparsed=0 `, "mu"),
   );
   const kinds = eventRows(report).map((row) => row.split(" | ").slice(0, 3).join(" | "));
   assert.deepEqual(kinds, [
-    `| ${CODEX_ID}:3 | skill\\_invocation | mo-x`,
+    `| ${CODEX_ID}:3 | skill\\_mention | mo-x`,
     `| ${CODEX_ID}:4 | skill\\_invocation | mo-x`,
     `| ${CODEX_ID}:5 | skill\\_loaded | mo-x`,
     `| ${CODEX_ID}:6 | skill\\_loaded | mo-x`,
@@ -639,7 +639,7 @@ test("--max-records and --since bound what is read", () => {
   const since = run(home, ["scan", "--session", CLAUDE_ID, "--since", "2026-09-01T10:01:30Z"]);
   assert.equal(since.status, 0, since.stderr);
   assert.match(since.stdout, /^MO-DEBUG\/1 status=ok sessions=1 events=3 refused=0$/mu);
-  assert.match(since.stdout, / untimed=1 skipped_since=4$/mu);
+  assert.match(since.stdout, / untimed=1 skipped_since=4 inherited_time=0 truncated=0$/mu);
 });
 
 test("a session whose every record precedes --since is an empty window, not an unknown format", () => {
@@ -663,7 +663,10 @@ test("a session whose every record precedes --since is an empty window, not an u
   assert.match(claudeScan.stdout, /^MO-DEBUG\/1 status=ok sessions=1 events=0 refused=0$/mu);
   assert.match(
     claudeScan.stdout,
-    new RegExp(` outcome=ok records=${timed.length} .*skipped_since=${timed.length}$`, "mu"),
+    new RegExp(
+      ` outcome=ok records=${timed.length} .*skipped_since=${timed.length} inherited_time=0 truncated=0$`,
+      "mu",
+    ),
   );
   const rollout = join(codex, `rollout-2026-09-01T11-00-00-${CODEX_ID}.jsonl`);
   const records = readFileSync(rollout, "utf8")
@@ -675,7 +678,10 @@ test("a session whose every record precedes --since is an empty window, not an u
   assert.match(codexScan.stdout, /^MO-DEBUG\/1 status=ok sessions=1 events=0 refused=0$/mu);
   assert.match(
     codexScan.stdout,
-    new RegExp(` outcome=ok records=${records.length} .*skipped_since=${records.length}$`, "mu"),
+    new RegExp(
+      ` outcome=ok records=${records.length} .*skipped_since=${records.length} inherited_time=0 truncated=0$`,
+      "mu",
+    ),
   );
   // A file of garbled lines stays an unknown format whatever the window.
   writeFileSync(transcript, "not json\nstill not json\n");
@@ -1579,7 +1585,8 @@ test("a secret-key compound, a separator-bounded pass and an empty URL user are 
   for (const id of [UUID, CODEX_ID]) {
     const { result, report } = reportOf(home, ["scan", "--session", id]);
     assert.equal(result.status, 0, result.stderr);
-    assert.match(report, /skill\\_invocation \| mo-debug \|/u, id);
+    const kind = id === UUID ? "invocation" : "mention";
+    assert.match(report, new RegExp(`skill\\\\_${kind} \\| mo-debug \\|`, "u"), id);
     assert.doesNotMatch(`${result.stdout}\n${report}`, /Zq9|Secret/u, id);
   }
 });
@@ -1794,7 +1801,7 @@ test("a credential far from a Codex mention is redacted before the window is cut
     writeFileSync(rollout, `${readFileSync(rollout, "utf8")}${JSON.stringify(record)}\n`);
     const { result, report } = reportOf(home, ["scan", "--session", CODEX_ID]);
     assert.equal(result.status, 0, result.stderr);
-    assert.match(report, /skill\\_invocation \| mo-debug \|/u, text);
+    assert.match(report, /skill\\_mention \| mo-debug \|/u, text);
     const output = `${result.stdout}\n${report}`;
     assert.doesNotMatch(output, /QQQQQQQQ|horse|Secret|Zq9/u, text);
   }

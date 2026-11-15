@@ -4,7 +4,31 @@
 # authoritative gate, it rewrites nothing, and every gate under it is a mature
 # tool or a plain shell comparison rather than a checker this project wrote.
 
-.PHONY: mo-qc mo-lint mo-test mo-smoke mo-e2e mo-eval-cases mo-knowledge-history mo-live-adapters mo-backlog skills skills-check format contract
+.PHONY: mo-qc mo-lint mo-test mo-smoke mo-smoke-proxy mo-e2e mo-eval-cases mo-knowledge-history mo-live-adapters mo-backlog skills skills-check format contract
+
+# >>> meta-o: agent-environment proxy >>>
+# The same managed block mo-setup writes into a consumer's Makefile
+# (src/skills/mo-setup/assets/make/agent-proxy.mk); a test keeps the code equal.
+#
+# The owner's proxy is for the agent environments' own provider API calls only.
+# The commands agents run do not need it and break on it more often than
+# without it, so every recipe here — QC stages, tests, smoke and a nested
+# $(MAKE) — runs with the six variables removed from its environment.
+MO_PROXY_VARS := HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
+unexport $(MO_PROXY_VARS)
+
+# Targets that start agent environments themselves. Target-specific variables
+# are inherited by prerequisites, so these targets have no QC or test
+# prerequisites.
+MO_AGENT_ENV_TARGETS := mo-live-adapters
+
+# Each listed target gets back only the variables that are set: a
+# target-specific `export VAR := $(VAR)` of an unset one exports an empty
+# string, and an empty lowercase variable makes Python and Node ignore a set
+# uppercase one. `$(value VAR)` keeps the value out of every recipe line, so
+# make never prints it, and does not expand a `$` or `#` inside it.
+$(if $(strip $(MO_AGENT_ENV_TARGETS)),$(foreach var,$(MO_PROXY_VARS),$(if $(value $(var)),$(eval $(MO_AGENT_ENV_TARGETS): export $(var) := $$(value $(var))))))
+# <<< meta-o: agent-environment proxy <<<
 
 # The authoritative gate, in the order it has always run.
 #
@@ -58,9 +82,14 @@ mo-lint:
 	node --check shared/scripts/mo-review-report.mjs
 	node --check shared/scripts/mo-review-grammar.mjs
 	node --check shared/scripts/mo-review-resource.mjs
+	node --check shared/scripts/mo-review-input.mjs
 	node --check shared/scripts/skill-source-tree.mjs
 	node --check shared/scripts/mo-knowledge.mjs
+	node --check shared/scripts/knowledge-check.mjs
 	node --check shared/scripts/mo-knowledge-layer.mjs
+	node --check shared/scripts/gitlab-ci-rules.mjs
+	node --check shared/scripts/mo-ci-coverage.mjs
+	node --check shared/scripts/mo-vocabulary.mjs
 	for module in shared/scripts/mo-debug*.mjs; do node --check "$$module" || exit 1; done
 	node tools/adapter-contract.mjs --validate
 	bash -n shared/scripts/mo-posture.sh
@@ -104,18 +133,27 @@ mo-knowledge-history:
 # A feature's accepted specification is a declared document while it is
 # tracked; closure deletes it, and the list then expands to nothing.
 # Source skills link into references that exist only after the build, so the
-# built tree is the declared one.
+# built tree is the declared one and the sources are skipped by exact path.
+# The whole repository is first-party: a section number anywhere in its code,
+# `.gitignore` included, has to name the live document it opens.
 MO_KNOWLEDGE_PLAN = --business docs/business.md --architecture docs/architecture \
 	--docs docs/business.md --docs docs/architecture --docs docs/acceptance.md \
 	--docs docs/e2e.md --docs docs/glossary.md --docs docs/papercut.md \
 	--docs docs/backlog.md --docs docs/backend-capabilities.md --docs README.md \
 	--docs AGENTS.md --docs CLAUDE.md --docs shared/references --docs skills \
-	--first-party-root docs --first-party-root shared --first-party-root skills \
+	--first-party-root . \
 	$(foreach path,$(shell git ls-files 'docs/specifications/*.md'),--docs $(path)) \
-	$(foreach path,$(shell git ls-files 'docs/references/*.md' 'docs/research/*.md'),--knowledge-exclude $(path))
+	$(foreach path,$(shell git ls-files 'docs/references/*.md' 'docs/research/*.md' 'src/skills/*.md'),--knowledge-exclude $(path))
+
+# The same portable core mo-setup ships to other projects, with this project's
+# areas as flags: the recipe is the declaration. The bundled model SDK is
+# third-party code, not this project's vocabulary.
+MO_VOCABULARY_AREAS = --exclude docs/references \
+	$(foreach path,$(shell git ls-files 'skills/*/scripts/mo-models.mjs'),--exclude $(path)) \
+	--non-canonical docs/references --non-canonical docs/research
 
 mo-vocabulary:
-	node tools/mo-vocabulary.mjs --root . --exclude docs/references $(MO_KNOWLEDGE_PLAN)
+	node shared/scripts/mo-vocabulary.mjs --root . $(MO_VOCABULARY_AREAS) $(MO_KNOWLEDGE_PLAN)
 
 mo-test:
 	@command -v zsh >/dev/null 2>&1 || { echo "mo-test blocked: zsh is required for the cross-shell contract" >&2; exit 1; }
@@ -143,11 +181,38 @@ mo-smoke:
 			(cd $$smoke_dir && HOME=$$smoke_dir node ./$$backend.mjs --show > /dev/null); \
 		done; \
 		for bundle in $$(git ls-files 'skills/*/scripts/mo-backlog.mjs' \
-				'skills/*/scripts/mo-knowledge-history.mjs' 'skills/*/scripts/mo-debug.mjs'); do \
+				'skills/*/scripts/mo-knowledge-history.mjs' 'skills/*/scripts/mo-debug.mjs' \
+				'skills/*/scripts/mo-ci-coverage.mjs' 'skills/*/scripts/mo-vocabulary.mjs' \
+				'skills/*/scripts/mo-knowledge.mjs'); do \
 			cp $$bundle $$smoke_dir/bundled-helper.mjs; \
 			(cd $$smoke_dir && HOME=$$smoke_dir node ./bundled-helper.mjs --help > /dev/null); \
 		done
+	@set -e; smoke_dir=$$(mktemp -d); trap 'rm -rf "$$smoke_dir"' 0 HUP INT TERM; \
+		$(MAKE) --no-print-directory mo-smoke-proxy MO_SMOKE_DIR=$$smoke_dir
 	@echo "mo-smoke ok"
+
+# A throwaway project that applied the shipped managed proxy block: its QC and
+# a nested make lose the proxy, its agent target keeps the exact value and gets
+# no empty lowercase twin, the agent target has no prerequisites, and neither
+# make nor the posture probe prints the value. The credential-shaped value is a
+# placeholder and never leaves the comparison.
+MO_SMOKE_PROXY = http://smoke-user:smoke-secret@proxy.invalid:3128
+mo-smoke-proxy:
+	@set -e; project=$(MO_SMOKE_DIR)/proxy-project; mkdir "$$project"; \
+		sed 's/<agent-env-targets>/agent/' skills/mo-setup/assets/make/agent-proxy.mk > "$$project/Makefile"; \
+		cat tests/fixtures/agent-proxy/targets.mk >> "$$project/Makefile"; \
+		output=$$(HTTPS_PROXY='$(MO_SMOKE_PROXY)' MO_SMOKE_EXPECTED_PROXY='$(MO_SMOKE_PROXY)' \
+			$(MAKE) --no-print-directory -C "$$project" qc agent 2>&1); \
+		expected=$$(printf '%s\n' 'qc=[]' 'nested=[]' 'agent=[kept]' 'agent-lowercase=[]'); \
+		[ "$$output" = "$$expected" ] || { echo "mo-smoke: the proxy block leaked or lost the proxy" >&2; exit 1; }; \
+		rule=$$(HTTPS_PROXY='$(MO_SMOKE_PROXY)' $(MAKE) --no-print-directory -C "$$project" -pq agent 2>/dev/null \
+			| grep '^agent:' | grep -v '=' || true); \
+		[ "$$rule" = "agent:" ] || { echo "mo-smoke: the agent target has prerequisites" >&2; exit 1; }; \
+		posture=$$(HTTPS_PROXY='$(MO_SMOKE_PROXY)' HOME=$(MO_SMOKE_DIR) \
+			shared/scripts/mo-posture.sh --shell bash -- claude 2>&1 || true); \
+		case "$$posture" in *smoke-secret*) echo "mo-smoke: posture printed a proxy value" >&2; exit 1;; esac; \
+		printf '%s\n' "$$posture" | grep -qx 'MO_POSTURE_PROXY names=HTTPS_PROXY' \
+			|| { echo "mo-smoke: posture did not name the proxy" >&2; exit 1; }
 
 # Agent-required E2E pretends nothing. It says what a human or an agent must run,
 # and exits 2 so no caller can mistake it for a pass. mo-qc does not depend on it.
@@ -157,7 +222,11 @@ mo-e2e:
 	@echo "Docs:      docs/e2e.md, docs/backend-capabilities.md"
 	@echo "Scenarios: B1-B70 — Orca backend, lifecycle, setup and Qwen profile"
 	@echo "           W1-W4 — watchdog target, scan, nudge, suppression"
-	@echo "           37 embedded cases — positive/forbidden/degraded for 11 skills plus 4 regressions"
+	@echo "           LIVE-1 — proof order: task E2E converges before the first review pair"
+	@echo "           LIVE-2 — quiet-timeout checkpoint: a completed reviewer and a status handoff ack"
+	@echo "           LIVE-3 — idle input over a running child: two states, one queued instruction"
+	@echo "           LIVE-4 — worktree lineage: actors start as children of the task's worktree"
+	@echo "           55 embedded cases — positive/forbidden/degraded for 12 skills plus 19 regressions"
 	@echo "           local and authorized remote installation"
 	@echo "Run:       execute the applicable scenarios without changing the frozen candidate"
 	@echo "Evidence:  keep exact SHA and per-scenario actor/provider facts in the current run/final result"

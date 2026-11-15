@@ -259,3 +259,161 @@ export function historyPins(markdown, path) {
   if (missing.length > 0) throw new Error(`${path} is missing ${missing.join(", ")}`);
   return Object.fromEntries([...found].map(([key, value]) => [PINS[key], value]));
 }
+
+/** The heading text that opens the history declaration section. */
+const HISTORY_SECTION = "Knowledge id history";
+const CUTOFF = /^[0-9a-f]{40}$/u;
+
+/** Every level-two section whose heading names the history declaration. */
+function historySections(tree, document) {
+  const children = tree.children ?? [];
+  const found = [];
+  children.forEach((node, index) => {
+    if (node.type !== "heading" || node.depth !== 2 || !text(node).includes(HISTORY_SECTION))
+      return;
+    let end = index + 1;
+    while (end < children.length && !(children[end].type === "heading" && children[end].depth <= 2))
+      end += 1;
+    found.push({ document, line: node.position?.start.line, body: children.slice(index + 1, end) });
+  });
+  return found;
+}
+
+/** Fenced blocks anywhere below the section's own nodes. */
+function fencesIn(nodes) {
+  return nodes.flatMap((node) => (node.type === "code" ? [node] : fencesIn(node.children ?? [])));
+}
+
+/**
+ * The local Markdown documents a contract links, as repository paths.
+ *
+ * Read the way the knowledge core reads a link: percent-decoded, relative to
+ * the linking document, `/` meaning the repository root; anything that leaves
+ * the repository or names another host declares nothing.
+ */
+function linkedDocuments(tree, from) {
+  const targets = new Map();
+  const define = (node) => {
+    if (node.type === "definition" && !targets.has(node.identifier))
+      targets.set(node.identifier, node.url);
+    for (const child of node.children ?? []) define(child);
+  };
+  define(tree);
+  const found = new Set();
+  const visit = (node) => {
+    const url =
+      node.type === "link"
+        ? node.url
+        : node.type === "linkReference"
+          ? targets.get(node.identifier)
+          : undefined;
+    const path = url === undefined ? null : localDocument(url, from);
+    if (path !== null && path !== from) found.add(path);
+    for (const child of node.children ?? []) visit(child);
+  };
+  visit(tree);
+  return [...found].sort();
+}
+
+function localDocument(url, from) {
+  if (url === "" || url.startsWith("#") || url.startsWith("//")) return null;
+  if (/^[a-z][a-z0-9+.-]*:/iu.test(url)) return null;
+  let decoded;
+  try {
+    decoded = decodeURIComponent(url.replace(/[?#].*$/su, ""));
+  } catch {
+    return null;
+  }
+  const base = from.includes("/") ? from.slice(0, from.lastIndexOf("/")) : ".";
+  const joined = decoded.startsWith("/") ? decoded.slice(1) : `${base}/${decoded}`;
+  const parts = [];
+  for (const part of joined.split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") {
+      if (parts.length === 0) return null;
+      parts.pop();
+    } else parts.push(part);
+  }
+  const path = parts.join("/");
+  return /\.md$/iu.test(path) ? path : null;
+}
+
+/** One section judged against the declared form. */
+function judgeHistorySection({ document, line, body }) {
+  const fences = fencesIn(body);
+  const records = fences.filter((node) => node.lang === "yaml");
+  const commands = fences.filter((node) => node.lang !== "yaml");
+  const invalid = (reason, detail) => ({ state: "invalid", reason, document, line, detail });
+  if (records.length > 1) return invalid("ambiguous_declaration", "more than one yaml block");
+  if (commands.length > 1) return invalid("ambiguous_declaration", "more than one command block");
+  if (commands.length === 0) return invalid("malformed_declaration", "no command block");
+  const command = commands[0].value.split("\n").filter((entry) => entry.trim() !== "");
+  if (command.length !== 1)
+    return invalid("malformed_declaration", "command block is not one line");
+  if (records.length === 0) return invalid("malformed_declaration", "no yaml cutoff record");
+  let record;
+  try {
+    // Every scalar a string: an all-digit SHA must not become a number.
+    record = yaml.load(records[0].value, { schema: yaml.FAILSAFE_SCHEMA });
+  } catch {
+    return invalid("malformed_declaration", "yaml record does not parse");
+  }
+  const keys =
+    record && typeof record === "object" && !Array.isArray(record) ? Object.keys(record) : [];
+  if (keys.length !== 1 || keys[0] !== "history_cutoff_sha" || !CUTOFF.test(record[keys[0]])) {
+    return invalid("malformed_declaration", "yaml block is not one history_cutoff_sha record");
+  }
+  return {
+    state: "declared",
+    document,
+    stageCommand: command[0].trim(),
+    cutoff: record.history_cutoff_sha,
+  };
+}
+
+/**
+ * Read the project's history declaration from one Git candidate.
+ *
+ * §A-MEMORY-05 counts the history signal only where the contract puts it: a
+ * level-two section headed `Knowledge id history`, in `AGENTS.md` or in the
+ * one quality document `AGENTS.md` links that holds such a section, with one
+ * fenced one-line command and one fenced `yaml` block holding exactly
+ * `history_cutoff_sha: <40-hex>`. A cutoff written in a sentence is a
+ * declaration in the wrong form, not an absent one, and the answer says so;
+ * a record outside the section declares nothing.
+ *
+ * @param {Function} readAt `(candidate, path)` returning `{text}`, with `null`
+ *   text for an absent file, or `{error}`
+ * @param {string} candidate exact commit
+ * @param {string} entryPath the entry contract, normally `AGENTS.md`
+ * @returns {object} `declared`, `absent` or `invalid` with a typed reason
+ */
+export function readHistoryDeclaration(readAt, candidate, entryPath = "AGENTS.md") {
+  const unreadable = (document, detail) => ({
+    state: "invalid",
+    reason: "contract_unreadable",
+    document,
+    detail,
+  });
+  const entry = readAt(candidate, entryPath);
+  if (entry.error) return unreadable(entryPath, entry.error);
+  if (entry.text === null) return { state: "absent", reason: "section_missing" };
+  const tree = parseDocument(entry.text);
+  const sections = historySections(tree, entryPath);
+  for (const path of linkedDocuments(tree, entryPath)) {
+    const linked = readAt(candidate, path);
+    if (linked.error) return unreadable(path, linked.error);
+    if (linked.text !== null) sections.push(...historySections(parseDocument(linked.text), path));
+  }
+  if (sections.length === 0) return { state: "absent", reason: "section_missing" };
+  if (sections.length > 1) {
+    return {
+      state: "invalid",
+      reason: "ambiguous_declaration",
+      document: sections[0].document,
+      line: sections[0].line,
+      detail: `${sections.length} sections in ${sections.map(({ document }) => document).join(", ")}`,
+    };
+  }
+  return judgeHistorySection(sections[0]);
+}

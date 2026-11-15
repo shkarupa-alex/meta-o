@@ -36,6 +36,18 @@ function table(header, rows) {
 }
 
 /**
+ * What an excerpt alone cannot say: whether a found call is tied to a result,
+ * where the event's time came from, and how many typed lines were left out.
+ */
+function detail(event) {
+  const fields = [];
+  if (event.kind === "helper_call") fields.push(`confirmed=${event.confirmed === true}`);
+  if (event.timeSource) fields.push(`time_source=${event.timeSource}`);
+  if (event.truncated > 0) fields.push(`truncated=${event.truncated}`);
+  return fields.join(" ");
+}
+
+/**
  * §A-DIAGNOSTICS-01 renders one scan result as the report Markdown.
  *
  * @param {{lines: string[], sessions: object[], events: object[],
@@ -62,8 +74,14 @@ export function renderReport(result) {
   lines.push("## Events", "");
   lines.push(
     ...table(
-      ["Locator", "Kind", "Skill", "Excerpt"],
-      result.events.map((event) => [token(event.locator), event.kind, event.skill, event.excerpt]),
+      ["Locator", "Kind", "Skill", "Detail", "Excerpt"],
+      result.events.map((event) => [
+        token(event.locator),
+        event.kind,
+        event.skill,
+        detail(event),
+        event.excerpt,
+      ]),
     ),
   );
   lines.push("", "## Version attributions", "");

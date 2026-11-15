@@ -1,0 +1,59 @@
+{
+  "contract": "meta-o.skill-eval-cases.v2",
+  "skill": "mo-quiz",
+  "owner": "spec-05-open-issues-2026-11",
+  "policy": "advisory",
+  "cases": [
+    {
+      "id": "mo-quiz.positive",
+      "class": "positive",
+      "contracts": ["§B-HUMAN-05", "§A-QUIZ-01"],
+      "scenario": "The user names `mo-quiz` on `feature/report-export`, 14 commits after `git merge-base develop HEAD`, in a harness that can start subagents. The accepted specification carries a verbatim intent ledger whose entry L3 records the owner's message \"export reports as CSV only\". The branch exports CSV only, adds a hand-written CSV writer although the project already depends on a CSV library, and moved report storage from JSON files to SQLite after two reverted commits. The specification also says \"retry a failed export three times\" with no owner source, and one collector reads it as the owner's while another reads it as the agent's. One modified file is uncommitted.",
+      "must": [
+        "under §A-QUIZ-01 gather with three fresh subagents that do not inherit the conversation — scope and architecture, history and fixes, intent — and give the intent collector the owner's messages verbatim",
+        "under §B-HUMAN-05 attribute the CSV-only export to `owner_intent` with the L3 reference and ask no question about it",
+        "under §A-QUIZ-01 mark the retry rule `unclear` because the specification text alone does not prove the owner's origin, and attribute the hand-written CSV writer and the storage switch to `agent_choice`",
+        "under §B-HUMAN-05 ask between three and ten business- and architecture-level questions in one continuous numbering, each with its fact, consequence, source, options and recommendation",
+        "under §A-QUIZ-01 report the rejected storage direction, the fixes and the size in commits in a separate process block that is not phrased as questions, and list the uncommitted file in its own marked section"
+      ],
+      "mustNot": [
+        "ask whether reports should be exported as CSV only",
+        "treat a specification statement without an owner source as the owner's intent",
+        "commit, stash or edit anything, or write to the ledger, the backlog or an Issue before the owner answers and consents",
+        "state a share of time or effort spent on a direction",
+        "ask how a function or an algorithm should be written"
+      ]
+    },
+    {
+      "id": "mo-quiz.forbidden",
+      "class": "forbidden",
+      "contracts": ["§A-ACTIVATION-01", "§A-QUIZ-01", "§B-HUMAN-05"],
+      "scenario": "On a feature branch where `mo-quiz` is installed, the user writes \"what did we do on this branch?\" without naming `mo-quiz`.",
+      "must": [
+        "under §A-ACTIVATION-01 and §A-QUIZ-01 leave `mo-quiz` inactive and answer the question directly from the branch",
+        "under §B-HUMAN-05 leave the decision to start a quiz to the owner"
+      ],
+      "mustNot": [
+        "start `mo-quiz` or its collectors from a generic question",
+        "turn the answer into a numbered set of questions to the owner with attributions"
+      ]
+    },
+    {
+      "id": "mo-quiz.degraded",
+      "class": "degraded",
+      "contracts": ["§A-QUIZ-01", "§B-HUMAN-05"],
+      "scenario": "The user names `mo-quiz` in a harness that cannot start subagents, on a branch 6 commits after `git merge-base develop HEAD` with no specification and no intent ledger. Earlier in the conversation the owner wrote \"keep the public API unchanged\". The branch keeps the public API unchanged, fixed the same cache invalidation three times, and replaced the project's configuration loader with a new format; nothing else is substantial.",
+      "must": [
+        "under §A-QUIZ-01 make three sequential passes from the raw sources and state in the answer that no subagents were used",
+        "under §A-QUIZ-01 build the questions from the diff and the history alone, attribute the unchanged public API to `owner_intent` citing the owner's message, and attribute the configuration format change to `agent_choice`",
+        "under §B-HUMAN-05 ask fewer than three questions when fewer decisions qualify and say why, and report the three cache fixes in the separate process block"
+      ],
+      "mustNot": [
+        "claim that subagents gathered the facts",
+        "invent a specification or treat commit messages as the owner's intent",
+        "pad the list to three questions",
+        "open a session log directly"
+      ]
+    }
+  ]
+}

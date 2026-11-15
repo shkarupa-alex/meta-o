@@ -16,12 +16,32 @@ The candidate SHA is only the upper bound, the state being judged. Every mode
 reviews that whole range.
 
 When the work follows a specification, the brief names it in one line,
-`Spec: <path|object>`, a tracked path or Git object the candidate can reach, and
-the review checks the requirements against the code. Work without one carries
-`Spec: none`; its absence is then not a finding. The caller that starts the
-review — an orchestrator, or an executor that runs a standalone review of its
-own work — passes that line, because only the caller knows which specification
-the work followed.
+`Spec: <form>`, and the user's verbatim intent ledger in another,
+`Intent-Ledger: <form>`, and the review checks the requirements against the
+code. Each line takes exactly one of four forms: a path tracked in the
+candidate's tree; `git <commit>:<path> blob=<40-hex>` for a file closure already
+deleted, held by the tree of the named commit;
+`file <absolute path> sha256=<64-hex>` for a copy the caller placed in the
+reviewer's own slot directory; or `none`. Work without one carries `Spec: none`;
+its absence is then not a finding. The caller that starts the review — an
+orchestrator, or an executor that runs a standalone review of its own work —
+passes both lines, because only the caller knows which specification the work
+followed.
+
+Check both lines before reading either source, with the shipped
+`mo-review-input.mjs check --candidate <sha> --line '<Spec line>' --line '<Intent-Ledger line>'`
+and the brief's own `Body-File` as `--body-file '<Body-File>'`. It compares a
+copy's sha256 with the line, accepting a copy only in that file's directory, or
+proves that `git rev-parse <commit>:<path>` equals the blob, and writes nothing.
+Then read exactly those bytes — the copy, `git cat-file blob <blob>` or
+`git show <candidate>:<path>` — and never a truncation or a retelling. A line
+answering `external_input_missing` (no such file or path),
+`external_input_integrity` (the sha256 or blob differs, or the copy lies in
+another slot's directory) or `external_input_unavailable` (the slot directory is
+not visible from this placement, or a shallow or partial clone lacks the commit,
+a tree or the object) makes the review `UNKNOWN` with
+`Unknown-Reason: retrieval_failure`, and its `Unknown-Account` carries that line
+verbatim.
 
 - `fast` is for bounded low-risk work. Read the complete diff, directly
   reachable callers and callees, related tests/configuration and repository
@@ -80,6 +100,17 @@ Severity is textual and separate from confidence. Do not emit numeric
 confidence, machine counters or adjudication grammar. Comments in production
 code must cite durable business/architecture contracts, never finding ids.
 
+## Anchor lens
+
+Code, tests and comments cite only live anchors: an identifier the candidate's
+business document or architecture directory defines, or a section of a document
+the candidate tracks as canonical. A citation of a section of the temporary
+specification, or of a decision the specification introduced but the change
+never moved into the architecture directory, is a finding: the specification is
+removed at completion, and the citation then explains nothing. The project's
+reference check catches a dangling identifier or section number; a decision that
+lives only in the specification is what this lens finds.
+
 ## Deferral lens
 
 An empty backlog is valid and is required at lifecycle closure. Inspect the
@@ -97,10 +128,71 @@ needs a routed Issue or a stated residual risk. With `needs_attention`, or with
 no such line in the brief, the lens is `unknown`: never assume an ordinary
 project.
 
+Running the backlog gates belongs to the caller; judging what they guard belongs
+to the reviewer. The brief's
+`Backlog-Gate: <G0|GC|G1|G2> <EMPTY|NOT-EMPTY|UNKNOWN|not_run>` line is the
+caller's own result on the candidate. Inspect the committed backlog and the
+registry by SHA and judge them; never run the gate, QC, a test or a linter to
+confirm or fill the line. `not_run` is the caller's evidence that it ran no gate
+on this SHA, never a duty the reviewer missed: record it in Grounding as given.
+On a `GC`, `G1` or `G2` candidate a committed backlog that still holds an entry
+is a finding whatever the line says, and a brief without the line is missing
+grounding like any other field.
+
 A project with no backlog-closure checker at all, while its knowledge layer is
 not `not_enabled`, is a different answer: the absence is a readiness gap
 reported as `needs_attention`, and no review prepares the project or writes the
 missing checker in passing.
+
+## E2E lens
+
+The caller sets the E2E mode in the brief, in exactly one of three forms:
+
+- `E2E-Evidence` and `E2E-Coverage` lines, one pair per scenario — the
+  orchestrated lifecycle;
+- `E2E: not_applicable reason=no_task_scenarios sha=<40-hex> source=<dispatch-id> basis=<…>`
+  — the project has scenarios and `mo-e2e` selected none for the task, or
+  `E2E: not_applicable reason=<…>` — the project has no E2E scenarios;
+- `E2E: not_evaluated reason=standalone` — a standalone review with no separate
+  E2E request.
+
+With `not_evaluated` this lens is off: never raise `e2e_affected` or
+`e2e_missing`, and never ask for E2E to be run. A brief with no E2E form, or
+with more than one, is missing grounding.
+
+In the other two forms the lens is required. An `E2E-Evidence` line names the
+SHA its scenario passed on, which may be an ancestor of the candidate. For each
+line ask whether the range `<scenario sha>..<candidate>` touches the behavior
+its `E2E-Coverage` line names. Overlapping paths are a hint, not a verdict: the
+question is whether the covered behavior can now behave differently. Then ask
+whether the candidate made a scenario applicable that has no line — including a
+scenario of an unchanged acceptance row whose behavior the task touches,
+restores or depends on, as when a regression fix restores an existing
+requirement without changing its row — and whether an earlier `not_applicable`
+still holds. A `reason=no_task_scenarios` line is checked like an evidence line
+whose coverage is empty: if the task or the range `<its sha>..<candidate>`
+touches, restores or depends on behavior a scenario covers, that scenario is
+missing; a project-wide `not_applicable` no longer holds once the candidate
+defines scenarios.
+
+Two findings answer these questions. Each is an ordinary finding with a severity
+whose text opens with its class literal, as in `F-001 [P2] e2e_affected: …`:
+
+- `e2e_affected` names the change, the covered behavior it touches, the causal
+  link and every scenario to rerun;
+- `e2e_missing` names the scenario and the basis on which it applies.
+
+A path overlap with no causal link is not a finding. A line whose result is
+`fail` or `unknown` means the E2E loop has not converged: the review is
+`UNKNOWN` with `Unknown-Reason: review_incomplete`, and its `Unknown-Account`
+names that line. A line with `result=blocked:external_capability` and
+`cause=capability:<name>`, or with `result=not_run` and
+`cause=environment:<name>` or `cause=profile:<name>`, is an external block the
+caller already reported; such a line without that `cause=` is the same
+`UNKNOWN`, because nothing in the brief then tells it from a caller's error: the
+scenario is known and unproven, not missing. Raise no `e2e_missing` for it,
+review the rest as usual, and name it under Residual risks; it never counts as a
+pass.
 
 ## Diagnostics
 
@@ -114,24 +206,26 @@ checkout of that SHA, and to CI before an agent merges.
 
 What stays allowed is read-only inspection bound to the candidate SHA —
 `git show`, `git diff`, `git grep`, `git log`, reading files of the candidate
-checkout — and the report validator the brief names, run on the reviewer's own
-report. `Scope and checks` lists the commands actually used. A reviewer that
-needs an executed check to decide a finding states the check it would need as
-the finding's regression case, or records the gap in Unknowns; it does not run
-it.
+checkout — and two shipped helpers: the input check, run on the brief's own
+`Spec:` and `Intent-Ledger:` lines, and the report validator, run on the
+reviewer's own report. `Scope and checks` lists the commands actually used. A
+reviewer that needs an executed check to decide a finding states the check it
+would need as the finding's regression case, or records the gap in Unknowns; it
+does not run it.
 
 ## Report
 
 Return one complete textual report. Its first line — the first byte of the body
 — is `Review-Execution:` followed by one space and the bare Dispatch id, nothing
 after it. The validator's own output line `MO-REVIEW-REPORT/1 …` is never part
-of a body. The six service lines come in this order, with at most one empty line
-between two of them and nothing else:
+of a body. The seven service lines come in this order, with at most one empty
+line between two of them and nothing else:
 
 ```text
 Review-Execution: <opaque dispatch id>
 Candidate: <40-hex SHA>
 Mode: requested=<fast|deep|follow_up> effective=<fast|deep|follow_up>
+Round: attempt=<n>/<limit> deep_reads=<m> fragment=<fragment-id>
 Delegation: none
 Verdict: <PASS|FINDINGS|UNKNOWN>
 Counts: P0=<n> P1=<n> P2=<n> P3=<n>
@@ -188,8 +282,13 @@ no declaration asks before sending.
 
 Validate the exact bytes before sending them. The shipped
 `mo-review-report.mjs template` prints a complete body this grammar accepts for
-the brief's own Dispatch, candidate and modes; fill it in rather than rebuild
-it. `mo-review-report.mjs prepare --file <Body-File>` validates the bytes, then
+the brief's own Dispatch, candidate, modes and round; fill it in rather than
+rebuild it. The `Round` line comes from the four values of the brief's `Round`
+field passed as `--attempt`, `--attempt-limit`, `--deep-reads` and `--fragment`
+to `template`, `prepare` and `validate`; a missing line is `round_missing`, a
+misspelled one `round_malformed`, an attempt over its limit
+`round_exceeds_budget`, and a line other than the flags say `round_mismatch`.
+`mo-review-report.mjs prepare --file <Body-File>` validates the bytes, then
 creates the file the brief named exclusively and writes them once; the response
 carries exactly that file's content. Without a `Body-File`,
 `mo-review-report.mjs validate --file -` checks the same bytes from stdin. A
@@ -204,7 +303,10 @@ its own markers.
 Index keys start at `F-001`, are report-local and match finding body/severity
 one-to-one. Counts equal authored findings. `PASS` has zero counts and empty
 index/Findings, while grounding, checks, Unknowns and residual risks remain
-explicit and non-empty. A finding also states its post-fix invariant, technical
+explicit and non-empty. `FINDINGS` has at least one finding. `UNKNOWN` keeps the
+findings it did prove: its index, counts and bodies follow the same rules, its
+`Unknown-Account` says what stayed unreviewed, and without an index its Findings
+section is empty. A finding also states its post-fix invariant, technical
 direction and depth `local patch`, `boundary repair` or
 `affected-slice redesign`. Its acceptance proof is named as concrete cases —
 input and state, expected behavior, and where the check belongs — precise enough

@@ -198,20 +198,44 @@ function validateEvidence(root, evidence, candidate, requireAll = false, options
 
 test("every installable skill owns three base cases and named regressions", () => {
   const corpus = loadCorpus(ROOT);
-  assert.equal(corpus.size, 11);
+  assert.equal(corpus.size, 12);
   assert.equal(
     [...corpus.values()].reduce((sum, document) => sum + document.cases.length, 0),
-    37,
+    55,
   );
   const regressions = [...corpus.values()].flatMap(({ cases }) =>
     cases.filter((item) => item.class === "regression").map(({ id }) => id),
   );
   assert.deepEqual(regressions.sort(), [
     "mo-orchestrate-orca.regression-cleanroom-after-findings",
+    "mo-orchestrate-orca.regression-compaction-reground",
+    "mo-orchestrate-orca.regression-consult-other-vendor",
+    "mo-orchestrate-orca.regression-e2e-before-review",
+    "mo-orchestrate-orca.regression-e2e-external-blocked",
+    "mo-orchestrate-orca.regression-e2e-missing-scenario",
+    "mo-orchestrate-orca.regression-e2e-not-applicable",
+    "mo-orchestrate-orca.regression-e2e-partial-rerun",
+    "mo-orchestrate-orca.regression-e2e-unaffected-no-rerun",
+    "mo-orchestrate-orca.regression-handoff-ack-status",
+    "mo-orchestrate-orca.regression-idle-input-running-child",
+    "mo-orchestrate-orca.regression-model-refused",
+    "mo-orchestrate-orca.regression-quiet-timeout-completed",
+    "mo-orchestrate-orca.regression-spec-decision-anchor",
     "mo-review-orca.regression-hot-follow-up",
     "mo-review-orca.regression-idle-composer",
+    "mo-review-orca.regression-standalone-e2e-not-evaluated",
+    "mo-reviewer.regression-e2e-missing-unchanged-row",
     "mo-setup.regression-knowledge-layer-absence",
   ]);
+  // `make mo-e2e` prints the corpus size to the agent that runs the scenarios,
+  // so a case added without that line fails here rather than drifting.
+  const cases = [...corpus.values()].reduce((sum, document) => sum + document.cases.length, 0);
+  assert.ok(
+    readFileSync(join(ROOT, "Makefile"), "utf8").includes(
+      `${cases} embedded cases — positive/forbidden/degraded for ${corpus.size} skills plus ${regressions.length} regressions`,
+    ),
+    "the mo-e2e recipe states the corpus size",
+  );
   assert.equal(corpus.get("mo-orchestrate-orca").policy, "critical");
   const issueRouting = corpus
     .get("mo-orchestrate-orca")
@@ -263,10 +287,10 @@ test("complete evidence binds every case to candidate, revision and approved ide
   const validated = validateEvidence(ROOT, evidence, HEAD, true, {
     criticalProfile: "opencode/llamacpp/qwen3.8-27b/default",
   });
-  // 37 cases on five profiles, each its own native execution.
-  assert.equal(validated.envelopes, 185);
+  // 55 cases on five profiles, each its own native execution.
+  assert.equal(validated.envelopes, 275);
   assert.deepEqual(validated.nonPass, []);
-  assert.equal(validated.aggregate.length, 37);
+  assert.equal(validated.aggregate.length, 55);
   for (const group of validated.aggregate) {
     assert.deepEqual(
       group.coordinates.map(({ matrixProfile }) => matrixProfile),
@@ -1148,7 +1172,7 @@ test("the CLI materializes and validates a missing desired harness without a mod
   const complete = matrix(FULL_MATRIX, (skill, caseId, matrixProfile) =>
     caseId === "find-reuse.positive" && matrixProfile === "desired-opencode" ? evidence : undefined,
   );
-  assert.equal(validateEvidence(ROOT, complete, HEAD, true).envelopes, 185);
+  assert.equal(validateEvidence(ROOT, complete, HEAD, true).envelopes, 275);
   rmSync(temporary, { recursive: true, force: true });
 });
 

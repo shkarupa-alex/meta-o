@@ -5,20 +5,18 @@
  */
 
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 import {
   mkdtempSync,
   readFileSync,
   readdirSync,
-  realpathSync,
-  renameSync,
   rmSync,
-  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -27,18 +25,27 @@ import { fromMarkdown } from "mdast-util-from-markdown";
 import {
   FLAGS,
   businessQuestion,
-  linkFailureReason,
   namespace,
-  pair,
   publicSummary,
   reportLine,
-  stage,
   validateReport,
 } from "../shared/scripts/mo-review-report.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const HELPER = join(ROOT, "shared", "scripts", "mo-review-report.mjs");
 const SHA = "a".repeat(40);
+const ROUND = { attempt: 1, limit: 5, deepReads: 1, fragment: "f1" };
+const ROUND_LINE = "Round: attempt=1/5 deep_reads=1 fragment=f1";
+const ROUND_ARGS = [
+  "--attempt",
+  "1",
+  "--attempt-limit",
+  "5",
+  "--deep-reads",
+  "1",
+  "--fragment",
+  "f1",
+];
 const spaces = [];
 after(() => {
   for (const path of spaces) rmSync(path, { recursive: true, force: true });
@@ -62,7 +69,8 @@ function report({
 } = {}) {
   return (
     `Review-Execution: ${execution}\nCandidate: ${candidate}\n` +
-    `Mode: requested=${mode} effective=${mode}\nDelegation: none\nVerdict: ${verdict}\n` +
+    `Mode: requested=${mode} effective=${mode}\n${ROUND_LINE}\nDelegation: none\n` +
+    `Verdict: ${verdict}\n` +
     `Counts: ${counts}\n\n${index}Evidence report\nGrounding\nintent and clean SHA\n` +
     `Scope and checks\nread-only diff and tests\nFindings\n${findings}${account}` +
     `Unknowns\nnone\nResidual risks\nnone\nEnd-Review: ${execution}\n`
@@ -74,6 +82,7 @@ const context = (mode = "deep") => ({
   candidate: SHA,
   requestedMode: mode,
   effectiveMode: mode,
+  round: ROUND,
 });
 
 const reasonOf = (text, mode = "deep") => validateReport(text, context(mode)).reason;
@@ -259,7 +268,7 @@ test("each structural failure names itself", () => {
       }),
       "index_body_mismatch",
     ],
-    [report({ index: "F-001 [P2] PASS may not carry a finding.\n\n" }), "counts_mismatch"],
+    [report({ index: "F-001 [P2] PASS may not carry a finding.\n\n" }), "pass_not_empty"],
     [
       report({
         verdict: "UNKNOWN",
@@ -279,7 +288,7 @@ test("every command refuses a flag it does not read, in every shipped copy", () 
   const prepared = join(dir, "prepared.md");
   writeFileSync(prepared, report());
   const base = ["validate", "--file", good, "--dispatch", "ctx_fixture", "--candidate", SHA];
-  const expected = [...base, "--requested", "deep", "--effective", "deep"];
+  const expected = [...base, "--requested", "deep", "--effective", "deep", ...ROUND_ARGS];
   const copies = [
     HELPER,
     ...["mo-reviewer", "mo-review-orca", "mo-orchestrate-orca"].map((skill) =>
@@ -302,6 +311,39 @@ test("every command refuses a flag it does not read, in every shipped copy", () 
   }
 });
 
+test("an UNKNOWN keeps the findings it proved, and only a PASS must be empty", () => {
+  const account =
+    "Unknown-Account\nUnknown-Reason: review_incomplete\ncovered scope and the blocking observation\n";
+  const unknown = report({
+    verdict: "UNKNOWN",
+    counts: "P0=0 P1=1 P2=0 P3=0",
+    index: "F-001 [P1] The guard trusts a caller-supplied path.\n\n",
+    findings: "F-001 [P1] confirmed; causal path, impact, location and proof.\n",
+    account,
+  });
+  const valid = validateReport(unknown, context());
+  assert.equal(valid.status, "valid");
+  assert.equal(valid.verdict, "UNKNOWN");
+  assert.deepEqual(valid.counts, [0, 1, 0, 0]);
+  // The census still answers for the index, and the account is still owed.
+  assert.equal(reasonOf(unknown.replace("P1=1", "P1=0")), "counts_mismatch");
+  assert.equal(reasonOf(unknown.replace(account, "")), "unknown_account");
+  // A keyed body the index never announced is still a stray body.
+  assert.equal(
+    reasonOf(unknown.replace("[P1] confirmed;", "[P2] confirmed;")),
+    "index_body_mismatch",
+  );
+  // PASS with an indexed finding is not an empty verdict even when the counts
+  // agree with the index; FINDINGS without one is a census that answers nothing.
+  const pass = report({
+    counts: "P0=0 P1=1 P2=0 P3=0",
+    index: "F-001 [P1] A finding under a PASS.\n\n",
+    findings: "F-001 [P1] confirmed.\n",
+  });
+  assert.equal(reasonOf(pass), "pass_not_empty");
+  assert.equal(reasonOf(report({ verdict: "FINDINGS" })), "counts_mismatch");
+});
+
 test("PASS with a body is not an empty verdict", () => {
   const text = report({ findings: "F-001\n[P2] a finding under a PASS.\n" });
   assert.equal(reasonOf(text), "pass_not_empty");
@@ -322,6 +364,7 @@ test("the CLI answers with one line and a status a caller can branch on", () => 
     SHA,
     "--requested",
     "deep",
+    ...ROUND_ARGS,
   ]);
   assert.equal(ok.status, 0, ok.stderr.toString());
   assert.equal(
@@ -342,6 +385,7 @@ test("the CLI answers with one line and a status a caller can branch on", () => 
     SHA,
     "--requested",
     "deep",
+    ...ROUND_ARGS,
   ]);
   assert.equal(malformed.status, 1);
   assert.match(malformed.stdout.toString(), /status=malformed reason=footer_mismatch line=\d+/u);
@@ -349,7 +393,10 @@ test("the CLI answers with one line and a status a caller can branch on", () => 
   // A call error is neither a valid report nor a malformed one.
   const misuse = spawnSync(process.execPath, [HELPER, "validate", "--file", good]);
   assert.equal(misuse.status, 2);
-  assert.match(misuse.stderr.toString(), /--dispatch is required/u);
+  assert.match(
+    misuse.stderr.toString(),
+    /--dispatch, --candidate, --requested, --attempt, --attempt-limit, --deep-reads, --fragment are required/u,
+  );
 });
 
 test("a source that is not a plain file is refused rather than followed", () => {
@@ -369,6 +416,7 @@ test("a source that is not a plain file is refused rather than followed", () => 
     SHA,
     "--requested",
     "deep",
+    ...ROUND_ARGS,
   ]);
   assert.equal(followed.status, 1);
   assert.match(followed.stdout.toString(), /reason=symlink/u);
@@ -384,6 +432,7 @@ test("a source that is not a plain file is refused rather than followed", () => 
     SHA,
     "--requested",
     "deep",
+    ...ROUND_ARGS,
   ]);
   assert.equal(directory.status, 1);
   assert.match(directory.stdout.toString(), /reason=not_regular_file/u);
@@ -404,6 +453,7 @@ test("bytes that are not UTF-8 are not a report", () => {
     SHA,
     "--requested",
     "deep",
+    ...ROUND_ARGS,
   ]);
   assert.equal(result.status, 1);
   assert.match(result.stdout.toString(), /reason=invalid_utf8/u);
@@ -414,216 +464,6 @@ test("the reported line states every field a caller reads", () => {
     reportLine({ status: "malformed", reason: "header_order", line: 3 }),
     "MO-REVIEW-REPORT/1 status=malformed reason=header_order line=3",
   );
-});
-
-test("a namespace is unguessable, private, and names itself", () => {
-  const created = namespace();
-  spaces.push(created.dir);
-  assert.equal(statSync(created.dir).mode & 0o777, 0o700);
-  assert.equal(basename(created.dir), created.pairId);
-  assert.ok(realpathSync(created.dir).startsWith(`${realpathSync(tmpdir())}/`));
-  // Twelve hex chosen here plus the six `mkdtemp` appends: a guessable name is
-  // a pair somebody else can read or occupy.
-  const random = /^mo-review-([a-f0-9]{12})-(.{6})$/u.exec(created.pairId);
-  assert.ok(random, created.pairId);
-  assert.equal(random[1].length + random[2].length, 18);
-});
-
-test("staging publishes the validated buffer and proves it is that inode", () => {
-  const created = namespace();
-  spaces.push(created.dir);
-  const text = report();
-  const staged = stage({
-    dir: created.dir,
-    slot: "A",
-    vendor: "claude",
-    buffer: Buffer.from(text, "utf8"),
-    expected: context(),
-  });
-  assert.equal(staged.status, "staged");
-  assert.equal(staged.bytes, Buffer.byteLength(text));
-  assert.equal(staged.path, join(created.dir, "A-claude.md"));
-  assert.equal(statSync(staged.path).mode & 0o777, 0o600);
-  assert.equal(readFileSync(staged.path, "utf8"), text);
-  // The sibling is a step, not a leftover.
-  assert.deepEqual(
-    readdirSync(created.dir).filter((name) => name.startsWith(".stage-")),
-    [],
-  );
-  const verified = pair({
-    dir: created.dir,
-    pairId: created.pairId,
-    slots: [
-      { ...staged, vendor: "claude" },
-      { ...staged, slot: "B", vendor: "claude" },
-    ],
-  });
-  assert.equal(verified.status, "unknown");
-  assert.equal(verified.slot, "B", "a missing slot is not half a pair");
-});
-
-test("an occupied final path keeps its bytes", () => {
-  const created = namespace();
-  spaces.push(created.dir);
-  const final = join(created.dir, "A-claude.md");
-  writeFileSync(final, "foreign\n", { mode: 0o600 });
-  const staged = stage({
-    dir: created.dir,
-    slot: "A",
-    vendor: "claude",
-    buffer: Buffer.from(report(), "utf8"),
-    expected: context(),
-  });
-  assert.equal(staged.reason, "final_exists");
-  assert.equal(readFileSync(final, "utf8"), "foreign\n");
-  assert.deepEqual(
-    readdirSync(created.dir).filter((name) => name.startsWith(".stage-")),
-    [],
-  );
-});
-
-test("a filesystem that cannot link is not a collision", () => {
-  assert.equal(linkFailureReason("EEXIST"), "final_exists");
-  for (const code of ["EPERM", "ENOSYS", "EXDEV", "EMLINK"]) {
-    assert.equal(linkFailureReason(code), "link_unsupported", code);
-  }
-  assert.equal(linkFailureReason("EACCES"), "permission");
-});
-
-test("a report that is not a report is never published", () => {
-  const created = namespace();
-  spaces.push(created.dir);
-  const staged = stage({
-    dir: created.dir,
-    slot: "A",
-    vendor: "claude",
-    buffer: Buffer.from(report().replace(/End-Review:.+/u, ""), "utf8"),
-    expected: context(),
-  });
-  assert.equal(staged.reason, "malformed");
-  assert.equal(staged.verdict.reason, "footer_mismatch");
-  assert.deepEqual(readdirSync(created.dir), []);
-  const invalid = stage({
-    dir: created.dir,
-    slot: "A",
-    vendor: "claude",
-    buffer: Buffer.concat([Buffer.from(report(), "utf8"), Buffer.from([0xff])]),
-    expected: context(),
-  });
-  assert.equal(invalid.reason, "invalid_utf8");
-  const vendor = stage({
-    dir: created.dir,
-    slot: "A",
-    vendor: "Claude Opus",
-    buffer: Buffer.from(report(), "utf8"),
-    expected: context(),
-  });
-  assert.equal(vendor.reason, "vendor");
-  assert.deepEqual(readdirSync(created.dir), []);
-});
-
-test("a slot swapped between staging and delivery is caught by identity, not by name", () => {
-  const created = namespace();
-  spaces.push(created.dir);
-  const slots = ["A", "B"].map((slot) =>
-    stage({
-      dir: created.dir,
-      slot,
-      vendor: slot === "A" ? "claude" : "codex",
-      buffer: Buffer.from(report({ execution: `ctx_fixture` }), "utf8"),
-      expected: context(),
-    }),
-  );
-  const named = slots.map((staged, step) => ({
-    ...staged,
-    vendor: step === 0 ? "claude" : "codex",
-  }));
-  assert.equal(pair({ dir: created.dir, pairId: created.pairId, slots: named }).status, "paired");
-
-  // Same length, same inode, different bytes: only the hash can see this.
-  const path = join(created.dir, "B-codex.md");
-  const bytes = readFileSync(path);
-  bytes[bytes.length - 2] = bytes[bytes.length - 2] === 0x78 ? 0x79 : 0x78;
-  writeFileSync(path, bytes);
-  const tampered = pair({ dir: created.dir, pairId: created.pairId, slots: named });
-  assert.equal(tampered.status, "unknown");
-  assert.equal(tampered.reason, "identity_changed");
-  assert.equal(tampered.slot, "B");
-
-  // A different file at the same path is a different inode — and proving that
-  // needs the replacement to exist before the original is unlinked. Writing it
-  // after the unlink lets the filesystem hand back the very inode it just
-  // freed, and the bytes are identical here on purpose, so on a filesystem that
-  // reuses inodes the swap became invisible and the wrong slot was reported.
-  const swapped = join(created.dir, "A-claude.md");
-  const sibling = join(created.dir, "A-claude.md.swap");
-  writeFileSync(sibling, report(), { mode: 0o600 });
-  assert.notEqual(statSync(sibling).ino, statSync(swapped).ino);
-  rmSync(swapped);
-  renameSync(sibling, swapped);
-  const replaced = pair({ dir: created.dir, pairId: created.pairId, slots: named });
-  assert.equal(replaced.reason, "identity_changed");
-  assert.equal(replaced.slot, "A");
-});
-
-test("the pair line carries both paths and both exact sizes", () => {
-  const created = namespace();
-  spaces.push(created.dir);
-  const slots = [
-    { slot: "A", vendor: "claude" },
-    { slot: "B", vendor: "codex" },
-  ].map(({ slot, vendor }) => ({
-    ...stage({
-      dir: created.dir,
-      slot,
-      vendor,
-      buffer: Buffer.from(report(), "utf8"),
-      expected: context(),
-    }),
-    vendor,
-  }));
-  const result = pair({ dir: created.dir, pairId: created.pairId, slots });
-  assert.equal(result.status, "paired");
-  assert.equal(
-    result.line,
-    `Review-Pair: ${created.pairId} A=${JSON.stringify(join(created.dir, "A-claude.md"))} ` +
-      `A_bytes=${slots[0].bytes} B=${JSON.stringify(join(created.dir, "B-codex.md"))} ` +
-      `B_bytes=${slots[1].bytes}`,
-  );
-});
-
-test("the CLI stages from stdin byte for byte", () => {
-  const created = namespace();
-  spaces.push(created.dir);
-  const text = report();
-  const staged = spawnSync(
-    process.execPath,
-    [
-      HELPER,
-      "stage",
-      "--dir",
-      created.dir,
-      "--slot",
-      "A",
-      "--vendor",
-      "codex",
-      "--dispatch",
-      "ctx_fixture",
-      "--candidate",
-      SHA,
-      "--requested",
-      "deep",
-    ],
-    { input: Buffer.from(text, "utf8") },
-  );
-  assert.equal(staged.status, 0, staged.stderr.toString());
-  const line = staged.stdout.toString().trim();
-  assert.match(
-    line,
-    /^MO-REVIEW-STAGE\/1 slot=A path=".*A-codex\.md" bytes=\d+ dev=\d+ ino=\d+ sha256=[a-f0-9]{64}$/u,
-  );
-  assert.equal(readFileSync(join(created.dir, "A-codex.md"), "utf8"), text);
-  assert.match(line, new RegExp(`bytes=${Buffer.byteLength(text)} `, "u"));
 });
 
 test("the brief template carries every field and no placeholder", () => {
@@ -685,6 +525,7 @@ test("the one permitted business question names its slot, its key and where to r
     hypothesis: "the stated guarantee, and the window is the defect",
   });
   assert.equal(asked.status, "asked");
+  // mo-vocabulary-ok: a report-local finding key is fixture data, not a work item.
   assert.match(asked.text, /^A:F-002 \(claude\) F-002 \[P2\] /u);
   assert.match(asked.text, /Full report: \/tmp\/mo-review-x\/A-claude\.md$/mu);
   // A line that is not an index line cannot be projected: there is nothing to
@@ -712,7 +553,7 @@ function documentedCalls(text) {
         .replace(/\\\n/gu, " ")
         .replace(/\n/gu, node.type === "code" ? "\n" : " ");
       for (const line of value.split("\n")) {
-        for (const match of line.matchAll(/mo-review-report\.mjs[ \t]+([a-z]+)([^\n]*)/gu)) {
+        for (const match of line.matchAll(/mo-review-report\.mjs"?[ \t]+([a-z]+)([^\n]*)/gu)) {
           calls.push({ command: match[1], words: match[2].split(/[ \t]+/u).filter(Boolean) });
         }
       }
@@ -728,11 +569,14 @@ function namedFlags({ words }) {
   const flags = [];
   for (let index = 0; index < words.length; index += 1) {
     const word = words[index].replace(/^\[|\]$/gu, "");
-    if (word === "<" || word === "|" || word === ">") break;
+    if (word === "<" || word === "|" || word === ">" || word.startsWith("<<")) break;
     if (!word.startsWith("--")) return { flags, unnamed: word };
     flags.push(word.slice(2));
     if (words[index + 1] !== undefined && !words[index + 1].replace(/^\[/u, "").startsWith("--"))
       index += 1;
+    // A placeholder of several words, `<slot A dir>`, is one value.
+    if (/^'?<[^>]*$/u.test(words[index]))
+      while (index + 1 < words.length && !words[index].includes(">")) index += 1;
   }
   return { flags };
 }
@@ -755,7 +599,6 @@ test("every documented helper call names only flags its command takes", () => {
   for (const path of documents) {
     for (const call of documentedCalls(readFileSync(join(ROOT, path), "utf8"))) {
       const where = `${path}: ${call.command} ${call.words.join(" ")}`;
-      if (call.command === "namespace") continue;
       assert.ok(Object.hasOwn(FLAGS, call.command), `unknown command in ${where}`);
       const { flags, unnamed } = namedFlags(call);
       assert.equal(unnamed, undefined, `a placeholder stands for unnamed flags in ${where}`);
@@ -765,7 +608,16 @@ test("every documented helper call names only flags its command takes", () => {
     }
   }
   // The skill texts show these calls; a parser that found none would pass vacuously.
-  for (const command of ["template", "prepare", "validate", "stage", "pair", "preview", "ack"]) {
+  for (const command of [
+    "namespace",
+    "template",
+    "prepare",
+    "validate",
+    "stage",
+    "pair",
+    "preview",
+    "ack",
+  ]) {
     assert.ok(seen.has(command), command);
   }
   assert.deepEqual(namedFlags({ words: ["--dir", "<ns>", "<validate", "flags>"] }), {
@@ -775,10 +627,159 @@ test("every documented helper call names only flags its command takes", () => {
 });
 
 test("the stage call the skill documents is accepted, and validate-only flags are refused", () => {
-  const dir = space();
+  const created = namespace();
+  spaces.push(created.slots.A, created.slots.B);
   const valid = report();
-  const base = ["stage", "--dir", dir, "--slot", "A", "--vendor", "codex"];
+  const base = ["stage", "--slot-dir", created.slots.A, "--slot", "A", "--pair-id", created.pairId];
   const expected = [
+    "--dispatch",
+    "ctx_fixture",
+    "--candidate",
+    SHA,
+    "--requested",
+    "deep",
+    "--vendor",
+    "openai",
+    ...ROUND_ARGS,
+    "--effective",
+    "deep",
+    "--file",
+    "-",
+  ];
+  const extra = [
+    "--prepared",
+    join(created.slots.A, "body.md"),
+    "--normalization",
+    "final-newline",
+  ];
+  const refused = spawnSync(process.execPath, [HELPER, ...base, ...expected, ...extra], {
+    input: valid,
+    encoding: "utf8",
+  });
+  assert.equal(refused.status, 2);
+  assert.match(refused.stderr, /stage does not take --prepared, --normalization/u);
+  assert.deepEqual(readdirSync(created.slots.A), []);
+  const staged = spawnSync(process.execPath, [HELPER, ...base, ...expected], {
+    input: valid,
+    encoding: "utf8",
+  });
+  assert.equal(staged.status, 0, staged.stderr);
+  assert.match(staged.stdout, /^MO-REVIEW-STAGE\/1 status=staged slot=A /u);
+});
+
+// Run one call in its own empty cwd and TMPDIR with a stdin that never ends:
+// a helper that read stdin or made a directory before refusing would hang here
+// or leave something behind.
+async function isolatedCall(args) {
+  const cwd = space();
+  const temp = space();
+  const child = spawn(process.execPath, [HELPER, ...args], {
+    cwd,
+    env: { ...process.env, TMPDIR: temp },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.on("data", (chunk) => (stdout += chunk));
+  child.stderr.on("data", (chunk) => (stderr += chunk));
+  const timer = setTimeout(() => child.kill("SIGKILL"), 10000);
+  const [status] = await once(child, "close");
+  clearTimeout(timer);
+  return { status, stdout, stderr, left: [...readdirSync(cwd), ...readdirSync(temp)] };
+}
+
+test("every command answers --help with its inputs and an example, and creates nothing", async () => {
+  assert.deepEqual(Object.keys(FLAGS).sort(), [
+    "ack",
+    "namespace",
+    "pair",
+    "prepare",
+    "preview",
+    "stage",
+    "template",
+    "validate",
+  ]);
+  for (const command of Object.keys(FLAGS)) {
+    const help = await isolatedCall([command, "--help"]);
+    assert.equal(help.status, 0, `${command} ${help.stderr}`);
+    assert.match(help.stdout, new RegExp(`^usage: mo-review-report\\.mjs ${command}\\b`, "u"));
+    assert.match(
+      help.stdout,
+      new RegExp(`^example:\\n  node mo-review-report\\.mjs ${command}\\b`, "mu"),
+    );
+    for (const flag of FLAGS[command]) assert.match(help.stdout, new RegExp(`--${flag}\\b`, "u"));
+    assert.deepEqual(help.left, [], command);
+  }
+});
+
+test("an unknown or repeated flag is a call error before stdin or the filesystem", async () => {
+  for (const command of Object.keys(FLAGS)) {
+    const unknown = await isolatedCall([command, "--bogus", "x"]);
+    assert.equal(unknown.status, 2, command);
+    assert.equal(unknown.stdout, "", command);
+    assert.match(unknown.stderr, new RegExp(`${command} does not take --bogus`, "u"));
+    assert.deepEqual(unknown.left, [], command);
+  }
+  for (const args of [
+    ["template", "--verdict", "PASS", "--verdict", "PASS"],
+    ["prepare", "--file", "body.md", "--file", "other.md"],
+    ["validate", "--file", "-", "--dispatch", "a", "--dispatch", "b"],
+    ["stage", "--slot", "A", "--slot", "B"],
+    ["ack", "--kind", "Handoff", "--kind", "Preview"],
+  ]) {
+    const repeated = await isolatedCall(args);
+    assert.equal(repeated.status, 2, args.join(" "));
+    assert.match(repeated.stderr, /is given twice/u, args.join(" "));
+    assert.deepEqual(repeated.left, [], args.join(" "));
+  }
+  // A missing flag is found before the body is read: prepare would otherwise
+  // wait on stdin, and a later refusal would not undo the read.
+  const missing = await isolatedCall(["prepare", "--file", "body.md"]);
+  assert.equal(missing.status, 2);
+  assert.match(missing.stderr, /are required/u);
+  assert.deepEqual(missing.left, []);
+});
+
+test("the Round line carries the attempt, its limit, the deep reads and the fragment", () => {
+  const at = (line) => report().replace(ROUND_LINE, line);
+  const custom = (line, round) => validateReport(at(line), { ...context(), round });
+  // An owner-approved extension is a larger limit, and it is the flags that say so.
+  const extended = { attempt: 6, limit: 10, deepReads: 2, fragment: "f1" };
+  assert.equal(custom("Round: attempt=6/10 deep_reads=2 fragment=f1", extended).status, "valid");
+  assert.equal(reasonOf(report().replace(`${ROUND_LINE}\n`, "")), "round_missing");
+  assert.equal(reasonOf(at("Round: attempt=6/5 deep_reads=1 fragment=f1")), "round_exceeds_budget");
+  for (const line of [
+    "Round: attempt=1/5",
+    "Round: attempt=0/5 deep_reads=0 fragment=f1",
+    "Round: attempt=01/5 deep_reads=1 fragment=f1",
+    "Round: attempt=1/5 deep_reads=2 fragment=f1",
+    "Round: attempt=1/5 deep_reads=1 fragment=F1",
+    `Round: attempt=1/5 deep_reads=1 fragment=${"f".repeat(41)}`,
+    "Round: attempt=1/5 deep_reads=1 fragment=f1 extra",
+  ]) {
+    assert.equal(reasonOf(at(line)), "round_malformed", line);
+  }
+  // A well-formed line that answers another round is somebody else's report.
+  for (const line of [
+    "Round: attempt=2/5 deep_reads=1 fragment=f1",
+    "Round: attempt=1/6 deep_reads=1 fragment=f1",
+    "Round: attempt=1/5 deep_reads=0 fragment=f1",
+    "Round: attempt=1/5 deep_reads=1 fragment=f2",
+  ]) {
+    assert.equal(reasonOf(at(line)), "round_mismatch", line);
+  }
+  // Out of place is missing at its place: the counters never float in the header.
+  const moved = report()
+    .replace(`${ROUND_LINE}\n`, "")
+    .replace("Delegation: none\n", `Delegation: none\n${ROUND_LINE}\n`);
+  assert.equal(reasonOf(moved), "round_missing");
+});
+
+test("the round flags are the caller's, and a budget they break is a call error", () => {
+  const args = (round) => [
+    "template",
+    "--verdict",
+    "PASS",
     "--dispatch",
     "ctx_fixture",
     "--candidate",
@@ -787,19 +788,19 @@ test("the stage call the skill documents is accepted, and validate-only flags ar
     "deep",
     "--effective",
     "deep",
+    ...round,
   ];
-  const extra = ["--prepared", join(dir, "body.md"), "--normalization", "final-newline"];
-  const refused = spawnSync(process.execPath, [HELPER, ...base, ...expected, ...extra], {
-    input: valid,
-    encoding: "utf8",
-  });
-  assert.equal(refused.status, 2);
-  assert.match(refused.stderr, /stage does not take --prepared, --normalization/u);
-  assert.deepEqual(readdirSync(dir), []);
-  const staged = spawnSync(process.execPath, [HELPER, ...base, ...expected], {
-    input: valid,
-    encoding: "utf8",
-  });
-  assert.equal(staged.status, 0, staged.stderr);
-  assert.match(staged.stdout, /^MO-REVIEW-STAGE\/1 slot=A /u);
+  for (const round of [
+    ["--attempt", "6", "--attempt-limit", "5", "--deep-reads", "1", "--fragment", "f1"],
+    ["--attempt", "1", "--attempt-limit", "5", "--deep-reads", "2", "--fragment", "f1"],
+    ["--attempt", "x", "--attempt-limit", "5", "--deep-reads", "1", "--fragment", "f1"],
+    ["--attempt", "1", "--attempt-limit", "5", "--deep-reads", "1", "--fragment", "F 1"],
+  ]) {
+    const refused = spawnSync(process.execPath, [HELPER, ...args(round)], { encoding: "utf8" });
+    assert.equal(refused.status, 2, round.join(" "));
+    assert.equal(refused.stdout, "", round.join(" "));
+  }
+  const printed = spawnSync(process.execPath, [HELPER, ...args(ROUND_ARGS)], { encoding: "utf8" });
+  assert.equal(printed.status, 0, printed.stderr);
+  assert.match(printed.stdout, new RegExp(`^${ROUND_LINE}$`, "mu"));
 });

@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-watchdog or Meta-O wa
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "d126fa3b40691477444c271aa0d9d2c1bd8d43e8"
+  source_tree: "fcbd3aa6b9b0b2089610b9f1c76c8dce0884497a"
 ---
 
 # Watch backend sessions
@@ -14,6 +14,15 @@ Read [Watchdog behavior](references/watchdog.md) and
 friction you hit belongs in your final answer to the user, never in an Issue. Start only after the
 user explicitly names Meta-O watchdog or `mo-watchdog`; a generic monitoring
 question does not activate this skill.
+
+This skill ships its own scripts in `scripts/` beside this `SKILL.md`. Every
+`scripts/<name>` this skill and its references name is that file, never a path
+in the project checkout, and it runs from this skill's directory with the full
+path in double quotes, which also holds for a path with a space:
+
+```text
+"<this skill's directory>/scripts/mo-watchdog.sh" --help
+```
 
 Use `scripts/mo-watchdog.sh target --backend orca --session <id>` for one
 session or `scripts/mo-watchdog.sh scan` for all reachable Orca sessions.

@@ -14,6 +14,15 @@ friction you hit belongs in your final answer to the user, never in an Issue. St
 user explicitly names Meta-O watchdog or `mo-watchdog`; a generic monitoring
 question does not activate this skill.
 
+This skill ships its own scripts in `scripts/` beside this `SKILL.md`. Every
+`scripts/<name>` this skill and its references name is that file, never a path
+in the project checkout, and it runs from this skill's directory with the full
+path in double quotes, which also holds for a path with a space:
+
+```text
+"<this skill's directory>/scripts/mo-watchdog.sh" --help
+```
+
 Use `scripts/mo-watchdog.sh target --backend orca --session <id>` for one
 session or `scripts/mo-watchdog.sh scan` for all reachable Orca sessions.
 Observation is read-only. An explicit nudge additionally requires
