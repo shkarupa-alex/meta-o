@@ -236,6 +236,69 @@ all_open_issues_closure:
 Постоянное доказательство: `git cat-file -e <blob>` и `git cat-file blob <blob>`
 для исходных байтов.
 
+## Разбор исходных записей #45–#80
+
+Как и предыдущие разборы, это часть карты приёмки, а не второй реестр.
+`implemented` означает, что детерминированная часть приёмки стоит в дереве, а
+поведение агента доказано оценочными случаями на точной ревизии. `документация`
+и `отказ` — исходы, которые спецификация назвала заранее по решению владельца.
+Живая часть названа сценарием из [Сквозная проверка](e2e.md). Issue закрывается
+только после её положительного прогона, поэтому #54 и #78 с частично прошедшими
+сценариями остаются открытыми. Закрытый владельцем #66 здесь не разбирается.
+
+| Источник | Исход        | Долговечное доказательство                                                                                                                                                                                                                                                                          |
+| -------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| #45      | implemented  | Скил `mo-quiz` и §A-QUIZ-01 в `docs/architecture/quiz.md`; `tests/meta-o-activation.test.mjs`, оценочные случаи `mo-quiz`                                                                                                                                                                           |
+| #47      | implemented  | Однонаправленная лестница восстановления в §A-DELIVERY-01; `tests/orchestrator-autonomy.test.mjs`, оракул `mo-orchestrate-orca.degraded`                                                                                                                                                            |
+| #48      | implemented  | Поставляемый `shared/scripts/mo-vocabulary.mjs` и раскатка в `mo-setup`; `tests/vocabulary.test.mjs`, `make mo-smoke`; живая часть — прогон на клонах потребителей, исход «б»                                                                                                                       |
+| #49      | implemented  | `Reviewer-Skill: mo-reviewer` только по имени, `docs/architecture/skill-activation.md`; `tests/lifecycle-contracts.test.mjs`                                                                                                                                                                        |
+| #50      | implemented  | Скрипты скила запускаются из его каталога путём в кавычках; `tests/skill-script-path.test.mjs`                                                                                                                                                                                                      |
+| #51      | implemented  | Отчёт передаётся в `prepare` here-document'ом без промежуточного файла; `tests/reviewer-heredoc.test.mjs`                                                                                                                                                                                           |
+| #52      | документация | Решение `§A-*` создаётся до кода продукта, `docs/architecture/knowledge-identifiers.md`; `tests/vocabulary.test.mjs`, eval `mo-orchestrate-orca.regression-spec-decision-anchor`                                                                                                                    |
+| #53      | implemented  | Деревья исполнителя и слотов — дети дерева задачи; `tests/worktree-lineage.test.mjs`; живая часть — LIVE-4                                                                                                                                                                                          |
+| #54      | implemented  | Контрольная точка тихого ожидания в §A-WAIT-01; `tests/orchestrator-autonomy.test.mjs`, eval `regression-quiet-timeout-completed`, `regression-handoff-ack-status` и `regression-idle-input-running-child` скила `mo-orchestrate-orca`; живая часть — LIVE-2 и LIVE-3 прошли частично, issue открыт |
+| #55      | implemented  | Объявление истории читается Markdown AST, `malformed_declaration`; `tests/knowledge-layer.test.mjs`                                                                                                                                                                                                 |
+| #56      | implemented  | Четыре закрытые формы внешнего входа ревьюера, §A-REVIEW-05; `tests/review-input.test.mjs`                                                                                                                                                                                                          |
+| #57      | implemented  | `--help` у каждой команды `mo-review-report.mjs` без побочных эффектов; `tests/review-report.test.mjs`                                                                                                                                                                                              |
+| #58      | implemented  | `UNKNOWN` сохраняет доказанные находки, §A-REVIEW-04; `tests/review-report.test.mjs`                                                                                                                                                                                                                |
+| #59      | implemented  | Строка `Round` с попыткой и глубокими прочтениями; `tests/review-grammar.test.mjs`, `tests/review-report.test.mjs`                                                                                                                                                                                  |
+| #60      | implemented  | Разовая критика ревьюера другого поставщика до вопроса человеку; `tests/orchestrator-autonomy.test.mjs`, eval `mo-orchestrate-orca.regression-consult-other-vendor`                                                                                                                                 |
+| #61      | implemented  | Перечитывание скила и восстановление из Orca после компакции; `tests/orchestrator-autonomy.test.mjs`, eval `mo-orchestrate-orca.regression-compaction-reground`                                                                                                                                     |
+| #62      | implemented  | Закрытые каталоги слотов и барьер, `tests/review-stage.test.mjs`; техническая изоляция на одной учётной записи ОС — отказ, `docs/architecture/review-ensemble-boundary.md`                                                                                                                          |
+| #63      | отказ        | Копии скила ревьюера не сверяются, Dispatch называет его только по имени; `tests/lifecycle-contracts.test.mjs`                                                                                                                                                                                      |
+| #64      | implemented  | Отказ в модели даёт один вопрос с рекомендованной заменой; `tests/orchestrator-autonomy.test.mjs`, `tests/mo-models.test.mjs`, eval `mo-orchestrate-orca.regression-model-refused`                                                                                                                  |
+| #65      | implemented  | Роль запускается из `launch.<role>` тремя флагами, поставщик — `launch.<role>.vendor`; `tests/mo-models.test.mjs`, `tests/orca-reliability.test.mjs`                                                                                                                                                |
+| #67      | implemented  | Команда цели убрана из метода, отслеживаемое упоминание — ошибка; `tests/orchestration-contract.test.mjs`                                                                                                                                                                                           |
+| #68      | implemented  | Готовность Orca по карте «правило → справочник»; `tests/orca-reliability.test.mjs` на зафиксированных списках Orca 1.4.227 и 1.4.246                                                                                                                                                                |
+| #69      | документация | При одной учётной записи ОС независимость пары инструкционная: до принятия отчёта B его бриф не называет путь слота A, `docs/architecture/review-ensemble-boundary.md`; `tests/review-stage.test.mjs`                                                                                               |
+| #70      | implemented  | Статическая оценка правил GitLab в `CI-Coverage/1`, `shared/scripts/gitlab-ci-rules.mjs`; `tests/ci-coverage.test.mjs`                                                                                                                                                                              |
+| #71      | документация | `Backlog-Gate` вызывающего в брифе, ревьюер осматривает блокнот статически; `tests/review-brief-contract.test.mjs`                                                                                                                                                                                  |
+| #72      | документация | Описания `mo-*` остаются «Use only when», флаги скрытия поставщиков не используются, `docs/backend-capabilities.md`                                                                                                                                                                                 |
+| #73      | implemented  | Строка активной работы Codex старше композера; `tests/harness-screen.test.mjs`                                                                                                                                                                                                                      |
+| #74      | implemented  | Нативная запись note через `glab` по справке установленной версии; `tests/recorded-surfaces.test.mjs`                                                                                                                                                                                               |
+| #75      | документация | Шаблон `mo-setup` не пишет правило о диктовке, потребителю предлагается патч; `tests/setup-contract.test.mjs`, оценочный случай `mo-setup`                                                                                                                                                          |
+| #76      | implemented  | Прокси владельца снят со всех рецептов и возвращён только целям сред агентов; `tests/agent-proxy.test.mjs`, `make mo-smoke`                                                                                                                                                                         |
+| #77      | документация | Один полный проход истории в QC потребителя и проверка в `mo-setup`; `tests/setup-knowledge-history.test.mjs`                                                                                                                                                                                       |
+| #78      | implemented  | E2E сходится до ревью и доказывается по сценариям, §A-ORCHESTRATION-03; `tests/e2e-contract.test.mjs`, eval `regression-e2e-*` скила `mo-orchestrate-orca`; живая часть — LIVE-1 прошёл частично, issue открыт                                                                                      |
+| #79      | implemented  | `mo-debug` отличает найденный вызов от исполненного и называет каждый пробел; `tests/mo-debug-completeness.test.mjs`                                                                                                                                                                                |
+| #80      | implemented  | `stage` пишет реквизиты слота в `stage.json`, `pair` читает их оттуда; `tests/review-stage.test.mjs`                                                                                                                                                                                                |
+
+### Проверяемое происхождение разбора #45–#80
+
+Спецификация удалена на этом же шаге; её байты остаются в замороженном
+Git-объекте, а `source_sha` — последний коммит, чьё дерево её содержит. Там же
+записаны отступления реализации от текста спецификации; итоговое поведение
+каждого из них описано в действующих документах.
+
+```yaml
+open_issues_2026_11_closure:
+  source_sha: 89218e5bbafa20fa9904afc6bc48070ae4d3d01d
+  spec_blob: 815ab7432d11c8a7f02047c6bc3aef4f744854ab
+```
+
+Постоянное доказательство: `git cat-file -e <blob>` и `git cat-file blob <blob>`
+для исходных байтов.
+
 ## Проверяемое происхождение закрытия бэклога
 
 | Источник                 | Замороженный Git-объект                    |
