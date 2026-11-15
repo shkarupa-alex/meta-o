@@ -10048,25 +10048,42 @@ function visibleText(node2) {
 function nestedMarker(node2) {
   return (node2.children ?? []).some((child) => isBoundaryMarker(child) || nestedMarker(child));
 }
-function boundaryNode(node2) {
-  if (Array.isArray(node2)) return node2.map(boundaryNode);
+function boundaryNode(node2, resolve2) {
+  if (Array.isArray(node2)) return node2.map((item) => boundaryNode(item, resolve2));
   if (!node2 || typeof node2 !== "object") return node2;
-  return Object.fromEntries(
+  const projected = Object.fromEntries(
     Object.entries(node2).filter(([key]) => key !== "position").map(([key, value]) => {
       if (key === "value" && typeof value === "string" && node2.type === "text") {
         return [key, normalizedLiteral(value)];
       }
-      return [key, boundaryNode(value)];
+      return [key, boundaryNode(value, resolve2)];
     })
   );
+  if (node2.type === "linkReference" || node2.type === "imageReference") {
+    const target = resolve2(node2.identifier);
+    projected.target = target ? { url: target.url, title: target.title ?? null } : null;
+  }
+  return projected;
 }
-function boundaryOf(section, path, id) {
+function referenceTargets(tree) {
+  const targets = /* @__PURE__ */ new Map();
+  const visit = (node2) => {
+    if (node2.type === "definition" && !targets.has(node2.identifier)) {
+      targets.set(node2.identifier, node2);
+    }
+    for (const child of node2.children ?? []) visit(child);
+  };
+  visit(tree);
+  return (identifier) => targets.get(identifier);
+}
+function boundaryOf(section, path, id, resolve2) {
   const runs = ownRuns(section);
   if (runs.some((run) => run.some(nestedMarker))) {
     throw new Error(`${path}: ${id} places a boundary marker inside a block`);
   }
   const seen = /* @__PURE__ */ new Map();
   const declared = [];
+  const ownBlocks = [];
   for (const run of runs) {
     run.forEach((node2, index2) => {
       if (isBoundaryMarker(node2)) {
@@ -10076,16 +10093,26 @@ function boundaryOf(section, path, id) {
         }
         return;
       }
-      const fingerprint = JSON.stringify(boundaryNode(node2));
+      const fingerprint = JSON.stringify(boundaryNode(node2, resolve2));
       const occurrence = seen.get(fingerprint) ?? 0;
       seen.set(fingerprint, occurrence + 1);
+      ownBlocks.push(fingerprint);
       if (isBoundaryMarker(run[index2 - 1])) declared.push({ block: fingerprint, occurrence });
     });
   }
-  return declared.length > 0 ? JSON.stringify(declared) : null;
+  return { boundary: declared.length > 0 ? JSON.stringify(declared) : null, ownBlocks };
 }
 function boundaryKept(prior, entry) {
   return typeof prior?.boundary === "string" && prior.boundary === entry?.boundary;
+}
+function declaredBlocks(entry) {
+  return entry?.boundary ? JSON.parse(entry.boundary).map(({ block }) => block) : [];
+}
+function editorialKept(prior, entry, strict) {
+  const fingerprint = strict ? "strictEditorial" : "editorial";
+  const before = new Set(prior?.ownBlocks ?? []);
+  const after = new Set(entry?.ownBlocks ?? []);
+  return prior?.[fingerprint] === entry?.[fingerprint] && declaredBlocks(entry).every((block) => before.has(block)) && declaredBlocks(prior).every((block) => after.has(block));
 }
 function definitionChanged(prior, entry) {
   if (!prior) return true;
@@ -10153,6 +10180,7 @@ function parseDocument(markdown) {
 }
 function definitionsFromTree(tree, path) {
   const found = /* @__PURE__ */ new Map();
+  const resolve2 = referenceTargets(tree);
   const visit = (node2) => {
     const children = node2.children ?? [];
     for (let index2 = 0; index2 < children.length; index2 += 1) {
@@ -10168,6 +10196,7 @@ function definitionsFromTree(tree, path) {
             end += 1;
           }
           const section = children.slice(index2, end);
+          const { boundary, ownBlocks } = boundaryOf(section, path, id, resolve2);
           found.set(id, {
             id,
             kind: match[1],
@@ -10177,7 +10206,8 @@ function definitionsFromTree(tree, path) {
             editorial: JSON.stringify(editorialSurface(section)),
             strictEditorial: JSON.stringify(strictEditorialNode(section)),
             authorizations: authorizationFingerprints(section),
-            boundary: boundaryOf(section, path, id)
+            boundary,
+            ownBlocks
           });
         }
       }
@@ -10630,8 +10660,7 @@ function authorized(reader, edge, change, snapshots, rules) {
   );
   if (!validAuthorizationRecord(record, action, id)) return false;
   if (record.action !== "editorial") return true;
-  const fingerprint = rules.postMigration ? "strictEditorial" : "editorial";
-  return previous2.get(id)?.[fingerprint] === current.get(id)?.[fingerprint];
+  return editorialKept(previous2.get(id), current.get(id), rules.postMigration);
 }
 function authorizationHistoryChanged(previous2, current) {
   const currentRecords = new Set(current.authorizations);
@@ -10979,4 +11008,4 @@ export {
   runHistory,
   verifyHistory
 };
-// MO-KNOWLEDGE-HISTORY-SOURCE 0.2.0 d99c6bae0616adc254a01f2479f526d27415061000cfb4275e475c73d4d49567
+// MO-KNOWLEDGE-HISTORY-SOURCE 0.2.0 d550b8ce358ba56221221e8436cdbe39f6263fb8f9cebddcf2bb281f4e442d70

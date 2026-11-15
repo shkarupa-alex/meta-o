@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-setup; inspect or bri
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "653c895072c9b0fe59df5908075e13ecae92704a"
+  source_tree: "67a667401e35535d95ec7545c01c7880ea9354af"
 ---
 
 # Set up a project for Meta-O

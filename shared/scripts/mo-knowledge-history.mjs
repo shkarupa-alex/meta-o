@@ -25,6 +25,7 @@ import { fileURLToPath } from "node:url";
 import {
   authorizationRecordsFromTree,
   boundaryKept,
+  editorialKept,
   citedIdsFromTree,
   definitionChanged,
   historyPins,
@@ -190,8 +191,7 @@ function authorized(reader, edge, change, snapshots, rules) {
   );
   if (!validAuthorizationRecord(record, action, id)) return false;
   if (record.action !== "editorial") return true;
-  const fingerprint = rules.postMigration ? "strictEditorial" : "editorial";
-  return previous.get(id)?.[fingerprint] === current.get(id)?.[fingerprint];
+  return editorialKept(previous.get(id), current.get(id), rules.postMigration);
 }
 
 function authorizationHistoryChanged(previous, current) {

@@ -101,12 +101,17 @@ definition's markers are its own and never its parent's, and the parent's text
 after a nested definition is still the parent's. A marker with no such block
 after it, before an empty block, or inside a list, quote or paragraph makes the
 stage refuse the document. The declared block is compared as written, link
-labels and heading text included, with only whitespace in prose free to change,
+labels and heading text included, a reference link together with the address
+and title its label resolves to wherever its definition stands in the document,
+with only whitespace in prose free to change,
 and by which of the definition's identical blocks it is, so moving a marker onto
 an identical twin is still a move. Declaring a first boundary, and changing,
 moving or dropping a declared one, changes the definition: declaring, moving or
 dropping a marker over unchanged text is an `editorial` change with its record,
-and rewording a declared block is a `reuse` with a record. `revise` passes only
+and rewording a declared block is a `reuse` with a record. So `editorial` passes
+only when every block declared on either side of the commit stands as written
+among the definition's blocks on the other side: its wording projection forgives
+link labels and heading text, which a declared block freezes. `revise` passes only
 for a definition that declared a boundary before the commit and left that block
 exactly as it was. Records then stay with a moved boundary, a deletion and a
 provable rewording, so the record trail answers when and why a decision's

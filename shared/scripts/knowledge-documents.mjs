@@ -101,34 +101,59 @@ function nestedMarker(node) {
 
 // The declared block is frozen as written: only whitespace in ordinary text
 // may change. Link labels and heading text are part of the boundary here,
-// unlike in the editorial projection, which forgives exactly those.
-function boundaryNode(node) {
-  if (Array.isArray(node)) return node.map(boundaryNode);
+// unlike in the editorial projection, which forgives exactly those. A
+// reference link keeps its target in a definition that may stand anywhere in
+// the document, so the block carries the target it resolves to: retargeting
+// `[approved][policy]` moves the boundary exactly as retargeting an inline link.
+function boundaryNode(node, resolve) {
+  if (Array.isArray(node)) return node.map((item) => boundaryNode(item, resolve));
   if (!node || typeof node !== "object") return node;
-  return Object.fromEntries(
+  const projected = Object.fromEntries(
     Object.entries(node)
       .filter(([key]) => key !== "position")
       .map(([key, value]) => {
         if (key === "value" && typeof value === "string" && node.type === "text") {
           return [key, normalizedLiteral(value)];
         }
-        return [key, boundaryNode(value)];
+        return [key, boundaryNode(value, resolve)];
       }),
   );
+  if (node.type === "linkReference" || node.type === "imageReference") {
+    const target = resolve(node.identifier);
+    projected.target = target ? { url: target.url, title: target.title ?? null } : null;
+  }
+  return projected;
+}
+
+// The parser already normalises a reference's `identifier`, and CommonMark
+// lets the first definition of a label win, so resolving one is this lookup.
+// A package for it would add four roots to every shipped helper's closure.
+function referenceTargets(tree) {
+  const targets = new Map();
+  const visit = (node) => {
+    if (node.type === "definition" && !targets.has(node.identifier)) {
+      targets.set(node.identifier, node);
+    }
+    for (const child of node.children ?? []) visit(child);
+  };
+  visit(tree);
+  return (identifier) => targets.get(identifier);
 }
 
 // Text alone does not say which block a marker declares: two identical
 // paragraphs fingerprint the same, so a marker moved from one to the other
 // would change nothing. Each declared block is therefore also named by its
 // occurrence among the definition's own identical blocks, which an unrelated
-// paragraph added elsewhere does not shift.
-function boundaryOf(section, path, id) {
+// paragraph added elsewhere does not shift. The fingerprints of all own blocks
+// travel along, so `editorial` can tell a moved marker from a reworded block.
+function boundaryOf(section, path, id, resolve) {
   const runs = ownRuns(section);
   if (runs.some((run) => run.some(nestedMarker))) {
     throw new Error(`${path}: ${id} places a boundary marker inside a block`);
   }
   const seen = new Map();
   const declared = [];
+  const ownBlocks = [];
   for (const run of runs) {
     run.forEach((node, index) => {
       if (isBoundaryMarker(node)) {
@@ -142,18 +167,41 @@ function boundaryOf(section, path, id) {
         }
         return;
       }
-      const fingerprint = JSON.stringify(boundaryNode(node));
+      const fingerprint = JSON.stringify(boundaryNode(node, resolve));
       const occurrence = seen.get(fingerprint) ?? 0;
       seen.set(fingerprint, occurrence + 1);
+      ownBlocks.push(fingerprint);
       if (isBoundaryMarker(run[index - 1])) declared.push({ block: fingerprint, occurrence });
     });
   }
-  return declared.length > 0 ? JSON.stringify(declared) : null;
+  return { boundary: declared.length > 0 ? JSON.stringify(declared) : null, ownBlocks };
 }
 
 /** §A-MEMORY-01 a boundary declared before the edge that the edge left exactly as it was. */
 export function boundaryKept(prior, entry) {
   return typeof prior?.boundary === "string" && prior.boundary === entry?.boundary;
+}
+
+// `editorial` may declare, move or drop a marker, but only over text that stays
+// as written: every block declared on either side of the edge must stand,
+// by the boundary projection, among the definition's own blocks on the other
+// side. Its wording-only projection forgives link labels and heading text,
+// which a declared block freezes, so without this a reworded boundary would
+// pass under a record that names no new boundary.
+function declaredBlocks(entry) {
+  return entry?.boundary ? JSON.parse(entry.boundary).map(({ block }) => block) : [];
+}
+
+/** §A-MEMORY-01 an editorial edge changed wording only and moved markers only over unchanged blocks. */
+export function editorialKept(prior, entry, strict) {
+  const fingerprint = strict ? "strictEditorial" : "editorial";
+  const before = new Set(prior?.ownBlocks ?? []);
+  const after = new Set(entry?.ownBlocks ?? []);
+  return (
+    prior?.[fingerprint] === entry?.[fingerprint] &&
+    declaredBlocks(entry).every((block) => before.has(block)) &&
+    declaredBlocks(prior).every((block) => after.has(block))
+  );
 }
 
 /** §A-MEMORY-01 a definition changed: absent before, its meaning, or its declared boundary. */
@@ -245,6 +293,7 @@ export function parseDocument(markdown) {
 /** §A-MEMORY-01 extracts knowledge definitions from a real Markdown AST. */
 export function definitionsFromTree(tree, path) {
   const found = new Map();
+  const resolve = referenceTargets(tree);
   const visit = (node) => {
     const children = node.children ?? [];
     for (let index = 0; index < children.length; index += 1) {
@@ -263,6 +312,7 @@ export function definitionsFromTree(tree, path) {
             end += 1;
           }
           const section = children.slice(index, end);
+          const { boundary, ownBlocks } = boundaryOf(section, path, id, resolve);
           found.set(id, {
             id,
             kind: match[1],
@@ -272,7 +322,8 @@ export function definitionsFromTree(tree, path) {
             editorial: JSON.stringify(editorialSurface(section)),
             strictEditorial: JSON.stringify(strictEditorialNode(section)),
             authorizations: authorizationFingerprints(section),
-            boundary: boundaryOf(section, path, id),
+            boundary,
+            ownBlocks,
           });
         }
       }

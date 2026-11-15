@@ -1246,6 +1246,116 @@ test("a marker before an empty block, a record or inside a block declares nothin
   }
 });
 
+/** Commit `body` as the business section under an editorial record, and start the checked history after it. */
+function declaredFixture(body) {
+  const state = fixture();
+  declareBusiness(state.root, body);
+  writeFileSync(join(state.root, "docs", "architecture", "authorization.md"), EDITORIAL_RECORD);
+  commit(
+    state.root,
+    `declare\n\nKnowledge-ID-Change: editorial ${BUSINESS_ID} via ${MISSING_ARCHITECTURE_ID}`,
+  );
+  return { root: state.root, cutoff: git(state.root, ["rev-parse", "HEAD"]).trim() };
+}
+
+/** Add one more journal record after the declaring one, so the edge carries a record of its own. */
+function appendRecord(root, record) {
+  const declared = `  - action: editorial\n    ids:\n      - ${BUSINESS_ID}\n    reason: The boundary of the existing paragraph is declared.\n    references_updated: true\n`;
+  writeFileSync(
+    join(root, "docs", "architecture", "authorization.md"),
+    `# ${MISSING_ARCHITECTURE_ID} — Authorization\n\n\`\`\`yaml\nknowledge_id_changes:\n${declared}${record}\`\`\`\n`,
+  );
+}
+
+const EDITORIAL_AGAIN = `  - action: editorial\n    ids:\n      - ${BUSINESS_ID}\n    reason: Wording only.\n    references_updated: true\n`;
+const REUSE_AGAIN = `  - action: reuse\n    id: ${BUSINESS_ID}\n    reason: The boundary itself changed.\n    new_boundary: The declared block now says what it says.\n    references_updated: true\n`;
+
+test("editorial moves a marker only over text that stays as written", () => {
+  const editorial = `Knowledge-ID-Change: editorial ${BUSINESS_ID} via ${MISSING_ARCHITECTURE_ID}`;
+  for (const [before, after, expected] of [
+    [
+      `${MARK}\nOnly [approved](policy.md) requests pass.\n`,
+      `${MARK}\nOnly [unapproved](policy.md) requests pass.\n`,
+      /semantic reuse/,
+    ],
+    [
+      `${MARK}\n> ## Strict mode\n>\n> Applies.\n`,
+      `${MARK}\n> ## Lenient mode\n>\n> Applies.\n`,
+      /semantic reuse/,
+    ],
+    [
+      `${MARK}\nOnly [approved](policy.md) requests pass.\n\nWhy.\n`,
+      `Only [unapproved](policy.md) requests pass.\n\n${MARK}\nWhy.\n`,
+      /semantic reuse/,
+    ],
+    [
+      `Only [approved](policy.md) requests pass.\n\n${MARK}\nWhy.\n`,
+      `${MARK}\nOnly [unapproved](policy.md) requests pass.\n\nWhy.\n`,
+      /semantic reuse/,
+    ],
+    [
+      `${MARK}\nRequirement.\n\nSee [the policy](policy.md).\n`,
+      `${MARK}\nRequirement.\n\nSee [our policy](policy.md).\n`,
+      null,
+    ],
+  ]) {
+    const state = declaredFixture(before);
+    declareBusiness(state.root, after);
+    appendRecord(state.root, EDITORIAL_AGAIN);
+    commit(state.root, `reword as editorial\n\n${editorial}`);
+    const errors = verifyHistory(state.root, state.cutoff);
+    if (expected) assert.match(errors.join("\n"), expected, after);
+    else assert.deepEqual(errors, [], after);
+  }
+
+  const state = declaredFixture(`${MARK}\nOnly [approved](policy.md) requests pass.\n`);
+  declareBusiness(state.root, `${MARK}\nOnly [unapproved](policy.md) requests pass.\n`);
+  appendRecord(state.root, REUSE_AGAIN);
+  commit(
+    state.root,
+    `reword the boundary as reuse\n\nKnowledge-ID-Change: reuse ${BUSINESS_ID} via ${MISSING_ARCHITECTURE_ID}`,
+  );
+  assert.deepEqual(verifyHistory(state.root, state.cutoff), []);
+});
+
+test("a reference link carries the target it resolves to into the boundary", () => {
+  const revise = `Knowledge-ID-Change: revise ${BUSINESS_ID} via ${ARCHITECTURE_ID}`;
+  for (const [before, after, expected] of [
+    [
+      `${MARK}\nOnly [approved][policy] requests pass.\n\n[policy]: approved.md\n`,
+      `${MARK}\nOnly [approved][policy] requests pass.\n\n[policy]: any.md\n`,
+      /semantic reuse/,
+    ],
+    [
+      `${MARK}\nOnly [approved] requests pass.\n\n[approved]: approved.md\n`,
+      `${MARK}\nOnly [approved] requests pass.\n\n[approved]: any.md\n`,
+      /semantic reuse/,
+    ],
+    [
+      `${MARK}\nOnly [approved][policy] requests pass.\n\n## References\n\n[policy]: approved.md\n`,
+      `${MARK}\nOnly [approved][policy] requests pass.\n\n## References\n\n[policy]: any.md\n`,
+      /semantic reuse/,
+    ],
+    [
+      `${MARK}\nOnly [approved][policy] requests pass.\n\n[policy]: approved.md "A"\n`,
+      `${MARK}\nOnly [approved][policy] requests pass.\n\n[policy]: approved.md "B"\n`,
+      /semantic reuse/,
+    ],
+    [
+      `${MARK}\nRequirement.\n\nSee [the policy][policy].\n\n[policy]: approved.md\n`,
+      `${MARK}\nRequirement.\n\nSee [the policy][policy].\n\n[policy]: any.md\n`,
+      null,
+    ],
+  ]) {
+    const state = declaredFixture(before);
+    declareBusiness(state.root, after);
+    commit(state.root, `retarget a reference\n\n${revise}`);
+    const errors = verifyHistory(state.root, state.cutoff);
+    if (expected) assert.match(errors.join("\n"), expected, after);
+    else assert.deepEqual(errors, [], after);
+  }
+});
+
 test("revise names every changed id of its parent edge or covers none", () => {
   const state = boundedFixture();
   rewordBoth(state.root);
