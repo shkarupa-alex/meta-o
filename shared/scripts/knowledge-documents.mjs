@@ -41,9 +41,183 @@ function isAuthorizationBlock(node) {
   return authorizationPayload(node) !== null;
 }
 
+/** §A-MEMORY-01 marks the block right after it as the decision's declared boundary. */
+export const BOUNDARY_MARKER = /^<!--\s*mo:boundary\s*-->$/u;
+
+function isBoundaryMarker(node) {
+  return node?.type === "html" && BOUNDARY_MARKER.test(node.value.trim());
+}
+
+// A marker stays outside the semantic and editorial fingerprints; what it
+// declares is fingerprinted on its own. Any change of that fingerprint —
+// declaring a first boundary, moving, rewording or dropping one — is a change
+// of the definition, so `revise` can never be what lets a boundary appear.
+// A marker must precede a block that can state a boundary and does state
+// something; a marker at the end of a section, before a heading, rule, html or
+// a record, or before an empty block would declare nothing, and an empty
+// declaration would make every later `revise` pass.
+const BOUNDARY_BLOCKS = new Set(["paragraph", "list", "blockquote", "code", "table"]);
+
+// A definition owns its section minus the sections of its nested
+// definitions, split into the runs between them: text of the parent after a
+// nested definition is still the parent's. A parent that inherited a child's
+// markers would pass `revise` over its own text while it never declared a
+// boundary of its own, and text that belonged to nobody would let a marker
+// there declare nothing unchecked.
+function ownRuns(section) {
+  const runs = [[]];
+  let nestedDepth = null;
+  section.forEach((node, index) => {
+    if (nestedDepth !== null && node.type === "heading" && node.depth <= nestedDepth) {
+      nestedDepth = null;
+      runs.push([]);
+    }
+    if (
+      nestedDepth === null &&
+      index > 0 &&
+      node.type === "heading" &&
+      ID.test(text(node).trim())
+    ) {
+      nestedDepth = node.depth;
+    }
+    if (nestedDepth === null) runs.at(-1).push(node);
+  });
+  return runs.filter((run) => run.length > 0);
+}
+
+// A block states something only through text a reader sees; raw html alone,
+// such as a quote holding one <br>, declares nothing.
+function visibleText(node) {
+  if (node.type === "html") return "";
+  if (typeof node.value === "string") return node.value;
+  return (node.children ?? []).map(visibleText).join("");
+}
+
+// A marker only declares at the top level of its definition. One inside a
+// list, a quote or a paragraph would silently declare nothing.
+function nestedMarker(node) {
+  return (node.children ?? []).some((child) => isBoundaryMarker(child) || nestedMarker(child));
+}
+
+// The declared block is frozen as written: only whitespace in ordinary text
+// may change. Link labels and heading text are part of the boundary here,
+// unlike in the editorial projection, which forgives exactly those. A
+// reference link keeps its target in a definition that may stand anywhere in
+// the document, so the block carries the target it resolves to: retargeting
+// `[approved][policy]` moves the boundary exactly as retargeting an inline link.
+function boundaryNode(node, resolve) {
+  if (Array.isArray(node)) return node.map((item) => boundaryNode(item, resolve));
+  if (!node || typeof node !== "object") return node;
+  const projected = Object.fromEntries(
+    Object.entries(node)
+      .filter(([key]) => key !== "position")
+      .map(([key, value]) => {
+        if (key === "value" && typeof value === "string" && node.type === "text") {
+          return [key, normalizedLiteral(value)];
+        }
+        return [key, boundaryNode(value, resolve)];
+      }),
+  );
+  if (node.type === "linkReference" || node.type === "imageReference") {
+    const target = resolve(node.identifier);
+    projected.target = target ? { url: target.url, title: target.title ?? null } : null;
+  }
+  return projected;
+}
+
+// The parser already normalises a reference's `identifier`, and CommonMark
+// lets the first definition of a label win, so resolving one is this lookup.
+// A package for it would add four roots to every shipped helper's closure.
+function referenceTargets(tree) {
+  const targets = new Map();
+  const visit = (node) => {
+    if (node.type === "definition" && !targets.has(node.identifier)) {
+      targets.set(node.identifier, node);
+    }
+    for (const child of node.children ?? []) visit(child);
+  };
+  visit(tree);
+  return (identifier) => targets.get(identifier);
+}
+
+// Text alone does not say which block a marker declares: two identical
+// paragraphs fingerprint the same, so a marker moved from one to the other
+// would change nothing. Each declared block is therefore also named by its
+// occurrence among the definition's own identical blocks, which an unrelated
+// paragraph added elsewhere does not shift. The fingerprints of all own blocks
+// travel along, so `editorial` can tell a moved marker from a reworded block.
+function boundaryOf(section, path, id, resolve) {
+  const runs = ownRuns(section);
+  if (runs.some((run) => run.some(nestedMarker))) {
+    throw new Error(`${path}: ${id} places a boundary marker inside a block`);
+  }
+  const seen = new Map();
+  const declared = [];
+  const ownBlocks = [];
+  for (const run of runs) {
+    run.forEach((node, index) => {
+      if (isBoundaryMarker(node)) {
+        const block = run[index + 1];
+        if (
+          !BOUNDARY_BLOCKS.has(block?.type) ||
+          isAuthorizationBlock(block) ||
+          visibleText(block).trim() === ""
+        ) {
+          throw new Error(`${path}: ${id} declares a boundary with no block after its marker`);
+        }
+        return;
+      }
+      const fingerprint = JSON.stringify(boundaryNode(node, resolve));
+      const occurrence = seen.get(fingerprint) ?? 0;
+      seen.set(fingerprint, occurrence + 1);
+      if (!isAuthorizationBlock(node)) {
+        ownBlocks.push({ block: fingerprint, declared: isBoundaryMarker(run[index - 1]) });
+      }
+      if (isBoundaryMarker(run[index - 1])) declared.push({ block: fingerprint, occurrence });
+    });
+  }
+  return { boundary: declared.length > 0 ? JSON.stringify(declared) : null, ownBlocks };
+}
+
+/** §A-MEMORY-01 a boundary declared before the edge that the edge left exactly as it was. */
+export function boundaryKept(prior, entry) {
+  return typeof prior?.boundary === "string" && prior.boundary === entry?.boundary;
+}
+
+// `editorial` may declare, move or drop a marker, but only over text that stays
+// as written. Its wording-only projection forgives link labels and heading
+// text, which a declared block freezes, so each block declared on either side
+// of the edge is compared with the block in its own place on the other side.
+// The place, not a search: the same text elsewhere in the definition is
+// another block, and accepting it would let a reworded boundary pass under a
+// record that names no new boundary. Records and markers take no place, so a
+// moved marker or a new record shifts nothing.
+/** §A-MEMORY-01 an editorial edge changed wording only and moved markers only over unchanged blocks. */
+export function editorialKept(prior, entry, strict) {
+  const fingerprint = strict ? "strictEditorial" : "editorial";
+  if (prior?.[fingerprint] !== entry?.[fingerprint]) return false;
+  const before = prior?.ownBlocks ?? [];
+  const after = entry?.ownBlocks ?? [];
+  if (before.length !== after.length) {
+    return ![...before, ...after].some(({ declared }) => declared);
+  }
+  return before.every(
+    (block, index) =>
+      !(block.declared || after[index].declared) || block.block === after[index].block,
+  );
+}
+
+/** §A-MEMORY-01 a definition changed: absent before, its meaning, or its declared boundary. */
+export function definitionChanged(prior, entry) {
+  if (!prior) return true;
+  return prior.semantic !== entry.semantic || prior.boundary !== entry.boundary;
+}
+
 function semanticNode(node) {
   if (Array.isArray(node))
-    return node.filter((item) => !isAuthorizationBlock(item)).map(semanticNode);
+    return node
+      .filter((item) => !isAuthorizationBlock(item) && !isBoundaryMarker(item))
+      .map(semanticNode);
   if (!node || typeof node !== "object") return node;
   return Object.fromEntries(
     Object.entries(node)
@@ -87,7 +261,7 @@ function editorialSurface(nodes) {
 function strictEditorialNode(node, flexibleText = false) {
   if (Array.isArray(node)) {
     return node
-      .filter((item) => !isAuthorizationBlock(item))
+      .filter((item) => !isAuthorizationBlock(item) && !isBoundaryMarker(item))
       .map((item) => strictEditorialNode(item, flexibleText));
   }
   if (!node || typeof node !== "object") return node;
@@ -122,6 +296,7 @@ export function parseDocument(markdown) {
 /** §A-MEMORY-01 extracts knowledge definitions from a real Markdown AST. */
 export function definitionsFromTree(tree, path) {
   const found = new Map();
+  const resolve = referenceTargets(tree);
   const visit = (node) => {
     const children = node.children ?? [];
     for (let index = 0; index < children.length; index += 1) {
@@ -140,6 +315,7 @@ export function definitionsFromTree(tree, path) {
             end += 1;
           }
           const section = children.slice(index, end);
+          const { boundary, ownBlocks } = boundaryOf(section, path, id, resolve);
           found.set(id, {
             id,
             kind: match[1],
@@ -149,6 +325,8 @@ export function definitionsFromTree(tree, path) {
             editorial: JSON.stringify(editorialSurface(section)),
             strictEditorial: JSON.stringify(strictEditorialNode(section)),
             authorizations: authorizationFingerprints(section),
+            boundary,
+            ownBlocks,
           });
         }
       }

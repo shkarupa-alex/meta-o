@@ -121,12 +121,18 @@ Issue. An unresolved disposition is `needs_attention`, not permission to leave
 closure non-empty. Do not manufacture an entry to fill a category.
 
 The brief's `Knowledge-Layer: state=… reason=…` line decides how this lens
-applies. With `enabled`, the project's knowledge gates hold. With `not_enabled`,
-the project never adopted the knowledge layer or switched it off, and the
-backlog-closure part of this lens is `not_applicable`; postponed work still
-needs a routed Issue or a stated residual risk. With `needs_attention`, or with
-no such line in the brief, the lens is `unknown`: never assume an ordinary
-project.
+applies. With `enabled`, the project's knowledge gates hold, and a trailer
+`Knowledge-ID-Change: revise …` is read as a claim: the history stage proves
+only that each named definition's declared boundary block is unchanged, so read
+the diff of every definition it names, and a change outside that block which
+narrows, widens or contradicts the boundary is a finding that needs `reuse` with
+a record. In a commit that adds or moves `<!-- mo:boundary -->`, check that the
+block after it states the definition's whole boundary; a marker over auxiliary
+text is a finding. With `not_enabled`, the project never adopted the knowledge
+layer or switched it off, and the backlog-closure part of this lens is
+`not_applicable`; postponed work still needs a routed Issue or a stated residual
+risk. With `needs_attention`, or with no such line in the brief, the lens is
+`unknown`: never assume an ordinary project.
 
 Running the backlog gates belongs to the caller; judging what they guard belongs
 to the reviewer. The brief's

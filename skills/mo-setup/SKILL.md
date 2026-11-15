@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-setup; inspect or bri
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "1ff44d3671be8b08eb837096c3e5cc8979c64c70"
+  source_tree: "9e1d6c4f970d64eda3d3d92d13b1cb5439b6e429"
 ---
 
 # Set up a project for Meta-O
@@ -159,7 +159,7 @@ notebook to this project's Russian wording, and a partial schema is a call
 error. `scripts/mo-knowledge-history.mjs` goes to
 `tools/mo-knowledge-history.mjs` with its version line; a stage calling it joins
 the project's own QC with the project's own cutoff, and `AGENTS.md` gains the
-declaration section plus the trailer grammar with verbs `remove|reuse|editorial`.
+declaration section plus the trailer grammar with verbs `remove|reuse|editorial|revise`.
 Never copy this project's boundaries or commit ids: a foreign cutoff exempts
 exactly the history the target needs checked. Propose no CI job naming a path
 this repair does not create.
