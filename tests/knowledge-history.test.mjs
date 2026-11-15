@@ -1057,6 +1057,154 @@ test("a marker that declares no block is refused, so an empty boundary never let
   }
 });
 
+test("a parent never inherits the boundary of a nested definition", () => {
+  const state = fixture();
+  const child = `§${"A-FIXTURE-02"}`;
+  const nested = (own) =>
+    `# ${ARCHITECTURE_ID} — Decision\n\n${own}\n\n## ${child} — Child\n\n${MARK}\nChild boundary.\n`;
+  writeFileSync(
+    join(state.root, "docs", "architecture", "decision.md"),
+    nested(`Serves ${BUSINESS_ID}.`),
+  );
+  commit(state.root, "nest a child that declares a boundary");
+  const cutoff = git(state.root, ["rev-parse", "HEAD"]).trim();
+  writeFileSync(
+    join(state.root, "docs", "architecture", "decision.md"),
+    nested(`Serves ${BUSINESS_ID} and nothing else.`),
+  );
+  commit(
+    state.root,
+    `rewrite the parent's own text\n\nKnowledge-ID-Change: revise ${ARCHITECTURE_ID} via ${ARCHITECTURE_ID}`,
+  );
+  assert.match(
+    verifyHistory(state.root, cutoff).join("\n"),
+    new RegExp(`semantic reuse ${ARCHITECTURE_ID}`),
+  );
+});
+
+test("a declared block is frozen as written: link labels and quoted headings included", () => {
+  for (const [before, after] of [
+    ["Only [approved](policy.md) requests pass.", "Only [unapproved](policy.md) requests pass."],
+    ["> ## Strict mode\n>\n> Applies.", "> ## Lenient mode\n>\n> Applies."],
+    ["Run `make qc` first.", "Run `make  qc` first."],
+  ]) {
+    const state = fixture();
+    declareBusiness(state.root, `${MARK}\n${before}\n\nWhy it matters.\n`);
+    writeFileSync(join(state.root, "docs", "architecture", "authorization.md"), EDITORIAL_RECORD);
+    commit(
+      state.root,
+      `declare\n\nKnowledge-ID-Change: editorial ${BUSINESS_ID} via ${MISSING_ARCHITECTURE_ID}`,
+    );
+    const cutoff = git(state.root, ["rev-parse", "HEAD"]).trim();
+    declareBusiness(state.root, `${MARK}\n${after}\n\nWhy it matters.\n`);
+    commit(
+      state.root,
+      `reword the boundary\n\nKnowledge-ID-Change: revise ${BUSINESS_ID} via ${ARCHITECTURE_ID}`,
+    );
+    assert.match(verifyHistory(state.root, cutoff).join("\n"), /semantic reuse/, before);
+  }
+
+  const state = boundedFixture();
+  declareBusiness(state.root, `${MARK}\nRequirement.\n\nWhy it matters, plainer.\n`);
+  commit(
+    state.root,
+    `reflow outside the boundary\n\nKnowledge-ID-Change: revise ${BUSINESS_ID} via ${ARCHITECTURE_ID}`,
+  );
+  assert.deepEqual(verifyHistory(state.root, state.cutoff), []);
+});
+
+test("a marker moved between identical blocks is still a moved boundary", () => {
+  const twice = (first) =>
+    first
+      ? `${MARK}\nRequirement.\n\nExplanation.\n\nRequirement.\n`
+      : `Requirement.\n\nExplanation.\n\n${MARK}\nRequirement.\n`;
+  let state = fixture();
+  declareBusiness(state.root, twice(true));
+  writeFileSync(join(state.root, "docs", "architecture", "authorization.md"), EDITORIAL_RECORD);
+  commit(
+    state.root,
+    `declare\n\nKnowledge-ID-Change: editorial ${BUSINESS_ID} via ${MISSING_ARCHITECTURE_ID}`,
+  );
+  let cutoff = git(state.root, ["rev-parse", "HEAD"]).trim();
+  declareBusiness(state.root, twice(false));
+  commit(state.root, "move the marker to the twin paragraph");
+  assert.match(verifyHistory(state.root, cutoff).join("\n"), /semantic reuse/);
+
+  state = fixture();
+  declareBusiness(state.root, twice(true));
+  writeFileSync(join(state.root, "docs", "architecture", "authorization.md"), EDITORIAL_RECORD);
+  commit(
+    state.root,
+    `declare\n\nKnowledge-ID-Change: editorial ${BUSINESS_ID} via ${MISSING_ARCHITECTURE_ID}`,
+  );
+  cutoff = git(state.root, ["rev-parse", "HEAD"]).trim();
+  declareBusiness(state.root, twice(false));
+  commit(
+    state.root,
+    `move as revise\n\nKnowledge-ID-Change: revise ${BUSINESS_ID} via ${ARCHITECTURE_ID}`,
+  );
+  assert.match(verifyHistory(state.root, cutoff).join("\n"), /semantic reuse/);
+
+  state = fixture();
+  declareBusiness(state.root, `Intro.\n\n${MARK}\nRequirement.\n\nExplanation.\n`);
+  writeFileSync(join(state.root, "docs", "architecture", "authorization.md"), EDITORIAL_RECORD);
+  commit(
+    state.root,
+    `declare\n\nKnowledge-ID-Change: editorial ${BUSINESS_ID} via ${MISSING_ARCHITECTURE_ID}`,
+  );
+  cutoff = git(state.root, ["rev-parse", "HEAD"]).trim();
+  declareBusiness(state.root, `A new intro.\n\nIntro.\n\n${MARK}\nRequirement.\n\nExplanation.\n`);
+  commit(
+    state.root,
+    `add a paragraph elsewhere\n\nKnowledge-ID-Change: revise ${BUSINESS_ID} via ${ARCHITECTURE_ID}`,
+  );
+  assert.deepEqual(verifyHistory(state.root, cutoff), []);
+});
+
+test("revise can neither declare a first boundary nor drop the last one", () => {
+  let state = fixture();
+  declareBusiness(state.root, `${MARK}\nRequirement.\n`);
+  commit(
+    state.root,
+    `declare as revise\n\nKnowledge-ID-Change: revise ${BUSINESS_ID} via ${ARCHITECTURE_ID}`,
+  );
+  assert.match(verifyHistory(state.root, state.cutoff).join("\n"), /semantic reuse/);
+
+  state = boundedFixture();
+  declareBusiness(state.root, `Requirement.\n\nWhy it matters.\n`);
+  commit(
+    state.root,
+    `drop as revise\n\nKnowledge-ID-Change: revise ${BUSINESS_ID} via ${ARCHITECTURE_ID}`,
+  );
+  assert.match(verifyHistory(state.root, state.cutoff).join("\n"), /semantic reuse/);
+});
+
+test("a marker before an empty block, a record or inside a block declares nothing and is refused", () => {
+  for (const [body, error] of [
+    [`${MARK}\n>\n\nRequirement.\n`, "declares a boundary with no block after its marker"],
+    [`${MARK}\n-\n\nRequirement.\n`, "declares a boundary with no block after its marker"],
+    [
+      `${MARK}\n\`\`\`\n\`\`\`\n\nRequirement.\n`,
+      "declares a boundary with no block after its marker",
+    ],
+    [
+      `${MARK}\n\`\`\`yaml\nknowledge_id_change:\n  action: reuse\n  id: x\n\`\`\`\n\nRequirement.\n`,
+      "declares a boundary with no block after its marker",
+    ],
+    [`- Requirement.\n  ${MARK}\n  More.\n`, "places a boundary marker inside a block"],
+    [`> ${MARK}\n> Requirement.\n`, "places a boundary marker inside a block"],
+  ]) {
+    const state = fixture();
+    declareBusiness(state.root, body);
+    commit(state.root, "declare nothing");
+    assert.throws(
+      () => verifyHistory(state.root, state.cutoff),
+      new RegExp(`${BUSINESS_ID} ${error}`),
+      JSON.stringify(body),
+    );
+  }
+});
+
 test("revise names every changed id of its parent edge or covers none", () => {
   const state = boundedFixture();
   rewordBoth(state.root);

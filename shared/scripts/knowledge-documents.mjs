@@ -52,19 +52,74 @@ function isBoundaryMarker(node) {
 // declares is fingerprinted on its own. Any change of that fingerprint —
 // declaring a first boundary, moving, rewording or dropping one — is a change
 // of the definition, so `revise` can never be what lets a boundary appear.
-// A marker must precede a block that can state a boundary; a marker at the end
-// of a section or before a heading, rule, html or a record would declare
-// nothing, and an empty declaration would make every later `revise` pass.
+// A marker must precede a block that can state a boundary and does state
+// something; a marker at the end of a section, before a heading, rule, html or
+// a record, or before an empty block would declare nothing, and an empty
+// declaration would make every later `revise` pass.
 const BOUNDARY_BLOCKS = new Set(["paragraph", "list", "blockquote", "code", "table"]);
 
+// A definition owns only the part of its section before its first nested
+// definition. A parent that inherited a child's markers would pass `revise`
+// over its own text while it never declared a boundary of its own.
+function ownPart(section) {
+  const end = section.findIndex(
+    (node, index) => index > 0 && node.type === "heading" && ID.test(text(node).trim()),
+  );
+  return end < 0 ? section : section.slice(0, end);
+}
+
+// A marker only declares at the top level of its definition. One inside a
+// list, a quote or a paragraph would silently declare nothing.
+function nestedMarker(node) {
+  return (node.children ?? []).some((child) => isBoundaryMarker(child) || nestedMarker(child));
+}
+
+// The declared block is frozen as written: only whitespace in ordinary text
+// may change. Link labels and heading text are part of the boundary here,
+// unlike in the editorial projection, which forgives exactly those.
+function boundaryNode(node) {
+  if (Array.isArray(node)) return node.map(boundaryNode);
+  if (!node || typeof node !== "object") return node;
+  return Object.fromEntries(
+    Object.entries(node)
+      .filter(([key]) => key !== "position")
+      .map(([key, value]) => {
+        if (key === "value" && typeof value === "string" && node.type === "text") {
+          return [key, normalizedLiteral(value)];
+        }
+        return [key, boundaryNode(value)];
+      }),
+  );
+}
+
+// Text alone does not say which block a marker declares: two identical
+// paragraphs fingerprint the same, so a marker moved from one to the other
+// would change nothing. Each declared block is therefore also named by its
+// occurrence among the definition's own identical blocks, which an unrelated
+// paragraph added elsewhere does not shift.
 function boundaryOf(section, path, id) {
-  const declared = section.flatMap((node, index) => {
-    if (!isBoundaryMarker(node)) return [];
-    const block = section[index + 1];
-    if (!BOUNDARY_BLOCKS.has(block?.type) || isAuthorizationBlock(block)) {
-      throw new Error(`${path}: ${id} declares a boundary with no block after its marker`);
+  const own = ownPart(section);
+  if (own.some(nestedMarker)) {
+    throw new Error(`${path}: ${id} places a boundary marker inside a block`);
+  }
+  const seen = new Map();
+  const declared = [];
+  own.forEach((node, index) => {
+    if (isBoundaryMarker(node)) {
+      const block = own[index + 1];
+      if (
+        !BOUNDARY_BLOCKS.has(block?.type) ||
+        isAuthorizationBlock(block) ||
+        text(block).trim() === ""
+      ) {
+        throw new Error(`${path}: ${id} declares a boundary with no block after its marker`);
+      }
+      return;
     }
-    return [strictEditorialNode(block)];
+    const fingerprint = JSON.stringify(boundaryNode(node));
+    const occurrence = seen.get(fingerprint) ?? 0;
+    seen.set(fingerprint, occurrence + 1);
+    if (isBoundaryMarker(own[index - 1])) declared.push({ block: fingerprint, occurrence });
   });
   return declared.length > 0 ? JSON.stringify(declared) : null;
 }

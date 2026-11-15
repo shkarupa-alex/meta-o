@@ -10025,14 +10025,46 @@ function isBoundaryMarker(node2) {
   return node2?.type === "html" && BOUNDARY_MARKER.test(node2.value.trim());
 }
 var BOUNDARY_BLOCKS = /* @__PURE__ */ new Set(["paragraph", "list", "blockquote", "code", "table"]);
+function ownPart(section) {
+  const end = section.findIndex(
+    (node2, index2) => index2 > 0 && node2.type === "heading" && ID.test(text3(node2).trim())
+  );
+  return end < 0 ? section : section.slice(0, end);
+}
+function nestedMarker(node2) {
+  return (node2.children ?? []).some((child) => isBoundaryMarker(child) || nestedMarker(child));
+}
+function boundaryNode(node2) {
+  if (Array.isArray(node2)) return node2.map(boundaryNode);
+  if (!node2 || typeof node2 !== "object") return node2;
+  return Object.fromEntries(
+    Object.entries(node2).filter(([key]) => key !== "position").map(([key, value]) => {
+      if (key === "value" && typeof value === "string" && node2.type === "text") {
+        return [key, normalizedLiteral(value)];
+      }
+      return [key, boundaryNode(value)];
+    })
+  );
+}
 function boundaryOf(section, path, id) {
-  const declared = section.flatMap((node2, index2) => {
-    if (!isBoundaryMarker(node2)) return [];
-    const block = section[index2 + 1];
-    if (!BOUNDARY_BLOCKS.has(block?.type) || isAuthorizationBlock(block)) {
-      throw new Error(`${path}: ${id} declares a boundary with no block after its marker`);
+  const own3 = ownPart(section);
+  if (own3.some(nestedMarker)) {
+    throw new Error(`${path}: ${id} places a boundary marker inside a block`);
+  }
+  const seen = /* @__PURE__ */ new Map();
+  const declared = [];
+  own3.forEach((node2, index2) => {
+    if (isBoundaryMarker(node2)) {
+      const block = own3[index2 + 1];
+      if (!BOUNDARY_BLOCKS.has(block?.type) || isAuthorizationBlock(block) || text3(block).trim() === "") {
+        throw new Error(`${path}: ${id} declares a boundary with no block after its marker`);
+      }
+      return;
     }
-    return [strictEditorialNode(block)];
+    const fingerprint = JSON.stringify(boundaryNode(node2));
+    const occurrence = seen.get(fingerprint) ?? 0;
+    seen.set(fingerprint, occurrence + 1);
+    if (isBoundaryMarker(own3[index2 - 1])) declared.push({ block: fingerprint, occurrence });
   });
   return declared.length > 0 ? JSON.stringify(declared) : null;
 }
@@ -10931,4 +10963,4 @@ export {
   runHistory,
   verifyHistory
 };
-// MO-KNOWLEDGE-HISTORY-SOURCE 0.2.0 75c87ff4f9e2b0d6e79e09020fa66ef79036c747bb8e9065cf71695f532baa30
+// MO-KNOWLEDGE-HISTORY-SOURCE 0.2.0 ab1087b9b4a39defd1e11644cd3528d92a4a3caf4814eb0e730c326a26f6edcf

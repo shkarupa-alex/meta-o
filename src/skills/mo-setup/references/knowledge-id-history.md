@@ -95,8 +95,14 @@ record is needed: it changes a body without moving its boundary — a clearer
 wording, text moved between sections, updated references or literals — and Git
 history is its journal. A definition declares its boundary with a line
 `<!-- mo:boundary -->` right before the block — a paragraph, list, quote, code
-block or table — that states it; a marker with no such block after it makes the
-stage refuse the document. Declaring a first boundary, and changing, moving or
+block or table — that states it, at the top level of its own part of the
+section, before any nested definition: a nested definition's markers are its
+own and never its parent's. A marker with no such block after it, before an
+empty block, or inside a list, quote or paragraph makes the stage refuse the
+document. The declared block is compared as written, link labels and heading
+text included, with only whitespace in prose free to change, and by which of
+the definition's identical blocks it is, so moving a marker onto an identical
+twin is still a move. Declaring a first boundary, and changing, moving or
 dropping a declared one, changes the definition: declaring, moving or dropping a
 marker over unchanged text is an `editorial` change with its record, and
 rewording a declared block is a `reuse` with a record. `revise` passes only for
