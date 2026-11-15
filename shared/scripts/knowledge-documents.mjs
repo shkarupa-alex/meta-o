@@ -58,14 +58,39 @@ function isBoundaryMarker(node) {
 // declaration would make every later `revise` pass.
 const BOUNDARY_BLOCKS = new Set(["paragraph", "list", "blockquote", "code", "table"]);
 
-// A definition owns only the part of its section before its first nested
-// definition. A parent that inherited a child's markers would pass `revise`
-// over its own text while it never declared a boundary of its own.
-function ownPart(section) {
-  const end = section.findIndex(
-    (node, index) => index > 0 && node.type === "heading" && ID.test(text(node).trim()),
-  );
-  return end < 0 ? section : section.slice(0, end);
+// A definition owns its section minus the sections of its nested
+// definitions, split into the runs between them: text of the parent after a
+// nested definition is still the parent's. A parent that inherited a child's
+// markers would pass `revise` over its own text while it never declared a
+// boundary of its own, and text that belonged to nobody would let a marker
+// there declare nothing unchecked.
+function ownRuns(section) {
+  const runs = [[]];
+  let nestedDepth = null;
+  section.forEach((node, index) => {
+    if (nestedDepth !== null && node.type === "heading" && node.depth <= nestedDepth) {
+      nestedDepth = null;
+      runs.push([]);
+    }
+    if (
+      nestedDepth === null &&
+      index > 0 &&
+      node.type === "heading" &&
+      ID.test(text(node).trim())
+    ) {
+      nestedDepth = node.depth;
+    }
+    if (nestedDepth === null) runs.at(-1).push(node);
+  });
+  return runs.filter((run) => run.length > 0);
+}
+
+// A block states something only through text a reader sees; raw html alone,
+// such as a quote holding one <br>, declares nothing.
+function visibleText(node) {
+  if (node.type === "html") return "";
+  if (typeof node.value === "string") return node.value;
+  return (node.children ?? []).map(visibleText).join("");
 }
 
 // A marker only declares at the top level of its definition. One inside a
@@ -98,29 +123,31 @@ function boundaryNode(node) {
 // occurrence among the definition's own identical blocks, which an unrelated
 // paragraph added elsewhere does not shift.
 function boundaryOf(section, path, id) {
-  const own = ownPart(section);
-  if (own.some(nestedMarker)) {
+  const runs = ownRuns(section);
+  if (runs.some((run) => run.some(nestedMarker))) {
     throw new Error(`${path}: ${id} places a boundary marker inside a block`);
   }
   const seen = new Map();
   const declared = [];
-  own.forEach((node, index) => {
-    if (isBoundaryMarker(node)) {
-      const block = own[index + 1];
-      if (
-        !BOUNDARY_BLOCKS.has(block?.type) ||
-        isAuthorizationBlock(block) ||
-        text(block).trim() === ""
-      ) {
-        throw new Error(`${path}: ${id} declares a boundary with no block after its marker`);
+  for (const run of runs) {
+    run.forEach((node, index) => {
+      if (isBoundaryMarker(node)) {
+        const block = run[index + 1];
+        if (
+          !BOUNDARY_BLOCKS.has(block?.type) ||
+          isAuthorizationBlock(block) ||
+          visibleText(block).trim() === ""
+        ) {
+          throw new Error(`${path}: ${id} declares a boundary with no block after its marker`);
+        }
+        return;
       }
-      return;
-    }
-    const fingerprint = JSON.stringify(boundaryNode(node));
-    const occurrence = seen.get(fingerprint) ?? 0;
-    seen.set(fingerprint, occurrence + 1);
-    if (isBoundaryMarker(own[index - 1])) declared.push({ block: fingerprint, occurrence });
-  });
+      const fingerprint = JSON.stringify(boundaryNode(node));
+      const occurrence = seen.get(fingerprint) ?? 0;
+      seen.set(fingerprint, occurrence + 1);
+      if (isBoundaryMarker(run[index - 1])) declared.push({ block: fingerprint, occurrence });
+    });
+  }
   return declared.length > 0 ? JSON.stringify(declared) : null;
 }
 

@@ -10025,11 +10025,25 @@ function isBoundaryMarker(node2) {
   return node2?.type === "html" && BOUNDARY_MARKER.test(node2.value.trim());
 }
 var BOUNDARY_BLOCKS = /* @__PURE__ */ new Set(["paragraph", "list", "blockquote", "code", "table"]);
-function ownPart(section) {
-  const end = section.findIndex(
-    (node2, index2) => index2 > 0 && node2.type === "heading" && ID.test(text3(node2).trim())
-  );
-  return end < 0 ? section : section.slice(0, end);
+function ownRuns(section) {
+  const runs = [[]];
+  let nestedDepth = null;
+  section.forEach((node2, index2) => {
+    if (nestedDepth !== null && node2.type === "heading" && node2.depth <= nestedDepth) {
+      nestedDepth = null;
+      runs.push([]);
+    }
+    if (nestedDepth === null && index2 > 0 && node2.type === "heading" && ID.test(text3(node2).trim())) {
+      nestedDepth = node2.depth;
+    }
+    if (nestedDepth === null) runs.at(-1).push(node2);
+  });
+  return runs.filter((run) => run.length > 0);
+}
+function visibleText(node2) {
+  if (node2.type === "html") return "";
+  if (typeof node2.value === "string") return node2.value;
+  return (node2.children ?? []).map(visibleText).join("");
 }
 function nestedMarker(node2) {
   return (node2.children ?? []).some((child) => isBoundaryMarker(child) || nestedMarker(child));
@@ -10047,25 +10061,27 @@ function boundaryNode(node2) {
   );
 }
 function boundaryOf(section, path, id) {
-  const own3 = ownPart(section);
-  if (own3.some(nestedMarker)) {
+  const runs = ownRuns(section);
+  if (runs.some((run) => run.some(nestedMarker))) {
     throw new Error(`${path}: ${id} places a boundary marker inside a block`);
   }
   const seen = /* @__PURE__ */ new Map();
   const declared = [];
-  own3.forEach((node2, index2) => {
-    if (isBoundaryMarker(node2)) {
-      const block = own3[index2 + 1];
-      if (!BOUNDARY_BLOCKS.has(block?.type) || isAuthorizationBlock(block) || text3(block).trim() === "") {
-        throw new Error(`${path}: ${id} declares a boundary with no block after its marker`);
+  for (const run of runs) {
+    run.forEach((node2, index2) => {
+      if (isBoundaryMarker(node2)) {
+        const block = run[index2 + 1];
+        if (!BOUNDARY_BLOCKS.has(block?.type) || isAuthorizationBlock(block) || visibleText(block).trim() === "") {
+          throw new Error(`${path}: ${id} declares a boundary with no block after its marker`);
+        }
+        return;
       }
-      return;
-    }
-    const fingerprint = JSON.stringify(boundaryNode(node2));
-    const occurrence = seen.get(fingerprint) ?? 0;
-    seen.set(fingerprint, occurrence + 1);
-    if (isBoundaryMarker(own3[index2 - 1])) declared.push({ block: fingerprint, occurrence });
-  });
+      const fingerprint = JSON.stringify(boundaryNode(node2));
+      const occurrence = seen.get(fingerprint) ?? 0;
+      seen.set(fingerprint, occurrence + 1);
+      if (isBoundaryMarker(run[index2 - 1])) declared.push({ block: fingerprint, occurrence });
+    });
+  }
   return declared.length > 0 ? JSON.stringify(declared) : null;
 }
 function boundaryKept(prior, entry) {
@@ -10963,4 +10979,4 @@ export {
   runHistory,
   verifyHistory
 };
-// MO-KNOWLEDGE-HISTORY-SOURCE 0.2.0 ab1087b9b4a39defd1e11644cd3528d92a4a3caf4814eb0e730c326a26f6edcf
+// MO-KNOWLEDGE-HISTORY-SOURCE 0.2.0 d99c6bae0616adc254a01f2479f526d27415061000cfb4275e475c73d4d49567

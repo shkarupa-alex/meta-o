@@ -1082,6 +1082,46 @@ test("a parent never inherits the boundary of a nested definition", () => {
   );
 });
 
+test("a parent's text after a nested definition is still the parent's", () => {
+  const child = `§${"A-FIXTURE-02"}`;
+  const layout = (after) =>
+    `# ${ARCHITECTURE_ID} — Decision\n\n${MARK}\nServes ${BUSINESS_ID}.\n\n` +
+    `## ${child} — Child\n\nChild text.\n\n## Not required\n\n${after}`;
+  for (const [after, error] of [
+    [`Text.\n\n${MARK}\n`, "declares a boundary with no block after its marker"],
+    [`> ${MARK}\n> Quoted.\n`, "places a boundary marker inside a block"],
+  ]) {
+    const state = fixture();
+    writeFileSync(join(state.root, "docs", "architecture", "decision.md"), layout(after));
+    commit(state.root, "declare nothing after a nested definition");
+    assert.throws(
+      () => verifyHistory(state.root, state.cutoff),
+      new RegExp(`${ARCHITECTURE_ID} ${error}`),
+      JSON.stringify(after),
+    );
+  }
+
+  const state = fixture();
+  writeFileSync(
+    join(state.root, "docs", "architecture", "decision.md"),
+    layout(`${MARK}\nNothing else is required.\n`),
+  );
+  commit(state.root, "declare two boundaries around a nested definition");
+  const cutoff = git(state.root, ["rev-parse", "HEAD"]).trim();
+  writeFileSync(
+    join(state.root, "docs", "architecture", "decision.md"),
+    layout(`${MARK}\nA retry is also required.\n`),
+  );
+  commit(
+    state.root,
+    `move the later boundary as revise\n\nKnowledge-ID-Change: revise ${ARCHITECTURE_ID} via ${ARCHITECTURE_ID}`,
+  );
+  assert.match(
+    verifyHistory(state.root, cutoff).join("\n"),
+    new RegExp(`semantic reuse ${ARCHITECTURE_ID}`),
+  );
+});
+
 test("a declared block is frozen as written: link labels and quoted headings included", () => {
   for (const [before, after] of [
     ["Only [approved](policy.md) requests pass.", "Only [unapproved](policy.md) requests pass."],
