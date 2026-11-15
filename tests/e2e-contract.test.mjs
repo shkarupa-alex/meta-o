@@ -7,7 +7,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -87,7 +87,7 @@ test("Orca gets the complete acceptance matrix the document defines", () => {
   );
 });
 
-test("watchdog and documentation carry-forward scenarios are explicit", () => {
+test("watchdog scenarios and per-scenario E2E evidence are explicit", () => {
   const watchdog = scenarioNumbers(e2e, "W");
   assert.deepEqual(
     watchdog,
@@ -98,8 +98,12 @@ test("watchdog and documentation carry-forward scenarios are explicit", () => {
   for (const index of watchdog) assert.match(e2e, new RegExp(`\\| W${index}\\s+\\|`));
   assert.match(e2eProse, /одно неблокирующее точное сообщение/);
   assert.match(e2eProse, /неизменившийся дубликат блокирует доставку/);
-  assert.match(e2eProse, /оба ревьюера финального SHA явно подтвердили/);
-  assert.match(e2eProse, /скил, инструкции агента, критерии приёмки или этот контракт/);
+  // §A-ORCHESTRATION-03 replaced the documentation-only carry-forward: evidence
+  // stays with its scenario's SHA until the final pair says the change touched it.
+  assert.match(e2eProse, /Доказательство принадлежит сценарию, а не финальному SHA/);
+  assert.match(e2eProse, /находку `e2e_affected` или `e2e_missing`/);
+  assert.match(e2eProse, /полный набор запускают только по просьбе пользователя/);
+  assert.doesNotMatch(e2eProse, /Перенос проверки только для документации/);
 });
 
 test("acceptance maps all major requirements to deterministic and live proof", () => {
@@ -124,6 +128,11 @@ test("make mo-e2e names the current scenarios and cannot be mistaken for pass", 
   // this is the exact pair that drifted apart while both sides stayed green.
   assert.match(result.stdout, new RegExp(`B1-B${scenarioNumbers(e2e, "B").at(-1)}\\b`, "u"));
   assert.match(result.stdout, new RegExp(`W1-W${scenarioNumbers(e2e, "W").at(-1)}\\b`, "u"));
+  // A named live scenario outside the B and W ranges is announced by its own
+  // id, or no agent reading the entry point would know it exists.
+  const live = scenarioCells(e2e, "LIVE-");
+  assert.ok(live.length >= 1, "the live proof-order scenario disappeared");
+  for (const id of live) assert.match(result.stdout, new RegExp(`\\b${id}\\b`, "u"), id);
   assert.doesNotMatch(result.stdout, /phase-0|Omnigent|H13|OM1/);
 });
 
@@ -155,4 +164,106 @@ test("a scenario row the announced range cannot name is refused", () => {
     scenarioNumbers(rows([...canonical, "Повторить B7 после правки"]), "B"),
     canonical.map((_, step) => step + 1),
   );
+});
+
+/**
+ * The proof order and the per-scenario E2E exception of §A-ORCHESTRATION-03
+ * live in instructions, not in a helper: each actor reads only its own skill
+ * and the references bundled with it, so the rule has to stand in every one of
+ * those texts, source and generated alike, or one actor keeps the old order.
+ */
+test("every actor reads the E2E proof order and the per-scenario evidence form", () => {
+  const read = (path) => readFileSync(join(ROOT, path), "utf8").replaceAll(/\s+/gu, " ");
+  const evidence =
+    "E2E-Evidence: <scenario-id> sha=<40-hex> result=<pass|not_applicable> source=<dispatch-id>";
+  const coverage = "E2E-Coverage: <scenario-id> acceptance=<row-id>[,<row-id>…]";
+  // A project with scenarios whose task touches none of them still owes the
+  // brief exactly one E2E form; without this line the only choices were a
+  // spent UNKNOWN round or a project-wide `not_applicable` that is false.
+  const noTaskScenarios =
+    "E2E: not_applicable reason=no_task_scenarios sha=<40-hex> source=<dispatch-id> basis=";
+  // A scenario the executor cannot fix used to bounce back to it forever and
+  // keep the review from starting; only `fail` and `unknown` hold review now.
+  const externalBlock = "is an external block";
+  // The block travels in the line itself, so a reviewer can tell it from a
+  // caller's error without a note only the orchestrator saw.
+  const blockedEvidence =
+    "E2E-Evidence: <scenario-id> sha=<40-hex> result=<blocked:external_capability|not_run> source=<dispatch-id> cause=<capability|environment|profile>:<name>";
+  const expectations = {
+    "shared/references/methodology.md": [
+      "The two proof loops run in order and never alternate.",
+      evidence,
+      coverage,
+      "`scope=full` runs only on the user's explicit request.",
+      "`E2E: not_evaluated reason=standalone`",
+      "a new SHA alone reruns nothing",
+      noTaskScenarios,
+      "`git merge-base --is-ancestor <sha> <candidate>`",
+      "A `fail` or `unknown` never reaches a reviewer",
+      externalBlock,
+      // The wait is its own paragraph, so the block's instructions never attach to it.
+      "An exhausted subscription window or a temporary provider refusal is a wait, not a block, and none of that applies to it",
+    ],
+    "shared/references/review-brief.md": [
+      // The brief also carries an external block as a known, unproven scenario.
+      evidence,
+      blockedEvidence,
+      externalBlock,
+      "never enters a brief",
+      coverage,
+      "E2E: not_applicable reason=",
+      noTaskScenarios,
+      "E2E: not_evaluated reason=standalone",
+    ],
+    "shared/references/review-protocol.md": [
+      "`e2e_affected` names the change",
+      "`e2e_missing` names the scenario",
+      "With `not_evaluated` this lens is off",
+      "Overlapping paths are a hint, not a verdict",
+      "A `reason=no_task_scenarios` line is checked like an evidence line",
+      "is an external block the caller already reported",
+      "such a line without that `cause=` is the same `UNKNOWN`",
+    ],
+    "src/skills/mo-e2e/SKILL.md": [
+      evidence,
+      coverage,
+      "`scope=task` or `scope=full`",
+      noTaskScenarios,
+      "The caller starts no review while a `fail` or `unknown` stands.",
+      blockedEvidence,
+      externalBlock,
+      "is the caller's own error, never an external block",
+    ],
+    "src/skills/mo-orchestrate-orca/SKILL.md": [
+      "Run the proof loops in order, never alternating.",
+      "a new SHA alone reruns nothing",
+      "never write that line yourself for a project that has scenarios",
+      "`git merge-base --is-ancestor`",
+      externalBlock,
+      "never send it back and never rerun it while the block stands",
+      // The wait has its own instruction, so the block's "tell the human once"
+      // never reads as applying to a quota pause.
+      "is an external block the executor cannot fix: never send it back",
+      "An exhausted subscription window or a temporary provider refusal is a wait, not a block: wait for the next window or retry through the run's one waiter, then rerun only that scenario, tell nobody,",
+    ],
+    "src/skills/mo-review-orca/SKILL.md": [
+      "write `E2E: not_evaluated reason=standalone`",
+      "it is a known, unproven scenario, not a malformed form",
+    ],
+    "src/skills/mo-reviewer/SKILL.md": ["`E2E: not_evaluated reason=standalone` you raise no"],
+  };
+  for (const [path, phrases] of Object.entries(expectations)) {
+    // A shared reference reaches an actor only as the copy bundled into its
+    // skill, so the generated copies are where the rule has to be read.
+    const generated = path.startsWith("src/skills/")
+      ? [path.replace(/^src\//u, "")]
+      : ["mo-orchestrate-orca", "mo-review-orca", "mo-reviewer"]
+          .map((skill) => `skills/${skill}/references/${path.split("/").at(-1)}`)
+          .filter((copy) => existsSync(join(ROOT, copy)));
+    for (const file of [path, ...generated]) {
+      const text = read(file);
+      for (const phrase of phrases) assert.ok(text.includes(phrase), `${file}: ${phrase}`);
+      assert.doesNotMatch(text, /documentation-only (E2E )?carry-forward/u, file);
+    }
+  }
 });

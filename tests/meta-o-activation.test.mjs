@@ -121,18 +121,19 @@ test("an undeclared exact Meta-O reference fails the activation lint", () => {
   );
 });
 
-test("the diagnostics skills are leaves that only the human starts", () => {
-  // Both act on the user's own behalf: one polls live participants, the other
-  // reads the user's session logs. An edge from any skill would take that
-  // decision away from the human.
-  const diagnostics = ["mo-convergence", "mo-debug"];
+test("the diagnostics skills and the owner's quiz are leaves that only the human starts", () => {
+  // All three act on the user's own behalf: one polls live participants, one
+  // reads the user's session logs, and the quiz asks the owner about the agent's
+  // own decisions. An edge from any skill would take that decision away from
+  // the human.
+  const humanOnly = ["mo-convergence", "mo-debug", "mo-quiz"];
   for (const name of moSkills("src/skills")) {
     const document = skillDocument("src/skills", name);
-    for (const callee of diagnostics) {
+    for (const callee of humanOnly) {
       assert.equal(calls(document, name).includes(callee), false, `${name} calls ${callee}`);
     }
   }
-  for (const name of diagnostics) {
+  for (const name of humanOnly) {
     const document = skillDocument("src/skills", name);
     assert.deepEqual(calls(document, name), ["none"], `${name}: not a leaf`);
     assert.match(

@@ -30,19 +30,50 @@ export const UNKNOWN_REASONS = new Set([
   "review_incomplete",
 ]);
 
-// The six service lines, in the only order they may take. Delegation carries a
-// closed value of its own, so a wrong value there is named separately from a
-// line that is missing or out of place.
+// The seven service lines, in the only order they may take. Delegation and
+// Round carry closed values of their own, so a wrong value there is named
+// separately from a line that is missing or out of place.
 const HEADER = [
   /^Review-Execution: (\S+)$/u,
   /^Candidate: ([a-f0-9]{40})$/u,
   /^Mode: requested=(\S+) effective=(\S+)$/u,
+  /^Round: (.*)$/u,
   /^Delegation: .*$/u,
   /^Verdict: (\S+)$/u,
   /^Counts: P0=(\d+) P1=(\d+) P2=(\d+) P3=(\d+)$/u,
 ];
 
+const ROUND_STEP = 3;
+
 const fail = (reason, line) => ({ status: "malformed", reason, line: line + 1 });
+
+const ROUND =
+  /^attempt=([1-9][0-9]{0,5})\/([1-9][0-9]{0,5}) deep_reads=(0|[1-9][0-9]{0,5}) fragment=([a-z0-9-]{1,40})$/u;
+
+/**
+ * Read the value of a `Round` line: the attempt, its limit and the deep reads
+ * of one content fragment.
+ *
+ * §A-REVIEW-04 carries the round counters in the body itself, because a count
+ * kept only in a coordinator's context is lost with that context. The values
+ * come from the brief and reach the body through flags, never through a
+ * hand-copied line; an attempt over its limit is named apart from a line that
+ * is merely misspelled, because it is the budget, not the typing, that failed.
+ */
+export function parseRound(value) {
+  const match = ROUND.exec(value ?? "");
+  if (match === null) return { error: "round_malformed" };
+  const [attempt, limit, deepReads] = match.slice(1, 4).map(Number);
+  if (deepReads > attempt) return { error: "round_malformed" };
+  if (attempt > limit) return { error: "round_exceeds_budget" };
+  return { round: { attempt, limit, deepReads, fragment: match[4] } };
+}
+
+/** §A-REVIEW-04 prints a round in the one form the grammar reads back. */
+export function roundLine(round) {
+  if (round === undefined) return undefined;
+  return `Round: attempt=${round.attempt}/${round.limit} deep_reads=${round.deepReads} fragment=${round.fragment}`;
+}
 
 /**
  * The top-level paragraph nodes, each as its first line and its own rows.
@@ -118,24 +149,32 @@ function readEnvelope(lines, prose) {
   let row = 0;
   for (const [step, pattern] of HEADER.entries()) {
     if (step > 0 && lines[row] === "") row += 1;
-    if (!prose.has(row) || !pattern.test(lines[row] ?? "")) return fail("header_order", row);
+    if (!prose.has(row) || !pattern.test(lines[row] ?? "")) {
+      // A report written before the round line existed, or by a reviewer who
+      // left it out, is missing that line rather than out of order.
+      return fail(step === ROUND_STEP ? "round_missing" : "header_order", row);
+    }
     rows.push(row);
     row += 1;
   }
-  const [execution, candidate, mode, delegation, verdict, counts] = rows.map((at, step) =>
+  const [execution, candidate, mode, round, delegation, verdict, counts] = rows.map((at, step) =>
     HEADER[step].exec(lines[at]),
   );
-  if (delegation[0] !== "Delegation: none") return fail("delegation", rows[3]);
   if (!MODES.has(mode[1]) || !MODES.has(mode[2])) return fail("header_order", rows[2]);
-  if (!VERDICTS.includes(verdict[1])) return fail("verdict", rows[4]);
+  const counters = parseRound(round[1]);
+  if (counters.error) return fail(counters.error, rows[ROUND_STEP]);
+  if (delegation[0] !== "Delegation: none") return fail("delegation", rows[4]);
+  if (!VERDICTS.includes(verdict[1])) return fail("verdict", rows[5]);
   return {
     execution: execution[1],
     candidate: candidate[1],
     requested: mode[1],
     effective: mode[2],
+    round: counters.round,
+    roundRow: rows[ROUND_STEP],
     verdict: verdict[1],
     counts: counts.slice(1).map(Number),
-    countsRow: rows[5],
+    countsRow: rows[6],
   };
 }
 
@@ -151,7 +190,8 @@ function modeChangeAllowed(requested, effective) {
  * Check the envelope against what this caller asked for.
  *
  * §A-REVIEW-04 keeps the expected values with the caller: a report that is
- * internally consistent but answers a different dispatch, candidate or mode is
+ * internally consistent but answers a different dispatch, candidate, mode or
+ * round is
  * somebody else's report, and a stale one reads exactly like a fresh one.
  */
 function readHeader(lines, prose, expected) {
@@ -165,6 +205,9 @@ function readHeader(lines, prose, expected) {
   }
   if (expected.effectiveMode !== undefined && envelope.effective !== expected.effectiveMode) {
     return fail("mode_mismatch", 2);
+  }
+  if (roundLine(envelope.round) !== roundLine(expected.round)) {
+    return fail("round_mismatch", envelope.roundRow);
   }
   const last = lines.length - 1;
   if (lines[last] !== `End-Review: ${envelope.execution}` || !prose.has(last)) {
@@ -220,7 +263,7 @@ function readIndexLayout(lines, prose, from, to) {
  * with two findings. Nothing else stands in the index: `Unknown-Reason`
  * belongs to the UNKNOWN account, where the template prints it.
  */
-function readIndex(paragraphs, literal, from, to, counts) {
+function readIndex(paragraphs, literal, from, to, { counts, verdict }) {
   const entries = [];
   for (const { line, rows } of paragraphs) {
     // Rows are taken by their own line, not by where their paragraph starts:
@@ -242,6 +285,9 @@ function readIndex(paragraphs, literal, from, to, counts) {
     if (entry.key !== `F-${String(step + 1).padStart(3, "0")}`)
       return fail("index_key_order", entry.line);
   }
+  // A PASS that indexes a finding is not an empty verdict, whatever its counts
+  // say; naming it so tells the reviewer which of the two to correct.
+  if (verdict === "PASS" && entries.length > 0) return fail("pass_not_empty", entries[0].line);
   const severities = [0, 0, 0, 0];
   for (const entry of entries) severities[Number(entry.severity.slice(1))] += 1;
   const total = counts.reduce((sum, count) => sum + count, 0);
@@ -359,13 +405,14 @@ function readEvidence(lines, prose, sections, header, index) {
   const findingsEnd =
     header.verdict === "UNKNOWN" ? sections.found.get("Unknown-Account")[0] : at.get("Unknowns");
   const findingBody = bodyOf(lines, at.get("Findings"), findingsEnd);
-  if (header.verdict !== "FINDINGS") {
-    if (index.keys.length > 0 || findingBody.length > 0) {
-      return fail("pass_not_empty", at.get("Findings"));
-    }
+  // An UNKNOWN may still carry what it did prove: its findings are ordinary
+  // findings with bodies, and only the verdict says the review is incomplete.
+  // Without an index, a PASS or an UNKNOWN leaves `Findings` empty.
+  if (index.keys.length === 0) {
+    if (header.verdict === "FINDINGS") return fail("counts_mismatch", header.countsRow);
+    if (findingBody.length > 0) return fail("pass_not_empty", at.get("Findings"));
     return {};
   }
-  if (index.keys.length === 0) return fail("counts_mismatch", header.countsRow);
   const span = { from: at.get("Findings"), to: findingsEnd };
   return readFindingBodies(lines, prose, span, index.keys);
 }
@@ -405,7 +452,7 @@ export function validateReport(text, expected) {
     literalRows(fromMarkdown(text)),
     header.countsRow,
     sections.evidence,
-    header.counts,
+    header,
   );
   if (index.status === "malformed") return index;
   const evidence = readEvidence(lines, markers, sections, header, index);
@@ -475,6 +522,27 @@ function templateSections(verdict, unknownReason) {
   ];
 }
 
+/** §A-REVIEW-04 names the first template input the grammar could not print. */
+function templateError({ verdict, dispatch, candidate, requested, effective, round, reason }) {
+  if (!VERDICTS.includes(verdict)) return "--verdict must be PASS, FINDINGS or UNKNOWN";
+  if (typeof dispatch !== "string" || !/^\S+$/u.test(dispatch)) return "--dispatch";
+  if (!SHA.test(candidate ?? "")) return "--candidate must be a full 40-hex SHA";
+  if (!MODES.has(requested) || !MODES.has(effective)) {
+    return "--requested and --effective must be fast, deep or follow_up";
+  }
+  if (!modeChangeAllowed(requested, effective)) {
+    return "--effective must equal --requested or be deep";
+  }
+  if ((verdict === "UNKNOWN") !== (reason !== undefined)) {
+    return "--unknown-reason is required for UNKNOWN and only for UNKNOWN";
+  }
+  if (reason !== undefined && !UNKNOWN_REASONS.has(reason)) {
+    return `--unknown-reason must be one of ${[...UNKNOWN_REASONS].join("|")}`;
+  }
+  const counters = parseRound(roundLine(round)?.slice("Round: ".length));
+  return counters.error ? `the round flags give ${counters.error}` : undefined;
+}
+
 /**
  * Print a complete body that this module's own validator accepts.
  *
@@ -483,27 +551,16 @@ function templateSections(verdict, unknownReason) {
  * placeholders are prose inside sections, so the template validates as printed
  * and a reviewer who fills it in cannot break the structure by filling it in.
  */
-export function reportTemplate({ verdict, dispatch, candidate, requested, effective, reason }) {
-  if (!VERDICTS.includes(verdict)) return { error: "--verdict must be PASS, FINDINGS or UNKNOWN" };
-  if (typeof dispatch !== "string" || !/^\S+$/u.test(dispatch)) return { error: "--dispatch" };
-  if (!SHA.test(candidate ?? "")) return { error: "--candidate must be a full 40-hex SHA" };
-  if (!MODES.has(requested) || !MODES.has(effective)) {
-    return { error: "--requested and --effective must be fast, deep or follow_up" };
-  }
-  if (!modeChangeAllowed(requested, effective)) {
-    return { error: "--effective must equal --requested or be deep" };
-  }
-  if ((verdict === "UNKNOWN") !== (reason !== undefined)) {
-    return { error: "--unknown-reason is required for UNKNOWN and only for UNKNOWN" };
-  }
-  if (reason !== undefined && !UNKNOWN_REASONS.has(reason)) {
-    return { error: `--unknown-reason must be one of ${[...UNKNOWN_REASONS].join("|")}` };
-  }
+export function reportTemplate(inputs) {
+  const error = templateError(inputs);
+  if (error !== undefined) return { error };
+  const { verdict, dispatch, candidate, requested, effective, round, reason } = inputs;
   const p2 = verdict === "FINDINGS" ? 1 : 0;
   const lines = [
     `Review-Execution: ${dispatch}`,
     `Candidate: ${candidate}`,
     `Mode: requested=${requested} effective=${effective}`,
+    roundLine(round),
     "Delegation: none",
     `Verdict: ${verdict}`,
     `Counts: P0=0 P1=0 P2=${p2} P3=0`,

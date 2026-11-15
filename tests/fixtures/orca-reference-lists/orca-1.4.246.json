@@ -1,0 +1,16 @@
+{
+  "version": "1.4.246",
+  "provenance": "transcribed from Issue #68 (`orca skills get orchestration --references --json` and `--reference worker-contract --json` on Orca 1.4.246) and checked against `skill-guides/orchestration/references/` at tag v1.4.246 of stablyai/orca; 1.4.246 is not installed here",
+  "name": "orchestration",
+  "references": [
+    "coordinator-loop",
+    "legacy-contract-migration",
+    "low-level-topology",
+    "messaging-and-gates",
+    "placement-and-remote",
+    "recovery-and-cleanup"
+  ],
+  "refused": {
+    "worker-contract": "invalid_argument"
+  }
+}

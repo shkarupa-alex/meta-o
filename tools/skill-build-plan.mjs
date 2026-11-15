@@ -67,19 +67,45 @@ export const BUNDLES = {
     baselineBytes: 200_550,
     roots: MARKDOWN_ROOTS,
   },
+  // The input helper shares only the slot directory names with the handoff
+  // helper and pulls no package.
+  "scripts/mo-review-input.mjs": {
+    baselineBytes: 15_696,
+    roots: [],
+  },
   "scripts/mo-knowledge.mjs": {
     baselineBytes: 304_054,
     roots: [...MARKDOWN_ROOTS, "js-yaml"],
   },
   "scripts/mo-knowledge-layer.mjs": {
-    baselineBytes: 188_819,
-    roots: MARKDOWN_ROOTS,
+    baselineBytes: 300_822,
+    roots: [...MARKDOWN_ROOTS, "js-yaml"],
   },
-  // No third-party root: the bundle exists to merge the helper's own modules
-  // into the one file a standalone skill can run.
+  // The static GitLab rules evaluator reads YAML and nothing else.
+  "scripts/mo-ci-coverage.mjs": {
+    baselineBytes: 124_347,
+    roots: ["js-yaml"],
+  },
+  // The vocabulary reads table rows, which only markdown-it parses among this
+  // project's dependencies, on top of the knowledge core it runs first.
+  "scripts/mo-vocabulary.mjs": {
+    baselineBytes: 567_287,
+    roots: [
+      ...MARKDOWN_ROOTS,
+      "entities",
+      "js-yaml",
+      "linkify-it",
+      "markdown-it",
+      "mdurl",
+      "punycode.js",
+      "uc.micro",
+    ],
+  },
+  // The helper's own modules plus `acorn`, which reads the JavaScript program
+  // of a Codex `exec` call without running it.
   "scripts/mo-debug.mjs": {
-    baselineBytes: 48_783,
-    roots: [],
+    baselineBytes: 271_624,
+    roots: ["acorn"],
   },
 };
 
@@ -90,9 +116,10 @@ export const BUNDLES = {
  * Orchestrators and standalone reviewers each carry their backend mechanics
  * plus the shared contracts they consume. Setup owns project readiness and the
  * watchdog owns only its methodology-independent observer helper. The two
- * diagnostics skills write no Issue, so like the watchdog they get the feedback
- * channel and never the routing table; `mo-convergence` still messages live
- * agents, so it carries the delivery gate and the hot-slot helper.
+ * diagnostics skills and the owner's quiz write no Issue on their own, so like
+ * the watchdog they get the feedback channel and never the routing table;
+ * `mo-convergence` still messages live agents, so it carries the delivery gate
+ * and the hot-slot helper.
  */
 export const SHARED_PLAN = {
   "mo-orchestrate-orca": [
@@ -125,12 +152,14 @@ export const SHARED_PLAN = {
     ["scripts/mo-harness-screen.mjs", "scripts/mo-harness-screen.mjs"],
     ["scripts/mo-review-report.mjs", "scripts/mo-review-report.mjs"],
     ["scripts/mo-review-resource.mjs", "scripts/mo-review-resource.mjs"],
+    ["scripts/mo-review-input.mjs", "scripts/mo-review-input.mjs"],
     ["scripts/mo-knowledge-layer.mjs", "scripts/mo-knowledge-layer.mjs"],
   ],
   "mo-reviewer": [
     ["references/review-protocol.md", "references/review-protocol.md"],
     ["references/methodology-feedback.md", "references/methodology-feedback.md"],
     ["scripts/mo-review-report.mjs", "scripts/mo-review-report.mjs"],
+    ["scripts/mo-review-input.mjs", "scripts/mo-review-input.mjs"],
   ],
   "mo-setup": [
     ["references/project-setup.md", "references/project-setup.md"],
@@ -141,6 +170,8 @@ export const SHARED_PLAN = {
     ["scripts/mo-knowledge-history.mjs", "scripts/mo-knowledge-history.mjs"],
     ["scripts/mo-knowledge.mjs", "scripts/mo-knowledge.mjs"],
     ["scripts/mo-knowledge-layer.mjs", "scripts/mo-knowledge-layer.mjs"],
+    ["scripts/mo-ci-coverage.mjs", "scripts/mo-ci-coverage.mjs"],
+    ["scripts/mo-vocabulary.mjs", "scripts/mo-vocabulary.mjs"],
     ["references/backend-contract.md", "references/backend-contract.md"],
     ["references/purpose-and-architecture.md", "references/purpose-and-architecture.md"],
     ["scripts/mo-posture.sh", "scripts/mo-posture.sh"],
@@ -158,6 +189,7 @@ export const SHARED_PLAN = {
     ["references/methodology-feedback.md", "references/methodology-feedback.md"],
     ["scripts/mo-debug.mjs", "scripts/mo-debug.mjs"],
   ],
+  "mo-quiz": [["references/methodology-feedback.md", "references/methodology-feedback.md"]],
   "mo-e2e": [
     ["references/methodology-feedback.md", "references/methodology-feedback.md"],
     ["scripts/mo-knowledge-layer.mjs", "scripts/mo-knowledge-layer.mjs"],

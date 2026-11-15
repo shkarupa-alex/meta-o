@@ -294,6 +294,23 @@ export function owningSkill(command) {
   return SKILL_DIR.exec(String(command))?.[1] ?? "-";
 }
 
+// How many typed lines one result keeps; the rest is counted, never dropped
+// silently, because the line past the bound is often the verdict. The whole
+// output is scanned, however long: a helper prints its verdict last, and a
+// line past any byte bound would vanish without a count. The record itself is
+// already bounded by the reader's line limit.
+const TYPED_LIMIT = 4;
+
+function scanTyped(output) {
+  const kept = [];
+  let count = 0;
+  for (const match of String(output ?? "").matchAll(TYPED_LINE)) {
+    if (kept.length < TYPED_LIMIT) kept.push(match[0].trim());
+    count += 1;
+  }
+  return { kept, overflow: count - kept.length };
+}
+
 /**
  * §A-DIAGNOSTICS-01 finds the typed `MO-*` result lines in helper output.
  *
@@ -301,8 +318,17 @@ export function owningSkill(command) {
  * @returns {string[]} at most four typed lines, in output order
  */
 export function typedLines(output) {
-  const text = String(output ?? "").slice(0, 65536);
-  return [...text.matchAll(TYPED_LINE)].map((match) => match[0].trim()).slice(0, 4);
+  return scanTyped(output).kept;
+}
+
+/**
+ * §A-DIAGNOSTICS-01 counts the typed lines `typedLines` had to leave out.
+ *
+ * @param {string} output recorded stdout and stderr
+ * @returns {number} typed lines past the bound, 0 when all were kept
+ */
+export function typedOverflow(output) {
+  return scanTyped(output).overflow;
 }
 
 /**
@@ -323,31 +349,69 @@ export function typedResult(output) {
 }
 
 /**
- * §A-DIAGNOSTICS-01 collects one session's events and loaded skill texts.
+ * §A-DIAGNOSTICS-01 collects one session's events, loaded texts and gaps.
  *
  * Events are redacted at the moment they are recorded, so no unredacted byte
  * is ever held in the result. Loaded texts stay raw only for the byte-exact
  * history comparison and never reach an output.
  *
+ * Every event carries the time of the record it came from. A result record
+ * the harness wrote without a timestamp borrows its call's time through
+ * `inherit`, marked `timeSource: "call"`, so `--since` can still place it; a
+ * record with neither keeps `time: null` and the reader decides what that
+ * means for the window. A gap is a record whose evidence could not be read
+ * whole: it makes the session partial instead of silently smaller.
+ *
  * @param {string} session session id used in every locator
  * @param {"claude"|"codex"} harness which harness wrote the session
  * @returns {{session: string, harness: string, recognized: number, events: object[],
- *   loads: object[], event: Function, load: Function}} the collector
+ *   loads: object[], gaps: object[], enter: Function, inherit: Function,
+ *   now: Function, event: Function, load: Function, gap: Function}} the collector
  */
 export function createEvidence(session, harness) {
-  const evidence = { session, harness, recognized: 0, events: [], loads: [] };
-  evidence.event = (number, kind, skill, text) => {
-    evidence.events.push({
+  const evidence = { session, harness, recognized: 0, events: [], loads: [], gaps: [] };
+  // One Claude record carries several tool results, each answering its own
+  // call. The record's time stays apart from the time of the event being
+  // emitted, so one result's borrowed call time never leaks to its neighbour.
+  let record = { time: null, timeSource: null };
+  let current = record;
+  evidence.enter = (time) => {
+    record = { time, timeSource: time === null ? null : "record" };
+    current = record;
+  };
+  /** The time of the next events: the record's own, else this call's, else none. */
+  evidence.inherit = (time) => {
+    current =
+      record.time === null && typeof time === "number" ? { time, timeSource: "call" } : record;
+  };
+  evidence.now = () => current.time;
+  evidence.event = (number, kind, skill, text, details = {}) => {
+    const event = {
       session,
       harness,
       locator: `${session}:${number}`,
+      number,
       kind,
       skill: SKILL_NAME.test(skill ?? "") ? skill : "-",
       excerpt: excerpt(text),
+      ...current,
+      ...details,
+    };
+    evidence.events.push(event);
+    return event;
+  };
+  evidence.load = (number, load, details = {}) => {
+    evidence.loads.push({
+      session,
+      harness,
+      locator: `${session}:${number}`,
+      ...current,
+      ...load,
+      ...details,
     });
   };
-  evidence.load = (number, load) => {
-    evidence.loads.push({ session, harness, locator: `${session}:${number}`, ...load });
+  evidence.gap = (number, reason, details = {}) => {
+    evidence.gaps.push({ number, reason, time: current.time, ...details });
   };
   return evidence;
 }

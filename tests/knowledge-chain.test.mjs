@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 
 import MarkdownIt from "markdown-it";
 
-import { deliberateFixture } from "../tools/mo-vocabulary.mjs";
+import { deliberateFixture } from "../shared/scripts/mo-vocabulary.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const markdown = new MarkdownIt();

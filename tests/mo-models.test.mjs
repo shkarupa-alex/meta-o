@@ -30,6 +30,8 @@ import {
   familyAndGeneration,
   findUpgrade,
   parseCodexModels,
+  launchProjection,
+  modelVendor,
   parseSelection,
   testingPolicyError,
 } from "../shared/scripts/mo-models.mjs";
@@ -1077,11 +1079,13 @@ test("a selection is shown as one string and launched as three flags", () => {
     agent: "codex",
     model: "gpt-5.6-luna",
     effort: "low",
+    vendor: "openai",
   });
   assert.deepEqual(shown.launch.reviewerA, {
     agent: "claude",
     model: "claude-opus-5",
     effort: "high",
+    vendor: "anthropic",
   });
   // A composite literal in `--model` launches nothing and then reads like an
   // unavailable model, so no published model field may still carry its route.
@@ -1091,4 +1095,42 @@ test("a selection is shown as one string and launched as three flags", () => {
   }
   // An unset role is absent rather than launchable with holes.
   assert.equal(Object.hasOwn(shown.launch, "e2eTester"), false);
+});
+
+test("the model vendor is derived from the model, not from the launch route", () => {
+  // Routes that run one vendor's models only.
+  assert.equal(modelVendor("claude", "opus[1m]"), "anthropic");
+  assert.equal(modelVendor("codex", "gpt-6.1-sol"), "openai");
+  // OpenCode launches many vendors; the provider prefix names the one behind it.
+  assert.equal(modelVendor("opencode", "openai/gpt-6.1-sol"), "openai");
+  assert.equal(modelVendor("opencode", "anthropic/claude-opus-5"), "anthropic");
+  assert.equal(modelVendor("opencode", "zai-coding-plan/glm-5.3"), "zai");
+  // A gateway serves several vendors under one prefix, and an unlisted prefix
+  // was never checked: both are unknown, never a guessed vendor.
+  assert.equal(modelVendor("opencode", "opencode/big-pickle"), "unknown");
+  assert.equal(modelVendor("opencode", "huggingface/openai/gpt-oss-120b"), "unknown");
+  assert.equal(modelVendor("opencode", "some-new-provider/model"), "unknown");
+  assert.equal(modelVendor("opencode", "no-prefix"), "unknown");
+  assert.equal(modelVendor("other", "gpt-6.1-sol"), "unknown");
+});
+
+test("two routes of one vendor are one vendor, two vendors are two", () => {
+  const launch = launchProjection({
+    reviewerA: "opencode/openai/gpt-6.1-sol/high",
+    reviewerB: "codex/gpt-6.1-sol/high",
+    executor: "claude/opus[1m]/high",
+    e2eTester: "opencode/opencode/big-pickle/high",
+  });
+  assert.deepEqual(launch.reviewerA, {
+    agent: "opencode",
+    model: "openai/gpt-6.1-sol",
+    effort: "high",
+    vendor: "openai",
+  });
+  // Different routes, one vendor: no diversity.
+  assert.notEqual(launch.reviewerA.agent, launch.reviewerB.agent);
+  assert.equal(launch.reviewerA.vendor, launch.reviewerB.vendor);
+  // Different routes, different vendors: diversity.
+  assert.notEqual(launch.executor.vendor, launch.reviewerB.vendor);
+  assert.equal(launch.e2eTester.vendor, "unknown");
 });

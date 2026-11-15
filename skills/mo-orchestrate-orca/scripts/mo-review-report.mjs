@@ -6,25 +6,17 @@ var __export = (target, all2) => {
 };
 
 // shared/scripts/mo-review-report.mjs
-import { createHash, randomBytes } from "node:crypto";
 import {
-  chmodSync,
-  closeSync,
-  constants,
-  fstatSync,
-  fsyncSync,
-  linkSync,
-  mkdtempSync,
-  openSync,
+  closeSync as closeSync2,
+  constants as constants2,
+  fsyncSync as fsyncSync2,
+  openSync as openSync2,
   readFileSync,
-  readSync,
   realpathSync,
-  unlinkSync,
-  writeSync
+  writeSync as writeSync2
 } from "node:fs";
-import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 
 // node_modules/mdast-util-to-string/lib/index.js
 var emptyOptions = {};
@@ -2596,10 +2588,10 @@ function resolveAll(constructs2, events, context) {
   const called = [];
   let index2 = -1;
   while (++index2 < constructs2.length) {
-    const resolve = constructs2[index2].resolveAll;
-    if (resolve && !called.includes(resolve)) {
-      events = resolve(events, context);
-      called.push(resolve);
+    const resolve2 = constructs2[index2].resolveAll;
+    if (resolve2 && !called.includes(resolve2)) {
+      events = resolve2(events, context);
+      called.push(resolve2);
     }
   }
   return events;
@@ -6979,11 +6971,26 @@ var HEADER = [
   /^Review-Execution: (\S+)$/u,
   /^Candidate: ([a-f0-9]{40})$/u,
   /^Mode: requested=(\S+) effective=(\S+)$/u,
+  /^Round: (.*)$/u,
   /^Delegation: .*$/u,
   /^Verdict: (\S+)$/u,
   /^Counts: P0=(\d+) P1=(\d+) P2=(\d+) P3=(\d+)$/u
 ];
+var ROUND_STEP = 3;
 var fail = (reason, line) => ({ status: "malformed", reason, line: line + 1 });
+var ROUND = /^attempt=([1-9][0-9]{0,5})\/([1-9][0-9]{0,5}) deep_reads=(0|[1-9][0-9]{0,5}) fragment=([a-z0-9-]{1,40})$/u;
+function parseRound(value) {
+  const match = ROUND.exec(value ?? "");
+  if (match === null) return { error: "round_malformed" };
+  const [attempt, limit, deepReads] = match.slice(1, 4).map(Number);
+  if (deepReads > attempt) return { error: "round_malformed" };
+  if (attempt > limit) return { error: "round_exceeds_budget" };
+  return { round: { attempt, limit, deepReads, fragment: match[4] } };
+}
+function roundLine(round) {
+  if (round === void 0) return void 0;
+  return `Round: attempt=${round.attempt}/${round.limit} deep_reads=${round.deepReads} fragment=${round.fragment}`;
+}
 function topLevelParagraphs(text3) {
   const lines = text3.split("\n");
   return fromMarkdown(text3).children.filter((node2) => node2.type === "paragraph").map((node2) => ({
@@ -7017,24 +7024,30 @@ function readEnvelope(lines, prose) {
   let row = 0;
   for (const [step, pattern] of HEADER.entries()) {
     if (step > 0 && lines[row] === "") row += 1;
-    if (!prose.has(row) || !pattern.test(lines[row] ?? "")) return fail("header_order", row);
+    if (!prose.has(row) || !pattern.test(lines[row] ?? "")) {
+      return fail(step === ROUND_STEP ? "round_missing" : "header_order", row);
+    }
     rows.push(row);
     row += 1;
   }
-  const [execution, candidate, mode, delegation, verdict, counts] = rows.map(
+  const [execution, candidate, mode, round, delegation, verdict, counts] = rows.map(
     (at, step) => HEADER[step].exec(lines[at])
   );
-  if (delegation[0] !== "Delegation: none") return fail("delegation", rows[3]);
   if (!MODES.has(mode[1]) || !MODES.has(mode[2])) return fail("header_order", rows[2]);
-  if (!VERDICTS.includes(verdict[1])) return fail("verdict", rows[4]);
+  const counters = parseRound(round[1]);
+  if (counters.error) return fail(counters.error, rows[ROUND_STEP]);
+  if (delegation[0] !== "Delegation: none") return fail("delegation", rows[4]);
+  if (!VERDICTS.includes(verdict[1])) return fail("verdict", rows[5]);
   return {
     execution: execution[1],
     candidate: candidate[1],
     requested: mode[1],
     effective: mode[2],
+    round: counters.round,
+    roundRow: rows[ROUND_STEP],
     verdict: verdict[1],
     counts: counts.slice(1).map(Number),
-    countsRow: rows[5]
+    countsRow: rows[6]
   };
 }
 function modeChangeAllowed(requested, effective) {
@@ -7051,6 +7064,9 @@ function readHeader(lines, prose, expected) {
   }
   if (expected.effectiveMode !== void 0 && envelope.effective !== expected.effectiveMode) {
     return fail("mode_mismatch", 2);
+  }
+  if (roundLine(envelope.round) !== roundLine(expected.round)) {
+    return fail("round_mismatch", envelope.roundRow);
   }
   const last = lines.length - 1;
   if (lines[last] !== `End-Review: ${envelope.execution}` || !prose.has(last)) {
@@ -7084,7 +7100,7 @@ function readIndexLayout(lines, prose, from, to) {
   }
   return {};
 }
-function readIndex(paragraphs, literal, from, to, counts) {
+function readIndex(paragraphs, literal, from, to, { counts, verdict }) {
   const entries = [];
   for (const { line, rows } of paragraphs) {
     const inside = rows.map((row, step) => ({ row, at: line + step })).filter(({ at }) => at > from && at < to);
@@ -7098,6 +7114,7 @@ function readIndex(paragraphs, literal, from, to, counts) {
     if (entry.key !== `F-${String(step + 1).padStart(3, "0")}`)
       return fail("index_key_order", entry.line);
   }
+  if (verdict === "PASS" && entries.length > 0) return fail("pass_not_empty", entries[0].line);
   const severities = [0, 0, 0, 0];
   for (const entry of entries) severities[Number(entry.severity.slice(1))] += 1;
   const total = counts.reduce((sum, count) => sum + count, 0);
@@ -7185,13 +7202,11 @@ function readEvidence(lines, prose, sections, header, index2) {
   if (unknown.status === "malformed") return unknown;
   const findingsEnd = header.verdict === "UNKNOWN" ? sections.found.get("Unknown-Account")[0] : at.get("Unknowns");
   const findingBody = bodyOf(lines, at.get("Findings"), findingsEnd);
-  if (header.verdict !== "FINDINGS") {
-    if (index2.keys.length > 0 || findingBody.length > 0) {
-      return fail("pass_not_empty", at.get("Findings"));
-    }
+  if (index2.keys.length === 0) {
+    if (header.verdict === "FINDINGS") return fail("counts_mismatch", header.countsRow);
+    if (findingBody.length > 0) return fail("pass_not_empty", at.get("Findings"));
     return {};
   }
-  if (index2.keys.length === 0) return fail("counts_mismatch", header.countsRow);
   const span = { from: at.get("Findings"), to: findingsEnd };
   return readFindingBodies(lines, prose, span, index2.keys);
 }
@@ -7214,7 +7229,7 @@ function validateReport(text3, expected) {
     literalRows(fromMarkdown(text3)),
     header.countsRow,
     sections.evidence,
-    header.counts
+    header
   );
   if (index2.status === "malformed") return index2;
   const evidence = readEvidence(lines, markers, sections, header, index2);
@@ -7272,27 +7287,35 @@ function templateSections(verdict, unknownReason) {
     "Risks: <pre-existing or out-of-scope risks, or none>."
   ];
 }
-function reportTemplate({ verdict, dispatch, candidate, requested, effective, reason }) {
-  if (!VERDICTS.includes(verdict)) return { error: "--verdict must be PASS, FINDINGS or UNKNOWN" };
-  if (typeof dispatch !== "string" || !/^\S+$/u.test(dispatch)) return { error: "--dispatch" };
-  if (!SHA.test(candidate ?? "")) return { error: "--candidate must be a full 40-hex SHA" };
+function templateError({ verdict, dispatch, candidate, requested, effective, round, reason }) {
+  if (!VERDICTS.includes(verdict)) return "--verdict must be PASS, FINDINGS or UNKNOWN";
+  if (typeof dispatch !== "string" || !/^\S+$/u.test(dispatch)) return "--dispatch";
+  if (!SHA.test(candidate ?? "")) return "--candidate must be a full 40-hex SHA";
   if (!MODES.has(requested) || !MODES.has(effective)) {
-    return { error: "--requested and --effective must be fast, deep or follow_up" };
+    return "--requested and --effective must be fast, deep or follow_up";
   }
   if (!modeChangeAllowed(requested, effective)) {
-    return { error: "--effective must equal --requested or be deep" };
+    return "--effective must equal --requested or be deep";
   }
   if (verdict === "UNKNOWN" !== (reason !== void 0)) {
-    return { error: "--unknown-reason is required for UNKNOWN and only for UNKNOWN" };
+    return "--unknown-reason is required for UNKNOWN and only for UNKNOWN";
   }
   if (reason !== void 0 && !UNKNOWN_REASONS.has(reason)) {
-    return { error: `--unknown-reason must be one of ${[...UNKNOWN_REASONS].join("|")}` };
+    return `--unknown-reason must be one of ${[...UNKNOWN_REASONS].join("|")}`;
   }
+  const counters = parseRound(roundLine(round)?.slice("Round: ".length));
+  return counters.error ? `the round flags give ${counters.error}` : void 0;
+}
+function reportTemplate(inputs) {
+  const error = templateError(inputs);
+  if (error !== void 0) return { error };
+  const { verdict, dispatch, candidate, requested, effective, round, reason } = inputs;
   const p2 = verdict === "FINDINGS" ? 1 : 0;
   const lines = [
     `Review-Execution: ${dispatch}`,
     `Candidate: ${candidate}`,
     `Mode: requested=${requested} effective=${effective}`,
+    roundLine(round),
     "Delegation: none",
     `Verdict: ${verdict}`,
     `Counts: P0=0 P1=0 P2=${p2} P3=0`,
@@ -7306,7 +7329,45 @@ function reportTemplate({ verdict, dispatch, candidate, requested, effective, re
 ` };
 }
 
-// shared/scripts/mo-review-report.mjs
+// shared/scripts/mo-review-handoff.mjs
+import { createHash, randomBytes } from "node:crypto";
+import {
+  chmodSync,
+  closeSync,
+  constants,
+  fstatSync,
+  fsyncSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readSync,
+  rmdirSync,
+  unlinkSync,
+  writeSync
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
+
+// shared/scripts/mo-review-slot.mjs
+var PAIR_ID = /^[a-f0-9]{12}$/u;
+var SLOT_DIR = /^mo-review-([a-f0-9]{12})-([AB])-[A-Za-z0-9]{6}$/u;
+var slotDirPrefix = (pairId, slot) => `mo-review-${pairId}-${slot}-`;
+var pairDirName = (pairId) => `mo-review-${pairId}-pair`;
+function slotDirName(name) {
+  const match = SLOT_DIR.exec(name);
+  return match === null ? null : { pairId: match[1], slot: match[2] };
+}
+
+// shared/scripts/mo-review-handoff.mjs
+var SLOTS = ["A", "B"];
+var FACTS_FILE = "stage.json";
+var RECEIVED_FILE = "worker-done.md";
+var VENDOR = /^[a-z0-9][a-z0-9-]{0,31}$/u;
+var SHA256 = /^[a-f0-9]{64}$/u;
+var DECIMAL = /^(?:0|[1-9][0-9]*)$/u;
+var CREATE = constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW;
+var IDENTITY_REASONS = /* @__PURE__ */ new Set(["execution_mismatch", "candidate_mismatch", "mode_mismatch"]);
 function readReportBytes(path) {
   let fd;
   try {
@@ -7315,16 +7376,21 @@ function readReportBytes(path) {
     return { error: error.code === "ELOOP" ? "symlink" : "unreadable" };
   }
   try {
-    const stat = fstatSync(fd);
+    const stat = fstatSync(fd, { bigint: true });
     if (!stat.isFile()) return { error: "not_regular_file" };
-    const buffer = Buffer.alloc(stat.size);
+    const size = Number(stat.size);
+    const buffer = Buffer.alloc(size);
     let read = 0;
-    while (read < stat.size) {
-      const chunk = readSync(fd, buffer, read, stat.size - read, read);
+    while (read < size) {
+      const chunk = readSync(fd, buffer, read, size - read, read);
       if (chunk === 0) break;
       read += chunk;
     }
-    return { buffer: buffer.subarray(0, read) };
+    return {
+      buffer: buffer.subarray(0, read),
+      dev: stat.dev.toString(),
+      ino: stat.ino.toString()
+    };
   } finally {
     closeSync(fd);
   }
@@ -7334,62 +7400,34 @@ function decodeReport(buffer) {
   if (!Buffer.from(text3, "utf8").equals(buffer)) return { error: "invalid_utf8" };
   return { text: text3 };
 }
-function prepareBody({ path, buffer, expected }) {
-  const decoded = decodeReport(buffer);
-  if (decoded.error) return { status: "malformed", reason: decoded.error, line: 0 };
-  const verdict = validateReport(decoded.text, expected);
-  if (verdict.status === "malformed") return verdict;
-  let fd;
-  try {
-    fd = openSync(
-      path,
-      constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
-      384
-    );
-  } catch (error) {
-    return { status: "refused", reason: error.code === "EEXIST" ? "exists" : "unwritable" };
-  }
-  try {
-    writeSync(fd, buffer);
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
-  const written = readReportBytes(path);
-  if (written.error || !written.buffer.equals(buffer)) {
-    return { status: "refused", reason: "identity_changed" };
-  }
-  return { status: "prepared", path, bytes: buffer.length, verdict };
-}
-var NORMALIZATIONS = {
-  none: (bytes) => bytes,
-  "final-newline": (bytes) => bytes.at(-1) === 10 ? bytes.subarray(0, -1) : bytes
-};
-function bodyIdentity(received, preparedPath, normalization = "none") {
-  const normalize = NORMALIZATIONS[normalization];
-  if (normalize === void 0) return { identity: "unverified", reason: "normalization" };
-  const prepared = readReportBytes(preparedPath);
-  if (prepared.error) return { identity: "unverified", reason: prepared.error };
-  const left = normalize(received);
-  const right = normalize(prepared.buffer);
-  return { identity: left.equals(right) ? "identical" : "different", reason: normalization };
-}
-var VENDOR = /^[a-z0-9][a-z0-9-]{0,31}$/u;
-var LINK_UNSUPPORTED = /* @__PURE__ */ new Set(["EPERM", "ENOSYS", "EXDEV", "EMLINK"]);
-function linkFailureReason(code) {
-  if (code === "EEXIST") return "final_exists";
-  if (LINK_UNSUPPORTED.has(code)) return "link_unsupported";
-  return "permission";
-}
+var sha256 = (buffer) => createHash("sha256").update(buffer).digest("hex");
 function namespace() {
   const previous2 = process.umask(63);
+  const created = [];
   try {
-    const dir = mkdtempSync(join(tmpdir(), `mo-review-${randomBytes(6).toString("hex")}-`));
-    chmodSync(dir, 448);
-    return { dir, pairId: basename(dir) };
+    const pairId = randomBytes(6).toString("hex");
+    for (const slot of SLOTS) {
+      const dir = mkdtempSync(join(tmpdir(), slotDirPrefix(pairId, slot)));
+      created.push(dir);
+      chmodSync(dir, 448);
+    }
+    return { pairId, slots: { A: created[0], B: created[1] } };
+  } catch (error) {
+    for (const dir of created) rmdirSync(dir);
+    throw error;
   } finally {
     process.umask(previous2);
   }
+}
+function slotIdentity(dir) {
+  const identity = slotDirName(basename(resolve(dir)));
+  if (identity === null) return null;
+  try {
+    if (!lstatSync(dir).isDirectory()) return null;
+  } catch {
+    return null;
+  }
+  return identity;
 }
 function syncDirectory(dir) {
   let dfd;
@@ -7401,67 +7439,271 @@ function syncDirectory(dir) {
     if (dfd !== void 0) closeSync(dfd);
   }
 }
-function linkIntoPlace(fd, sibling, final, buffer) {
-  const first = fstatSync(fd);
-  if (first.size !== buffer.length || first.nlink !== 1) {
-    return { status: "unknown", reason: "identity_changed" };
-  }
-  try {
-    linkSync(sibling, final);
-  } catch (error) {
-    return { status: "unknown", reason: linkFailureReason(error.code) };
-  }
-  const second = fstatSync(fd);
-  if (second.dev !== first.dev || second.ino !== first.ino || second.nlink !== 2) {
-    return { status: "unknown", reason: "identity_changed" };
-  }
-  return { status: "staged", dev: first.dev, ino: first.ino };
+function writeAll(fd, buffer) {
+  let written = 0;
+  while (written < buffer.length) written += writeSync(fd, buffer, written);
+  fsyncSync(fd);
 }
-function stage({ dir, slot, vendor, buffer, expected }) {
-  if (!["A", "B"].includes(slot)) return { status: "unknown", reason: "slot" };
-  if (!VENDOR.test(vendor)) return { status: "unknown", reason: "vendor" };
-  const decoded = decodeReport(buffer);
-  if (decoded.error) return { status: "unknown", reason: decoded.error };
-  const verdict = validateReport(decoded.text, expected);
-  if (verdict.status === "malformed") return { status: "unknown", reason: "malformed", verdict };
-  const sibling = join(dir, `.stage-${randomBytes(8).toString("hex")}`);
-  const final = join(dir, `${slot}-${vendor}.md`);
-  const flags = constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW;
-  const fd = openSync(sibling, flags, 384);
+function stagedSource(slotDir, file, buffer) {
+  if (buffer !== void 0) return { buffer };
+  if (resolve(dirname(file)) !== resolve(slotDir) || basename(file) === FACTS_FILE) {
+    return { error: "report_outside_slot" };
+  }
+  return readReportBytes(file);
+}
+function refusal(verdict) {
+  if (verdict.reason === "round_mismatch") return { reason: "round_mismatch", verdict };
+  if (IDENTITY_REASONS.has(verdict.reason)) {
+    return { reason: "report_identity_mismatch", verdict };
+  }
+  return { reason: "malformed", verdict };
+}
+function publishReceived(slotDir, buffer) {
+  const path = join(slotDir, RECEIVED_FILE);
+  let fd;
   try {
-    writeSync(fd, buffer);
-    fsyncSync(fd);
-    const placed = linkIntoPlace(fd, sibling, final, buffer);
-    if (placed.status !== "staged") return placed;
+    fd = openSync(path, CREATE, 384);
+  } catch (error) {
+    return { error: error.code === "EEXIST" ? "final_exists" : "permission" };
+  }
+  try {
+    writeAll(fd, buffer);
+    const stat = fstatSync(fd, { bigint: true });
+    return { path, buffer, dev: stat.dev.toString(), ino: stat.ino.toString() };
+  } finally {
+    closeSync(fd);
+  }
+}
+function stage({ slotDir, slot, pairId, dispatch, vendor, file, buffer, expected }) {
+  const identity = slotIdentity(slotDir);
+  if (identity === null || identity.pairId !== pairId || identity.slot !== slot) {
+    return { status: "unknown", reason: "slot_identity_mismatch" };
+  }
+  if (!VENDOR.test(vendor ?? "")) return { status: "unknown", reason: "vendor" };
+  const source = stagedSource(slotDir, file, buffer);
+  if (source.error) return { status: "unknown", reason: source.error };
+  const decoded = decodeReport(source.buffer);
+  if (decoded.error) return { status: "unknown", reason: decoded.error };
+  const verdict = validateReport(decoded.text, { ...expected, execution: dispatch });
+  if (verdict.status === "malformed") return { status: "unknown", ...refusal(verdict) };
+  const factsPath = join(slotDir, FACTS_FILE);
+  let fd;
+  try {
+    fd = openSync(factsPath, CREATE, 384);
+  } catch (error) {
+    return { status: "unknown", reason: error.code === "EEXIST" ? "stage_exists" : "permission" };
+  }
+  try {
+    const published = buffer === void 0 ? { ...source, path: file } : null;
+    const report = published ?? publishReceived(slotDir, source.buffer);
+    if (report.error) {
+      unlinkSync(factsPath);
+      return { status: "unknown", reason: report.error };
+    }
+    const facts = {
+      schema_version: 1,
+      pair_id: pairId,
+      slot,
+      dispatch,
+      vendor,
+      candidate: expected.candidate,
+      execution: dispatch,
+      round: { ...expected.round },
+      report: {
+        basename: basename(report.path),
+        bytes: source.buffer.length,
+        dev: report.dev,
+        ino: report.ino,
+        sha256: sha256(source.buffer)
+      }
+    };
+    writeAll(fd, Buffer.from(`${JSON.stringify(facts, null, 2)}
+`, "utf8"));
     return {
       status: "staged",
       slot,
-      path: final,
-      bytes: buffer.length,
-      dev: placed.dev,
-      ino: placed.ino,
-      sha256: createHash("sha256").update(buffer).digest("hex")
+      path: join(slotDir, facts.report.basename),
+      bytes: facts.report.bytes,
+      sha256: facts.report.sha256,
+      verdict
     };
   } finally {
     closeSync(fd);
-    unlinkSync(sibling);
-    syncDirectory(dir);
+    syncDirectory(slotDir);
   }
 }
-function pair({ dir, pairId, slots }) {
-  const parts = verifySlots(dir, slots);
-  if (!Array.isArray(parts)) return parts;
-  return { status: "paired", line: `Review-Pair: ${pairId} ${parts.join(" ")}` };
+function roundShaped(round) {
+  const fields = [round?.attempt, round?.limit, round?.deepReads];
+  if (!fields.every(Number.isSafeInteger)) return false;
+  const line = roundLine(round);
+  return roundLine(parseRound(line.slice("Round: ".length)).round) === line;
 }
-function preview({ dir, pairId, slot }) {
-  const parts = verifySlots(dir, [slot]);
-  if (!Array.isArray(parts)) return parts;
-  return { status: "previewed", line: `Review-Preview: ${pairId} ${parts[0]}` };
+var matches = (pattern) => (value) => typeof value === "string" && pattern.test(value);
+var FACT_FIELDS = {
+  schema_version: (value) => value === 1,
+  pair_id: matches(PAIR_ID),
+  slot: (value) => SLOTS.includes(value),
+  dispatch: matches(/^\S+$/u),
+  vendor: matches(VENDOR),
+  candidate: matches(/^[a-f0-9]{40}$/u),
+  execution: matches(/^\S+$/u),
+  round: roundShaped,
+  report: (report) => fieldsShaped(report, REPORT_FIELDS)
+};
+var REPORT_FIELDS = {
+  basename: (value) => typeof value === "string" && value === basename(value) && value !== FACTS_FILE,
+  bytes: Number.isSafeInteger,
+  dev: matches(DECIMAL),
+  ino: matches(DECIMAL),
+  sha256: matches(SHA256)
+};
+function fieldsShaped(object, schema) {
+  if (object === null || typeof object !== "object") return false;
+  const keys = Object.keys(object);
+  const names = Object.keys(schema);
+  return keys.length === names.length && names.every((name) => Object.hasOwn(object, name) && schema[name](object[name]));
+}
+function factsShaped(facts) {
+  return fieldsShaped(facts, FACT_FIELDS) && facts.execution === facts.dispatch;
+}
+function readFacts(slotDir) {
+  const identity = slotIdentity(slotDir);
+  if (identity === null) return { status: "unknown", reason: "slot_identity_mismatch" };
+  const read = readReportBytes(join(slotDir, FACTS_FILE));
+  if (read.error === "unreadable") return { status: "unknown", reason: "stage_missing" };
+  if (read.error) return { status: "unknown", reason: "facts_malformed" };
+  let facts;
+  try {
+    facts = JSON.parse(read.buffer.toString("utf8"));
+  } catch {
+    return { status: "unknown", reason: "facts_malformed" };
+  }
+  if (!factsShaped(facts) || facts.pair_id !== identity.pairId || facts.slot !== identity.slot) {
+    return { status: "unknown", reason: "facts_malformed" };
+  }
+  return { status: "read", facts };
+}
+function observeReport(slotDir, facts) {
+  const path = join(slotDir, facts.report.basename);
+  const read = readReportBytes(path);
+  if (read.error || read.dev !== facts.report.dev || read.ino !== facts.report.ino || read.buffer.length !== facts.report.bytes || sha256(read.buffer) !== facts.report.sha256) {
+    return { status: "unknown", reason: "identity_changed" };
+  }
+  return { status: "observed", path, buffer: read.buffer };
+}
+function preview({ slotDir, slot }) {
+  const identity = slotIdentity(slotDir);
+  if (identity === null || identity.slot !== slot) {
+    return { status: "unknown", reason: "slot_identity_mismatch", slot };
+  }
+  const read = readFacts(slotDir);
+  if (read.status !== "read") return { ...read, slot };
+  const observed = observeReport(slotDir, read.facts);
+  if (observed.status !== "observed") return { ...observed, slot };
+  return {
+    status: "previewed",
+    bytes: read.facts.report.bytes,
+    line: `Review-Preview: ${read.facts.pair_id} ${slot}=${JSON.stringify(observed.path)} ${slot}_bytes=${read.facts.report.bytes}`
+  };
+}
+function pairMismatch(identities, facts, expect) {
+  for (const slot of SLOTS) {
+    if (identities[slot].pairId !== expect.pairId || facts[slot].pair_id !== expect.pairId) {
+      return { reason: "pair_mismatch", slot };
+    }
+  }
+  for (const slot of SLOTS) {
+    if (facts[slot].candidate !== expect.candidate) return { reason: "candidate_mismatch", slot };
+  }
+  for (const slot of SLOTS) {
+    if (roundLine(facts[slot].round) !== roundLine(expect.round)) {
+      return { reason: "round_mismatch", slot };
+    }
+  }
+  if (facts.A.dispatch === facts.B.dispatch) return { reason: "dispatch_reused" };
+  if (facts.A.vendor === "unknown" || facts.B.vendor === "unknown") {
+    return { reason: "vendor_unproven" };
+  }
+  if (facts.A.vendor === facts.B.vendor) return { reason: "vendor_not_diverse" };
+  return null;
+}
+function copyInto(dir, slot, vendor, buffer, facts) {
+  const path = join(dir, `${slot}-${vendor}.md`);
+  let fd;
+  try {
+    fd = openSync(path, CREATE, 384);
+  } catch (error) {
+    return { reason: error.code === "EEXIST" ? "final_exists" : "permission", slot };
+  }
+  try {
+    writeAll(fd, buffer);
+  } finally {
+    closeSync(fd);
+  }
+  const copy = readReportBytes(path);
+  if (copy.error || copy.buffer.length !== facts.bytes || sha256(copy.buffer) !== facts.sha256) {
+    return { reason: "identity_changed", slot };
+  }
+  return { path };
+}
+function pair({ slotA, slotB, expect }) {
+  const dirs = { A: slotA, B: slotB };
+  const identities = { A: slotIdentity(slotA), B: slotIdentity(slotB) };
+  if (identities.A?.slot !== "A" || identities.B?.slot !== "B") {
+    return { status: "unknown", reason: "pair_mismatch" };
+  }
+  const facts = {};
+  for (const slot of SLOTS) {
+    const read = readFacts(dirs[slot]);
+    if (read.status !== "read") return { ...read, slot };
+    facts[slot] = read.facts;
+  }
+  const mismatch = pairMismatch(identities, facts, expect);
+  if (mismatch !== null) return { status: "unknown", ...mismatch };
+  const observed = {};
+  for (const slot of SLOTS) {
+    observed[slot] = observeReport(dirs[slot], facts[slot]);
+    if (observed[slot].status !== "observed") return { ...observed[slot], slot };
+  }
+  const dir = join(dirname(resolve(slotA)), pairDirName(expect.pairId));
+  const previous2 = process.umask(63);
+  try {
+    mkdirSync(dir, 448);
+    chmodSync(dir, 448);
+  } catch (error) {
+    return { status: "unknown", reason: error.code === "EEXIST" ? "final_exists" : "permission" };
+  } finally {
+    process.umask(previous2);
+  }
+  const copies = {};
+  for (const slot of SLOTS) {
+    const copied = copyInto(
+      dir,
+      slot,
+      facts[slot].vendor,
+      observed[slot].buffer,
+      facts[slot].report
+    );
+    if (copied.reason) return { status: "unknown", ...copied, dir };
+    copies[slot] = { path: copied.path, bytes: facts[slot].report.bytes };
+  }
+  syncDirectory(dir);
+  const parts = SLOTS.map(
+    (slot) => `${slot}=${JSON.stringify(copies[slot].path)} ${slot}_bytes=${copies[slot].bytes}`
+  );
+  return {
+    status: "ok",
+    pairId: expect.pairId,
+    dir,
+    a: copies.A,
+    b: copies.B,
+    line: `Review-Pair: ${expect.pairId} ${parts.join(" ")}`
+  };
 }
 var ACK = /^Review-(Preview|Handoff)-Ack: (\S+)((?: [AB]=\d+)+)$/u;
 function ackSlotsValid(kind, slots) {
   if (kind === "Handoff") return slots.length === 2 && slots.includes("A") && slots.includes("B");
-  if (kind === "Preview") return slots.length === 1 && ["A", "B"].includes(slots[0]);
+  if (kind === "Preview") return slots.length === 1 && SLOTS.includes(slots[0]);
   return false;
 }
 function checkAck(line, { kind, pairId, bytes }) {
@@ -7482,41 +7724,47 @@ function checkAck(line, { kind, pairId, bytes }) {
   }
   return { status: "matched" };
 }
-function verifySlots(dir, slots) {
-  const parts = [];
-  for (const expected of slots) {
-    const path = join(dir, `${expected.slot}-${expected.vendor}.md`);
-    let fd;
-    try {
-      fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-    } catch {
-      return { status: "unknown", reason: "identity_changed", slot: expected.slot };
-    }
-    try {
-      const stat = fstatSync(fd);
-      const buffer = Buffer.alloc(stat.size);
-      readSync(fd, buffer, 0, stat.size, 0);
-      const sha256 = createHash("sha256").update(buffer).digest("hex");
-      if (stat.dev !== expected.dev || stat.ino !== expected.ino || stat.size !== expected.bytes || sha256 !== expected.sha256) {
-        return { status: "unknown", reason: "identity_changed", slot: expected.slot };
-      }
-    } finally {
-      closeSync(fd);
-    }
-    parts.push(`${expected.slot}=${JSON.stringify(path)} ${expected.slot}_bytes=${expected.bytes}`);
+
+// shared/scripts/mo-review-report.mjs
+function prepareBody({ path, buffer, expected }) {
+  const decoded = decodeReport(buffer);
+  if (decoded.error) return { status: "malformed", reason: decoded.error, line: 0 };
+  const verdict = validateReport(decoded.text, expected);
+  if (verdict.status === "malformed") return verdict;
+  let fd;
+  try {
+    fd = openSync2(
+      path,
+      constants2.O_CREAT | constants2.O_EXCL | constants2.O_WRONLY | constants2.O_NOFOLLOW,
+      384
+    );
+  } catch (error) {
+    return { status: "refused", reason: error.code === "EEXIST" ? "exists" : "unwritable" };
   }
-  return parts;
+  try {
+    writeSync2(fd, buffer);
+    fsyncSync2(fd);
+  } finally {
+    closeSync2(fd);
+  }
+  const written = readReportBytes(path);
+  if (written.error || !written.buffer.equals(buffer)) {
+    return { status: "refused", reason: "identity_changed" };
+  }
+  return { status: "prepared", path, bytes: buffer.length, verdict };
 }
-function parseArguments(argv) {
-  const options = {};
-  for (let index2 = 0; index2 < argv.length; index2 += 2) {
-    const flag = argv[index2];
-    if (!flag.startsWith("--") || argv[index2 + 1] === void 0) {
-      throw new Error(`malformed argument near "${flag}"`);
-    }
-    options[flag.slice(2)] = argv[index2 + 1];
-  }
-  return options;
+var NORMALIZATIONS = {
+  none: (bytes) => bytes,
+  "final-newline": (bytes) => bytes.at(-1) === 10 ? bytes.subarray(0, -1) : bytes
+};
+function bodyIdentity(received, preparedPath, normalization = "none") {
+  const normalize = NORMALIZATIONS[normalization];
+  if (normalize === void 0) return { identity: "unverified", reason: "normalization" };
+  const prepared = readReportBytes(preparedPath);
+  if (prepared.error) return { identity: "unverified", reason: prepared.error };
+  const left = normalize(received);
+  const right = normalize(prepared.buffer);
+  return { identity: left.equals(right) ? "identical" : "different", reason: normalization };
 }
 function publicSummary({ candidate, verdict, counts }) {
   const summed = [0, 1, 2, 3].map(
@@ -7536,22 +7784,170 @@ Question: ${question}
 Recommended: ${hypothesis}`
   };
 }
-function require_(options, names) {
-  for (const name of names) {
-    if (options[name] === void 0) throw new Error(`--${name} is required`);
+var UsageError = class extends Error {
+};
+var SHA_VALUE = /^[a-f0-9]{40}$/u;
+var MODE_VALUE = /^(?:fast|deep|follow_up)$/u;
+var DECIMAL2 = /^(?:0|[1-9][0-9]*)$/u;
+var VALUES = {
+  candidate: [SHA_VALUE, "a full 40-hex SHA"],
+  requested: [MODE_VALUE, "fast, deep or follow_up"],
+  effective: [MODE_VALUE, "fast, deep or follow_up"],
+  verdict: [/^(?:PASS|FINDINGS|UNKNOWN)$/u, "PASS, FINDINGS or UNKNOWN"],
+  slot: [/^[AB]$/u, "A or B"],
+  kind: [/^(?:Preview|Handoff)$/u, "Preview or Handoff"],
+  normalization: [/^(?:none|final-newline)$/u, "none or final-newline"],
+  slots: [/^A,B$/u, "A,B"],
+  "expect-pair-id": [/^[a-f0-9]{12}$/u, "the 12-hex pair id namespace printed"],
+  "expect-candidate": [SHA_VALUE, "a full 40-hex SHA"],
+  "expect-round": [/^Round: /u, "a whole `Round: attempt=\u2026 deep_reads=\u2026 fragment=\u2026` line"],
+  vendor: [
+    /^[a-z0-9][a-z0-9-]{0,31}$/u,
+    "launch.<role>.vendor, such as anthropic, openai or unknown"
+  ],
+  "a-bytes": [DECIMAL2, "a decimal size"],
+  "b-bytes": [DECIMAL2, "a decimal size"]
+};
+var EXPECTATION = "--dispatch <id> --candidate <40-hex> --requested <fast|deep|follow_up>";
+var ROUND_FLAGS = ["attempt", "attempt-limit", "deep-reads", "fragment"];
+var ROUND_USAGE = "--attempt <n> --attempt-limit <limit> --deep-reads <m> --fragment <id>";
+var ROUND_EXAMPLE = "--attempt 1 --attempt-limit 5 --deep-reads 1 --fragment f1";
+var COMMANDS = {
+  namespace: {
+    required: ["slots"],
+    optional: [],
+    usage: "namespace --slots A,B",
+    about: "creates one private 0700 directory per slot under system temp, named mo-review-<pair_id>-<slot>-<random>, and no pair directory",
+    example: "namespace --slots A,B"
+  },
+  template: {
+    required: ["verdict", "dispatch", "candidate", "requested", "effective", ...ROUND_FLAGS],
+    optional: ["unknown-reason"],
+    usage: `template --verdict <PASS|FINDINGS|UNKNOWN> ${EXPECTATION} --effective <mode> ${ROUND_USAGE} [--unknown-reason <reason>]`,
+    about: "prints a complete report body, Round line included, that the validator accepts as printed",
+    example: `template --verdict PASS --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep --effective deep ${ROUND_EXAMPLE}`
+  },
+  prepare: {
+    required: ["file", "dispatch", "candidate", "requested", ...ROUND_FLAGS],
+    optional: ["effective"],
+    usage: `prepare --file <Body-File> ${EXPECTATION} [--effective <mode>] ${ROUND_USAGE}   < report bytes on stdin`,
+    about: "validates the stdin bytes, then creates the Body-File once (never overwrites)",
+    example: `prepare --file /tmp/run/slot-a-r1-d1.md --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep ${ROUND_EXAMPLE} < report.md`
+  },
+  validate: {
+    required: ["file", "dispatch", "candidate", "requested", ...ROUND_FLAGS],
+    optional: ["effective", "prepared", "normalization"],
+    usage: `validate --file <path|-> ${EXPECTATION} [--effective <mode>] ${ROUND_USAGE} [--prepared <Body-File> [--normalization none|final-newline]]`,
+    about: "checks one report; with --prepared also compares it byte for byte with the prepared file",
+    example: `validate --file - --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep ${ROUND_EXAMPLE} < report.md`
+  },
+  stage: {
+    required: [
+      "slot-dir",
+      "slot",
+      "pair-id",
+      "dispatch",
+      "candidate",
+      "vendor",
+      "requested",
+      ...ROUND_FLAGS,
+      "file"
+    ],
+    optional: ["effective"],
+    usage: `stage --slot-dir <slot dir> --slot A|B --pair-id <id> ${EXPECTATION} [--effective <mode>] --vendor <launch.<role>.vendor> ${ROUND_USAGE} --file <Body-File|->`,
+    about: "validates one report of the slot and records it in <slot dir>/stage.json once; --file - publishes stdin bytes into the slot first",
+    example: `stage --slot-dir /tmp/mo-review-0a1b2c3d4e5f-A-Xy12Ab --slot A --pair-id 0a1b2c3d4e5f --dispatch ctx_1 --candidate ${"a".repeat(40)} --requested deep --vendor anthropic ${ROUND_EXAMPLE} --file /tmp/mo-review-0a1b2c3d4e5f-A-Xy12Ab/slot-a-r1-d1.md`
+  },
+  pair: {
+    required: ["slot-a", "slot-b", "expect-pair-id", "expect-candidate", "expect-round"],
+    optional: [],
+    usage: "pair --slot-a <slot A dir> --slot-b <slot B dir> --expect-pair-id <id> --expect-candidate <40-hex> --expect-round '<Round line>'",
+    about: "checks both stage.json records against the expectation, observes both reports again and copies them into the pair directory mo-review-<pair_id>-pair beside the slots; once that directory exists a repeated pair is final_exists and writes nothing",
+    example: `pair --slot-a /tmp/mo-review-0a1b2c3d4e5f-A-Xy12Ab --slot-b /tmp/mo-review-0a1b2c3d4e5f-B-Qw34Cd --expect-pair-id 0a1b2c3d4e5f --expect-candidate ${"a".repeat(40)} --expect-round 'Round: attempt=1/5 deep_reads=1 fragment=f1'`
+  },
+  preview: {
+    required: ["slot-dir", "slot"],
+    optional: [],
+    usage: "preview --slot-dir <slot dir> --slot A|B",
+    about: "observes one staged report again and prints the early preview line naming it in its own slot",
+    example: "preview --slot-dir /tmp/mo-review-0a1b2c3d4e5f-A-Xy12Ab --slot A"
+  },
+  ack: {
+    required: ["line", "kind", "pair-id"],
+    optional: ["a-bytes", "b-bytes"],
+    usage: "ack --kind Preview|Handoff --line <ack text> --pair-id <id> [--a-bytes <n>] [--b-bytes <n>]",
+    about: "checks a consumer's acknowledgement against the published sizes",
+    example: "ack --kind Handoff --line 'Review-Handoff-Ack: 0a1b2c3d4e5f A=10 B=20' --pair-id 0a1b2c3d4e5f --a-bytes 10 --b-bytes 20"
   }
+};
+var FLAGS = Object.fromEntries(
+  Object.entries(COMMANDS).map(([name, spec]) => [name, [...spec.required, ...spec.optional]])
+);
+var PROGRAM = "mo-review-report.mjs";
+var OVERVIEW = `usage: ${PROGRAM} <${Object.keys(COMMANDS).join("|")}> \u2026 | <command> --help
+`;
+function commandHelp(name) {
+  const spec = COMMANDS[name];
+  return `usage: ${PROGRAM} ${spec.usage}
+
+  ${spec.about}
+
+example:
+  node ${PROGRAM} ${spec.example}
+`;
+}
+function parseCommandLine(argv) {
+  const [name, ...rest] = argv;
+  if (name === "--help") return { help: OVERVIEW };
+  const spec = COMMANDS[name];
+  if (spec === void 0) throw new UsageError(OVERVIEW.trimEnd());
+  const options = {
+    ...Object.fromEntries(FLAGS[name].map((flag) => [flag, { type: "string" }])),
+    help: { type: "boolean" }
+  };
+  const names = parseArgs({ args: rest, options, strict: false, tokens: true }).tokens.filter((token) => token.kind === "option").map((token) => token.name);
+  const unknown = [...new Set(names.filter((flag) => !Object.hasOwn(options, flag)))];
+  if (unknown.length > 0) throw new UsageError(`${name} does not take --${unknown.join(", --")}`);
+  let parsed;
+  try {
+    parsed = parseArgs({ args: rest, options, strict: true, allowPositionals: false });
+  } catch (error) {
+    throw new UsageError(`${name}: ${error.message.split("\n")[0]}`);
+  }
+  if (parsed.values.help) return { help: commandHelp(name) };
+  const repeated = names.find((flag, index2) => names.indexOf(flag) !== index2);
+  if (repeated !== void 0) throw new UsageError(`${name}: --${repeated} is given twice`);
+  const values = { ...parsed.values };
+  const missing = spec.required.filter((flag) => values[flag] === void 0);
+  if (missing.length > 0) {
+    const verb = missing.length === 1 ? "is" : "are";
+    throw new UsageError(`${name}: --${missing.join(", --")} ${verb} required`);
+  }
+  for (const [flag, value] of Object.entries(values)) {
+    const rule = VALUES[flag];
+    if (rule !== void 0 && !rule[0].test(value)) {
+      throw new UsageError(`${name}: --${flag} must be ${rule[1]}`);
+    }
+  }
+  if (ROUND_FLAGS.every((flag) => values[flag] !== void 0)) {
+    const counters = parseRound(
+      `attempt=${values.attempt}/${values["attempt-limit"]} deep_reads=${values["deep-reads"]} fragment=${values.fragment}`
+    );
+    if (counters.error) throw new UsageError(`${name}: the round flags give ${counters.error}`);
+    values.round = counters.round;
+  }
+  return { name, options: values };
 }
 function expectationOf(options) {
-  require_(options, ["dispatch", "candidate", "requested"]);
   return {
     execution: options.dispatch,
     candidate: options.candidate,
     requestedMode: options.requested,
-    effectiveMode: options.effective
+    effectiveMode: options.effective,
+    round: options.round
   };
 }
 function commandValidate(options) {
-  require_(options, ["file"]);
   const bytes = options.file === "-" ? { buffer: readFileSync(0) } : readReportBytes(options.file);
   if (bytes.error) {
     process.stdout.write(`MO-REVIEW-REPORT/1 status=malformed reason=${bytes.error} line=0
@@ -7567,11 +7963,7 @@ function commandValidate(options) {
   process.stdout.write(`${reportLine(result)}
 `);
   if (options.prepared === void 0) return result.status === "valid" ? 0 : 1;
-  const normalization = options.normalization ?? "none";
-  if (NORMALIZATIONS[normalization] === void 0) {
-    throw new Error("--normalization must be none or final-newline");
-  }
-  const identity = bodyIdentity(bytes.buffer, options.prepared, normalization);
+  const identity = bodyIdentity(bytes.buffer, options.prepared, options.normalization ?? "none");
   process.stdout.write(
     `MO-REVIEW-BODY/1 prepared_body_identity=${identity.identity} reason=${identity.reason}
 `
@@ -7579,7 +7971,6 @@ function commandValidate(options) {
   return result.status === "valid" && identity.identity !== "different" ? 0 : 1;
 }
 function commandPrepare(options) {
-  require_(options, ["file"]);
   const result = prepareBody({
     path: options.file,
     buffer: readFileSync(0),
@@ -7604,72 +7995,48 @@ function commandPrepare(options) {
   return 1;
 }
 function commandTemplate(options) {
-  require_(options, ["verdict", "dispatch", "candidate", "requested", "effective"]);
   const template = reportTemplate({
     verdict: options.verdict,
     dispatch: options.dispatch,
     candidate: options.candidate,
     requested: options.requested,
     effective: options.effective,
+    round: options.round,
     reason: options["unknown-reason"]
   });
-  if (template.error) throw new Error(template.error);
+  if (template.error) throw new UsageError(`template: ${template.error}`);
   process.stdout.write(template.text);
   return 0;
 }
 function commandStage(options) {
-  require_(options, ["dir", "slot", "vendor"]);
-  const source = options.file === void 0 || options.file === "-" ? null : options.file;
-  const bytes = source === null ? { buffer: readFileSync(0) } : readReportBytes(source);
-  if (bytes.error) {
-    process.stdout.write(`MO-REVIEW-STAGE/1 status=unknown reason=${bytes.error}
-`);
-    return 1;
-  }
+  const fromStdin = options.file === "-";
   const result = stage({
-    dir: options.dir,
+    slotDir: options["slot-dir"],
     slot: options.slot,
+    pairId: options["pair-id"],
+    dispatch: options.dispatch,
     vendor: options.vendor,
-    buffer: bytes.buffer,
+    file: fromStdin ? void 0 : options.file,
+    buffer: fromStdin ? readFileSync(0) : void 0,
     expected: expectationOf(options)
   });
+  if (result.verdict !== void 0 && result.status !== "staged") {
+    process.stdout.write(`${reportLine(result.verdict)}
+`);
+  }
   if (result.status !== "staged") {
     process.stdout.write(`MO-REVIEW-STAGE/1 status=unknown reason=${result.reason}
 `);
     return 1;
   }
   process.stdout.write(
-    `MO-REVIEW-STAGE/1 slot=${result.slot} path=${JSON.stringify(result.path)} bytes=${result.bytes} dev=${result.dev} ino=${result.ino} sha256=${result.sha256}
+    `MO-REVIEW-STAGE/1 status=staged slot=${result.slot} sha256=${result.sha256} bytes=${result.bytes}
 `
   );
   return 0;
 }
-function slotOption(options, slot) {
-  const prefix = slot.toLowerCase();
-  require_(options, [
-    `${prefix}-vendor`,
-    `${prefix}-bytes`,
-    `${prefix}-dev`,
-    `${prefix}-ino`,
-    `${prefix}-sha256`
-  ]);
-  return {
-    slot,
-    vendor: options[`${prefix}-vendor`],
-    bytes: Number(options[`${prefix}-bytes`]),
-    dev: Number(options[`${prefix}-dev`]),
-    ino: Number(options[`${prefix}-ino`]),
-    sha256: options[`${prefix}-sha256`]
-  };
-}
 function commandPreview(options) {
-  require_(options, ["dir", "slot"]);
-  if (!["A", "B"].includes(options.slot)) throw new Error("--slot must be A or B");
-  const result = preview({
-    dir: options.dir,
-    pairId: basename(options.dir),
-    slot: slotOption(options, options.slot)
-  });
+  const result = preview({ slotDir: options["slot-dir"], slot: options.slot });
   if (result.status !== "previewed") {
     process.stdout.write(
       `MO-REVIEW-PAIR/1 status=unknown reason=${result.reason} slot=${result.slot}
@@ -7682,14 +8049,13 @@ function commandPreview(options) {
   return 0;
 }
 function commandAck(options) {
-  require_(options, ["line", "kind", "pair-id"]);
   const bytes = {};
   for (const slot of ["A", "B"]) {
     const value = options[`${slot.toLowerCase()}-bytes`];
     if (value !== void 0) bytes[slot] = Number(value);
   }
   if (!ackSlotsValid(options.kind, Object.keys(bytes).sort())) {
-    throw new Error(
+    throw new UsageError(
       "--kind Handoff needs --a-bytes and --b-bytes, --kind Preview exactly one of them"
     );
   }
@@ -7705,63 +8071,56 @@ function commandAck(options) {
   return result.status === "matched" ? 0 : 1;
 }
 function commandPair(options) {
-  require_(options, ["dir"]);
-  const slots = ["A", "B"].map((slot) => slotOption(options, slot));
-  const result = pair({ dir: options.dir, pairId: basename(options.dir), slots });
-  if (result.status !== "paired") {
-    process.stdout.write(
-      `MO-REVIEW-PAIR/1 status=unknown reason=${result.reason} slot=${result.slot}
-`
-    );
+  const round = parseRound(options["expect-round"].slice("Round: ".length));
+  if (round.error) throw new UsageError(`pair: --expect-round gives ${round.error}`);
+  const result = pair({
+    slotA: options["slot-a"],
+    slotB: options["slot-b"],
+    expect: {
+      pairId: options["expect-pair-id"],
+      candidate: options["expect-candidate"],
+      round: round.round
+    }
+  });
+  if (result.status !== "ok") {
+    const slot = result.slot === void 0 ? "" : ` slot=${result.slot}`;
+    const dir = result.dir === void 0 ? "" : ` dir=${JSON.stringify(result.dir)}`;
+    process.stdout.write(`MO-REVIEW-PAIR/1 status=unknown reason=${result.reason}${slot}${dir}
+`);
     return 1;
   }
-  process.stdout.write(`${result.line}
-`);
+  process.stdout.write(
+    `MO-REVIEW-PAIR/1 status=ok pair_id=${result.pairId} dir=${JSON.stringify(result.dir)} a_bytes=${result.a.bytes} b_bytes=${result.b.bytes}
+${result.line}
+`
+  );
   return 0;
 }
-var EXPECTATION_FLAGS = ["dispatch", "candidate", "requested", "effective"];
-var SLOT_FLAGS = ["a", "b"].flatMap(
-  (prefix) => ["vendor", "bytes", "dev", "ino", "sha256"].map((field) => `${prefix}-${field}`)
-);
-var FLAGS = {
-  template: ["verdict", ...EXPECTATION_FLAGS, "unknown-reason"],
-  prepare: ["file", ...EXPECTATION_FLAGS],
-  validate: ["file", ...EXPECTATION_FLAGS, "prepared", "normalization"],
-  stage: ["dir", "slot", "vendor", "file", ...EXPECTATION_FLAGS],
-  pair: ["dir", ...SLOT_FLAGS],
-  preview: ["dir", "slot", ...SLOT_FLAGS],
-  ack: ["line", "kind", "pair-id", "a-bytes", "b-bytes"]
-};
-function knownFlags(name, options) {
-  const unknown = Object.keys(options).filter((flag) => !FLAGS[name].includes(flag));
-  if (unknown.length > 0) throw new Error(`${name} does not take --${unknown.join(", --")}`);
-  return options;
-}
-function main(argv) {
-  const commands = {
-    template: commandTemplate,
-    prepare: commandPrepare,
-    validate: commandValidate,
-    stage: commandStage,
-    pair: commandPair,
-    preview: commandPreview,
-    ack: commandAck
-  };
-  if (argv[0] === "namespace") {
-    const created = namespace();
-    process.stdout.write(
-      `MO-REVIEW-NS/1 dir=${JSON.stringify(created.dir)} pair_id=${created.pairId}
+function commandNamespace() {
+  const created = namespace();
+  process.stdout.write(
+    `MO-REVIEW-NS/1 pair_id=${created.pairId} slot_a=${JSON.stringify(created.slots.A)} slot_b=${JSON.stringify(created.slots.B)}
 `
-    );
+  );
+  return 0;
+}
+var RUN = {
+  namespace: commandNamespace,
+  template: commandTemplate,
+  prepare: commandPrepare,
+  validate: commandValidate,
+  stage: commandStage,
+  pair: commandPair,
+  preview: commandPreview,
+  ack: commandAck
+};
+function main(argv) {
+  const call = parseCommandLine(argv);
+  if (call.help !== void 0) {
+    process.stdout.write(call.help);
     return 0;
   }
-  const command = commands[argv[0]];
-  if (command === void 0) {
-    throw new Error(
-      "usage: mo-review-report.mjs <namespace|template|prepare|validate|stage|pair|preview|ack> \u2026"
-    );
-  }
-  return command(knownFlags(argv[0], parseArguments(argv.slice(1))));
+  return RUN[call.name](call.options);
 }
 function invokedDirectly() {
   try {
@@ -7780,21 +8139,27 @@ if (invokedDirectly()) {
   }
 }
 export {
+  COMMANDS,
   FLAGS,
   NORMALIZATIONS,
   bodyIdentity,
   businessQuestion,
   checkAck,
+  commandHelp,
   decodeReport,
-  linkFailureReason,
   namespace,
   pair,
+  parseCommandLine,
+  parseRound,
   prepareBody,
   preview,
   publicSummary,
+  readFacts,
   readReportBytes,
   reportLine,
   reportTemplate,
+  roundLine,
+  slotIdentity,
   stage,
   topLevelParagraphs,
   topLevelProse,

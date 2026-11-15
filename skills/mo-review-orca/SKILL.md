@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-review-orca or an act
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "ffb886c803a46279704afc8c2900e9491e865b19"
+  source_tree: "6c07c2c8bd1672cc31e8215edea222fdb3748d08"
 ---
 
 # Review through Orca
@@ -25,14 +25,43 @@ Read [Portable review protocol](references/review-protocol.md),
 completely. From the same resolved Orca binary also read the version-matched
 `orchestration` and `orca-cli` bundled guides; never install guide copies.
 
+This skill ships its own scripts in `scripts/` beside this `SKILL.md`. Every
+`scripts/<name>` this skill and its references name is that file, never a path
+in the project checkout, and it runs from this skill's directory with the full
+path in double quotes, which also holds for a path with a space:
+
+```text
+node "<this skill's directory>/scripts/mo-review-resource.mjs" --help
+```
+
 Accept only an exact 40-hex `candidate_sha`, intent source, scope, mode, the
-specification line and two user-approved vendor-diverse selections from bundled
-`scripts/mo-models.mjs --show --project <root>`. Never choose fallback model,
-effort, placement or posture flags. The caller passes `Spec: <path|object>`
-when the work followed a specification and `Spec: none` otherwise, and both
-reviewers receive the same line; an executor running this review on its own
-work is such a caller too, because only it knows which specification it
-followed.
+specification and intent-ledger sources and two user-approved vendor-diverse
+selections from bundled `scripts/mo-models.mjs --show --json --project <root>`,
+where diversity is `launch.<role>.vendor` and never the route;
+`vendor=unknown` proves no diversity. Never choose fallback model, effort,
+placement or posture flags. The caller names the
+specification the work followed, or none, and the verbatim intent ledger; an
+executor running this review on its own work is such a caller too, because only
+it knows which specification it followed.
+
+Each source becomes a `Spec:` or `Intent-Ledger:` line in one of the four forms
+of [Review brief](references/review-brief.md): a path the candidate's tree
+tracks stays a path, a file closure deleted is `git <commit>:<path> blob=<id>`,
+and nothing else is `none`. A source outside Git is copied into each slot's
+own directory once `namespace` created them, before either brief is written,
+and again for every new `namespace`; each brief takes the `line=` printed for
+its own slot:
+
+```text
+node "<this skill's directory>/scripts/mo-review-input.mjs" copy --field <Spec|Intent-Ledger> \
+  --source <file> --slot A=<slot A dir> --slot B=<slot B dir>
+```
+
+One read gives both slots the same bytes; `status=refused` writes no brief and
+is reported with its reason. A reviewer's `external_input_missing` or
+`external_input_integrity` is that slot's `UNKNOWN` and goes to the human with
+the line; for `external_input_unavailable` recommend a full clone, or committing
+the specification to the task branch.
 
 Those two selections form the vendor-diverse pair; neither may be substituted.
 
@@ -59,6 +88,21 @@ so the human knows what to prepare without a second question, and no pair
 starts. Preparing the project is the human's own step; this skill never does it
 and never starts the setup skill for them.
 
+Give both briefs one `Backlog-Gate` line: the gate this candidate stands at and
+the caller's own `MO-BACKLOG/1` result on exactly this SHA, or `not_run` when
+no gate ran on it. Started on its own, without a gate result from its caller,
+write `Backlog-Gate: G0 not_run`; the reviewers never run the gate themselves.
+
+Give both briefs exactly one E2E form. Called by the active orchestration skill,
+copy the `E2E-Evidence` and `E2E-Coverage` lines it holds verbatim, or its one
+`E2E: not_applicable reason=<…>` line, `reason=no_task_scenarios` included.
+A line whose result is an external block — `blocked:external_capability` or a
+`not_run` of an unavailable environment or profile — is copied the same way:
+it is a known, unproven scenario, not a malformed form. Started on its own, without a separate
+E2E request, write `E2E: not_evaluated reason=standalone`: no E2E runs, the
+reviewers raise no `e2e_affected` or `e2e_missing`, and the report to the human
+says E2E was not evaluated.
+
 ## Pre-pair placement
 
 Before pair artifacts, read `ProjectRegistrationSet/1` from project/repository
@@ -68,7 +112,12 @@ option among equals:
 
 1. `isolated` — two proven clean isolated worktrees of the current project, or
    attributed Orca `new-child` worktrees of a Git project, each standing at the
-   exact SHA.
+   exact SHA. A new one is a child of the caller's working directory: created
+   with `orca worktree create --parent-worktree path:<checkout>|worktree:<id>`
+   and `--base-branch <exact sha>`, then marked and started with
+   `worker-start --worktree id:<repo>::<path>`; `parentWorktreeId` from
+   `orca worktree show --json` proves the parent, and the Git base is set only
+   by `--base-branch`.
 2. `shared_checkout` — both reviewers start in the exact existing workspace
    (`--worktree id:<repo>::<path>`); creation flags are rejected there.
 3. `REVIEW-START … reason=placement_unsupported` — only when not even an exact
@@ -211,42 +260,36 @@ Create both tasks before launching either worker. The skill creates only two
 reviewers, never an executor/fixer/verifier/subagent. Use stable visible titles
 `<feature>:review:<vendor>`; title is a label and exact handles own cleanup.
 
-Every reviewer Dispatch names `mo-reviewer` under `Reviewer-Skill` together with
-the absolute path of its `SKILL.md` in the installation this skill runs from —
-the sibling directory of this skill — and the installed version, as
-`mo-reviewer <path> source_tree=<40-hex>` followed by
-`skill=<id> protocol=<id> validator=<id>`. `source_tree` is that file's build
-stamp; it names authored inputs only, not the bundled third-party bytes, and
-survives a local edit. So immediately before the Dispatch, take
-`git hash-object` of the installed `SKILL.md`, `references/review-protocol.md`
-and `scripts/mo-review-report.mjs`: those three ids are the bytes that judge the
-report. The round report repeats the whole value next to
-`prepared_body_identity`. Before either Dispatch, read that file; when it is
-absent, unreadable from the reviewer's workspace, carries no stamp, lacks one of
-the three files, or is not the same build as this skill, no Dispatch starts and
-the result is `needs_attention/skill_unavailable`. Same build means that its
-`protocol` and `validator` ids equal `git hash-object` of this skill's own
-`references/review-protocol.md` and `scripts/mo-review-report.mjs`: one build
-ships those two files byte for byte in both skills. The two `source_tree`
-stamps are not compared, because each hashes its own skill's inputs and they
-differ by design. Never paste reviewer
-instructions from a copy of unknown origin. The recorded value is not proved
-against Meta-O history: an installation does not know its source commit, and the
-project under review usually has no Meta-O history at all.
+Every reviewer Dispatch names the reviewer skill `mo-reviewer` by name only,
+`Reviewer-Skill: mo-reviewer`: no path, no build stamp, no hash and no
+comparison of installed copies. Meta-O skills are installed in every agent
+environment that takes part, and the reviewer uses the one its own environment
+has under that name. A reviewer that reports no skill of that name ends its slot
+with `needs_attention/skill_unavailable`; never paste reviewer instructions into
+the Dispatch from this or any other copy.
 
 Start each Claude or Codex reviewer on Orca 1.4.219 or later with:
 
 ```text
 orca orchestration worker-start --task <id> --worktree id:<repo>::<path> \
-  --agent <claude|codex> --model <id> --effort <e> --json
+  --agent <launch.<role>.agent> --model <launch.<role>.model> \
+  --effort <launch.<role>.effort> --json
 ```
 
-Orca injects the task only once the harness shows its normal agent prompt, and
-its receipt must show `launch.requested` equal to `launch.effective` and
-`turnStart: observed`. Record the Dispatch and the
-terminal of `effects[kind=terminal].id` at once. A harness whose model
-`worker-start` cannot pass starts terminal-first by the recipe in
-[Orca native mechanics](references/orca-mechanics.md). The user's setting for
+The three flags come from the reviewer role's `launch.<role>`, never from the
+whole `route/model/effort` literal in `--model`. Orca injects the task only
+once the harness shows its normal agent prompt, and its receipt must show
+`launch.requested` equal to `launch.effective` and `turnStart: observed`; that
+match is not the provider's acceptance, so the reviewer counts as started only
+once its harness accepted the model and the first turn began. A provider refusal
+is answered by `scripts/mo-models.mjs --catalog --route <agent>` and one
+question to the caller or human with the recommended replacement, never by a
+silent substitute. Record the Dispatch and the
+terminal of `effects[kind=terminal].id` at once. A harness that `worker-start`
+cannot launch with the role's model and effort, such as OpenCode, starts
+terminal-first by the recipe in
+[Orca native mechanics](references/orca-mechanics.md), which also says how its
+effort is reported. The user's setting for
 new agent tabs owns unsandboxed posture; never duplicate its flags.
 
 The first lifecycle pair uses `deep`. A Dispatch, the provider session, its PTY
@@ -261,7 +304,7 @@ Before each such Dispatch decide every slot separately with
 
 ```text
 hot(slot) = alive_and_ready(slot) AND (age < 1h OR context_proven_small(slot))
-scripts/mo-review-resource.mjs hot --alive yes|no --ready yes|no --composer empty|other \
+node "<this skill's directory>/scripts/mo-review-resource.mjs" hot --alive yes|no --ready yes|no --composer empty|other \
   [--age-ms <n>] [--context-tokens <n> | --context-percent <n> --context-window <n>]
 ```
 
@@ -283,7 +326,9 @@ answering `action=inject`, and its `context=`/`context_window=` fields are
 what the context flags take. A refused screen on an idle session is
 `session_unavailable` recorded with that line: that slot returns
 `needs_attention`, its composer text is left as it is, nothing else is closed,
-and it is never by itself a reason for a new deep pair.
+and it is never by itself a reason for a new deep pair. `action=wait` is a
+session still at work: nothing is sent, the slot is not recorded unavailable,
+and its screen is read again at the next checkpoint of the run's one wait.
 
 Orca's own folder pre-trust, on by default, trusts the start's worktree before
 the harness launches, so a reviewer start normally meets no trust UI. Whenever a
@@ -302,11 +347,25 @@ reviewer.
 A new independent deep pair while this pair has no PASS needs a recorded reason
 that `scripts/mo-review-resource.mjs deep --phase remediation --reason <r>`
 accepts: `state_transfer_impossible`, `hypothesis_stuck`,
-`requirements_conflict` or `owner_request`. Each round's report names
-`attempt <n>/5` and `deep_reads <m>`: a hot `follow_up`, a slot replacement, a
-deep pair and the final fresh pair with its `follow_up` each spend one attempt
-of the substantive slice, a new SHA does not reset the count, and fresh pairs
-are the costly full rereads.
+`requirements_conflict` or `owner_request`.
+
+Every brief carries the round's counters as
+`Round: attempt=<n>/<limit> deep_reads=<m> fragment=<fragment-id>`, and every
+report repeats that line, printed by the reviewer's validator from the four
+values passed as flags. `fragment` is a short id, `[a-z0-9-]{1,40}`, this skill
+gives the substantive fragment under review; both counters belong to it and to
+the pair and include the current round. A hot `follow_up`, a slot replacement, a
+deep pair and the final fresh pair with its `follow_up` each spend one attempt;
+the one repeat Dispatch after a malformed report does not. `limit` is 5 or the
+extension the owner approved. `deep_reads` is 1 for the first deep pair of the
+fragment and grows by one for every fresh independent deep pair after it, the
+final pair included; fresh pairs are the costly full rereads. A new SHA, a hot
+continuation and a slot replacement reset neither counter, and only a new
+fragment starts both again. The same four values go to this skill's own
+`validate` and `stage` calls, and the whole line to `pair` as
+`--expect-round`; each compares them with the body's line or the staged one,
+and `round_mismatch` means a value was carried over wrongly and the report is
+not published.
 
 `fast` is explicitly standalone/advisory, and the portable protocol may
 escalate it to `deep`. Only after this pair returned two PASS reports on one
@@ -318,8 +377,23 @@ closure proof. Findings of the fresh pair are remediated in that pair, which
 becomes the hot pair; no further fresh pair starts until it passes.
 
 Wait through one run-wide public waiter on both exact Dispatch handles. Use
-300000 ms arms for reviewers; a quiet timeout permits one public liveness
-snapshot and immediate re-arm without narration or messages. Retry the same arm
+300000 ms arms for reviewers and wake on `worker_done,escalation,question`, plus
+`status` only while a preview or pair handoff you sent has no matching
+acknowledgement in the Run's messages. A quiet timeout runs the checkpoint of
+[Orca native mechanics](references/orca-mechanics.md) — unread batch,
+`worker-show` of each Dispatch, a `completed` reviewer processed through its
+`worker_done` — and then re-arms without narration or messages.
+
+After a compaction — Claude Code's continuation summary at the start of the
+context, Codex's compaction notice, or, where neither is recognizable, a summary
+of earlier work instead of the original messages at the start of a turn — act on
+nothing first. Reread this `SKILL.md` completely and every reference it names,
+then restore the pair from public Orca, never from the summary: the checkpoint
+above, both Dispatches and their `worker_done` bodies, the `E2E-Evidence` lines
+or the one `E2E:` line of the brief, and the `Round` line of the last brief.
+When the next `Round` cannot be derived from those, stop with
+`needs_attention reason=round_unrecoverable` rather than start the count again.
+Until both are done start, message or release nothing. Retry the same arm
 once after transport failure; a second consecutive failure is
 `UNKNOWN/needs_attention`. Process every event in a returned batch before
 acknowledgement.
@@ -330,13 +404,16 @@ the handle recorded for it in `OwnedResourceSet/1`, then re-read the resource
 projection. If that handle is absent, close nothing and return
 `needs_attention`.
 
-Wait for both full reports before disposition or handoff.
+Wait for both full reports before disposition or handoff. A valid `UNKNOWN`
+that indexes findings is never a PASS: its findings go to the executor in the
+ordinary handoff like those of a `FINDINGS` report, and its `Unknown-Account`
+names what the next round still has to review.
 
 The brief carries every field of [Review brief](references/review-brief.md) and
-no placeholder. Every grounding source it names must be readable from the
-candidate itself: a path under `.orca/` is in no checkout the reviewer can
-obtain, and the accepted specification is tracked under `docs/specifications/`
-until closure removes it. On a post-cleanup candidate the brief grounds the pair
+no placeholder. Every grounding source it names must reach the reviewer as exact
+bytes: a path under `.orca/` is in no checkout the reviewer can obtain, and the
+accepted specification is tracked under `docs/specifications/` until closure
+removes it. On a post-cleanup candidate the brief grounds the pair
 in the durable knowledge and cites the removed specification by its frozen
 object id together with the commit whose tree still holds it, which a full
 clone or worktree resolves with `git cat-file` and a shallow one does not. A reviewer that cannot
@@ -356,11 +433,16 @@ the task-specific body that replaces the generic completion format of Orca's
 injected preamble, and carries this command with every value the caller holds.
 The Dispatch id does not exist when the task is written and reaches only the
 reviewer, in Orca's preamble, so `--dispatch` is the one argument the brief
-says to take from there:
+says to take from there. The script is the reviewer's own: the brief names it in
+the directory of the reviewer's installed `mo-reviewer`, quoted, and never by
+this installation's absolute path or as a bare `scripts/…`, which reads as a
+path in the candidate checkout:
 
 ```text
-scripts/mo-review-report.mjs template --verdict <PASS|FINDINGS|UNKNOWN> \
+node "<the reviewer's mo-reviewer directory>/scripts/mo-review-report.mjs" template \
+  --verdict <PASS|FINDINGS|UNKNOWN> \
   --dispatch <id> --candidate <sha> --requested <mode> --effective <mode> \
+  --attempt <n> --attempt-limit <limit> --deep-reads <m> --fragment <fragment-id> \
   [--unknown-reason <reason>]
 ```
 
@@ -375,15 +457,29 @@ validator. QC of the candidate is the executor's or coordinator's run on a clean
 checkout of that exact SHA, and CI's run before an agent merges; a reviewer
 running the suite too only spends the time in which every cache expires.
 
-Before the pair, create one run directory outside every worktree with
-`scripts/mo-review-report.mjs namespace` and give each reviewer
-`Body-File: <dir>/slot-<a|b>-r<round>-d<n>.md`, a name built before the brief is
-sent; `<n>` counts that slot's Dispatches in the round, so a repeat Dispatch never
-meets the earlier body, and the Dispatch id reaches only the reviewer and stays
-in the body as `Review-Execution`. The reviewer writes the file once through
-`prepare`, which validates the bytes first and refuses an existing file, and
-sends exactly that content. Where Orca runs the reviewer on another host, the
-brief says `Body-File: none` and the reviewer validates the same bytes on stdin.
+Before the pair, and again for every round, create its slot directories
+outside every worktree:
+
+```text
+node "<this skill's directory>/scripts/mo-review-report.mjs" namespace --slots A,B
+```
+
+It prints `MO-REVIEW-NS/1 pair_id=<id> slot_a="<dir>" slot_b="<dir>"`: one
+private `0700` directory per slot under system temp, named
+`mo-review-<pair_id>-<slot>-<random>`, and no pair directory. Give each reviewer
+only `Body-File: <slot dir>/slot-<a|b>-r<round>-d<n>.md` in its own slot
+directory, a name built before the brief is sent; `<n>` counts that slot's
+Dispatches in the round, so a repeat Dispatch never meets the earlier body, and
+the Dispatch id reaches only the reviewer and stays in the body as
+`Review-Execution`. A brief and every message to a slot name only that slot's
+own directory: until its report is accepted, slot B's brief never names slot A's
+directory or the pair directory, and the executor learns slot A's path only
+through an early preview. Under one OS account that independence is an
+instruction and not isolation, and a remote host alone does not prove more. The
+reviewer writes the file once through `prepare`, which validates the bytes first
+and refuses an existing file, and sends exactly that content. Where Orca runs
+the reviewer on another host, the brief says `Body-File: none` and the reviewer
+validates the same bytes on stdin.
 
 Every finding states `confirmed|strongly_supported` evidence, causal path,
 impact, actionable location, proof, post-fix invariant, technical direction,
@@ -394,14 +490,16 @@ who may no longer exist.
 
 Only the body the coordinator received from Orca is authoritative, and only
 after its own validation against caller-owned expected values: exact candidate,
-native Dispatch id, requested mode and observed effective mode. A stale but
+native Dispatch id, requested mode, observed effective mode and the brief's
+`Round`. A stale but
 self-consistent header/footer is `UNKNOWN`. Run the bundled validator rather
 than judging the shape by eye, and compare with the prepared file in the same
 call:
 
 ```text
-scripts/mo-review-report.mjs validate --file <received> --dispatch <id> \
-  --candidate <sha> --requested <mode> --effective <mode> \
+node "<this skill's directory>/scripts/mo-review-report.mjs" validate --file <received> \
+  --dispatch <id> --candidate <sha> --requested <mode> --effective <mode> \
+  --attempt <n> --attempt-limit <limit> --deep-reads <m> --fragment <fragment-id> \
   --prepared <Body-File> --normalization <none|final-newline>
 ```
 
@@ -434,47 +532,71 @@ attempt; a second malformed body from that slot in the round makes the round
 
 ## Lossless handoff and projection
 
-After both valid reports, publish them with the bundled script rather than by
-hand:
+After each slot's valid report, stage it with the bundled script rather than
+by hand, and after both, pair them:
 
 ```text
-scripts/mo-review-report.mjs namespace
-scripts/mo-review-report.mjs stage --dir <ns> --slot <A|B> --vendor <slug> \
-  --dispatch <id> --candidate <sha> --requested <mode> --effective <mode>   < report bytes
-scripts/mo-review-report.mjs pair --dir <ns> --a-vendor … --a-bytes … --a-dev … --a-ino … --a-sha256 … --b-…
+node "<this skill's directory>/scripts/mo-review-report.mjs" stage --slot-dir <slot dir> \
+  --slot <A|B> --pair-id <id> --dispatch <id> --candidate <sha> --requested <mode> \
+  --effective <mode> --vendor <vendor> --attempt <n> --attempt-limit <limit> \
+  --deep-reads <m> --fragment <fragment-id> --file <Body-File|->
+node "<this skill's directory>/scripts/mo-review-report.mjs" pair --slot-a <slot A dir> \
+  --slot-b <slot B dir> --expect-pair-id <id> --expect-candidate <sha> --expect-round '<Round line>'
 ```
 
-Each round publishes into a new namespace: a `follow_up` round's reports are
-staged there, never into the previous round's namespace, whose slot names
-already exist and answer `final_exists`. The namespace is mode `0700` under
-system temp with at least eighteen random characters in its name. Slots A/B are
-assigned before launch and vendor slugs match `^[a-z0-9][a-z0-9-]{0,31}$`. Each
-payload is validated as the exact buffer that gets written, goes to a regular
-`0600` sibling, is fsynced, and is published create-if-absent by hard-linking
-that complete sibling into the slot — never by an overwrite-capable rename.
-`final_exists`, `link_unsupported`, `permission`, `identity_changed`, `symlink`,
-`malformed` and `invalid_utf8` are each `UNKNOWN` and leave the existing final
-path untouched. Send the named consumer one ordinary message with `pair_id`,
-both exact paths and decimal sizes. A machine consumer acknowledges only after
-reading both:
+Every value is one this skill already holds: the pair id and slot directories
+`namespace` printed; the Dispatch id from Orca's own answer for that Dispatch,
+which is the literal the reviewer copies into `Review-Execution`; the
+candidate, modes and `Round` of the brief; and the vendor as
+`launch.<role>.vendor` of `mo-models.mjs --show --json`, never the route.
+`--file` is the slot's `Body-File`; for `Body-File: none` it is `-` with the
+`worker_done` bytes on stdin, and `stage` publishes them into the slot itself.
+`stage` refuses a directory whose name carries another pair id or slot
+(`slot_identity_mismatch`), a body that answers another Dispatch, candidate or
+mode (`report_identity_mismatch`) or another `Round` (`round_mismatch`) and a
+malformed one; only then does it create `stage.json` in the slot directory,
+create-if-absent and `0600`, with the size, device, inode and sha256 it observed,
+and print `MO-REVIEW-STAGE/1 status=staged slot=<A|B> sha256=<hex> bytes=<n>`. A
+second `stage` of the slot is `stage_exists`: nothing is rewritten.
+
+`pair` reads both `stage.json` and refuses `pair_mismatch` (not slots A and B of
+the expected pair id), `candidate_mismatch`, `round_mismatch`,
+`dispatch_reused`, `vendor_unproven` (a vendor is `unknown`, as for a reviewer
+behind a gateway) and `vendor_not_diverse`. It observes both reports again, and
+only then creates the pair's one `0700` directory, `mo-review-<pair_id>-pair`
+beside the slots, and copies both reports into it create-if-absent, checking
+each copy's size and sha256; no file is ever moved by an overwrite-capable
+rename. A pair whose directory already exists is `final_exists` with nothing
+written, so a repeated `pair` never mints a second pair from the same slots. It prints
+`MO-REVIEW-PAIR/1 status=ok pair_id=<id> dir="<dir>" a_bytes=<n> b_bytes=<n>`
+and a `Review-Pair:` line with both paths and sizes. `identity_changed`,
+`stage_missing`, `facts_malformed`, `final_exists`, `permission`, `symlink`,
+`malformed` and `invalid_utf8` are each `UNKNOWN`, and nothing is recreated or
+overwritten. `stage.json` is the observed facts for `preview` and `pair`, never
+evidence that a review ran, and goes with its slot directory when the slot is
+released. Send the named consumer one ordinary message with the `Review-Pair:`
+line: `pair_id`, both exact paths and decimal sizes. A machine consumer
+acknowledges only after reading both:
 
 ```text
 Review-Handoff-Ack: <pair_id> A=<decimal-bytes> B=<decimal-bytes>
 ```
 
 One absent/mismatched acknowledgement permits one re-delivery of the same paths;
-the next failure makes the pair `UNKNOWN` and preserves the namespace. Check an
-acknowledgement with `scripts/mo-review-report.mjs ack --kind Handoff --line
-<text> --pair-id <id> --a-bytes <n> --b-bytes <n>` rather than by eye.
+the next failure makes the pair `UNKNOWN` and preserves the slot and pair
+directories. Check an acknowledgement with the bundled `mo-review-report.mjs ack
+--kind Handoff --line <text> --pair-id <id> --a-bytes <n> --b-bytes <n>` rather
+than by eye.
 
 Early repair is the one exception to waiting for both reports, and only when
 the owner approved it and every property is proven: the executor works in its
 own worktree; each reviewer has its own tree detached at the old full SHA; the
 brief forbids reading the executor's mutable refs; HEAD and a clean tree are
 rechecked right before `worker_done`. Then stage the first complete valid
-FINDINGS body in its slot and hand it over unchanged with
-`scripts/mo-review-report.mjs preview --dir <ns> --slot <A|B> --<a|b>-…`; the
-executor replies `Review-Preview-Ack: <pair_id> <slot>=<bytes>`, checked with
+FINDINGS body in its slot and hand it over unchanged with the bundled
+`mo-review-report.mjs preview --slot-dir <slot dir> --slot <A|B>`, which reads
+that slot's `stage.json` and nothing of the other slot; the executor replies
+`Review-Preview-Ack: <pair_id> <slot>=<bytes>`, checked with
 `ack --kind Preview`. A preview is not a pair verdict: the other reviewer
 continues on the old SHA, the pair handoff above still follows its report
 before the next candidate, and every one of its findings gets a disposition
@@ -491,8 +613,9 @@ without a P3-only round. One substantive slice permits no more than
 five paired review/fix attempts and still requires two fresh independent `PASS` reports on
 one final SHA.
 
-Never use `/goal`, edit/commit, run QC as a reviewer, close foreign tabs or
-retry `unknown_effect`. Report E2E as not evaluated unless separately requested.
+Never edit/commit, run QC as a reviewer, close foreign tabs or
+retry `unknown_effect`. Report E2E as not evaluated unless separately requested,
+matching the brief's `E2E: not_evaluated reason=standalone`.
 
 ## Meta-O calls
 

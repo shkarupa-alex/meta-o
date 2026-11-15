@@ -23,6 +23,8 @@ import { TextDecoder } from "node:util";
 
 import { fromMarkdown } from "mdast-util-from-markdown";
 
+import { readHistoryDeclaration } from "./knowledge-documents.mjs";
+
 const SHA = /^[0-9a-f]{40}$/u;
 const MARKER = /^Knowledge-Layer: (enabled|disabled)$/u;
 // A papercut document under any name is declared by this line, which mo-setup
@@ -46,6 +48,7 @@ const USAGE = `usage: mo-knowledge-layer.mjs --candidate <40hex> [--repo <git-ro
 
 output: Knowledge-Layer: state=<enabled|not_enabled|needs_attention> reason=<reason>
         [missing=<backlog,papercut,history subset|none|unknown>]  (needs_attention only)
+        [signal=history]  (instead of missing=, for a declaration in the wrong form)
 exit: 0 enabled or not_enabled | 1 needs_attention | 2 call error
 `;
 
@@ -153,9 +156,17 @@ function declaredPapercut(agents) {
 }
 
 /**
- * §A-MEMORY-05 reads the four literal signals of the candidate.
+ * §A-MEMORY-05 reads the four signals of the candidate.
  *
- * @returns {{signals: object} | {reason: string}} the signals or a typed failure
+ * The history signal is the declaration section read through its AST, not a
+ * line matched anywhere in `AGENTS.md`: a cutoff in a sentence or in a foreign
+ * example would otherwise count, and a declaration in a linked quality
+ * document would not. A declaration present in the wrong form is its own
+ * answer, naming the signal, because "absent" would send the human to repair
+ * a gate that works.
+ *
+ * @returns {{signals: object} | {reason: string, signal?: string}} the signals
+ *   or a typed failure
  */
 function readSignals(root, candidate) {
   const files = {};
@@ -178,11 +189,17 @@ function readSignals(root, candidate) {
     if (read.error) return { reason: read.error };
     papercut ||= read.text !== null;
   }
+  const history = readHistoryDeclaration(
+    (commit, path) => readAt(root, commit, path),
+    candidate,
+    "AGENTS.md",
+  );
+  if (history.state === "invalid") return { reason: history.reason, signal: "history" };
   return {
     signals: {
       backlog: COMMAND_FILES.some((path) => files[path]?.includes("MO-BACKLOG/1")),
       papercut,
-      history: /^\s*history_cutoff_sha:/mu.test(agents),
+      history: history.state === "declared",
       marker: markers[0] ?? null,
     },
   };
@@ -240,13 +257,20 @@ export function missingSignals(reason, signals) {
  *
  * @param {string} root resolved Git root
  * @param {string} candidate exact 40-hex commit
- * @returns {{state: string, reason: string, missing?: string}} the typed
- *   answer; `missing` accompanies exactly the `needs_attention` state
+ * @returns {{state: string, reason: string, missing?: string, signal?: string}}
+ *   the typed answer; a `needs_attention` state carries `signal` when one
+ *   signal is declared in the wrong form, and `missing` otherwise
  */
 export function knowledgeLayer(root, candidate) {
   const { signals, ...answer } = settle(root, candidate);
-  if (answer.state !== "needs_attention") return answer;
+  if (answer.state !== "needs_attention" || answer.signal !== undefined) return answer;
   return { ...answer, missing: missingSignals(answer.reason, signals) };
+}
+
+/** A failed read keeps its reason, and the signal it names when it names one. */
+function unreadSignals({ reason, signal }) {
+  const answer = { state: "needs_attention", reason };
+  return signal === undefined ? answer : { ...answer, signal };
 }
 
 function settle(root, candidate) {
@@ -255,7 +279,7 @@ function settle(root, candidate) {
     return { state: "needs_attention", reason: "candidate_unreadable" };
   }
   const read = readSignals(root, candidate);
-  if (read.reason) return { state: "needs_attention", reason: read.reason };
+  if (read.reason) return unreadSignals(read);
   const { backlog, papercut, history, marker } = read.signals;
   const any = backlog || papercut || history;
   if (marker === "disabled") {
@@ -277,9 +301,13 @@ function settle(root, candidate) {
     : { state: "not_enabled", reason: "never_enabled" };
 }
 
-/** §A-MEMORY-05 renders the literal line a reviewer brief carries. */
-export function knowledgeLayerLine({ state, reason, missing }) {
+/**
+ * §A-MEMORY-05 renders the literal line a reviewer brief carries: `missing=`
+ * for absent signals, `signal=` for the one declared in the wrong form.
+ */
+export function knowledgeLayerLine({ state, reason, missing, signal }) {
   const line = `Knowledge-Layer: state=${state} reason=${reason}`;
+  if (signal !== undefined) return `${line} signal=${signal}`;
   return missing === undefined ? line : `${line} missing=${missing}`;
 }
 

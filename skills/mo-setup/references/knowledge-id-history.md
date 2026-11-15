@@ -13,15 +13,38 @@ The project's `AGENTS.md`, or a document `AGENTS.md` names as its quality
 contract, must hold a level-two section whose heading contains
 `Knowledge id history`, and inside it:
 
-- exactly one fenced block holding exactly one command line — the history stage;
+- exactly one fenced block other than `yaml` holding exactly one command line —
+  the history stage;
 - exactly one line naming the project's authoritative QC command;
-- exactly one YAML record with key `history_cutoff_sha` — the project's floor;
+- exactly one fenced `yaml` block holding only `history_cutoff_sha: <40-hex>` —
+  the project's floor. A cutoff inside a sentence, or a record outside the
+  section, is not a declaration;
 - the locations identifiers live in: the business document and the architecture
   directory the stage reads.
 
 A missing section, or any other count of blocks or lines, is `history=unknown`
 with `cutoff=none`. Parse it with a real AST library, never with a regular
-expression over the document. Locations are read, never assumed: this project's
+expression over the document. The layer helper `scripts/mo-knowledge-layer.mjs`
+reads the section the same way and answers a present section in another form
+with `reason=malformed_declaration signal=history`, or `ambiguous_declaration`
+for two blocks of one kind or two sections, never with `missing=history`. A
+repair writes the form above and nothing else, for example:
+
+````markdown
+## Knowledge id history
+
+```bash
+make knowledge-history
+```
+
+`make qc` runs it as a stage of the authoritative check.
+
+```yaml
+history_cutoff_sha: 0123456789abcdef0123456789abcdef01234567
+```
+````
+
+Locations are read, never assumed: this project's
 own `docs/business.md` and `docs/architecture/` are its convention, not a
 default anyone else agreed to, and a probe that guesses them either certifies
 documents the gate never reads or rewrites whichever file happened to match.
@@ -54,7 +77,7 @@ The authorization trailer, from `mo-knowledge-history.mjs`, at most one per
 identifier per commit:
 
 ```text
-^Knowledge-ID-Change: (remove|reuse|editorial) (\S+) via (\S+)$
+^Knowledge-ID-Change: (remove|reuse|editorial|revise) (\S+) via (\S+)$
 ```
 
 `via` always names an architecture decision identifier, never a commit SHA. For
@@ -67,6 +90,34 @@ comma-separated without spaces; the record has `action: editorial`, the same
 and neither `id` nor `new_boundary`. `editorial` never deletes and never covers
 a change of meaning: only heading text, link labels and whitespace may differ,
 while ordinary prose, inline and fenced code and citations stay as they were.
+For `revise` the trailer lists identifiers exactly as for `editorial`, and no
+record is needed: it changes a body without moving its boundary — a clearer
+wording, text moved between sections, updated references or literals — and Git
+history is its journal. A definition declares its boundary with a line `<!--
+mo:boundary -->` right before the block — a paragraph, list, quote, code block
+or table — that states it, at the top level of its own part of the section,
+which is the whole section minus the sections of nested definitions: a nested
+definition's markers are its own and never its parent's, and the parent's text
+after a nested definition is still the parent's. A marker with no such block
+after it, before an empty block, or inside a list, quote or paragraph makes the
+stage refuse the document. The declared block is compared as written, link
+labels and heading text included, a reference link together with the address
+and title its label resolves to wherever its definition stands in the document,
+with only whitespace in prose free to change,
+and by which of the definition's identical blocks it is, so moving a marker onto
+an identical twin is still a move. Declaring a first boundary, and changing,
+moving or dropping a declared one, changes the definition: declaring, moving or
+dropping a marker over unchanged text is an `editorial` change with its record,
+and rewording a declared block is a `reuse` with a record. So `editorial` passes
+only when every block declared on either side of the commit equals the block in
+its own place on the other side, the own blocks without markers and records
+paired in order, so the same text elsewhere in the definition never stands in
+for it: its wording projection forgives link labels and heading text, which a
+declared block freezes. `revise` passes only
+for a definition that declared a boundary before the commit and left that block
+exactly as it was. Records then stay with a moved boundary, a deletion and a
+provable rewording, so the record trail answers when and why a decision's
+boundary moved. `revise` never deletes.
 
 The record is a fenced YAML block with the key `knowledge_id_change` (one
 record) or `knowledge_id_changes` (a list) inside the section of the decision
@@ -80,8 +131,9 @@ architecture directory `docs/architecture/`; a project names its own with
 ## Worked examples
 
 Every example below starts from the same history: the business document
-defines two theses, and one decision in the architecture directory serves the
-first. Each example's record goes into that decision's section.
+defines two theses, the first declaring its boundary with `<!-- mo:boundary -->`
+above its first paragraph, and one decision in the architecture directory
+serves the first. Each example's record goes into that decision's section.
 
 A change of meaning of one thesis:
 
@@ -127,10 +179,18 @@ knowledge_id_change:
   references_updated: true
 ```
 
+Restating the explanation beside the first thesis's declared boundary, with no
+record:
+
+```text
+Knowledge-ID-Change: revise §B-RUNTIME-01 via §A-RUNTIME-01
+```
+
 The same stage refuses `B2`-style headings as an empty scope, a decision
 heading whose identifier is followed by a colon as a deleted definition,
-`via <sha>`, an `editorial` record carrying `new_boundary`, and an `editorial`
-trailer whose identifiers are not sorted.
+`via <sha>`, an `editorial` record carrying `new_boundary`, an `editorial`
+trailer whose identifiers are not sorted, a `revise` trailer that moves a
+declared boundary, and a `revise` trailer that leaves out a changed identifier.
 
 ## Where the gates run
 
@@ -140,6 +200,15 @@ SHA: G0 after intake and before substantive work, GC before completion is
 announced, G1 right before an agent creates a merge request and G2 right before
 an agent merges. A project whose knowledge layer is `not_enabled` runs none of
 them for the layer.
+
+The authoritative QC walks the project's full history exactly once. The tool's
+own self-checks — deletion, reuse, editorial, merge and wiring errors — run on
+small synthetic Git histories built in a temporary directory, and an old
+exemption is checked on a fixed finite range; a test never reruns the full
+history or the QC itself. Every extra full pass multiplies the cost of the one
+check that grows with the project, while proving nothing the authoritative pass
+did not. `--timing` on the stage shows what one pass costs. The fix is never a
+cutoff moved towards `HEAD`, a disabled stage or a persistent cache.
 
 ## What proves the stage is present
 

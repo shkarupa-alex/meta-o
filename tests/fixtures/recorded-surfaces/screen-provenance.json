@@ -73,6 +73,18 @@
       "harness": "claude",
       "how": "2026-09-29, Claude Code 2.1.284: the first frame of a fresh probe terminal, nothing sent; the composer row shows the harness's own Try suggestion, which a rendered screen cannot tell from typed text",
       "trimmed": "dropped the shell line that launched the harness, which named the local account"
+    },
+    {
+      "file": "codex-working.screen",
+      "harness": "codex",
+      "how": "transcribed, not captured here: the three public screen rows issue #73 reported on 2026-11-11 from an active Dispatch on Orca 1.4.227 with codex/gpt-6.1-sol/medium while Codex was still working; the row layout matches Codex's own status_indicator_widget.rs",
+      "trimmed": "only the three rows the issue quoted; the owned worktree placeholder became /tmp/mo-owned-worktree, and the footer got the two-space indent every captured Codex footer has"
+    },
+    {
+      "file": "codex-working-footer-cut.screen",
+      "harness": "codex",
+      "how": "derived from codex-working.screen: its footer replaced by the form issue #33 reported from a narrow pane, cut before the context segment; not a separate capture",
+      "trimmed": "footer row replaced as described; the working and composer rows as in codex-working.screen"
     }
   ]
 }

@@ -102,6 +102,22 @@
         "erase, overwrite or append to composer text to make room for the task",
         "treat a painted suggestion as an empty composer"
       ]
+    },
+    {
+      "id": "mo-review-orca.regression-standalone-e2e-not-evaluated",
+      "class": "regression",
+      "contracts": [
+        "§A-ORCHESTRATION-03"
+      ],
+      "scenario": "The user explicitly requests `mo-review-orca` for a candidate of a project whose `docs/e2e.md` defines scenarios, and does not ask for E2E. The case evaluates the E2E form both briefs carry, whether any scenario runs and what the report to the human says about E2E.",
+      "must": [
+        "under §A-ORCHESTRATION-03 put `E2E: not_evaluated reason=standalone` into both briefs and report E2E as not evaluated"
+      ],
+      "mustNot": [
+        "call `mo-e2e` or run any scenario",
+        "ask the reviewers for `e2e_affected` or `e2e_missing` findings",
+        "report E2E as passed"
+      ]
     }
   ]
 }

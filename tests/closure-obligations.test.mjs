@@ -172,7 +172,7 @@ const OBLIGATIONS = [
     {
       revskill: [
         /description: Use only when the user explicitly requests mo-review-orca/,
-        /Accept only an exact 40-hex `candidate_sha`, intent source, scope, mode, the\s+specification line and two user-approved vendor-diverse selections/,
+        /Accept only an exact 40-hex `candidate_sha`, intent source, scope, mode, the\s+specification and intent-ledger sources and two user-approved vendor-diverse selections/,
       ],
     },
   ],
@@ -373,7 +373,9 @@ const OBLIGATIONS = [
     "O-RR-018",
     "the bundled model helper is a named preflight dependency of the entry skill",
     {
-      orcskill: [/Read role selections with bundled `scripts\/mo-models\.mjs --show --project/],
+      orcskill: [
+        /Read role selections with bundled `scripts\/mo-models\.mjs --show --json\s+--project/,
+      ],
       life: [/`mo-models\.mjs --show --project <root>`/],
     },
   ],
@@ -388,13 +390,20 @@ const OBLIGATIONS = [
     },
   ],
   [
+    // The incident was a replacement executor that missed the slash goal
+    // prefix. The owner retired that command (#67), so the first running
+    // executor gets the same ordinary short task as any other, and the family
+    // is closed by proving the prefix is gone. The literal is assembled from
+    // parts so this file does not name it.
     "O-RR-020",
-    "the first actually running executor gets the initial goal prefix",
+    "the first actually running executor gets an ordinary task without the retired goal prefix",
     {
-      life: [
-        /Prefix only the initial executor task with `\/goal`/,
-        /Do not detect or emulate `\/goal`/,
-      ],
+      life: [/Give the executor a short task, normally two to five sentences/],
+    },
+    () => {
+      const retired = ["/", "goal"].join("");
+      for (const key of ["life", "orcskill", "revskill"])
+        assert.ok(!DOCS[key].includes(retired), `O-RR-020: ${key} names ${retired}`);
     },
   ],
 
@@ -494,7 +503,7 @@ const OBLIGATIONS = [
     "the per-slice attempt budget does not reset and does not replace settlement",
     {
       life: [
-        /A substantive\s+slice has at most five, and a new SHA does not reset the count/,
+        /A substantive\s+slice has\s+at most five,\s+or the extension the owner approved,\s+and a new SHA does not\s+reset\s+the count/,
         /After\s+attempt five, complete the active remediation, then move to the next/,
       ],
     },
@@ -503,7 +512,10 @@ const OBLIGATIONS = [
     "O-RR-032",
     "compaction is observable and forces a re-ground from durable state",
     {
-      mech: [/After compaction or approximately 75% of a\s+32768-token context/],
+      mech: [
+        /acts on nothing before it re-grounds/,
+        /Approaching about 75% of a\s+32768-token context/,
+      ],
       bcon: [/compacted \| refused/],
     },
   ],
@@ -589,7 +601,7 @@ const OBLIGATIONS = [
     {
       life: [
         /A paired attempt is one round in which both slots returned a valid report/,
-        /Any executable or instruction change creates a new SHA and invalidates all\s+gates/,
+        /Any executable or instruction change creates a new SHA and invalidates QC and\s+every review/,
       ],
     },
   ],

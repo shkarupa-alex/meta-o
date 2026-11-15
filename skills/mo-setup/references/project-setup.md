@@ -33,10 +33,17 @@ Inspect substance, not file presence. A ready project has:
   links to the knowledge layer;
 - concise, useful, byte-identical `AGENTS.md` and `CLAUDE.md` containing project
   outcomes, boundaries, purpose, knowledge, commands, version-control rules —
-  commit every coherent, verified increment, and push only when the user asks —
-  and a dictation rule: anomalous wording that could materially change scope or
-  outcome is clarified with the user rather than silently corrected, while the
-  confirmed intent remains verbatim.
+  commit every coherent, verified increment, and push only when the user asks.
+
+Setup writes no dictation rule into `AGENTS.md`. Earlier versions of this
+contract required one: anomalous wording that could materially change scope or
+outcome is clarified with the user rather than silently corrected, while the
+confirmed intent remains verbatim. When a project's `AGENTS.md` still carries
+that known rule, in whatever language it was written down, propose an exact
+patch removing it from `AGENTS.md` and `CLAUDE.md` alike, and apply it only on
+the human's acceptance; a rule the project wrote about its own domain is not
+that rule and stays. The verbatim user-intent ledger is not part of the removal:
+it stays a methodology rule and stays with the task or spec, as above.
 
 `CLAUDE.md` stays a byte copy of `AGENTS.md`, never a one-line `@AGENTS.md`
 import: a Claude Code session started in a nested directory does not expand that
@@ -62,13 +69,14 @@ glossary agreement and foreign notation stay project-local rules.
 
 The knowledge layer is a capability the project declares, and the human decides
 it. The declared closure command carries the literal `MO-BACKLOG/1`, `AGENTS.md`
-records `history_cutoff_sha:` and links the papercut document — named for it, or
-declared by a `Knowledge-Layer-Papercut: <path>` line — and on the human's
-answer `AGENTS.md` holds `Knowledge-Layer: enabled` or
-`Knowledge-Layer: disabled` on its own line. A project that never had these is
-`not_enabled` and owes no closure proof at G0, GC, G1 or G2, while remote-head
-equality and CI evidence still bind an agent's MR/PR and merge; a project that
-had them and lost one is a gap.
+declares the identifier history — in the form below, there or in the one quality
+document it links — and links the papercut document — named for it, or declared
+by a `Knowledge-Layer-Papercut: <path>` line — and on the human's answer
+`AGENTS.md` holds `Knowledge-Layer: enabled` or `Knowledge-Layer: disabled` on
+its own line. A project that never had these is `not_enabled` and owes no
+closure proof at G0, GC, G1 or G2, while remote-head equality and CI evidence
+still bind an agent's MR/PR and merge; a project that had them and lost one is a
+gap.
 
 ## Knowledge id history
 
@@ -82,18 +90,24 @@ than "probably none". A ready project declares the stage in `AGENTS.md`, or in
 the document `AGENTS.md` names as its quality contract, as a level-two section
 whose heading contains `Knowledge id history` and which holds:
 
-- exactly one fenced block containing exactly one command line — the history
-  stage;
+- exactly one fenced block other than `yaml` containing exactly one command line
+  — the history stage;
 - exactly one line naming the project's authoritative quality command;
-- exactly one YAML record with the key `history_cutoff_sha`, the project's lower
-  boundary;
+- exactly one fenced `yaml` block holding exactly one record,
+  `history_cutoff_sha: <40-hex>` — the project's lower boundary. A cutoff
+  written inside a sentence or outside the section is not a record;
 - the locations identifiers live in: the business document and the architecture
   directory the stage reads.
 
 Parse that section with a real Markdown AST, never with a regular expression
 over the document. If the section is missing, if any of those counts is not
 exactly one, or if the locations are unnamed, ambiguous or contradictory, the
-result is `history=unknown` with `cutoff=none` and no guess. Locations are read
+result is `history=unknown` with `cutoff=none` and no guess. The bundled
+`scripts/mo-knowledge-layer.mjs` reads the same section the same way, and a
+section that is present but not in this form answers
+`reason=malformed_declaration signal=history` — or `ambiguous_declaration` for
+two blocks of one kind or two sections — rather than `missing=history`, because
+the gate may well work and only the declaration needs repair. Locations are read
 rather than assumed for the same reason as the rest: one project's layout is its
 own convention, and a probe that supplies the missing half either certifies
 documents the stage never reads or edits whichever file matched the shape.
@@ -109,9 +123,49 @@ clone, never by running the project's full quality command and never by touching
 the candidate worktree.
 
 The entry contract also states the authorization grammar the stage enforces: a
-commit trailer with the verbs `remove`, `reuse` or `editorial`, and a matching
-`knowledge_id_change` record in the same commit. A boundary and its commit ids
-belong to the project that owns them and are never copied from the supplier.
+commit trailer with the verbs `remove`, `reuse`, `editorial` or `revise`. The
+first three need a matching `knowledge_id_change` record in the same commit;
+`revise` needs none and passes only where the definition declared a boundary
+(`<!-- mo:boundary -->`) before the commit and that block is unchanged;
+declaring, moving or dropping a boundary is itself a recorded change. A boundary
+and its commit ids belong to the project that owns them and are never copied
+from the supplier.
+
+## Reference check
+
+A citation nobody can open reads like a citation all the same, so a reviewer
+reasons from a section that is not there. The shipped
+`scripts/mo-vocabulary.mjs` is the portable reference check, the same core the
+supplier runs on itself. Accepted repair copies it to `tools/mo-vocabulary.mjs`
+with its `tools/licenses/`, and the project's `Makefile` gains a `mo-vocabulary`
+target whose recipe is the whole declaration: `--first-party-root <prefix>` for
+each root of the project's own code (without it every tracked file counts),
+`--exclude <prefix>` for areas left out, and `--non-canonical <prefix>` for
+temporary or archived areas beyond the always non-canonical `spec/` and
+`docs/specifications/`. There is no configuration file.
+
+A section number in first-party code is an error unless the same block of text
+names, before it, the path of a live tracked canonical Markdown document whose
+own headings have that section: `source_section_document_missing`,
+`source_section_document_unavailable`, `source_section_document_not_canonical`
+or `source_section_missing`. An undefined `§A-*` or `§B-*` is an error too; a
+coined label and a bare number in Markdown prose are warnings.
+
+Roll it out in this order:
+
+1. Run it once on its own with the recipe's flags; nothing is connected yet.
+2. Propose one migration patch: correct a path that is provable — the citation
+   names its document by an alias or a file name that resolves to exactly one
+   tracked document, and that document's headings have the section; remove a
+   citation of a deleted document that has no live source, without inventing its
+   norm; mark deliberate fixtures with `mo-vocabulary-ok`; and list every
+   citation of an unknown source as an explicit unresolved item.
+3. While a run is not clean, report `needs_attention` with the unresolved list
+   and leave the stage out of QC.
+4. After a clean run, connect the stage to the authoritative QC.
+5. A repeat is idempotent, and a stage already connected is never disconnected.
+   There is no baseline, no warn-only mode and no "inherited reference" marker:
+   each would hide exactly the violations a baseline hides.
 
 ## Tooling and purpose
 
@@ -136,9 +190,79 @@ tracked local YAML and literal local includes/reusable workflows with `js-yaml`.
 Return a bounded `CI-Coverage/1` outcome: `covered`, `config_present`,
 `no_ci_surface` or `unknown`. `covered` requires candidate/MR and applicable
 merge-group/train reachability, non-optional execution and proven required
-policy. Dynamic/remote includes, expressions or unreadable settings are
-`unknown`. Show an exact proposed patch but never modify CI YAML or server-side
-protection without a separate request.
+policy. For GitHub Actions, dynamic/remote includes, expressions or unreadable
+settings are `unknown`. Show an exact proposed patch but never modify CI YAML or
+server-side protection without a separate request.
+
+GitLab rules are evaluated statically by the bundled
+`scripts/mo-ci-coverage.mjs`, which prints the whole record at the exact
+candidate and adds one intermediate field,
+`rules=reachable|unreachable|unsupported`. The outcomes and the other fields
+stay as above; the parse never adds an outcome. The subset it evaluates:
+
+- literal local `include` and local `extends`;
+- first-match `workflow:rules` and `rules`;
+- `==` and `!=` between string literals and `$CI_PIPELINE_SOURCE`,
+  `$CI_MERGE_REQUEST_EVENT_TYPE`, `$CI_COMMIT_BRANCH`, `$CI_DEFAULT_BRANCH` and
+  `$CI_COMMIT_TAG`, variable against variable included, joined by `&&` and `||`.
+
+It checks a merge request as both `detached` and `merged_result` — each must run
+QC — and a merge train as `merge_train` where trains are enabled. In all three
+`CI_PIPELINE_SOURCE` is `merge_request_event`, while the branch and the tag are
+unset: as in GitLab, an unset variable equals no string, the empty one included,
+only another unset variable, and is false as a bare presence test.
+`CI_DEFAULT_BRANCH` comes from hosting metadata through `--default-branch`;
+without it, a rule that actually has to read it is `rules=unsupported`, and a
+rule decided before it, or by the other side of `&&` or `||`, is not. Remote
+includes, `!reference`, regex `=~`, any other variable or substitution,
+`changes`, `exists`, `only`/`except` and a non-empty `needs` of QC or of its
+matched rule are `rules=unsupported`: a job that needs an optional manual gate
+stays skipped while the gate is not played. `when: never`, an optional manual
+job and `allow_failure: true` do not prove a required QC. `history=full` needs a
+`GIT_DEPTH` of `0` that no workflow or job rule overrides: a rule that sets
+`GIT_DEPTH` makes the history `unknown`.
+
+Read whether a successful pipeline is required to merge, and whether merge
+trains are enabled, through authenticated `glab api`, and pass each as
+`enabled`, `disabled` or `unreadable`. The helper maps:
+
+- `rules=unsupported` or an unreadable policy → `unknown`;
+- `rules=unreachable` → `config_present` with `unresolved=qc_not_reachable`;
+- `rules=reachable` without the requirement → `config_present` with
+  `unresolved=required_policy_absent`;
+- `rules=reachable` with the requirement proven → `covered`;
+- nothing tracked at the CI entry path → `no_ci_surface`; a symbolic link, a
+  directory or a submodule there, or at an included path, is `rules=unsupported`
+  with `unresolved=ci_file_not_regular`, so `unknown`.
+
+The shipped `assets/ci/gitlab-ci.yml` answers `rules=reachable` with no hosting
+data at all. A static `covered` never replaces QC actually passing on the exact
+SHA before G2.
+
+## Agent proxy
+
+An owner's proxy serves only the agent environments' own provider API calls. The
+commands those agents run need no proxy and break on one more often than without
+it, so a ready project drops it by default. Accepted repair copies
+`assets/make/agent-proxy.mk` into the project's `Makefile` as one managed block
+between its markers. It unexports `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` and
+their lowercase twins for every recipe, a nested `$(MAKE)` included, and gives
+each variable that is set back, by a target-specific export, only to the targets
+in `MO_AGENT_ENV_TARGETS`: the ones that start an agent environment themselves,
+such as live adapters or a model eval. Those targets have no QC or test
+prerequisites, because a target-specific variable is inherited by every
+prerequisite.
+
+GNU make has no target-specific `unexport`, and passing the value on a recipe's
+command line would print the proxy credentials in make's log; the block avoids
+both. An unset variable is not exported as an empty string, because an empty
+lowercase twin makes common clients ignore the uppercase one that is set. A
+project without a `Makefile` gets no block; report that as a gap.
+
+Report the proxy variable names the posture probe prints as
+`MO_POSTURE_PROXY names=…`, never a value. The papercut document gains the
+one-off recipe
+`env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy <cmd>`.
 
 ## Backend and harness readiness
 
@@ -159,8 +283,8 @@ Run the bundled posture helper for Codex, Claude Code and OpenCode in applicable
 launch-parent shells:
 
 ```text
-scripts/mo-posture.sh --self-check --shell all
-scripts/mo-posture.sh --shell <zsh|bash|all> -- codex claude opencode
+"<this skill's directory>/scripts/mo-posture.sh" --self-check --shell all
+"<this skill's directory>/scripts/mo-posture.sh" --shell <zsh|bash|all> -- codex claude opencode
 ```
 
 Missing, divergent or unreadable posture is not support. Check workspace trust,
@@ -186,6 +310,11 @@ duplicates wrapper flags. `terminal create --title` and `terminal rename` set
 the tab title: prove a stable title under `visualLayouts[].root.tabs[].title`
 from `terminal list --include-visual-layouts --json`, not from
 `terminals[].title`, which a running harness repaints.
+
+OpenCode is the exception to the three flags: Orca refuses `--effort` for it,
+and its own command line takes a model but no effort, so the effort of an
+OpenCode role reaches no launch and is reported as not passed rather than
+proven.
 
 Inspect `ProjectRegistrationSet/1` and `OwnedResourceSet/1`. A folder/no-project
 context without existing same-project isolated worktrees is a typed placement

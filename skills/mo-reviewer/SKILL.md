@@ -4,7 +4,7 @@ description: Use only when the user explicitly requests mo-reviewer or a reviewe
 license: MIT
 metadata:
   repository: https://github.com/shkarupa-alex/meta-o
-  source_tree: "fd5b022d06b5813e6260d6ce777d70c9f4736f98"
+  source_tree: "72bde07945e9009ad37ce9055a05eb998eadbc46"
 ---
 
 # Review one candidate as a terminal reviewer
@@ -21,17 +21,36 @@ Read [Portable review protocol](references/review-protocol.md) and
 The protocol owns the stages, severities and the report grammar; this page says
 how one reviewer turns a brief into one report nobody has to buy twice.
 
+This skill ships its own scripts in `scripts/` beside this `SKILL.md`. Every
+`scripts/<name>` this skill and its references name is that file, never a path
+in the project checkout, and it runs from this skill's directory with the full
+path in double quotes, which also holds for a path with a space:
+
+```text
+node "<this skill's directory>/scripts/mo-review-input.mjs" --help
+```
+
 ## Before reading the change
 
-Take every field of the brief as given: `Target`, `Intent`, `Spec`, `Scope`,
-`Mode`, `Placement`, `Environment`, `Constraints`, `Ownership`, `Acceptance`,
-`Reviewer-Skill`, `Report`, `Body-File`, `Methodology-Friction`, `Cleanup` and
-`Knowledge-Layer`. A missing field or a placeholder such as `<sha>` is a
+Take every field of the brief as given: `Target`, `Intent`, `Spec`,
+`Intent-Ledger`, `Scope`, `Mode`, `Round`, `Placement`, `Environment`, `Constraints`,
+`Ownership`, `Acceptance`,
+`Reviewer-Skill`, `Report`, `Body-File`, `Methodology-Friction`, `Cleanup`,
+`Knowledge-Layer`, `Backlog-Gate` and `E2E`. A missing field or a placeholder such as `<sha>` is a
 question to the caller through the backend's ask surface, not something to
 reconstruct. The `Knowledge-Layer: state=… reason=…` line decides the deferral
 lens: `enabled` requires the project's knowledge gates, `not_enabled` makes
 them `not_applicable`, and `needs_attention` or a missing line makes the lens
-`unknown` — never assume an ordinary project.
+`unknown` — never assume an ordinary project. `Backlog-Gate` is the caller's
+own gate result on `Target`: inspect the backlog and registry statically, never
+run the gate yourself, and take `not_run` as the caller's evidence rather than
+a check you owe. The `E2E` field decides the E2E
+lens the protocol describes: with `E2E-Evidence` lines or
+`E2E: not_applicable` of either reason the lens is required — a
+`reason=no_task_scenarios` line is checked for a scenario the task now needs —
+and with
+`E2E: not_evaluated reason=standalone` you raise no `e2e_affected` or
+`e2e_missing` and never ask for E2E to be run.
 
 `Review-Execution` is the Dispatch id from the backend's own preamble, copied
 verbatim. Prove the checkout in the directory you work in: `git rev-parse HEAD`
@@ -43,14 +62,36 @@ never into a service line.
 
 ## What you read and what you never run
 
+Check the brief's `Spec:` and `Intent-Ledger:` lines before reading either
+source; the check compares a copy's sha256 or proves the Git blob, and writes
+nothing. `--body-file` is the brief's own `Body-File`, path or `none`, verbatim:
+a `file` copy counts only in that file's directory, so a line meant for the
+other slot is refused, and a `file` line without the flag is a call error:
+
+```text
+node "<this skill's directory>/scripts/mo-review-input.mjs" check --candidate <Target> \
+  --line '<Spec line>' --line '<Intent-Ledger line>' --body-file '<Body-File>'
+```
+
+Then read exactly those bytes: the copy the `file` form names,
+`git cat-file blob <blob>` for the `git` form, `git show <Target>:<path>` for a
+tracked path. A line answering `external_input_missing`,
+`external_input_integrity` or `external_input_unavailable` makes the report
+`UNKNOWN` with `Unknown-Reason: retrieval_failure` and that line verbatim in
+`Unknown-Account`; never review from a truncation, a retelling or memory.
+
 Read the complete diff first, then what it reaches: callers and callees,
-related tests and configuration, the instructions and the specification the
-brief names. With `Spec: <path|object>` trace each requirement to the code and
-report a requirement the change misses; with `Spec: none` a missing
+related tests and configuration, the instructions and the specification and
+intent ledger the brief names. With a specification trace each requirement to
+the code and report a requirement the change misses; with `Spec: none` a missing
 specification is not a finding. Activate only the risk lenses the change
 touches — security and external effects, concurrency and state, compatibility
 and data, performance and resources, maintainability and test gaps — and apply
-the deferral lens the protocol describes.
+the deferral, anchor and E2E lenses the protocol describes. An `E2E-Evidence` line may
+name an ancestor of `Target`: judge whether the range from its scenario SHA to
+`Target` touches the behavior its `E2E-Coverage` names, and whether the change
+made a scenario applicable that has no line, including one of an unchanged
+acceptance row whose requirement the task restores.
 
 Read by SHA and never execute the project: no tests, not even a pointed one, no
 linter, formatter, type checker or QC gate. The executor or coordinator runs QC
@@ -88,11 +129,16 @@ format of the preamble; if the brief does not say so and the preamble demands
 something else, ask before sending.
 
 Print the literal for this very Dispatch and fill it in instead of rebuilding
-the service lines:
+the service lines. The brief's
+`Round: attempt=<n>/<limit> deep_reads=<m> fragment=<id>` gives four values;
+pass them as flags and let the script print the `Round` line — never copy the
+line into the body by hand:
 
 ```text
-node scripts/mo-review-report.mjs template --verdict <PASS|FINDINGS|UNKNOWN> \
+node "<this skill's directory>/scripts/mo-review-report.mjs" template \
+  --verdict <PASS|FINDINGS|UNKNOWN> \
   --dispatch <id> --candidate <sha> --requested <mode> --effective <mode> \
+  --attempt <n> --attempt-limit <limit> --deep-reads <m> --fragment <fragment-id> \
   [--unknown-reason <reason>]
 ```
 
@@ -101,18 +147,29 @@ line never goes into the body. A finding body is either the bare key line with
 the next line opening `[P2] …`, or one line `F-001 [P2] …`, both at top level.
 
 With `Body-File: <path>` in the brief, create that file once through the
-validator, which checks the bytes before writing and refuses an existing file:
+validator, which checks the bytes before writing and refuses an existing file.
+`Body-File` is the only file you write: the report goes to the validator on
+stdin through a here-document, never through a draft file beside it. Set the
+eight variables from the brief and Orca's preamble first, each value in single
+quotes; the delimiter in single quotes keeps `$`, backticks and `\` in the
+report exactly as written, and the script path stays in double quotes, which
+also holds for a directory with a space. Add `--effective "$EFFECTIVE"` when the
+brief names the effective mode:
 
-```text
-node scripts/mo-review-report.mjs prepare --file <Body-File> --dispatch <id> \
-  --candidate <sha> --requested <mode> --effective <mode>  < report
+```bash
+node "<this skill's directory>/scripts/mo-review-report.mjs" prepare --file "$BODY_FILE" \
+  --dispatch "$DISPATCH_ID" --candidate "$CANDIDATE_SHA" --requested "$MODE" \
+  --attempt "$N" --attempt-limit "$LIMIT" --deep-reads "$M" --fragment "$FRAGMENT" <<'MO_REPORT'
+…the complete report…
+MO_REPORT
 ```
 
 A `status=malformed` line names the reason and line; fix the draft and run it
 again — nothing was written. `status=refused reason=exists` means the path is
 not yours: stop and ask. Then send exactly that file as the body, for example
-`--body "$(cat <Body-File>)"`. With `Body-File: none`, pipe the exact bytes you
-are about to send into `validate --file - …` with the same flags.
+`--body "$(cat <Body-File>)"`. With `Body-File: none`, run the same command as
+`validate --file -` instead of `prepare --file "$BODY_FILE"`, on the exact bytes
+you are about to send.
 
 Right before sending, prove the checkout again: `rev-parse HEAD` still equals
 `Target` and the tree is still clean.

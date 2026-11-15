@@ -602,6 +602,53 @@ zshTest("zsh alias changes command kind even when the first path is unchanged", 
   assert.match(result.stdout, /mode=-ic name=claude type=alias /);
 });
 
+test("inherited proxy variables are named and their values never printed", () => {
+  const { home, root } = fixture();
+  const bin = providerBin(root, "proxy-bin");
+  writeBashProfiles(home, bin);
+  const environment = { ...process.env };
+  for (const name of [
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+  ])
+    delete environment[name];
+  const value = "http://posture-user:PRIVATE_PROXY_SENTINEL@proxy.invalid:3128";
+  const result = spawnSync(SCRIPT, ["--shell", "bash", "--", "claude"], {
+    cwd: ROOT,
+    encoding: "utf8",
+    // An empty variable is no proxy, so it is not named.
+    env: {
+      ...environment,
+      HOME: home,
+      PATH: `${bin}:/usr/bin:/bin`,
+      HTTPS_PROXY: value,
+      all_proxy: value,
+      http_proxy: "",
+    },
+    timeout: MATRIX_TIMEOUT_MS,
+  });
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.doesNotMatch(`${result.stdout}${result.stderr}`, /PRIVATE_PROXY_SENTINEL|posture-user/u);
+  assert.equal(
+    result.stdout
+      .split("\n")
+      .filter((line) => line.startsWith("MO_POSTURE_PROXY "))
+      .join("\n"),
+    "MO_POSTURE_PROXY names=HTTPS_PROXY,all_proxy",
+  );
+  const none = spawnSync(SCRIPT, ["--shell", "bash", "--", "claude"], {
+    cwd: ROOT,
+    encoding: "utf8",
+    env: { ...environment, HOME: home, PATH: `${bin}:/usr/bin:/bin` },
+    timeout: MATRIX_TIMEOUT_MS,
+  });
+  assert.match(none.stdout, /^MO_POSTURE_PROXY names=none$/mu);
+});
+
 test("bash function changes command kind even when the first path is unchanged", () => {
   const { home, root } = fixture();
   const bin = providerBin(root, "wrapper-bin");

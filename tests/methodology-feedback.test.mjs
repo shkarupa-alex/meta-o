@@ -18,7 +18,7 @@ const shipped = (skill, file) => join(ROOT, "skills", skill, file);
 const read = (path) => readFileSync(path, "utf8");
 
 const WRITERS = ["mo-orchestrate-orca", "mo-review-orca", "mo-setup"];
-const CHANNELS = ["mo-convergence", "mo-debug", "mo-e2e", "mo-watchdog"];
+const CHANNELS = ["mo-convergence", "mo-debug", "mo-e2e", "mo-quiz", "mo-watchdog"];
 const ADVISORY = ["find-reuse", "senior-jsts", "senior-python"];
 
 test("the routing table carries methodology friction as one ordinary row", () => {

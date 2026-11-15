@@ -6,7 +6,17 @@
  */
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 
@@ -72,6 +82,112 @@ test("recorded GitLab surfaces preserve pagination and safe body capabilities", 
   assert.doesNotMatch(help.output("glab issue note --help"), /--body-file/u);
   assert.match(help.output("glab api --help"), /--header[\s\S]*--input/u);
 });
+
+const ROUTING = readFileSync(join(ROOT, "shared", "references", "issue-routing.md"), "utf8");
+const ROUTING_PROSE = ROUTING.replace(/\s+/gu, " ");
+
+/**
+ * The criterion the routing contract states in words: the note help documents
+ * reading the comment from standard input, by description or by an example
+ * that redirects a file into the command.
+ */
+function documentsStdin(help) {
+  return (
+    /reads the comment from standard input/u.test(help.replace(/\s+/gu, " ")) ||
+    /^\s*glab issue note \S+ < \S+\s*$/mu.test(help)
+  );
+}
+
+test("the installed note help, not a version guess, picks the native stdin route", () => {
+  assert.ok(ROUTING_PROSE.includes("`reads the comment from standard input`"));
+  assert.ok(ROUTING_PROSE.includes("примером, который перенаправляет файл в `glab issue note`"));
+  assert.ok(ROUTING_PROSE.includes("`glab issue note <iid> -R <repo> < <body-file>`"));
+  assert.match(ROUTING_PROSE, /Рабочий нативный маршрут не требует upstream Issue/u);
+  assert.match(ROUTING_PROSE, /допускает удаление ровно одного завершающего LF/u);
+  const modern = recording("glab-1.128.0.fixture").output("glab issue note --help");
+  const older = recording("glab-1.117.0.fixture").output("glab issue note --help");
+  assert.equal(documentsStdin(modern), true);
+  assert.equal(documentsStdin(older), false);
+  // Either signal alone is enough, so a help that keeps only one still routes.
+  assert.equal(documentsStdin(modern.replace(/reads the comment from standard input/u, "")), true);
+  assert.equal(documentsStdin(modern.replace(/glab issue note 123 < comment\.md/u, "")), true);
+});
+
+/** One code span of the routing contract, with its placeholders filled. */
+function contractCommand(pattern, values) {
+  const span = ROUTING.match(pattern);
+  assert.ok(span, `routing contract lost ${pattern}`);
+  return Object.entries(values).reduce(
+    (command, [key, value]) => command.replace(key, value),
+    span[1],
+  );
+}
+
+// A body a shell would mangle at every turn if it were ever interpolated.
+const HOSTILE_BODY =
+  "Line with $(touch PWNED) and `touch PWNED` and $HOME\n" +
+  "quotes ' \" \\ ! * ? [x] ~ # ; & | > <\n" +
+  "кириллица, emoji 🙂, tab\tand CRLF\r\n" +
+  "\n";
+
+test("the native note route carries the exact body bytes", () => {
+  const work = mkdtempSync(join(tmpdir(), "mo-glab-route-"));
+  try {
+    const body = join(work, "body.md");
+    writeFileSync(body, HOSTILE_BODY);
+    const bin = join(work, "bin");
+    mkdirSync(bin);
+    // A local stand-in records argv and the exact stdin bytes it received.
+    writeFileSync(
+      join(bin, "glab"),
+      '#!/bin/sh\nprintf "%s\\n" "$@" > "$CAPTURE.argv"\ncat > "$CAPTURE.stdin"\n',
+    );
+    chmodSync(join(bin, "glab"), 0o755);
+    const native = contractCommand(/`(glab issue note <iid> -R <repo> < <body-file>)`/u, {
+      "<iid>": "42",
+      "<repo>": "group/project",
+      "<body-file>": body,
+    });
+    const shell = (command) =>
+      spawnSync("/bin/sh", ["-c", command], {
+        cwd: work,
+        encoding: "utf8",
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, CAPTURE: join(work, "note") },
+      });
+    const sent = shell(native);
+    assert.equal(sent.status, 0, sent.stderr);
+    assert.ok(readFileSync(join(work, "note.stdin")).equals(Buffer.from(HOSTILE_BODY)));
+    assert.equal(
+      readFileSync(join(work, "note.argv"), "utf8"),
+      "issue\nnote\n42\n-R\ngroup/project\n",
+    );
+    assert.equal(existsSync(join(work, "PWNED")), false);
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+});
+
+// The API fallback is the contract's own `jq` command, so only a real `jq`
+// proves it; without one the test says so instead of passing on nothing.
+const JQ_PRESENT = spawnSync("/bin/sh", ["-c", "command -v jq"]).status === 0;
+
+test(
+  "the API fallback payload carries the exact body bytes",
+  { skip: JQ_PRESENT ? false : "jq missing" },
+  () => {
+    const work = mkdtempSync(join(tmpdir(), "mo-glab-api-"));
+    try {
+      writeFileSync(join(work, "body.md"), HOSTILE_BODY);
+      const payload = contractCommand(/`(jq -Rs '\{body: \.\}' < body\.md > note\.json)`/u, {});
+      const built = spawnSync("/bin/sh", ["-c", payload], { cwd: work, encoding: "utf8" });
+      assert.equal(built.status, 0, built.stderr);
+      assert.equal(JSON.parse(readFileSync(join(work, "note.json"), "utf8")).body, HOSTILE_BODY);
+      assert.equal(existsSync(join(work, "PWNED")), false);
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  },
+);
 
 test("recorded Orca surfaces expose both guides and owned-resource operations", () => {
   const help = recording("orca-installed.fixture");

@@ -10020,9 +10020,112 @@ function authorizationPayload(node2) {
 function isAuthorizationBlock(node2) {
   return authorizationPayload(node2) !== null;
 }
+var BOUNDARY_MARKER = /^<!--\s*mo:boundary\s*-->$/u;
+function isBoundaryMarker(node2) {
+  return node2?.type === "html" && BOUNDARY_MARKER.test(node2.value.trim());
+}
+var BOUNDARY_BLOCKS = /* @__PURE__ */ new Set(["paragraph", "list", "blockquote", "code", "table"]);
+function ownRuns(section) {
+  const runs = [[]];
+  let nestedDepth = null;
+  section.forEach((node2, index2) => {
+    if (nestedDepth !== null && node2.type === "heading" && node2.depth <= nestedDepth) {
+      nestedDepth = null;
+      runs.push([]);
+    }
+    if (nestedDepth === null && index2 > 0 && node2.type === "heading" && ID.test(text3(node2).trim())) {
+      nestedDepth = node2.depth;
+    }
+    if (nestedDepth === null) runs.at(-1).push(node2);
+  });
+  return runs.filter((run) => run.length > 0);
+}
+function visibleText(node2) {
+  if (node2.type === "html") return "";
+  if (typeof node2.value === "string") return node2.value;
+  return (node2.children ?? []).map(visibleText).join("");
+}
+function nestedMarker(node2) {
+  return (node2.children ?? []).some((child) => isBoundaryMarker(child) || nestedMarker(child));
+}
+function boundaryNode(node2, resolve2) {
+  if (Array.isArray(node2)) return node2.map((item) => boundaryNode(item, resolve2));
+  if (!node2 || typeof node2 !== "object") return node2;
+  const projected = Object.fromEntries(
+    Object.entries(node2).filter(([key]) => key !== "position").map(([key, value]) => {
+      if (key === "value" && typeof value === "string" && node2.type === "text") {
+        return [key, normalizedLiteral(value)];
+      }
+      return [key, boundaryNode(value, resolve2)];
+    })
+  );
+  if (node2.type === "linkReference" || node2.type === "imageReference") {
+    const target = resolve2(node2.identifier);
+    projected.target = target ? { url: target.url, title: target.title ?? null } : null;
+  }
+  return projected;
+}
+function referenceTargets(tree) {
+  const targets = /* @__PURE__ */ new Map();
+  const visit = (node2) => {
+    if (node2.type === "definition" && !targets.has(node2.identifier)) {
+      targets.set(node2.identifier, node2);
+    }
+    for (const child of node2.children ?? []) visit(child);
+  };
+  visit(tree);
+  return (identifier) => targets.get(identifier);
+}
+function boundaryOf(section, path, id, resolve2) {
+  const runs = ownRuns(section);
+  if (runs.some((run) => run.some(nestedMarker))) {
+    throw new Error(`${path}: ${id} places a boundary marker inside a block`);
+  }
+  const seen = /* @__PURE__ */ new Map();
+  const declared = [];
+  const ownBlocks = [];
+  for (const run of runs) {
+    run.forEach((node2, index2) => {
+      if (isBoundaryMarker(node2)) {
+        const block = run[index2 + 1];
+        if (!BOUNDARY_BLOCKS.has(block?.type) || isAuthorizationBlock(block) || visibleText(block).trim() === "") {
+          throw new Error(`${path}: ${id} declares a boundary with no block after its marker`);
+        }
+        return;
+      }
+      const fingerprint = JSON.stringify(boundaryNode(node2, resolve2));
+      const occurrence = seen.get(fingerprint) ?? 0;
+      seen.set(fingerprint, occurrence + 1);
+      if (!isAuthorizationBlock(node2)) {
+        ownBlocks.push({ block: fingerprint, declared: isBoundaryMarker(run[index2 - 1]) });
+      }
+      if (isBoundaryMarker(run[index2 - 1])) declared.push({ block: fingerprint, occurrence });
+    });
+  }
+  return { boundary: declared.length > 0 ? JSON.stringify(declared) : null, ownBlocks };
+}
+function boundaryKept(prior, entry) {
+  return typeof prior?.boundary === "string" && prior.boundary === entry?.boundary;
+}
+function editorialKept(prior, entry, strict) {
+  const fingerprint = strict ? "strictEditorial" : "editorial";
+  if (prior?.[fingerprint] !== entry?.[fingerprint]) return false;
+  const before = prior?.ownBlocks ?? [];
+  const after = entry?.ownBlocks ?? [];
+  if (before.length !== after.length) {
+    return ![...before, ...after].some(({ declared }) => declared);
+  }
+  return before.every(
+    (block, index2) => !(block.declared || after[index2].declared) || block.block === after[index2].block
+  );
+}
+function definitionChanged(prior, entry) {
+  if (!prior) return true;
+  return prior.semantic !== entry.semantic || prior.boundary !== entry.boundary;
+}
 function semanticNode(node2) {
   if (Array.isArray(node2))
-    return node2.filter((item) => !isAuthorizationBlock(item)).map(semanticNode);
+    return node2.filter((item) => !isAuthorizationBlock(item) && !isBoundaryMarker(item)).map(semanticNode);
   if (!node2 || typeof node2 !== "object") return node2;
   return Object.fromEntries(
     Object.entries(node2).filter(([key]) => key !== "position").map(([key, value]) => [key, semanticNode(value)])
@@ -10059,7 +10162,7 @@ function editorialSurface(nodes) {
 }
 function strictEditorialNode(node2, flexibleText = false) {
   if (Array.isArray(node2)) {
-    return node2.filter((item) => !isAuthorizationBlock(item)).map((item) => strictEditorialNode(item, flexibleText));
+    return node2.filter((item) => !isAuthorizationBlock(item) && !isBoundaryMarker(item)).map((item) => strictEditorialNode(item, flexibleText));
   }
   if (!node2 || typeof node2 !== "object") return node2;
   const allowLabelChange = flexibleText || node2.type === "heading" || node2.type === "link";
@@ -10082,6 +10185,7 @@ function parseDocument(markdown) {
 }
 function definitionsFromTree(tree, path) {
   const found = /* @__PURE__ */ new Map();
+  const resolve2 = referenceTargets(tree);
   const visit = (node2) => {
     const children = node2.children ?? [];
     for (let index2 = 0; index2 < children.length; index2 += 1) {
@@ -10097,6 +10201,7 @@ function definitionsFromTree(tree, path) {
             end += 1;
           }
           const section = children.slice(index2, end);
+          const { boundary, ownBlocks } = boundaryOf(section, path, id, resolve2);
           found.set(id, {
             id,
             kind: match[1],
@@ -10105,7 +10210,9 @@ function definitionsFromTree(tree, path) {
             semantic: JSON.stringify(semanticNode(section)),
             editorial: JSON.stringify(editorialSurface(section)),
             strictEditorial: JSON.stringify(strictEditorialNode(section)),
-            authorizations: authorizationFingerprints(section)
+            authorizations: authorizationFingerprints(section),
+            boundary,
+            ownBlocks
           });
         }
       }
@@ -10465,7 +10572,7 @@ function gitRoot(start) {
 
 // shared/scripts/mo-knowledge-history.mjs
 var NO_DEFINITIONS = "HEAD defines no identifier in the declared business and architecture scope";
-var TRAILER = /^Knowledge-ID-Change: (remove|reuse|editorial) (\S+) via (\S+)$/;
+var TRAILER = /^Knowledge-ID-Change: (remove|reuse|editorial|revise) (\S+) via (\S+)$/;
 var USAGE = `usage: mo-knowledge-history.mjs [--repo <root>] --cutoff <sha> [options]
        mo-knowledge-history.mjs [--repo <root>] --pins-from <markdown> [options]
 
@@ -10526,7 +10633,7 @@ function sameSortedIds(left, right) {
 }
 function coversChange(entry, action, id, editorialIds) {
   if (entry.action === action && entry.ids.length === 1 && entry.ids[0] === id) return true;
-  return action === "reuse" && entry.action === "editorial" && entry.ids.includes(id) && sameSortedIds(entry.ids, editorialIds);
+  return action === "reuse" && (entry.action === "editorial" || entry.action === "revise") && entry.ids.includes(id) && sameSortedIds(entry.ids, editorialIds);
 }
 function recordCoversChange(record, match, action, id, editorialIds) {
   if (record?.action === action && record?.id === id) return true;
@@ -10546,6 +10653,7 @@ function authorized(reader, edge, change, snapshots, rules) {
   if (!match || !/^§A-[A-Z][A-Z0-9-]*-\d{2}$/.test(match.via)) return false;
   const owner = current.get(match.via);
   if (!owner || owner.kind !== "A") return false;
+  if (match.action === "revise") return boundaryKept(previous2.get(id), current.get(id));
   const priorOwner = previous2.get(match.via);
   const priorFingerprints = new Set(
     (priorOwner ? records(reader, edge.parent, priorOwner.path, match.via) : []).map(
@@ -10557,8 +10665,7 @@ function authorized(reader, edge, change, snapshots, rules) {
   );
   if (!validAuthorizationRecord(record, action, id)) return false;
   if (record.action !== "editorial") return true;
-  const fingerprint = rules.postMigration ? "strictEditorial" : "editorial";
-  return previous2.get(id)?.[fingerprint] === current.get(id)?.[fingerprint];
+  return editorialKept(previous2.get(id), current.get(id), rules.postMigration);
 }
 function authorizationHistoryChanged(previous2, current) {
   const currentRecords = new Set(current.authorizations);
@@ -10608,10 +10715,7 @@ function edgeErrors(reader, edge, siblingParents, rules) {
   const after = snapshot(reader, edge.commit);
   const sides = mergeSides(reader, edge.parent, siblingParents);
   const siblings = sides.map((side) => side.present);
-  const changedIds = [...after].filter(([id, entry]) => {
-    const prior = before.get(id);
-    return prior && prior.semantic !== entry.semantic;
-  }).map(([id]) => id).sort();
+  const changedIds = [...after].filter(([id, entry]) => before.has(id) && definitionChanged(before.get(id), entry)).map(([id]) => id).sort();
   const individuallyAuthorizedIds = new Set(
     trailers(reader, edge.commit).filter((entry) => entry.action === "reuse" && entry.ids.length === 1).map((entry) => entry.ids[0])
   );
@@ -10626,8 +10730,8 @@ function edgeErrors(reader, edge, siblingParents, rules) {
   }
   for (const [id, entry] of after) {
     const prior = before.get(id);
-    const sameFromSibling = siblings.some((map2) => map2.get(id)?.semantic === entry.semantic);
-    if (rules.semantic && prior && prior.semantic !== entry.semantic && !sameFromSibling) {
+    const sameFromSibling = siblings.some((map2) => !definitionChanged(map2.get(id), entry));
+    if (rules.semantic && prior && definitionChanged(prior, entry) && !sameFromSibling) {
       if (!permits("reuse", id))
         errors.push(`${edge.parent}..${edge.commit}: semantic reuse ${id}`);
     }
@@ -10909,4 +11013,4 @@ export {
   runHistory,
   verifyHistory
 };
-// MO-KNOWLEDGE-HISTORY-SOURCE 0.2.0 da6dcf3fa4658b0ba9d3bef1476a54bf92d6de979ca47b1973ed00816eb1c2aa
+// MO-KNOWLEDGE-HISTORY-SOURCE 0.2.0 6f408d857026ae01efa17a0579a7640a5e16160a1951670c458410807396c5f1

@@ -48,6 +48,7 @@ const EXPECTED = [
   "mo-debug",
   "mo-e2e",
   "mo-orchestrate-orca",
+  "mo-quiz",
   "mo-review-orca",
   "mo-reviewer",
   "mo-setup",

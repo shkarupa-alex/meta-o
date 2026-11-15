@@ -19789,6 +19789,24 @@ function parseSelection(value) {
     effort
   };
 }
+var OPENCODE_PROVIDER_VENDORS = /* @__PURE__ */ new Map([
+  ["anthropic", "anthropic"],
+  ["openai", "openai"],
+  ["google", "google"],
+  ["zai", "zai"],
+  ["zai-coding-plan", "zai"]
+]);
+var ROUTE_VENDORS = /* @__PURE__ */ new Map([
+  ["claude", "anthropic"],
+  ["codex", "openai"]
+]);
+function modelVendor(route, model) {
+  if (ROUTE_VENDORS.has(route)) return ROUTE_VENDORS.get(route);
+  if (route !== "opencode" || typeof model !== "string") return "unknown";
+  const slash = model.indexOf("/");
+  if (slash <= 0) return "unknown";
+  return OPENCODE_PROVIDER_VENDORS.get(model.slice(0, slash)) ?? "unknown";
+}
 function testingEffectiveIdentityError2(role, requestedModel, effectiveModel) {
   return testingEffectiveIdentityError(role, requestedModel, effectiveModel);
 }
@@ -20301,7 +20319,7 @@ function launchProjection(roles) {
   for (const [role, value] of Object.entries(roles)) {
     if (value === void 0) continue;
     const { route, model, effort } = parseSelection(value);
-    launch[role] = { agent: route, model, effort };
+    launch[role] = { agent: route, model, effort, vendor: modelVendor(route, model) };
   }
   return launch;
 }
@@ -20528,6 +20546,14 @@ var USAGE = `mo-models \u2014 read and edit ~/.meta-o/models.json
   --force            store a selection without consulting the route's catalog
   --json             machine-readable output
 
+--show --json also publishes launch.<role> = {agent, model, effort, vendor}:
+the three launch flags, and the model's vendor apart from its route. OpenCode
+takes no effort at launch: Orca refuses --effort for it, so its effort is
+reported as not passed. claude is
+anthropic, codex is openai, opencode is read from the model's provider prefix
+through a closed table; a gateway or an unlisted prefix is unknown, and unknown
+never proves two vendors differ.
+
 A --set is checked against the route's own catalog: an unknown model, or an
 effort the model does not offer, is refused before anything is written. Where the
 catalog cannot be reached the value is stored and the gap is printed.
@@ -20695,6 +20721,8 @@ if (invokedDirectly()) {
 export {
   familyAndGeneration,
   findUpgrade,
+  launchProjection,
+  modelVendor,
   parseCodexModels,
   parseSelection,
   probeModelProfile,

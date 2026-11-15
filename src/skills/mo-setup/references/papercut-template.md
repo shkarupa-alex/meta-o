@@ -11,7 +11,8 @@ neither is friction of the methodology itself — that has its own channel and
 would be lost in this document.
 
 Write the document in the project's human language; the skeleton below is the
-shape, not the wording.
+shape, not the wording. Its one filled row is the one-off command without the
+owner's proxy that the agent proxy repair adds.
 
 ```markdown
 # <заголовок документа>
@@ -21,6 +22,7 @@ shape, not the wording.
 | Команда     | Что делает    | Чего не делать             |
 | ----------- | ------------- | -------------------------- |
 | `<команда>` | `<одна фраза>` | `<что уже не сработало>`   |
+| `env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy <cmd>` | разовая команда без прокси владельца | не передавать значение прокси в командной строке |
 
 ## Грабли
 

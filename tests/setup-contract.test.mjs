@@ -92,12 +92,28 @@ test("knowledge policy covers verbatim intent, language, semantic links and back
     assert.match(contractProse, new RegExp(field));
 });
 
-test("entry files treat material dictation anomalies as questions, not silent corrections", () => {
-  assert.equal(agents, claude);
+test("setup writes no dictation rule and offers a consumer the patch that removes it", () => {
+  // The rule left the template, not the methodology: the generated contract
+  // no longer requires it, a consumer still carrying it is offered a removal
+  // patch applied only on acceptance, and the verbatim intent ledger stays.
+  const required = contractProse.split("Setup writes no dictation rule")[0];
+  assert.doesNotMatch(required, /dictation/u);
+  assert.match(contractProse, /Setup writes no dictation rule into `AGENTS\.md`/u);
   assert.match(
-    contract,
-    /dictation rule:[\s\S]*materially change scope or[\s\S]*clarified with the user/,
+    contractProse,
+    /still carries that known rule, in whatever language it was written down, propose an exact patch removing it from `AGENTS\.md` and `CLAUDE\.md` alike, and apply it only on the human's acceptance/u,
   );
+  assert.match(contractProse, /The verbatim user-intent ledger is not part of the removal/u);
+  assert.match(setup.replace(/\s+/gu, " "), /Write no dictation rule into `AGENTS\.md`/u);
+  const methodology = readFileSync(
+    join(ROOT, "shared", "references", "methodology.md"),
+    "utf8",
+  ).replace(/\s+/gu, " ");
+  assert.match(methodology, /complete verbatim user-intent ledger/u);
+});
+
+test("meta-o's own contract keeps its dictation rule", () => {
+  assert.equal(agents, claude);
   assert.match(
     agents,
     /неточной диктовки[\s\S]*существенно изменить область или результат[\s\S]*спросите\s+пользователя/,
