@@ -170,7 +170,9 @@ function boundaryOf(section, path, id, resolve) {
       const fingerprint = JSON.stringify(boundaryNode(node, resolve));
       const occurrence = seen.get(fingerprint) ?? 0;
       seen.set(fingerprint, occurrence + 1);
-      ownBlocks.push(fingerprint);
+      if (!isAuthorizationBlock(node)) {
+        ownBlocks.push({ block: fingerprint, declared: isBoundaryMarker(run[index - 1]) });
+      }
       if (isBoundaryMarker(run[index - 1])) declared.push({ block: fingerprint, occurrence });
     });
   }
@@ -183,24 +185,25 @@ export function boundaryKept(prior, entry) {
 }
 
 // `editorial` may declare, move or drop a marker, but only over text that stays
-// as written: every block declared on either side of the edge must stand,
-// by the boundary projection, among the definition's own blocks on the other
-// side. Its wording-only projection forgives link labels and heading text,
-// which a declared block freezes, so without this a reworded boundary would
-// pass under a record that names no new boundary.
-function declaredBlocks(entry) {
-  return entry?.boundary ? JSON.parse(entry.boundary).map(({ block }) => block) : [];
-}
-
+// as written. Its wording-only projection forgives link labels and heading
+// text, which a declared block freezes, so each block declared on either side
+// of the edge is compared with the block in its own place on the other side.
+// The place, not a search: the same text elsewhere in the definition is
+// another block, and accepting it would let a reworded boundary pass under a
+// record that names no new boundary. Records and markers take no place, so a
+// moved marker or a new record shifts nothing.
 /** §A-MEMORY-01 an editorial edge changed wording only and moved markers only over unchanged blocks. */
 export function editorialKept(prior, entry, strict) {
   const fingerprint = strict ? "strictEditorial" : "editorial";
-  const before = new Set(prior?.ownBlocks ?? []);
-  const after = new Set(entry?.ownBlocks ?? []);
-  return (
-    prior?.[fingerprint] === entry?.[fingerprint] &&
-    declaredBlocks(entry).every((block) => before.has(block)) &&
-    declaredBlocks(prior).every((block) => after.has(block))
+  if (prior?.[fingerprint] !== entry?.[fingerprint]) return false;
+  const before = prior?.ownBlocks ?? [];
+  const after = entry?.ownBlocks ?? [];
+  if (before.length !== after.length) {
+    return ![...before, ...after].some(({ declared }) => declared);
+  }
+  return before.every(
+    (block, index) =>
+      !(block.declared || after[index].declared) || block.block === after[index].block,
   );
 }
 

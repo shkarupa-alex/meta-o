@@ -1271,6 +1271,8 @@ const EDITORIAL_AGAIN = `  - action: editorial\n    ids:\n      - ${BUSINESS_ID}
 const REUSE_AGAIN = `  - action: reuse\n    id: ${BUSINESS_ID}\n    reason: The boundary itself changed.\n    new_boundary: The declared block now says what it says.\n    references_updated: true\n`;
 
 test("editorial moves a marker only over text that stays as written", () => {
+  const A = "Only [approved](policy.md) requests pass.";
+  const U = "Only [unapproved](policy.md) requests pass.";
   const editorial = `Knowledge-ID-Change: editorial ${BUSINESS_ID} via ${MISSING_ARCHITECTURE_ID}`;
   for (const [before, after, expected] of [
     [
@@ -1294,6 +1296,22 @@ test("editorial moves a marker only over text that stays as written", () => {
       /semantic reuse/,
     ],
     [
+      `${MARK}\n${A}\n\n#### Repeated\n\n${A}\n\n#### Rejected\n\n${U}\n`,
+      `${MARK}\n${U}\n\n#### Repeated\n\n${A}\n\n#### Rejected\n\n${U}\n`,
+      /semantic reuse/,
+    ],
+    [`${MARK}\n${A}\n\n${U}\n`, `${MARK}\n${U}\n\n${A}\n`, /semantic reuse/],
+    [
+      `${A}\n\n#### Repeated\n\n${A}\n\n#### Rejected\n\n${U}\n`,
+      `${MARK}\n${U}\n\n#### Repeated\n\n${A}\n\n#### Rejected\n\n${U}\n`,
+      /semantic reuse/,
+    ],
+    [
+      `${MARK}\nRequirement.\n\nExplanation.\n\nRequirement.\n`,
+      `Requirement.\n\nExplanation.\n\n${MARK}\nRequirement.\n`,
+      null,
+    ],
+    [
       `${MARK}\nRequirement.\n\nSee [the policy](policy.md).\n`,
       `${MARK}\nRequirement.\n\nSee [our policy](policy.md).\n`,
       null,
@@ -1308,14 +1326,22 @@ test("editorial moves a marker only over text that stays as written", () => {
     else assert.deepEqual(errors, [], after);
   }
 
-  const state = declaredFixture(`${MARK}\nOnly [approved](policy.md) requests pass.\n`);
-  declareBusiness(state.root, `${MARK}\nOnly [unapproved](policy.md) requests pass.\n`);
-  appendRecord(state.root, REUSE_AGAIN);
-  commit(
-    state.root,
-    `reword the boundary as reuse\n\nKnowledge-ID-Change: reuse ${BUSINESS_ID} via ${MISSING_ARCHITECTURE_ID}`,
-  );
-  assert.deepEqual(verifyHistory(state.root, state.cutoff), []);
+  for (const [before, after] of [
+    [`${MARK}\n${A}\n`, `${MARK}\n${U}\n`],
+    [
+      `${MARK}\n${A}\n\n#### Repeated\n\n${A}\n\n#### Rejected\n\n${U}\n`,
+      `${MARK}\n${U}\n\n#### Repeated\n\n${A}\n\n#### Rejected\n\n${U}\n`,
+    ],
+  ]) {
+    const state = declaredFixture(before);
+    declareBusiness(state.root, after);
+    appendRecord(state.root, REUSE_AGAIN);
+    commit(
+      state.root,
+      `reword the boundary as reuse\n\nKnowledge-ID-Change: reuse ${BUSINESS_ID} via ${MISSING_ARCHITECTURE_ID}`,
+    );
+    assert.deepEqual(verifyHistory(state.root, state.cutoff), [], after);
+  }
 });
 
 test("a reference link carries the target it resolves to into the boundary", () => {

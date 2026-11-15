@@ -10096,7 +10096,9 @@ function boundaryOf(section, path, id, resolve2) {
       const fingerprint = JSON.stringify(boundaryNode(node2, resolve2));
       const occurrence = seen.get(fingerprint) ?? 0;
       seen.set(fingerprint, occurrence + 1);
-      ownBlocks.push(fingerprint);
+      if (!isAuthorizationBlock(node2)) {
+        ownBlocks.push({ block: fingerprint, declared: isBoundaryMarker(run[index2 - 1]) });
+      }
       if (isBoundaryMarker(run[index2 - 1])) declared.push({ block: fingerprint, occurrence });
     });
   }
@@ -10105,14 +10107,17 @@ function boundaryOf(section, path, id, resolve2) {
 function boundaryKept(prior, entry) {
   return typeof prior?.boundary === "string" && prior.boundary === entry?.boundary;
 }
-function declaredBlocks(entry) {
-  return entry?.boundary ? JSON.parse(entry.boundary).map(({ block }) => block) : [];
-}
 function editorialKept(prior, entry, strict) {
   const fingerprint = strict ? "strictEditorial" : "editorial";
-  const before = new Set(prior?.ownBlocks ?? []);
-  const after = new Set(entry?.ownBlocks ?? []);
-  return prior?.[fingerprint] === entry?.[fingerprint] && declaredBlocks(entry).every((block) => before.has(block)) && declaredBlocks(prior).every((block) => after.has(block));
+  if (prior?.[fingerprint] !== entry?.[fingerprint]) return false;
+  const before = prior?.ownBlocks ?? [];
+  const after = entry?.ownBlocks ?? [];
+  if (before.length !== after.length) {
+    return ![...before, ...after].some(({ declared }) => declared);
+  }
+  return before.every(
+    (block, index2) => !(block.declared || after[index2].declared) || block.block === after[index2].block
+  );
 }
 function definitionChanged(prior, entry) {
   if (!prior) return true;
@@ -11008,4 +11013,4 @@ export {
   runHistory,
   verifyHistory
 };
-// MO-KNOWLEDGE-HISTORY-SOURCE 0.2.0 d550b8ce358ba56221221e8436cdbe39f6263fb8f9cebddcf2bb281f4e442d70
+// MO-KNOWLEDGE-HISTORY-SOURCE 0.2.0 6f408d857026ae01efa17a0579a7640a5e16160a1951670c458410807396c5f1
