@@ -1223,6 +1223,7 @@ test("a marker before an empty block, a record or inside a block declares nothin
   for (const [body, error] of [
     [`${MARK}\n>\n\nRequirement.\n`, "declares a boundary with no block after its marker"],
     [`${MARK}\n-\n\nRequirement.\n`, "declares a boundary with no block after its marker"],
+    [`${MARK}\n> <br>\n\nRequirement.\n`, "declares a boundary with no block after its marker"],
     [
       `${MARK}\n\`\`\`\n\`\`\`\n\nRequirement.\n`,
       "declares a boundary with no block after its marker",
